@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.544.0",
-  "cache_bust": "2026-07-13m (Categorías de socio: además de Honorarios, ahora Gobernadores y Autores. Botones 'Agregar' por categoría + selector de categoría por socio en el admin (excluye de Nuestros Socios y Junta). Directorios /socios-honorarios, /nuestros-gobernadores, /nuestros-autores, cada uno con enlace en el menú (aparece si hay miembros; se puede ocultar por categoría en Configuración). Campo category en ClubMember)",
+  "version": "4.545.0",
+  "cache_bust": "2026-07-13n (Categorías de socio ahora son MÚLTIPLES: un socio puede ser Socio activo y además Honorario/Gobernador/Autor y/o Junta Directiva a la vez, apareciendo en varias secciones. En el admin cada categoría es un interruptor independiente. Campos isActive/isGovernor/isAuthor en ClubMember)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

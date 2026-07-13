@@ -58,7 +58,7 @@ export const getClubById = async (req, res) => {
 
         const settingsResult = await db.query('SELECT * FROM "Setting" WHERE "clubId" = $1', [id]);
         const paymentConfigs = await prisma.paymentProviderConfig.findMany({ where: { clubId: id } });
-        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", category, position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
+        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", "isGovernor", "isAuthor", "isActive", category, position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
 
         entity.settings = settingsResult.rows;
         entity.paymentConfigs = paymentConfigs;
@@ -442,16 +442,6 @@ export const deleteClub = async (req, res) => {
     }
 };
 
-// Categoría efectiva de un socio, con retrocompat: filas antiguas solo tienen
-// el booleano isHonorary. Un socio es 'active' salvo que sea de una categoría
-// especial (honorary/governor/author).
-const normalizeCategory = (m) => {
-    const c = m && m.category;
-    if (c === 'honorary' || c === 'governor' || c === 'author') return c;
-    if (m && m.isHonorary) return 'honorary';
-    return 'active';
-};
-
 export const batchUpsertMembers = async (req, res) => {
     try {
         const { id } = req.params;
@@ -466,17 +456,31 @@ export const batchUpsertMembers = async (req, res) => {
             prisma.clubMember.deleteMany({ where: { clubId: id } }),
             ...(members && members.length > 0 ? [
                 prisma.clubMember.createMany({
-                    data: members.map(m => ({
-                        clubId: id,
-                        name: m.name || 'Sin nombre',
-                        image: m.image || null,
-                        description: m.description || null,
-                        isBoard: (normalizeCategory(m) === 'active') ? !!m.isBoard : false,
-                        boardRole: m.boardRole || null,
-                        category: normalizeCategory(m),
-                        isHonorary: normalizeCategory(m) === 'honorary',
-                        position: m.position || 0
-                    }))
+                    data: members.map(m => {
+                        // Categorías independientes (un socio puede tener varias):
+                        // socio activo, junta, honorario, gobernador, autor.
+                        const isHonorary = !!m.isHonorary || m.category === 'honorary';
+                        const isGovernor = !!m.isGovernor || m.category === 'governor';
+                        const isAuthor = !!m.isAuthor || m.category === 'author';
+                        // isActive: si viene definido úsalo; si no, retrocompat por category.
+                        const isActive = (m.isActive === true || m.isActive === false)
+                            ? m.isActive
+                            : !(m.category && m.category !== 'active') && !m.isHonorary;
+                        return {
+                            clubId: id,
+                            name: m.name || 'Sin nombre',
+                            image: m.image || null,
+                            description: m.description || null,
+                            isBoard: !!m.isBoard,
+                            boardRole: m.boardRole || null,
+                            isHonorary,
+                            isGovernor,
+                            isAuthor,
+                            isActive,
+                            category: 'active',
+                            position: m.position || 0
+                        };
+                    })
                 })
             ] : [])
         ]);
@@ -488,4 +492,4 @@ export const batchUpsertMembers = async (req, res) => {
     }
 };
 
-console.log('[clubController] cargado (v4.544.0 — Categorías de socio: category (active/honorary/governor/author) + visibilidad por categoría (honorary/governors/authors); directorios /socios-honorarios, /nuestros-gobernadores, /nuestros-autores)');
+console.log('[clubController] cargado (v4.545.0 — Categorías de socio múltiples: isActive/isBoard/isHonorary/isGovernor/isAuthor independientes; un socio puede pertenecer a varias secciones a la vez)');

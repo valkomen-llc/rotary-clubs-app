@@ -7,7 +7,7 @@ import { useCart } from '../contexts/CartContext';
 import { useLang, SUPPORTED_LANGUAGES } from '../contexts/LanguageContext';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
-import { SPECIAL_CATEGORIES, memberCategory } from '../lib/memberCategories';
+import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -139,7 +139,7 @@ const Navbar = () => {
   // categoría, y no está ocultada explícitamente desde el panel.
   const clubMembers = (((club as any)?.members) || []) as any[];
   const specialLinks = SPECIAL_CATEGORIES
-    .filter(c => clubMembers.some(m => memberCategory(m) === c.key) && (club as any)?.[c.visibleField] !== false)
+    .filter(c => clubMembers.some(m => memberHasCategory(m, c.key)) && (club as any)?.[c.visibleField] !== false)
     .map(c => ({ label: c.label, href: c.href }));
 
   const sobreNosotrosItems = [

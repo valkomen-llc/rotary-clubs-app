@@ -8,7 +8,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
-import { MemberCategory, memberCategory, SPECIAL_CATEGORIES, CATEGORY_LABELS } from '../../lib/memberCategories';
+import { SPECIAL_CATEGORIES, SpecialCategoryKey, memberHasCategory, memberIsActive } from '../../lib/memberCategories';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -19,9 +19,15 @@ interface Member {
     description: string;
     isBoard: boolean;
     boardRole: string;
-    category: MemberCategory;
+    isActive: boolean;
+    isHonorary: boolean;
+    isGovernor: boolean;
+    isAuthor: boolean;
     position: number;
 }
+
+// "Añadir" arranca en una sola marca; luego se pueden activar varias.
+type AddKind = 'active' | SpecialCategoryKey;
 
 const MembersPage: React.FC = () => {
     const { user } = useAuth();
@@ -33,7 +39,7 @@ const MembersPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filter, setFilter] = useState<'all' | 'board' | MemberCategory>('all');
+    const [filter, setFilter] = useState<'all' | 'active' | 'board' | SpecialCategoryKey>('all');
 
     // ── Fetch members ──
     useEffect(() => {
@@ -50,7 +56,10 @@ const MembersPage: React.FC = () => {
                         description: m.description || '',
                         isBoard: m.isBoard || false,
                         boardRole: m.boardRole || '',
-                        category: memberCategory(m),
+                        isActive: memberIsActive(m),
+                        isHonorary: memberHasCategory(m, 'honorary'),
+                        isGovernor: memberHasCategory(m, 'governor'),
+                        isAuthor: memberHasCategory(m, 'author'),
                         position: m.position || 0
                     })));
                 }
@@ -59,7 +68,8 @@ const MembersPage: React.FC = () => {
             .finally(() => setLoading(false));
     }, [clubId]);
 
-    const addMember = (category: MemberCategory = 'active') => {
+    const addMember = (kind: AddKind = 'active') => {
+        const def = SPECIAL_CATEGORIES.find(c => c.key === kind);
         const newMember: Member = {
             id: 'temp-' + Date.now(),
             name: '',
@@ -67,12 +77,16 @@ const MembersPage: React.FC = () => {
             description: '',
             isBoard: false,
             boardRole: '',
-            category,
+            // Un socio "normal" arranca como activo; los especiales arrancan solo
+            // en su categoría (sin ser socio activo). Luego se pueden combinar.
+            isActive: kind === 'active',
+            isHonorary: kind === 'honorary',
+            isGovernor: kind === 'governor',
+            isAuthor: kind === 'author',
             position: members.length > 0 ? members[0].position - 1 : 0
         };
         setMembers(prev => [newMember, ...prev]);
-        const label = category === 'active' ? 'Socio' : CATEGORY_LABELS[category];
-        toast.info(`Nuevo ${label.toLowerCase()} añadido al inicio de la lista`);
+        toast.info(`Nuevo ${def ? def.addLabel.toLowerCase() : 'socio'} añadido al inicio de la lista`);
     };
 
     const updateMember = (index: number, field: keyof Member, value: any) => {
@@ -178,18 +192,22 @@ const MembersPage: React.FC = () => {
         setSaving(false);
     };
 
+    const flagForCategory = (m: Member, key: SpecialCategoryKey) =>
+        key === 'honorary' ? m.isHonorary : key === 'governor' ? m.isGovernor : m.isAuthor;
+
     const filteredMembers = members.filter(m => {
         const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                              m.description.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesFilter =
             filter === 'all' ? true :
+            filter === 'active' ? m.isActive :
             filter === 'board' ? m.isBoard :
-            m.category === filter;
+            flagForCategory(m, filter);
         return matchesSearch && matchesFilter;
     });
 
     const boardMembersCount = members.filter(m => m.isBoard).length;
-    const countByCategory = (cat: MemberCategory) => members.filter(m => m.category === cat).length;
+    const countByCategory = (key: SpecialCategoryKey) => members.filter(m => flagForCategory(m, key)).length;
     const incompleteCount = members.filter(m => !m.name || !m.image).length;
 
     if (loading) {
@@ -275,12 +293,17 @@ const MembersPage: React.FC = () => {
                             className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-sky-500 outline-none transition-all"
                         />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Filter className="w-4 h-4 text-gray-300 mr-1" />
-                        <button 
+                        <button
                             onClick={() => setFilter('all')}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'all' ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' : 'text-gray-400 hover:bg-gray-50'}`}>
                             TODOS
+                        </button>
+                        <button
+                            onClick={() => setFilter('active')}
+                            className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'active' ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' : 'text-gray-400 hover:bg-gray-50'}`}>
+                            ACTIVOS
                         </button>
                         <button
                             onClick={() => setFilter('board')}
@@ -291,7 +314,7 @@ const MembersPage: React.FC = () => {
                             <button key={c.key}
                                 onClick={() => setFilter(c.key)}
                                 className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all ${filter === c.key ? 'bg-amber-500 text-white shadow-lg shadow-amber-100' : 'text-gray-400 hover:bg-gray-50'}`}>
-                                {CATEGORY_LABELS[c.key]}
+                                {c.chipLabel}
                             </button>
                         ))}
                     </div>
@@ -451,58 +474,64 @@ const MemberCard: React.FC<{
                 </div>
             </div>
 
-            {/* Categoría del socio */}
-            <div className="mt-2 p-3 rounded-2xl bg-gray-50/50 border border-gray-100">
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-0.5">Categoría</p>
-                <div className="flex flex-wrap gap-1.5">
-                    {(['active', ...SPECIAL_CATEGORIES.map(c => c.key)] as MemberCategory[]).map(cat => (
-                        <button key={cat} type="button"
-                            onClick={() => { onUpdate(index, 'category', cat); if (cat !== 'active') onUpdate(index, 'isBoard', false); }}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all border ${member.category === cat ? 'bg-rotary-blue text-white border-rotary-blue shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                            {CATEGORY_LABELS[cat]}
-                        </button>
-                    ))}
-                </div>
-                {member.category !== 'active' && (
-                    <p className="text-[10px] text-gray-400 mt-2 ml-0.5">
-                        No aparece en "Nuestros Socios" ni en la Junta Directiva; se muestra en su propia sección.
-                    </p>
-                )}
-            </div>
+            {/* Categorías — un socio puede pertenecer a varias a la vez */}
+            <div className="mt-2 p-3 rounded-2xl bg-gray-50/50 border border-gray-100 space-y-2">
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-0.5">Categorías (puede tener varias)</p>
 
-            {/* Junta Directiva — solo para socios activos */}
-            {member.category === 'active' && (
-                <div className={`p-3 rounded-2xl transition-all ${member.isBoard ? 'bg-sky-50 border border-sky-100' : 'bg-gray-50/50 border border-transparent'}`}>
-                    <div className="flex items-center justify-between">
+                <CategoryToggle color="sky" label="Socio activo" on={member.isActive}
+                    onChange={v => onUpdate(index, 'isActive', v)} />
+
+                {/* Junta Directiva + cargo */}
+                <div className={`px-3 py-2 rounded-xl border transition-all ${member.isBoard ? 'bg-sky-50 border-sky-100' : 'bg-gray-50/50 border-transparent'}`}>
+                    <div className="flex items-center justify-between gap-2">
                         <label className="flex items-center gap-3 cursor-pointer select-none">
                             <div className={`w-10 h-6 rounded-full relative transition-colors ${member.isBoard ? 'bg-sky-500' : 'bg-gray-300'}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={member.isBoard}
-                                    onChange={e => onUpdate(index, 'isBoard', e.target.checked)}
-                                    className="hidden"
-                                />
+                                <input type="checkbox" checked={member.isBoard}
+                                    onChange={e => onUpdate(index, 'isBoard', e.target.checked)} className="hidden" />
                                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${member.isBoard ? 'left-5' : 'left-1'}`} />
                             </div>
                             <span className={`text-[11px] font-black uppercase tracking-tight ${member.isBoard ? 'text-sky-600' : 'text-gray-400'}`}>
                                 Junta Directiva
                             </span>
                         </label>
-
                         {member.isBoard && (
-                            <div className="flex items-center gap-2">
-                                 <input
-                                    value={member.boardRole}
-                                    onChange={e => onUpdate(index, 'boardRole', e.target.value)}
-                                    className="bg-white border border-sky-200 rounded-xl px-3 py-1.5 text-[10px] font-black text-sky-600 w-32 focus:outline-none focus:ring-2 focus:ring-sky-200 shadow-sm transition-all"
-                                    placeholder="Presidente..."
-                                />
-                            </div>
+                            <input value={member.boardRole}
+                                onChange={e => onUpdate(index, 'boardRole', e.target.value)}
+                                className="bg-white border border-sky-200 rounded-xl px-3 py-1.5 text-[10px] font-black text-sky-600 w-32 focus:outline-none focus:ring-2 focus:ring-sky-200 shadow-sm transition-all"
+                                placeholder="Presidente..." />
                         )}
                     </div>
                 </div>
-            )}
+
+                {SPECIAL_CATEGORIES.map(def => (
+                    <CategoryToggle key={def.key} color="amber" label={def.chipLabel}
+                        on={(member as any)[def.flag]}
+                        onChange={v => onUpdate(index, def.flag as keyof Member, v)} />
+                ))}
+
+                {!member.isActive && (
+                    <p className="text-[10px] text-gray-400 ml-0.5">
+                        Al no ser "Socio activo" no aparece en "Nuestros Socios"; solo en las secciones marcadas.
+                    </p>
+                )}
+            </div>
         </div>
+    );
+};
+
+// Interruptor reutilizable para una categoría del socio.
+const CategoryToggle: React.FC<{ label: string; on: boolean; onChange: (v: boolean) => void; color?: 'sky' | 'amber' }> = ({ label, on, onChange, color = 'amber' }) => {
+    const c = color === 'sky'
+        ? { bg: 'bg-sky-50 border-sky-100', dot: 'bg-sky-500', text: 'text-sky-600' }
+        : { bg: 'bg-amber-50 border-amber-100', dot: 'bg-amber-500', text: 'text-amber-600' };
+    return (
+        <label className={`flex items-center gap-3 cursor-pointer select-none px-3 py-2 rounded-xl border transition-all ${on ? c.bg : 'bg-gray-50/50 border-transparent'}`}>
+            <div className={`w-10 h-6 rounded-full relative transition-colors ${on ? c.dot : 'bg-gray-300'}`}>
+                <input type="checkbox" checked={on} onChange={e => onChange(e.target.checked)} className="hidden" />
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${on ? 'left-5' : 'left-1'}`} />
+            </div>
+            <span className={`text-[11px] font-black uppercase tracking-tight ${on ? c.text : 'text-gray-400'}`}>{label}</span>
+        </label>
     );
 };
 

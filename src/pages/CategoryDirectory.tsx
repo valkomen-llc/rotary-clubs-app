@@ -3,7 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { SPECIAL_CATEGORIES, memberCategory, SpecialCategoryKey } from '../lib/memberCategories';
+import { SPECIAL_CATEGORIES, memberHasCategory, SpecialCategoryKey } from '../lib/memberCategories';
 
 // Directorio público genérico para una categoría especial de socios
 // (Honorarios / Gobernadores / Autores). Mismo diseño que "Nuestros Socios"
@@ -18,7 +18,7 @@ const CategoryDirectory = ({ category }: { category: SpecialCategoryKey }) => {
   }
 
   const socios = ((club as any).members || [])
-    .filter((m: any) => memberCategory(m) === category)
+    .filter((m: any) => memberHasCategory(m, category))
     .map((m: any) => ({
       id: m.id,
       nombre: m.name,

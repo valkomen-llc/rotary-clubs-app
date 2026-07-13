@@ -3,7 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { memberCategory } from '../lib/memberCategories';
+import { memberIsActive } from '../lib/memberCategories';
 
 const NuestrosSocios = () => {
   const { club } = useClub();
@@ -32,10 +32,11 @@ const NuestrosSocios = () => {
   // 1. Check if club has members in database (priority)
   // 2. Fallback to CMS sections if configured
   // 3. Absolute fallback to defaultSocios
-  // Las categorías especiales (honorarios, gobernadores, autores) tienen su
-  // propio directorio; aquí mostramos solo a los socios activos.
+  // Aquí mostramos a los socios activos. Un socio activo puede además pertenecer
+  // a categorías especiales (honorario/gobernador/autor) y aparecer también en
+  // esas secciones; los que NO son activos solo salen en su categoría.
   const dbMembers = (club.members || [])
-    .filter((m: any) => memberCategory(m) === 'active')
+    .filter((m: any) => memberIsActive(m))
     .map((m: any) => ({
         id: m.id,
         nombre: m.name,

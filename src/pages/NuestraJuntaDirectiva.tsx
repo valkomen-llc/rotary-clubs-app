@@ -3,7 +3,6 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { memberCategory } from '../lib/memberCategories';
 
 const NuestraJuntaDirectiva = () => {
   const { club } = useClub();
@@ -35,7 +34,7 @@ const NuestraJuntaDirectiva = () => {
   // 2. Fallback to CMS sections if configured
   // 3. Absolute fallback to defaultJunta
   const dbBoardMembers = (club.members || [])
-    .filter((m: any) => m.isBoard && memberCategory(m) === 'active')
+    .filter((m: any) => m.isBoard)
     .map((m: any) => ({
         id: m.id,
         nombre: m.name,
