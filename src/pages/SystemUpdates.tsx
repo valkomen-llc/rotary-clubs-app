@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.540.1 | 2026-07-13 (Títulos de aportes sin negrilla)
-// Cache bust: 2026-07-13b
+// UI V4.540.2 | 2026-07-13 (Títulos del carrusel al mismo tamaño que el hero)
+// Cache bust: 2026-07-13c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.540.2',
+        title: 'Títulos de aportes al mismo tamaño 📐',
+        description: 'Los títulos de las tarjetas del carrusel de aportes (como "Membresía Rotaria") ahora tienen el mismo tamaño de fuente que "Aporte voluntario al Club", para que se vean uniformes.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'tipografía', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.540.1',
         title: 'Títulos de aportes con un estilo más ligero ✨',
