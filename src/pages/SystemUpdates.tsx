@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.542.1 | 2026-07-13 (Ajustes de la barra superior del header)
-// Cache bust: 2026-07-13g
+// UI V4.542.2 | 2026-07-13 (Color de la barra superior ajustado)
+// Cache bust: 2026-07-13h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.542.2',
+        title: 'Nuevo color en la barra superior del header 🎨',
+        description: 'Ajustamos el color de fondo de la barra superior del header a #28354b, según lo solicitado.',
+        date: new Date().toISOString(),
+        tags: ['header', 'barra superior', 'color', 'UI'],
+        type: 'fix'
+    },
     {
         version: '4.542.1',
         title: 'Barra superior del header más pulida 🎨',
