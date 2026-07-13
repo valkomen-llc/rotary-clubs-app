@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.542.1",
-  "cache_bust": "2026-07-13g (Barra superior del header: fondo #2b2f44, más altura, textos en negrilla y fix del menú de idiomas que quedaba tapado por la navbar (z-index))",
+  "version": "4.542.2",
+  "cache_bust": "2026-07-13h (Barra superior del header: color de fondo ajustado a #28354b)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

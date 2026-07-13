@@ -225,7 +225,7 @@ const Navbar = () => {
   return (
     <>
     {/* Barra superior estilo Rotary.org: enlaces externos + selector de idioma */}
-    <div className="bg-[#2b2f44] text-white relative z-[60]" data-no-translate>
+    <div className="bg-[#28354b] text-white relative z-[60]" data-no-translate>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-end gap-6 sm:gap-8 py-4 text-sm">
           <a
