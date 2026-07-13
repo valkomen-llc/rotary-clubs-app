@@ -8,7 +8,7 @@ import {
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
     Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon,
-    ChevronUp, ChevronDown, GripVertical
+    ChevronUp, ChevronDown, GripVertical, Award
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
@@ -155,6 +155,7 @@ const ClubSettings: React.FC = () => {
         mapStyle: 'm',
         storeActive: true,
         trfCredibilityVisible: true,
+        honoraryMembersVisible: true,
         currency: 'USD',
     });
     
@@ -365,6 +366,7 @@ const ClubSettings: React.FC = () => {
                 mapStyle: club.mapStyle || 'm',
                 storeActive: settingsMap['store_active'] !== 'false',
                 trfCredibilityVisible: (club as any).trfCredibilityVisible !== false && settingsMap['trf_credibility_visible'] !== 'false',
+                honoraryMembersVisible: (club as any).honoraryMembersVisible !== false && settingsMap['honorary_members_visible'] !== 'false',
                 currency: (club as any).currency || settingsMap['club_currency'] || 'USD',
             });
 
@@ -890,6 +892,32 @@ const ClubSettings: React.FC = () => {
                             </div>
                             <p className={`mt-3 text-xs font-bold ${formData.trfCredibilityVisible ? 'text-emerald-600' : 'text-gray-400'}`}>
                                 {formData.trfCredibilityVisible ? 'Visible en el sitio' : 'Oculto en el sitio'}
+                            </p>
+                        </div>
+
+                        {/* Socios Honorarios — visibilidad de la sección en el menú */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Award className="w-5 h-5 text-amber-500" /> Socios Honorarios
+                                    </h3>
+                                    <p className="text-xs text-gray-400 mt-1 max-w-xl">
+                                        La sección <b>Socios Honorarios</b> (menú <b>Sobre Nosotros</b>) aparece automáticamente cuando el club tiene socios marcados como honorarios en <b>Socios y Junta Directiva</b>. Puedes ocultarla aquí aunque tengas socios honorarios.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={formData.honoraryMembersVisible}
+                                    onClick={() => setFormData(prev => ({ ...prev, honoraryMembersVisible: !prev.honoraryMembersVisible }))}
+                                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${formData.honoraryMembersVisible ? 'bg-rotary-blue' : 'bg-gray-300'}`}
+                                >
+                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${formData.honoraryMembersVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                            <p className={`mt-3 text-xs font-bold ${formData.honoraryMembersVisible ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                {formData.honoraryMembersVisible ? 'Se muestra en el menú si hay socios honorarios' : 'Oculta en el menú'}
                             </p>
                         </div>
 

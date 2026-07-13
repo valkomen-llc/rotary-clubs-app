@@ -31,7 +31,10 @@ const NuestrosSocios = () => {
   // 1. Check if club has members in database (priority)
   // 2. Fallback to CMS sections if configured
   // 3. Absolute fallback to defaultSocios
+  // Los socios honorarios tienen su propio directorio (/socios-honorarios);
+  // aquí mostramos solo a los demás para que ambas secciones sean distintas.
   const dbMembers = (club.members || [])
+    .filter((m: any) => !m.isHonorary)
     .map((m: any) => ({
         id: m.id,
         nombre: m.name,

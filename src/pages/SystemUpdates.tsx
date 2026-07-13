@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.543.2 | 2026-07-13 (Íconos en los pasos de "Proceso para ser socio")
-// Cache bust: 2026-07-13k
+// UI V4.543.3 | 2026-07-13 (Nueva sección Socios Honorarios)
+// Cache bust: 2026-07-13l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.543.3',
+        title: 'Nueva sección: Socios Honorarios 🏅',
+        description: 'Ahora cada club puede tener un directorio de "Socios Honorarios", como el de "Nuestros Socios". En Panel → Socios y Junta Directiva marca a los socios honorarios con el nuevo interruptor "Socio Honorario". El enlace aparece automáticamente en el menú "Sobre Nosotros" cuando el club tiene socios honorarios, y puedes ocultarlo desde Panel → Configuración → "Socios Honorarios" si lo prefieres. Los socios honorarios se muestran solo en su propia sección, no en "Nuestros Socios".',
+        date: new Date().toISOString(),
+        tags: ['socios', 'honorarios', 'directorio', 'menú', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.543.2',
         title: 'Íconos en los pasos para ser socio ✨',

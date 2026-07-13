@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.543.2",
-  "cache_bust": "2026-07-13k (Contacto/Proceso para ser socio: los círculos de los 4 pasos ahora muestran íconos (fondo azul + ícono blanco) en vez del sprite externo que no cargaba)",
+  "version": "4.543.3",
+  "cache_bust": "2026-07-13l (Nueva sección 'Socios Honorarios': directorio público /socios-honorarios espejo de Nuestros Socios, filtrando socios con isHonorary. Toggle 'Socio Honorario' en Socios y Junta Directiva. El enlace aparece en 'Sobre Nosotros' cuando el club tiene honorarios y se puede ocultar desde Configuración. Campo isHonorary agregado a ClubMember)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
