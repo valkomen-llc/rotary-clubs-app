@@ -143,7 +143,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
 
                     {selectedInterval && (
                         <div className="mb-6 flex items-baseline gap-2">
-                            <span className="text-3xl font-black text-gray-900">{fmt(selectedInterval.amount)}</span>
+                            <span className="text-3xl font-normal text-gray-900">{fmt(selectedInterval.amount)}</span>
                             <span className="text-gray-500 text-sm">/ {RECURRING_INTERVAL_LABELS[selectedInterval.key].toLowerCase()}</span>
                         </div>
                     )}

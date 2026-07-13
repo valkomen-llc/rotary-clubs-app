@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.540.2",
-  "cache_bust": "2026-07-13c (Títulos de las tarjetas del carrusel de aportes igualados al tamaño de 'Aporte voluntario al Club' (text-2xl → text-[26px]))",
+  "version": "4.540.3",
+  "cache_bust": "2026-07-13d (Precio de la membresía sin negrilla (font-black → font-normal) + flechas prev/next del carrusel de aportes movidas afuera del contenedor, con overflow-x-clip para evitar scroll horizontal)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

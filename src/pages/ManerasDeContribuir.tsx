@@ -127,7 +127,7 @@ const ManerasDeContribuir = () => {
 
             {/* Formas de aportar — carrusel de bloques (Donación / Aporte / Membresía) */}
             {blocks.length > 0 && (
-                <section className="py-20 md:py-24" style={{ backgroundColor: blocksBg }}>
+                <section className="py-20 md:py-24 overflow-x-clip" style={{ backgroundColor: blocksBg }}>
                     <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                         <PaymentBlocksCarousel blocks={blocks} />
                     </div>

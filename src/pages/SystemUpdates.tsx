@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.540.2 | 2026-07-13 (Títulos del carrusel al mismo tamaño que el hero)
-// Cache bust: 2026-07-13c
+// UI V4.540.3 | 2026-07-13 (Precio de membresía sin negrilla + flechas del carrusel afuera)
+// Cache bust: 2026-07-13d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.540.3',
+        title: 'Precio de membresía más ligero y flechas del carrusel afuera 🎠',
+        description: 'El valor de la membresía (ej. "$ 120.000") ahora va sin negrilla, con un estilo más ligero. Además, las flechas de "siguiente" y "atrás" del carrusel de aportes se movieron afuera de las tarjetas, para que no las tapen.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'carrusel', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.540.2',
         title: 'Títulos de aportes al mismo tamaño 📐',

@@ -59,14 +59,14 @@ const PaymentBlocksCarousel: React.FC<{ blocks: PaymentBlock[] }> = ({ blocks })
                     <button
                         onClick={() => go(-1)}
                         aria-label="Anterior"
-                        className="absolute top-1/2 -translate-y-1/2 -left-2 md:-left-5 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-gray-600 hover:text-rotary-blue hover:scale-105 transition z-10"
+                        className="absolute top-1/2 -translate-y-1/2 -left-3 md:-left-12 lg:-left-16 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-gray-600 hover:text-rotary-blue hover:scale-105 transition z-10"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
                         onClick={() => go(1)}
                         aria-label="Siguiente"
-                        className="absolute top-1/2 -translate-y-1/2 -right-2 md:-right-5 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-gray-600 hover:text-rotary-blue hover:scale-105 transition z-10"
+                        className="absolute top-1/2 -translate-y-1/2 -right-3 md:-right-12 lg:-right-16 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-gray-600 hover:text-rotary-blue hover:scale-105 transition z-10"
                     >
                         <ChevronRight className="w-5 h-5" />
                     </button>
