@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.547.3",
-  "cache_bust": "2026-07-16c (Wizard de importación real: correo ya no descarta contactos, y los contactos existentes SÍ se enlazan a la lista)",
+  "version": "4.548.0",
+  "cache_bust": "2026-07-16a (Publicaciones/Difusión: nueva sección en el admin de plataforma para crear un artículo una sola vez y replicarlo automáticamente a los sitios de los clubes seleccionados, cada uno con su propia identidad. Aditivo y retrocompatible: se agrega la columna Post.targetClubIds sin tocar datos existentes)",
   "type": "module",
-  "//": "UI V4.547.3 | 2026-07-16 (Wizard de importación: correo opcional sin validar + enlaza existentes a la lista)",
+  "//": "UI V4.548.0 | 2026-07-16 (Publicaciones/Difusión — replicación centralizada a múltiples clubes)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

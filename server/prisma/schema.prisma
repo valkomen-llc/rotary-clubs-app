@@ -357,6 +357,12 @@ model Post {
   socialCopy     String?
   ctaCopy        String?
   videoGallery   String[]
+  // Publicaciones centralizadas (Difusión): lista de clubes destino a los que se
+  // replica esta publicación creada desde el admin de plataforma. Vacío = post
+  // normal (por-club vía clubId, o global legacy vía clubId NULL). Con elementos =
+  // publicación dirigida: se muestra SOLO en los clubes de esta lista, cada uno con
+  // su propia identidad (logo/nombre/dominio). Aditivo y retrocompatible.
+  targetClubIds  String[]  @default([])
   comments       Comment[]
   club           Club?     @relation(fields: [clubId], references: [id])
 }
