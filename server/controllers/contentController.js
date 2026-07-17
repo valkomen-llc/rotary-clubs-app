@@ -23,19 +23,56 @@ const stripInvisibleBreaks = (html) =>
             .replace(INVISIBLE_BREAK_CHARS, '')
         : html;
 
+// Garantiza que exista la columna de targeting de publicaciones centralizadas.
+// Aditivo e idempotente (ADD COLUMN IF NOT EXISTS) — nunca borra ni resetea datos.
+// Protege contra un orden de deploy en el que el código nuevo corre antes de que
+// `prisma db push` haya aplicado el schema.
+let _targetColumnEnsured = false;
+const ensureTargetClubIdsColumn = async () => {
+    if (_targetColumnEnsured) return;
+    try {
+        await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "targetClubIds" TEXT[] DEFAULT '{}'::text[];`);
+        _targetColumnEnsured = true;
+    } catch (e) {
+        console.error('ensureTargetClubIdsColumn error:', e.message);
+    }
+};
+
+// Filtro público de visibilidad de un post para un club dado.
+//   - clubId = $1                         → post por-club (legacy)
+//   - clubId IS NULL AND target vacío     → global legacy (se ve en todos)
+//   - $1 = ANY(targetClubIds)             → publicación centralizada dirigida
+// Nota: los posts existentes tienen targetClubIds = '{}' (vacío) → comportamiento
+// idéntico al anterior, sin cambios.
+const CLUB_VISIBILITY_CLAUSE = `(
+    "clubId" = $CLUB
+    OR ("clubId" IS NULL AND cardinality(COALESCE("targetClubIds", '{}'::text[])) = 0)
+    OR $CLUB = ANY(COALESCE("targetClubIds", '{}'::text[]))
+)`;
+
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {
     const { clubId } = req.params;
     const { limit } = req.query;
-    try {
+    const runQuery = () => {
         const limitClause = limit ? `LIMIT ${parseInt(limit)}` : '';
-        const result = await db.query(
-            `SELECT * FROM "Post" WHERE ("clubId" = $1 OR "clubId" IS NULL) AND published = true
+        return db.query(
+            `SELECT * FROM "Post" WHERE ${CLUB_VISIBILITY_CLAUSE.replace(/\$CLUB/g, '$1')} AND published = true
              ORDER BY "createdAt" DESC ${limitClause}`,
             [clubId]
         );
+    };
+    try {
+        const result = await runQuery();
         res.json(result.rows);
     } catch (error) {
+        if (error.message && error.message.includes('targetClubIds')) {
+            await ensureTargetClubIdsColumn();
+            try {
+                const retry = await runQuery();
+                return res.json(retry.rows);
+            } catch (e) { /* fallthrough */ }
+        }
         res.status(500).json({ error: 'Error fetching posts' });
     }
 };
@@ -43,16 +80,25 @@ export const getPublicPosts = async (req, res) => {
 // Public: Get a single post by ID
 export const getPublicPostById = async (req, res) => {
     const { clubId, postId } = req.params;
+    const runQuery = () => db.query(
+        `SELECT * FROM "Post" WHERE (id = $1 OR slug = $1) AND ${CLUB_VISIBILITY_CLAUSE.replace(/\$CLUB/g, '$2')} AND published = true`,
+        [postId, clubId]
+    );
     try {
-        const result = await db.query(
-            `SELECT * FROM "Post" WHERE (id = $1 OR slug = $1) AND ("clubId" = $2 OR "clubId" IS NULL) AND published = true`,
-            [postId, clubId]
-        );
+        const result = await runQuery();
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Noticia no encontrada' });
         }
         res.json(result.rows[0]);
     } catch (error) {
+        if (error.message && error.message.includes('targetClubIds')) {
+            await ensureTargetClubIdsColumn();
+            try {
+                const retry = await runQuery();
+                if (retry.rows.length === 0) return res.status(404).json({ error: 'Noticia no encontrada' });
+                return res.json(retry.rows[0]);
+            } catch (e) { /* fallthrough */ }
+        }
         console.error('Error fetching post:', error);
         res.status(500).json({ error: 'Error fetching post' });
     }
@@ -312,18 +358,200 @@ export const bulkDeletePosts = async (req, res) => {
     const { ids } = req.body;
     try {
         if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids[] required' });
-        
+
         await prisma.post.deleteMany({
             where: {
                 id: { in: ids },
                 ...(req.user.role !== 'administrator' ? { clubId: req.user.clubId } : {})
             }
         });
-        
+
         res.json({ message: `${ids.length} posts deleted` });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error bulk deleting posts' });
+    }
+};
+
+// ============================================================================
+// PUBLICACIONES CENTRALIZADAS (Difusión) — v4.548
+// Una publicación creada desde el admin de plataforma se replica a un subconjunto
+// de clubes seleccionados. Se guarda como UNA sola fila en "Post" con clubId NULL
+// y targetClubIds = [clubes destino]. El blog público de cada club destino la
+// recoge vía getPublicPosts, mostrándola dentro de su propia identidad. Fuente
+// única: se edita/despublica desde un único lugar y se refleja en todos.
+// Solo super-admin (roleMiddleware ['administrator']).
+// ============================================================================
+console.log('📢 Publicaciones/Difusión centralizada v4.548 — replicación multi-club activa');
+
+const sanitizeTargetClubIds = (value) =>
+    Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id.trim()))] : [];
+
+// Admin: listar publicaciones centralizadas (las que tienen clubes destino).
+export const getPublications = async (req, res) => {
+    const runQuery = () => db.query(
+        `SELECT * FROM "Post" WHERE cardinality(COALESCE("targetClubIds", '{}'::text[])) > 0
+         ORDER BY "createdAt" DESC`
+    );
+    try {
+        const result = await runQuery();
+        res.json(result.rows);
+    } catch (error) {
+        if (error.message && error.message.includes('targetClubIds')) {
+            await ensureTargetClubIdsColumn();
+            try {
+                const retry = await runQuery();
+                return res.json(retry.rows);
+            } catch (e) { /* fallthrough */ }
+        }
+        console.error('getPublications error:', error);
+        res.status(500).json({ error: 'Error fetching publications' });
+    }
+};
+
+// Admin: crear publicación centralizada dirigida a clubes seleccionados.
+export const createPublication = async (req, res) => {
+    await ensureTargetClubIdsColumn();
+    const {
+        title, slug, content, image, published, category, tags,
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy,
+        videoUrl, images, videoGallery, isAI, createdAt, targetClubIds
+    } = req.body;
+
+    const targets = sanitizeTargetClubIds(targetClubIds);
+    if (targets.length === 0) {
+        return res.status(400).json({ error: 'Debes seleccionar al menos un club destino.' });
+    }
+
+    const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
+    const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+
+    try {
+        const post = await prisma.post.create({
+            data: {
+                title: title || '',
+                slug: slug || undefined,
+                content: stripInvisibleBreaks(content) || '',
+                image: image || null,
+                published: published || false,
+                clubId: null, // Publicación centralizada: no pertenece a un club, se dirige por targetClubIds.
+                targetClubIds: targets,
+                category: category || '',
+                tags: Array.isArray(tags) ? tags : [],
+                keywords: keywords || '',
+                seoTitle: seoTitle || '',
+                seoDescription: seoDescription || '',
+                seoImage: seoImage || null,
+                socialCopy: socialCopy || '',
+                ctaCopy: ctaCopy || '',
+                videoUrl: videoUrl || '',
+                images: Array.isArray(images) ? images : [],
+                videoGallery: Array.isArray(videoGallery) ? videoGallery : [],
+                isAI: isAI || false,
+                ...(validCreatedAt ? { createdAt: validCreatedAt } : {})
+            }
+        });
+
+        // Ingesta al cerebro de cada club destino (best-effort, no bloquea la respuesta).
+        for (const clubId of targets) {
+            ingestMemorySafe({
+                clubId,
+                kind: 'POST',
+                sourceType: 'Post',
+                sourceId: post.id,
+                title: post.title,
+                content: post.content,
+                metadata: { category: post.category, published: post.published, centralized: true },
+            });
+        }
+
+        res.status(201).json(post);
+    } catch (error) {
+        console.error('Create Publication Error:', error);
+        res.status(500).json({ error: 'Error creating publication', details: error.message });
+    }
+};
+
+// Admin: actualizar publicación centralizada (incluye reasignar clubes destino).
+export const updatePublication = async (req, res) => {
+    await ensureTargetClubIdsColumn();
+    const { id } = req.params;
+    const {
+        title, slug, content, image, published, category, tags,
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy,
+        videoUrl, images, videoGallery, createdAt, targetClubIds
+    } = req.body;
+
+    const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
+    const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+
+    try {
+        const existing = await prisma.post.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Publicación no encontrada' });
+
+        const targets = targetClubIds !== undefined
+            ? sanitizeTargetClubIds(targetClubIds)
+            : (existing.targetClubIds || []);
+        if (targets.length === 0) {
+            return res.status(400).json({ error: 'Debes seleccionar al menos un club destino.' });
+        }
+
+        const post = await prisma.post.update({
+            where: { id },
+            data: {
+                title: title || existing.title,
+                slug: slug || existing.slug,
+                content: content ? stripInvisibleBreaks(content) : existing.content,
+                image: image !== undefined ? image : existing.image,
+                published: published !== undefined ? published : existing.published,
+                clubId: null,
+                targetClubIds: targets,
+                category: category !== undefined ? category : existing.category,
+                tags: Array.isArray(tags) ? tags : existing.tags,
+                keywords: keywords !== undefined ? keywords : existing.keywords,
+                seoTitle: seoTitle !== undefined ? seoTitle : existing.seoTitle,
+                seoDescription: seoDescription !== undefined ? seoDescription : existing.seoDescription,
+                seoImage: seoImage !== undefined ? seoImage : existing.seoImage,
+                socialCopy: socialCopy !== undefined ? socialCopy : existing.socialCopy,
+                ctaCopy: ctaCopy !== undefined ? ctaCopy : existing.ctaCopy,
+                videoUrl: videoUrl !== undefined ? videoUrl : existing.videoUrl,
+                images: Array.isArray(images) ? images : existing.images,
+                videoGallery: Array.isArray(videoGallery) ? videoGallery : existing.videoGallery,
+                ...(validCreatedAt ? { createdAt: validCreatedAt } : {}),
+                updatedAt: new Date()
+            }
+        });
+
+        for (const clubId of targets) {
+            ingestMemorySafe({
+                clubId,
+                kind: 'POST',
+                sourceType: 'Post',
+                sourceId: post.id,
+                title: post.title,
+                content: post.content,
+                metadata: { category: post.category, published: post.published, centralized: true },
+            });
+        }
+
+        res.json(post);
+    } catch (error) {
+        console.error('Update Publication Error:', error);
+        res.status(500).json({ error: 'Error updating publication', details: error.message });
+    }
+};
+
+// Admin: eliminar publicación centralizada.
+export const deletePublication = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.post.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Publicación no encontrada' });
+        await prisma.post.delete({ where: { id } });
+        res.json({ message: 'Publicación eliminada' });
+    } catch (error) {
+        console.error('Delete Publication Error:', error);
+        res.status(500).json({ error: 'Error deleting publication' });
     }
 };
 

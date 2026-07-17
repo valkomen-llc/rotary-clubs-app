@@ -6,6 +6,7 @@ import {
     Building2,
     FolderKanban,
     Newspaper,
+    Megaphone,
     HeartHandshake,
     Heart,
     Image as ImageIcon,
@@ -356,6 +357,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'Comunicaciones y CRM', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
                 { icon: MessageSquare, label: 'WhatsApp CRM', path: '/admin/crm?tab=wa-chat', category: 'Comunicaciones y CRM', keywords: ['crm', 'whatsapp', 'api', 'mensajes', 'campañas'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
+                { icon: Megaphone, label: 'Publicaciones / Difusión', path: '/admin/publicaciones', category: 'Management', keywords: ['publicacion', 'difusion', 'blog', 'noticia', 'articulo', 'replicar', 'multi club', 'broadcast'] },
             );
         }
 

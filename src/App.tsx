@@ -83,6 +83,7 @@ const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
 const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
 const NewsManagement = React.lazy(() => import('./pages/admin/News'));
+const Publicaciones = React.lazy(() => import('./pages/admin/Publicaciones'));
 const ProjectsManagement = React.lazy(() => import('./pages/admin/Projects'));
 const UsersManagement = React.lazy(() => import('./pages/admin/Users'));
 const StoreManagement = React.lazy(() => import('./pages/admin/StoreManagement'));
@@ -562,6 +563,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <NewsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/publicaciones"
+                  element={
+                    <PrivateRoute>
+                      <Publicaciones />
                     </PrivateRoute>
                   }
                 />

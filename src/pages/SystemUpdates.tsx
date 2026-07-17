@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.547.3 | 2026-07-16 (Wizard de importación: correo opcional sin validar + enlaza existentes)
-// Cache bust: 2026-07-16c
+// UI V4.548.0 | 2026-07-16 (Publicaciones/Difusión — replicación centralizada a múltiples clubes)
+// Cache bust: 2026-07-16a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.548.0',
+        title: 'Publicaciones centralizadas: un artículo, muchos clubes 📢',
+        description: 'Nueva sección "Publicaciones / Difusión" en el panel de plataforma. Permite crear un artículo de blog o noticia UNA sola vez y elegir a qué clubes se replica; automáticamente aparece en el blog de cada sitio seleccionado, mostrándose con la identidad propia de cada club (logo, nombre y dominio). Es de fuente única: se edita, despublica o elimina desde un solo lugar y el cambio se refleja en todos los clubes destino, sin duplicar contenido. Los artículos existentes (por club o globales) no cambian su comportamiento.',
+        date: new Date().toISOString(),
+        tags: ['publicaciones', 'difusion', 'blog', 'noticias', 'multi-club', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.547.3',
         title: 'Importación Masiva: Ya No se Pierden Contactos por el Correo 🎯',

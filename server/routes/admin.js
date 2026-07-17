@@ -5,6 +5,7 @@ import { getSections, updateSection, createSection, batchUpsertSections } from '
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
     getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
+    getPublications, createPublication, updatePublication, deletePublication,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial, permanentDeleteTestimonial,
@@ -181,6 +182,12 @@ router.post('/posts', roleMiddleware(contentRoles), createPost);
 router.put('/posts/:id', roleMiddleware(contentRoles), updatePost);
 router.delete('/posts/:id', roleMiddleware(contentRoles), deletePost);
 router.post('/posts/bulk-delete', roleMiddleware(contentRoles), bulkDeletePosts);
+
+// Publicaciones centralizadas (Difusión a múltiples clubes) — SOLO super-admin.
+router.get('/publications', superAdminOnly, getPublications);
+router.post('/publications', superAdminOnly, createPublication);
+router.put('/publications/:id', superAdminOnly, updatePublication);
+router.delete('/publications/:id', superAdminOnly, deletePublication);
 
 router.get('/projects', roleMiddleware(contentRoles), getClubProjects);
 router.post('/projects', roleMiddleware(contentRoles), createProject);
