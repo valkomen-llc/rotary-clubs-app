@@ -727,8 +727,12 @@ export const importContacts = async (req, res) => {
         // linked = se enlazaron a la lista destino en esta importación.
         let created = 0, matched = 0, skipped = 0, linked = 0;
         for (const c of contacts) {
-            if (!c.name || !c.phone) { skipped++; continue; }
+            // El teléfono es el ÚNICO campo obligatorio (prioridad WhatsApp). El correo
+            // NO se valida ni se exige: se importa tal cual esté. Si falta el nombre, se
+            // usa el número como nombre para no descartar el contacto.
+            if (!c.phone || !String(c.phone).trim()) { skipped++; continue; }
             const phone = normalizePhone(String(c.phone).trim());
+            const name = (c.name && String(c.name).trim()) || phone;
             const metadata = c.metadata || {};
             const contactId = crypto.randomUUID();
             // Upsert por (phone, clubId). Devuelve el id SIEMPRE (nuevo o existente) y si fue
@@ -741,7 +745,7 @@ export const importContacts = async (req, res) => {
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
                      metadata = (COALESCE(NULLIF("WhatsAppContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()
                      RETURNING id, (xmax = 0) AS inserted`,
-                    [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
+                    [contactId, clubId, name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
                 );
             } catch (err) { console.error(err); skipped++; continue; }
             if (!row.rows.length) { skipped++; continue; }
