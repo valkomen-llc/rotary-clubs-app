@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.549.0 | 2026-07-17 (Difusión multi-club integrada en el formulario de Noticias)
-// Cache bust: 2026-07-17a
+// UI V4.550.0 | 2026-07-17 (Difusión segmentada por distrito y categoría en Noticias)
+// Cache bust: 2026-07-17b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.550.0',
+        title: 'Difusión segmentada: publica solo a los clubes de un distrito 🎯🗺️',
+        description: 'El selector "Difundir a otros sitios" (en Panel → Noticias) ahora permite segmentar antes de elegir: un filtro por Distrito y otro por Categoría de sitio (clubes, asociaciones, eventos, fundaciones, etc.). Al elegir un distrito, la lista muestra solo los clubes de ese distrito y el botón "Seleccionar todos los visibles" abarca justo ese grupo — así puedes publicar un artículo únicamente para los clubes que pertenecen a un distrito, sin tener que marcarlos uno por uno. Los filtros se combinan con la búsqueda por nombre.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'difusion', 'distritos', 'categorias', 'segmentacion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.549.0',
         title: 'Difundir una noticia a varios sitios, desde el mismo formulario 📰📢',
