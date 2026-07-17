@@ -41,8 +41,8 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
     const [results, setResults] = useState<any>(null);
 
     const [crmFields, setCrmFields] = useState<any[]>([
-        { key: 'email', label: 'Correo Electrónico (Requerido)' },
-        { key: 'phone', label: 'Teléfono' },
+        { key: 'phone', label: 'Teléfono / WhatsApp (Requerido)' },
+        { key: 'email', label: 'Correo Electrónico (Opcional)' },
         { key: 'name', label: 'Nombre' },
         { key: 'lastName', label: 'Apellidos' },
         { key: 'company', label: 'Empresa' },
@@ -177,19 +177,23 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                 }
             });
             mappedRow.customFields = customFields;
-            
-            // Validate
-            let status = 'valid'; // valid (green), warning (yellow), error (red)
+
+            // Limpiar espacios (evita que un correo/teléfono con espacios al final se
+            // considere inválido).
+            if (mappedRow.email) mappedRow.email = String(mappedRow.email).trim();
+            if (mappedRow.phone) mappedRow.phone = String(mappedRow.phone).trim();
+
+            // Validación: PRIORIDAD al teléfono/WhatsApp. El correo es opcional y NO se
+            // valida su formato — se importa tal cual esté (regla del cliente). Solo se
+            // descarta una fila si no tiene NI teléfono NI correo (no hay con qué crearla).
+            let status = 'valid'; // valid (green), error (red)
             let errors = [];
-            
-            if (!mappedRow.email && !mappedRow.phone) {
+
+            if (!mappedRow.phone && !mappedRow.email) {
                 status = 'error';
-                errors.push('Falta Email o Teléfono');
-            } else if (mappedRow.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mappedRow.email)) {
-                status = 'error';
-                errors.push('Email inválido');
+                errors.push('Falta Teléfono (o al menos un Correo)');
             }
-            
+
             return { raw: row, mapped: mappedRow, status, errors };
         });
         
@@ -534,7 +538,7 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                             </div>
                             <h3 className="text-2xl font-black text-gray-900">¡Importación Completada!</h3>
                             
-                            <div className="grid grid-cols-3 gap-4 mt-8">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
                                 <div className="p-6 border border-gray-100 bg-gray-50 rounded-2xl">
                                     <p className="text-3xl font-black text-emerald-600 mb-1">{results.summary.totalImported}</p>
                                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Nuevos</p>
@@ -542,6 +546,10 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                 <div className="p-6 border border-gray-100 bg-gray-50 rounded-2xl">
                                     <p className="text-3xl font-black text-blue-600 mb-1">{results.summary.totalUpdated}</p>
                                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Actualizados</p>
+                                </div>
+                                <div className="p-6 border border-gray-100 bg-gray-50 rounded-2xl">
+                                    <p className="text-3xl font-black text-amber-600 mb-1">{results.summary.totalExisting ?? 0}</p>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Ya existían</p>
                                 </div>
                                 <div className="p-6 border border-red-50 bg-red-50/30 rounded-2xl">
                                     <p className="text-3xl font-black text-red-500 mb-1">{results.summary.totalFailed}</p>

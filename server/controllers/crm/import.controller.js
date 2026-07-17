@@ -15,6 +15,7 @@ export const importContacts = async (req, res) => {
     let totalImported = 0;
     let totalUpdated = 0;
     let totalFailed = 0;
+    let totalExisting = 0; // ya existían (se enlazaron a la lista, sin actualizar datos)
     let errors = [];
 
     // Para evitar consultas N+1 en exceso, podríamos usar db.$transaction, pero dadas
@@ -27,14 +28,15 @@ export const importContacts = async (req, res) => {
         if (!contact.email && !contact.phone) {
           throw new Error('El contacto debe tener al menos un Email o Teléfono válido.');
         }
-        
-        // Criterio de unicidad: Primero buscamos por Email, luego por Teléfono (si ambos existen)
+
+        // Criterio de unicidad: PRIORIDAD al teléfono (identidad en WhatsApp). Si no hay
+        // teléfono, se busca por correo.
         let existingContact = null;
-        if (contact.email) {
-           existingContact = await db.crmContact.findFirst({ where: { clubId, email: contact.email } });
-        }
-        if (!existingContact && contact.phone) {
+        if (contact.phone) {
            existingContact = await db.crmContact.findFirst({ where: { clubId, phone: contact.phone } });
+        }
+        if (!existingContact && contact.email) {
+           existingContact = await db.crmContact.findFirst({ where: { clubId, email: contact.email } });
         }
 
         const data = {
@@ -57,16 +59,16 @@ export const importContacts = async (req, res) => {
         let contactId;
 
         if (existingContact) {
-          if (onDuplicate === 'ignore') {
-             // Ya existe, saltamos
-             continue;
-          } else if (onDuplicate === 'update') {
-             const updated = await db.crmContact.update({
-               where: { id: existingContact.id },
-               data
-             });
-             contactId = updated.id;
+          // El contacto ya existe. Aunque duplicados = "Ignorar", NO lo saltamos por
+          // completo: conservamos sus datos pero SÍ seguimos para enlazarlo a las
+          // listas/etiquetas seleccionadas (antes se hacía `continue` y los contactos
+          // existentes nunca entraban a la lista destino).
+          contactId = existingContact.id;
+          if (onDuplicate === 'update') {
+             await db.crmContact.update({ where: { id: existingContact.id }, data });
              totalUpdated++;
+          } else {
+             totalExisting++;
           }
         } else {
           // Crear nuevo
@@ -118,6 +120,7 @@ export const importContacts = async (req, res) => {
         totalProcessed: contacts.length,
         totalImported,
         totalUpdated,
+        totalExisting,
         totalFailed,
       },
       errors
