@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.547.2",
-  "cache_bust": "2026-07-16b (Importar contactos: el teléfono/WhatsApp es el único campo obligatorio; nombre y correo opcionales, sin validar correos)",
+  "version": "4.547.3",
+  "cache_bust": "2026-07-16c (Wizard de importación real: correo ya no descarta contactos, y los contactos existentes SÍ se enlazan a la lista)",
   "type": "module",
-  "//": "UI V4.547.2 | 2026-07-16 (Importar contactos: teléfono prioritario, correo opcional sin validación)",
+  "//": "UI V4.547.3 | 2026-07-16 (Wizard de importación: correo opcional sin validar + enlaza existentes a la lista)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

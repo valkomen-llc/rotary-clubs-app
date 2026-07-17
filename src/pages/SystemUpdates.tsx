@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.547.2 | 2026-07-16 (Importar contactos: teléfono prioritario, correo opcional sin validación)
-// Cache bust: 2026-07-16b
+// UI V4.547.3 | 2026-07-16 (Wizard de importación: correo opcional sin validar + enlaza existentes)
+// Cache bust: 2026-07-16c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.547.3',
+        title: 'Importación Masiva: Ya No se Pierden Contactos por el Correo 🎯',
+        description: 'Corregimos a fondo el asistente de Importación Masiva (el que se abre con el botón "Importar"). Dos problemas: (1) si un correo tenía un espacio o un pequeño error de escritura, el asistente marcaba TODO el contacto como inválido y lo descartaba, aunque el teléfono estuviera perfecto — por eso de 39 contactos solo entraban ~12. Ahora el teléfono/WhatsApp es lo prioritario y el correo es opcional y NO se valida su formato: se importa tal cual esté. (2) Los contactos que ya existían en el directorio no se agregaban a la lista seleccionada (se ignoraban por completo); ahora sí se enlazan a la lista, sin duplicarlos. Además, la pantalla de resultados ahora muestra también cuántos "Ya existían". La deduplicación ahora prioriza el número de teléfono.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'importacion', 'contactos', 'whatsapp', 'telefono', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.547.2',
         title: 'Importar Contactos: El Teléfono Manda (Correo Opcional) 📱',
