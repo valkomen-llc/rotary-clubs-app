@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.550.0",
-  "cache_bust": "2026-07-17b (Difusión segmentada: el selector de 'Difundir a otros sitios' en Noticias ahora permite filtrar por Distrito y por Categoría de sitio, y 'seleccionar todos los visibles' abarca justo ese segmento — ideal para publicar solo a los clubes de un distrito)",
+  "version": "4.550.1",
+  "cache_bust": "2026-07-17c (Fix del filtro por distrito en Difusión: ahora los clubes se agrupan por NÚMERO de distrito (unificando filas duplicadas y datos legacy por districtId o por el texto 'Distrito 4281'), de modo que al elegir un distrito sí aparecen sus clubes. Categoría vacía cuenta como 'Clubes')",
   "type": "module",
-  "//": "UI V4.550.0 | 2026-07-17 (Difusión segmentada por distrito y categoría en Noticias)",
+  "//": "UI V4.550.1 | 2026-07-17 (Fix: filtro por distrito agrupa por número; ahora lista los clubes del distrito)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

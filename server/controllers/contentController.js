@@ -402,7 +402,7 @@ export const bulkDeletePosts = async (req, res) => {
 // única: se edita/despublica desde un único lugar y se refleja en todos.
 // Solo super-admin (roleMiddleware ['administrator']).
 // ============================================================================
-console.log('📢 Publicaciones/Difusión centralizada v4.550 — selector de clubes en Noticias con filtros por distrito y categoría');
+console.log('📢 Publicaciones/Difusión centralizada v4.550.1 — filtro por distrito agrupa clubes por número de distrito');
 
 const sanitizeTargetClubIds = (value) =>
     Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id.trim()))] : [];
