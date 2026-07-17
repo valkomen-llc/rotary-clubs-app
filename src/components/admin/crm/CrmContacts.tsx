@@ -302,28 +302,22 @@ const CrmContacts: React.FC = () => {
         setImporting(true);
         try {
             const tags = importTags ? importTags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            // El backend enlaza a la lista durante la importación (upsert + membresía),
+            // reconociendo tanto los contactos nuevos como los que ya existían.
             const body: any = { contacts: mapped.map(c => ({ ...c, tags })), countryCode };
+            if (selectedListId) body.listId = selectedListId;
 
             const res = await fetch(`${API}/crm/contacts/import`, { method: 'POST', headers, body: JSON.stringify(body) });
             const data = await res.json();
             if (!res.ok) { toast.error(data.error || 'Error al importar'); return; }
 
-            // If a list was selected, add contacts to it
-            if (selectedListId && data.imported > 0) {
-                try {
-                    // Fetch recently imported contacts
-                    const cRes = await fetch(`${API}/crm/contacts?limit=${data.imported}&offset=0`, { headers: { Authorization: `Bearer ${token}` } });
-                    const cData = await cRes.json();
-                    const contactIds = (cData.contacts || []).map((c: any) => c.id);
-                    if (contactIds.length) {
-                        await fetch(`${API}/crm/lists/${selectedListId}/members`, {
-                            method: 'POST', headers, body: JSON.stringify({ contactIds }),
-                        });
-                    }
-                } catch { /* silent */ }
+            const nuevos = data.created ?? data.imported ?? 0;
+            const existentes = data.matched ?? 0;
+            if (selectedListId) {
+                toast.success(`✅ Enlazados a la lista: ${data.linked ?? 0} (${nuevos} nuevos, ${existentes} ya existían)${data.skipped ? `, Omitidos: ${data.skipped}` : ''}`);
+            } else {
+                toast.success(`✅ Nuevos: ${nuevos}, Ya existían: ${existentes}${data.skipped ? `, Omitidos: ${data.skipped}` : ''}`);
             }
-
-            toast.success(`✅ Importados: ${data.imported}, Omitidos: ${data.skipped}`);
             resetImport();
             fetchContacts();
         } catch (err) {

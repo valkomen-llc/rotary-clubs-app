@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.547.0 | 2026-07-13 (Preset de pendones blindado — persistencia durable)
-// Cache bust: 2026-07-13p
+// UI V4.547.1 | 2026-07-16 (Importar contactos a listas: enlaza también los ya existentes)
+// Cache bust: 2026-07-16
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.547.1',
+        title: 'Importar Contactos a Listas: Ahora Reconoce a los que Ya Existen 📋✅',
+        description: 'Se corrigió que al importar contactos a una lista (pegando desde Excel), solo se agregaran los contactos nuevos y se ignoraran los que ya existían en el directorio. Por eso, al importar 39 contactos, solo entraban 12 (los realmente nuevos) y los otros 27, que ya existían por otras listas o importaciones previas, quedaban fuera de la lista. Ahora el sistema reconoce a los contactos existentes por su número y los ENLAZA también a la lista destino, sin duplicarlos ni reemplazar sus datos. El mensaje de confirmación ahora muestra cuántos se enlazaron, cuántos eran nuevos y cuántos ya existían.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'contactos', 'listas', 'importar', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.547.0',
         title: 'Preset de pendones blindado contra las actualizaciones 🛡️',
