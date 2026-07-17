@@ -19,6 +19,18 @@ import SEOPreview from '../../components/admin/SEOPreview';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
+// Etiquetas legibles para el filtro por categoría de sitio en el selector de difusión.
+const CATEGORY_LABELS: Record<string, string> = {
+    club: 'Clubes',
+    association: 'Asociaciones',
+    exchange_program: 'Prog. de Intercambio',
+    event: 'Eventos',
+    conference: 'Conferencias',
+    project_fair: 'Ferias de Proyectos',
+    foundation: 'Fundaciones',
+    district: 'Distritos',
+};
+
 interface Post {
     id: string;
     title: string;
@@ -47,8 +59,11 @@ const NewsManagement: React.FC = () => {
     const { user } = useAuth();
     // Solo el super-admin de plataforma puede difundir una noticia a varios clubes.
     const isSuperAdmin = user?.role === 'administrator';
-    const [allClubs, setAllClubs] = useState<{ id: string; name: string; category?: string; city?: string; logo?: string | null }[]>([]);
+    const [allClubs, setAllClubs] = useState<{ id: string; name: string; category?: string; type?: string; city?: string; logo?: string | null; districtId?: string | null; district?: string | null }[]>([]);
+    const [districts, setDistricts] = useState<{ id: string; name: string; number?: number | null }[]>([]);
     const [clubSearch, setClubSearch] = useState('');
+    const [filterDistrict, setFilterDistrict] = useState('');
+    const [filterCategory, setFilterCategory] = useState('');
     const [posts, setPosts] = useState<Post[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
@@ -226,19 +241,23 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         }
     }, [club?.id]);
 
-    // Super-admin: cargamos la lista de clubes para el selector de difusión multi-club.
+    // Super-admin: cargamos clubes y distritos para el selector de difusión multi-club.
     useEffect(() => {
         if (!isSuperAdmin) return;
-        const loadClubs = async () => {
+        const load = async () => {
             try {
                 const token = localStorage.getItem('rotary_token');
-                const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (res.ok) setAllClubs(await res.json());
+                const api = import.meta.env.VITE_API_URL || '/api';
+                const headers = { Authorization: `Bearer ${token}` };
+                const [clubsRes, distRes] = await Promise.all([
+                    fetch(`${api}/admin/clubs`, { headers }),
+                    fetch(`${api}/admin/districts`, { headers }),
+                ]);
+                if (clubsRes.ok) setAllClubs(await clubsRes.json());
+                if (distRes.ok) setDistricts(await distRes.json());
             } catch { /* silencioso */ }
         };
-        loadClubs();
+        load();
     }, [isSuperAdmin]);
 
     const toggleTargetClub = (id: string) => setFormData(prev => ({
@@ -1201,20 +1220,52 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         Elige los clubes/sitios donde también se publicará esta noticia. Aparecerá en cada uno con su propia identidad (logo, nombre y dominio) y el mismo contenido.
                                                     </p>
                                                     <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                                                        {/* Filtros de segmentación: distrito y categoría de sitio */}
+                                                        <div className="p-2 border-b border-gray-100 grid grid-cols-2 gap-2">
+                                                            <select
+                                                                value={filterDistrict}
+                                                                onChange={(e) => setFilterDistrict(e.target.value)}
+                                                                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
+                                                            >
+                                                                <option value="">Todos los distritos</option>
+                                                                {districts.map(d => (
+                                                                    <option key={d.id} value={d.id}>
+                                                                        {d.number ? `Distrito ${d.number}` : d.name}
+                                                                    </option>
+                                                                ))}
+                                                                <option value="__none__">Sin distrito</option>
+                                                            </select>
+                                                            <select
+                                                                value={filterCategory}
+                                                                onChange={(e) => setFilterCategory(e.target.value)}
+                                                                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
+                                                            >
+                                                                <option value="">Todas las categorías</option>
+                                                                {[...new Set(allClubs.map(c => c.category).filter(Boolean))].map((cat) => (
+                                                                    <option key={cat as string} value={cat as string}>
+                                                                        {CATEGORY_LABELS[cat as string] || cat}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
                                                         <div className="p-2 border-b border-gray-100 flex items-center gap-2">
                                                             <Search className="w-3.5 h-3.5 text-gray-400" />
                                                             <input
                                                                 value={clubSearch}
                                                                 onChange={(e) => setClubSearch(e.target.value)}
-                                                                placeholder="Filtrar clubes..."
+                                                                placeholder="Filtrar por nombre..."
                                                                 className="flex-1 text-xs outline-none bg-transparent"
                                                             />
                                                         </div>
                                                         {(() => {
                                                             const q = clubSearch.trim().toLowerCase();
-                                                            const list = q
-                                                                ? allClubs.filter(c => c.name?.toLowerCase().includes(q) || c.city?.toLowerCase().includes(q))
-                                                                : allClubs;
+                                                            const list = allClubs.filter(c => {
+                                                                if (filterDistrict === '__none__' && c.districtId) return false;
+                                                                if (filterDistrict && filterDistrict !== '__none__' && c.districtId !== filterDistrict) return false;
+                                                                if (filterCategory && c.category !== filterCategory) return false;
+                                                                if (q && !(c.name?.toLowerCase().includes(q) || c.city?.toLowerCase().includes(q))) return false;
+                                                                return true;
+                                                            });
                                                             const allSel = list.length > 0 && list.every(c => formData.targetClubIds.includes(c.id));
                                                             return (
                                                                 <>
@@ -1228,7 +1279,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                                         })}
                                                                         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rotary-blue hover:bg-blue-50 border-b border-gray-100"
                                                                     >
-                                                                        <Globe className="w-3.5 h-3.5" /> {allSel ? 'Quitar todos los visibles' : 'Seleccionar todos los visibles'}
+                                                                        <Globe className="w-3.5 h-3.5" /> {allSel ? `Quitar los visibles (${list.length})` : `Seleccionar todos los visibles (${list.length})`}
                                                                     </button>
                                                                     <div className="max-h-52 overflow-y-auto">
                                                                         {list.length === 0 ? (
