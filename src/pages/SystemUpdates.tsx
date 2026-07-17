@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.550.0 | 2026-07-17 (Difusión segmentada por distrito y categoría en Noticias)
-// Cache bust: 2026-07-17b
+// UI V4.550.1 | 2026-07-17 (Fix: el filtro por distrito ya lista los clubes del distrito)
+// Cache bust: 2026-07-17c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.550.1',
+        title: 'Arreglo: al elegir un distrito ya aparecen sus clubes 🛠️🗺️',
+        description: 'Corregimos el filtro por Distrito del selector "Difundir a otros sitios" (Panel → Noticias). Antes, al elegir un distrito no aparecían los clubes que le pertenecen porque la vinculación estaba guardada de formas distintas (por relación o por texto como "Distrito 4281"). Ahora los clubes se agrupan por NÚMERO de distrito, unificando esos casos, de modo que al seleccionar un distrito se listan correctamente todos sus clubes y "Seleccionar todos los visibles" los abarca. Además, los sitios sin categoría explícita cuentan como "Clubes".',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'difusion', 'distritos', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.550.0',
         title: 'Difusión segmentada: publica solo a los clubes de un distrito 🎯🗺️',

@@ -31,6 +31,36 @@ const CATEGORY_LABELS: Record<string, string> = {
     district: 'Distritos',
 };
 
+// Extrae el número de distrito (3–5 dígitos, ej. 4281) desde un valor que puede ser
+// el campo `number`, o un texto como "Distrito 4281" / "4281". Devuelve null si no hay.
+const districtNumberOf = (val: unknown): string | null => {
+    if (val === null || val === undefined) return null;
+    const s = String(val).trim();
+    if (!s) return null;
+    const m = s.match(/\d{3,5}/);
+    return m ? m[0] : null;
+};
+
+// Clave canónica de un distrito: por número si se puede inferir (une filas duplicadas
+// con el mismo número aunque una tenga `number` y otra solo el nombre), o por nombre.
+const districtKeyOf = (d: { number?: number | null; name?: string | null } | null | undefined): string => {
+    const n = districtNumberOf(d?.number) || districtNumberOf(d?.name);
+    return n ? `n:${n}` : `s:${String(d?.name || '').trim().toLowerCase()}`;
+};
+
+// Clave de distrito de un club: por su distrito relacionado (districtId → fila) o, si no,
+// por el string `district` del propio club (retrocompatibilidad con datos legacy).
+const clubDistrictKeyOf = (
+    c: { districtId?: string | null; district?: string | null },
+    byId: Map<string, { number?: number | null; name?: string | null }>
+): string | null => {
+    const d = c.districtId ? byId.get(c.districtId) : null;
+    if (d) return districtKeyOf(d);
+    const n = districtNumberOf(c.district);
+    if (n) return `n:${n}`;
+    return c.district ? `s:${String(c.district).trim().toLowerCase()}` : null;
+};
+
 interface Post {
     id: string;
     title: string;
@@ -863,6 +893,21 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         p.content.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    // Mapa districtId → distrito y opciones de distrito deduplicadas por número/nombre,
+    // para el filtro de segmentación del selector de difusión.
+    const districtById = new Map(districts.map(d => [d.id, d]));
+    const districtOptions = (() => {
+        const seen = new Map<string, { key: string; label: string }>();
+        for (const d of districts) {
+            const k = districtKeyOf(d);
+            if (!seen.has(k)) {
+                const n = districtNumberOf(d.number) || districtNumberOf(d.name);
+                seen.set(k, { key: k, label: n ? `Distrito ${n}` : (d.name || 'Distrito') });
+            }
+        }
+        return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true }));
+    })();
+
     const quillModules = {
         toolbar: [
             [{ 'header': [1, 2, 3, false] }],
@@ -1228,9 +1273,9 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                                 className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
                                                             >
                                                                 <option value="">Todos los distritos</option>
-                                                                {districts.map(d => (
-                                                                    <option key={d.id} value={d.id}>
-                                                                        {d.number ? `Distrito ${d.number}` : d.name}
+                                                                {districtOptions.map(opt => (
+                                                                    <option key={opt.key} value={opt.key}>
+                                                                        {opt.label}
                                                                     </option>
                                                                 ))}
                                                                 <option value="__none__">Sin distrito</option>
@@ -1241,7 +1286,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                                 className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
                                                             >
                                                                 <option value="">Todas las categorías</option>
-                                                                {[...new Set(allClubs.map(c => c.category).filter(Boolean))].map((cat) => (
+                                                                {[...new Set(allClubs.map(c => c.category || 'club'))].map((cat) => (
                                                                     <option key={cat as string} value={cat as string}>
                                                                         {CATEGORY_LABELS[cat as string] || cat}
                                                                     </option>
@@ -1260,9 +1305,10 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         {(() => {
                                                             const q = clubSearch.trim().toLowerCase();
                                                             const list = allClubs.filter(c => {
-                                                                if (filterDistrict === '__none__' && c.districtId) return false;
-                                                                if (filterDistrict && filterDistrict !== '__none__' && c.districtId !== filterDistrict) return false;
-                                                                if (filterCategory && c.category !== filterCategory) return false;
+                                                                const ck = clubDistrictKeyOf(c, districtById);
+                                                                if (filterDistrict === '__none__' && ck) return false;
+                                                                if (filterDistrict && filterDistrict !== '__none__' && ck !== filterDistrict) return false;
+                                                                if (filterCategory && (c.category || 'club') !== filterCategory) return false;
                                                                 if (q && !(c.name?.toLowerCase().includes(q) || c.city?.toLowerCase().includes(q))) return false;
                                                                 return true;
                                                             });
