@@ -6,6 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
+console.log('[clubController] v4.551.0 — Editar Club: nuevo campo "Distrito al que pertenece" (persiste districtId) para segmentar la difusión de noticias por distrito.');
 console.log('[clubController] v4.482.0 — Evento/Convención: colores + hero + menú reordenable + secciones editables + footer configurable | scroll-to-top | correo: envío directo vía Resend (multi-destinatario) + Enviados persistentes + recepción vía Resend (email.received → fetch del cuerpo vía API de recepción, firma Svix no bloqueante) + botón Enviar robusto + Diagnóstico (lee dominio/MX con key de lectura + verifica webhook email.received + probar envío real)');
 
 export const getAllClubs = async (req, res) => {
@@ -173,7 +174,7 @@ export const createClub = async (req, res) => {
 export const updateClub = async (req, res) => {
     const { id } = req.params;
     const {
-        name, description, city, country, district, domain, subdomain, type, organizationType,
+        name, description, city, country, district, districtId, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
         primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
@@ -246,6 +247,7 @@ export const updateClub = async (req, res) => {
                 addField('city', city);
                 addField('country', country);
                 addField('district', district);
+                addField('districtId', districtId); // Vínculo al distrito (para filtros/segmentación).
                 addField('type', type);
                 addField('organizationType', organizationType);
             } else {

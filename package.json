@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.550.1",
-  "cache_bust": "2026-07-17c (Fix del filtro por distrito en Difusión: ahora los clubes se agrupan por NÚMERO de distrito (unificando filas duplicadas y datos legacy por districtId o por el texto 'Distrito 4281'), de modo que al elegir un distrito sí aparecen sus clubes. Categoría vacía cuenta como 'Clubes')",
+  "version": "4.551.0",
+  "cache_bust": "2026-07-17d (Editar Club: nuevo campo 'Distrito al que pertenece' en Gestión Global de Clubes. Permite asignar/verificar el distrito de cada club (persiste districtId) para que la segmentación por distrito en la difusión de noticias liste correctamente sus clubes)",
   "type": "module",
-  "//": "UI V4.550.1 | 2026-07-17 (Fix: filtro por distrito agrupa por número; ahora lista los clubes del distrito)",
+  "//": "UI V4.551.0 | 2026-07-17 (Editar Club: campo de Distrito para segmentar la difusión de noticias)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
