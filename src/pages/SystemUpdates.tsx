@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.547.1 | 2026-07-16 (Importar contactos a listas: enlaza también los ya existentes)
-// Cache bust: 2026-07-16
+// UI V4.547.2 | 2026-07-16 (Importar contactos: teléfono prioritario, correo opcional sin validación)
+// Cache bust: 2026-07-16b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.547.2',
+        title: 'Importar Contactos: El Teléfono Manda (Correo Opcional) 📱',
+        description: 'Ahora al importar contactos al CRM de WhatsApp, el número de teléfono/WhatsApp es el ÚNICO campo obligatorio. El correo electrónico es totalmente opcional y se importa tal cual esté, SIN validación: si un correo está mal escrito o vacío pero el número está bien, el contacto se importa igual. Además, si una fila no trae nombre pero sí número, ya no se descarta: se usa el número como nombre. Así ningún contacto con teléfono válido se queda por fuera por culpa del correo o del nombre.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'contactos', 'importar', 'whatsapp', 'telefono', 'mejora'],
+        type: 'fix'
+    },
     {
         version: '4.547.1',
         title: 'Importar Contactos a Listas: Ahora Reconoce a los que Ya Existen 📋✅',

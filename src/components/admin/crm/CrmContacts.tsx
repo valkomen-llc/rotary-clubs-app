@@ -279,20 +279,25 @@ const CrmContacts: React.FC = () => {
     };
 
     const getMappedContacts = () => {
-        if (!colMap.name || !colMap.phone) return [];
+        // El teléfono es el ÚNICO campo obligatorio (prioridad WhatsApp). El nombre y
+        // el correo son opcionales: si falta el nombre se usa el número, y el correo
+        // se importa tal cual esté (sin validación).
+        if (!colMap.phone) return [];
         return csvRows.map(row => {
             const metadata: any = {};
             customFields.forEach(f => {
                 const csvCol = customFieldMap[f.key];
                 if (csvCol && row[csvCol]) metadata[f.key] = row[csvCol].trim();
             });
+            const phone = row[colMap.phone]?.trim() || '';
+            const name = (colMap.name ? row[colMap.name]?.trim() : '') || phone;
             return {
-                name: row[colMap.name]?.trim() || '',
-                phone: row[colMap.phone]?.trim() || '',
+                name,
+                phone,
                 email: colMap.email ? row[colMap.email]?.trim() || '' : '',
                 metadata: Object.keys(metadata).length ? metadata : undefined,
             };
-        }).filter(c => c.name && c.phone);
+        }).filter(c => c.phone);
     };
 
     const executeImport = async () => {
@@ -545,15 +550,15 @@ const CrmContacts: React.FC = () => {
                                     <p className="font-bold text-sm text-gray-700 mb-3">Mapear columnas del CSV</p>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Nombre *</label>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Nombre (opcional)</label>
                                             <select value={colMap.name} onChange={e => setColMap({ ...colMap, name: e.target.value })}
                                                 className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
-                                                <option value="">— Seleccionar columna —</option>
+                                                <option value="">— No mapear (se usa el teléfono) —</option>
                                                 {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Teléfono *</label>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Teléfono / WhatsApp *</label>
                                             <select value={colMap.phone} onChange={e => setColMap({ ...colMap, phone: e.target.value })}
                                                 className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
                                                 <option value="">— Seleccionar columna —</option>
@@ -645,7 +650,7 @@ const CrmContacts: React.FC = () => {
                                     <button onClick={() => setImportStep('select')} className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50">
                                         ← Atrás
                                     </button>
-                                    <button onClick={() => setImportStep('confirm')} disabled={!colMap.name || !colMap.phone}
+                                    <button onClick={() => setImportStep('confirm')} disabled={!colMap.phone}
                                         className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-40">
                                         <Eye className="w-4 h-4" /> Previsualizar ({mappedPreview.length} contactos)
                                     </button>
