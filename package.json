@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.547.0",
-  "cache_bust": "2026-07-13p (Blindaje del preset de pendones: ahora se guarda TAMBIÉN en S3 (fuente prioritaria al leer) para que sea inmune a resets/migraciones de la BD. La BD queda de respaldo y se hace backfill automático a S3. No se toca la forma del config, ni el build, ni DEFAULT_CONFIG)",
+  "version": "4.547.1",
+  "cache_bust": "2026-07-16 (Importar contactos a listas: los que ya existen ahora se reconocen y se enlazan a la lista destino, no solo los nuevos)",
   "type": "module",
-  "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
+  "//": "UI V4.547.1 | 2026-07-16 (Importar contactos a listas: enlaza también los contactos ya existentes)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

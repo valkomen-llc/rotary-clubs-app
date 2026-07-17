@@ -696,9 +696,17 @@ export const importContacts = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
         if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
-        const { contacts, source = 'csv_import', countryCode = '+57' } = req.body;
+        const { contacts, source = 'csv_import', countryCode = '+57', listId = null } = req.body;
         if (!Array.isArray(contacts) || !contacts.length)
             return res.status(400).json({ error: 'Se requiere un array de contactos' });
+
+        // Si se importa a una lista, validar que exista y sea del club
+        let targetListId = null;
+        if (listId) {
+            const lr = await db.query(`SELECT id FROM "WhatsAppContactList" WHERE id=$1 AND "clubId"=$2`, [listId, clubId]);
+            if (!lr.rows.length) return res.status(404).json({ error: 'Lista no encontrada' });
+            targetListId = lr.rows[0].id;
+        }
 
         // Phone normalization helper
         const normalizePhone = (raw) => {
@@ -715,20 +723,43 @@ export const importContacts = async (req, res) => {
             return countryCode + p;
         };
 
-        let imported = 0, skipped = 0;
+        // created = contactos nuevos; matched = ya existían (se reconocen, no se reemplazan);
+        // linked = se enlazaron a la lista destino en esta importación.
+        let created = 0, matched = 0, skipped = 0, linked = 0;
         for (const c of contacts) {
             if (!c.name || !c.phone) { skipped++; continue; }
-            const phone = normalizePhone(c.phone.trim());
+            const phone = normalizePhone(String(c.phone).trim());
             const metadata = c.metadata || {};
             const contactId = crypto.randomUUID();
-            await db.query(
-                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
-                 metadata = (COALESCE(NULLIF("WhatsAppContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()`,
-                [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
-            ).then(r => r.rowCount ? imported++ : skipped++).catch(err => { console.error(err); skipped++; });
+            // Upsert por (phone, clubId). Devuelve el id SIEMPRE (nuevo o existente) y si fue
+            // inserción (xmax=0) o coincidencia con uno ya existente. No se sobreescriben
+            // name/email de un contacto existente: solo se fusiona metadata.
+            let row;
+            try {
+                row = await db.query(
+                    `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
+                     metadata = (COALESCE(NULLIF("WhatsAppContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()
+                     RETURNING id, (xmax = 0) AS inserted`,
+                    [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
+                );
+            } catch (err) { console.error(err); skipped++; continue; }
+            if (!row.rows.length) { skipped++; continue; }
+            const id = row.rows[0].id;
+            if (row.rows[0].inserted) created++; else matched++;
+
+            // Enlazar a la lista destino (tanto nuevos como ya existentes)
+            if (targetListId) {
+                const memberId = crypto.randomUUID();
+                const m = await db.query(
+                    `INSERT INTO "WhatsAppListMember" (id,"listId","contactId") VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+                    [memberId, targetListId, id]
+                ).catch(() => ({ rowCount: 0 }));
+                if (m.rowCount) linked++;
+            }
         }
-        res.json({ success: true, imported, skipped });
+        // `imported` se mantiene por compatibilidad = nuevos + ya existentes procesados
+        res.json({ success: true, imported: created + matched, created, matched, skipped, linked });
     } catch (err) {
         console.error('WA importContacts:', err);
         res.status(500).json({ error: err.message });
