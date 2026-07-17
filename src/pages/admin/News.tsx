@@ -5,7 +5,7 @@ import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
     CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare,
-    Twitter, AlertCircle, ExternalLink
+    Twitter, AlertCircle, ExternalLink, Building2, Check, Users, Megaphone
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -13,6 +13,7 @@ import { getCroppedImg } from '../../utils/cropImage';
 import { compressImage } from '../../utils/compressImage';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
+import { useAuth } from '../../hooks/useAuth';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
 import SEOPreview from '../../components/admin/SEOPreview';
 import ReactQuill from 'react-quill-new';
@@ -36,12 +37,18 @@ interface Post {
     videoUrl?: string;
     images?: string[];
     videoGallery?: string[];
+    targetClubIds?: string[];
     createdAt: string;
     isStatic?: boolean;
 }
 
 const NewsManagement: React.FC = () => {
     const { club } = useClub();
+    const { user } = useAuth();
+    // Solo el super-admin de plataforma puede difundir una noticia a varios clubes.
+    const isSuperAdmin = user?.role === 'administrator';
+    const [allClubs, setAllClubs] = useState<{ id: string; name: string; category?: string; city?: string; logo?: string | null }[]>([]);
+    const [clubSearch, setClubSearch] = useState('');
     const [posts, setPosts] = useState<Post[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
@@ -73,6 +80,7 @@ const NewsManagement: React.FC = () => {
         publishFacebook: false,
         publishLinkedin: false,
         publishTwitter: false,
+        targetClubIds: [] as string[],
     });
 
     const [tagInput, setTagInput] = useState('');
@@ -218,6 +226,28 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         }
     }, [club?.id]);
 
+    // Super-admin: cargamos la lista de clubes para el selector de difusión multi-club.
+    useEffect(() => {
+        if (!isSuperAdmin) return;
+        const loadClubs = async () => {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) setAllClubs(await res.json());
+            } catch { /* silencioso */ }
+        };
+        loadClubs();
+    }, [isSuperAdmin]);
+
+    const toggleTargetClub = (id: string) => setFormData(prev => ({
+        ...prev,
+        targetClubIds: prev.targetClubIds.includes(id)
+            ? prev.targetClubIds.filter(x => x !== id)
+            : [...prev.targetClubIds, id],
+    }));
+
     const fetchPosts = async () => {
         setSelectedIds(new Set()); // Reset selection on refresh
         const hideSamples = (club as any)?.settings?.hide_sample_news === true;
@@ -269,6 +299,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 videoUrl: post.videoUrl || '',
                 images: post.images || [],
                 videoGallery: post.videoGallery || [],
+                targetClubIds: (post as any).targetClubIds || [],
             };
 
             if (post.isStatic) {
@@ -296,6 +327,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 seoImage: '',
                 videoUrl: '',
                 images: [],
+                targetClubIds: [],
             });
             setAiContext('');
         }
@@ -914,6 +946,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${post.isStatic ? 'bg-rotary-gold/10 text-rotary-gold border border-rotary-gold/20' : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
                                                     {post.isStatic ? 'ESTÁTICO' : 'DATABASE'}
                                                 </span>
+                                                {(post.targetClubIds?.length ?? 0) > 0 && (
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1">
+                                                        <Megaphone className="w-2.5 h-2.5" /> {post.targetClubIds!.length} SITIOS
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1149,6 +1186,86 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
                                                 </div>
                                             </div>
+
+                                            {isSuperAdmin && (
+                                                <div className="rounded-2xl border border-rotary-gold/40 bg-rotary-gold/5 p-4">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                                                            <Megaphone className="w-3.5 h-3.5 text-rotary-gold" /> Difundir a otros sitios
+                                                        </label>
+                                                        <span className="text-[11px] font-black text-rotary-blue bg-white px-2 py-0.5 rounded-full border border-rotary-blue/10">
+                                                            {formData.targetClubIds.length}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 mb-2 leading-relaxed font-medium">
+                                                        Elige los clubes/sitios donde también se publicará esta noticia. Aparecerá en cada uno con su propia identidad (logo, nombre y dominio) y el mismo contenido.
+                                                    </p>
+                                                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                                                        <div className="p-2 border-b border-gray-100 flex items-center gap-2">
+                                                            <Search className="w-3.5 h-3.5 text-gray-400" />
+                                                            <input
+                                                                value={clubSearch}
+                                                                onChange={(e) => setClubSearch(e.target.value)}
+                                                                placeholder="Filtrar clubes..."
+                                                                className="flex-1 text-xs outline-none bg-transparent"
+                                                            />
+                                                        </div>
+                                                        {(() => {
+                                                            const q = clubSearch.trim().toLowerCase();
+                                                            const list = q
+                                                                ? allClubs.filter(c => c.name?.toLowerCase().includes(q) || c.city?.toLowerCase().includes(q))
+                                                                : allClubs;
+                                                            const allSel = list.length > 0 && list.every(c => formData.targetClubIds.includes(c.id));
+                                                            return (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setFormData(prev => {
+                                                                            const ids = new Set(list.map(c => c.id));
+                                                                            return allSel
+                                                                                ? { ...prev, targetClubIds: prev.targetClubIds.filter(id => !ids.has(id)) }
+                                                                                : { ...prev, targetClubIds: [...new Set([...prev.targetClubIds, ...list.map(c => c.id)])] };
+                                                                        })}
+                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rotary-blue hover:bg-blue-50 border-b border-gray-100"
+                                                                    >
+                                                                        <Globe className="w-3.5 h-3.5" /> {allSel ? 'Quitar todos los visibles' : 'Seleccionar todos los visibles'}
+                                                                    </button>
+                                                                    <div className="max-h-52 overflow-y-auto">
+                                                                        {list.length === 0 ? (
+                                                                            <p className="text-[11px] text-gray-400 text-center py-4">
+                                                                                {allClubs.length === 0 ? 'Cargando clubes…' : 'Sin resultados'}
+                                                                            </p>
+                                                                        ) : list.map(c => {
+                                                                            const sel = formData.targetClubIds.includes(c.id);
+                                                                            return (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    key={c.id}
+                                                                                    onClick={() => toggleTargetClub(c.id)}
+                                                                                    className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 ${sel ? 'bg-blue-50/60' : ''}`}
+                                                                                >
+                                                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${sel ? 'bg-rotary-blue border-rotary-blue' : 'border-gray-300'}`}>
+                                                                                        {sel && <Check className="w-3 h-3 text-white" />}
+                                                                                    </span>
+                                                                                    <span className="w-6 h-6 rounded bg-gray-100 overflow-hidden flex items-center justify-center shrink-0">
+                                                                                        {c.logo ? <img src={c.logo} alt="" className="w-full h-full object-contain" /> : <Building2 className="w-3 h-3 text-gray-400" />}
+                                                                                    </span>
+                                                                                    <span className="flex-1 min-w-0 text-xs font-medium text-gray-800 truncate">{c.name}</span>
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                    {formData.targetClubIds.length > 0 && (
+                                                        <p className="text-[10px] text-rotary-blue font-bold mt-2 flex items-center gap-1">
+                                                            <Users className="w-3 h-3" /> Se difundirá a {formData.targetClubIds.length} sitio(s) seleccionado(s).
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             <div className="p-4 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10">
                                                 <h4 className="text-xs font-bold text-rotary-blue uppercase mb-2">Tips Pro</h4>

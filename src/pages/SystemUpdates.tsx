@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.548.0 | 2026-07-16 (Publicaciones/Difusión — replicación centralizada a múltiples clubes)
-// Cache bust: 2026-07-16a
+// UI V4.549.0 | 2026-07-17 (Difusión multi-club integrada en el formulario de Noticias)
+// Cache bust: 2026-07-17a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.549.0',
+        title: 'Difundir una noticia a varios sitios, desde el mismo formulario 📰📢',
+        description: 'Ahora, al crear o editar una noticia en Panel → Noticias, el administrador de plataforma ve un selector "Difundir a otros sitios" con la lista de clubes. Marca los clubes/sitios donde quieres que también aparezca la noticia y, al publicar, se muestra en el blog de cada uno con su propia identidad (logo, nombre y dominio) y el mismo contenido. No hace falta ir a una sección aparte: se hace desde el formulario principal de Noticias. Es fuente única (se edita/despublica desde un solo lugar) y las noticias normales por club no cambian.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'difusion', 'multi-club', 'blog', 'publicaciones', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.548.0',
         title: 'Publicaciones centralizadas: un artículo, muchos clubes 📢',
