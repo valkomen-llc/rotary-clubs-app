@@ -170,8 +170,16 @@ export const getClubPosts = async (req, res) => {
 export const createPost = async (req, res) => {
     const {
         title, slug, content, image, published, clubId, category, tags,
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI, createdAt
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI, createdAt,
+        targetClubIds
     } = req.body;
+
+    // Difusión multi-club (solo super-admin): si se seleccionan clubes destino,
+    // la noticia se guarda como publicación centralizada (clubId NULL + targetClubIds)
+    // y se muestra en el blog de cada club destino con su propia identidad.
+    const targets = (req.user.role === 'administrator' && Array.isArray(targetClubIds))
+        ? [...new Set(targetClubIds.filter((id) => typeof id === 'string' && id.trim()))]
+        : [];
 
     // Fecha de publicación editable: si el editor manda una fecha válida la respetamos,
     // de lo contrario Prisma usa @default(now()).
@@ -181,6 +189,7 @@ export const createPost = async (req, res) => {
     const runCreate = async () => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
+        if (targets.length > 0) targetClubId = null; // Centralizada: se dirige por targetClubIds.
 
         return await prisma.post.create({
             data: {
@@ -190,6 +199,7 @@ export const createPost = async (req, res) => {
                 image: image || null,
                 published: published || false,
                 clubId: targetClubId,
+                targetClubIds: targets,
                 category: category || '',
                 tags: Array.isArray(tags) ? tags : [],
                 keywords: keywords || '',
@@ -207,19 +217,24 @@ export const createPost = async (req, res) => {
         });
     };
 
-    try {
-        const post = await runCreate();
-        if (post?.clubId) {
+    const ingestForPost = (post) => {
+        const clubIds = targets.length > 0 ? targets : (post?.clubId ? [post.clubId] : []);
+        for (const cid of clubIds) {
             ingestMemorySafe({
-                clubId: post.clubId,
+                clubId: cid,
                 kind: 'POST',
                 sourceType: 'Post',
                 sourceId: post.id,
                 title: post.title,
                 content: post.content,
-                metadata: { category: post.category, published: post.published, isAI: post.isAI },
+                metadata: { category: post.category, published: post.published, isAI: post.isAI, centralized: targets.length > 0 },
             });
         }
+    };
+
+    try {
+        const post = await runCreate();
+        ingestForPost(post);
         res.status(201).json(post);
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
@@ -232,17 +247,7 @@ export const createPost = async (req, res) => {
                     await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
                 }
                 const retryPost = await runCreate();
-                if (retryPost?.clubId) {
-                    ingestMemorySafe({
-                        clubId: retryPost.clubId,
-                        kind: 'POST',
-                        sourceType: 'Post',
-                        sourceId: retryPost.id,
-                        title: retryPost.title,
-                        content: retryPost.content,
-                        metadata: { category: retryPost.category, published: retryPost.published },
-                    });
-                }
+                if (retryPost) ingestForPost(retryPost);
                 return res.status(201).json(retryPost);
             } catch (migrationError) {
                 console.error('Migration failed:', migrationError);
@@ -257,8 +262,15 @@ export const updatePost = async (req, res) => {
     const { id } = req.params;
     const {
         title, slug, content, image, published, category, tags,
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, createdAt
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, createdAt,
+        targetClubIds
     } = req.body;
+
+    // Difusión multi-club (solo super-admin): reasignación de clubes destino.
+    // undefined = no tocar; array = fijar destinos (vacío ⇒ deja de ser centralizada).
+    const targets = (req.user.role === 'administrator' && targetClubIds !== undefined && Array.isArray(targetClubIds))
+        ? [...new Set(targetClubIds.filter((cid) => typeof cid === 'string' && cid.trim()))]
+        : undefined;
 
     // Fecha de publicación editable: solo se sobreescribe si llega una fecha válida.
     const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
@@ -270,7 +282,7 @@ export const updatePost = async (req, res) => {
             res.status(404).json({ error: 'Post not found' });
             return null;
         }
-        
+
         if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
             res.status(403).json({ error: 'Access denied' });
             return null;
@@ -295,6 +307,10 @@ export const updatePost = async (req, res) => {
                 videoUrl: videoUrl || existing.videoUrl,
                 images: Array.isArray(images) ? images : existing.images,
                 videoGallery: Array.isArray(videoGallery) ? videoGallery : existing.videoGallery,
+                // Si se manda targetClubIds: fijamos destinos. Con destinos ⇒ centralizada (clubId NULL).
+                ...(targets !== undefined
+                    ? { targetClubIds: targets, clubId: targets.length > 0 ? null : existing.clubId }
+                    : {}),
                 ...(validCreatedAt ? { createdAt: validCreatedAt } : {}),
                 updatedAt: new Date()
             }
@@ -304,15 +320,19 @@ export const updatePost = async (req, res) => {
     try {
         const post = await runUpdate();
         if (post) {
-            if (post.clubId) {
+            // Ingesta al cerebro: por club destino si es centralizada, o al club propio.
+            const ingestClubIds = (post.targetClubIds && post.targetClubIds.length > 0)
+                ? post.targetClubIds
+                : (post.clubId ? [post.clubId] : []);
+            for (const cid of ingestClubIds) {
                 ingestMemorySafe({
-                    clubId: post.clubId,
+                    clubId: cid,
                     kind: 'POST',
                     sourceType: 'Post',
                     sourceId: post.id,
                     title: post.title,
                     content: post.content,
-                    metadata: { category: post.category, published: post.published },
+                    metadata: { category: post.category, published: post.published, centralized: (post.targetClubIds || []).length > 0 },
                 });
             }
             res.json(post);
@@ -382,7 +402,7 @@ export const bulkDeletePosts = async (req, res) => {
 // única: se edita/despublica desde un único lugar y se refleja en todos.
 // Solo super-admin (roleMiddleware ['administrator']).
 // ============================================================================
-console.log('📢 Publicaciones/Difusión centralizada v4.548 — replicación multi-club activa');
+console.log('📢 Publicaciones/Difusión centralizada v4.549 — selector de clubes integrado en el formulario de Noticias');
 
 const sanitizeTargetClubIds = (value) =>
     Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id.trim()))] : [];
