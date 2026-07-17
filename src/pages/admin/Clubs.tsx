@@ -18,6 +18,7 @@ interface Club {
     subdomain: string | null;
     status: string;
     type: string;
+    districtId?: string | null;
     description: string | null;
     expirationBannerActive?: boolean;
     expirationBannerMessage?: string | null;
@@ -56,6 +57,7 @@ const ClubsManagement: React.FC = () => {
     });
     const [templates, setTemplates] = useState<any[]>([]);
     const [pools, setPools] = useState<any[]>([]);
+    const [districts, setDistricts] = useState<{ id: string; name: string; number?: number | null }[]>([]);
 
     // Pipeline de Activación
     const [activationModalOpen, setActivationModalOpen] = useState(false);
@@ -73,6 +75,7 @@ const ClubsManagement: React.FC = () => {
         description: '',
         status: 'active',
         type: 'club',
+        districtId: '',
         moduleProjects: true,
         moduleEvents: true,
         moduleRotaract: false,
@@ -118,9 +121,10 @@ const ClubsManagement: React.FC = () => {
     const fetchClubs = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const [clubsRes, usersRes] = await Promise.all([
+            const [clubsRes, usersRes, distRes] = await Promise.all([
                 fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=club`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } })
+                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/districts`, { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             if (clubsRes.ok) {
@@ -130,6 +134,9 @@ const ClubsManagement: React.FC = () => {
             if (usersRes.ok) {
                 const usersData = await usersRes.json();
                 setSuperUsers(usersData.filter((u: any) => u.role === 'administrator' || u.role === 'club_admin' || u.role === 'district_admin'));
+            }
+            if (distRes.ok) {
+                setDistricts(await distRes.json());
             }
         } catch (error) {
             toast.error('Error al cargar clubes');
@@ -151,6 +158,7 @@ const ClubsManagement: React.FC = () => {
                 description: club.description || '',
                 status: club.status || 'active',
                 type: club.type || 'club',
+                districtId: (club as any).districtId || '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false,
                 moduleNgse: club.moduleNgse || false,
@@ -209,6 +217,7 @@ const ClubsManagement: React.FC = () => {
                 description: '',
                 status: 'active',
                 type: 'club',
+                districtId: '',
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
@@ -905,6 +914,26 @@ const ClubsManagement: React.FC = () => {
                                     </select>
                                     <p className="text-[10px] text-gray-400 mt-1">
                                         Reclasifica el registro y define el skin del footer. Al elegir "Evento o Convención" se moverá a la sección Eventos y dejará de listarse aquí.
+                                    </p>
+                                </div>
+
+                                <div className="md:col-span-1">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Distrito al que pertenece</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                        value={formData.districtId}
+                                        onChange={(e) => setFormData({ ...formData, districtId: e.target.value })}
+                                        title="Asigna el distrito del club. Se usa para segmentar la difusión de noticias por distrito."
+                                    >
+                                        <option value="">— Sin distrito —</option>
+                                        {districts.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.number ? `Distrito ${d.number}` : d.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400 mt-1">
+                                        Define a qué distrito pertenece el club. Necesario para que aparezca al filtrar por distrito en la difusión de noticias.
                                     </p>
                                 </div>
 

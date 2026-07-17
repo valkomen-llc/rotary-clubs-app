@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.550.1 | 2026-07-17 (Fix: el filtro por distrito ya lista los clubes del distrito)
-// Cache bust: 2026-07-17c
+// UI V4.551.0 | 2026-07-17 (Editar Club: campo de Distrito para segmentar la difusión)
+// Cache bust: 2026-07-17d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.551.0',
+        title: 'Asigna el distrito de cada club desde su ficha 🗺️🏳️',
+        description: 'En Panel → Clubes → Editar Club ahora hay un campo "Distrito al que pertenece". Permite asignar o verificar a qué distrito pertenece cada club/sitio. Esto es lo que faltaba para que la segmentación por distrito en la difusión de noticias funcione: al asignar el distrito a los clubes, aparecerán correctamente al filtrar por ese distrito en el selector "Difundir a otros sitios". Recomendación: revisa tus clubes y asígnales su distrito una vez.',
+        date: new Date().toISOString(),
+        tags: ['clubes', 'distritos', 'difusion', 'noticias', 'admin', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.550.1',
         title: 'Arreglo: al elegir un distrito ya aparecen sus clubes 🛠️🗺️',
