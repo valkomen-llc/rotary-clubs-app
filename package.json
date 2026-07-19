@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.552.0",
-  "cache_bust": "2026-07-19a (Club Platform Insights: nueva sección del Superadmin para generar Informes Ejecutivos Inteligentes por sitio — portada corporativa, resumen ejecutivo IA, KPIs, ecosistema digital, índice de madurez, secciones por módulo, logros, recomendaciones IA, comparativos y línea de tiempo. Exportable a PDF, compartible por enlace seguro y enviable por correo. Historial y programación de informes periódicos)",
+  "version": "4.553.0",
+  "cache_bust": "2026-07-19c (Informes Ejecutivos: (1) fix de generación — el modelo Club no tiene columna 'colors'; ahora la marca se resuelve desde Setting color_primary/color_secondary del club, con fallback al distrito e institucional. (2) Nueva sección 'Equipo de Marketing IA': el informe integra todos los agentes instalados (club + globales) agrupados por área con sus skills, estado y actividad real (conversaciones, acciones, tasa de éxito); las recomendaciones IA se apoyan explícitamente en ese equipo)",
   "type": "module",
-  "//": "UI V4.552.0 | 2026-07-19 (Club Platform Insights — Informes Ejecutivos Inteligentes para el Superadmin)",
+  "//": "UI V4.553.0 | 2026-07-19 (Informes Ejecutivos: fix de colores + sección Equipo de Marketing IA con agentes y skills)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

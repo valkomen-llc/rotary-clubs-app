@@ -65,6 +65,23 @@ export interface Narrative {
     generatedBy?: string;
 }
 
+export interface AgentSkill { key: string; label: string; }
+export interface AgentTeamMember {
+    id: string; name: string; role: string; area: string; areaLabel: string; areaColor: string; areaIcon: string;
+    description: string; aiModel: string; active: boolean; avatarSeed: string; avatarColor: string; scope: string;
+    skills: AgentSkill[]; skillCount: number;
+    stats: { conversations: number; messages: number; actions: number; successRate: number | null; lastActiveAt: string | null };
+}
+export interface AgentArea { key: string; label: string; color: string; icon: string; agents: AgentTeamMember[]; agentCount: number; }
+export interface AgentTeam {
+    available: boolean;
+    summary: { totalAgents: number; activeAgents: number; areasCovered: number; totalSkills: number; conversations: number; messages: number; actions: number; successRate: number | null };
+    areas: AgentArea[];
+    agents: AgentTeamMember[];
+    areaDistribution: Array<{ name: string; value: number; color: string }>;
+    activityRanking: Array<{ name: string; value: number }>;
+}
+
 export interface ReportDataset {
     version: number;
     meta: {
@@ -82,6 +99,7 @@ export interface ReportDataset {
     maturity: Maturity;
     headlineKpis: Kpi[];
     ecosystem: { digitalizationPct: number; activeCount: number; configuredCount: number; totalCount: number; modules: EcosystemModule[] };
+    agentTeam?: AgentTeam;
     engineering: { items: Array<{ label: string; value: string; icon: string; source: string }> };
     sections: ReportSection[];
     comparatives: Array<{ title: string; series: Array<{ key: string; label: string; color: string }>; data: Array<Record<string, any>> }>;

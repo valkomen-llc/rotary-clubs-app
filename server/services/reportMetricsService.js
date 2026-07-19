@@ -19,6 +19,7 @@
  */
 
 import prisma from '../lib/prisma.js';
+import { collectAgentTeam } from './reportAgentTeamService.js';
 
 // ─── Utilidades ─────────────────────────────────────────────────────────────
 
@@ -104,6 +105,38 @@ const CATEGORY_LABELS = {
 };
 
 export const categoryLabel = (c) => CATEGORY_LABELS[c] || 'Sitio';
+
+const DEFAULT_COLORS = { primary: '#013388', secondary: '#E29C00' };
+
+const asColorObj = (raw) => {
+    if (!raw) return null;
+    let v = raw;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return null; } }
+    if (v && (v.primary || v.secondary)) return { primary: v.primary || DEFAULT_COLORS.primary, secondary: v.secondary || DEFAULT_COLORS.secondary };
+    return null;
+};
+
+// El modelo Club no tiene columna `colors`. La marca del sitio vive en la tabla
+// Setting como filas `color_primary` / `color_secondary` por clubId (así lo
+// arma el endpoint público /clubs/by-domain). Fallback: colores del distrito y
+// por último los institucionales por defecto.
+const resolveBrandColors = async (clubId, district) => {
+    const fromSetting = await safe(async () => {
+        const rows = await prisma.setting.findMany({
+            where: { clubId, key: { in: ['color_primary', 'color_secondary'] } },
+            select: { key: true, value: true },
+        });
+        const s = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+        if (s.color_primary || s.color_secondary) {
+            return { primary: s.color_primary || DEFAULT_COLORS.primary, secondary: s.color_secondary || DEFAULT_COLORS.secondary };
+        }
+        return null;
+    }, null);
+    if (fromSetting) return fromSetting;
+    const fromDistrict = asColorObj(district?.colors);
+    if (fromDistrict) return fromDistrict;
+    return DEFAULT_COLORS;
+};
 
 export const listSites = async () => {
     const clubs = await prisma.club.findMany({
@@ -393,7 +426,7 @@ export const buildSiteDataset = async (clubId, options = {}) => {
         select: {
             id: true, name: true, category: true, type: true, organizationType: true,
             city: true, country: true, domain: true, subdomain: true, logo: true, avatarUrl: true,
-            status: true, subscriptionStatus: true, colors: true, districtId: true, createdAt: true,
+            status: true, subscriptionStatus: true, districtId: true, createdAt: true,
         },
     });
     if (!site) throw new Error('Sitio no encontrado');
@@ -401,17 +434,26 @@ export const buildSiteDataset = async (clubId, options = {}) => {
     const period = resolvePeriod(options.periodKey || 'all', options.custom || {}, options.now || new Date());
     const b = await collectBundle(clubId, site, period);
     const series = await collectSeries(clubId, period);
+    const agentTeam = await collectAgentTeam(clubId);
 
     let district = null;
     if (site.districtId) {
-        district = await safe(() => prisma.district.findUnique({ where: { id: site.districtId }, select: { name: true, number: true } }), null);
+        district = await safe(() => prisma.district.findUnique({ where: { id: site.districtId }, select: { name: true, number: true, colors: true } }), null);
     }
+    // El modelo Club no tiene columna `colors`; la marca se resuelve del sitio
+    // (Setting) o del distrito. Fallback a los colores institucionales.
+    const brandColors = await resolveBrandColors(clubId, district);
 
     // Ecosistema
     const modules = MODULE_REGISTRY.map((m) => {
         const status = m.detect(b, site);
         return { key: m.key, label: m.label, icon: m.icon, status, statusLabel: STATUS_LABELS[status], metric: m.metric(b, site) };
     });
+    // El módulo "chatbot" refleja el equipo completo (club + agentes globales).
+    if (agentTeam.available) {
+        const cb = modules.find((m) => m.key === 'chatbot');
+        if (cb) { cb.status = agentTeam.summary.activeAgents > 0 ? 'active' : cb.status; cb.metric = `${agentTeam.summary.totalAgents} agentes`; }
+    }
     const totalMods = modules.filter((m) => m.status !== 'disabled').length;
     const activeMods = modules.filter((m) => m.status === 'active').length;
     const configMods = modules.filter((m) => m.status === 'configured').length;
@@ -651,7 +693,7 @@ export const buildSiteDataset = async (clubId, options = {}) => {
                 id: site.id, name: site.name, category: site.category, categoryLabel: categoryLabel(site.category),
                 type: site.type, organizationType: site.organizationType, city: site.city, country: site.country,
                 domain: site.domain, subdomain: site.subdomain, logo: site.logo, avatarUrl: site.avatarUrl,
-                colors: site.colors || { primary: '#013388', secondary: '#E29C00' },
+                colors: brandColors,
                 districtName: district?.name || null, createdAt: site.createdAt,
             },
             period: { key: period.key, label: period.label, start: period.start, end: period.end, compareLabel: period.compare?.label || null },
@@ -660,6 +702,7 @@ export const buildSiteDataset = async (clubId, options = {}) => {
         maturity,
         headlineKpis,
         ecosystem: { digitalizationPct, activeCount: activeMods, configuredCount: configMods, totalCount: totalMods, modules },
+        agentTeam,
         engineering,
         sections: sections.filter((s) => s.available !== false || s.id === 'analitica'),
         comparatives,

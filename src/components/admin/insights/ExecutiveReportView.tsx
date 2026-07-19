@@ -3,6 +3,7 @@ import type { ReportDataset, Kpi, MetricStatus } from '../../../lib/reportTypes'
 import { Icon } from './icon';
 import ReportChart from './ReportChart';
 import MaturityGauge from './MaturityGauge';
+import AgentTeamSection from './AgentTeamSection';
 
 const STATUS_RING: Record<MetricStatus, string> = {
     good: 'text-emerald-600 bg-emerald-50',
@@ -82,7 +83,7 @@ const SectionBlock: React.FC<{ section: ReportDataset['sections'][number] }> = (
 );
 
 const ExecutiveReportView: React.FC<{ dataset: ReportDataset; innerRef?: React.Ref<HTMLDivElement> }> = ({ dataset, innerRef }) => {
-    const { meta, maturity, headlineKpis, ecosystem, engineering, sections, comparatives, timeline, achievements, narrative } = dataset;
+    const { meta, maturity, headlineKpis, ecosystem, engineering, sections, comparatives, timeline, achievements, narrative, agentTeam } = dataset;
     const primary = meta.site.colors?.primary || '#0c3c7c';
     const secondary = meta.site.colors?.secondary || '#E29C00';
 
@@ -241,6 +242,9 @@ const ExecutiveReportView: React.FC<{ dataset: ReportDataset; innerRef?: React.R
                         ))}
                     </div>
                 </section>
+
+                {/* ── EQUIPO DE MARKETING IA ── */}
+                {agentTeam?.available && <AgentTeamSection team={agentTeam} />}
 
                 {/* ── SECCIONES GENÉRICAS ── */}
                 {sections.map((s) => <SectionBlock key={s.id} section={s} />)}
