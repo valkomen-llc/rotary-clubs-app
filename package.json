@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.551.0",
-  "cache_bust": "2026-07-17d (Editar Club: nuevo campo 'Distrito al que pertenece' en Gestión Global de Clubes. Permite asignar/verificar el distrito de cada club (persiste districtId) para que la segmentación por distrito en la difusión de noticias liste correctamente sus clubes)",
+  "version": "4.552.0",
+  "cache_bust": "2026-07-19a (Club Platform Insights: nueva sección del Superadmin para generar Informes Ejecutivos Inteligentes por sitio — portada corporativa, resumen ejecutivo IA, KPIs, ecosistema digital, índice de madurez, secciones por módulo, logros, recomendaciones IA, comparativos y línea de tiempo. Exportable a PDF, compartible por enlace seguro y enviable por correo. Historial y programación de informes periódicos)",
   "type": "module",
-  "//": "UI V4.551.0 | 2026-07-17 (Editar Club: campo de Distrito para segmentar la difusión de noticias)",
+  "//": "UI V4.552.0 | 2026-07-19 (Club Platform Insights — Informes Ejecutivos Inteligentes para el Superadmin)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
@@ -61,6 +61,7 @@
     "emoji-picker-react": "4.18.0",
     "express": "^4.18.2",
     "framer-motion": "^12.4.10",
+    "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.0",
     "jspdf": "^4.2.1",

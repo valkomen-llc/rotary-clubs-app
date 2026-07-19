@@ -49,7 +49,8 @@ import {
     Video,
     Share2,
     Activity,
-    Brain
+    Brain,
+    FileBarChart2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -358,6 +359,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: MessageSquare, label: 'WhatsApp CRM', path: '/admin/crm?tab=wa-chat', category: 'Comunicaciones y CRM', keywords: ['crm', 'whatsapp', 'api', 'mensajes', 'campañas'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
                 { icon: Megaphone, label: 'Publicaciones / Difusión', path: '/admin/publicaciones', category: 'Management', keywords: ['publicacion', 'difusion', 'blog', 'noticia', 'articulo', 'replicar', 'multi club', 'broadcast'] },
+                { icon: FileBarChart2, label: 'Informes Ejecutivos', path: '/admin/informes-ejecutivos', category: 'Management', keywords: ['informes', 'ejecutivos', 'insights', 'reportes', 'kpi', 'pdf', 'madurez', 'ecosistema', 'analitica'], badge: 'ia' },
             );
         }
 

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.551.0 | 2026-07-17 (Editar Club: campo de Distrito para segmentar la difusión)
-// Cache bust: 2026-07-17d
+// UI V4.552.0 | 2026-07-19 (Club Platform Insights — Informes Ejecutivos Inteligentes)
+// Cache bust: 2026-07-19a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.552.0',
+        title: 'Club Platform Insights: informes ejecutivos profesionales en PDF 📊✨',
+        description: 'Nueva sección del Superadmin (Panel → Informes Ejecutivos) que genera un informe ejecutivo de nivel corporativo para cualquier sitio de la plataforma (clubes, eventos, ferias, organizaciones, comunidades…). Elige uno o varios sitios y el período (hasta la fecha, mensual, trimestral, semestral, anual o rango personalizado) y el sistema arma automáticamente: portada con branding del sitio, resumen ejecutivo generado con IA, panel de indicadores, mapa del Ecosistema Digital (módulos activos/configurados/pendientes), Ingeniería del Sitio, secciones por área (comunicaciones, contenidos, comunidad, eventos, e-commerce, donaciones, IA, automatizaciones, seguridad, SEO, redes), comparativos, línea de tiempo, logros con insignias, recomendaciones inteligentes y un gran Índice de Madurez Digital (Emergente → Transformación Digital). Se puede visualizar en pantalla, descargar en PDF de alta calidad, compartir con un enlace seguro y enviar por correo a los responsables del sitio. Incluye historial de informes y programación de envíos periódicos. Todo se calcula en tiempo real con los datos reales de cada sitio; el tráfico web usa Google Analytics 4 cuando está configurado.',
+        date: new Date().toISOString(),
+        tags: ['informes', 'insights', 'ejecutivos', 'pdf', 'superadmin', 'ia', 'madurez-digital', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.551.0',
         title: 'Asigna el distrito de cada club desde su ficha 🗺️🏳️',

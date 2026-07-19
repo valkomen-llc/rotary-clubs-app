@@ -1602,3 +1602,60 @@ model BrainChatMessage {
   @@index([brainId, sessionId, createdAt])
   @@index([brainId, createdAt])
 }
+
+// ─── Informes Ejecutivos Inteligentes (Club Platform Insights) ──────────────
+// Módulo del Superadmin para generar informes ejecutivos por sitio. Estas
+// tablas son ADITIVAS: no referencian ni modifican datos existentes (no FK a
+// Club para permitir informes multi-sitio y no arriesgar cascadas). Los
+// informes se calculan on-the-fly (no hay tabla de agregados) y se guardan
+// aquí para el historial, el enlace público y el reenvío por correo.
+model ExecutiveReport {
+  id             String    @id @default(uuid())
+  title          String
+  siteIds        String[]  @default([]) // clubs incluidos en el informe
+  primarySiteId  String? // sitio principal (para branding de portada)
+  scope          String    @default("single") // single | multi
+  periodKey      String    @default("all") // all | month | quarter | semester | year | custom
+  periodLabel    String?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  status         String    @default("ready") // draft | generating | ready | error
+  dataset        Json? // dataset(s) calculado(s) por sitio (bloques del informe)
+  narrative      Json? // resumen ejecutivo + recomendaciones (IA)
+  config         Json?     @default("{}") // módulos incluidos, colores, logos, plantilla
+  maturityScore  Int?
+  maturityLevel  String?
+  shareToken     String?   @unique // token del enlace público seguro
+  shared         Boolean   @default(false)
+  pdfUrl         String? // URL en S3 del PDF exportado (si se sube)
+  createdBy      String?
+  createdByEmail String?
+  emailedTo      String[]  @default([])
+  lastEmailedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([primarySiteId])
+  @@index([createdAt])
+  @@index([shareToken])
+}
+
+// Programación de informes periódicos. El runner (cron/Vercel) invoca el
+// endpoint que recorre las programaciones vencidas y genera + envía.
+model ExecutiveReportSchedule {
+  id         String    @id @default(uuid())
+  name       String
+  siteIds    String[]  @default([])
+  periodKey  String    @default("month")
+  frequency  String    @default("monthly") // monthly | quarterly | semiannual | annual
+  recipients String[]  @default([]) // correos destino
+  config     Json?     @default("{}")
+  active     Boolean   @default(true)
+  lastRunAt  DateTime?
+  nextRunAt  DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([active, nextRunAt])
+}
