@@ -12,6 +12,7 @@ import {
     Crown, UserPlus, Target, Contact, CalendarPlus, Package, ShoppingCart, Receipt, TrendingUp,
     IdCard, HandCoins, Gift, Calculator, Flag, Heart, FileSearch, Mailbox, Reply, Clock, Lock,
     ListChecks, Percent, Smartphone, Zap, Link2, LineChart, Rocket,
+    Compass, PenTool, Megaphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const MAP: Record<string, LucideIcon> = {
     Crown, UserPlus, Target, Contact, CalendarPlus, Package, ShoppingCart, Receipt, TrendingUp,
     IdCard, HandCoins, Gift, Calculator, Flag, Heart, FileSearch, Mailbox, Reply, Clock, Lock,
     ListChecks, Percent, Smartphone, Zap, Link2, LineChart, Rocket,
+    Compass, PenTool, Megaphone,
 };
 
 // Resuelve un icono por nombre (string del dataset). Fallback a Circle.

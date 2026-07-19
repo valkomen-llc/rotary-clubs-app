@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.552.0 | 2026-07-19 (Club Platform Insights — Informes Ejecutivos Inteligentes)
-// Cache bust: 2026-07-19a
+// UI V4.553.0 | 2026-07-19 (Informes Ejecutivos: fix de colores + Equipo de Marketing IA)
+// Cache bust: 2026-07-19c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.553.0',
+        title: 'Informes Ejecutivos: ahora integran a todo el Equipo de Marketing IA 🤖📊',
+        description: 'Dos mejoras. (1) Arreglo: la generación del informe fallaba ("Invalid prisma.club.findUnique") porque intentaba leer un campo de colores inexistente en el Club; ahora la identidad visual se resuelve desde la configuración del sitio (colores primario/secundario), con respaldo en el distrito y los colores institucionales. (2) Nueva sección "Equipo de Marketing IA": el informe ahora radiografía a TODOS los agentes instalados para el sitio (propios del club y globales de la plataforma), agrupados por área — Dirección y Estrategia, Producción de Contenido, Difusión y Comunidad, Tecnología, Servicios VIP — mostrando el rol de cada agente, sus skills/capacidades, su estado y su actividad real (conversaciones atendidas, acciones ejecutadas y tasa de éxito), con gráficos de distribución por área y ranking de actividad. Además, las Recomendaciones Inteligentes ahora se apoyan explícitamente en ese equipo: para cada acción propuesta, indican qué agente/skill ya instalado puede ejecutarla (SEO, redes, email, copywriting, WhatsApp, analítica, diseño…). Así el informe demuestra de forma clara toda la capacidad de marketing y tecnología disponible para cada sitio.',
+        date: new Date().toISOString(),
+        tags: ['informes', 'insights', 'agentes', 'marketing', 'ia', 'skills', 'fix', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.552.0',
         title: 'Club Platform Insights: informes ejecutivos profesionales en PDF 📊✨',

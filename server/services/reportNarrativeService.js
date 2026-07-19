@@ -26,6 +26,13 @@ const compactDataset = (ds) => {
         kpis: ds.headlineKpis.map((k) => ({ [k.label]: k.display })),
         modulos: ds.ecosystem.modules.map((m) => ({ [m.label]: m.statusLabel })),
         logros: ds.achievements.filter((a) => a.earned).map((a) => a.label),
+        equipo_marketing_ia: ds.agentTeam?.available ? {
+            total_agentes: ds.agentTeam.summary.totalAgents,
+            areas: ds.agentTeam.areas.map((g) => ({ area: g.label, agentes: g.agents.map((a) => a.name) })),
+            skills_disponibles: Array.from(new Set(ds.agentTeam.agents.flatMap((a) => a.skills.map((s) => s.label)))),
+            conversaciones: ds.agentTeam.summary.conversations,
+            acciones: ds.agentTeam.summary.actions,
+        } : null,
     };
 };
 
@@ -45,7 +52,9 @@ Devuelve EXCLUSIVAMENTE un objeto JSON con esta forma exacta:
     { "title": "acción concreta", "detail": "1-2 frases explicando el beneficio", "area": "una de: ${AREAS.join(', ')}", "priority": "alta|media|baja" }
   ]
 }
-Genera entre 4 y 6 recomendaciones accionables y priorizadas. No inventes cifras que no estén en los datos.`;
+Genera entre 4 y 6 recomendaciones accionables y priorizadas. No inventes cifras que no estén en los datos.
+
+IMPORTANTE: el sitio cuenta con un "equipo de marketing IA" (ver equipo_marketing_ia). Aprovecha explícitamente sus áreas y skills en las recomendaciones: para cada acción propuesta, apóyate en el/los agentes o skills adecuados que YA están instalados (p. ej. SEO, social media, email, copywriting, WhatsApp, analítica, diseño), indicando cómo el equipo puede ejecutarla. Si un área tiene agentes pero está subutilizada, recomiéndalo.`;
 };
 
 // Fallback determinístico (sin IA)
@@ -59,8 +68,13 @@ const deterministicNarrative = (ds) => {
         `Las herramientas de inteligencia artificial ${Number(ds.headlineKpis.find((k) => k.key === 'ai')?.value) > 0 ? 'ya están en operación' : 'están disponibles para su activación'}, y la plataforma mantiene una base técnica sólida (SSL, respaldos gestionados y almacenamiento en la nube). En conjunto, el sitio muestra una gestión tecnológica ${m.score >= 60 ? 'consolidada' : 'en desarrollo'} con oportunidades claras de crecimiento.`;
 
     const highlights = ds.achievements.filter((a) => a.earned).slice(0, 6).map((a) => a.label);
+    if (ds.agentTeam?.available) highlights.unshift(`Equipo de marketing IA con ${ds.agentTeam.summary.totalAgents} agentes en ${ds.agentTeam.summary.areasCovered} áreas`);
 
     const recs = [];
+    if (ds.agentTeam?.available) {
+        const areas = ds.agentTeam.areas.map((g) => g.label).join(', ');
+        recs.push({ title: 'Activar todo el equipo de marketing IA', detail: `El sitio dispone de ${ds.agentTeam.summary.totalAgents} agentes (${areas}) con ${ds.agentTeam.summary.totalSkills} skills. Delegar tareas de contenido, SEO, redes, email y WhatsApp a estos agentes acelera la ejecución.`, area: 'Automatización', priority: 'alta' });
+    }
     const modByKey = Object.fromEntries(eco.modules.map((mm) => [mm.key, mm.status]));
     if (modByKey.chatbot !== 'active') recs.push({ title: 'Activar el chatbot con IA', detail: 'Atender consultas 24/7 y capturar más leads automáticamente.', area: 'IA', priority: 'alta' });
     if (modByKey.email !== 'active') recs.push({ title: 'Lanzar campañas de correo', detail: 'Comunicar avances a la comunidad y fortalecer el vínculo institucional.', area: 'Comunicación', priority: 'alta' });

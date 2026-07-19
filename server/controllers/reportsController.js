@@ -13,7 +13,7 @@ import EmailService from '../services/EmailService.js';
 import { listSites, buildSiteDataset, PERIOD_PRESETS, MODULE_REGISTRY, MATURITY_LEVELS } from '../services/reportMetricsService.js';
 import { generateNarrative } from '../services/reportNarrativeService.js';
 
-console.log('[ClubPlatformInsights] Reports controller cargado — Informes Ejecutivos v4.552.0');
+console.log('[ClubPlatformInsights] Reports controller cargado — Informes Ejecutivos v4.553.0');
 
 const shareBaseUrl = () => (process.env.PUBLIC_BASE_URL || 'https://app.clubplatform.org').replace(/\/$/, '');
 const genToken = () => crypto.randomBytes(16).toString('hex');
