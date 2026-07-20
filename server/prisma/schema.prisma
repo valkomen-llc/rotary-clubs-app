@@ -1309,6 +1309,11 @@ model SocialAccount {
   scheduledPosts ScheduledPost[]
   publications   SocialPublication[]
   club           Club?               @relation(fields: [clubId], references: [id])
+  // Hub Social (v4.554): webhooks, bandeja unificada, métricas y auditoría.
+  webhookEvents  SocialWebhookEvent[]
+  conversations  SocialConversation[]
+  comments       SocialComment[]
+  metricSnapshots SocialMetricSnapshot[]
 
   @@unique([clubId, platform, platformId])
   @@index([clubId, status])
@@ -1354,10 +1359,156 @@ model SocialPublication {
   club     Club?           @relation(fields: [clubId], references: [id])
   user     User?           @relation(fields: [userId], references: [id])
   accounts SocialAccount[]
+  // Hub Social (v4.554): comentarios y métricas asociadas a la publicación.
+  comments        SocialComment[]
+  metricSnapshots SocialMetricSnapshot[]
 
   @@index([clubId, status])
   @@index([scheduledFor])
   @@index([status, scheduledFor])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hub Social — Fundación (v4.554)
+//
+// Modelos ADITIVOS que soportan Webhooks de Meta, Bandeja unificada
+// (mensajes + comentarios), Métricas/Insights y Auditoría. Ninguno modifica
+// tablas existentes salvo agregar relaciones nuevas (arriba). Seguros para
+// `prisma db push` — no destructivos.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Cola de eventos crudos recibidos por Webhook. Se persisten primero y se
+// procesan de forma asíncrona para no bloquear la respuesta 200 a Meta.
+model SocialWebhookEvent {
+  id          String    @id @default(uuid())
+  provider    String    @default("meta") // meta (facebook/instagram)
+  object      String? // "page" | "instagram" — campo `object` del payload
+  field       String? // "comments" | "messages" | "mentions" | "feed" | ...
+  entryId     String? // page id / ig id que originó el evento
+  accountId   String? // SocialAccount resuelto (si se pudo mapear)
+  clubId      String?
+  payload     Json // evento normalizado
+  signatureOk Boolean   @default(false)
+  status      String    @default("received") // received | processed | failed | ignored
+  error       String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  account SocialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([clubId, createdAt])
+  @@index([object, field])
+}
+
+// Hilo de conversación (DM de Instagram o Messenger de una Página).
+model SocialConversation {
+  id                String    @id @default(uuid())
+  clubId            String?
+  accountId         String
+  platform          String // instagram | facebook (messenger)
+  externalId        String // conversation/thread id de Meta
+  participantId     String? // PSID / IGSID del usuario externo
+  participantName   String?
+  participantAvatar String?
+  lastMessageAt     DateTime?
+  lastSnippet       String?
+  unreadCount       Int       @default(0)
+  status            String    @default("open") // open | pending | resolved | important
+  assignedToId      String? // User id asignado
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  account  SocialAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messages SocialMessage[]
+
+  @@unique([accountId, externalId])
+  @@index([clubId, status, lastMessageAt])
+}
+
+model SocialMessage {
+  id             String    @id @default(uuid())
+  conversationId String
+  externalId     String? // message id de Meta
+  direction      String // inbound | outbound
+  senderId       String?
+  text           String?
+  attachments    Json?
+  sentAt         DateTime?
+  status         String    @default("delivered") // delivered | sent | failed
+  createdAt      DateTime  @default(now())
+
+  conversation SocialConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, sentAt])
+}
+
+// Comentario en un post / reel de una cuenta conectada.
+model SocialComment {
+  id              String    @id @default(uuid())
+  clubId          String?
+  accountId       String
+  platform        String // facebook | instagram
+  externalId      String // comment id de Meta
+  parentId        String? // comment padre (respuestas)
+  mediaExternalId String? // post/media id de Meta
+  publicationId   String? // SocialPublication local si se pudo mapear
+  authorId        String?
+  authorName      String?
+  text            String?
+  status          String    @default("open") // open | replied | hidden | resolved | flagged
+  sentiment       String? // ai: positive | neutral | negative | offensive
+  aiSuggestion    String? // respuesta sugerida por el agente IA
+  hiddenOnMeta    Boolean   @default(false)
+  repliedAt       DateTime?
+  commentedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  account     SocialAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  publication SocialPublication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, externalId])
+  @@index([clubId, status])
+  @@index([mediaExternalId])
+}
+
+// Snapshot de métricas (Insights) a nivel cuenta o media. Serie temporal:
+// una fila por captura, para poder graficar crecimiento en el tiempo.
+model SocialMetricSnapshot {
+  id            String   @id @default(uuid())
+  clubId        String?
+  accountId     String?
+  publicationId String? // métrica a nivel post/media
+  scope         String // account | media
+  externalId    String? // page/ig id o media id
+  capturedAt    DateTime @default(now())
+  period        String? // day | lifetime
+  metrics       Json // { followers, reach, impressions, engagement, ... }
+
+  account     SocialAccount?     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  publication SocialPublication? @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, capturedAt])
+  @@index([publicationId, capturedAt])
+  @@index([clubId, scope, capturedAt])
+}
+
+// Bitácora de auditoría de acciones sensibles del Hub Social.
+model SocialAuditLog {
+  id        String   @id @default(uuid())
+  clubId    String?
+  userId    String?
+  accountId String?
+  action    String // connect | disconnect | verify | publish | schedule | token_refresh | webhook | reply | hide | error
+  target    String? // account id / publication id / comment id
+  status    String   @default("ok") // ok | error
+  detail    Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([clubId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Comment {

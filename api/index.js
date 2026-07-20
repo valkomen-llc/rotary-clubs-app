@@ -31,6 +31,15 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
     return stripeWebhook(req, res, next);
 });
 
+// Hub Social — webhook de Meta (Facebook/Instagram). Necesita el cuerpo CRUDO
+// para validar la firma X-Hub-Signature-256, por eso va con express.raw ANTES
+// del parser JSON (igual que el webhook de Stripe). El GET de verificación va
+// por el router normal (/api/social/webhooks/meta).
+app.post('/api/social/webhooks/meta', express.raw({ type: '*/*' }), async (req, res, next) => {
+    const { handleMetaWebhook } = await import('../server/controllers/socialWebhookController.js');
+    return handleMetaWebhook(req, res, next);
+});
+
 app.use(express.json({ limit: '25mb' }));
 
 // ── Technical Requests Logic (Consolidated for Vercel Stability) ──────────────

@@ -44,6 +44,11 @@ import {
     IG_LOGIN_SCOPES
 } from '../services/instagramLoginService.js';
 import { publishToAccount } from '../services/socialPublishService.js';
+import { auditSocial, clientIp } from '../lib/socialAudit.js';
+
+// Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
+// webhooks + insights + bandeja + auditoría + módulo unificado).
+console.log('[social] Hub Social controller cargado — v4.554.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -311,6 +316,10 @@ export const handleMetaCallback = async (req, res) => {
         }
 
         console.log(`[social] OAuth completed: fb=${connectedFb} ig=${connectedIg}`);
+        await auditSocial({
+            action: 'connect', clubId, userId: verified.userId,
+            detail: { provider: 'meta', fb: connectedFb, ig: connectedIg, connectedBy: profile.name }
+        });
         return res.redirect(`${redirectBase}&social=connected&fb=${connectedFb}&ig=${connectedIg}`);
     } catch (e) {
         console.error('[social] handleMetaCallback error:', e.message, e.stack);
@@ -549,6 +558,11 @@ export const disconnectAccount = async (req, res) => {
         const acc = await findAccountForCaller(req);
         if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
         await prisma.socialAccount.delete({ where: { id: acc.id } });
+        await auditSocial({
+            action: 'disconnect', clubId: acc.clubId, userId: req.user.id,
+            accountId: acc.id, target: acc.id, ip: clientIp(req),
+            detail: { platform: acc.platform, accountName: acc.accountName }
+        });
         res.json({ ok: true });
     } catch (e) {
         console.error('[social] disconnectAccount error:', e);
@@ -778,6 +792,11 @@ export const publishPost = async (req, res) => {
             });
         }
 
+        await auditSocial({
+            action: 'publish', clubId, userId: req.user.id,
+            target: publication.id, status: allOk ? 'ok' : 'error', ip: clientIp(req),
+            detail: { status, accounts: accounts.length, ok: outcomes.filter(o => o.ok).length }
+        });
         return res.json({
             ok: someOk,
             status,
