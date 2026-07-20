@@ -8,6 +8,9 @@ import { processAllActivations } from '../services/activationService.js';
 import { processScheduledCampaigns } from '../controllers/emailMarketingController.js';
 import { processEmailAutomations } from '../controllers/emailAutomationController.js';
 import { sweepStaleDossiers } from '../services/brainSynthesis.js';
+import { decryptToken } from '../lib/tokenCrypto.js';
+import { getAccountInsights } from '../services/insightsService.js';
+import { auditSocial } from '../lib/socialAudit.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -279,6 +282,67 @@ router.get('/refresh-dossiers', async (req, res) => {
         res.json({ ok: true, ...summary });
     } catch (e) {
         console.error('[CRON refresh-dossiers] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Vercel Cron endpoint: /api/cron/social-maintenance
+// Mantenimiento del Hub Social (recomendado: 1-2 veces al día):
+//   1. Marca como 'expired' las cuentas cuyo token venció (expiresAt < now),
+//      dejándolas visibles como "reconectar" en el panel.
+//   2. Captura un snapshot de métricas (Insights) por cuenta activa, para
+//      alimentar el dashboard ejecutivo con serie temporal.
+// Tolerante: cada cuenta se procesa aislada; un fallo no corta el barrido.
+router.get('/social-maintenance', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON social-maintenance] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    const startedAt = Date.now();
+    const summary = { expired: 0, snapshots: 0, errors: 0 };
+    try {
+        // 1) Expiración de tokens.
+        const expired = await prisma.socialAccount.updateMany({
+            where: { status: 'active', expiresAt: { not: null, lt: new Date() } },
+            data: { status: 'expired' }
+        });
+        summary.expired = expired.count;
+        if (expired.count > 0) {
+            await auditSocial({ action: 'token_expired_sweep', detail: { count: expired.count } });
+        }
+
+        // 2) Snapshots de métricas (batch acotado para respetar el timeout).
+        const accounts = await prisma.socialAccount.findMany({
+            where: { status: 'active', tokenVersion: { gt: 0 } },
+            take: 40
+        });
+        for (const acc of accounts) {
+            try {
+                const token = decryptToken(acc.accessToken);
+                const insights = await getAccountInsights({ account: acc, decryptedToken: token });
+                await prisma.socialMetricSnapshot.create({
+                    data: {
+                        clubId: acc.clubId || null,
+                        accountId: acc.id,
+                        scope: 'account',
+                        externalId: acc.platformId,
+                        period: 'day',
+                        metrics: { followers: insights.followers ?? null, ...insights.metrics }
+                    }
+                });
+                summary.snapshots += 1;
+            } catch (e) {
+                summary.errors += 1;
+                console.warn(`[CRON social-maintenance] cuenta ${acc.id}:`, e.message);
+            }
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+        console.log(`[CRON social-maintenance] expired=${summary.expired} snapshots=${summary.snapshots} errors=${summary.errors} en ${elapsedMs}ms`);
+        res.json({ ok: true, ...summary, elapsedMs });
+    } catch (e) {
+        console.error('[CRON social-maintenance] error:', e);
         res.status(500).json({ error: e.message });
     }
 });

@@ -409,7 +409,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'Management', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] },
-                { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' },
+                { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'instagram', 'meta', 'redes', 'sociales', 'oauth', 'conexiones', 'metricas', 'insights', 'mensajes', 'comentarios', 'bandeja', 'webhooks'], badge: 'premium' },
             );
         } else {
             const isAssoc = club?.type === 'association' || club?.type === 'Programa de Intercambio';

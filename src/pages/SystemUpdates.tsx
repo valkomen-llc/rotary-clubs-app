@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.553.0 | 2026-07-19 (Informes Ejecutivos: fix de colores + Equipo de Marketing IA)
-// Cache bust: 2026-07-19c
+// UI V4.554.0 | 2026-07-20 (Hub Social: fundación de la Integración con Meta)
+// Cache bust: 2026-07-20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.554.0',
+        title: 'Hub Social: nuevo centro unificado de Facebook e Instagram 📲✨',
+        description: 'Rehicimos "Hub Social" como el centro único para gestionar tus redes de Meta, con pestañas: Cuentas (conectar Facebook e Instagram por OAuth oficial, con tokens cifrados), Publicar (generador IA de publicaciones), Biblioteca & Calendario (historial y programadas), Métricas (dashboard ejecutivo con seguidores, alcance e impresiones de Facebook e Instagram Insights), Bandeja (responder comentarios y mensajes directos/Messenger, ocultar comentarios, marcar como resueltos) y Auditoría (bitácora de conexiones/publicaciones y diagnóstico de webhooks en tiempo real). Por debajo sumamos la fundación técnica: receptor de Webhooks de Meta con verificación de firma y procesamiento asíncrono, servicio de Insights, registro de auditoría y un cron diario de mantenimiento que detecta tokens vencidos y captura métricas. Nota: Métricas, Comentarios y Mensajes en vivo requieren aprobar los permisos avanzados de Meta (App Review); mientras tanto, esas secciones muestran su estado y guía. Incluye documentación completa de arquitectura y una guía paso a paso de configuración en Meta for Developers.',
+        date: new Date().toISOString(),
+        tags: ['hub-social', 'meta', 'facebook', 'instagram', 'redes-sociales', 'oauth', 'webhooks', 'insights', 'bandeja', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.553.0',
         title: 'Informes Ejecutivos: ahora integran a todo el Equipo de Marketing IA 🤖📊',

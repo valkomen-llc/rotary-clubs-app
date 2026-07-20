@@ -19,6 +19,10 @@ app.use(cors({
 import { stripeWebhook } from './controllers/paymentController.js';
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 
+// Hub Social — webhook de Meta necesita el cuerpo crudo para validar la firma.
+import { handleMetaWebhook } from './controllers/socialWebhookController.js';
+app.post('/api/social/webhooks/meta', express.raw({ type: '*/*' }), handleMetaWebhook);
+
 app.use(express.json({ limit: '25mb' }));
 
 import { createInitialAdmin } from './controllers/authController.js';
