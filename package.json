@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.557.0",
-  "cache_bust": "2026-07-21 (CRM Listas — Gestión avanzada: vista Tabla/Tarjetas de las listas, buscador, filtros por etiqueta y por sitio, selección múltiple con barra de acciones masivas (asignar/quitar etiqueta, enlazar/desenlazar sitio, eliminar) y, en crear/editar lista, selección de etiquetas y de sitios vinculados. Las listas se pueden segmentar por Etiqueta (reusa las Etiquetas del CRM vía CrmList.tags) y enlazar a Sitios de la plataforma (clubs + distritos). Backend aditivo: campo CrmList.siteIds (String[], sin FK, patrón ExecutiveReport); endpoints POST /crm/lists/bulk-update, POST /crm/lists/bulk-delete, GET /crm/sites; getLists ahora incluye también las listas vinculadas a este sitio (solo lectura, marcadas como VINCULADA) para poder usarlas en campañas. Sin operaciones destructivas de BD.)",
+  "version": "4.558.0",
+  "cache_bust": "2026-07-21 (CRM Campañas — Usar listas vinculadas: cierre de la Fase 3 del enlace lista↔sitio. El selector de listas al crear/editar una campaña de WhatsApp ahora incluye también las listas que otro sitio vinculó al tuyo (marcadas con 🔗 (vinculada)) y muestra el conteo real de contactos. El motor de envío ya soportaba enviar a esas listas: resuelve los contactos por membresía de la lista y usa las credenciales de Meta y los templates del sitio que envía. Cambio de frontend en WhatsAppCampaigns.tsx (etiqueta + conteo correcto); backend sin cambios en el envío. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.557.0 | 2026-07-21 (CRM Listas: gestión avanzada — tabla/tarjetas, filtros, multi-select, etiquetas y enlace a sitios)",
+  "//": "UI V4.558.0 | 2026-07-21 (CRM Campañas: usar listas vinculadas por sitio — cierre de la Fase 3 lista↔sitio)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
