@@ -6,7 +6,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { getContacts, getContactById, createContact, updateContact, deleteContact } from '../controllers/crm/contacts.controller.js';
-import { getLists, getListById, createList, updateList, deleteList } from '../controllers/crm/lists.controller.js';
+import { getLists, getListById, createList, bulkCreateLists, updateList, deleteList } from '../controllers/crm/lists.controller.js';
 import { getTags, getTagById, createTag, updateTag, deleteTag } from '../controllers/crm/tags.controller.js';
 import { getCustomFields, createCustomField, updateCustomField, deleteCustomField } from '../controllers/crm/custom-fields.controller.js';
 import { getGroups, createGroup, updateGroup, deleteGroup } from '../controllers/crm/custom-field-groups.controller.js';
@@ -97,6 +97,7 @@ router.post('/fix-phones', fixPhoneNumbers);
 router.get('/lists', getLists);
 router.get('/lists/:id', getListById);
 router.post('/lists', createList);
+router.post('/lists/bulk', bulkCreateLists); // Creación masiva por nombres (importar listados)
 router.put('/lists/:id', updateList);
 router.delete('/lists/:id', deleteList);
 router.post('/lists/:id/members', addListMembers); // Legacy para WhatsApp (opcional)

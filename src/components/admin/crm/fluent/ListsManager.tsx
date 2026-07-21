@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../../hooks/useAuth';
-import { List, Plus, Trash2, Edit3, X, Loader2, Users } from 'lucide-react';
+import { List, Plus, Trash2, Edit3, X, Loader2, Users, ListPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -12,7 +12,28 @@ export default function ListsManager({ onViewDetails }: { onViewDetails?: (id: s
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState({ name: '', description: '', color: '#3B82F6' });
+    // Creación masiva (importar listados por nombre)
+    const [showBulk, setShowBulk] = useState(false);
+    const [bulkText, setBulkText] = useState('');
+    const [bulkColor, setBulkColor] = useState('#3B82F6');
+    const [bulkLoading, setBulkLoading] = useState(false);
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+    // Un nombre de lista por línea (soporta pegado de una columna de Excel). Deduplica y
+    // limpia vacíos para la vista previa; el backend vuelve a deduplicar y omite existentes.
+    const parseBulkNames = (text: string): string[] => {
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const line of text.split(/\r?\n/)) {
+            const name = line.trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(name);
+        }
+        return out;
+    };
 
     useEffect(() => { fetchLists(); }, []);
 
@@ -30,6 +51,28 @@ export default function ListsManager({ onViewDetails }: { onViewDetails?: (id: s
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(form) });
         if (res.ok) { toast.success(editId ? 'Lista actualizada' : 'Lista creada'); setShowForm(false); resetForm(); fetchLists(); }
         else toast.error((await res.json()).error);
+    };
+
+    const handleBulkCreate = async () => {
+        const names = parseBulkNames(bulkText);
+        if (names.length === 0) { toast.error('Pega al menos un nombre de lista (uno por línea)'); return; }
+        setBulkLoading(true);
+        try {
+            const res = await fetch(`${API}/crm/lists/bulk`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ names, color: bulkColor })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error creando listas');
+            const { created, skipped } = data.summary || {};
+            toast.success(`${created} lista${created === 1 ? '' : 's'} creada${created === 1 ? '' : 's'}${skipped ? ` · ${skipped} ya existían (omitidas)` : ''}`);
+            setShowBulk(false); setBulkText(''); setBulkColor('#3B82F6');
+            fetchLists();
+        } catch (err: any) {
+            toast.error(err.message || 'Error creando listas');
+        } finally {
+            setBulkLoading(false);
+        }
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -55,11 +98,69 @@ export default function ListsManager({ onViewDetails }: { onViewDetails?: (id: s
                     <h2 className="text-lg font-bold text-gray-900">Listas Estáticas</h2>
                     <p className="text-sm text-gray-500">Agrupa contactos manualmente en listas fijas (Ej: Asistentes Evento 2024)</p>
                 </div>
-                <button onClick={() => { resetForm(); setShowForm(true); }}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-sky-800 transition-colors">
-                    <Plus className="w-4 h-4" /> Nueva Lista
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => { setShowForm(false); setShowBulk(v => !v); }}
+                        className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
+                        <ListPlus className="w-4 h-4" /> Importar listas
+                    </button>
+                    <button onClick={() => { setShowBulk(false); resetForm(); setShowForm(true); }}
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-sky-800 transition-colors">
+                        <Plus className="w-4 h-4" /> Nueva Lista
+                    </button>
+                </div>
             </div>
+
+            {showBulk && (() => {
+                const detected = parseBulkNames(bulkText);
+                return (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6">
+                        <div className="flex items-start justify-between mb-3">
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900">Importar listas por nombre</h3>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    Escribe o pega <span className="font-bold">un nombre de lista por línea</span> (por ejemplo, una columna copiada de Excel). Se crean vacías, listas para llenarlas después. Las que ya existan se omiten.
+                                </p>
+                            </div>
+                            <button type="button" onClick={() => { setShowBulk(false); setBulkText(''); }} className="p-1 text-gray-400 hover:text-gray-600">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <textarea
+                            value={bulkText}
+                            onChange={e => setBulkText(e.target.value)}
+                            placeholder={"Presidentes, Rotary 4281 (2026-27)\nMembresía, Rotary 4281 (2026-27)\nFundación Rotaria, Rotary 4281 (2026-27)\nImagen Pública, Rotary 4281 (2026-27)"}
+                            className="w-full h-44 p-3 rounded-lg border border-gray-200 text-sm font-mono focus:ring-2 focus:ring-rotary-blue outline-none resize-none"
+                        />
+                        <div className="flex items-center gap-4 mt-3 flex-wrap">
+                            <span className="text-xs font-bold text-gray-500">Color para todas:</span>
+                            <div className="flex gap-2">
+                                {colors.map(c => (
+                                    <button key={c} type="button" onClick={() => setBulkColor(c)}
+                                        className={`w-6 h-6 rounded-full transition-transform ${bulkColor === c ? 'ring-2 ring-offset-2 ring-gray-800 scale-110' : ''}`}
+                                        style={{ backgroundColor: c }} />
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 pt-4 mt-4 border-t border-gray-200">
+                            <span className="text-xs text-gray-500">
+                                {detected.length > 0
+                                    ? <><span className="font-bold text-gray-800">{detected.length}</span> lista{detected.length === 1 ? '' : 's'} detectada{detected.length === 1 ? '' : 's'}</>
+                                    : 'Aún no hay nombres válidos'}
+                            </span>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => { setShowBulk(false); setBulkText(''); }} className="px-5 py-2 rounded-lg font-bold text-sm text-gray-600 hover:bg-gray-200">
+                                    Cancelar
+                                </button>
+                                <button type="button" onClick={handleBulkCreate} disabled={bulkLoading || detected.length === 0}
+                                    className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-sky-800 disabled:opacity-50">
+                                    {bulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListPlus className="w-4 h-4" />}
+                                    Crear {detected.length > 0 ? detected.length : ''} lista{detected.length === 1 ? '' : 's'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {showForm && (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6">

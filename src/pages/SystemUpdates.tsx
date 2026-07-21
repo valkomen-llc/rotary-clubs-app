@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.555.0 | 2026-07-21 (CRM Importación: columna Lista/Grupo — crea y reparte contactos en múltiples listas a la vez)
+// UI V4.556.0 | 2026-07-21 (CRM Listas: importar listas por nombre — crea muchas listas vacías de golpe desde un pegado)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.556.0',
+        title: 'Crea muchas listas de golpe pegando sus nombres 🗂️➕',
+        description: 'Nuevo botón "Importar listas" en Comunicaciones y CRM → Directorio CRM → pestaña Listas. Es un motor para crear LISTAS por nombre (distinto del importador de contactos): escribís o pegás un nombre de lista por línea —por ejemplo, una columna copiada de Excel— y se crean todas las listas vacías de una sola vez, listas para llenarlas después con contactos. Muestra en vivo cuántas listas detecta antes de crear, permite elegir un color común, omite automáticamente las que ya existan (comparando el nombre sin distinguir mayúsculas) y evita duplicados dentro del mismo pegado. Ideal para armar de entrada todas las listas de comités, cargos o eventos y luego asignarles contactos.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'comunicaciones', 'listas', 'importacion', 'lote', 'excel', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.555.0',
         title: 'Importa y crea varias listas a la vez, desde un solo archivo 🗂️⚡',
