@@ -338,7 +338,10 @@ const WhatsAppCampaigns: React.FC = () => {
                             <select value={form.listId} onChange={e => setForm({ ...form, listId: e.target.value })}
                                 className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
                                 <option value="">— Seleccionar lista —</option>
-                                {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.memberCount} contactos)</option>)}
+                                {lists.map(l => {
+                                    const count = l._count?.members ?? l.memberCount ?? 0;
+                                    return <option key={l.id} value={l.id}>{l.isLinked ? '🔗 ' : ''}{l.name}{l.isLinked ? ' (vinculada)' : ''} ({count} contactos)</option>;
+                                })}
                             </select>
                             <select value={form.templateId} onChange={e => setForm({ ...form, templateId: e.target.value, mediaUrl: '' })}
                                 className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">

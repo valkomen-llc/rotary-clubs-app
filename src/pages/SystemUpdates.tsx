@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.557.0 | 2026-07-21 (CRM Listas: gestión avanzada — tabla/tarjetas, filtros, multi-select, etiquetas y enlace a sitios)
+// UI V4.558.0 | 2026-07-21 (CRM Campañas: usar listas vinculadas por sitio — cierre de la Fase 3 lista↔sitio)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.558.0',
+        title: 'Envía campañas usando las listas que otro sitio te compartió 🔗📣',
+        description: 'Cierre del enlace lista↔sitio: al crear o editar una campaña de WhatsApp, el selector de listas ahora incluye también las listas que otro sitio vinculó al tuyo, marcadas con 🔗 "(vinculada)", y muestra el número real de contactos de cada una. Podés seleccionarlas y enviar con normalidad: el sistema toma los contactos de la lista y envía usando la configuración de Meta y los templates de TU sitio. Así, por ejemplo, un distrito puede compartir su lista de asistentes a varios clubes y cada uno enviarles su propia campaña. Todo es aditivo y no cambia el envío de las campañas existentes.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'campañas', 'whatsapp', 'listas', 'sitios', 'segmentacion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.557.0',
         title: 'Organiza tus listas: vista tabla, filtros, selección múltiple, etiquetas y sitios 🗂️🔎',
