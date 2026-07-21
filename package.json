@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.555.0",
-  "cache_bust": "2026-07-21 (CRM Importación — Columna \"Lista/Grupo\": el asistente de importación masiva de contactos (CSV/Excel/pegado) ahora acepta una columna mapeable \"Lista\" (o \"Grupo\"). Cada contacto se asigna a la lista indicada en su fila y las listas que no existan se crean automáticamente (match por nombre case-insensitive, dedup por request). Permite crear y poblar múltiples listas a la vez desde un solo archivo, además de las listas globales seleccionadas en el asistente. Frontend: campo mapeable + auto-detección de la columna + vista previa por fila + conteo de listas creadas. Backend aditivo en import.controller.js: resolveListIdByName + listsCreated en el summary. Sin operaciones destructivas de BD.)",
+  "version": "4.556.0",
+  "cache_bust": "2026-07-21 (CRM Listas — Importar listas por nombre: nuevo motor de creación masiva de LISTAS (distinto del importador de contactos). En Comunicaciones y CRM → Directorio CRM → Listas, botón \"Importar listas\": se pega un nombre de lista por línea (o una columna copiada de Excel) y se crean todas las listas vacías de golpe, listas para llenarlas después. Omite las que ya existan (match por nombre case-insensitive) y deduplica dentro del lote. Frontend aditivo en ListsManager.tsx (panel de pegado + vista previa de cantidad + color común). Backend aditivo: endpoint POST /crm/lists/bulk (bulkCreateLists). Solo creación aditiva, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.555.0 | 2026-07-21 (CRM Importación: columna Lista/Grupo — crea y reparte contactos en múltiples listas a la vez)",
+  "//": "UI V4.556.0 | 2026-07-21 (CRM Listas: importar listas por nombre — crea muchas listas vacías de golpe desde un pegado)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
