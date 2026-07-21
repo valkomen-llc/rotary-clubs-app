@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
@@ -34,9 +34,10 @@ const FoundationSection = () => {
   const imgUrl = siteImages.foundation?.url || DEFAULT_FOUNDATION_IMG;
   const imgAlt = siteImages.foundation?.alt || 'Fundación Rotary - Trabajo comunitario';
 
-  // Contenido editable (solo Evento/Convención).
-  const isEventSite = hasEditableHome((club as any)?.type);
-  const content = (isEventSite && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
+  // Tema visual (botón): solo eventos. Contenido: eventos + ferias.
+  const isEventSite = hasCustomTheme((club as any)?.type);
+  const canEditContent = hasEditableHome((club as any)?.type);
+  const content = (canEditContent && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
   const buttonUrl = content.buttonUrl || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '🎁')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
@@ -75,7 +76,7 @@ const FoundationSection = () => {
           <p className="text-gray-600 text-base md:text-lg leading-relaxed mb-8 whitespace-pre-line">
             {content.text ? content.text : 'Contribuye a La Fundación Rotaria para financiar proyectos de servicio que mejoran las condiciones de vida de las personas tanto en las comunidades locales como en todo el mundo.'}
           </p>
-          {isEventSite && buttonUrl ? (
+          {canEditContent && buttonUrl ? (
             isExternal ? (
               <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
             ) : (

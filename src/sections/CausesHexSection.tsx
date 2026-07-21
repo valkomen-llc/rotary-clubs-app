@@ -14,7 +14,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 
 const ICON_EMOJI: Record<string, string> = {
   star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
@@ -472,9 +472,10 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const carouselRef = useRef<HTMLDivElement>(null);
   const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
 
-  // Texto y botón editables (solo Evento/Convención).
-  const isEventSite = hasEditableHome((club as any)?.type);
-  const causesContent = (isEventSite && (club as any)?.causesContent) ? (club as any).causesContent : {};
+  // Tema visual (fondo custom del bloque de áreas): solo eventos. Texto/botón: eventos + ferias.
+  const isEventSite = hasCustomTheme((club as any)?.type);
+  const canEditContent = hasEditableHome((club as any)?.type);
+  const causesContent = (canEditContent && (club as any)?.causesContent) ? (club as any).causesContent : {};
   const areasText = causesContent.text || DEFAULT_AREAS_TEXT;
   const ctaText = causesContent.buttonText || 'Nuestras Áreas de Interés';
   const ctaUrl = causesContent.buttonUrl || '/nuestras-causas';

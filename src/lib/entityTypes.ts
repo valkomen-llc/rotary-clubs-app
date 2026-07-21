@@ -24,11 +24,19 @@ export interface EntityTypeEntry {
     /** Si aparece en el formulario público de registro / onboarding. */
     registerable: boolean;
     /**
-     * Si el sitio usa el "home editable": el admin puede administrar los contenedores
-     * de la portada (hero, secciones, contenido multimedia, footer, nav configurable…)
+     * Si el sitio usa el "home editable": el admin puede administrar el CONTENIDO de los
+     * contenedores de la portada (textos, imágenes/multimedia, activar/desactivar secciones)
      * y las secciones públicas rinden ese contenido editable en vez del contenido fijo.
      */
     editableHome?: boolean;
+    /**
+     * Si el sitio usa el "tema visual personalizable": colores/fondos de las secciones,
+     * texturas/overlays, colores de los botones del inicio, hero de pantalla completa y
+     * skin del footer. Es SOLO para 'Evento o Convención'. Las Ferias de Proyectos tienen
+     * `editableHome` (contenido editable) pero NO `customTheme`: conservan la línea visual
+     * de club (mismos colores/fondos/botón estándar).
+     */
+    customTheme?: boolean;
 }
 
 export const ENTITY_TYPES: EntityTypeEntry[] = [
@@ -36,7 +44,7 @@ export const ENTITY_TYPES: EntityTypeEntry[] = [
     { type: 'district',                organizationType: 'Distrito Rotario',        label: 'Distrito Rotary',          registerable: true },
     { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true },
     { type: 'colrotarios',             organizationType: 'Colrotarios',             label: 'Colrotarios (Fundación)',  registerable: false },
-    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true },
+    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true, customTheme: true },
     { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true,  editableHome: true },
     { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true },
     { type: 'Zona',                    organizationType: 'Zona',                    label: 'Zona',                     registerable: true },
@@ -75,4 +83,15 @@ export function organizationTypeFor(type?: string): string {
 export function hasEditableHome(type?: string): boolean {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
     return !!entry?.editableHome;
+}
+
+/**
+ * ¿Este tipo de sitio usa el "tema visual personalizable"? (colores/fondos de secciones,
+ * overlays de textura, colores de botones del inicio, hero de pantalla completa, skin del
+ * footer). SOLO 'Evento o Convención'. Las Ferias de Proyectos NO — conservan la línea
+ * visual de club. Usar esto (en vez de hasEditableHome) para todo lo que sea color/fondo.
+ */
+export function hasCustomTheme(type?: string): boolean {
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
+    return !!entry?.customTheme;
 }
