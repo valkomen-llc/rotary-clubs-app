@@ -67,6 +67,8 @@ export interface ClubConfig {
     expirationBannerMessage?: string;
     developmentBannerActive?: boolean;
     developmentBannerMessage?: string;
+    /** Idioma por defecto del sitio (código: 'es', 'en', …). Va de primero en el selector. */
+    defaultLanguage?: string;
 }
 
 // Default/Fallback configuration for when API is loading or fails

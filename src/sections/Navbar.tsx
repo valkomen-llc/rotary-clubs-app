@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useClub } from '../contexts/ClubContext';
 import { useCart } from '../contexts/CartContext';
-import { useLang, SUPPORTED_LANGUAGES } from '../contexts/LanguageContext';
+import { useLang, SUPPORTED_LANGUAGES, orderLanguages } from '../contexts/LanguageContext';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
@@ -21,8 +21,13 @@ const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sobreNosotrosOpen, setSobreNosotrosOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const { lang, setLang } = useLang();
+  const { lang, setLang, applyDefaultLanguage } = useLang();
   const currentLanguage = SUPPORTED_LANGUAGES.find(l => l.code === lang) || SUPPORTED_LANGUAGES[0];
+  // Idioma por defecto configurado en la identidad del sitio: va SIEMPRE de primero en el
+  // listado y se aplica a los visitantes que aún no eligieron idioma.
+  const defaultLanguage = (club as any)?.defaultLanguage as string | undefined;
+  const languageList = orderLanguages(defaultLanguage);
+  useEffect(() => { applyDefaultLanguage(defaultLanguage); }, [defaultLanguage, applyDefaultLanguage]);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -269,7 +274,7 @@ const Navbar = () => {
 
             {languageOpen && (
               <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-[70]">
-                {SUPPORTED_LANGUAGES.map((l) => (
+                {languageList.map((l) => (
                   <button
                     key={l.code}
                     onClick={() => { setLang(l.code); setLanguageOpen(false); }}

@@ -15,6 +15,7 @@ import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
 import { hasEditableHome, hasCustomTheme } from '../../lib/entityTypes';
+import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
@@ -161,6 +162,7 @@ const ClubSettings: React.FC = () => {
         governorsVisible: true,
         authorsVisible: true,
         currency: 'USD',
+        defaultLanguage: 'es',
     });
     
     const [uploading, setUploading] = useState(false);
@@ -374,6 +376,7 @@ const ClubSettings: React.FC = () => {
                 governorsVisible: (club as any).governorsVisible !== false && settingsMap['governors_visible'] !== 'false',
                 authorsVisible: (club as any).authorsVisible !== false && settingsMap['authors_visible'] !== 'false',
                 currency: (club as any).currency || settingsMap['club_currency'] || 'USD',
+                defaultLanguage: (club as any).defaultLanguage || settingsMap['default_language'] || 'es',
             });
 
             if (club.paymentConfigs && Array.isArray(club.paymentConfigs)) {
@@ -785,6 +788,19 @@ const ClubSettings: React.FC = () => {
                                         <option value="BRL">BRL — Real brasileño</option>
                                     </select>
                                     <p className="text-[11px] text-gray-400">Se usa en Aportes, donaciones y membresías (Stripe).</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Idioma por defecto</label>
+                                    <select
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                        value={formData.defaultLanguage}
+                                        onChange={e => setFormData({...formData, defaultLanguage: e.target.value})}
+                                    >
+                                        {SUPPORTED_LANGUAGES.map(l => (
+                                            <option key={l.code} value={l.code}>{l.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[11px] text-gray-400">Idioma con el que carga el sitio para nuevos visitantes. Aparece de primero en el selector de idiomas.</p>
                                 </div>
                             </div>
                         </div>

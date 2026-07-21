@@ -213,6 +213,9 @@ router.get('/by-domain', async (req, res) => {
                 const country = String(activeClub.country || '').toLowerCase();
                 return /colombia|^co$/.test(country) ? 'COP' : 'USD';
             })(),
+            // Idioma por defecto del sitio (identidad). El selector lo pone de primero y se
+            // aplica a los visitantes que aún no eligieron idioma. 'es' es la lengua fuente.
+            defaultLanguage: settings['default_language'] || 'es',
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }
