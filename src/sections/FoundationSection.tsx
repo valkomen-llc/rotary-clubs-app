@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
+import { hasEditableHome } from '../lib/entityTypes';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
@@ -34,7 +35,7 @@ const FoundationSection = () => {
   const imgAlt = siteImages.foundation?.alt || 'Fundación Rotary - Trabajo comunitario';
 
   // Contenido editable (solo Evento/Convención).
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const content = (isEventSite && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
   const buttonUrl = content.buttonUrl || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '🎁')) : '';

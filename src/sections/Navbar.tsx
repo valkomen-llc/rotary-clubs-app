@@ -8,6 +8,7 @@ import { useLang, SUPPORTED_LANGUAGES } from '../contexts/LanguageContext';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
+import { hasEditableHome } from '../lib/entityTypes';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -35,7 +36,7 @@ const Navbar = () => {
   const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271') || currentHostname.toLowerCase().startsWith('rye');
 
   // Menú personalizable para sitios Evento/Convención: cada sección puede activarse/desactivarse.
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const navMenu = ((club as any)?.eventNavMenu || {}) as Record<string, boolean>;
   const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
   // Ítems de menú adicionales (Evento/Convención): creados o tomados de secciones del sistema.

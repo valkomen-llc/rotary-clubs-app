@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { hasEditableHome } from '../lib/entityTypes';
 
 const ICON_EMOJI: Record<string, string> = {
   star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
@@ -472,7 +473,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
 
   // Texto y botón editables (solo Evento/Convención).
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const causesContent = (isEventSite && (club as any)?.causesContent) ? (club as any).causesContent : {};
   const areasText = causesContent.text || DEFAULT_AREAS_TEXT;
   const ctaText = causesContent.buttonText || 'Nuestras Áreas de Interés';
@@ -553,13 +554,13 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
       <style>{styles}</style>
       <section
         id="nuestras-causas"
-        className={`areas-rotary ${((club as any)?.type === 'Evento o Convención') ? 'areas-rotary--custom' : 'areas-rotary--classic'}`}
+        className={`areas-rotary ${(isEventSite) ? 'areas-rotary--custom' : 'areas-rotary--classic'}`}
         aria-labelledby="areas-title"
-        style={((club as any)?.type === 'Evento o Convención')
+        style={(isEventSite)
           ? ({ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties)
           : undefined}
       >
-        {((club as any)?.type === 'Evento o Convención') && <div className="areas-rotary__bg" aria-hidden="true" />}
+        {(isEventSite) && <div className="areas-rotary__bg" aria-hidden="true" />}
         {/* Header */}
         {showHeader && (
           <header className="areas-rotary__header">
