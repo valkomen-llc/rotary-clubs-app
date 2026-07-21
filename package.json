@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.554.0",
-  "cache_bust": "2026-07-20 (Hub Social — Fundación Integración con Meta: página Hub Social unificada con pestañas (Cuentas · Publicar · Biblioteca & Calendario · Métricas · Bandeja · Auditoría) reusando el motor OAuth/publicación existente. Backend aditivo: modelos nuevos (SocialWebhookEvent, SocialConversation, SocialMessage, SocialComment, SocialMetricSnapshot, SocialAuditLog); receptor de Webhooks de Meta (verify + firma X-Hub-Signature-256 + procesamiento asíncrono); servicio de Insights FB/IG + dashboard ejecutivo; bandeja de comentarios y mensajes con respuesta/ocultar vía Graph API; log de auditoría; cron social-maintenance (expiración de tokens + snapshots de métricas). Documentación completa de arquitectura + guía Meta for Developers. Limpieza del socialController.js legacy.)",
+  "version": "4.555.0",
+  "cache_bust": "2026-07-21 (CRM Importación — Columna \"Lista/Grupo\": el asistente de importación masiva de contactos (CSV/Excel/pegado) ahora acepta una columna mapeable \"Lista\" (o \"Grupo\"). Cada contacto se asigna a la lista indicada en su fila y las listas que no existan se crean automáticamente (match por nombre case-insensitive, dedup por request). Permite crear y poblar múltiples listas a la vez desde un solo archivo, además de las listas globales seleccionadas en el asistente. Frontend: campo mapeable + auto-detección de la columna + vista previa por fila + conteo de listas creadas. Backend aditivo en import.controller.js: resolveListIdByName + listsCreated en el summary. Sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.554.0 | 2026-07-20 (Hub Social: fundación de la Integración con Meta — módulo unificado + webhooks + insights + bandeja + auditoría)",
+  "//": "UI V4.555.0 | 2026-07-21 (CRM Importación: columna Lista/Grupo — crea y reparte contactos en múltiples listas a la vez)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
