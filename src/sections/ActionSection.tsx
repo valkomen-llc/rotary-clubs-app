@@ -2,6 +2,7 @@ import { T } from '../components/T';
 import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
+import { hasEditableHome } from '../lib/entityTypes';
 
 // Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
 const ICON_EMOJI: Record<string, string> = {
@@ -29,7 +30,7 @@ const renderTitle = (title: string, highlight?: string, color?: string) => {
 // "Evento o Convención". Los demás sitios conservan el render original (textura opaca azul).
 const ActionSection = () => {
   const { club } = useClub();
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const bgColor = club?.colors?.actionBg || '#0c3c7c';
   const cta = useCtaButton();
 

@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { Globe, Users, DollarSign, Heart, Award, Trophy, Calendar, Star, Flag, Gift, Sparkles, Rocket, Megaphone, HandHeart } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
+import { hasEditableHome } from '../lib/entityTypes';
 
 // Iconos disponibles para las cajas de estadísticas (configurable en sitios Evento/Convención).
 const STAT_ICONS: Record<string, any> = {
@@ -85,7 +86,7 @@ const StatsSection = () => {
 
   // Contenido editable de las cajas (solo Evento/Convención). Cada caja: icono (nombre),
   // color (hex, para icono y valor), value y text.
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const statsContent = (club as any)?.statsContent;
   const cards = (isEventSite && Array.isArray(statsContent) && statsContent.length > 0)
     ? statsContent.slice(0, 3).map((c: any) => ({

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
+import { hasEditableHome } from '../lib/entityTypes';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
@@ -36,7 +37,7 @@ const JoinSection = () => {
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';
   // Color de fondo personalizable solo para sitios Evento/Convención; el resto usa el azul original.
-  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const isEventSite = hasEditableHome((club as any)?.type);
   const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
   const cta = useCtaButton();
 

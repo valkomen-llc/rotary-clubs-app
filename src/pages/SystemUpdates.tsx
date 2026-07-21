@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.559.0 | 2026-07-21 (Registro de sitios: la categoría elegida se conserva y es editable — se acabó el "todo queda como Club")
+// UI V4.560.0 | 2026-07-21 (Feria de Proyectos: home editable como los eventos — administrar contenedores/multimedia de la portada)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.560.0',
+        title: 'Los sitios "Feria de Proyectos" ahora editan su portada como los Eventos 🖼️🛠️',
+        description: 'Extendimos el "home editable" —hasta ahora exclusivo de los sitios "Evento o Convención" (como Jaque Mate a la Polio)— a los sitios con categoría "Feria de Proyectos". Ahora, desde Configuración del sitio, un administrador de una Feria de Proyectos puede administrar los contenedores de la portada y su contenido multimedia: el Hero del evento (imágenes/slides), las secciones de la portada (mostrar/ocultar), los textos y botones de "Somos gente de acción", las 3 cajas de estadísticas, "Únete", "Nuestra Fundación", "Áreas de Interés", los colores de los botones del inicio, el menú principal configurable y el footer del sitio. En la práctica, una Feria de Proyectos deja de comportarse como un club estándar de contenido fijo y pasa a tener una portada totalmente editable. Para lograrlo unificamos el criterio en un único catálogo compartido (flag "home editable" + helper hasEditableHome), reemplazando los chequeos dispersos que solo miraban "Evento o Convención". Cambio aditivo: no afecta a los clubes ni a los eventos existentes, y no toca ni borra información.',
+        date: new Date().toISOString(),
+        tags: ['feria-de-proyectos', 'eventos', 'portada', 'home', 'editor', 'multimedia', 'configuracion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.559.0',
         title: 'La categoría que eliges al crear un sitio ahora se respeta (y se puede corregir) 🏷️✅',

@@ -15,13 +15,15 @@
 // que las páginas de sección del admin usan tal cual en el filtro ?type=... — NO cambiarlos
 // sin actualizar también esos filtros, o los sitios existentes dejarían de listarse.
 
+// `editableHome`: el sitio usa el "home editable" (contenedores de la portada
+// administrables + rendering de contenido multimedia editable en las secciones públicas).
 export const ENTITY_TYPES = [
     { type: 'club',                    organizationType: 'Club Rotario',            label: 'Rotary Club (Socio)',      registerable: true },
     { type: 'district',                organizationType: 'Distrito Rotario',        label: 'Distrito Rotary',          registerable: true },
     { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true },
     { type: 'colrotarios',             organizationType: 'Colrotarios',             label: 'Colrotarios (Fundación)',  registerable: false },
-    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true },
-    { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true },
+    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true },
+    { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true,  editableHome: true },
     { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true },
     { type: 'Zona',                    organizationType: 'Zona',                    label: 'Zona',                     registerable: true },
 ];
@@ -45,4 +47,10 @@ export function resolveEntityType(organizationType) {
 export function organizationTypeFor(type) {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
     return entry ? entry.organizationType : 'Club Rotario';
+}
+
+// ¿Este tipo de sitio usa el "home editable"? (Evento o Convención, Feria de Proyectos).
+export function hasEditableHome(type) {
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
+    return !!(entry && entry.editableHome);
 }
