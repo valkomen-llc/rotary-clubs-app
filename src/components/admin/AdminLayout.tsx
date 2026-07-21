@@ -50,7 +50,9 @@ import {
     Share2,
     Activity,
     Brain,
-    FileBarChart2
+    FileBarChart2,
+    GraduationCap,
+    CalendarClock
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -360,6 +362,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
                 { icon: Megaphone, label: 'Publicaciones / Difusión', path: '/admin/publicaciones', category: 'Management', keywords: ['publicacion', 'difusion', 'blog', 'noticia', 'articulo', 'replicar', 'multi club', 'broadcast'] },
                 { icon: FileBarChart2, label: 'Informes Ejecutivos', path: '/admin/informes-ejecutivos', category: 'Management', keywords: ['informes', 'ejecutivos', 'insights', 'reportes', 'kpi', 'pdf', 'madurez', 'ecosistema', 'analitica'], badge: 'ia' },
+                { icon: GraduationCap, label: 'Capacitaciones y Soporte', path: '/admin/capacitaciones', category: 'Management', keywords: ['capacitacion', 'soporte', 'agenda', 'calendario', 'reservas', 'citas', 'entrenamiento', 'acompañamiento', 'disponibilidad'] },
             );
         }
 
@@ -421,6 +424,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
             items.push(
                 { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: 'Configuración e Identidad', keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
+                { icon: CalendarClock, label: 'Reservar Capacitación', path: '/admin/agenda-soporte', category: 'General', keywords: ['capacitacion', 'soporte', 'agenda', 'reservar', 'cita', 'entrenamiento', 'ayuda', 'acompañamiento'] },
                 { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración e Identidad', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' },
                 { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración e Identidad', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
             );

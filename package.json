@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.562.0",
-  "cache_bust": "2026-07-21 (Idioma por defecto del sitio: nueva opción en Configuración → Identidad para elegir el idioma con el que carga el sitio para nuevos visitantes. El idioma elegido aparece SIEMPRE de primero en el selector de idiomas del navbar (helper orderLanguages) y se aplica a los visitantes que aún no eligieron idioma (helper applyDefaultLanguage en LanguageContext, con cache en localStorage 'site_default_language' para evitar parpadeo; la elección explícita del visitante 'site_language' sigue mandando; 'es' es la lengua fuente). Persistencia vía Setting 'default_language' (patrón club_currency: destructuring en updateClub, expuesto en clubs.js by-domain como club.defaultLanguage, tipado en ClubConfig). Aditivo, default 'es' → sin cambios para sitios existentes. Sin operaciones destructivas de BD.)",
+  "version": "4.563.0",
+  "cache_bust": "2026-07-21 (Calendario de Capacitaciones y Soporte: nuevo módulo de agenda para que los sitios activos reserven capacitación/soporte. Superadmin configura disponibilidad (bloques recurrentes/específicos, fechas bloqueadas, cupos/día, zona horaria, responsables) y tipos de cita en /admin/capacitaciones con vistas mes/semana/día/lista + estadísticas. El sitio-admin reserva en /admin/agenda-soporte con flujo por pasos; el backend valida suscripción vigente (lib/siteStatus) y si el sitio está inactivo redirige al checkout de Stripe (activación por webhook, no por retorno del navegador). Videoconferencia con capa abstracta (meetingService: Zoom S2S OAuth + Google Meet placeholder, default manual). Confirmaciones y recordatorios 24h/1h por email + WhatsApp (cron training-reminders). .ics + botones Google/Outlook. Todo aditivo, sin operaciones destructivas de BD; prisma db push solo crea tablas nuevas.)",
   "type": "module",
-  "//": "UI V4.562.0 | 2026-07-21 (Idioma por defecto del sitio en Identidad — aparece de primero en el selector y carga por defecto)",
+  "//": "UI V4.563.0 | 2026-07-21 (Calendario de Capacitaciones y Soporte — agenda de reservas, validación de suscripción + Stripe, videoconferencia, recordatorios y estadísticas)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

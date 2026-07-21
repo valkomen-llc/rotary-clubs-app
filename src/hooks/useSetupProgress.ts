@@ -59,6 +59,10 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/email',
     '/admin/eventos',
     '/admin/configuracion',
+    // Módulo de Capacitaciones y Soporte (v4.563): accesible desde el día 1 para
+    // que el sitio pueda reservar acompañamiento durante su propio setup.
+    '/admin/agenda-soporte',
+    '/admin/capacitaciones',
 ];
 
 // v4.408: lista de sitios cuyo setup wizard se bypassea — el menú entero

@@ -171,6 +171,7 @@ import emailAccountsRoutes from './routes/emailAccounts.js';
 import brainsRoutes from './routes/brains.js';
 import bannerRoutes from './routes/banner.js';
 import reportsRoutes from './routes/reports.js';
+import trainingRoutes from './routes/training.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -214,6 +215,7 @@ app.use('/api/email-accounts', emailAccountsRoutes);
 app.use('/api/brains', brainsRoutes);
 app.use('/api/banner', bannerRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/training', trainingRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {

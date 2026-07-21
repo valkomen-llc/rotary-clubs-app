@@ -178,6 +178,8 @@ let _financial;
 const getFinancial = async () => _financial || (({ default: _financial } = await import('../server/routes/financial.js')), _financial);
 let _payouts;
 const getPayouts = async () => _payouts || (({ default: _payouts } = await import('../server/routes/payouts.js')), _payouts);
+let _training;
+const getTraining = async () => _training || (({ default: _training } = await import('../server/routes/training.js')), _training);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -259,6 +261,9 @@ app.use('/api/financial', async (req, res, next) => { try { return (await getFin
 
 // Bóveda de Fondos: balance + solicitudes de retiro (v4.411 hotfix — mismo bug que financial)
 app.use('/api/payouts', async (req, res, next) => { try { return (await getPayouts())(req, res, next); } catch (e) { console.error('API Error [payouts]:', e); res.status(500).json({ error: e.message }); } });
+
+// Calendario de Capacitaciones y Soporte (v4.563.0)
+app.use('/api/training', async (req, res, next) => { try { return (await getTraining())(req, res, next); } catch (e) { console.error('API Error [training]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {

@@ -264,6 +264,10 @@ async function handleSaaSReactivation(id, customerId) {
         newExp.setFullYear(newExp.getFullYear() + 1);
         
         const updateData = {
+            // v4.563 — la reactivación por pago también levanta `status` (un sitio
+            // suspendido por el cron queda 'inactive'); sin esto, el sitio pagaba
+            // pero seguía suspendido y el módulo de capacitaciones lo bloqueaba.
+            status: 'active',
             subscriptionStatus: 'active',
             expirationDate: newExp,
             expirationBannerActive: false,

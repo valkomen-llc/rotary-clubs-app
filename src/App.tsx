@@ -127,6 +127,8 @@ const DistrictIQ = React.lazy(() => import('./pages/admin/DistrictIQ'));
 const CrowdfundWallet = React.lazy(() => import('./pages/admin/CrowdfundWallet'));
 const AICore = React.lazy(() => import('./pages/admin/AICore'));
 const ClubPlatformInsights = React.lazy(() => import('./pages/admin/ClubPlatformInsights'));
+const AgendaSoporte = React.lazy(() => import('./pages/admin/AgendaSoporte'));
+const CapacitacionesAdmin = React.lazy(() => import('./pages/admin/CapacitacionesAdmin'));
 const SharedReport = React.lazy(() => import('./pages/SharedReport'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
@@ -741,6 +743,22 @@ function App() {
                   element={
                     <PrivateRoute>
                       <EventsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/agenda-soporte"
+                  element={
+                    <PrivateRoute>
+                      <AgendaSoporte />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/capacitaciones"
+                  element={
+                    <PrivateRoute>
+                      <CapacitacionesAdmin />
                     </PrivateRoute>
                   }
                 />
