@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.562.0 | 2026-07-21 (Idioma por defecto del sitio en Identidad — aparece de primero en el selector y carga por defecto)
+// UI V4.563.0 | 2026-07-21 (Calendario de Capacitaciones y Soporte — agenda de reservas, validación de suscripción + Stripe, videoconferencia, recordatorios y estadísticas)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.563.0',
+        title: 'Nuevo: Calendario de Capacitaciones y Soporte 🎓🗓️',
+        description: 'Lanzamos un módulo completo de agenda para que los sitios activos reserven capacitación, soporte y acompañamiento de Club Platform, al estilo Calendly pero integrado y con la identidad de la plataforma. Para el equipo de soporte (Superadministrador), en "Capacitaciones y Soporte" (menú Management) se configura la disponibilidad: bloques recurrentes (ej. martes y jueves de 9:00 a 12:00) o por fecha específica, fechas bloqueadas/vacaciones, duración de sesión, descanso entre citas, cupos máximos por día, antelación mínima, zona horaria y responsables. También se crean los tipos de cita (capacitación inicial/avanzada, soporte técnico, configuración de correo, contenidos, ecommerce, membresías, donaciones, estadísticas, agentes de IA, chatbot, redes, etc.) con nombre, descripción, duración, modalidad, responsable, requisitos y precio. Incluye vistas de calendario mes/semana/día/lista con filtros, gestión de estados (pendiente, confirmada, completada, cancelada, reprogramada, no asistió, requiere seguimiento), notas internas, acuerdos, materiales entregados y estadísticas (capacitaciones, sitios atendidos, horas, temas más solicitados, asistencia, cancelaciones y satisfacción). Para el sitio, aparece "Reservar Capacitación" en su panel: elige tipo, fecha y hora (en su propia zona horaria), participantes y motivo; los datos de la organización se precargan. El sistema valida automáticamente que la suscripción esté vigente; si el sitio está vencido o suspendido, no permite la reserva gratuita y lo dirige al pago con Stripe, activándose solo cuando el pago se confirma por webhook. Cada reserva genera confirmación por correo (con archivo .ics y botones "Agregar a Google/Outlook"), recordatorios automáticos 24 h y 1 h antes por correo y WhatsApp, y deja lista la creación automática del enlace de videollamada (Zoom / Google Meet). Cambio aditivo: no afecta a los sitios existentes ni toca datos; solo agrega tablas nuevas.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'soporte', 'agenda', 'calendario', 'reservas', 'stripe', 'zoom', 'google-meet', 'recordatorios', 'ics', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.562.0',
         title: 'Elige el idioma por defecto de tu sitio 🌐🏳️',

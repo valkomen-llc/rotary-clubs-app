@@ -347,4 +347,56 @@ router.get('/social-maintenance', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/training-reminders ───────────────────────────────
+// Recordatorios de capacitaciones: 24h antes y 1h antes. Idempotente vía los
+// flags reminder24SentAt / reminder1SentAt. Configurar cada ~10 min en vercel.json.
+router.get('/training-reminders', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sendReminder } = await import('../services/trainingNotificationService.js');
+        const now = Date.now();
+        const include = { appointmentType: true, responsible: true };
+        const activeStatus = { in: ['confirmed', 'rescheduled', 'pending'] };
+
+        // 24h: citas entre +23h y +25h sin recordatorio de 24h.
+        const due24 = await prisma.trainingAppointment.findMany({
+            where: {
+                status: activeStatus,
+                reminder24SentAt: null,
+                startAt: { gte: new Date(now + 23 * 3600000), lte: new Date(now + 25 * 3600000) },
+            },
+            include,
+        });
+        // 1h: citas entre +30min y +90min sin recordatorio de 1h.
+        const due1 = await prisma.trainingAppointment.findMany({
+            where: {
+                status: activeStatus,
+                reminder1SentAt: null,
+                startAt: { gte: new Date(now + 30 * 60000), lte: new Date(now + 90 * 60000) },
+            },
+            include,
+        });
+
+        let sent24 = 0, sent1 = 0;
+        for (const a of due24) {
+            await sendReminder(a, '24h', {});
+            await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder24SentAt: new Date() } });
+            sent24++;
+        }
+        for (const a of due1) {
+            await sendReminder(a, '1h', {});
+            await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder1SentAt: new Date() } });
+            sent1++;
+        }
+        console.log(`[CRON training-reminders] 24h=${sent24} 1h=${sent1}`);
+        res.json({ ok: true, sent24, sent1 });
+    } catch (e) {
+        console.error('[CRON training-reminders] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

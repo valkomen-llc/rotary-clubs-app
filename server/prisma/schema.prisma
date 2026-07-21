@@ -156,6 +156,7 @@ model Club {
   emailAccounts            EmailAccount[]
   brain                    Brain?
   activationPhases         SiteActivationPhase[]
+  trainingAppointments     TrainingAppointment[]
 }
 
 // Pipeline de activación de un sitio. Una fila por fase y por club.
@@ -1814,4 +1815,169 @@ model ExecutiveReportSchedule {
   updatedAt  DateTime  @updatedAt
 
   @@index([active, nextRunAt])
+}
+
+// ============================================================================
+// Módulo: Calendario de Capacitaciones y Soporte (v4.563.0)
+// Agenda de capacitación / soporte para los sitios activos de Club Platform.
+// Config global del equipo de soporte (superadmin) + reservas por sitio.
+// Todo aditivo, sin operaciones destructivas. Los instantes de las citas se
+// guardan en UTC; los horarios de disponibilidad en minutos desde medianoche
+// en la zona horaria base del equipo (TrainingConfig.timezone).
+// ============================================================================
+
+// Config singleton del equipo de soporte (key='global').
+model TrainingConfig {
+  id                String   @id @default(uuid())
+  key               String   @unique @default("global")
+  timezone          String   @default("America/Bogota") // IANA tz base del equipo
+  slotDurationMin   Int      @default(45) // duración por defecto de sesión
+  bufferMin         Int      @default(15) // descanso entre citas
+  maxPerDay         Int      @default(6) // cupos máximos por día
+  minNoticeHours    Int      @default(12) // antelación mínima para reservar
+  cancelWindowHours Int      @default(12) // ventana para cancelar / reprogramar
+  leadDays          Int      @default(30) // horizonte de reservas hacia adelante
+  meetingProvider   String   @default("manual") // manual | google_meet | zoom
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// Bloques de disponibilidad: recurrentes por día de semana o específicos por fecha.
+model TrainingAvailabilityBlock {
+  id            String    @id @default(uuid())
+  kind          String    @default("recurring") // recurring | specific
+  weekday       Int? // 0=domingo..6=sábado cuando kind=recurring
+  date          DateTime? // fecha concreta cuando kind=specific
+  startMinute   Int // minutos desde medianoche en tz base (ej 540 = 9:00)
+  endMinute     Int // minutos desde medianoche (ej 720 = 12:00)
+  responsibleId String?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  responsible   TrainingResponsible? @relation(fields: [responsibleId], references: [id])
+
+  @@index([kind, weekday])
+}
+
+// Fechas bloqueadas / vacaciones. Rango [startDate, endDate] inclusive.
+model TrainingBlackout {
+  id        String   @id @default(uuid())
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+// Responsables asignados a tipos de cita / bloques / citas.
+model TrainingResponsible {
+  id                 String   @id @default(uuid())
+  name               String
+  email              String?
+  phone              String?
+  userId             String? // vínculo opcional a un User (staff de soporte)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  appointmentTypes   TrainingAppointmentType[]
+  availabilityBlocks TrainingAvailabilityBlock[]
+  appointments       TrainingAppointment[]
+}
+
+// Tipos de cita configurables (capacitación inicial, soporte técnico, etc.).
+model TrainingAppointmentType {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String?  @unique
+  description   String?
+  durationMin   Int      @default(45)
+  modality      String   @default("videollamada") // videollamada | telefonica | presencial
+  prerequisites String?
+  price         Float? // null / 0 = incluido en el plan activo (gratis)
+  currency      String   @default("USD")
+  color         String   @default("#2563eb")
+  icon          String? // nombre de icono lucide opcional
+  responsibleId String?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  responsible   TrainingResponsible? @relation(fields: [responsibleId], references: [id])
+  appointments  TrainingAppointment[]
+
+  @@index([active, sortOrder])
+}
+
+// Reserva de capacitación / soporte de un sitio.
+model TrainingAppointment {
+  id                 String    @id @default(uuid())
+  clubId             String? // sitio reservante (club/asociación/evento/etc.)
+  districtId         String? // sin FK (patrón multi-site FK-less) para reservas de distrito
+  appointmentTypeId  String?
+  responsibleId      String?
+  startAt            DateTime // UTC
+  endAt              DateTime // UTC
+  timezone           String    @default("America/Bogota") // tz mostrada al usuario al reservar
+  status             String    @default("pending") // pending | confirmed | completed | cancelled | rescheduled | no_show | follow_up
+  modality           String    @default("videollamada")
+  requesterName      String?
+  requesterEmail     String?
+  requesterPhone     String?
+  organizationName   String?
+  participants       Json?     @default("[]") // [{ name, email, role }]
+  reason             String?
+  meetingProvider    String    @default("manual") // manual | google_meet | zoom
+  meetingUrl         String?
+  meetingId          String?
+  meetingPayload     Json?
+  internalNotes      String?
+  agreements         String? // acuerdos / próximos pasos
+  outcome            Json?     @default("{}")
+  bookedById         String? // User que reservó
+  confirmationSentAt DateTime?
+  reminder24SentAt   DateTime?
+  reminder1SentAt    DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  club            Club?                    @relation(fields: [clubId], references: [id])
+  appointmentType TrainingAppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+  responsible     TrainingResponsible?     @relation(fields: [responsibleId], references: [id])
+  materials       TrainingMaterial[]
+  survey          TrainingSurvey?
+
+  @@index([clubId])
+  @@index([districtId])
+  @@index([startAt])
+  @@index([status])
+}
+
+// Materiales entregados en una sesión (manuales, videos, grabaciones, enlaces).
+model TrainingMaterial {
+  id            String   @id @default(uuid())
+  appointmentId String
+  label         String
+  url           String
+  kind          String   @default("document") // document | video | link | recording | manual
+  s3Key         String?
+  createdAt     DateTime @default(now())
+  appointment   TrainingAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+}
+
+// Encuesta corta de satisfacción al finalizar la capacitación.
+model TrainingSurvey {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique
+  satisfaction  Int? // 1..5
+  usefulness    Int? // 1..5
+  clarity       Int? // 1..5
+  attention     Int? // 1..5
+  needsFollowUp Boolean  @default(false)
+  comments      String?
+  createdAt     DateTime @default(now())
+  appointment   TrainingAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 }
