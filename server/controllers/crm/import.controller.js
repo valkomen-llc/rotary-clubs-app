@@ -11,12 +11,36 @@ export const importContacts = async (req, res) => {
     }
 
     const { onDuplicate = 'ignore', status = 'subscribed' } = config || {};
-    
+
     let totalImported = 0;
     let totalUpdated = 0;
     let totalFailed = 0;
     let totalExisting = 0; // ya existían (se enlazaron a la lista, sin actualizar datos)
+    let listsCreated = 0;  // listas creadas al vuelo por la columna "Lista/Grupo"
     let errors = [];
+
+    // Resolución de listas por NOMBRE (columna "Lista/Grupo" del importador). Permite
+    // que un solo archivo cree y reparta contactos en múltiples listas a la vez.
+    // Cache por request para no crear duplicados ni repetir consultas. La comparación es
+    // case-insensitive: si ya existe una lista con ese nombre se reutiliza (NUNCA se
+    // borra/recrea nada — solo creación aditiva).
+    const listNameCache = new Map(); // nombreLower -> listId
+    const resolveListIdByName = async (rawName) => {
+      const name = String(rawName || '').trim();
+      if (!name) return null;
+      const key = name.toLowerCase();
+      if (listNameCache.has(key)) return listNameCache.get(key);
+      let list = await db.crmList.findFirst({
+        where: { clubId, name: { equals: name, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (!list) {
+        list = await db.crmList.create({ data: { clubId, name }, select: { id: true } });
+        listsCreated++;
+      }
+      listNameCache.set(key, list.id);
+      return list.id;
+    };
 
     // Para evitar consultas N+1 en exceso, podríamos usar db.$transaction, pero dadas
     // las inserciones condicionales y los upserts complejos (con relations),
@@ -86,13 +110,20 @@ export const importContacts = async (req, res) => {
              await db.crmContact.update({ where: { id: contactId }, data: { tags: merged } });
            }
 
-           if (lists && lists.length > 0) {
-             for (const listId of lists) {
-                const exists = await db.contactListMember.findFirst({ where: { contactId, listId } });
-                if (!exists) {
-                   await db.contactListMember.create({ data: { contactId, listId } });
-                }
-             }
+           // Listas destino = las seleccionadas globalmente en el asistente (aplican a
+           // todas las filas) + la de la columna "Lista/Grupo" de ESTA fila (se crea si
+           // no existe). Se deduplican para no intentar el mismo enlace dos veces.
+           const targetListIds = new Set(Array.isArray(lists) ? lists : []);
+           if (contact.listName) {
+             const rowListId = await resolveListIdByName(contact.listName);
+             if (rowListId) targetListIds.add(rowListId);
+           }
+
+           for (const listId of targetListIds) {
+              const exists = await db.contactListMember.findFirst({ where: { contactId, listId } });
+              if (!exists) {
+                 await db.contactListMember.create({ data: { contactId, listId } });
+              }
            }
 
            // Campos personalizados mapeados en el asistente de importación
@@ -122,6 +153,7 @@ export const importContacts = async (req, res) => {
         totalUpdated,
         totalExisting,
         totalFailed,
+        listsCreated,
       },
       errors
     });

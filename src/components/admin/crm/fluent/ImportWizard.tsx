@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, ClipboardPaste, ArrowRight, ArrowLeft, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, ClipboardPaste, ArrowRight, ArrowLeft, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../../hooks/useAuth';
 import Papa from 'papaparse';
@@ -45,6 +45,7 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
         { key: 'email', label: 'Correo Electrónico (Opcional)' },
         { key: 'name', label: 'Nombre' },
         { key: 'lastName', label: 'Apellidos' },
+        { key: 'listName', label: 'Lista / Grupo (crea y asigna)' },
         { key: 'company', label: 'Empresa' },
         { key: 'title', label: 'Cargo' },
         { key: 'city', label: 'Ciudad' },
@@ -150,8 +151,9 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
         headers.forEach(h => {
             const hLow = h.toLowerCase();
             if (hLow.includes('mail')) newMapping[h] = 'email';
-            else if (hLow.includes('name') || hLow.includes('nombre')) newMapping[h] = 'name';
+            else if (hLow.includes('lista') || hLow.includes('grupo') || hLow === 'list' || hLow === 'group') newMapping[h] = 'listName';
             else if (hLow.includes('last') || hLow.includes('apellido')) newMapping[h] = 'lastName';
+            else if (hLow.includes('name') || hLow.includes('nombre')) newMapping[h] = 'name';
             else if (hLow.includes('phone') || hLow.includes('tel')) newMapping[h] = 'phone';
             else if (hLow.includes('company') || hLow.includes('empresa')) newMapping[h] = 'company';
         });
@@ -182,6 +184,7 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
             // considere inválido).
             if (mappedRow.email) mappedRow.email = String(mappedRow.email).trim();
             if (mappedRow.phone) mappedRow.phone = String(mappedRow.phone).trim();
+            if (mappedRow.listName) mappedRow.listName = String(mappedRow.listName).trim();
 
             // Validación: PRIORIDAD al teléfono/WhatsApp. El correo es opcional y NO se
             // valida su formato — se importa tal cual esté (regla del cliente). Solo se
@@ -262,6 +265,10 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
         }
     };
 
+    // ¿El usuario mapeó alguna columna como "Lista / Grupo"? Si es así, cada fila puede
+    // ir a su propia lista (creándose automáticamente), además de las listas globales.
+    const hasListColumn = Object.values(mapping).includes('listName');
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
@@ -290,7 +297,10 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                     {step === 1 && (
                         <div className="max-w-2xl mx-auto space-y-6">
                             <h3 className="text-lg font-bold text-center">¿Cómo deseas importar tus contactos?</h3>
-                            
+                            <p className="text-sm text-gray-500 text-center -mt-4">
+                                Tip: agrega una columna <span className="font-bold text-gray-700">"Lista"</span> (o "Grupo") y cada contacto irá a su propia lista — las que no existan se crean solas.
+                            </p>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <button 
                                     onClick={() => setImportMethod('upload')}
@@ -413,6 +423,7 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                                 <th className="p-3 w-10">St</th>
                                                 <th className="p-3">Email / Teléfono</th>
                                                 <th className="p-3">Nombre</th>
+                                                {hasListColumn && <th className="p-3">Lista</th>}
                                                 <th className="p-3">Detalle</th>
                                             </tr>
                                         </thead>
@@ -424,6 +435,13 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                                     </td>
                                                     <td className="p-3 font-medium">{row.mapped.email || row.mapped.phone || '-'}</td>
                                                     <td className="p-3">{row.mapped.name} {row.mapped.lastName}</td>
+                                                    {hasListColumn && (
+                                                        <td className="p-3">
+                                                            {row.mapped.listName
+                                                                ? <span className="inline-block px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold">{row.mapped.listName}</span>
+                                                                : <span className="text-xs text-gray-400">—</span>}
+                                                        </td>
+                                                    )}
                                                     <td className="p-3 text-xs text-red-600 max-w-xs truncate">{row.errors.join(', ')}</td>
                                                 </tr>
                                             ))}
@@ -448,9 +466,16 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                         </select>
                                     </div>
                                     
+                                    {/* Aviso: columna de Lista/Grupo detectada */}
+                                    {hasListColumn && (
+                                        <div className="text-xs p-3 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-100">
+                                            <span className="font-bold">Columna "Lista / Grupo" detectada.</span> Cada contacto se asignará a la lista indicada en su fila y las listas que no existan se crearán automáticamente. Las listas marcadas abajo se agregan además a <span className="font-bold">todos</span> los contactos.
+                                        </div>
+                                    )}
+
                                     {/* Listas */}
                                     <div className="bg-white p-4 border border-gray-200 rounded-xl shadow-sm">
-                                        <label className="block text-xs font-bold text-gray-700 mb-2">Asignar a Listas</label>
+                                        <label className="block text-xs font-bold text-gray-700 mb-2">Asignar a Listas {hasListColumn && <span className="font-normal text-gray-400">(a todas las filas)</span>}</label>
                                         <div className="max-h-32 overflow-y-auto space-y-1 bg-gray-50 p-2 rounded-lg border border-gray-100">
                                             {availableLists.length === 0 ? (
                                                 <p className="text-xs text-gray-400">No hay listas todavía. Crea una abajo para agregar los contactos importados.</p>
@@ -556,6 +581,12 @@ export default function ImportWizard({ onClose, onSuccess }: { onClose: () => vo
                                     <p className="text-xs font-bold text-red-500 uppercase tracking-wide">Fallidos</p>
                                 </div>
                             </div>
+
+                            {results.summary.listsCreated > 0 && (
+                                <div className="mt-4 text-sm inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-700 font-bold">
+                                    <List className="w-4 h-4" /> {results.summary.listsCreated} lista{results.summary.listsCreated === 1 ? '' : 's'} nueva{results.summary.listsCreated === 1 ? '' : 's'} creada{results.summary.listsCreated === 1 ? '' : 's'} automáticamente
+                                </div>
+                            )}
                             
                             <div className="mt-8 pt-8 border-t border-gray-100">
                                 <button onClick={() => { onSuccess(); onClose(); }} className="px-8 py-3 bg-rotary-blue text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-shadow">

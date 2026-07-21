@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.554.0 | 2026-07-20 (Hub Social: fundación de la Integración con Meta)
-// Cache bust: 2026-07-20
+// UI V4.555.0 | 2026-07-21 (CRM Importación: columna Lista/Grupo — crea y reparte contactos en múltiples listas a la vez)
+// Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.555.0',
+        title: 'Importa y crea varias listas a la vez, desde un solo archivo 🗂️⚡',
+        description: 'El asistente de Importación Masiva de Comunicaciones y CRM (Directorio CRM → Contactos → Importar) ahora entiende una columna "Lista" (o "Grupo") en tu Excel/CSV/pegado. Cada contacto se agrega a la lista indicada en su propia fila y las listas que aún no existan se crean automáticamente. Así, con un solo archivo puedes crear y poblar muchas listas de golpe (por comité, cargo, evento, distrito…), en lugar de crearlas una por una. La columna se detecta sola en el mapeo, la vista previa muestra a qué lista irá cada fila, y al terminar te decimos cuántas listas nuevas se crearon. Las listas que marques manualmente en el asistente siguen aplicando a todos los contactos importados. No se borra ni modifica ninguna lista existente: si el nombre ya existe, se reutiliza.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'comunicaciones', 'importacion', 'listas', 'excel', 'csv', 'contactos', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.554.0',
         title: 'Hub Social: nuevo centro unificado de Facebook e Instagram 📲✨',
