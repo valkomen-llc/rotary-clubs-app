@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import bcrypt from 'bcryptjs';
 import VercelService from '../services/VercelService.js';
+import { resolveEntityType } from '../lib/entityTypes.js';
 
 export const autoRegisterClub = async (req, res) => {
     const { organizationType, clubName, country, district, adminName, adminEmail, adminPassword, subdomain, phone, phoneCountry, role: clubRole } = req.body;
@@ -36,10 +37,15 @@ export const autoRegisterClub = async (req, res) => {
         // Create Club and Admin User in a single transaction
         const result = await prisma.$transaction(async (tx) => {
             // 1. Create Club
+            const resolvedOrganizationType = organizationType || 'Club Rotario';
             const newClub = await tx.club.create({
                 data: {
                     name: clubName,
-                    organizationType: organizationType || 'Club Rotario',
+                    organizationType: resolvedOrganizationType,
+                    // Deriva la clave máquina `type` a partir de la categoría elegida en el
+                    // registro para que el sitio caiga en la sección correcta del admin
+                    // (Ferias, Zonas, Eventos, …) y no en Clubes por el default del schema.
+                    type: resolveEntityType(resolvedOrganizationType),
                     country,
                     district,
                     domain: fullDomain,
