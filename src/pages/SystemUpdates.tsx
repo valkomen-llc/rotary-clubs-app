@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.556.0 | 2026-07-21 (CRM Listas: importar listas por nombre — crea muchas listas vacías de golpe desde un pegado)
+// UI V4.557.0 | 2026-07-21 (CRM Listas: gestión avanzada — tabla/tarjetas, filtros, multi-select, etiquetas y enlace a sitios)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.557.0',
+        title: 'Organiza tus listas: vista tabla, filtros, selección múltiple, etiquetas y sitios 🗂️🔎',
+        description: 'La pestaña Listas de Comunicaciones y CRM ahora es un verdadero centro de gestión de listas. Novedades: (1) Vista Tabla ("lista de listados") además de Tarjetas, con un botón para alternar. (2) Buscador por nombre y Filtros por Etiqueta y por Sitio, combinables. (3) Selección múltiple: marcá una o varias listas y una barra de acciones masivas te deja asignar o quitar una etiqueta, enlazar o desenlazar un sitio, o eliminarlas de golpe. (4) Al crear o editar una lista podés asignarle Etiquetas (las mismas del CRM) y vincularla a uno o varios Sitios de la plataforma (clubs y distritos). Esto sirve para agrupar y segmentar tus listas —por comité, campaña, evento o sitio— y sienta la base para que, más adelante, cada sitio use sus listas vinculadas al enviar campañas. Las listas que otro sitio vincula al tuyo aparecen marcadas como "VINCULADA" (solo lectura). Todo es aditivo: no se borra ni altera ninguna lista existente.',
+        date: new Date().toISOString(),
+        tags: ['crm', 'comunicaciones', 'listas', 'etiquetas', 'sitios', 'filtros', 'segmentacion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.556.0',
         title: 'Crea muchas listas de golpe pegando sus nombres 🗂️➕',

@@ -896,6 +896,11 @@ model CrmList {
   description String?
   color       String              @default("#3B82F6")
   tags        String[]
+  // Sitios de la plataforma (Club o District) a los que se vincula la lista para
+  // agrupar/segmentar y, más adelante, para que ese sitio use la lista en campañas.
+  // Aditivo y SIN FK (mismo patrón que ExecutiveReport.siteIds) para poder mezclar
+  // clubs y distritos sin arriesgar cascadas de borrado.
+  siteIds     String[]            @default([])
   metadata    String?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.556.0",
-  "cache_bust": "2026-07-21 (CRM Listas — Importar listas por nombre: nuevo motor de creación masiva de LISTAS (distinto del importador de contactos). En Comunicaciones y CRM → Directorio CRM → Listas, botón \"Importar listas\": se pega un nombre de lista por línea (o una columna copiada de Excel) y se crean todas las listas vacías de golpe, listas para llenarlas después. Omite las que ya existan (match por nombre case-insensitive) y deduplica dentro del lote. Frontend aditivo en ListsManager.tsx (panel de pegado + vista previa de cantidad + color común). Backend aditivo: endpoint POST /crm/lists/bulk (bulkCreateLists). Solo creación aditiva, sin operaciones destructivas de BD.)",
+  "version": "4.557.0",
+  "cache_bust": "2026-07-21 (CRM Listas — Gestión avanzada: vista Tabla/Tarjetas de las listas, buscador, filtros por etiqueta y por sitio, selección múltiple con barra de acciones masivas (asignar/quitar etiqueta, enlazar/desenlazar sitio, eliminar) y, en crear/editar lista, selección de etiquetas y de sitios vinculados. Las listas se pueden segmentar por Etiqueta (reusa las Etiquetas del CRM vía CrmList.tags) y enlazar a Sitios de la plataforma (clubs + distritos). Backend aditivo: campo CrmList.siteIds (String[], sin FK, patrón ExecutiveReport); endpoints POST /crm/lists/bulk-update, POST /crm/lists/bulk-delete, GET /crm/sites; getLists ahora incluye también las listas vinculadas a este sitio (solo lectura, marcadas como VINCULADA) para poder usarlas en campañas. Sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.556.0 | 2026-07-21 (CRM Listas: importar listas por nombre — crea muchas listas vacías de golpe desde un pegado)",
+  "//": "UI V4.557.0 | 2026-07-21 (CRM Listas: gestión avanzada — tabla/tarjetas, filtros, multi-select, etiquetas y enlace a sitios)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
