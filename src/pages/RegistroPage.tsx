@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Sparkles, Eye, EyeOff, Loader2, CheckCircle, ArrowLeft, ArrowRight, Building2, User, ChevronDown } from 'lucide-react';
+import { REGISTERABLE_ENTITY_TYPES } from '../lib/entityTypes';
 
 /* ═══════════════════════════════════════════════════════════
    Country & District data
@@ -298,13 +299,9 @@ export default function RegistroPage() {
                                             onChange={e => updateField('organizationType', e.target.value)}
                                             className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all bg-white appearance-none pr-10"
                                         >
-                                            <option value="Asociación Rotaria">Asociación Rotaria</option>
-                                            <option value="Club Rotario">Club Rotario</option>
-                                            <option value="Distrito Rotario">Distrito Rotario</option>
-                                            <option value="Evento o Convención">Evento o Convención</option>
-                                            <option value="Feria de Proyectos">Feria de Proyectos</option>
-                                            <option value="Programa de Intercambio">Programa de Intercambio</option>
-                                            <option value="Zona">Zona</option>
+                                            {REGISTERABLE_ENTITY_TYPES.map(et => (
+                                                <option key={et.type} value={et.organizationType}>{et.organizationType}</option>
+                                            ))}
                                         </select>
                                         <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                     </div>

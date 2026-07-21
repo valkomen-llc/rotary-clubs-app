@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.558.0 | 2026-07-21 (CRM Campañas: usar listas vinculadas por sitio — cierre de la Fase 3 lista↔sitio)
+// UI V4.559.0 | 2026-07-21 (Registro de sitios: la categoría elegida se conserva y es editable — se acabó el "todo queda como Club")
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.559.0',
+        title: 'La categoría que eliges al crear un sitio ahora se respeta (y se puede corregir) 🏷️✅',
+        description: 'Arreglamos una inconsistencia en el alta de sitios: si registrabas, por ejemplo, una "Feria de Proyectos", el sistema lo guardaba como "Club" y terminaba en la sección equivocada del panel. Ahora la categoría elegida en el registro (Club Rotario, Distrito Rotario, Evento o Convención, Feria de Proyectos, Programa de Intercambio, Zona, Asociación Rotaria) se conserva automáticamente y el sitio aparece en su sección correcta. Además, el selector "Tipo de Entidad / Clasificación" del panel Editar Club ahora lista TODAS esas categorías —antes le faltaban Feria de Proyectos, Zona y Programa de Intercambio—, así que cualquier sitio mal clasificado se puede corregir a mano en un clic, y al cambiar el tipo se actualiza también la etiqueta. Las tres listas (registro, onboarding y edición admin) ahora salen de un único catálogo compartido para que no se vuelvan a desincronizar. Cambio no destructivo: no se toca ni se borra información de los sitios existentes.',
+        date: new Date().toISOString(),
+        tags: ['registro', 'sitios', 'categorias', 'clasificacion', 'admin', 'ferias', 'consistencia', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.558.0',
         title: 'Envía campañas usando las listas que otro sitio te compartió 🔗📣',

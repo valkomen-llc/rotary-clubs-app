@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.558.0",
-  "cache_bust": "2026-07-21 (CRM Campañas — Usar listas vinculadas: cierre de la Fase 3 del enlace lista↔sitio. El selector de listas al crear/editar una campaña de WhatsApp ahora incluye también las listas que otro sitio vinculó al tuyo (marcadas con 🔗 (vinculada)) y muestra el conteo real de contactos. El motor de envío ya soportaba enviar a esas listas: resuelve los contactos por membresía de la lista y usa las credenciales de Meta y los templates del sitio que envía. Cambio de frontend en WhatsAppCampaigns.tsx (etiqueta + conteo correcto); backend sin cambios en el envío. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.559.0",
+  "cache_bust": "2026-07-21 (Registro de sitios — Consistencia de categoría: el alta pública derivaba mal la clasificación y guardaba todo como Club (type='club' por default del schema, aunque el usuario eligiera Feria de Proyectos, Zona, etc.). Ahora autoRegisterClub y el onboarding derivan Club.type desde la categoría elegida vía un catálogo compartido (server/lib/entityTypes.js + src/lib/entityTypes.ts), y el selector Tipo de Entidad del modal Editar Club lista TODAS las categorías (antes faltaban Feria de Proyectos, Zona, Programa de Intercambio), sincronizando además organizationType al cambiar el tipo. Registro, onboarding y edición admin salen ahora del mismo catálogo. Script one-off no destructivo server/scripts/reclassify_entity_types.mjs para corregir sitios ya existentes. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.558.0 | 2026-07-21 (CRM Campañas: usar listas vinculadas por sitio — cierre de la Fase 3 lista↔sitio)",
+  "//": "UI V4.559.0 | 2026-07-21 (Registro de sitios: la categoría elegida se conserva y es editable — se acabó el 'todo queda como Club')",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

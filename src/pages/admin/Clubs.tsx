@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import { ENTITY_TYPES, organizationTypeFor } from '../../lib/entityTypes';
 
 interface Club {
     id: string;
@@ -903,14 +904,12 @@ const ClubsManagement: React.FC = () => {
                                     <select
                                         className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-sky-50 font-bold text-rotary-blue"
                                         value={formData.type}
-                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                        onChange={(e) => setFormData({ ...formData, type: e.target.value, organizationType: organizationTypeFor(e.target.value) })}
                                         title="Determina en qué sección del panel aparece el registro (Clubes, Eventos, Asociaciones…) y el skin del footer"
                                     >
-                                        <option value="club">Rotary Club (Socio)</option>
-                                        <option value="district">Distrito Rotary</option>
-                                        <option value="association">Asociación / Agrupación</option>
-                                        <option value="colrotarios">Colrotarios (Fundación)</option>
-                                        <option value="Evento o Convención">Evento o Convención</option>
+                                        {ENTITY_TYPES.map((et) => (
+                                            <option key={et.type} value={et.type}>{et.label}</option>
+                                        ))}
                                     </select>
                                     <p className="text-[10px] text-gray-400 mt-1">
                                         Reclasifica el registro y define el skin del footer. Al elegir "Evento o Convención" se moverá a la sección Eventos y dejará de listarse aquí.

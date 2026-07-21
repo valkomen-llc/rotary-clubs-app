@@ -6,6 +6,7 @@ import {
     Plus, Globe,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { REGISTERABLE_ENTITY_TYPES, resolveEntityType } from '../../lib/entityTypes';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
@@ -145,13 +146,9 @@ const StepClubInfo: React.FC<{
                     onChange={e => onChange({ ...data, organizationType: e.target.value })}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
                 >
-                    <option value="Club Rotario">Club Rotario</option>
-                    <option value="Distrito Rotario">Distrito Rotario</option>
-                    <option value="Zona">Zona</option>
-                    <option value="Asociación Rotaria">Asociación Rotaria</option>
-                    <option value="Programa de Intercambio">Programa de Intercambio</option>
-                    <option value="Feria de Proyectos">Feria de Proyectos</option>
-                    <option value="Evento o Convención">Evento o Convención</option>
+                    {REGISTERABLE_ENTITY_TYPES.map(et => (
+                        <option key={et.type} value={et.organizationType}>{et.organizationType}</option>
+                    ))}
                 </select>
                 <p className="text-[10px] text-gray-400 mt-1">Selecciona el tipo de organización o entidad</p>
             </div>
@@ -1386,6 +1383,8 @@ const OnboardingFlow: React.FC = () => {
                     body: JSON.stringify({
                         name: info.name,
                         organizationType: info.organizationType,
+                        // Mantener la clave máquina `type` en sincronía con la categoría elegida.
+                        type: resolveEntityType(info.organizationType),
                         description: info.description,
                         district: info.district,
                         city: info.city,
