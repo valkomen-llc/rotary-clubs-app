@@ -1,13 +1,14 @@
 import type { CSSProperties } from 'react';
 import { useClub } from '../contexts/ClubContext';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasCustomTheme } from '../lib/entityTypes';
 
-// Devuelve la clase + estilo para los botones CTA del inicio. En sitios de tipo
-// "Evento o Convención" usa los colores configurables (fondo, hover y texto) vía
-// la clase .cta-btn + variables CSS. El resto conserva el estilo celeste original.
+// Devuelve la clase + estilo para los botones CTA del inicio. En sitios con tema visual
+// propio ('Evento o Convención') usa los colores configurables (fondo, hover y texto) vía
+// la clase .cta-btn + variables CSS. El resto —incluidas las Ferias de Proyectos— conserva
+// el estilo celeste estándar de club.
 export const useCtaButton = (): { className: string; style?: CSSProperties } => {
     const { club } = useClub();
-    const isEventSite = hasEditableHome((club as any)?.type);
+    const isEventSite = hasCustomTheme((club as any)?.type);
     if (!isEventSite) {
         return { className: 'bg-sky-100 hover:bg-sky-200 text-rotary-blue' };
     }

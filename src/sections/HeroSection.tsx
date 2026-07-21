@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import EventHeroSection from './EventHeroSection';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasCustomTheme } from '../lib/entityTypes';
 
 const defaultSlides = [
   { id: 1, image: '/defaults/hero/1-teamwork.png', alt: 'Rotary - Trabajo en equipo' },
@@ -19,7 +19,7 @@ const HeroSection = () => {
 
   // Hero propio para sitios Evento/Convención (pantalla completa), si tiene imágenes configuradas.
   const eventHero = (club as any)?.eventHeroImages as { url: string; alt?: string }[] | undefined;
-  if (hasEditableHome((club as any)?.type) && eventHero && eventHero.length > 0) {
+  if (hasCustomTheme((club as any)?.type) && eventHero && eventHero.length > 0) {
     return <EventHeroSection images={eventHero} />;
   }
 

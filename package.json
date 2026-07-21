@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.560.0",
-  "cache_bust": "2026-07-21 (Home editable para Feria de Proyectos: los sitios con categoría 'Feria de Proyectos' ahora tienen el mismo home editable que los 'Evento o Convención' — pueden administrar los contenedores/contenido multimedia de la portada (hero, secciones, estadísticas, footer, nav configurable, colores de botones, etc.). Se agregó el flag editableHome al catálogo compartido de entityTypes y un helper hasEditableHome(type) que reemplaza los ~30 chequeos inline `type === 'Evento o Convención'` en las secciones públicas (HeroSection, Navbar, ActionSection, StatsSection, JoinSection, FoundationSection, CausesHexSection, Footer, useCtaButton) y en las 13 tarjetas del editor de ClubSettings. Backend ya era agnóstico al tipo (guarda/lee esos campos para cualquier sitio). Email Marketing sigue siendo solo de eventos. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.561.0",
+  "cache_bust": "2026-07-21 (Feria de Proyectos conserva la línea visual de club: se separó el 'contenido editable' del 'tema visual'. Nuevo flag customTheme + helper hasCustomTheme(type) (solo 'Evento o Convención') para todo lo de color/fondo (fondos de secciones, overlays de textura, colores de botones del inicio, hero de pantalla completa, skin del footer). hasEditableHome (eventos + ferias) queda solo para el CONTENIDO (textos, imágenes, activar/desactivar secciones). En las secciones públicas (ActionSection, JoinSection, FoundationSection, CausesHexSection, Footer, HeroSection, useCtaButton) el fondo/overlay/botón usa hasCustomTheme y el contenido usa hasEditableHome; en el editor ClubSettings las 7 tarjetas de color/hero/footer quedan solo para eventos y las 6 de contenido para eventos + ferias. Resultado: la Feria de Proyectos edita textos/imágenes de sus contenedores pero se ve con los colores/fondos estándar de club (ej. el contenedor 'Toma Acción con Nosotros'). Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.560.0 | 2026-07-21 (Feria de Proyectos: home editable como los eventos — administrar contenedores/multimedia de la portada)",
+  "//": "UI V4.561.0 | 2026-07-21 (Feria de Proyectos: contenido editable pero línea visual de club — se separó tema de contenido)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

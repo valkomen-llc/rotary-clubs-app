@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
-import { hasEditableHome } from '../../lib/entityTypes';
+import { hasEditableHome, hasCustomTheme } from '../../lib/entityTypes';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
@@ -1035,7 +1035,7 @@ const ClubSettings: React.FC = () => {
                         </div>
 
                         {/* Color de fondo de la sección "Somos gente de acción" — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Color de Sección "Somos gente de acción"
@@ -1074,7 +1074,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Color de fondo de la sección "Únete a Rotary" — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Color de Sección "Únete a Rotary"
@@ -1113,7 +1113,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Color de fondo de la sección "Áreas de Interés" — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Color de Sección "Áreas de Interés"
@@ -1152,7 +1152,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Colores del Footer (pie de página) y barra de copyright */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Colores del Footer
@@ -1199,7 +1199,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Colores de los botones del inicio — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Colores de los Botones del Inicio
@@ -1253,7 +1253,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Hero del Evento — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Hero del Evento (Portada)
@@ -1688,7 +1688,7 @@ const ClubSettings: React.FC = () => {
                         )}
 
                         {/* Footer del sitio (logos + columnas de menú) — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || hasEditableHome(club?.type)) && (
+                        {(isSuperAdmin || hasCustomTheme(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Layout className="w-5 h-5 text-rotary-blue" /> Footer del Sitio

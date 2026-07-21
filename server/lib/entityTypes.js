@@ -15,14 +15,17 @@
 // que las páginas de sección del admin usan tal cual en el filtro ?type=... — NO cambiarlos
 // sin actualizar también esos filtros, o los sitios existentes dejarían de listarse.
 
-// `editableHome`: el sitio usa el "home editable" (contenedores de la portada
-// administrables + rendering de contenido multimedia editable en las secciones públicas).
+// `editableHome`: el sitio administra el CONTENIDO de los contenedores de la portada
+//   (textos, imágenes/multimedia, activar/desactivar secciones) — eventos y ferias.
+// `customTheme`: el sitio usa el TEMA VISUAL personalizable (colores/fondos, overlays,
+//   colores de botones, hero de pantalla completa, skin del footer) — SOLO eventos.
+//   Las ferias conservan la línea visual de club.
 export const ENTITY_TYPES = [
     { type: 'club',                    organizationType: 'Club Rotario',            label: 'Rotary Club (Socio)',      registerable: true },
     { type: 'district',                organizationType: 'Distrito Rotario',        label: 'Distrito Rotary',          registerable: true },
     { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true },
     { type: 'colrotarios',             organizationType: 'Colrotarios',             label: 'Colrotarios (Fundación)',  registerable: false },
-    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true },
+    { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true, customTheme: true },
     { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true,  editableHome: true },
     { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true },
     { type: 'Zona',                    organizationType: 'Zona',                    label: 'Zona',                     registerable: true },
@@ -49,8 +52,14 @@ export function organizationTypeFor(type) {
     return entry ? entry.organizationType : 'Club Rotario';
 }
 
-// ¿Este tipo de sitio usa el "home editable"? (Evento o Convención, Feria de Proyectos).
+// ¿Este tipo de sitio usa el "home editable" (contenido)? (Evento o Convención, Feria de Proyectos).
 export function hasEditableHome(type) {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
     return !!(entry && entry.editableHome);
+}
+
+// ¿Este tipo de sitio usa el "tema visual personalizable" (colores/fondos)? SOLO eventos.
+export function hasCustomTheme(type) {
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
+    return !!(entry && entry.customTheme);
 }

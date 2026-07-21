@@ -3,7 +3,7 @@ import { Facebook, Twitter, Instagram, Youtube, Linkedin, Music, ArrowRight } fr
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useClub } from '../contexts/ClubContext';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasCustomTheme } from '../lib/entityTypes';
 
 const Footer = () => {
     const { club } = useClub();
@@ -113,8 +113,9 @@ const Footer = () => {
         }
     };
 
-    // Colores/textura personalizables solo para sitios Evento/Convención; el resto, original.
-    const isEventSite = hasEditableHome((club as any)?.type);
+    // Colores/textura + footer configurable: solo sitios con tema visual propio (Evento/Convención).
+    // Las Ferias de Proyectos conservan el footer estándar de club.
+    const isEventSite = hasCustomTheme((club as any)?.type);
 
     // Footer configurable por sitio (solo Evento/Convención): logos + columnas de menú.
     // Cualquier campo no definido cae al valor por defecto, para no romper sitios sin configurar.

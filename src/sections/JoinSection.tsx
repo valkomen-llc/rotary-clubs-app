@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
@@ -36,13 +36,14 @@ const JoinSection = () => {
 
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';
-  // Color de fondo personalizable solo para sitios Evento/Convención; el resto usa el azul original.
-  const isEventSite = hasEditableHome((club as any)?.type);
+  // Tema visual (fondo/textura/botón): solo eventos. Contenido: eventos + ferias.
+  const isEventSite = hasCustomTheme((club as any)?.type);
+  const canEditContent = hasEditableHome((club as any)?.type);
   const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
   const cta = useCtaButton();
 
-  // Contenido editable (solo Evento/Convención).
-  const content = (isEventSite && (club as any)?.joinContent) ? (club as any).joinContent : {};
+  // Contenido editable (Evento/Convención y Feria de Proyectos).
+  const content = (canEditContent && (club as any)?.joinContent) ? (club as any).joinContent : {};
   const buttonUrl = content.buttonUrl || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
@@ -93,7 +94,7 @@ const JoinSection = () => {
               </>
             )}
 
-            {isEventSite && buttonUrl ? (
+            {canEditContent && buttonUrl ? (
               isExternal ? (
                 <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
               ) : (

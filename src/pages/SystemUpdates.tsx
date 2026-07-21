@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.560.0 | 2026-07-21 (Feria de Proyectos: home editable como los eventos — administrar contenedores/multimedia de la portada)
+// UI V4.561.0 | 2026-07-21 (Feria de Proyectos: contenido editable pero línea visual de club — se separó tema de contenido)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.561.0',
+        title: 'Feria de Proyectos: edita el contenido, pero con la línea visual de un club 🎨🧩',
+        description: 'Ajuste sobre el home editable de las Ferias de Proyectos. Separamos dos cosas que antes iban juntas: (1) el CONTENIDO de los contenedores de la portada (textos, imágenes/multimedia, activar o desactivar secciones) y (2) el TEMA VISUAL (colores y fondos de las secciones, texturas, colores de los botones del inicio, hero de pantalla completa y skin del footer). Las Ferias de Proyectos ahora pueden editar el CONTENIDO —igual que un evento— pero conservan la LÍNEA VISUAL estándar de un club: mismos fondos, colores y botones. Antes, al activar el home editable, un contenedor como "Toma Acción con Nosotros" cambiaba el fondo y el color al tema de evento; ahora se ve con los colores de club como corresponde. El tema visual personalizable (colores/fondos) queda reservado para los sitios "Evento o Convención". En el editor, las tarjetas de color/hero/footer solo aparecen para eventos, mientras que las de contenido (Acción, Estadísticas, Únete, Fundación, Áreas, secciones de la portada) aparecen también para Ferias. Cambio aditivo: no afecta a clubes ni eventos existentes.',
+        date: new Date().toISOString(),
+        tags: ['feria-de-proyectos', 'portada', 'home', 'tema', 'colores', 'contenido', 'editor', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.560.0',
         title: 'Los sitios "Feria de Proyectos" ahora editan su portada como los Eventos 🖼️🛠️',
