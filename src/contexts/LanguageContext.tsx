@@ -15,6 +15,16 @@ export const SUPPORTED_LANGUAGES = [
     { code: 'ko', name: '한국어', flag: 'kr' },
 ];
 
+// Devuelve la lista de idiomas con el idioma por defecto del sitio SIEMPRE de primero,
+// conservando el orden del resto. Usado por el selector de idiomas del navbar.
+export function orderLanguages(defaultCode?: string) {
+    const idx = defaultCode ? SUPPORTED_LANGUAGES.findIndex(l => l.code === defaultCode) : -1;
+    if (idx <= 0) return SUPPORTED_LANGUAGES;
+    const copy = [...SUPPORTED_LANGUAGES];
+    const [preferred] = copy.splice(idx, 1);
+    return [preferred, ...copy];
+}
+
 // ─── Cache ────────────────────────────────────────────────────────────────────
 // L0  localStorage  — survives page reloads, applied before first paint
 // L1  memCache      — in-memory, fastest lookup
@@ -162,6 +172,7 @@ async function fetchMissing(
 interface LangCtx {
     lang: string;
     setLang: (l: string) => void;
+    applyDefaultLanguage: (code?: string) => void;
     translate: (text: string) => Promise<string>;
     translateSync: (text: string) => string;
     isTranslating: boolean;
@@ -170,7 +181,10 @@ const LangContext = createContext<LangCtx | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [lang, setLangState] = useState<string>(() => {
-        const stored = localStorage.getItem('site_language') || 'es';
+        // Prioridad: elección explícita del visitante > idioma por defecto del sitio > 'es'.
+        // `site_default_language` lo cachea applyDefaultLanguage cuando carga el sitio, para
+        // que en visitas siguientes el idioma correcto se aplique antes del primer paint (sin parpadeo).
+        const stored = localStorage.getItem('site_language') || localStorage.getItem('site_default_language') || 'es';
         if (stored !== 'es') primeCache(stored); // hydrate L1 from L0 synchronously
         return stored;
     });
@@ -181,9 +195,22 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const fetching = useRef(false);
 
     const setLang = useCallback((l: string) => {
+        // Elección EXPLÍCITA del visitante: se guarda y manda sobre el idioma por defecto del sitio.
         localStorage.setItem('site_language', l);
         if (l !== 'es') primeCache(l);
         setLangState(l);
+    }, []);
+
+    // Aplica el idioma por defecto configurado por el sitio (identidad). Se cachea para las
+    // próximas visitas, pero NO se guarda como elección del visitante: si el admin cambia el
+    // default, los visitantes que nunca eligieron idioma verán el nuevo. Si el visitante ya
+    // eligió un idioma (`site_language`), esa elección manda y esto no hace nada.
+    const applyDefaultLanguage = useCallback((code?: string) => {
+        if (!code) return;
+        localStorage.setItem('site_default_language', code);
+        if (localStorage.getItem('site_language')) return; // el visitante ya eligió; respetarlo
+        if (code !== 'es') primeCache(code);
+        setLangState(prev => (prev === code ? prev : code));
     }, []);
 
     const translate = useCallback(async (text: string) => {
@@ -316,7 +343,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [lang]);
 
     return (
-        <LangContext.Provider value={{ lang, setLang, translate, translateSync, isTranslating: false }}>
+        <LangContext.Provider value={{ lang, setLang, applyDefaultLanguage, translate, translateSync, isTranslating: false }}>
             {children}
         </LangContext.Provider>
     );

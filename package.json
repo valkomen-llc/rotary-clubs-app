@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.561.0",
-  "cache_bust": "2026-07-21 (Feria de Proyectos conserva la línea visual de club: se separó el 'contenido editable' del 'tema visual'. Nuevo flag customTheme + helper hasCustomTheme(type) (solo 'Evento o Convención') para todo lo de color/fondo (fondos de secciones, overlays de textura, colores de botones del inicio, hero de pantalla completa, skin del footer). hasEditableHome (eventos + ferias) queda solo para el CONTENIDO (textos, imágenes, activar/desactivar secciones). En las secciones públicas (ActionSection, JoinSection, FoundationSection, CausesHexSection, Footer, HeroSection, useCtaButton) el fondo/overlay/botón usa hasCustomTheme y el contenido usa hasEditableHome; en el editor ClubSettings las 7 tarjetas de color/hero/footer quedan solo para eventos y las 6 de contenido para eventos + ferias. Resultado: la Feria de Proyectos edita textos/imágenes de sus contenedores pero se ve con los colores/fondos estándar de club (ej. el contenedor 'Toma Acción con Nosotros'). Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.562.0",
+  "cache_bust": "2026-07-21 (Idioma por defecto del sitio: nueva opción en Configuración → Identidad para elegir el idioma con el que carga el sitio para nuevos visitantes. El idioma elegido aparece SIEMPRE de primero en el selector de idiomas del navbar (helper orderLanguages) y se aplica a los visitantes que aún no eligieron idioma (helper applyDefaultLanguage en LanguageContext, con cache en localStorage 'site_default_language' para evitar parpadeo; la elección explícita del visitante 'site_language' sigue mandando; 'es' es la lengua fuente). Persistencia vía Setting 'default_language' (patrón club_currency: destructuring en updateClub, expuesto en clubs.js by-domain como club.defaultLanguage, tipado en ClubConfig). Aditivo, default 'es' → sin cambios para sitios existentes. Sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.561.0 | 2026-07-21 (Feria de Proyectos: contenido editable pero línea visual de club — se separó tema de contenido)",
+  "//": "UI V4.562.0 | 2026-07-21 (Idioma por defecto del sitio en Identidad — aparece de primero en el selector y carga por defecto)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

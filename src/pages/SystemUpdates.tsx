@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.561.0 | 2026-07-21 (Feria de Proyectos: contenido editable pero línea visual de club — se separó tema de contenido)
+// UI V4.562.0 | 2026-07-21 (Idioma por defecto del sitio en Identidad — aparece de primero en el selector y carga por defecto)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.562.0',
+        title: 'Elige el idioma por defecto de tu sitio 🌐🏳️',
+        description: 'Nueva opción en Configuración → Identidad: "Idioma por defecto". Define con qué idioma carga tu sitio para los visitantes nuevos (por ejemplo, si eliges Inglés, el sitio abre en inglés). Además, el idioma que elijas aparece SIEMPRE de primero en el selector de idiomas del sitio, y los demás quedan después en su orden (ej.: Inglés primero, Español segundo, etc.). La elección que haga cada visitante en el selector sigue mandando y se recuerda; el idioma por defecto solo aplica a quienes todavía no eligieron uno, así que si más adelante cambias el idioma por defecto, los visitantes nuevos verán el nuevo. El español sigue siendo el idioma base sobre el que se traducen los demás. Es aditivo: los sitios que no toquen esta opción siguen en español como hasta ahora.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'idioma', 'i18n', 'configuracion', 'sitio', 'traduccion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.561.0',
         title: 'Feria de Proyectos: edita el contenido, pero con la línea visual de un club 🎨🧩',
