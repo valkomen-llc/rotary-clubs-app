@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.569.0 | 2026-07-22 (Email Marketing: Pruebas A/B — variante B, muestra, ventana, métrica ganadora y envío automático del ganador al resto)
+// UI V4.570.0 | 2026-07-22 (Email Marketing: Centro público de preferencias + doble opt-in; contacto solo-email (phone opcional))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.570.0',
+        title: 'Email Marketing: centro de preferencias y confirmación de suscripción (doble opt-in) ✅📬',
+        description: 'Cerramos el ciclo de consentimiento con páginas públicas propias de cada organización (con su logo y colores), sin necesidad de iniciar sesión. (1) Centro de preferencias: desde el enlace "Gestionar preferencias" que ahora aparece en el pie de cada correo, el contacto puede activar o pausar todos los envíos, actualizar su nombre y ciudad, y elegir a qué categorías de contenido (tus listas del CRM) quiere pertenecer. (2) Doble opt-in: un nuevo contacto puede suscribirse por correo y recibe un email de confirmación; solo cuando hace clic en "Confirmar suscripción" queda como suscrito activo (con fecha de confirmación registrada). Esto mejora la calidad de tu base y la entregabilidad, y respeta la normativa de consentimiento. Para permitir suscriptores que solo tienen correo (sin teléfono), el contacto del CRM ahora admite teléfono opcional. Cambio aditivo: no borra datos ni ejecuta migraciones destructivas; el envío de campañas y el resto del CRM siguen funcionando igual. Es la sexta fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'preferencias', 'doble-opt-in', 'suscripcion', 'consentimiento', 'entregabilidad', 'crm', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.569.0',
         title: 'Email Marketing: prueba A/B y envía la versión ganadora automáticamente 🧪🏆',

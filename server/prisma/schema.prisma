@@ -848,7 +848,7 @@ model CrmContact {
   name            String
   lastName        String?
   email           String?
-  phone           String
+  phone           String?  // opcional (v4.570): permite suscriptores solo-email (centro de preferencias / doble opt-in)
   title           String?
   company         String?
   website         String?
@@ -866,6 +866,7 @@ model CrmContact {
   totalRead       Int                  @default(0)
   totalFailed     Int                  @default(0)
   optedOutAt      DateTime?
+  confirmedAt     DateTime?  // confirmación de doble opt-in (v4.570)
   leadId          String?
   profilePictureUrl String?
   autoReplyDisabled    Boolean         @default(false)

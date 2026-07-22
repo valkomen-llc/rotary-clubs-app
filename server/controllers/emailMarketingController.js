@@ -210,6 +210,7 @@ const wrapLinks = (html, rid, baseUrl) =>
 
 const buildEmailHtml = (contentHtml, preheaderText, rid, contact, baseUrl) => {
     const unsubscribeUrl = `${baseUrl}/api/public/unsubscribe?cid=${contact.id}`;
+    const preferencesUrl = `${baseUrl}/api/public/preferences?cid=${contact.id}`;
     const trackedContent = wrapLinks(contentHtml, rid, baseUrl);
     const pixel = `<img src="${baseUrl}/api/public/em/o/${rid}" width="1" height="1" alt="" style="display:none">`;
     const preheader = preheaderText
@@ -218,7 +219,7 @@ const buildEmailHtml = (contentHtml, preheaderText, rid, contact, baseUrl) => {
     const footer = `
         <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;font-family:Arial,sans-serif">
             <p>Recibes este correo porque estás en la base de contactos de este sitio.</p>
-            <p><a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Cancelar suscripción</a></p>
+            <p><a href="${preferencesUrl}" style="color:#9ca3af;text-decoration:underline">Gestionar preferencias</a> · <a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Cancelar suscripción</a></p>
         </div>`;
     return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
         ${preheader}

@@ -23,6 +23,13 @@ import prisma from '../lib/prisma.js';
 import { trackOpen, trackClick, handleResendWebhook } from '../controllers/emailMarketingController.js';
 router.get('/em/o/:rid', trackOpen);
 router.get('/em/c/:rid', trackClick);
+
+// Centro público de preferencias + doble opt-in (v4.570).
+import { getPreferencesPage, updatePreferences, subscribe, confirmSubscription } from '../controllers/emailPreferencesController.js';
+router.get('/preferences', getPreferencesPage);
+router.post('/preferences', express.json(), updatePreferences);
+router.post('/subscribe', express.json(), subscribe);
+router.get('/confirm', confirmSubscription);
 // Webhook de Resend: rebotes y quejas → baja automática del contacto.
 router.post('/resend-webhook', handleResendWebhook);
 

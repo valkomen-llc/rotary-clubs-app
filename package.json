@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.569.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 5: Pruebas A/B. En el editor de campañas se puede activar una prueba A/B con variante B (asunto obligatorio, preheader y contenido HTML opcionales), porcentaje de muestra (10-50%), ventana de prueba en horas y métrica ganadora (aperturas o clics). Al enviar, se despacha la muestra dividida A/B (registrando la variante por destinatario); un worker en el cron existente (/api/cron/send-scheduled-emails, cada 5 min) decide el ganador cuando vence la ventana y envía la variante ganadora al resto de la audiencia (excluyendo a quienes ya recibieron la muestra, respetando el tope de 500/envío). Funciona con envío inmediato y programado. El reporte muestra el desglose A vs B con la variante ganadora, y la fila de campaña indica el estado (en prueba / ganó A o B). Backend aditivo: columnas nuevas nullable en EmailCampaign (abEnabled, variantSubject/Preheader/Content, abSamplePct, abWindowHours, abMetric, abPhase, abWinner, abTestStartedAt) y EmailCampaignRecipient.variant; el envío se refactorizó a sendToContacts sin cambiar el comportamiento del envío normal. Sin operaciones destructivas de BD.)",
+  "version": "4.570.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 6: Centro público de preferencias + doble opt-in. Páginas públicas branded por club (server-rendered, sin login): GET /api/public/preferences?cid=... permite al contacto activar/pausar todos los correos, actualizar nombre y ciudad, y elegir categorías de contenido (listas del CRM); POST /api/public/subscribe inicia el doble opt-in (crea/actualiza el contacto como 'pending' y envía correo de confirmación) y GET /api/public/confirm?cid=... lo confirma (status 'active' + confirmedAt). El pie de cada correo ahora incluye 'Gestionar preferencias' además de 'Cancelar suscripción'. Para permitir suscriptores solo-email, CrmContact.phone pasa a ser OPCIONAL (relajar NOT NULL, no destructivo) y se agrega CrmContact.confirmedAt. Aditivo; sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.569.0 | 2026-07-22 (Email Marketing: Pruebas A/B — variante B, muestra, ventana, métrica ganadora y envío automático del ganador al resto)",
+  "//": "UI V4.570.0 | 2026-07-22 (Email Marketing: Centro público de preferencias + doble opt-in; contacto solo-email (phone opcional))",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
