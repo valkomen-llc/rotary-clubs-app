@@ -2,7 +2,7 @@ import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
 
 // Email Marketing F5 — Automatizaciones (secuencias por etiqueta, tipo FluentCRM).
-console.log('[emailAutomationController] v4.572 — flujos con nodos: enviar correo, esperar, aplicar/quitar etiqueta, condición (gate)');
+console.log('[emailAutomationController] v4.573 — flujos con nodos + bifurcación (condición/fin de condición) + notificar equipo + webhook');
 
 const resolveClubId = (req) => {
     if (req.user?.role === 'administrator') {
@@ -72,16 +72,16 @@ export const getAutomation = async (req, res) => {
     }
 };
 
-const ACTION_TYPES = ['email', 'wait', 'apply_tag', 'remove_tag', 'condition'];
+const ACTION_TYPES = ['email', 'wait', 'apply_tag', 'remove_tag', 'condition', 'end_condition', 'notify', 'webhook'];
 
 // Normaliza los nodos del flujo. Un nodo 'email' requiere asunto+contenido; los nodos
-// de acción (apply_tag/remove_tag/condition) requieren actionValue; 'wait' solo delayDays.
+// de etiqueta/condición/webhook requieren actionValue; 'wait'/'end_condition'/'notify' no.
 const normalizeSteps = (steps) => (Array.isArray(steps) ? steps : [])
     .map((s) => ({ ...s, actionType: ACTION_TYPES.includes(s?.actionType) ? s.actionType : 'email' }))
     .filter((s) => {
         if (s.actionType === 'email') return s.subject && s.content;
-        if (s.actionType === 'wait') return true;
-        return !!(s.actionValue && String(s.actionValue).trim()); // apply_tag/remove_tag/condition
+        if (['wait', 'end_condition', 'notify'].includes(s.actionType)) return true;
+        return !!(s.actionValue && String(s.actionValue).trim()); // apply_tag/remove_tag/condition/webhook
     })
     .map((s, i) => ({
         order: i,
@@ -263,6 +263,7 @@ export const processEmailAutomations = async ({ baseUrl, now = new Date() } = {}
 
         const type = step.actionType || 'email';
         let exit = false;
+        let jumpTo = null;
         try {
             if (type === 'email') {
                 await EmailService.sendEmail({
@@ -280,10 +281,46 @@ export const processEmailAutomations = async ({ baseUrl, now = new Date() } = {}
             } else if (type === 'remove_tag' && step.actionValue) {
                 await prisma.crmContact.update({ where: { id: contact.id }, data: { tags: (contact.tags || []).filter((t) => t !== step.actionValue) } });
             } else if (type === 'condition') {
-                // Nodo condición (gate): si no se cumple, el contacto sale del flujo.
-                if (!evalCondition(step.actionValue, contact)) exit = true;
+                const pass = evalCondition(step.actionValue, contact);
+                // Busca el nodo 'end_condition' que cierra el bloque (un nivel, sin anidar).
+                let endIdx = -1;
+                for (let j = enrollment.currentStep + 1; j < steps.length; j++) {
+                    const t = steps[j].actionType;
+                    if (t === 'end_condition') { endIdx = j; break; }
+                    if (t === 'condition') break; // no soportamos anidamiento
+                }
+                if (endIdx === -1) {
+                    // Sin bloque de fin → gate (compatibilidad): si no se cumple, sale del flujo.
+                    if (!pass) exit = true;
+                } else if (!pass) {
+                    jumpTo = endIdx; // salta el bloque "verdadero" hasta el fin de condición
+                }
+                // si se cumple: continúa al siguiente nodo (entra al bloque)
+            } else if (type === 'notify') {
+                // Notifica al equipo (dirección de actionValue, o los administradores del sitio).
+                let recipients = step.actionValue && isValidEmail(step.actionValue) ? [step.actionValue.trim()] : null;
+                if (!recipients) {
+                    const admins = await prisma.user.findMany({
+                        where: { clubId: automation.clubId, role: { in: ['administrator', 'club_admin', 'district_admin'] } },
+                        select: { email: true },
+                    });
+                    recipients = admins.map((u) => u.email).filter(isValidEmail);
+                }
+                for (const to of recipients.slice(0, 5)) {
+                    await EmailService.sendEmail({
+                        clubId: automation.clubId, to,
+                        subject: `Automatización "${automation.name}"`,
+                        html: `<div style="font-family:Arial,sans-serif;padding:16px"><p>El contacto <strong>${contact.name || contact.email}</strong> (${contact.email}) avanzó en la automatización <strong>${automation.name}</strong>.</p></div>`,
+                        userId: automation.createdById || null,
+                    });
+                }
+            } else if (type === 'webhook' && step.actionValue && /^https?:\/\//i.test(step.actionValue)) {
+                await fetch(step.actionValue, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: 'automation_node', automation: automation.name, contact: { id: contact.id, name: contact.name, email: contact.email, tags: contact.tags } }),
+                }).catch(() => {});
             }
-            // 'wait' → no-op: la espera ya transcurrió antes de que este nodo venciera.
+            // 'wait' / 'end_condition' → no-op.
         } catch (error) {
             console.error(`[emailAutomation] acción '${type}' falló (enrollment ${enrollment.id}):`, error.message);
         }
@@ -293,7 +330,7 @@ export const processEmailAutomations = async ({ baseUrl, now = new Date() } = {}
             continue;
         }
 
-        const nextIndex = enrollment.currentStep + 1;
+        const nextIndex = jumpTo != null ? jumpTo : enrollment.currentStep + 1;
         const nextStep = steps[nextIndex];
         await prisma.emailAutomationEnrollment.update({
             where: { id: enrollment.id },

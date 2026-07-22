@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.572.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 8: Constructor visual de automatizaciones por nodos. Las automatizaciones dejan de ser solo secuencias lineales de correos: ahora se arman como un flujo visual de nodos conectados a partir de un disparador (etiqueta). Tipos de nodo: Enviar correo, Esperar (X días), Aplicar etiqueta, Quitar etiqueta y Condición (gate: 'tiene/no tiene la etiqueta' — si no se cumple, el contacto sale del flujo). En la UI se agregan/insertan nodos entre pasos, se reordenan y se eliminan, con líneas conectoras. Backend aditivo: EmailAutomationStep.actionType (email|wait|apply_tag|remove_tag|condition) + actionValue; el runner del cron ejecuta cada tipo de nodo secuencialmente, sin cambiar el comportamiento de las secuencias de correo existentes (que siguen siendo nodos 'email'). Sin operaciones destructivas de BD.)",
+  "version": "4.573.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 9: Bifurcación y nuevos nodos en automatizaciones. La Condición deja de ser solo un filtro de salida: al agregar un nodo 'Fin de condición' después, define un bloque — si la condición se cumple se ejecutan los nodos del bloque, y si no, se saltan (bifurcación si/no). Si no hay 'Fin de condición', la condición mantiene el comportamiento anterior (el contacto sale del flujo cuando no se cumple), preservando compatibilidad. Nuevos nodos de acción: 'Notificar al equipo' (envía un aviso al correo indicado o a los administradores del sitio) y 'Webhook' (POST a una URL con los datos del contacto para integrar con otros sistemas). Backend aditivo: se amplía EmailAutomationStep.actionType con end_condition|notify|webhook; el runner calcula el salto del bloque y ejecuta los nuevos nodos. Sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.572.0 | 2026-07-22 (Email Marketing: Constructor visual de automatizaciones por nodos (enviar, esperar, etiquetas, condición))",
+  "//": "UI V4.573.0 | 2026-07-22 (Email Marketing: Automatizaciones con bifurcación (condición/fin de condición) + notificar equipo + webhook)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
