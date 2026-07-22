@@ -5,7 +5,7 @@ import React, {
 } from 'react';
 
 export const SUPPORTED_LANGUAGES = [
-    { code: 'es', name: 'Español', flag: 'es' },
+    { code: 'es', name: 'Español', flag: 'co' },
     { code: 'en', name: 'English', flag: 'us' },
     { code: 'fr', name: 'Français', flag: 'fr' },
     { code: 'pt', name: 'Português', flag: 'br' },

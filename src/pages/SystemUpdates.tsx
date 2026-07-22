@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.577.0 | 2026-07-22 (Botones del menú principal configurables por sitio — texto + enlace desde Identidad)
+// UI V4.578.0 | 2026-07-22 (Selector de idiomas: bandera de Colombia para Español)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.578.0',
+        title: 'Bandera de Colombia para el idioma Español 🇨🇴',
+        description: 'En el selector de idiomas del sitio, el idioma "Español" ahora muestra la bandera de Colombia en lugar de la de España, acorde a la plataforma Rotary Colombia. Cambio visual menor en el selector; el resto de idiomas se mantiene igual.',
+        date: new Date().toISOString(),
+        tags: ['idiomas', 'bandera', 'colombia', 'navbar', 'ui', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.577.0',
         title: 'Personaliza los dos botones de la cabecera de tu sitio 🔘✍️',
