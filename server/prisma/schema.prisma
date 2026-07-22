@@ -672,6 +672,17 @@ model EmailCampaign {
   openCount       Int       @default(0) // total de aperturas (eventos)
   clickCount      Int       @default(0) // total de clics (eventos)
   sentAt          DateTime?
+  // Pruebas A/B (v4.569) — variante B + configuración de la prueba. Aditivo/opcional.
+  abEnabled       Boolean   @default(false)
+  variantSubject  String?   // asunto de la variante B
+  variantPreheader String?  // preheader de la variante B
+  variantContent  String?   // HTML de la variante B (si difiere de A)
+  abSamplePct     Int?      // % de la audiencia usado para la prueba (se divide A/B)
+  abWindowHours   Int?      // horas de ventana de prueba antes de decidir el ganador
+  abMetric        String?   // 'opens' | 'clicks' — métrica ganadora
+  abPhase         String?   // null | 'testing' | 'completed'
+  abWinner        String?   // 'A' | 'B'
+  abTestStartedAt DateTime? // inicio de la ventana de prueba
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -739,6 +750,7 @@ model EmailCampaignRecipient {
   contactId  String?
   email      String
   status     String        @default("sent") // sent | failed
+  variant    String?       // 'A' | 'B' (prueba A/B) | 'W' (envío del ganador) | null
   openedAt   DateTime?
   clickedAt  DateTime?
   openCount  Int           @default(0)

@@ -5,7 +5,7 @@ import WhatsAppService from '../services/WhatsAppService.js';
 import EmailService from '../services/EmailService.js';
 import { runScheduledPublicationsDue } from '../controllers/socialPublishingController.js';
 import { processAllActivations } from '../services/activationService.js';
-import { processScheduledCampaigns } from '../controllers/emailMarketingController.js';
+import { processScheduledCampaigns, processAbTests } from '../controllers/emailMarketingController.js';
 import { processEmailAutomations } from '../controllers/emailAutomationController.js';
 import { sweepStaleDossiers } from '../services/brainSynthesis.js';
 import { decryptToken } from '../lib/tokenCrypto.js';
@@ -254,11 +254,19 @@ router.get('/send-scheduled-emails', async (req, res) => {
         } catch (autoErr) {
             console.error('[CRON send-scheduled-emails] automations error:', autoErr.message);
         }
+        // Decide el ganador de las pruebas A/B cuya ventana ya venció y envía al resto.
+        let abTests = null;
+        try {
+            abTests = await processAbTests({ baseUrl });
+        } catch (abErr) {
+            console.error('[CRON send-scheduled-emails] A/B error:', abErr.message);
+        }
         const elapsedMs = Date.now() - startedAt;
         console.log(`[CRON send-scheduled-emails] campañas: evaluadas=${summary.evaluated} enviadas=${summary.processed} fallidas=${summary.failed}` +
             (automations ? ` · automatizaciones: activas=${automations.automations} inscritos=${automations.enrolled} pasos=${automations.sent}` : '') +
+            (abTests ? ` · A/B: evaluadas=${abTests.evaluated} decididas=${abTests.decided} resto=${abTests.remainderSent}` : '') +
             ` en ${elapsedMs}ms`);
-        res.json({ ok: true, ...summary, automations, elapsedMs });
+        res.json({ ok: true, ...summary, automations, abTests, elapsedMs });
     } catch (e) {
         console.error('[CRON send-scheduled-emails] error:', e);
         res.status(500).json({ error: e.message });

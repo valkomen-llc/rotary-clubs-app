@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.568.0 | 2026-07-22 (Email Marketing: Proveedor de correo (Resend por defecto / SMTP) + fix de audiencia (incluye estado subscribed))
+// UI V4.569.0 | 2026-07-22 (Email Marketing: Pruebas A/B — variante B, muestra, ventana, métrica ganadora y envío automático del ganador al resto)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.569.0',
+        title: 'Email Marketing: prueba A/B y envía la versión ganadora automáticamente 🧪🏆',
+        description: 'Ahora puedes hacer pruebas A/B en tus campañas para descubrir qué versión funciona mejor antes de enviar a toda tu audiencia. Al crear o editar una campaña, activa "Prueba A/B" y define la variante B: un asunto alternativo (obligatorio) y, si quieres, un preheader y hasta un contenido HTML distinto; luego eliges qué porcentaje de la audiencia se usa como muestra (del 10% al 50%), cuántas horas dura la prueba y la métrica que decide al ganador (aperturas o clics). Al enviar, el sistema reparte la muestra en dos mitades —una recibe la versión A (tu asunto/contenido actual) y la otra la versión B— y, cuando vence la ventana de prueba, envía automáticamente la variante ganadora al resto de los contactos que aún no habían recibido nada. Funciona tanto con envío inmediato como programado. En el reporte de la campaña verás el comparativo A vs B con sus tasas y cuál ganó, y en el listado la campaña muestra su estado ("A/B en prueba" o "ganó A/B"). Todo respeta los límites de envío y las bajas. Cambio aditivo: el envío normal de campañas no cambia, y solo se agregan campos opcionales en la base de datos (sin migraciones destructivas). Es la quinta fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'campañas', 'ab-testing', 'a/b', 'pruebas', 'optimizacion', 'variantes', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.568.0',
         title: 'Email Marketing: configura tu proveedor de envío y llega a todos tus suscritos 📮⚙️',
