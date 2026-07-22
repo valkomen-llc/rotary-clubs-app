@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.565.0 | 2026-07-22 (Email Marketing: Panel unificado (dashboard) con KPIs, series por período, comparación y alertas de entregabilidad)
+// UI V4.566.0 | 2026-07-22 (Email Marketing: Editor visual de bloques drag-and-drop + biblioteca multimedia + preview por dispositivo + envío de prueba)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.566.0',
+        title: 'Email Marketing: diseña tus correos arrastrando bloques 🎨🧱',
+        description: 'Crear una campaña ya no exige saber HTML. El cuerpo del correo ahora se arma con un Editor visual por bloques (estilo arrastrar y soltar), que es la opción principal —el HTML avanzado sigue disponible para quien lo prefiera—. Agrega bloques desde la barra superior: Encabezado, Texto, Imagen, Botón, Columnas (2), Separador, Espaciado, Redes sociales, Video (miniatura con enlace) y HTML libre. Cada bloque se puede reordenar arrastrándolo (o con flechas), duplicar y eliminar, y tiene sus propios ajustes: colores, alineación, tamaños, redondeo, enlaces, etc. En "Estilos" defines la identidad global del correo: tipografía, fondo exterior y del contenido, color de texto y de enlaces, y ancho. Las imágenes se eligen desde la Biblioteca multimedia sin salir del editor, y con "Vista previa" ves cómo queda en Escritorio, Tablet y Móvil. También puedes "Enviar prueba" a cualquier correo antes del envío real. El diseño queda guardado para volver a editarlo cuando quieras, y se convierte automáticamente en un correo compatible con todos los clientes de email (tablas + estilos en línea). Las campañas antiguas hechas en HTML se siguen editando en modo HTML y no se pierden. Cambio aditivo: no envía correos por sí solo, no toca datos existentes ni la plantilla de pendones, y solo agrega una columna opcional para guardar el diseño. Es la segunda fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'campañas', 'editor', 'bloques', 'drag-and-drop', 'plantillas', 'multimedia', 'preview', 'prueba', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.565.0',
         title: 'Email Marketing estrena Panel: mira todo tu correo de un vistazo 📊✉️',
