@@ -16,6 +16,7 @@ import {
     getDashboard,
     getTags,
 } from '../controllers/emailMarketingController.js';
+import { assist } from '../controllers/emailAiController.js';
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.get('/:id/report', getReport);
 router.get('/:id', getCampaign);
 router.post('/', createCampaign);
 router.post('/test-send', sendTest);
+router.post('/ai/assist', assist);
 router.put('/:id', updateCampaign);
 router.delete('/:id', deleteCampaign);
 router.post('/:id/send', sendCampaign);

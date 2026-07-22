@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.566.0 | 2026-07-22 (Email Marketing: Editor visual de bloques drag-and-drop + biblioteca multimedia + preview por dispositivo + envío de prueba)
+// UI V4.567.0 | 2026-07-22 (Email Marketing: Asistente de IA — asuntos/preheader/cuerpo, reescritura por tono y longitud, anti-spam y traducción)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.567.0',
+        title: 'Email Marketing: escribe tus correos con ayuda de la IA ✨🤖',
+        description: 'El editor de campañas suma un Asistente de IA para que nunca partas de una hoja en blanco. Desde el botón "Asistente IA" (dentro de la campaña) tienes cinco herramientas: (1) Asuntos — genera 6 propuestas de asunto (con su largo de caracteres) y 3 preheaders a partir del objetivo de la campaña, el tono y la audiencia; aplicas el que quieras con un clic. (2) Cuerpo — redacta el contenido del correo en HTML simple según el objetivo, el tono (profesional, comercial, educativo, cercano o institucional), la longitud y los puntos que quieras incluir. (3) Mejorar — reescribe y pule el contenido actual con el tono y la longitud que elijas, más una instrucción libre. (4) Anti-spam — analiza el asunto y el cuerpo y te da una puntuación de riesgo de spam (0-100), los términos marcados y sugerencias concretas para mejorar la entregabilidad. (5) Traducir — traduce el correo a inglés, portugués, francés, italiano, alemán, japonés o coreano conservando el formato. El contenido generado se puede reemplazar o insertar al final del correo, y respeta si estás en el editor visual o en HTML. La IA usa el contexto de tu organización (nombre y ciudad) para dar mejores resultados. Cambio aditivo: no envía correos ni modifica tus contactos o campañas; solo te ayuda a redactar. Es la tercera fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'campañas', 'ia', 'ai', 'copywriting', 'asuntos', 'anti-spam', 'traduccion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.566.0',
         title: 'Email Marketing: diseña tus correos arrastrando bloques 🎨🧱',
