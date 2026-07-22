@@ -26,6 +26,7 @@ interface Campaign {
     content: string;
     audience: 'all' | 'list' | 'tag';
     listId?: string | null;
+    listIds?: string[] | null;
     segmentTag?: string | null;
     status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
     scheduledAt?: string | null;
@@ -61,6 +62,7 @@ interface CrmList {
     id: string;
     name: string;
     color?: string;
+    isLinked?: boolean;
     _count?: { members: number };
 }
 
@@ -106,6 +108,7 @@ const emptyForm = {
     content: '<h2>Hola 👋</h2>\n<p>Escribe aquí el contenido de tu campaña.</p>',
     audience: 'all' as 'all' | 'list' | 'tag',
     listId: '',
+    listIds: [] as string[],
     segmentTag: '',
     scheduleEnabled: false,
     scheduledAt: '',
@@ -253,14 +256,14 @@ const EmailMarketing: React.FC = () => {
         let cancelled = false;
         setAudienceCount(null);
         const params = new URLSearchParams({ audience: form.audience });
-        if (form.audience === 'list' && form.listId) params.set('listId', form.listId);
+        if (form.audience === 'list' && form.listIds.length) params.set('listIds', form.listIds.join(','));
         if (form.audience === 'tag' && form.segmentTag) params.set('segmentTag', form.segmentTag);
         fetch(`${API}/email-marketing/audience?${params.toString()}`, { headers: authHeaders() })
             .then(r => r.ok ? r.json() : { count: 0 })
             .then(d => { if (!cancelled) setAudienceCount(d.count ?? 0); })
             .catch(() => { if (!cancelled) setAudienceCount(0); });
         return () => { cancelled = true; };
-    }, [isModalOpen, form.audience, form.listId, form.segmentTag]);
+    }, [isModalOpen, form.audience, form.listIds, form.segmentTag]);
 
     const openModal = (c?: Campaign) => {
         setPreview(false);
@@ -274,6 +277,7 @@ const EmailMarketing: React.FC = () => {
                 content: c.content,
                 audience: c.audience,
                 listId: c.listId || '',
+                listIds: (c.listIds && c.listIds.length ? c.listIds : (c.listId ? [c.listId] : [])),
                 segmentTag: c.segmentTag || '',
                 scheduleEnabled: c.status === 'scheduled',
                 scheduledAt: toLocalInput(c.scheduledAt),
@@ -528,8 +532,11 @@ const EmailMarketing: React.FC = () => {
                     <tbody className="divide-y divide-gray-100">
                         {campaigns.map((c) => {
                             const meta = STATUS_META[c.status];
+                            const campaignListIds = (c.listIds && c.listIds.length ? c.listIds : (c.listId ? [c.listId] : []));
                             const listName = c.audience === 'list'
-                                ? (lists.find(l => l.id === c.listId)?.name || 'Lista')
+                                ? (campaignListIds.length > 1
+                                    ? `${campaignListIds.length} listas`
+                                    : (lists.find(l => l.id === campaignListIds[0])?.name || 'Lista'))
                                 : c.audience === 'tag'
                                     ? `Etiqueta: ${c.segmentTag || '—'}`
                                     : 'Todos los contactos';
@@ -695,21 +702,6 @@ const EmailMarketing: React.FC = () => {
                                         <option value="tag">Por etiqueta</option>
                                     </select>
                                 </div>
-                                {form.audience === 'list' && (
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Lista</label>
-                                        <select
-                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white"
-                                            value={form.listId}
-                                            onChange={(e) => setForm({ ...form, listId: e.target.value })}
-                                        >
-                                            <option value="">— Seleccionar lista —</option>
-                                            {lists.map(l => (
-                                                <option key={l.id} value={l.id}>{l.name} ({l._count?.members ?? 0})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
                                 {form.audience === 'tag' && (
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Etiqueta</label>
@@ -726,6 +718,34 @@ const EmailMarketing: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+
+                            {form.audience === 'list' && (
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Listas del CRM (Directorio)</label>
+                                    <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50">
+                                        {lists.length === 0 && (
+                                            <div className="p-3 text-sm text-gray-400">No hay listas en el Directorio CRM. Créalas en <strong>Comunicaciones CRM → Listas</strong>.</div>
+                                        )}
+                                        {lists.map((l) => {
+                                            const checked = form.listIds.includes(l.id);
+                                            return (
+                                                <label key={l.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue"
+                                                        checked={checked}
+                                                        onChange={(e) => setForm({ ...form, listIds: e.target.checked ? [...form.listIds, l.id] : form.listIds.filter((x) => x !== l.id) })}
+                                                    />
+                                                    <span className="flex-1 text-sm text-gray-700">{l.name}</span>
+                                                    {l.isLinked && <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">🔗 vinculada</span>}
+                                                    <span className="text-xs text-gray-400">{l._count?.members ?? 0}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-1">Elige una o varias listas del Directorio CRM. Las "vinculada" fueron compartidas por otro sitio.</p>
+                                </div>
+                            )}
 
                             <div className="bg-sky-50 border border-sky-100 rounded-lg px-4 py-2 text-sm text-sky-800 flex items-center gap-2">
                                 <Users className="w-4 h-4" />
