@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.567.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Asistente de IA en el editor de campañas. Nuevo endpoint POST /api/email-marketing/ai/assist (emailAiController) que reutiliza el router universal de modelos (lib/ai-router.js) para: generar asuntos + preheaders, generar el cuerpo del correo en HTML simple, reescribir/mejorar el contenido con tono (profesional/comercial/educativo/cercano/institucional) y longitud, detectar riesgo de spam (score + términos marcados + sugerencias) y traducir a varios idiomas. Frontend: componente EmailAiAssistant (modal con pestañas) con botón 'Asistente IA' en el editor; aplica asuntos/preheaders y inserta o reemplaza el HTML generado respetando el modo visual/HTML. Usa contexto de la organización (nombre/ciudad). 100% aditivo y de solo lectura respecto a la BD: no crea ni modifica campañas/contactos. Fase 3 del módulo Campañas de Email.)",
+  "version": "4.568.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 4: configuración de proveedor de correo + corrección de envío. (1) Nueva pestaña 'Proveedor' (solo super admin) en Email Marketing (ProviderSettings) que reutiliza los endpoints existentes GET/POST /api/platform-config/email y GET /api/financial/email-status: elige el proveedor de envío con RESEND POR DEFECTO (recomendado) o SMTP externo (Amazon SES, SendGrid, Mailgun, Postmark, Brevo o personalizado, con presets de host/puerto), define el remitente por defecto, muestra el estado de entregabilidad (clave de Resend conectada, dominios verificados con DKIM/SPF/DMARC, SMTP de respaldo) y permite enviar un correo de prueba. (2) Corrección: la resolución de audiencia y el conteo de suscritos ahora incluyen el estado 'subscribed' además de 'active' — antes los contactos creados por el CRM como 'subscribed' quedaban excluidos del envío. Aditivo, sin cambios de esquema ni operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.567.0 | 2026-07-22 (Email Marketing: Asistente de IA — asuntos/preheader/cuerpo, reescritura por tono y longitud, anti-spam y traducción)",
+  "//": "UI V4.568.0 | 2026-07-22 (Email Marketing: Proveedor de correo (Resend por defecto / SMTP) + fix de audiencia (incluye estado subscribed))",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
