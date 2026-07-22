@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.575.0 | 2026-07-22 (Email Marketing: audiencia multi-lista del Directorio CRM (incluye listas vinculadas))
+// UI V4.576.0 | 2026-07-22 (Fix Email Marketing: resolución de sitio unificada con el CRM (arregla 'No hay un sitio asociado'))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.576.0',
+        title: 'Corregido: Email Marketing ya reconoce tu sitio (contactos y listas del CRM) 🛠️✅',
+        description: 'Solucionamos el error "No hay un sitio asociado" que aparecía al enviar un correo de prueba o al crear/enviar una campaña desde Email Marketing con una cuenta de administrador global o de distrito. El problema era que el módulo de Email Marketing identificaba el sitio de una forma distinta a la del Directorio CRM, y para esas cuentas no encontraba un sitio, además de que podía no coincidir con los contactos y listas del CRM. Ahora Email Marketing usa exactamente el mismo mecanismo que el módulo de Comunicaciones/CRM para saber sobre qué sitio trabajar, de modo que opera sobre los mismos contactos y las mismas listas que ves en el Directorio. Con esto, enviar pruebas, crear campañas, calcular audiencias y las automatizaciones funcionan correctamente para administradores. Cambio interno y de bajo riesgo: no modifica datos ni hay migraciones.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'fix', 'crm', 'sitio', 'clubid', 'prueba', 'campañas', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.575.0',
         title: 'Email Marketing: envía a tus listas del Directorio CRM (una o varias) 📇✅',

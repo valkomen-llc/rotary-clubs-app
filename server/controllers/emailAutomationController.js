@@ -1,15 +1,10 @@
 import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
+import { resolveClubId } from './crmController.js';
 
 // Email Marketing F5 — Automatizaciones (secuencias por etiqueta, tipo FluentCRM).
 console.log('[emailAutomationController] v4.573 — flujos con nodos + bifurcación (condición/fin de condición) + notificar equipo + webhook');
 
-const resolveClubId = (req) => {
-    if (req.user?.role === 'administrator') {
-        return req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
-    }
-    return req.user?.clubId || null;
-};
 
 const isValidEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
@@ -38,7 +33,7 @@ const buildStepHtml = (step, contact, baseUrl) => {
 // GET / — lista de automatizaciones con conteos
 export const listAutomations = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.json([]);
         const automations = await prisma.emailAutomation.findMany({
             where: { clubId },
@@ -57,7 +52,7 @@ export const listAutomations = async (req, res) => {
 // GET /:id — detalle con pasos
 export const getAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const automation = await prisma.emailAutomation.findUnique({
             where: { id: req.params.id },
             include: { steps: { orderBy: { order: 'asc' } } },
@@ -106,7 +101,7 @@ const evalCondition = (spec, contact) => {
 // POST /
 export const createAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado' });
         const { name, triggerTag, steps } = req.body;
         if (!name || !triggerTag) return res.status(400).json({ error: 'Nombre y etiqueta disparadora son obligatorios' });
@@ -133,7 +128,7 @@ export const createAutomation = async (req, res) => {
 // PUT /:id — reemplaza pasos
 export const updateAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const existing = await prisma.emailAutomation.findUnique({ where: { id: req.params.id } });
         if (!existing || existing.clubId !== clubId) {
             return res.status(404).json({ error: 'Automatización no encontrada' });
@@ -167,7 +162,7 @@ export const updateAutomation = async (req, res) => {
 // DELETE /:id
 export const deleteAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const existing = await prisma.emailAutomation.findUnique({ where: { id: req.params.id } });
         if (!existing || existing.clubId !== clubId) {
             return res.status(404).json({ error: 'Automatización no encontrada' });
@@ -346,7 +341,7 @@ export const processEmailAutomations = async ({ baseUrl, now = new Date() } = {}
 // POST /:id/activate
 export const activateAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const automation = await prisma.emailAutomation.findUnique({
             where: { id: req.params.id },
             include: { steps: { orderBy: { order: 'asc' } } },
@@ -370,7 +365,7 @@ export const activateAutomation = async (req, res) => {
 // POST /:id/deactivate
 export const deactivateAutomation = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const automation = await prisma.emailAutomation.findUnique({ where: { id: req.params.id } });
         if (!automation || automation.clubId !== clubId) {
             return res.status(404).json({ error: 'Automatización no encontrada' });

@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
+import { resolveClubId } from './crmController.js';
 import { getCampaignConversions } from './emailMarketingController.js';
 
 // v4.567 — Asistente de IA para Email Marketing.
@@ -8,12 +9,6 @@ import { getCampaignConversions } from './emailMarketingController.js';
 // Solo lectura respecto a la BD: no crea ni modifica campañas ni contactos.
 console.log('[emailAiController] v4.567 — asistente IA (asuntos, preheader, cuerpo, mejorar, anti-spam, traducir)');
 
-const resolveClubId = (req) => {
-    if (req.user?.role === 'administrator') {
-        return req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
-    }
-    return req.user?.clubId || null;
-};
 
 // Extrae JSON de la respuesta del modelo, tolerando fences de código y texto alrededor.
 const parseJson = (text) => {
@@ -53,7 +48,7 @@ const SYSTEM = 'Eres un asistente experto en email marketing y copywriting en es
 // POST /ai/assist — { task, ...params }
 export const assist = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const { task } = req.body || {};
         if (!task) return res.status(400).json({ error: 'Falta el parámetro task' });
 
@@ -146,7 +141,7 @@ Devuelve JSON: {"html":"<traducción en HTML simple>"}`;
 // POST /:id/ai-summary — resumen inteligente del resultado de una campaña enviada.
 export const campaignSummary = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) return res.status(404).json({ error: 'Campaña no encontrada' });
 
