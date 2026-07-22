@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.573.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 9: Bifurcación y nuevos nodos en automatizaciones. La Condición deja de ser solo un filtro de salida: al agregar un nodo 'Fin de condición' después, define un bloque — si la condición se cumple se ejecutan los nodos del bloque, y si no, se saltan (bifurcación si/no). Si no hay 'Fin de condición', la condición mantiene el comportamiento anterior (el contacto sale del flujo cuando no se cumple), preservando compatibilidad. Nuevos nodos de acción: 'Notificar al equipo' (envía un aviso al correo indicado o a los administradores del sitio) y 'Webhook' (POST a una URL con los datos del contacto para integrar con otros sistemas). Backend aditivo: se amplía EmailAutomationStep.actionType con end_condition|notify|webhook; el runner calcula el salto del bloque y ejecuta los nuevos nodos. Sin operaciones destructivas de BD.)",
+  "version": "4.574.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 10: Atribución de conversiones e ingresos. La analítica avanzada de cada campaña ahora muestra conversiones, tasa de conversión e ingresos atribuidos: pedidos del ecommerce (tabla Order) hechos por destinatarios de la campaña (match por correo, case-insensitive) dentro de una ventana de 7 días posteriores al envío, contando solo pedidos pagados (se excluyen pending/cancelled/failed/refunded/etc.). Se agrega el helper getCampaignConversions (reutilizado por la analítica y por el resumen IA, que ahora considera ingresos). Los KPIs aparecen en la vista de Analítica avanzada y en el informe PDF. 100% de solo lectura sobre datos existentes: no crea ni modifica pedidos ni campañas; sin cambios de esquema ni operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.573.0 | 2026-07-22 (Email Marketing: Automatizaciones con bifurcación (condición/fin de condición) + notificar equipo + webhook)",
+  "//": "UI V4.574.0 | 2026-07-22 (Email Marketing: Atribución de conversiones e ingresos desde email (ecommerce) en analítica + PDF + resumen IA)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

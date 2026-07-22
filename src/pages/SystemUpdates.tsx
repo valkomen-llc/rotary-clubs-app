@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.573.0 | 2026-07-22 (Email Marketing: Automatizaciones con bifurcación (condición/fin de condición) + notificar equipo + webhook)
+// UI V4.574.0 | 2026-07-22 (Email Marketing: Atribución de conversiones e ingresos desde email (ecommerce) en analítica + PDF + resumen IA)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.574.0',
+        title: 'Email Marketing: mide cuánto venden tus campañas (conversiones e ingresos) 🛒💰',
+        description: 'La analítica avanzada de cada campaña ahora te dice cuánto dinero generó. Sumamos tres indicadores: Conversiones (cuántos pedidos de la tienda hicieron los destinatarios de la campaña), Tasa de conversión e Ingresos atribuidos. La atribución funciona así: tomamos a las personas a las que se envió la campaña y contamos los pedidos pagados que realizaron en la tienda dentro de los 7 días siguientes al envío, emparejándolos por su correo (sin distinguir mayúsculas). Se cuentan solo pedidos pagados —se excluyen los pendientes, cancelados, fallidos o reembolsados—. Estos KPIs aparecen tanto en la vista de "Analítica avanzada" como en el informe PDF descargable, y el "Resumen inteligente" de la IA ahora también toma en cuenta los ingresos al analizar el desempeño. Es una función de solo lectura sobre datos que ya existen: no crea ni cambia pedidos ni campañas, no modifica la base de datos y no hay migraciones. Es la décima fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'conversiones', 'ingresos', 'ecommerce', 'atribucion', 'analitica', 'roi', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.573.0',
         title: 'Automatizaciones con caminos "sí/no", avisos al equipo y webhooks 🔀🔔🔗',
