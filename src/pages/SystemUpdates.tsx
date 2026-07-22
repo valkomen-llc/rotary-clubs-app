@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.563.0 | 2026-07-21 (Calendario de Capacitaciones y Soporte — agenda de reservas, validación de suscripción + Stripe, videoconferencia, recordatorios y estadísticas)
+// UI V4.564.0 | 2026-07-21 (Dominio propio: resolución robusta apex/www en /by-domain + normalización al guardar)
 // Cache bust: 2026-07-21
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.564.0',
+        title: 'Tu dominio propio ahora carga bien con y sin "www" 🌐🔧',
+        description: 'Corregimos por qué algunos sitios con dominio propio mostraban la configuración por defecto en vez de la suya. El sistema que identifica a qué sitio pertenece un dominio ahora reconoce el dominio tanto con "www." como sin él (apex), sin importar en cuál de las dos formas se haya guardado el "Dominio Propio". Antes se quitaba el "www." solo de la dirección visitada pero no del valor guardado, así que un dominio guardado como "www.tusitio.org" no cargaba al entrar por "tusitio.org" y el visitante veía el sitio por defecto. Además, al guardar el Dominio Propio en Configuración → Identidad, ahora se limpia el formato (minúsculas, sin "https://" ni barras ni espacios) para evitar estos desajustes. Recomendación: si tu dominio propio no carga tu sitio, entra al panel, verifica que el "Dominio Propio" sea exactamente tu dominio (por ejemplo, tusitio.org) y vuelve a Guardar.',
+        date: new Date().toISOString(),
+        tags: ['dominio', 'dns', 'www', 'apex', 'identidad', 'configuracion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.563.0',
         title: 'Nuevo: Calendario de Capacitaciones y Soporte 🎓🗓️',
