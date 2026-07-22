@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.576.0 | 2026-07-22 (Fix Email Marketing: resolución de sitio unificada con el CRM (arregla 'No hay un sitio asociado'))
+// UI V4.577.0 | 2026-07-22 (Botones del menú principal configurables por sitio — texto + enlace desde Identidad)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.577.0',
+        title: 'Personaliza los dos botones de la cabecera de tu sitio 🔘✍️',
+        description: 'Los dos botones del menú principal de la cabecera (por defecto "Contribuye" y "Únete a un club") ahora se pueden personalizar por sitio, tanto el texto como el enlace, desde Configuración → Identidad → "Botones del menú principal". Por ejemplo, un sitio de feria de proyectos puede ponerlos como "International Registration" y "Submit a Project" apuntando a sus propios formularios. Si dejas un campo vacío, se usa el valor por defecto, así que los sitios que no lo toquen siguen exactamente igual que antes. Los enlaces que empiezan con "http" abren en una pestaña nueva; los internos navegan dentro del sitio. Cambio aditivo, no afecta a ningún sitio existente que no lo configure.',
+        date: new Date().toISOString(),
+        tags: ['navbar', 'cabecera', 'botones', 'cta', 'identidad', 'configuracion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.576.0',
         title: 'Corregido: Email Marketing ya reconoce tu sitio (contactos y listas del CRM) 🛠️✅',

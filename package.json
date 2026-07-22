@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.576.0",
-  "cache_bust": "2026-07-22 (Fix Email Marketing → resolución de sitio (clubId) unificada con el CRM. El módulo de Email Marketing usaba una resolución de sitio propia que devolvía null para administradores globales/distrito sin clubId en el token, provocando el error 'No hay un sitio asociado' al enviar una prueba o crear/enviar campañas, y desalineaba las listas/contactos respecto al Directorio CRM. Ahora los controllers de Email Marketing (campañas, asistente IA y automatizaciones) reutilizan el MISMO resolveClubId del CRM (crmController), que para un admin sin clubId cae al Platform Club 'Origen' (o al primer sitio con configuración). Así Email Marketing opera exactamente sobre el mismo sitio, contactos y listas que el Directorio CRM. Cambio de bajo nivel, sin cambios de esquema ni operaciones destructivas de BD.)",
+  "version": "4.577.0",
+  "cache_bust": "2026-07-22 (Botones del menú principal (cabecera) configurables por sitio: los dos CTAs del navbar ('Contribuye' y 'Únete a un club') ahora se pueden editar en texto y enlace desde Configuración → Identidad, por sitio. Si un campo va vacío se usa el valor por defecto, así ningún sitio existente cambia. Los enlaces que empiezan con http abren en pestaña nueva; los internos usan el router. Persistencia vía Setting 'header_ctas' (JSON [{label,url},{label,url}]): destructuring en updateClub, expuesto en clubs.js by-domain como club.headerCtas, tipado en ClubConfig; render en Navbar desktop+móvil con fallback a defaults (labels por defecto pasan por <T>, los personalizados se muestran literales). Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.576.0 | 2026-07-22 (Fix Email Marketing: resolución de sitio unificada con el CRM (arregla 'No hay un sitio asociado'))",
+  "//": "UI V4.577.0 | 2026-07-22 (Botones del menú principal configurables por sitio — texto + enlace desde Identidad)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -221,6 +221,12 @@ router.get('/by-domain', async (req, res) => {
             // Idioma por defecto del sitio (identidad). El selector lo pone de primero y se
             // aplica a los visitantes que aún no eligieron idioma. 'es' es la lengua fuente.
             defaultLanguage: settings['default_language'] || 'es',
+            // Botones CTA de la cabecera (navbar), configurables por sitio. null → el navbar
+            // usa los textos/enlaces por defecto ('Contribuye', 'Únete a un club').
+            headerCtas: (() => {
+                try { return settings['header_ctas'] ? JSON.parse(settings['header_ctas']) : null; }
+                catch { return null; }
+            })(),
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }
