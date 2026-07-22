@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.564.0 | 2026-07-21 (Dominio propio: resolución robusta apex/www en /by-domain + normalización al guardar)
-// Cache bust: 2026-07-21
+// UI V4.565.0 | 2026-07-22 (Email Marketing: Panel unificado (dashboard) con KPIs, series por período, comparación y alertas de entregabilidad)
+// Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.565.0',
+        title: 'Email Marketing estrena Panel: mira todo tu correo de un vistazo 📊✉️',
+        description: 'El módulo de Email Marketing ahora abre en un nuevo "Panel" que reúne, en una sola pantalla, la foto completa de tus campañas y tu audiencia. Arriba eliges el período (7, 30 o 90 días) y todo se recalcula, comparándose automáticamente con el período anterior (verás flechas verdes/rojas con el % de cambio). Incluye: indicadores clave de tu base de contactos (total, suscritos y alcanzables, dados de baja, sin correo, pendientes y con rebotes/fallos), de envíos (correos enviados en el período e histórico), de interacción (aperturas y clics únicos, tasas de apertura y de clic) y de automatizaciones activas; una franja de métricas de entregabilidad (tasa de entrega, bajas, campañas activas); dos gráficas —"Actividad de correo" (envíos, aperturas y clics por día) y "Crecimiento de contactos" (nuevos por día)—; el listado de campañas recientes con su rendimiento y un ranking de las de mejor apertura; y un panel de alertas de entregabilidad que te avisa, por ejemplo, si hay campañas fallidas, un pico de bajas, una tasa de apertura o de entrega baja, o muchos contactos sin correo, con recomendaciones concretas. Es una función 100% de solo lectura: no envía correos ni cambia ningún dato, y no toca la base de datos ni ninguna plantilla existente. Es la primera fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'campañas', 'dashboard', 'panel', 'kpis', 'entregabilidad', 'metricas', 'analitica', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.564.0',
         title: 'Tu dominio propio ahora carga bien con y sin "www" 🌐🔧',

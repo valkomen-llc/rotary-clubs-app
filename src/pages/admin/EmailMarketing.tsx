@@ -3,10 +3,11 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
+import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
 
 interface Campaign {
     id: string;
@@ -115,7 +116,7 @@ const EmailMarketing: React.FC = () => {
     const [preview, setPreview] = useState(false);
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
-    const [tab, setTab] = useState<'campaigns' | 'automations'>('campaigns');
+    const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations'>('dashboard');
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -341,6 +342,12 @@ const EmailMarketing: React.FC = () => {
             {/* Pestañas */}
             <div className="flex gap-2 mb-6 border-b border-gray-100">
                 <button
+                    onClick={() => setTab('dashboard')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'dashboard' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                >
+                    <LayoutDashboard className="w-4 h-4" /> Panel
+                </button>
+                <button
                     onClick={() => setTab('campaigns')}
                     className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'campaigns' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
                 >
@@ -353,6 +360,8 @@ const EmailMarketing: React.FC = () => {
                     <Workflow className="w-4 h-4" /> Automatizaciones
                 </button>
             </div>
+
+            {tab === 'dashboard' && <EmailDashboard />}
 
             {tab === 'automations' && <Automations />}
 

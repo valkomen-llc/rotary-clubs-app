@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.443 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend)');
+console.log('[emailMarketingController] v4.565 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend) + panel unificado (dashboard)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -423,6 +423,237 @@ export const getStats = async (req, res) => {
     } catch (error) {
         console.error('[emailMarketing] getStats:', error);
         res.status(500).json({ error: 'Error al cargar las métricas' });
+    }
+};
+
+// Períodos soportados por el panel unificado.
+const DASHBOARD_PERIODS = {
+    '7d': { days: 7, label: 'Últimos 7 días' },
+    '30d': { days: 30, label: 'Últimos 30 días' },
+    '90d': { days: 90, label: 'Últimos 90 días' },
+};
+const DAY_MS = 86400000;
+const startOfUTCDay = (d) => { const x = new Date(d); x.setUTCHours(0, 0, 0, 0); return x; };
+const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+const rate = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+const deltaPct = (current, previous) => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 1000) / 10;
+};
+
+// Cuenta filas agrupadas por día (columna de fecha configurable) para armar las series
+// del panel. Devuelve un mapa { 'YYYY-MM-DD': n }. Tolerante a fallos (retorna {} si falla).
+const dailyCounts = async (table, dateCol, clubId, from, extraWhere = '') => {
+    try {
+        const r = await db.query(
+            `SELECT to_char(date_trunc('day', "${dateCol}"), 'YYYY-MM-DD') AS d, COUNT(*)::int AS c
+             FROM "${table}"
+             WHERE "clubId" = $1 AND "${dateCol}" IS NOT NULL AND "${dateCol}" >= $2 ${extraWhere}
+             GROUP BY 1`,
+            [clubId, from]
+        );
+        const map = {};
+        for (const row of r.rows) map[row.d] = row.c;
+        return map;
+    } catch (e) {
+        console.error(`[emailMarketing] dailyCounts ${table}.${dateCol}:`, e.message);
+        return {};
+    }
+};
+
+// GET /dashboard?period=30d — panel unificado del módulo.
+// Agrega KPIs de audiencia, envíos, engagement y entregabilidad; series temporales por día;
+// comparación con el período anterior; campañas recientes / top; y alertas de entregabilidad.
+// 100% de solo lectura: no envía correos ni modifica datos.
+export const getDashboard = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        const key = DASHBOARD_PERIODS[req.query.period] ? req.query.period : '30d';
+        const { days, label } = DASHBOARD_PERIODS[key];
+        const now = new Date();
+        const today0 = startOfUTCDay(now);
+        const from = new Date(today0.getTime() - (days - 1) * DAY_MS);
+        const prevFrom = new Date(from.getTime() - days * DAY_MS);
+
+        if (!clubId) {
+            const zeroKpis = {
+                contactsTotal: 0, subscribed: 0, unsubscribed: 0, noEmail: 0, pending: 0, withFailures: 0, reachable: 0,
+                campaignsTotal: 0, campaignsSent: 0, campaignsActive: 0, campaignsSending: 0, campaignsScheduled: 0, campaignsFailed: 0,
+                automationsTotal: 0, automationsActive: 0, emailsSentAllTime: 0,
+                sentRecipients: 0, failedRecipients: 0, uniqueOpens: 0, uniqueClicks: 0,
+                deliveryRate: 0, openRate: 0, clickRate: 0, unsubRate: 0,
+                emailsSentPeriod: 0, opensPeriod: 0, clicksPeriod: 0, newContactsPeriod: 0,
+            };
+            const zeroDelta = { current: 0, previous: 0, deltaPct: 0 };
+            return res.json({
+                generatedAt: now.toISOString(),
+                period: { key, label, days, from: from.toISOString(), to: now.toISOString() },
+                kpis: zeroKpis,
+                comparison: { emailsSent: zeroDelta, opens: zeroDelta, clicks: zeroDelta, newContacts: zeroDelta },
+                series: [], recentCampaigns: [], topCampaigns: [],
+                alerts: [{ level: 'info', title: 'Selecciona un sitio', message: 'Elige un sitio (club/evento) para ver sus métricas de email marketing.' }],
+                empty: true,
+            });
+        }
+
+        const [
+            contactsTotal, subscribed, unsubscribed, noEmail, pending, withFailures, subscribedStatusOnly,
+            campaignsTotal, campaignsSent, campaignsSending, campaignsScheduled, campaignsFailed,
+            automationsTotal, automationsActive,
+            sentAgg, sentRecipients, failedRecipients, uniqueOpens, uniqueClicks,
+            emailsSentPeriod, emailsSentPrev, opensPeriod, opensPrev, clicksPeriod, clicksPrev,
+            newContactsPeriod, newContactsPrev, newUnsubsPeriod,
+            campaigns,
+        ] = await Promise.all([
+            prisma.crmContact.count({ where: { clubId, archivedAt: null } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, optedOutAt: null, status: { in: ['active', 'subscribed'] }, email: { not: null } } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, optedOutAt: { not: null } } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, email: null } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, status: 'pending' } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, totalFailed: { gt: 0 } } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, status: 'subscribed' } }),
+            prisma.emailCampaign.count({ where: { clubId } }),
+            prisma.emailCampaign.count({ where: { clubId, status: 'sent' } }),
+            prisma.emailCampaign.count({ where: { clubId, status: 'sending' } }),
+            prisma.emailCampaign.count({ where: { clubId, status: 'scheduled' } }),
+            prisma.emailCampaign.count({ where: { clubId, status: 'failed' } }),
+            prisma.emailAutomation.count({ where: { clubId } }).catch(() => 0),
+            prisma.emailAutomation.count({ where: { clubId, status: 'active' } }).catch(() => 0),
+            prisma.emailCampaign.aggregate({ where: { clubId }, _sum: { sentCount: true } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, status: 'sent' } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, status: 'failed' } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, openedAt: { not: null } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, clickedAt: { not: null } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, status: 'sent', createdAt: { gte: from } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, status: 'sent', createdAt: { gte: prevFrom, lt: from } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, openedAt: { gte: from } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, openedAt: { gte: prevFrom, lt: from } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, clickedAt: { gte: from } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, clickedAt: { gte: prevFrom, lt: from } } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, createdAt: { gte: from } } }),
+            prisma.crmContact.count({ where: { clubId, archivedAt: null, createdAt: { gte: prevFrom, lt: from } } }),
+            prisma.crmContact.count({ where: { clubId, optedOutAt: { gte: from } } }),
+            prisma.emailCampaign.findMany({ where: { clubId }, orderBy: { createdAt: 'desc' }, take: 50 }),
+        ]);
+
+        // Series por día (envíos, aperturas, clics, contactos nuevos).
+        const [sentByDay, opensByDay, clicksByDay, contactsByDay] = await Promise.all([
+            dailyCounts('EmailCampaignRecipient', 'createdAt', clubId, from, `AND status = 'sent'`),
+            dailyCounts('EmailCampaignRecipient', 'openedAt', clubId, from),
+            dailyCounts('EmailCampaignRecipient', 'clickedAt', clubId, from),
+            dailyCounts('WhatsAppContact', 'createdAt', clubId, from, `AND "archivedAt" IS NULL`),
+        ]);
+        const series = [];
+        let cumulativeContacts = 0;
+        for (let i = 0; i < days; i++) {
+            const k = dayKey(new Date(from.getTime() + i * DAY_MS));
+            cumulativeContacts += contactsByDay[k] || 0;
+            series.push({
+                date: k,
+                sent: sentByDay[k] || 0,
+                opens: opensByDay[k] || 0,
+                clicks: clicksByDay[k] || 0,
+                contacts: contactsByDay[k] || 0,
+                contactsCumulative: cumulativeContacts,
+            });
+        }
+
+        // Métricas únicas por campaña (aperturas/clics reales por destinatario) para
+        // "recientes" y "top", en una sola consulta agrupada.
+        const sentCampaignIds = campaigns.filter((c) => ['sent', 'failed'].includes(c.status)).map((c) => c.id);
+        const perCampaign = {};
+        if (sentCampaignIds.length) {
+            try {
+                const r = await db.query(
+                    `SELECT "campaignId",
+                        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+                        COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS opens,
+                        COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS clicks
+                     FROM "EmailCampaignRecipient"
+                     WHERE "clubId" = $1 AND "campaignId" = ANY($2)
+                     GROUP BY "campaignId"`,
+                    [clubId, sentCampaignIds]
+                );
+                for (const row of r.rows) perCampaign[row.campaignId] = row;
+            } catch (e) {
+                console.error('[emailMarketing] dashboard perCampaign:', e.message);
+            }
+        }
+        const decorate = (c) => {
+            const pc = perCampaign[c.id] || { sent: c.sentCount, opens: 0, clicks: 0 };
+            return {
+                id: c.id, name: c.name, subject: c.subject, status: c.status,
+                audience: c.audience, segmentTag: c.segmentTag, listId: c.listId,
+                sentAt: c.sentAt, createdAt: c.createdAt, scheduledAt: c.scheduledAt,
+                totalRecipients: c.totalRecipients, sentCount: c.sentCount, failedCount: c.failedCount,
+                openCount: c.openCount, clickCount: c.clickCount,
+                uniqueOpens: pc.opens, uniqueClicks: pc.clicks,
+                openRate: rate(pc.opens, pc.sent), clickRate: rate(pc.clicks, pc.sent),
+            };
+        };
+        const recentCampaigns = campaigns.slice(0, 6).map(decorate);
+        const topCampaigns = campaigns
+            .filter((c) => c.status === 'sent' && c.sentCount > 0)
+            .map(decorate)
+            .sort((a, b) => b.openRate - a.openRate)
+            .slice(0, 5);
+
+        // Alertas de entregabilidad (solo lectura).
+        const alerts = [];
+        const emailsSentAllTime = sentAgg._sum.sentCount || 0;
+        const openRate = rate(uniqueOpens, sentRecipients);
+        const deliveryRate = rate(sentRecipients, sentRecipients + failedRecipients);
+        if (campaignsFailed > 0) {
+            alerts.push({ level: 'danger', title: 'Campañas con fallos de envío', message: `${campaignsFailed} campaña(s) quedaron en estado "fallida". Revisa la configuración del proveedor de correo (Resend/SMTP) y reintenta el envío.` });
+        }
+        if (subscribed > 0 && newUnsubsPeriod / subscribed > 0.02) {
+            alerts.push({ level: 'warning', title: 'Pico de bajas', message: `${newUnsubsPeriod} baja(s) en ${label.toLowerCase()} (${rate(newUnsubsPeriod, subscribed)}% de tu base suscrita). Revisa la frecuencia y la relevancia del contenido.` });
+        }
+        if (sentRecipients >= 50 && openRate < 10) {
+            alerts.push({ level: 'warning', title: 'Tasa de apertura baja', message: `Tu tasa de apertura histórica es ${openRate}%. Prueba asuntos más claros, mejora el remitente/preheader y depura contactos inactivos.` });
+        }
+        if (contactsTotal > 0 && noEmail / contactsTotal > 0.2) {
+            alerts.push({ level: 'info', title: 'Contactos sin correo', message: `${noEmail} de ${contactsTotal} contactos (${rate(noEmail, contactsTotal)}%) no tienen email y no son alcanzables por campañas. Complétalos o impórtalos con correo.` });
+        }
+        if (subscribedStatusOnly > 0) {
+            alerts.push({ level: 'info', title: 'Estados por normalizar', message: `${subscribedStatusOnly} contacto(s) tienen estado "subscribed". El envío actual filtra por "active": el panel ya los cuenta como suscritos, pero conviene normalizar el estado (previsto para una próxima fase).` });
+        }
+        if (deliveryRate > 0 && deliveryRate < 95 && sentRecipients + failedRecipients >= 20) {
+            alerts.push({ level: 'warning', title: 'Entregabilidad reducida', message: `Tu tasa de entrega es ${deliveryRate}%. Verifica SPF/DKIM/DMARC del dominio remitente y la reputación del proveedor.` });
+        }
+        if (alerts.length === 0) {
+            alerts.push({ level: 'success', title: 'Sin alertas', message: 'No detectamos problemas de entregabilidad. Todo en orden.' });
+        }
+
+        res.json({
+            generatedAt: now.toISOString(),
+            period: { key, label, days, from: from.toISOString(), to: now.toISOString() },
+            kpis: {
+                contactsTotal, subscribed, unsubscribed, noEmail, pending, withFailures,
+                reachable: subscribed,
+                campaignsTotal, campaignsSent, campaignsActive: campaignsSending + campaignsScheduled,
+                campaignsSending, campaignsScheduled, campaignsFailed,
+                automationsTotal, automationsActive,
+                emailsSentAllTime,
+                sentRecipients, failedRecipients, uniqueOpens, uniqueClicks,
+                deliveryRate, openRate, clickRate: rate(uniqueClicks, sentRecipients),
+                unsubRate: rate(unsubscribed, contactsTotal),
+                emailsSentPeriod, opensPeriod, clicksPeriod, newContactsPeriod,
+            },
+            comparison: {
+                emailsSent: { current: emailsSentPeriod, previous: emailsSentPrev, deltaPct: deltaPct(emailsSentPeriod, emailsSentPrev) },
+                opens: { current: opensPeriod, previous: opensPrev, deltaPct: deltaPct(opensPeriod, opensPrev) },
+                clicks: { current: clicksPeriod, previous: clicksPrev, deltaPct: deltaPct(clicksPeriod, clicksPrev) },
+                newContacts: { current: newContactsPeriod, previous: newContactsPrev, deltaPct: deltaPct(newContactsPeriod, newContactsPrev) },
+            },
+            series,
+            recentCampaigns,
+            topCampaigns,
+            alerts,
+        });
+    } catch (error) {
+        console.error('[emailMarketing] getDashboard:', error);
+        res.status(500).json({ error: 'Error al cargar el panel' });
     }
 };
 
