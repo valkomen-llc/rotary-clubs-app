@@ -3,12 +3,13 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
 import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
 import EmailBuilder from '../../components/admin/email-marketing/EmailBuilder';
+import EmailAiAssistant from '../../components/admin/email-marketing/EmailAiAssistant';
 import { EmailDesign, DEFAULT_DESIGN, DEFAULT_SETTINGS, parseDesign, renderDesignToHtml, newId } from '../../lib/emailBlocks';
 
 interface Campaign {
@@ -123,6 +124,7 @@ const EmailMarketing: React.FC = () => {
     const [contentMode, setContentMode] = useState<'visual' | 'html'>('visual');
     const [builderDesign, setBuilderDesign] = useState<EmailDesign | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
+    const [aiOpen, setAiOpen] = useState(false);
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -261,6 +263,21 @@ const EmailMarketing: React.FC = () => {
     const handleDesignChange = (design: EmailDesign) => {
         setBuilderDesign(design);
         setForm((f) => ({ ...f, content: renderDesignToHtml(design) }));
+    };
+
+    // Aplica HTML generado por IA respetando el modo actual. En visual lo inserta como
+    // un bloque HTML (al final o reemplazando todo); en HTML edita el content directo.
+    const applyAiHtml = (html: string, mode: 'append' | 'replace') => {
+        if (contentMode === 'visual' && builderDesign) {
+            const block = { id: newId(), type: 'html' as const, html };
+            const next: EmailDesign = mode === 'replace'
+                ? { ...builderDesign, blocks: [block] }
+                : { ...builderDesign, blocks: [...builderDesign.blocks, block] };
+            setBuilderDesign(next);
+            setForm((f) => ({ ...f, content: renderDesignToHtml(next) }));
+        } else {
+            setForm((f) => ({ ...f, content: mode === 'replace' ? html : `${f.content}\n${html}` }));
+        }
     };
 
     // Al pasar a visual desde una campaña heredada (HTML crudo), envolvemos ese HTML en
@@ -698,15 +715,20 @@ const EmailMarketing: React.FC = () => {
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                                     <label className="block text-sm font-bold text-gray-700">Contenido del correo</label>
-                                    <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
-                                        <button type="button" onClick={() => switchMode('visual')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'visual' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
-                                            <Megaphone className="w-3.5 h-3.5" /> Editor visual
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" onClick={() => setAiOpen(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 shadow-sm">
+                                            <Sparkles className="w-3.5 h-3.5" /> Asistente IA
                                         </button>
-                                        <button type="button" onClick={() => switchMode('html')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'html' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
-                                            <Code className="w-3.5 h-3.5" /> HTML
-                                        </button>
+                                        <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
+                                            <button type="button" onClick={() => switchMode('visual')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'visual' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
+                                                <Megaphone className="w-3.5 h-3.5" /> Editor visual
+                                            </button>
+                                            <button type="button" onClick={() => switchMode('html')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'html' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
+                                                <Code className="w-3.5 h-3.5" /> HTML
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 {contentMode === 'visual' && builderDesign ? (
@@ -803,6 +825,17 @@ const EmailMarketing: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <EmailAiAssistant
+                open={aiOpen && isModalOpen}
+                onClose={() => setAiOpen(false)}
+                subject={form.subject}
+                content={form.content}
+                objectiveDefault={form.name}
+                onApplySubject={(s) => setForm((f) => ({ ...f, subject: s }))}
+                onApplyPreheader={(p) => setForm((f) => ({ ...f, preheader: p }))}
+                onApplyHtml={applyAiHtml}
+            />
         </AdminLayout>
     );
 };
