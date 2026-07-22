@@ -163,6 +163,7 @@ const ClubSettings: React.FC = () => {
         authorsVisible: true,
         currency: 'USD',
         defaultLanguage: 'es',
+        headerCtas: [{ label: '', url: '' }, { label: '', url: '' }] as { label: string; url: string }[],
     });
     
     const [uploading, setUploading] = useState(false);
@@ -377,6 +378,12 @@ const ClubSettings: React.FC = () => {
                 authorsVisible: (club as any).authorsVisible !== false && settingsMap['authors_visible'] !== 'false',
                 currency: (club as any).currency || settingsMap['club_currency'] || 'USD',
                 defaultLanguage: (club as any).defaultLanguage || settingsMap['default_language'] || 'es',
+                headerCtas: (() => {
+                    let v: any = (club as any).headerCtas;
+                    if (!v && settingsMap['header_ctas']) { try { v = JSON.parse(settingsMap['header_ctas']); } catch { v = null; } }
+                    const norm = (x: any) => ({ label: String(x?.label || ''), url: String(x?.url || '') });
+                    return Array.isArray(v) ? [norm(v[0]), norm(v[1])] : [{ label: '', url: '' }, { label: '', url: '' }];
+                })(),
             });
 
             if (club.paymentConfigs && Array.isArray(club.paymentConfigs)) {
@@ -802,6 +809,51 @@ const ClubSettings: React.FC = () => {
                                     </select>
                                     <p className="text-[11px] text-gray-400">Idioma con el que carga el sitio para nuevos visitantes. Aparece de primero en el selector de idiomas.</p>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Botones del menú principal (cabecera) — texto + enlace configurables por sitio */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                                <Layout className="w-5 h-5 text-rotary-blue" /> Botones del menú principal
+                            </h3>
+                            <p className="text-[11px] text-gray-400 mb-5">Los dos botones de la cabecera del sitio. Deja un campo vacío para usar el valor por defecto. Si el enlace empieza con http, abre en una pestaña nueva.</p>
+                            <div className="space-y-6">
+                                {[0, 1].map((i) => {
+                                    const defaults = [
+                                        { label: 'Contribuye', url: '/maneras-de-contribuir' },
+                                        { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio' },
+                                    ][i];
+                                    const updateCta = (field: 'label' | 'url', value: string) => {
+                                        const next = [...formData.headerCtas];
+                                        next[i] = { ...(next[i] || { label: '', url: '' }), [field]: value };
+                                        setFormData({ ...formData, headerCtas: next });
+                                    };
+                                    return (
+                                        <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Botón {i + 1} — Texto</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                                    value={formData.headerCtas[i]?.label || ''}
+                                                    placeholder={defaults.label}
+                                                    onChange={e => updateCta('label', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Botón {i + 1} — Enlace</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                                    value={formData.headerCtas[i]?.url || ''}
+                                                    placeholder={defaults.url}
+                                                    onChange={e => updateCta('url', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
