@@ -71,12 +71,12 @@ export interface ClubConfig {
     defaultLanguage?: string;
     /**
      * Botones CTA de la cabecera (navbar), configurables por sitio: hasta 2 entradas
-     * { label, labelEs, url }. `label` es el texto internacional (idiomas ≠ Español);
-     * `labelEs` es el texto en Español (se usa cuando el idioma activo es 'es'). Si una
-     * entrada (o su campo) va vacía, se usa el valor por defecto ('Contribuye' →
-     * /maneras-de-contribuir, 'Únete a un club' → /contacto…).
+     * { label, labelEs, url, urlEs }. `label`/`url` son el texto y enlace internacionales
+     * (idiomas ≠ Español); `labelEs`/`urlEs` son el texto y enlace en Español (se usan cuando
+     * el idioma activo es 'es'). Si un campo va vacío, cae a su variante; si ambos van vacíos,
+     * se usa el valor por defecto ('Contribuye' → /maneras-de-contribuir, etc.).
      */
-    headerCtas?: { label?: string; labelEs?: string; url?: string }[];
+    headerCtas?: { label?: string; labelEs?: string; url?: string; urlEs?: string }[];
 }
 
 // Default/Fallback configuration for when API is loading or fails

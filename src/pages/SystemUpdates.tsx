@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.579.0 | 2026-07-22 (Botones de la cabecera por idioma: texto internacional + texto en Español)
+// UI V4.580.0 | 2026-07-22 (Botones de la cabecera: texto Y enlace por idioma (internacional + Español))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.580.0',
+        title: 'Los botones de la cabecera ahora cambian también el enlace según el idioma 🔗🌐',
+        description: 'Complemento del cambio anterior: además del texto, ahora cada botón del menú principal puede tener un ENLACE distinto según el idioma. En Configuración → Identidad → "Botones del menú principal", cada botón tiene ahora cuatro campos: Texto (otros idiomas), Texto (Español), Enlace (otros idiomas) y Enlace (Español). Cuando el visitante ve el sitio en español se usan el texto y el enlace en español; en inglés (u otro idioma), los internacionales. Así puedes, por ejemplo, mandar a un formulario de registro internacional cuando está en inglés y a uno en español cuando está en español. Si dejas un enlace vacío, se usa su variante (o el enlace por defecto). Cambio aditivo, no afecta a los sitios que no lo configuren.',
+        date: new Date().toISOString(),
+        tags: ['navbar', 'cabecera', 'botones', 'enlaces', 'idioma', 'i18n', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.579.0',
         title: 'Botones de la cabecera con texto por idioma (Español vs. internacional) 🌐🔘',
