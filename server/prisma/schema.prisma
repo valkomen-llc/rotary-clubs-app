@@ -688,9 +688,23 @@ model EmailCampaign {
   updatedAt       DateTime  @updatedAt
   club            Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
   recipients      EmailCampaignRecipient[]
+  linkClicks      EmailLinkClick[]
 
   @@index([clubId])
   @@index([status])
+}
+
+// Un registro por clic (evento) — habilita "enlaces más pulsados" y analítica de clics (v4.571).
+model EmailLinkClick {
+  id          String        @id @default(uuid())
+  campaignId  String
+  clubId      String
+  url         String
+  createdAt   DateTime      @default(now())
+  campaign    EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([clubId])
 }
 
 // Email Marketing F5 — Automatizaciones (secuencias tipo FluentCRM): cuando un contacto
@@ -751,6 +765,7 @@ model EmailCampaignRecipient {
   email      String
   status     String        @default("sent") // sent | failed
   variant    String?       // 'A' | 'B' (prueba A/B) | 'W' (envío del ganador) | null
+  device     String?       // 'mobile' | 'tablet' | 'desktop' — derivado del user-agent en la primera apertura (v4.571)
   openedAt   DateTime?
   clickedAt  DateTime?
   openCount  Int           @default(0)

@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server, FlaskConical, Trophy
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server, FlaskConical, Trophy, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
@@ -11,6 +11,7 @@ import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
 import EmailBuilder from '../../components/admin/email-marketing/EmailBuilder';
 import EmailAiAssistant from '../../components/admin/email-marketing/EmailAiAssistant';
 import ProviderSettings from '../../components/admin/email-marketing/ProviderSettings';
+import CampaignAnalytics from '../../components/admin/email-marketing/CampaignAnalytics';
 
 // El super administrador (rol 'administrator') gestiona el proveedor de correo (config de plataforma).
 const isSuperAdmin = (() => { try { return JSON.parse(localStorage.getItem('rotary_user') || '{}').role === 'administrator'; } catch { return false; } })();
@@ -155,6 +156,7 @@ const EmailMarketing: React.FC = () => {
     const [builderDesign, setBuilderDesign] = useState<EmailDesign | null>(null);
     const [sendingTest, setSendingTest] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
+    const [analyticsId, setAnalyticsId] = useState<string | null>(null);
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -581,6 +583,15 @@ const EmailMarketing: React.FC = () => {
                                                     <BarChart3 className="w-4 h-4" />
                                                 </button>
                                             )}
+                                            {(c.status === 'sent' || c.status === 'failed') && (
+                                                <button
+                                                    onClick={() => setAnalyticsId(c.id)}
+                                                    className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"
+                                                    title="Analítica avanzada + informe PDF"
+                                                >
+                                                    <Activity className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             {(c.status === 'draft' || c.status === 'scheduled' || c.status === 'failed') && (
                                                 <button
                                                     onClick={() => handleSend(c)}
@@ -993,6 +1004,8 @@ const EmailMarketing: React.FC = () => {
                 onApplyPreheader={(p) => setForm((f) => ({ ...f, preheader: p }))}
                 onApplyHtml={applyAiHtml}
             />
+
+            {analyticsId && <CampaignAnalytics campaignId={analyticsId} onClose={() => setAnalyticsId(null)} />}
         </AdminLayout>
     );
 };
