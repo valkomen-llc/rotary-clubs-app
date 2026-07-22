@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.577.0",
-  "cache_bust": "2026-07-22 (Botones del menú principal (cabecera) configurables por sitio: los dos CTAs del navbar ('Contribuye' y 'Únete a un club') ahora se pueden editar en texto y enlace desde Configuración → Identidad, por sitio. Si un campo va vacío se usa el valor por defecto, así ningún sitio existente cambia. Los enlaces que empiezan con http abren en pestaña nueva; los internos usan el router. Persistencia vía Setting 'header_ctas' (JSON [{label,url},{label,url}]): destructuring en updateClub, expuesto en clubs.js by-domain como club.headerCtas, tipado en ClubConfig; render en Navbar desktop+móvil con fallback a defaults (labels por defecto pasan por <T>, los personalizados se muestran literales). Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.578.0",
+  "cache_bust": "2026-07-22 (Selector de idiomas: la bandera del 'Español' ahora es la de Colombia (código de país 'co' en SUPPORTED_LANGUAGES) en vez de la de España, acorde a la plataforma Rotary Colombia. Cambio de una línea en LanguageContext; el navbar ya renderizaba desde ese catálogo, así que aplica en todos los sitios. Aditivo, sin cambios de esquema ni operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.577.0 | 2026-07-22 (Botones del menú principal configurables por sitio — texto + enlace desde Identidad)",
+  "//": "UI V4.578.0 | 2026-07-22 (Selector de idiomas: bandera de Colombia para Español)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
