@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import {
     X, RefreshCw, Sparkles, Download, Activity, Clock, Smartphone, Link2,
-    CheckCircle2, AlertTriangle, Lightbulb, TrendingUp,
+    CheckCircle2, AlertTriangle, Lightbulb, TrendingUp, ShoppingCart, DollarSign,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ interface Analytics {
     hourly: { hour: number; opens: number; clicks: number }[];
     devices: { device: string; count: number }[];
     topLinks: { url: string; clicks: number }[];
+    conversions: { count: number; revenue: number; currency: string; windowDays: number; rate: number };
 }
 interface AiSummary {
     summary: string;
@@ -90,7 +91,8 @@ const CampaignAnalytics: React.FC<{ campaignId: string; onClose: () => void }> =
             const f = data.funnel;
             line(`Enviados: ${fmt(f.sent)}   ·   Fallidos: ${fmt(data.totals.failed)}`, 11, [55, 65, 81], 6);
             line(`Aperturas únicas: ${fmt(f.uniqueOpens)} (${f.openRate}%)   ·   Total aperturas: ${fmt(data.totals.totalOpens)}`, 11, [55, 65, 81], 6);
-            line(`Clics únicos: ${fmt(f.uniqueClicks)} (${f.clickRate}%)   ·   Click-to-open: ${f.ctor}%`, 11, [55, 65, 81], 8);
+            line(`Clics únicos: ${fmt(f.uniqueClicks)} (${f.clickRate}%)   ·   Click-to-open: ${f.ctor}%`, 11, [55, 65, 81], 6);
+            line(`Conversiones (${data.conversions.windowDays} días): ${fmt(data.conversions.count)} (${data.conversions.rate}%)   ·   Ingresos: ${fmt(data.conversions.revenue)} ${data.conversions.currency}`, 11, [55, 65, 81], 8);
             // Enlaces
             if (data.topLinks.length) {
                 doc.setFont('helvetica', 'bold'); line('Enlaces más pulsados', 14, [17, 24, 39], 7);
@@ -165,6 +167,26 @@ const CampaignAnalytics: React.FC<{ campaignId: string; onClose: () => void }> =
                                     ))}
                                 </div>
                                 <p className="text-[11px] text-gray-400 mt-2">Click-to-open (CTOR): <strong>{data.funnel.ctor}%</strong> · de quienes abrieron, cuántos hicieron clic.</p>
+                            </div>
+
+                            {/* Conversiones e ingresos */}
+                            <div>
+                                <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-1.5"><ShoppingCart className="w-4 h-4 text-emerald-600" /> Conversiones e ingresos <span className="text-[11px] text-gray-400 font-normal">· ventana {data.conversions.windowDays} días</span></h3>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
+                                        <p className="text-2xl font-black text-emerald-700">{fmt(data.conversions.count)}</p>
+                                        <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Conversiones</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-100 text-center">
+                                        <p className="text-2xl font-black text-rotary-blue">{data.conversions.rate}%</p>
+                                        <p className="text-[10px] uppercase font-bold text-sky-600 tracking-wider">Tasa de conversión</p>
+                                    </div>
+                                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 text-center">
+                                        <p className="text-2xl font-black text-amber-700">{fmt(data.conversions.revenue)} <span className="text-xs font-bold text-amber-500">{data.conversions.currency}</span></p>
+                                        <p className="text-[10px] uppercase font-bold text-amber-600 tracking-wider">Ingresos</p>
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><DollarSign className="w-3 h-3" /> Pedidos del ecommerce hechos por destinatarios de la campaña dentro de los {data.conversions.windowDays} días posteriores al envío (match por correo).</p>
                             </div>
 
                             <div className="grid md:grid-cols-3 gap-4">

@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { routeToModel, getDefaultModel } from '../lib/ai-router.js';
+import { getCampaignConversions } from './emailMarketingController.js';
 
 // v4.567 — Asistente de IA para Email Marketing.
 // Genera asuntos/preheaders/cuerpo, reescribe con tono y longitud, detecta riesgo de
@@ -160,10 +161,15 @@ export const campaignSummary = async (req, res) => {
         const clickRate = sent ? Math.round((uClicks / sent) * 1000) / 10 : 0;
         const ctor = uOpens ? Math.round((uClicks / uOpens) * 1000) / 10 : 0;
         const linksTxt = topLinks.length ? topLinks.map((l) => `${l.url} (${l._count.url})`).join('; ') : 'ninguno';
+        const conv = await getCampaignConversions(campaign);
+        const convTxt = conv.count > 0
+            ? `${conv.count} pedido(s), ingresos ${conv.revenue} ${conv.currency} (ventana ${conv.windowDays} días)`
+            : 'sin conversiones atribuidas';
 
         const userPrompt = `Analiza el resultado de esta campaña de email y da un resumen accionable en español.
 Asunto: "${clip(campaign.subject, 200)}".
 Métricas: enviados ${sent}, fallidos ${failed}, aperturas únicas ${uOpens} (${openRate}%), clics únicos ${uClicks} (${clickRate}%), click-to-open ${ctor}%.
+Conversiones atribuidas: ${convTxt}.
 Enlaces más pulsados: ${clip(linksTxt, 400)}.
 Referencia sectorial: apertura buena ~20-30%, clic bueno ~2-5%.
 Devuelve JSON: {"summary":"2-3 frases claras sobre el desempeño","whatWorked":["punto"],"toImprove":["punto"],"recommendations":["acción concreta para la próxima campaña"]}`;

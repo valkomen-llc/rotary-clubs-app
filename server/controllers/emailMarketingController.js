@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.571 — campañas + tracking + reportes + dashboard + editor visual + prueba + subscribed + A/B + analítica avanzada (embudo, horarios, dispositivos, enlaces top) + resumen IA');
+console.log('[emailMarketingController] v4.574 — campañas + tracking + reportes + dashboard + editor visual + A/B + analítica avanzada + resumen IA + atribución de conversiones/ingresos (ecommerce)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -616,8 +616,44 @@ export const getReport = async (req, res) => {
     }
 };
 
+// Ventana de atribución de conversiones (días desde el envío de la campaña).
+const ATTRIBUTION_WINDOW_DAYS = 7;
+// Estados de pedido que NO cuentan como conversión (no pagados).
+const NON_PAID_STATUSES = "'pending','cancelled','canceled','failed','expired','refunded','draft'";
+
+// Conversiones/ingresos atribuidos a una campaña: pedidos del ecommerce hechos por
+// destinatarios de la campaña (match por email) dentro de la ventana de atribución.
+export const getCampaignConversions = async (campaign) => {
+    const result = { count: 0, revenue: 0, currency: 'USD', windowDays: ATTRIBUTION_WINDOW_DAYS };
+    if (!campaign?.sentAt) return result;
+    try {
+        const recips = await prisma.emailCampaignRecipient.findMany({
+            where: { campaignId: campaign.id, status: 'sent' }, select: { email: true },
+        });
+        const emails = [...new Set(recips.map((r) => (r.email || '').trim().toLowerCase()).filter(Boolean))];
+        if (!emails.length) return result;
+        const from = new Date(campaign.sentAt);
+        const to = new Date(from.getTime() + ATTRIBUTION_WINDOW_DAYS * 86400000);
+        const r = await db.query(
+            `SELECT COUNT(*)::int AS c, COALESCE(SUM(total),0)::float AS revenue, MAX(currency) AS currency
+             FROM "Order"
+             WHERE "clubId" = $1 AND lower("customerEmail") = ANY($2)
+               AND "createdAt" >= $3 AND "createdAt" <= $4
+               AND lower(status) NOT IN (${NON_PAID_STATUSES})`,
+            [campaign.clubId, emails, from, to]
+        );
+        const row = r.rows[0] || {};
+        result.count = row.c || 0;
+        result.revenue = Math.round((row.revenue || 0) * 100) / 100;
+        result.currency = row.currency || 'USD';
+    } catch (e) {
+        console.error('[emailMarketing] getCampaignConversions:', e.message);
+    }
+    return result;
+};
+
 // GET /:id/analytics — analítica avanzada de una campaña enviada.
-// Embudo, horarios de mayor interacción, dispositivos y enlaces más pulsados.
+// Embudo, horarios de mayor interacción, dispositivos, enlaces más pulsados y conversiones.
 export const getAnalytics = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
@@ -645,6 +681,9 @@ export const getAnalytics = async (req, res) => {
         const clickRate = sent ? Math.round((uniqueClicks / sent) * 1000) / 10 : 0;
         const ctor = uniqueOpens ? Math.round((uniqueClicks / uniqueOpens) * 1000) / 10 : 0; // click-to-open
 
+        const conversions = await getCampaignConversions(campaign);
+        const convRate = sent ? Math.round((conversions.count / sent) * 1000) / 10 : 0;
+
         res.json({
             campaign: { id: campaign.id, name: campaign.name, subject: campaign.subject, sentAt: campaign.sentAt, status: campaign.status },
             funnel: { sent, delivered: sent, uniqueOpens, uniqueClicks, openRate, clickRate, ctor },
@@ -652,6 +691,7 @@ export const getAnalytics = async (req, res) => {
             hourly,
             devices: devicesQ.rows.map((r) => ({ device: r.d, count: r.c })),
             topLinks: topLinksQ.rows.map((r) => ({ url: r.url, clicks: r.c })),
+            conversions: { ...conversions, rate: convRate },
         });
     } catch (error) {
         console.error('[emailMarketing] getAnalytics:', error);
