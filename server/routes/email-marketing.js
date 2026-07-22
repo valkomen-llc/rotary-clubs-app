@@ -12,11 +12,12 @@ import {
     scheduleCampaign,
     unscheduleCampaign,
     getReport,
+    getAnalytics,
     getStats,
     getDashboard,
     getTags,
 } from '../controllers/emailMarketingController.js';
-import { assist } from '../controllers/emailAiController.js';
+import { assist, campaignSummary } from '../controllers/emailAiController.js';
 
 const router = express.Router();
 
@@ -32,6 +33,8 @@ router.get('/dashboard', getDashboard);
 router.get('/tags', getTags);
 router.get('/audience', previewAudience);
 router.get('/:id/report', getReport);
+router.get('/:id/analytics', getAnalytics);
+router.post('/:id/ai-summary', campaignSummary);
 router.get('/:id', getCampaign);
 router.post('/', createCampaign);
 router.post('/test-send', sendTest);

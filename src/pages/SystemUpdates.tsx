@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.570.0 | 2026-07-22 (Email Marketing: Centro público de preferencias + doble opt-in; contacto solo-email (phone opcional))
+// UI V4.571.0 | 2026-07-22 (Email Marketing: Analítica avanzada (embudo, horarios, dispositivos, enlaces) + resumen IA + informe PDF)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.571.0',
+        title: 'Email Marketing: analítica avanzada, resumen con IA e informe PDF 📊🤖📄',
+        description: 'Cada campaña enviada estrena una vista de "Analítica avanzada" (ícono de actividad junto al reporte) para entender de verdad qué pasó. Incluye: un embudo de conversión (enviados → entregados → aperturas únicas → clics únicos, con la tasa click-to-open), la interacción por hora del día para saber cuándo tu audiencia abre y hace clic, el desglose por dispositivo (móvil, escritorio, tablet) y el ranking de enlaces más pulsados. Para lograrlo, ahora el sistema detecta el tipo de dispositivo en cada apertura y registra qué enlace se pulsó en cada clic. Además, con un clic generas un "Resumen inteligente" hecho por IA que explica qué funcionó, qué mejorar y da recomendaciones concretas para tu próxima campaña. Y puedes descargar un informe en PDF con portada, KPIs, enlaces top y ese análisis de IA, listo para compartir. Cambio aditivo: no modifica tus campañas ni contactos y solo agrega datos de medición; sin migraciones destructivas. Es la séptima fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'analitica', 'reportes', 'pdf', 'ia', 'embudo', 'dispositivos', 'enlaces', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.570.0',
         title: 'Email Marketing: centro de preferencias y confirmación de suscripción (doble opt-in) ✅📬',

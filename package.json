@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.570.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 6: Centro público de preferencias + doble opt-in. Páginas públicas branded por club (server-rendered, sin login): GET /api/public/preferences?cid=... permite al contacto activar/pausar todos los correos, actualizar nombre y ciudad, y elegir categorías de contenido (listas del CRM); POST /api/public/subscribe inicia el doble opt-in (crea/actualiza el contacto como 'pending' y envía correo de confirmación) y GET /api/public/confirm?cid=... lo confirma (status 'active' + confirmedAt). El pie de cada correo ahora incluye 'Gestionar preferencias' además de 'Cancelar suscripción'. Para permitir suscriptores solo-email, CrmContact.phone pasa a ser OPCIONAL (relajar NOT NULL, no destructivo) y se agrega CrmContact.confirmedAt. Aditivo; sin operaciones destructivas de BD.)",
+  "version": "4.571.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 7: Analítica avanzada + informe PDF con resumen IA. Nueva vista 'Analítica avanzada' por campaña enviada (GET /api/email-marketing/:id/analytics): embudo de conversión (enviados→entregados→aperturas únicas→clics únicos + CTOR), interacción por hora del día, desglose por dispositivo (móvil/escritorio/tablet) y enlaces más pulsados. Se agrega captura aditiva: el tracking de apertura deriva el dispositivo del user-agent (EmailCampaignRecipient.device) y cada clic registra el enlace pulsado (nueva tabla EmailLinkClick). Resumen inteligente por campaña con IA (POST /api/email-marketing/:id/ai-summary, reutiliza lib/ai-router.js): qué funcionó, qué mejorar y recomendaciones. Descarga de informe PDF (jsPDF) con portada, KPIs, enlaces top y el análisis IA. Aditivo; sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.570.0 | 2026-07-22 (Email Marketing: Centro público de preferencias + doble opt-in; contacto solo-email (phone opcional))",
+  "//": "UI V4.571.0 | 2026-07-22 (Email Marketing: Analítica avanzada (embudo, horarios, dispositivos, enlaces) + resumen IA + informe PDF)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

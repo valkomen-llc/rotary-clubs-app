@@ -141,3 +141,46 @@ Devuelve JSON: {"html":"<traducción en HTML simple>"}`;
         res.status(500).json({ error: 'Error del asistente de IA' });
     }
 };
+
+// POST /:id/ai-summary — resumen inteligente del resultado de una campaña enviada.
+export const campaignSummary = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!campaign || campaign.clubId !== clubId) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+        const [sent, failed, uOpens, uClicks, topLinks] = await Promise.all([
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, status: 'sent' } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, status: 'failed' } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, openedAt: { not: null } } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, clickedAt: { not: null } } }),
+            prisma.emailLinkClick.groupBy({ by: ['url'], where: { campaignId: campaign.id }, _count: { url: true }, orderBy: { _count: { url: 'desc' } }, take: 5 }).catch(() => []),
+        ]);
+        const openRate = sent ? Math.round((uOpens / sent) * 1000) / 10 : 0;
+        const clickRate = sent ? Math.round((uClicks / sent) * 1000) / 10 : 0;
+        const ctor = uOpens ? Math.round((uClicks / uOpens) * 1000) / 10 : 0;
+        const linksTxt = topLinks.length ? topLinks.map((l) => `${l.url} (${l._count.url})`).join('; ') : 'ninguno';
+
+        const userPrompt = `Analiza el resultado de esta campaña de email y da un resumen accionable en español.
+Asunto: "${clip(campaign.subject, 200)}".
+Métricas: enviados ${sent}, fallidos ${failed}, aperturas únicas ${uOpens} (${openRate}%), clics únicos ${uClicks} (${clickRate}%), click-to-open ${ctor}%.
+Enlaces más pulsados: ${clip(linksTxt, 400)}.
+Referencia sectorial: apertura buena ~20-30%, clic bueno ~2-5%.
+Devuelve JSON: {"summary":"2-3 frases claras sobre el desempeño","whatWorked":["punto"],"toImprove":["punto"],"recommendations":["acción concreta para la próxima campaña"]}`;
+
+        const slug = await getDefaultModel();
+        let raw;
+        try {
+            raw = await routeToModel(slug, SYSTEM, userPrompt);
+        } catch (e) {
+            console.error('[emailAi] campaignSummary routeToModel:', e.message);
+            return res.status(502).json({ error: 'El modelo de IA no está disponible. Revisa la configuración de claves.' });
+        }
+        const parsed = parseJson(raw);
+        if (!parsed) return res.status(502).json({ error: 'La IA devolvió una respuesta no válida. Intenta de nuevo.' });
+        res.json({ ...parsed, metrics: { sent, failed, uOpens, uClicks, openRate, clickRate, ctor } });
+    } catch (error) {
+        console.error('[emailAi] campaignSummary:', error);
+        res.status(500).json({ error: 'Error al generar el resumen' });
+    }
+};
