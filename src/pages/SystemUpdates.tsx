@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.572.0 | 2026-07-22 (Email Marketing: Constructor visual de automatizaciones por nodos (enviar, esperar, etiquetas, condición))
+// UI V4.573.0 | 2026-07-22 (Email Marketing: Automatizaciones con bifurcación (condición/fin de condición) + notificar equipo + webhook)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.573.0',
+        title: 'Automatizaciones con caminos "sí/no", avisos al equipo y webhooks 🔀🔔🔗',
+        description: 'Las automatizaciones ganan bifurcación real y dos nuevos tipos de nodo. Ahora la "Condición" puede abrir un bloque: agrega un nodo "Fin de condición" después y todo lo que quede entre ambos se ejecuta solo si la condición se cumple (por ejemplo: "si tiene la etiqueta cliente → enviar oferta y aplicar etiqueta VIP"); si no se cumple, el contacto se salta ese bloque y continúa con el resto del flujo. Si no pones un "Fin de condición", la condición sigue funcionando como antes (el contacto sale del flujo cuando no se cumple), así que tus automatizaciones actuales no cambian. Además sumamos: "Notificar al equipo", que envía un aviso por correo a la dirección que indiques o a los administradores del sitio cuando un contacto llega a ese punto; y "Webhook", que hace una llamada a una URL que tú definas enviando los datos del contacto, para conectar la automatización con otras herramientas. Cambio aditivo: no modifica datos existentes ni hay migraciones destructivas. Es la novena fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'automatizaciones', 'bifurcacion', 'condiciones', 'webhook', 'notificaciones', 'workflows', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.572.0',
         title: 'Email Marketing: automatizaciones visuales por nodos 🧩🔀',

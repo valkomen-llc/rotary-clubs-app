@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     Plus, X, Trash2, Edit2, Play, Pause, Workflow, Clock, Mail, Users, Tag,
-    ChevronUp, ChevronDown, GitBranch, Zap, Timer,
+    ChevronUp, ChevronDown, GitBranch, Zap, Timer, Bell, Webhook, Flag,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type ActionType = 'email' | 'wait' | 'apply_tag' | 'remove_tag' | 'condition';
+type ActionType = 'email' | 'wait' | 'apply_tag' | 'remove_tag' | 'condition' | 'end_condition' | 'notify' | 'webhook';
 
 interface Step {
     id?: string;
@@ -33,15 +33,18 @@ const NODE_META: Record<ActionType, { label: string; icon: React.ElementType; co
     wait: { label: 'Esperar', icon: Timer, color: 'text-violet-600 bg-violet-50', ring: 'border-violet-200' },
     apply_tag: { label: 'Aplicar etiqueta', icon: Tag, color: 'text-emerald-600 bg-emerald-50', ring: 'border-emerald-200' },
     remove_tag: { label: 'Quitar etiqueta', icon: Tag, color: 'text-rose-600 bg-rose-50', ring: 'border-rose-200' },
-    condition: { label: 'Condición', icon: GitBranch, color: 'text-amber-600 bg-amber-50', ring: 'border-amber-200' },
+    condition: { label: 'Condición (si…)', icon: GitBranch, color: 'text-amber-600 bg-amber-50', ring: 'border-amber-200' },
+    end_condition: { label: 'Fin de condición', icon: Flag, color: 'text-amber-700 bg-amber-50', ring: 'border-amber-200' },
+    notify: { label: 'Notificar al equipo', icon: Bell, color: 'text-indigo-600 bg-indigo-50', ring: 'border-indigo-200' },
+    webhook: { label: 'Webhook', icon: Webhook, color: 'text-gray-600 bg-gray-100', ring: 'border-gray-200' },
 };
-const NODE_ORDER: ActionType[] = ['email', 'wait', 'apply_tag', 'remove_tag', 'condition'];
+const NODE_ORDER: ActionType[] = ['email', 'wait', 'apply_tag', 'remove_tag', 'condition', 'end_condition', 'notify', 'webhook'];
 
 const makeStep = (type: ActionType): Step => ({
     actionType: type,
     delayDays: type === 'wait' ? 1 : 0,
-    actionValue: type === 'condition' ? 'has_tag:' : '',
-    subject: type === 'email' ? '' : '',
+    actionValue: type === 'condition' ? 'has_tag:' : (type === 'webhook' ? 'https://' : ''),
+    subject: '',
     content: type === 'email' ? '<p>Escribe el contenido de este correo…</p>' : '',
 });
 
@@ -120,6 +123,7 @@ const Automations: React.FC = () => {
             if (s.actionType === 'email' && (!s.subject.trim() || !s.content.trim())) { toast.error('Cada nodo "Enviar correo" necesita asunto y contenido'); return; }
             if ((s.actionType === 'apply_tag' || s.actionType === 'remove_tag') && !(s.actionValue || '').trim()) { toast.error('Indica la etiqueta en los nodos de etiqueta'); return; }
             if (s.actionType === 'condition' && !(s.actionValue || '').split(':')[1]?.trim()) { toast.error('Indica la etiqueta de la condición'); return; }
+            if (s.actionType === 'webhook' && !/^https?:\/\//i.test((s.actionValue || '').trim())) { toast.error('El nodo Webhook necesita una URL http(s)'); return; }
         }
         setIsSubmitting(true);
         try {
@@ -302,8 +306,8 @@ const Automations: React.FC = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Espera previa (excepto para el nodo 'wait', que ES la espera) */}
-                                                    {s.actionType !== 'wait' && (
+                                                    {/* Espera previa (excepto 'wait' que ES la espera, y el marcador 'end_condition') */}
+                                                    {s.actionType !== 'wait' && s.actionType !== 'end_condition' && (
                                                         <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
                                                             <Clock className="w-3.5 h-3.5 text-violet-400" /> Esperar
                                                             <input type="number" min={0} className="w-16 px-2 py-1 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue" value={s.delayDays} onChange={(e) => updateStep(i, { delayDays: Math.max(0, parseInt(e.target.value, 10) || 0) })} />
@@ -336,8 +340,17 @@ const Automations: React.FC = () => {
                                                                 </select>
                                                                 <input list="em-tags" className="flex-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm" value={condTag} onChange={(e) => updateStep(i, { actionValue: `${condOp}:${e.target.value}` })} placeholder="Etiqueta" />
                                                             </div>
-                                                            <p className="text-[11px] text-amber-600">Si no se cumple, el contacto sale del flujo.</p>
+                                                            <p className="text-[11px] text-amber-600">Si se cumple, ejecuta los nodos hasta "Fin de condición"; si no, los salta. (Sin un nodo "Fin de condición" después, el contacto sale del flujo cuando no se cumple.)</p>
                                                         </div>
+                                                    )}
+                                                    {s.actionType === 'end_condition' && (
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1.5"><Flag className="w-3.5 h-3.5 text-amber-600" /> Marca el fin del bloque de la condición anterior.</p>
+                                                    )}
+                                                    {s.actionType === 'notify' && (
+                                                        <input type="email" className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm" value={s.actionValue || ''} onChange={(e) => updateStep(i, { actionValue: e.target.value })} placeholder="Correo a notificar (vacío = administradores del sitio)" />
+                                                    )}
+                                                    {s.actionType === 'webhook' && (
+                                                        <input type="url" className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-mono" value={s.actionValue || ''} onChange={(e) => updateStep(i, { actionValue: e.target.value })} placeholder="https://tu-endpoint.com/webhook" />
                                                     )}
                                                 </div>
                                             </React.Fragment>
