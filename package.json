@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.580.0",
-  "cache_bust": "2026-07-22 (Botones de la cabecera por idioma — ahora también el ENLACE: cada botón del navbar (headerCtas) suma urlEs junto a url/label/labelEs. En Español se usan labelEs+urlEs; en los demás idiomas, label+url. Si falta un campo cae a su variante; si ambos van vacíos, al default. Render sensible a lang en Navbar; el editor de Configuración → Identidad → 'Botones del menú principal' ahora tiene, por botón, Texto (otros idiomas)/Texto (Español) + Enlace (otros idiomas)/Enlace (Español). Persistencia sin cambios (Setting header_ctas JSON, urlEs fluye solo). Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.581.0",
+  "cache_bust": "2026-07-22 (Ancho de la sección 'Somos gente de acción' (ActionSection) igualado al de 'Únete a Rotary' (JoinSection): el contenedor pasa de max-w-6xl a max-w-7xl y el párrafo de max-w-3xl a max-w-5xl, para que ambas secciones de la portada tengan la misma línea de ancho. Cambio de estilo en Navbar/secciones (componente compartido), aplica a la portada de todos los sitios. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.580.0 | 2026-07-22 (Botones de la cabecera: texto Y enlace por idioma (internacional + Español))",
+  "//": "UI V4.581.0 | 2026-07-22 (Ancho de ActionSection igualado a JoinSection (max-w-7xl) en la portada)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
