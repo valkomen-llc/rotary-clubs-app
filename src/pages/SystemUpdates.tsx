@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.578.0 | 2026-07-22 (Selector de idiomas: bandera de Colombia para Español)
+// UI V4.579.0 | 2026-07-22 (Botones de la cabecera por idioma: texto internacional + texto en Español)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.579.0',
+        title: 'Botones de la cabecera con texto por idioma (Español vs. internacional) 🌐🔘',
+        description: 'Los dos botones del menú principal ahora pueden tener un texto distinto según el idioma del visitante. En Configuración → Identidad → "Botones del menú principal" cada botón tiene ahora "Texto (otros idiomas)" y "Texto (Español)". Cuando el sitio se ve en español se muestra el texto en español; en inglés (o cualquier otro idioma) se muestra el texto internacional. Así, por ejemplo, una feria de proyectos puede mostrar "International Registration" / "Submit a Project" a la audiencia internacional y su equivalente en español a los visitantes en español. Si dejas vacío el texto en español, se usa el internacional (y viceversa); si no configuras ninguno, siguen los botones por defecto. Cambio aditivo, no afecta a los sitios que no lo configuren.',
+        date: new Date().toISOString(),
+        tags: ['navbar', 'cabecera', 'botones', 'idioma', 'i18n', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.578.0',
         title: 'Bandera de Colombia para el idioma Español 🇨🇴',
