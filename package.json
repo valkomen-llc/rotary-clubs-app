@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.563.0",
-  "cache_bust": "2026-07-21 (Calendario de Capacitaciones y Soporte: nuevo módulo de agenda para que los sitios activos reserven capacitación/soporte. Superadmin configura disponibilidad (bloques recurrentes/específicos, fechas bloqueadas, cupos/día, zona horaria, responsables) y tipos de cita en /admin/capacitaciones con vistas mes/semana/día/lista + estadísticas. El sitio-admin reserva en /admin/agenda-soporte con flujo por pasos; el backend valida suscripción vigente (lib/siteStatus) y si el sitio está inactivo redirige al checkout de Stripe (activación por webhook, no por retorno del navegador). Videoconferencia con capa abstracta (meetingService: Zoom S2S OAuth + Google Meet placeholder, default manual). Confirmaciones y recordatorios 24h/1h por email + WhatsApp (cron training-reminders). .ics + botones Google/Outlook. Todo aditivo, sin operaciones destructivas de BD; prisma db push solo crea tablas nuevas.)",
+  "version": "4.564.0",
+  "cache_bust": "2026-07-21 (Resolución de dominio propio más robusta: /by-domain ahora matchea el sitio aunque el 'Dominio Propio' esté guardado con o sin 'www.' y se visite el apex o el www indistintamente (antes solo se quitaba www de la consulta, no del valor guardado, por lo que un dominio guardado como www.ejemplo.org no cargaba en el apex y caía al sitio Origen por defecto). Normaliza el dominio consultado (minúsculas, sin protocolo/path/punto final) y prueba las formas apex + www + cruda; aplica a Club y District. Además updateClub normaliza el Dominio Propio al guardar (conservando www para Vercel) para que no queden valores con formato sucio. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.563.0 | 2026-07-21 (Calendario de Capacitaciones y Soporte — agenda de reservas, validación de suscripción + Stripe, videoconferencia, recordatorios y estadísticas)",
+  "//": "UI V4.564.0 | 2026-07-21 (Dominio propio: resolución robusta apex/www en /by-domain + normalización al guardar)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

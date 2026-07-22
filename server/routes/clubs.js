@@ -21,8 +21,21 @@ router.get('/by-domain', async (req, res) => {
     }
 
     try {
-        const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
-        
+        // Normalización robusta del dominio consultado: minúsculas, sin protocolo, sin path,
+        // sin punto final. `cleanDomain` es la forma canónica (apex, sin www).
+        const rawDomain = String(domain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+        const cleanDomain = rawDomain.replace(/^www\./, '');
+        // Variante con www: para matchear también los dominios guardados CON "www." aunque se
+        // visite el apex (y viceversa). Antes solo se quitaba www de la consulta, no del valor
+        // guardado, por lo que un dominio propio guardado como www.ejemplo.org no resolvía en apex.
+        const wwwDomain = `www.${cleanDomain}`;
+        // Formas a probar contra la columna `domain` (case-insensitive), evitando duplicados.
+        const domainCandidates = [...new Set([cleanDomain, wwwDomain, rawDomain])];
+        const domainOr = [
+            ...domainCandidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+            { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
+        ];
+
         // Use Prisma for all lookups to ensure column mapping stability
         const masterClub = await db.prisma.club.findFirst({
             where: { subdomain: 'origen' },
@@ -44,11 +57,7 @@ router.get('/by-domain', async (req, res) => {
         // 2. Fetch Current Entity with Prisma (Club or District)
         let activeEntity = await db.prisma.club.findFirst({
             where: {
-                OR: [
-                    { domain: { equals: cleanDomain, mode: 'insensitive' } },
-                    { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
-                    { domain: { equals: domain, mode: 'insensitive' } }
-                ]
+                OR: domainOr
             },
             include: {
                 settings: true,
@@ -64,11 +73,7 @@ router.get('/by-domain', async (req, res) => {
             // Check District table
             const district = await db.prisma.district.findFirst({
                 where: {
-                    OR: [
-                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
-                        { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
-                        { domain: { equals: domain, mode: 'insensitive' } }
-                    ]
+                    OR: domainOr
                 }
             });
 

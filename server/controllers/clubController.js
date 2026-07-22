@@ -190,6 +190,13 @@ export const updateClub = async (req, res) => {
         registrarPoolId
     } = req.body;
 
+    // Normaliza el dominio propio: minúsculas, sin protocolo, sin path ni barra final, sin
+    // espacios ni punto final. Se conserva el "www." si el admin lo puso (Vercel lo registra
+    // tal cual). Evita que un valor con formato sucio no matchee luego en /by-domain.
+    const normalizedDomain = domain === undefined || domain === null
+        ? domain
+        : String(domain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+
         try {
             // Access Control
             const isDistrictAdmin = req.user.role === 'district_admin' && req.user.districtId === id;
@@ -226,7 +233,7 @@ export const updateClub = async (req, res) => {
 
             addField('name', name);
             addField('description', description);
-            addField('domain', domain);
+            addField('domain', normalizedDomain);
             addField('subdomain', subdomain);
             addField('logo', logo);
             addField('footerLogo', footerLogo);
@@ -277,8 +284,8 @@ export const updateClub = async (req, res) => {
 
             // Vercel Auto-provision
             const existingDomain = entity.domain;
-            if (domain && domain !== existingDomain) {
-                await VercelService.addDomain(domain);
+            if (normalizedDomain && normalizedDomain !== existingDomain) {
+                await VercelService.addDomain(normalizedDomain);
             }
 
             // Asignación manual del Pool Registrador del dominio (solo Clubs).
