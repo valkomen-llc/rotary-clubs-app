@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.574.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 10: Atribución de conversiones e ingresos. La analítica avanzada de cada campaña ahora muestra conversiones, tasa de conversión e ingresos atribuidos: pedidos del ecommerce (tabla Order) hechos por destinatarios de la campaña (match por correo, case-insensitive) dentro de una ventana de 7 días posteriores al envío, contando solo pedidos pagados (se excluyen pending/cancelled/failed/refunded/etc.). Se agrega el helper getCampaignConversions (reutilizado por la analítica y por el resumen IA, que ahora considera ingresos). Los KPIs aparecen en la vista de Analítica avanzada y en el informe PDF. 100% de solo lectura sobre datos existentes: no crea ni modifica pedidos ni campañas; sin cambios de esquema ni operaciones destructivas de BD.)",
+  "version": "4.575.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Integración con el Directorio CRM en la audiencia de campañas. La opción 'Una lista específica' ahora permite seleccionar VARIAS listas del Directorio CRM (módulo Comunicaciones) a la vez, con checkboxes que muestran el nombre, el número de contactos y una marca 'vinculada' para las listas compartidas por otro sitio. Backend: EmailCampaign.listIds (String[] aditivo) además de listId (compat.); resolveRecipients acepta varias listas, valida que sean propias o compartidas con el sitio (siteIds) y toma sus miembros sin filtrar por el club del contacto — así las listas VINCULADAS por otro sitio (ej. un distrito) por fin resuelven destinatarios en email (antes daban 0). Se excluyen contactos archivados/dados de baja y se deduplica por email. Aplica al envío inmediato, programado y a las pruebas A/B. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.574.0 | 2026-07-22 (Email Marketing: Atribución de conversiones e ingresos desde email (ecommerce) en analítica + PDF + resumen IA)",
+  "//": "UI V4.575.0 | 2026-07-22 (Email Marketing: audiencia multi-lista del Directorio CRM (incluye listas vinculadas))",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.574.0 | 2026-07-22 (Email Marketing: Atribución de conversiones e ingresos desde email (ecommerce) en analítica + PDF + resumen IA)
+// UI V4.575.0 | 2026-07-22 (Email Marketing: audiencia multi-lista del Directorio CRM (incluye listas vinculadas))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.575.0',
+        title: 'Email Marketing: envía a tus listas del Directorio CRM (una o varias) 📇✅',
+        description: 'Al crear una campaña, la opción de audiencia "Una lista específica" ahora se conecta directamente con tu Directorio CRM (del módulo Comunicaciones) y te deja elegir VARIAS listas a la vez, no solo una. Verás cada lista con su nombre, cuántos contactos tiene y una marca "vinculada" cuando la lista fue compartida por otro sitio (por ejemplo, un distrito que comparte su lista de asistentes con los clubes). Marca las que quieras y el sistema arma la audiencia combinando todas, sin duplicar contactos y respetando bajas y correos inválidos. Además corregimos algo importante: antes, si elegías una lista compartida por otro sitio, la campaña no encontraba destinatarios (daba 0); ahora esas listas vinculadas sí funcionan para el envío. Aplica al envío inmediato, programado y a las pruebas A/B. Cambio aditivo: no modifica tus listas ni contactos y no hay migraciones destructivas.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'crm', 'listas', 'directorio', 'audiencia', 'segmentacion', 'vinculadas', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.574.0',
         title: 'Email Marketing: mide cuánto venden tus campañas (conversiones e ingresos) 🛒💰',

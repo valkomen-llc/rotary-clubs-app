@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.574 — campañas + tracking + reportes + dashboard + editor visual + A/B + analítica avanzada + resumen IA + atribución de conversiones/ingresos (ecommerce)');
+console.log('[emailMarketingController] v4.575 — campañas + dashboard + editor visual + A/B + analítica + conversiones + audiencia multi-lista del CRM (incluye listas compartidas)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -20,16 +20,34 @@ const resolveClubId = (req) => {
 const isValidEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
 // Resuelve los destinatarios reales (contactos con email válido, activos y sin baja).
-const resolveRecipients = async (clubId, audience, listId, tag) => {
+const resolveRecipients = async (clubId, audience, listId, tag, listIds) => {
     let contacts;
-    if (audience === 'list' && listId) {
-        const members = await prisma.contactListMember.findMany({
-            where: { listId },
-            include: { contact: true },
-        });
-        contacts = members
-            .map((m) => m.contact)
-            .filter((c) => c && c.clubId === clubId);
+    if (audience === 'list') {
+        // Acepta una o varias listas del CRM. Valida que sean propias o compartidas con
+        // este sitio (siteIds), y toma sus miembros sin filtrar por el club del contacto
+        // (para soportar listas vinculadas por otro sitio, ej. un distrito).
+        const ids = [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))];
+        if (!ids.length) {
+            contacts = [];
+        } else {
+            const accessible = await prisma.crmList.findMany({
+                where: { id: { in: ids }, OR: [{ clubId }, { siteIds: { has: clubId } }] },
+                select: { id: true },
+            });
+            const okIds = accessible.map((l) => l.id);
+            if (!okIds.length) {
+                contacts = [];
+            } else {
+                const members = await prisma.contactListMember.findMany({
+                    where: { listId: { in: okIds } },
+                    include: { contact: true },
+                });
+                const seenC = new Set();
+                contacts = members
+                    .map((m) => m.contact)
+                    .filter((c) => { if (!c || seenC.has(c.id)) return false; seenC.add(c.id); return true; });
+            }
+        }
     } else if (audience === 'tag' && tag) {
         contacts = await prisma.crmContact.findMany({
             // Incluye tanto 'active' como 'subscribed': el CRM crea contactos con
@@ -41,9 +59,10 @@ const resolveRecipients = async (clubId, audience, listId, tag) => {
             where: { clubId, status: { in: ['active', 'subscribed'] }, archivedAt: null },
         });
     }
-    // Email válido + no dado de baja. Deduplica por email.
+    // Email válido, no archivado, no dado de baja. Deduplica por email.
     const seen = new Set();
     return contacts.filter((c) => {
+        if (c.archivedAt) return false;
         if (c.optedOutAt) return false;
         if (!isValidEmail(c.email)) return false;
         const key = c.email.trim().toLowerCase();
@@ -74,8 +93,9 @@ export const previewAudience = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.json({ count: 0 });
-        const { audience = 'all', listId, segmentTag } = req.query;
-        const recipients = await resolveRecipients(clubId, audience, listId || null, segmentTag || null);
+        const { audience = 'all', listId, segmentTag, listIds } = req.query;
+        const listIdsArr = typeof listIds === 'string' ? listIds.split(',').filter(Boolean) : (Array.isArray(listIds) ? listIds : []);
+        const recipients = await resolveRecipients(clubId, audience, listId || null, segmentTag || null, listIdsArr);
         res.json({ count: recipients.length });
     } catch (error) {
         console.error('[emailMarketing] previewAudience:', error);
@@ -103,12 +123,15 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag,
+        const { name, subject, fromName, preheader, content, design, audience, listId, listIds, segmentTag,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
         }
         const aud = ['list', 'tag'].includes(audience) ? audience : 'all';
+        const listIdsClean = aud === 'list'
+            ? [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))]
+            : [];
         const ab = !!abEnabled;
         const campaign = await prisma.emailCampaign.create({
             data: {
@@ -120,7 +143,8 @@ export const createCampaign = async (req, res) => {
                 content,
                 design: design || null,
                 audience: aud,
-                listId: aud === 'list' ? (listId || null) : null,
+                listId: aud === 'list' ? (listIdsClean[0] || null) : null,
+                listIds: listIdsClean,
                 segmentTag: aud === 'tag' ? (segmentTag || null) : null,
                 abEnabled: ab,
                 variantSubject: ab ? (variantSubject || null) : null,
@@ -151,9 +175,12 @@ export const updateCampaign = async (req, res) => {
         if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
-        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag,
+        const { name, subject, fromName, preheader, content, design, audience, listId, listIds, segmentTag,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
+        const listIdsClean = aud === 'list'
+            ? [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))]
+            : [];
         const campaign = await prisma.emailCampaign.update({
             where: { id: req.params.id },
             data: {
@@ -164,7 +191,8 @@ export const updateCampaign = async (req, res) => {
                 ...(content !== undefined && { content }),
                 ...(design !== undefined && { design: design || null }),
                 ...(aud !== undefined && { audience: aud }),
-                ...(aud !== undefined && { listId: aud === 'list' ? (listId || null) : null }),
+                ...(aud !== undefined && { listId: aud === 'list' ? (listIdsClean[0] || null) : null }),
+                ...(aud !== undefined && { listIds: listIdsClean }),
                 ...(aud !== undefined && { segmentTag: aud === 'tag' ? (segmentTag || null) : null }),
                 ...(abEnabled !== undefined && {
                     abEnabled: !!abEnabled,
@@ -259,7 +287,7 @@ const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, 
 // Lanza un Error si no hay destinatarios; el llamador decide cómo reportarlo.
 const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
     const clubId = campaign.clubId;
-    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
     if (recipients.length === 0) {
         const err = new Error('No hay destinatarios con email válido para esta audiencia');
         err.code = 'NO_RECIPIENTS';
@@ -296,7 +324,7 @@ const AB_MIN_AUDIENCE = 4;
 // El ganador se decide y se envía al resto más tarde, vía processAbTests (cron).
 const dispatchAbTest = async ({ campaign, baseUrl, userId }) => {
     const clubId = campaign.clubId;
-    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
     if (recipients.length < AB_MIN_AUDIENCE) {
         const err = new Error(`La audiencia (${recipients.length}) es muy pequeña para una prueba A/B (mínimo ${AB_MIN_AUDIENCE} contactos).`);
         err.code = 'AB_TOO_SMALL';
@@ -374,7 +402,7 @@ export const processAbTests = async ({ baseUrl, now = new Date() } = {}) => {
             const winner = rateB > rateA ? 'B' : 'A';
 
             // Resto de la audiencia: los que aún no recibieron la muestra.
-            const all = await resolveRecipients(campaign.clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+            const all = await resolveRecipients(campaign.clubId, campaign.audience, campaign.listId, campaign.segmentTag, campaign.listIds);
             const already = await prisma.emailCampaignRecipient.findMany({ where: { campaignId: campaign.id }, select: { email: true } });
             const sentSet = new Set(already.map((a) => a.email.trim().toLowerCase()));
             const remainder = all
