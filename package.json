@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.571.0",
-  "cache_bust": "2026-07-22 (Email Marketing → Fase 7: Analítica avanzada + informe PDF con resumen IA. Nueva vista 'Analítica avanzada' por campaña enviada (GET /api/email-marketing/:id/analytics): embudo de conversión (enviados→entregados→aperturas únicas→clics únicos + CTOR), interacción por hora del día, desglose por dispositivo (móvil/escritorio/tablet) y enlaces más pulsados. Se agrega captura aditiva: el tracking de apertura deriva el dispositivo del user-agent (EmailCampaignRecipient.device) y cada clic registra el enlace pulsado (nueva tabla EmailLinkClick). Resumen inteligente por campaña con IA (POST /api/email-marketing/:id/ai-summary, reutiliza lib/ai-router.js): qué funcionó, qué mejorar y recomendaciones. Descarga de informe PDF (jsPDF) con portada, KPIs, enlaces top y el análisis IA. Aditivo; sin operaciones destructivas de BD.)",
+  "version": "4.572.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Fase 8: Constructor visual de automatizaciones por nodos. Las automatizaciones dejan de ser solo secuencias lineales de correos: ahora se arman como un flujo visual de nodos conectados a partir de un disparador (etiqueta). Tipos de nodo: Enviar correo, Esperar (X días), Aplicar etiqueta, Quitar etiqueta y Condición (gate: 'tiene/no tiene la etiqueta' — si no se cumple, el contacto sale del flujo). En la UI se agregan/insertan nodos entre pasos, se reordenan y se eliminan, con líneas conectoras. Backend aditivo: EmailAutomationStep.actionType (email|wait|apply_tag|remove_tag|condition) + actionValue; el runner del cron ejecuta cada tipo de nodo secuencialmente, sin cambiar el comportamiento de las secuencias de correo existentes (que siguen siendo nodos 'email'). Sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.571.0 | 2026-07-22 (Email Marketing: Analítica avanzada (embudo, horarios, dispositivos, enlaces) + resumen IA + informe PDF)",
+  "//": "UI V4.572.0 | 2026-07-22 (Email Marketing: Constructor visual de automatizaciones por nodos (enviar, esperar, etiquetas, condición))",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

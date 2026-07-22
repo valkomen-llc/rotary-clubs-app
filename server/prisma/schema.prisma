@@ -731,8 +731,10 @@ model EmailAutomationStep {
   automationId String
   order        Int             @default(0)
   delayDays    Int             @default(0) // espera desde el paso anterior (o desde la inscripción para el primero)
-  subject      String
-  content      String          // HTML
+  actionType   String          @default("email") // email | wait | apply_tag | remove_tag | condition (v4.572)
+  actionValue  String?         // etiqueta (apply_tag/remove_tag) o condición ("has_tag:X" | "not_tag:X")
+  subject      String          // asunto (solo email); '' en nodos de acción
+  content      String          // HTML (solo email); '' en nodos de acción
   automation   EmailAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
 
   @@index([automationId])
