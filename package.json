@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.581.0",
-  "cache_bust": "2026-07-22 (Ancho de la sección 'Somos gente de acción' (ActionSection) igualado al de 'Únete a Rotary' (JoinSection): el contenedor pasa de max-w-6xl a max-w-7xl y el párrafo de max-w-3xl a max-w-5xl, para que ambas secciones de la portada tengan la misma línea de ancho. Cambio de estilo en Navbar/secciones (componente compartido), aplica a la portada de todos los sitios. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.582.0",
+  "cache_bust": "2026-07-22 (Negrilla parcial en la sección 'Somos gente de acción': el título y el texto ahora soportan markdown simple **texto** para poner en negrilla cualquier parte (o todo el título). Nuevo helper compartido src/lib/richText.tsx (renderRichText soporta **negrilla** + resaltado de color; hasBoldMarkup). ActionSection usa el helper para título (peso base normal si hay ** para permitir negrilla parcial; si no, todo en negrilla como antes) y para el cuerpo. Ayudas en el editor de Configuración → Identidad explicando el uso de **texto**. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.581.0 | 2026-07-22 (Ancho de ActionSection igualado a JoinSection (max-w-7xl) en la portada)",
+  "//": "UI V4.582.0 | 2026-07-22 (Negrilla parcial (**texto**) en título y cuerpo de la sección 'Somos gente de acción')",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

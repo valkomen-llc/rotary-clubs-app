@@ -1477,7 +1477,7 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
                                         <textarea rows={2} value={formData.actionContent.title} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, title: e.target.value } })} placeholder="Somos gente de acción" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
-                                        <p className="text-[11px] text-gray-400 mt-1">El título se muestra en negrilla. Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
+                                        <p className="text-[11px] text-gray-400 mt-1">Por defecto el título va todo en <strong>negrilla</strong>. Para poner en negrilla solo una parte, enciérrala entre dobles asteriscos: <code>**texto**</code> (el resto queda en peso normal). Presiona <strong>Enter</strong> para un salto de línea.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                         <div>
@@ -1496,6 +1496,7 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
                                         <textarea rows={3} value={formData.actionContent.text} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, text: e.target.value } })} placeholder="Descripción del bloque…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Para poner una parte en <strong>negrilla</strong>, enciérrala entre dobles asteriscos: <code>**texto**</code>.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.581.0 | 2026-07-22 (Ancho de ActionSection igualado a JoinSection (max-w-7xl) en la portada)
+// UI V4.582.0 | 2026-07-22 (Negrilla parcial (**texto**) en título y cuerpo de la sección 'Somos gente de acción')
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.582.0',
+        title: 'Pon en negrilla el título o parte del texto de "Somos gente de acción" ✍️🔡',
+        description: 'En el editor de la sección "Somos gente de acción" (Configuración → Identidad) ahora puedes controlar qué va en negrilla, tanto en el título como en el cuerpo del texto. Igual que ya podías resaltar una parte del título con un color, ahora puedes poner en negrilla la parte que quieras: enciérrala entre dobles asteriscos, por ejemplo **esta parte** se verá en negrilla. Funciona en el título y en el texto de abajo, y puedes marcar todo o solo un fragmento. Por compatibilidad, si no usas los asteriscos el título sigue mostrándose completo en negrilla como hasta ahora. Cambio aditivo.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'contenido', 'negrilla', 'texto', 'editor', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.581.0',
         title: 'Ancho consistente entre las secciones de la portada 📐',
