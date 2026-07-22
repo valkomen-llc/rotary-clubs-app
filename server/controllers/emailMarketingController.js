@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.566 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend) + panel unificado (dashboard) + editor visual de bloques (design) + envío de prueba');
+console.log('[emailMarketingController] v4.568 — campañas + tracking + reportes + segmentación + programación + webhook + dashboard + editor visual + envío de prueba + audiencia incluye estado subscribed');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -32,11 +32,13 @@ const resolveRecipients = async (clubId, audience, listId, tag) => {
             .filter((c) => c && c.clubId === clubId);
     } else if (audience === 'tag' && tag) {
         contacts = await prisma.crmContact.findMany({
-            where: { clubId, status: 'active', archivedAt: null, tags: { has: tag } },
+            // Incluye tanto 'active' como 'subscribed': el CRM crea contactos con
+            // status 'subscribed' y antes quedaban excluidos del envío (v4.568).
+            where: { clubId, status: { in: ['active', 'subscribed'] }, archivedAt: null, tags: { has: tag } },
         });
     } else {
         contacts = await prisma.crmContact.findMany({
-            where: { clubId, status: 'active', archivedAt: null },
+            where: { clubId, status: { in: ['active', 'subscribed'] }, archivedAt: null },
         });
     }
     // Email válido + no dado de baja. Deduplica por email.
@@ -441,7 +443,7 @@ export const getStats = async (req, res) => {
             prisma.emailCampaign.aggregate({ where: { clubId }, _sum: { sentCount: true } }),
             prisma.emailCampaignRecipient.count({ where: { clubId, openedAt: { not: null } } }),
             prisma.emailCampaignRecipient.count({ where: { clubId, clickedAt: { not: null } } }),
-            prisma.crmContact.count({ where: { clubId, status: 'active', archivedAt: null, optedOutAt: null, email: { not: null } } }),
+            prisma.crmContact.count({ where: { clubId, status: { in: ['active', 'subscribed'] }, archivedAt: null, optedOutAt: null, email: { not: null } } }),
             prisma.communicationTemplate.count({ where: { clubId, type: 'email' } }),
             db.query(`SELECT COUNT(DISTINCT t) AS c FROM "WhatsAppContact", unnest(tags) AS t WHERE "clubId" = $1`, [clubId]).catch(() => ({ rows: [{ c: 0 }] })),
         ]);
@@ -531,7 +533,7 @@ export const getDashboard = async (req, res) => {
         }
 
         const [
-            contactsTotal, subscribed, unsubscribed, noEmail, pending, withFailures, subscribedStatusOnly,
+            contactsTotal, subscribed, unsubscribed, noEmail, pending, withFailures,
             campaignsTotal, campaignsSent, campaignsSending, campaignsScheduled, campaignsFailed,
             automationsTotal, automationsActive,
             sentAgg, sentRecipients, failedRecipients, uniqueOpens, uniqueClicks,
@@ -545,7 +547,6 @@ export const getDashboard = async (req, res) => {
             prisma.crmContact.count({ where: { clubId, archivedAt: null, email: null } }),
             prisma.crmContact.count({ where: { clubId, archivedAt: null, status: 'pending' } }),
             prisma.crmContact.count({ where: { clubId, archivedAt: null, totalFailed: { gt: 0 } } }),
-            prisma.crmContact.count({ where: { clubId, archivedAt: null, status: 'subscribed' } }),
             prisma.emailCampaign.count({ where: { clubId } }),
             prisma.emailCampaign.count({ where: { clubId, status: 'sent' } }),
             prisma.emailCampaign.count({ where: { clubId, status: 'sending' } }),
@@ -648,9 +649,6 @@ export const getDashboard = async (req, res) => {
         }
         if (contactsTotal > 0 && noEmail / contactsTotal > 0.2) {
             alerts.push({ level: 'info', title: 'Contactos sin correo', message: `${noEmail} de ${contactsTotal} contactos (${rate(noEmail, contactsTotal)}%) no tienen email y no son alcanzables por campañas. Complétalos o impórtalos con correo.` });
-        }
-        if (subscribedStatusOnly > 0) {
-            alerts.push({ level: 'info', title: 'Estados por normalizar', message: `${subscribedStatusOnly} contacto(s) tienen estado "subscribed". El envío actual filtra por "active": el panel ya los cuenta como suscritos, pero conviene normalizar el estado (previsto para una próxima fase).` });
         }
         if (deliveryRate > 0 && deliveryRate < 95 && sentRecipients + failedRecipients >= 20) {
             alerts.push({ level: 'warning', title: 'Entregabilidad reducida', message: `Tu tasa de entrega es ${deliveryRate}%. Verifica SPF/DKIM/DMARC del dominio remitente y la reputación del proveedor.` });

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.567.0 | 2026-07-22 (Email Marketing: Asistente de IA — asuntos/preheader/cuerpo, reescritura por tono y longitud, anti-spam y traducción)
+// UI V4.568.0 | 2026-07-22 (Email Marketing: Proveedor de correo (Resend por defecto / SMTP) + fix de audiencia (incluye estado subscribed))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.568.0',
+        title: 'Email Marketing: configura tu proveedor de envío y llega a todos tus suscritos 📮⚙️',
+        description: 'Dos mejoras en el módulo de Email Marketing. (1) Nueva pestaña "Proveedor" (solo para el super administrador) donde se define desde dónde salen los correos: por defecto queda Resend —el servicio que ya usa la plataforma y el recomendado— o, si lo prefieres, un servidor SMTP externo (Amazon SES, SendGrid, Mailgun, Postmark, Brevo o uno propio) con presets que rellenan el host y el puerto. La pantalla muestra el estado de entregabilidad: si la conexión con Resend está activa, los dominios verificados con su estado (DKIM/SPF/DMARC) y cuántos servidores SMTP de respaldo hay; además puedes fijar el remitente por defecto y enviar un correo de prueba con un clic. (2) Corrección importante de envío: los contactos que el CRM guarda como "subscribed" ahora también reciben las campañas. Antes el envío solo consideraba a los contactos en estado "active", así que algunos suscritos legítimos podían quedar fuera; ahora la audiencia y el conteo de suscritos incluyen ambos estados. Cambio aditivo: no modifica la base de datos ni ejecuta migraciones, y no cambia tus campañas ni contactos. Es la cuarta fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'campañas', 'proveedor', 'resend', 'smtp', 'entregabilidad', 'dkim', 'spf', 'suscritos', 'fix', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.567.0',
         title: 'Email Marketing: escribe tus correos con ayuda de la IA ✨🤖',
