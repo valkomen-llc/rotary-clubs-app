@@ -12,6 +12,7 @@ import {
     unscheduleCampaign,
     getReport,
     getStats,
+    getDashboard,
     getTags,
 } from '../controllers/emailMarketingController.js';
 
@@ -25,6 +26,7 @@ router.use(roleMiddleware(['administrator', 'club_admin', 'district_admin']));
 
 router.get('/', listCampaigns);
 router.get('/stats', getStats);
+router.get('/dashboard', getDashboard);
 router.get('/tags', getTags);
 router.get('/audience', previewAudience);
 router.get('/:id/report', getReport);
