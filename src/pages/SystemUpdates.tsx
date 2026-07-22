@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.571.0 | 2026-07-22 (Email Marketing: Analítica avanzada (embudo, horarios, dispositivos, enlaces) + resumen IA + informe PDF)
+// UI V4.572.0 | 2026-07-22 (Email Marketing: Constructor visual de automatizaciones por nodos (enviar, esperar, etiquetas, condición))
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.572.0',
+        title: 'Email Marketing: automatizaciones visuales por nodos 🧩🔀',
+        description: 'Las automatizaciones dan un gran salto: en vez de ser solo una lista de correos que se envían uno tras otro, ahora se arman como un flujo visual de nodos conectados que arranca con un disparador (cuando un contacto recibe una etiqueta). Puedes combinar distintos tipos de nodo: "Enviar correo", "Esperar" (X días), "Aplicar etiqueta", "Quitar etiqueta" y "Condición". La condición funciona como un filtro: por ejemplo, "continuar solo si el contacto tiene la etiqueta cliente"; si no se cumple, el contacto sale del flujo. En el editor agregas nodos entre pasos con el botón +, los reordenas con las flechas y los eliminas, viendo el recorrido completo con sus conectores, del disparador al fin. Así puedes construir recorridos como: bienvenida → esperar 3 días → si sigue interesado, enviar oferta y aplicarle una etiqueta. Cambio aditivo y compatible: tus automatizaciones actuales siguen funcionando igual (son nodos de tipo "Enviar correo"), no se modifica ningún dato y no hay migraciones destructivas. Es la octava fase de la ampliación del módulo Campañas de Email.',
+        date: new Date().toISOString(),
+        tags: ['email', 'marketing', 'automatizaciones', 'workflows', 'nodos', 'flujos', 'condiciones', 'etiquetas', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.571.0',
         title: 'Email Marketing: analítica avanzada, resumen con IA e informe PDF 📊🤖📄',
