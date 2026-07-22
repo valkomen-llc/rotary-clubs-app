@@ -29,18 +29,24 @@ const Navbar = () => {
   const languageList = orderLanguages(defaultLanguage);
   useEffect(() => { applyDefaultLanguage(defaultLanguage); }, [defaultLanguage, applyDefaultLanguage]);
 
-  // Botones CTA de la cabecera, configurables por sitio (texto + enlace). Si un campo va
-  // vacío se usa el default. Los labels personalizados se muestran literales (pueden estar
-  // en cualquier idioma); los defaults pasan por <T> para traducirse.
+  // Botones CTA de la cabecera, configurables por sitio (texto + texto en Español + enlace).
+  // Los labels personalizados se muestran literales; los defaults pasan por <T> para traducirse.
+  // Comportamiento por idioma: en Español se usa el texto en español (si se configuró); en los
+  // demás idiomas se usa el texto internacional. Si falta uno, cae al otro; si no hay ninguno
+  // personalizado, se usan los botones por defecto (Contribuye / Únete a un club).
   const HEADER_CTA_DEFAULTS = [
     { label: 'Contribuye', url: '/maneras-de-contribuir', cls: 'bg-rotary-blue text-white hover:bg-rotary-blue/90' },
     { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio', cls: 'bg-sky-100 text-rotary-blue hover:bg-sky-200' },
   ];
   const headerCtasCfg = Array.isArray((club as any)?.headerCtas) ? (club as any).headerCtas : [];
   const headerCtas = HEADER_CTA_DEFAULTS.map((def, i) => {
-    const customLabel = String(headerCtasCfg[i]?.label || '').trim();
-    const customUrl = String(headerCtasCfg[i]?.url || '').trim();
-    return { label: customLabel || def.label, isCustomLabel: !!customLabel, url: customUrl || def.url, cls: def.cls };
+    const cfg = headerCtasCfg[i] || {};
+    const intlLabel = String(cfg.label || '').trim();   // internacional / otros idiomas
+    const esLabel = String(cfg.labelEs || '').trim();   // Español
+    const hasCustom = !!intlLabel || !!esLabel;
+    const customLabel = lang === 'es' ? (esLabel || intlLabel) : (intlLabel || esLabel);
+    const customUrl = String(cfg.url || '').trim();
+    return { label: hasCustom ? customLabel : def.label, isCustomLabel: hasCustom, url: customUrl || def.url, cls: def.cls };
   });
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
