@@ -2,20 +2,15 @@ import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
+import { resolveClubId } from './crmController.js';
 
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.575 — campañas + dashboard + editor visual + A/B + analítica + conversiones + audiencia multi-lista del CRM (incluye listas compartidas)');
+console.log('[emailMarketingController] v4.576 — resolveClubId compartido con el CRM (Platform Club para admin sin clubId) + audiencia multi-lista + conversiones');
 
-// El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
-// (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
-const resolveClubId = (req) => {
-    if (req.user?.role === 'administrator') {
-        return req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
-    }
-    return req.user?.clubId || null;
-};
+// resolveClubId se comparte con el CRM (crmController) para operar sobre el MISMO sitio
+// que el Directorio CRM: admins sin clubId en el token caen al Platform Club (Origen).
 
 const isValidEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
@@ -75,7 +70,7 @@ const resolveRecipients = async (clubId, audience, listId, tag, listIds) => {
 // GET /  — lista de campañas del sitio
 export const listCampaigns = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.json([]);
         const campaigns = await prisma.emailCampaign.findMany({
             where: { clubId },
@@ -91,7 +86,7 @@ export const listCampaigns = async (req, res) => {
 // GET /audience — conteo de destinatarios para una selección (preview)
 export const previewAudience = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.json({ count: 0 });
         const { audience = 'all', listId, segmentTag, listIds } = req.query;
         const listIdsArr = typeof listIds === 'string' ? listIds.split(',').filter(Boolean) : (Array.isArray(listIds) ? listIds : []);
@@ -106,7 +101,7 @@ export const previewAudience = async (req, res) => {
 // GET /:id
 export const getCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -121,7 +116,7 @@ export const getCampaign = async (req, res) => {
 // POST /
 export const createCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
         const { name, subject, fromName, preheader, content, design, audience, listId, listIds, segmentTag,
             abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
@@ -167,7 +162,7 @@ export const createCampaign = async (req, res) => {
 // PUT /:id — solo borradores
 export const updateCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const existing = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!existing || existing.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -215,7 +210,7 @@ export const updateCampaign = async (req, res) => {
 // DELETE /:id
 export const deleteCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const existing = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!existing || existing.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -440,7 +435,7 @@ export const processAbTests = async ({ baseUrl, now = new Date() } = {}) => {
 // POST /:id/send — envío inmediato de la campaña
 export const sendCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -477,7 +472,7 @@ export const sendCampaign = async (req, res) => {
 // No crea EmailCampaignRecipient ni afecta métricas; sirve para revisar el diseño.
 export const sendTest = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta prueba' });
         const { to, subject, content } = req.body;
         if (!isValidEmail(to)) return res.status(400).json({ error: 'La dirección de prueba no es válida' });
@@ -508,7 +503,7 @@ export const sendTest = async (req, res) => {
 // POST /:id/schedule — programa el envío para una fecha/hora futura
 export const scheduleCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -534,7 +529,7 @@ export const scheduleCampaign = async (req, res) => {
 // POST /:id/unschedule — cancela la programación (vuelve a borrador)
 export const unscheduleCampaign = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -583,7 +578,7 @@ export const processScheduledCampaigns = async ({ baseUrl, now = new Date() } = 
 // GET /:id/report — métricas de una campaña enviada (aperturas/clics únicos)
 export const getReport = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -684,7 +679,7 @@ export const getCampaignConversions = async (campaign) => {
 // Embudo, horarios de mayor interacción, dispositivos, enlaces más pulsados y conversiones.
 export const getAnalytics = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
         if (!campaign || campaign.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -730,7 +725,7 @@ export const getAnalytics = async (req, res) => {
 // GET /stats — métricas para el dashboard del módulo
 export const getStats = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.json({ campaigns: 0, emailsSent: 0, opens: 0, clicks: 0, contacts: 0, tags: 0, templates: 0 });
         const [campaigns, sentAgg, opens, clicks, contacts, templates, tagRows] = await Promise.all([
             prisma.emailCampaign.count({ where: { clubId } }),
@@ -797,7 +792,7 @@ const dailyCounts = async (table, dateCol, clubId, from, extraWhere = '') => {
 // 100% de solo lectura: no envía correos ni modifica datos.
 export const getDashboard = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         const key = DASHBOARD_PERIODS[req.query.period] ? req.query.period : '30d';
         const { days, label } = DASHBOARD_PERIODS[key];
         const now = new Date();
@@ -986,7 +981,7 @@ export const getDashboard = async (req, res) => {
 // GET /tags — etiquetas distintas del CRM del sitio (para segmentar)
 export const getTags = async (req, res) => {
     try {
-        const clubId = resolveClubId(req);
+        const clubId = await resolveClubId(req);
         if (!clubId) return res.json([]);
         const r = await db.query(
             `SELECT DISTINCT t AS tag FROM "WhatsAppContact", unnest(tags) AS t WHERE "clubId" = $1 ORDER BY t ASC`,
