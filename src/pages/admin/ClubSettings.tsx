@@ -163,7 +163,7 @@ const ClubSettings: React.FC = () => {
         authorsVisible: true,
         currency: 'USD',
         defaultLanguage: 'es',
-        headerCtas: [{ label: '', labelEs: '', url: '' }, { label: '', labelEs: '', url: '' }] as { label: string; labelEs: string; url: string }[],
+        headerCtas: [{ label: '', labelEs: '', url: '', urlEs: '' }, { label: '', labelEs: '', url: '', urlEs: '' }] as { label: string; labelEs: string; url: string; urlEs: string }[],
     });
     
     const [uploading, setUploading] = useState(false);
@@ -381,8 +381,8 @@ const ClubSettings: React.FC = () => {
                 headerCtas: (() => {
                     let v: any = (club as any).headerCtas;
                     if (!v && settingsMap['header_ctas']) { try { v = JSON.parse(settingsMap['header_ctas']); } catch { v = null; } }
-                    const norm = (x: any) => ({ label: String(x?.label || ''), labelEs: String(x?.labelEs || ''), url: String(x?.url || '') });
-                    return Array.isArray(v) ? [norm(v[0]), norm(v[1])] : [{ label: '', labelEs: '', url: '' }, { label: '', labelEs: '', url: '' }];
+                    const norm = (x: any) => ({ label: String(x?.label || ''), labelEs: String(x?.labelEs || ''), url: String(x?.url || ''), urlEs: String(x?.urlEs || '') });
+                    return Array.isArray(v) ? [norm(v[0]), norm(v[1])] : [{ label: '', labelEs: '', url: '', urlEs: '' }, { label: '', labelEs: '', url: '', urlEs: '' }];
                 })(),
             });
 
@@ -817,16 +817,16 @@ const ClubSettings: React.FC = () => {
                             <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
                                 <Layout className="w-5 h-5 text-rotary-blue" /> Botones del menú principal
                             </h3>
-                            <p className="text-[11px] text-gray-400 mb-5">Los dos botones de la cabecera del sitio. El <b>Texto (otros idiomas)</b> se usa cuando el sitio está en inglés u otro idioma; el <b>Texto (Español)</b> se muestra cuando el visitante ve el sitio en español. Deja un campo vacío para usar el otro texto (o el valor por defecto si ambos van vacíos). Si el enlace empieza con http, abre en una pestaña nueva.</p>
+                            <p className="text-[11px] text-gray-400 mb-5">Los dos botones de la cabecera del sitio. Las columnas <b>(otros idiomas)</b> se usan cuando el sitio está en inglés u otro idioma; las <b>(Español)</b> cuando el visitante ve el sitio en español. Deja un campo vacío para usar su variante (o el valor por defecto si ambos van vacíos). Si el enlace empieza con http, abre en una pestaña nueva.</p>
                             <div className="space-y-6">
                                 {[0, 1].map((i) => {
                                     const defaults = [
                                         { label: 'Contribuye', url: '/maneras-de-contribuir' },
                                         { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio' },
                                     ][i];
-                                    const updateCta = (field: 'label' | 'labelEs' | 'url', value: string) => {
+                                    const updateCta = (field: 'label' | 'labelEs' | 'url' | 'urlEs', value: string) => {
                                         const next = [...formData.headerCtas];
-                                        next[i] = { ...(next[i] || { label: '', labelEs: '', url: '' }), [field]: value };
+                                        next[i] = { ...(next[i] || { label: '', labelEs: '', url: '', urlEs: '' }), [field]: value };
                                         setFormData({ ...formData, headerCtas: next });
                                     };
                                     const inputCls = "w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium";
@@ -842,10 +842,14 @@ const ClubSettings: React.FC = () => {
                                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Texto (Español) 🇨🇴</label>
                                                     <input type="text" className={inputCls} value={formData.headerCtas[i]?.labelEs || ''} placeholder={defaults.label} onChange={e => updateCta('labelEs', e.target.value)} />
                                                 </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Enlace</label>
-                                                <input type="text" className={inputCls} value={formData.headerCtas[i]?.url || ''} placeholder={defaults.url} onChange={e => updateCta('url', e.target.value)} />
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Enlace (otros idiomas)</label>
+                                                    <input type="text" className={inputCls} value={formData.headerCtas[i]?.url || ''} placeholder={defaults.url} onChange={e => updateCta('url', e.target.value)} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Enlace (Español) 🇨🇴</label>
+                                                    <input type="text" className={inputCls} value={formData.headerCtas[i]?.urlEs || ''} placeholder={defaults.url} onChange={e => updateCta('urlEs', e.target.value)} />
+                                                </div>
                                             </div>
                                         </div>
                                     );
