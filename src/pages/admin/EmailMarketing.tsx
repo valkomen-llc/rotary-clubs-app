@@ -8,6 +8,8 @@ import {
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
 import EmailDashboard from '../../components/admin/email-marketing/Dashboard';
+import EmailBuilder from '../../components/admin/email-marketing/EmailBuilder';
+import { EmailDesign, DEFAULT_DESIGN, DEFAULT_SETTINGS, parseDesign, renderDesignToHtml, newId } from '../../lib/emailBlocks';
 
 interface Campaign {
     id: string;
@@ -28,6 +30,7 @@ interface Campaign {
     clickCount?: number;
     sentAt?: string | null;
     createdAt: string;
+    design?: string | null;
 }
 
 interface CrmList {
@@ -117,6 +120,9 @@ const EmailMarketing: React.FC = () => {
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
     const [tab, setTab] = useState<'dashboard' | 'campaigns' | 'automations'>('dashboard');
+    const [contentMode, setContentMode] = useState<'visual' | 'html'>('visual');
+    const [builderDesign, setBuilderDesign] = useState<EmailDesign | null>(null);
+    const [sendingTest, setSendingTest] = useState(false);
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -238,11 +244,57 @@ const EmailMarketing: React.FC = () => {
                 scheduleEnabled: c.status === 'scheduled',
                 scheduledAt: toLocalInput(c.scheduledAt),
             });
+            const parsed = parseDesign(c.design);
+            if (parsed) { setBuilderDesign(parsed); setContentMode('visual'); }
+            else { setBuilderDesign(null); setContentMode('html'); } // campaña heredada: HTML crudo
         } else {
             setEditing(null);
-            setForm(emptyForm);
+            setForm({ ...emptyForm, content: renderDesignToHtml(DEFAULT_DESIGN) });
+            setBuilderDesign(DEFAULT_DESIGN);
+            setContentMode('visual');
         }
         setIsModalOpen(true);
+    };
+
+    // El editor visual es la fuente de verdad en modo 'visual': cada cambio re-renderiza
+    // el HTML a form.content, que es lo que guarda/envía el pipeline existente.
+    const handleDesignChange = (design: EmailDesign) => {
+        setBuilderDesign(design);
+        setForm((f) => ({ ...f, content: renderDesignToHtml(design) }));
+    };
+
+    // Al pasar a visual desde una campaña heredada (HTML crudo), envolvemos ese HTML en
+    // un bloque para no perderlo.
+    const switchMode = (mode: 'visual' | 'html') => {
+        if (mode === 'visual' && !builderDesign) {
+            const seed: EmailDesign = form.content?.trim()
+                ? { version: 1, settings: { ...DEFAULT_SETTINGS }, blocks: [{ id: newId(), type: 'html', html: form.content }] }
+                : DEFAULT_DESIGN;
+            setBuilderDesign(seed);
+            setForm((f) => ({ ...f, content: renderDesignToHtml(seed) }));
+        }
+        setContentMode(mode);
+    };
+
+    const handleTestSend = async () => {
+        const to = window.prompt('Enviar un correo de prueba a:', '');
+        if (!to) return;
+        if (!form.subject.trim()) { toast.error('Escribe un asunto antes de enviar la prueba'); return; }
+        setSendingTest(true);
+        try {
+            const res = await fetch(`${API}/email-marketing/test-send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ to, subject: form.subject, content: form.content }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'No se pudo enviar la prueba');
+            toast.success(`Correo de prueba enviado a ${to}`);
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setSendingTest(false);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -253,11 +305,12 @@ const EmailMarketing: React.FC = () => {
         }
         setIsSubmitting(true);
         try {
+            const designStr = contentMode === 'visual' && builderDesign ? JSON.stringify(builderDesign) : null;
             const url = editing ? `${API}/email-marketing/${editing.id}` : `${API}/email-marketing`;
             const res = await fetch(url, {
                 method: editing ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify(form),
+                body: JSON.stringify({ ...form, design: designStr }),
             });
             if (!res.ok) {
                 const d = await res.json();
@@ -489,7 +542,7 @@ const EmailMarketing: React.FC = () => {
             {/* Modal Crear / Editar */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <h2 className="text-lg font-bold text-gray-800">{editing ? 'Editar Campaña' : 'Nueva Campaña'}</h2>
                             <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6" /></button>
@@ -645,33 +698,60 @@ const EmailMarketing: React.FC = () => {
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-sm font-bold text-gray-700">Contenido (HTML)</label>
-                                    <button type="button" onClick={() => setPreview(!preview)} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800">
-                                        {preview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                        {preview ? 'Editar' : 'Vista previa'}
-                                    </button>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-bold text-gray-700">Contenido del correo</label>
+                                    <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
+                                        <button type="button" onClick={() => switchMode('visual')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'visual' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
+                                            <Megaphone className="w-3.5 h-3.5" /> Editor visual
+                                        </button>
+                                        <button type="button" onClick={() => switchMode('html')} className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-md transition-all ${contentMode === 'html' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500'}`}>
+                                            <Code className="w-3.5 h-3.5" /> HTML
+                                        </button>
+                                    </div>
                                 </div>
-                                {preview ? (
-                                    <div className="min-h-[200px] border border-gray-200 rounded-lg p-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: form.content || '<p class="text-gray-400">Sin contenido…</p>' }} />
+                                {contentMode === 'visual' && builderDesign ? (
+                                    <EmailBuilder design={builderDesign} onChange={handleDesignChange} />
                                 ) : (
-                                    <textarea
-                                        rows={10}
-                                        className="w-full px-4 py-3 font-mono text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y"
-                                        value={form.content}
-                                        onChange={(e) => setForm({ ...form, content: e.target.value })}
-                                    />
+                                    <>
+                                        <div className="flex items-center justify-end mb-1">
+                                            <button type="button" onClick={() => setPreview(!preview)} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800">
+                                                {preview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                {preview ? 'Editar' : 'Vista previa'}
+                                            </button>
+                                        </div>
+                                        {preview ? (
+                                            <div className="min-h-[200px] border border-gray-200 rounded-lg p-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: form.content || '<p class="text-gray-400">Sin contenido…</p>' }} />
+                                        ) : (
+                                            <textarea
+                                                rows={10}
+                                                className="w-full px-4 py-3 font-mono text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y"
+                                                value={form.content}
+                                                onChange={(e) => setForm({ ...form, content: e.target.value })}
+                                            />
+                                        )}
+                                    </>
                                 )}
                                 <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
                                     <Code className="w-3 h-3" /> Se añade automáticamente un pie con enlace para cancelar suscripción.
                                 </p>
                             </div>
 
-                            <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-gray-500 font-bold hover:text-gray-700">Cancelar</button>
-                                <button type="submit" disabled={isSubmitting} className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all disabled:opacity-50">
-                                    {isSubmitting ? 'Guardando…' : (form.scheduleEnabled ? 'Programar Envío' : (editing ? 'Guardar Cambios' : 'Crear Campaña'))}
+                            <div className="flex flex-wrap justify-between items-center gap-3 border-t border-gray-100 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={handleTestSend}
+                                    disabled={sendingTest}
+                                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-rotary-blue bg-sky-50 border border-blue-100 rounded-full hover:bg-sky-100 transition-all disabled:opacity-50"
+                                    title="Enviar un correo de prueba a una dirección"
+                                >
+                                    {sendingTest ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MailCheck className="w-4 h-4" />} Enviar prueba
                                 </button>
+                                <div className="flex gap-3">
+                                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-gray-500 font-bold hover:text-gray-700">Cancelar</button>
+                                    <button type="submit" disabled={isSubmitting} className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all disabled:opacity-50">
+                                        {isSubmitting ? 'Guardando…' : (form.scheduleEnabled ? 'Programar Envío' : (editing ? 'Guardar Cambios' : 'Crear Campaña'))}
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </div>

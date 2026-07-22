@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.565 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend) + panel unificado (dashboard)');
+console.log('[emailMarketingController] v4.566 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend) + panel unificado (dashboard) + editor visual de bloques (design) + envío de prueba');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -101,7 +101,7 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, preheader, content, audience, listId, segmentTag } = req.body;
+        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
         }
@@ -114,6 +114,7 @@ export const createCampaign = async (req, res) => {
                 fromName: fromName || null,
                 preheader: preheader || null,
                 content,
+                design: design || null,
                 audience: aud,
                 listId: aud === 'list' ? (listId || null) : null,
                 segmentTag: aud === 'tag' ? (segmentTag || null) : null,
@@ -139,7 +140,7 @@ export const updateCampaign = async (req, res) => {
         if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
-        const { name, subject, fromName, preheader, content, audience, listId, segmentTag } = req.body;
+        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag } = req.body;
         const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
         const campaign = await prisma.emailCampaign.update({
             where: { id: req.params.id },
@@ -149,6 +150,7 @@ export const updateCampaign = async (req, res) => {
                 ...(fromName !== undefined && { fromName: fromName || null }),
                 ...(preheader !== undefined && { preheader: preheader || null }),
                 ...(content !== undefined && { content }),
+                ...(design !== undefined && { design: design || null }),
                 ...(aud !== undefined && { audience: aud }),
                 ...(aud !== undefined && { listId: aud === 'list' ? (listId || null) : null }),
                 ...(aud !== undefined && { segmentTag: aud === 'tag' ? (segmentTag || null) : null }),
@@ -293,6 +295,38 @@ export const sendCampaign = async (req, res) => {
             await prisma.emailCampaign.update({ where: { id: req.params.id }, data: { status: 'failed' } });
         } catch { /* noop */ }
         res.status(500).json({ error: 'Error al enviar la campaña' });
+    }
+};
+
+// POST /test-send — envía un correo de prueba a una dirección arbitraria.
+// No crea EmailCampaignRecipient ni afecta métricas; sirve para revisar el diseño.
+export const sendTest = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta prueba' });
+        const { to, subject, content } = req.body;
+        if (!isValidEmail(to)) return res.status(400).json({ error: 'La dirección de prueba no es válida' });
+        if (!subject || !content) return res.status(400).json({ error: 'Asunto y contenido son obligatorios' });
+        const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
+            <div style="max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
+                <div style="background:#fef3c7;color:#92400e;font-family:Arial,sans-serif;font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:16px">✉️ Correo de PRUEBA — así se verá tu campaña (sin el pie de baja real).</div>
+                ${content}
+            </div>
+        </body></html>`;
+        const result = await EmailService.sendEmail({
+            clubId,
+            to: String(to).trim(),
+            subject: `[PRUEBA] ${subject}`,
+            html,
+            userId: req.user?.id || null,
+        });
+        if (!result?.success) {
+            return res.status(502).json({ error: result?.error || 'El proveedor no pudo enviar la prueba' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[emailMarketing] sendTest:', error);
+        res.status(500).json({ error: 'Error al enviar la prueba' });
     }
 };
 

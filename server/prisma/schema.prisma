@@ -659,7 +659,8 @@ model EmailCampaign {
   subject         String
   fromName        String?
   preheader       String?
-  content         String    // HTML del cuerpo
+  content         String    // HTML del cuerpo (renderizado, listo para enviar)
+  design          String?   // JSON del diseño de bloques del editor visual (para re-edición). Opcional.
   audience        String    @default("all") // 'all' | 'list' | 'tag'
   listId          String?   // id de CrmList cuando audience='list' (sin relación FK: resolución manual)
   segmentTag      String?   // etiqueta del CRM cuando audience='tag'

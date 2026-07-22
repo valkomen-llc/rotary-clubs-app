@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.565.0",
-  "cache_bust": "2026-07-22 (Email Marketing → nuevo Panel unificado (dashboard) como pestaña por defecto del módulo. Endpoint aditivo y de solo lectura GET /api/email-marketing/dashboard?period=7d|30d|90d que agrega KPIs de audiencia (contactos, suscritos, bajas, sin email, pendientes, con rebotes), envíos, engagement (aperturas/clics únicos, tasas de entrega/apertura/clic), automatizaciones activas, series temporales por día, comparación con el período anterior, campañas recientes/top y alertas de entregabilidad. Frontend: componente Dashboard.tsx con recharts (actividad de correo y crecimiento de contactos), tarjetas KPI con deltas y panel de alertas. No envía correos ni modifica datos; no toca la BD ni la plantilla de pendones. Fase 1 del módulo Campañas de Email.)",
+  "version": "4.566.0",
+  "cache_bust": "2026-07-22 (Email Marketing → Editor visual de bloques (drag-and-drop) para el cuerpo de las campañas, como alternativa principal al HTML. Bloques: encabezado, texto, imagen, botón, columnas, separador, espaciado, redes sociales, video y HTML libre; con reordenamiento arrastrando, duplicar/eliminar, ajustes por bloque (colores, alineación, tamaños, enlaces), estilos globales (tipografía, fondos, color de texto/enlaces, ancho), biblioteca multimedia integrada (MediaPicker) y vista previa por dispositivo (escritorio/tablet/móvil). El diseño se guarda como JSON en EmailCampaign.design (columna nueva, nullable y aditiva) y se renderiza a HTML email-safe (tablas + estilos inline) en content, que consume el pipeline de envío existente sin cambios. Nuevo endpoint POST /api/email-marketing/test-send para enviar un correo de prueba (no afecta métricas). Las campañas HTML heredadas siguen editándose en modo HTML y no se pierden al cambiar de modo. Fase 2 del módulo Campañas de Email. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.565.0 | 2026-07-22 (Email Marketing: Panel unificado (dashboard) con KPIs, series por período, comparación y alertas de entregabilidad)",
+  "//": "UI V4.566.0 | 2026-07-22 (Email Marketing: Editor visual de bloques drag-and-drop + biblioteca multimedia + preview por dispositivo + envío de prueba)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
