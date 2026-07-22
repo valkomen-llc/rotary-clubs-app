@@ -3,27 +3,13 @@ import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { renderRichText, hasBoldMarkup } from '../lib/richText';
 
 // Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
 const ICON_EMOJI: Record<string, string> = {
   star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
   megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
   award: '🏅', trophy: '🏆', rocket: '🚀',
-};
-
-// Renderiza el título resaltando (en color) la primera aparición de `highlight`, si existe.
-const renderTitle = (title: string, highlight?: string, color?: string) => {
-  if (!highlight || !highlight.trim()) return title;
-  const idx = title.toLowerCase().indexOf(highlight.trim().toLowerCase());
-  if (idx === -1) return title;
-  const len = highlight.trim().length;
-  return (
-    <>
-      {title.slice(0, idx)}
-      <span style={{ color: color || '#f6a40a' }}>{title.slice(idx, idx + len)}</span>
-      {title.slice(idx + len)}
-    </>
-  );
 };
 
 // El color de fondo personalizable + textura overlay aplica SOLO a sitios de tipo
@@ -68,11 +54,11 @@ const ActionSection = () => {
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
       )}
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className={`text-3xl md:text-4xl ${content.title ? 'font-bold' : 'font-light'} text-white mb-6 whitespace-pre-line`}>
-          {content.title ? renderTitle(content.title, content.titleHighlight, content.titleHighlightColor) : <T>Somos gente de acción</T>}
+        <h2 className={`text-3xl md:text-4xl ${content.title ? (hasBoldMarkup(content.title) ? 'font-normal' : 'font-bold') : 'font-light'} text-white mb-6 whitespace-pre-line`}>
+          {content.title ? renderRichText(content.title, { highlight: content.titleHighlight, color: content.titleHighlightColor }) : <T>Somos gente de acción</T>}
         </h2>
         <p className="text-white/90 text-base md:text-lg mb-8 max-w-5xl mx-auto leading-relaxed whitespace-pre-line">
-          {content.text ? content.text : <T>Nuestra red mundial de 1,4 millones de vecinos, amigos y líderes voluntarios ofrecen sus conocimientos y recursos para resolver problemas y abordar las necesidades de las comunidades.</T>}
+          {content.text ? renderRichText(content.text) : <T>Nuestra red mundial de 1,4 millones de vecinos, amigos y líderes voluntarios ofrecen sus conocimientos y recursos para resolver problemas y abordar las necesidades de las comunidades.</T>}
         </p>
         {isExternal ? (
           <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>
