@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.580.0 | 2026-07-22 (Botones de la cabecera: texto Y enlace por idioma (internacional + Español))
+// UI V4.581.0 | 2026-07-22 (Ancho de ActionSection igualado a JoinSection (max-w-7xl) en la portada)
 // Cache bust: 2026-07-22
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.581.0',
+        title: 'Ancho consistente entre las secciones de la portada 📐',
+        description: 'La sección "Somos gente de acción" de la portada ahora usa el mismo ancho de contenedor que la sección "Únete a Rotary", para que ambas se vean alineadas y con la misma línea de ancho. El contenido puede extenderse un poco más a lo ancho que antes. Cambio visual menor en la portada.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'home', 'ancho', 'layout', 'ui', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.580.0',
         title: 'Los botones de la cabecera ahora cambian también el enlace según el idioma 🔗🌐',
