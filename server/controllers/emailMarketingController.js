@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.568 — campañas + tracking + reportes + segmentación + programación + webhook + dashboard + editor visual + envío de prueba + audiencia incluye estado subscribed');
+console.log('[emailMarketingController] v4.569 — campañas + tracking + reportes + dashboard + editor visual + prueba + audiencia subscribed + pruebas A/B (variante B, muestra, ventana, ganador automático)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -103,11 +103,13 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag } = req.body;
+        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag,
+            abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
         }
         const aud = ['list', 'tag'].includes(audience) ? audience : 'all';
+        const ab = !!abEnabled;
         const campaign = await prisma.emailCampaign.create({
             data: {
                 clubId,
@@ -120,6 +122,13 @@ export const createCampaign = async (req, res) => {
                 audience: aud,
                 listId: aud === 'list' ? (listId || null) : null,
                 segmentTag: aud === 'tag' ? (segmentTag || null) : null,
+                abEnabled: ab,
+                variantSubject: ab ? (variantSubject || null) : null,
+                variantPreheader: ab ? (variantPreheader || null) : null,
+                variantContent: ab ? (variantContent || null) : null,
+                abSamplePct: ab ? (Number(abSamplePct) || 30) : null,
+                abWindowHours: ab ? (Number(abWindowHours) || 4) : null,
+                abMetric: ab ? (abMetric === 'clicks' ? 'clicks' : 'opens') : null,
                 status: 'draft',
                 createdById: req.user?.id || null,
             },
@@ -142,7 +151,8 @@ export const updateCampaign = async (req, res) => {
         if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
-        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag } = req.body;
+        const { name, subject, fromName, preheader, content, design, audience, listId, segmentTag,
+            abEnabled, variantSubject, variantPreheader, variantContent, abSamplePct, abWindowHours, abMetric } = req.body;
         const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
         const campaign = await prisma.emailCampaign.update({
             where: { id: req.params.id },
@@ -156,6 +166,15 @@ export const updateCampaign = async (req, res) => {
                 ...(aud !== undefined && { audience: aud }),
                 ...(aud !== undefined && { listId: aud === 'list' ? (listId || null) : null }),
                 ...(aud !== undefined && { segmentTag: aud === 'tag' ? (segmentTag || null) : null }),
+                ...(abEnabled !== undefined && {
+                    abEnabled: !!abEnabled,
+                    variantSubject: abEnabled ? (variantSubject || null) : null,
+                    variantPreheader: abEnabled ? (variantPreheader || null) : null,
+                    variantContent: abEnabled ? (variantContent || null) : null,
+                    abSamplePct: abEnabled ? (Number(abSamplePct) || 30) : null,
+                    abWindowHours: abEnabled ? (Number(abWindowHours) || 4) : null,
+                    abMetric: abEnabled ? (abMetric === 'clicks' ? 'clicks' : 'opens') : null,
+                }),
             },
         });
         res.json(campaign);
@@ -189,12 +208,12 @@ const wrapLinks = (html, rid, baseUrl) =>
     html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url) =>
         `href="${baseUrl}/api/public/em/c/${rid}?u=${encodeURIComponent(url)}"`);
 
-const buildEmailHtml = (campaign, rid, contact, baseUrl) => {
+const buildEmailHtml = (contentHtml, preheaderText, rid, contact, baseUrl) => {
     const unsubscribeUrl = `${baseUrl}/api/public/unsubscribe?cid=${contact.id}`;
-    const trackedContent = wrapLinks(campaign.content, rid, baseUrl);
+    const trackedContent = wrapLinks(contentHtml, rid, baseUrl);
     const pixel = `<img src="${baseUrl}/api/public/em/o/${rid}" width="1" height="1" alt="" style="display:none">`;
-    const preheader = campaign.preheader
-        ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${campaign.preheader}</div>`
+    const preheader = preheaderText
+        ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${preheaderText}</div>`
         : '';
     const footer = `
         <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;font-family:Arial,sans-serif">
@@ -209,6 +228,30 @@ const buildEmailHtml = (campaign, rid, contact, baseUrl) => {
         </div>
         ${pixel}
     </body></html>`;
+};
+
+// Envía un asunto/contenido concreto a una lista de contactos, registrando un
+// EmailCampaignRecipient por cada uno (con la variante indicada). Reutilizado por el
+// envío normal, la fase de prueba A/B y el envío del ganador.
+const sendToContacts = async ({ clubId, campaignId, contacts, subject, content, preheader, variant, baseUrl, userId }) => {
+    let sent = 0;
+    let failed = 0;
+    const rows = [];
+    for (const contact of contacts) {
+        const rid = randomUUID();
+        const html = buildEmailHtml(content, preheader, rid, contact, baseUrl);
+        const result = await EmailService.sendEmail({
+            clubId, to: contact.email.trim(), subject, html, userId: userId || null,
+        });
+        const ok = !!result?.success;
+        if (ok) sent += 1; else failed += 1;
+        rows.push({
+            id: rid, campaignId, clubId, contactId: contact.id,
+            email: contact.email.trim(), status: ok ? 'sent' : 'failed', variant: variant || null,
+        });
+    }
+    if (rows.length) await prisma.emailCampaignRecipient.createMany({ data: rows, skipDuplicates: true });
+    return { sent, failed };
 };
 
 // Despacho real de una campaña (compartido por el envío manual y el cron de programados).
@@ -230,44 +273,139 @@ const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
     // Reinicia destinatarios de un reenvío anterior (campaña fallida que se reintenta).
     await prisma.emailCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
 
-    let sentCount = 0;
-    let failedCount = 0;
-    const recipientRows = [];
-
-    for (const contact of batch) {
-        const rid = randomUUID();
-        const html = buildEmailHtml(campaign, rid, contact, baseUrl);
-        const result = await EmailService.sendEmail({
-            clubId,
-            to: contact.email.trim(),
-            subject: campaign.subject,
-            html,
-            userId: userId || null,
-        });
-        const ok = !!result?.success;
-        if (ok) sentCount += 1;
-        else failedCount += 1;
-        recipientRows.push({
-            id: rid,
-            campaignId: campaign.id,
-            clubId,
-            contactId: contact.id,
-            email: contact.email.trim(),
-            status: ok ? 'sent' : 'failed',
-        });
-    }
-
-    if (recipientRows.length) {
-        await prisma.emailCampaignRecipient.createMany({ data: recipientRows, skipDuplicates: true });
-    }
-
-    const finalStatus = sentCount > 0 ? 'sent' : 'failed';
-    const updated = await prisma.emailCampaign.update({
-        where: { id: campaign.id },
-        data: { status: finalStatus, sentCount, failedCount, scheduledAt: null, sentAt: new Date() },
+    const { sent, failed } = await sendToContacts({
+        clubId, campaignId: campaign.id, contacts: batch,
+        subject: campaign.subject, content: campaign.content, preheader: campaign.preheader,
+        variant: null, baseUrl, userId,
     });
 
-    return { campaign: updated, sent: sentCount, failed: failedCount, skipped: recipients.length - batch.length };
+    const finalStatus = sent > 0 ? 'sent' : 'failed';
+    const updated = await prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: { status: finalStatus, sentCount: sent, failedCount: failed, scheduledAt: null, sentAt: new Date() },
+    });
+
+    return { campaign: updated, sent, failed, skipped: recipients.length - batch.length };
+};
+
+// Audiencia mínima para poder hacer una prueba A/B (al menos 2 por variante).
+const AB_MIN_AUDIENCE = 4;
+
+// Fase de prueba A/B: envía la variante A y la variante B a una muestra dividida.
+// El ganador se decide y se envía al resto más tarde, vía processAbTests (cron).
+const dispatchAbTest = async ({ campaign, baseUrl, userId }) => {
+    const clubId = campaign.clubId;
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+    if (recipients.length < AB_MIN_AUDIENCE) {
+        const err = new Error(`La audiencia (${recipients.length}) es muy pequeña para una prueba A/B (mínimo ${AB_MIN_AUDIENCE} contactos).`);
+        err.code = 'AB_TOO_SMALL';
+        throw err;
+    }
+    const pct = Math.min(90, Math.max(10, campaign.abSamplePct || 30));
+    let sampleSize = Math.floor((recipients.length * pct) / 100);
+    if (sampleSize < 2) sampleSize = 2;
+    if (sampleSize % 2 !== 0) sampleSize -= 1;              // par, para dividir en dos mitades
+    sampleSize = Math.min(sampleSize, MAX_RECIPIENTS_PER_SEND);
+    const sample = recipients.slice(0, sampleSize);
+    const half = sampleSize / 2;
+    const groupA = sample.slice(0, half);
+    const groupB = sample.slice(half);
+
+    await prisma.emailCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: {
+            status: 'sending', abPhase: 'testing', abTestStartedAt: new Date(), abWinner: null,
+            totalRecipients: recipients.length, openCount: 0, clickCount: 0, scheduledAt: null,
+        },
+    });
+
+    const rA = await sendToContacts({
+        clubId, campaignId: campaign.id, contacts: groupA,
+        subject: campaign.subject, content: campaign.content, preheader: campaign.preheader,
+        variant: 'A', baseUrl, userId,
+    });
+    const rB = await sendToContacts({
+        clubId, campaignId: campaign.id, contacts: groupB,
+        subject: campaign.variantSubject || campaign.subject,
+        content: campaign.variantContent || campaign.content,
+        preheader: campaign.variantPreheader || campaign.preheader,
+        variant: 'B', baseUrl, userId,
+    });
+
+    const sent = rA.sent + rB.sent;
+    const failed = rA.failed + rB.failed;
+    const updated = await prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: { sentCount: sent, failedCount: failed },
+    });
+    return { campaign: updated, phase: 'testing', sent, failed, aSent: rA.sent, bSent: rB.sent, sampleSize, remainder: recipients.length - sampleSize };
+};
+
+// Cron: decide el ganador de las pruebas A/B cuya ventana ya venció y envía la
+// variante ganadora al resto de la audiencia (excluyendo a quienes ya recibieron la muestra).
+export const processAbTests = async ({ baseUrl, now = new Date() } = {}) => {
+    const testing = await prisma.emailCampaign.findMany({
+        where: { abEnabled: true, abPhase: 'testing', abTestStartedAt: { not: null } },
+        take: 10,
+    });
+    let decided = 0;
+    let remainderSent = 0;
+    for (const campaign of testing) {
+        const windowMs = (campaign.abWindowHours || 4) * 3600000;
+        if (new Date(campaign.abTestStartedAt).getTime() + windowMs > now.getTime()) continue; // ventana aún no vence
+        try {
+            const stat = { A: { sent: 0, opens: 0, clicks: 0 }, B: { sent: 0, opens: 0, clicks: 0 } };
+            const r = await db.query(
+                `SELECT variant,
+                    COUNT(*) FILTER (WHERE status='sent')::int AS sent,
+                    COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS opens,
+                    COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS clicks
+                 FROM "EmailCampaignRecipient"
+                 WHERE "campaignId" = $1 AND variant IN ('A','B')
+                 GROUP BY variant`,
+                [campaign.id]
+            );
+            for (const row of r.rows) stat[row.variant] = { sent: row.sent, opens: row.opens, clicks: row.clicks };
+            const metric = campaign.abMetric === 'clicks' ? 'clicks' : 'opens';
+            const rateA = stat.A.sent ? stat.A[metric] / stat.A.sent : 0;
+            const rateB = stat.B.sent ? stat.B[metric] / stat.B.sent : 0;
+            const winner = rateB > rateA ? 'B' : 'A';
+
+            // Resto de la audiencia: los que aún no recibieron la muestra.
+            const all = await resolveRecipients(campaign.clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+            const already = await prisma.emailCampaignRecipient.findMany({ where: { campaignId: campaign.id }, select: { email: true } });
+            const sentSet = new Set(already.map((a) => a.email.trim().toLowerCase()));
+            const remainder = all
+                .filter((c) => !sentSet.has(c.email.trim().toLowerCase()))
+                .slice(0, MAX_RECIPIENTS_PER_SEND);
+
+            const subject = winner === 'B' ? (campaign.variantSubject || campaign.subject) : campaign.subject;
+            const content = winner === 'B' ? (campaign.variantContent || campaign.content) : campaign.content;
+            const preheader = winner === 'B' ? (campaign.variantPreheader || campaign.preheader) : campaign.preheader;
+
+            let res = { sent: 0, failed: 0 };
+            if (remainder.length) {
+                res = await sendToContacts({
+                    clubId: campaign.clubId, campaignId: campaign.id, contacts: remainder,
+                    subject, content, preheader, variant: 'W', baseUrl, userId: campaign.createdById,
+                });
+            }
+
+            await prisma.emailCampaign.update({
+                where: { id: campaign.id },
+                data: {
+                    abPhase: 'completed', abWinner: winner, status: 'sent', sentAt: new Date(),
+                    sentCount: { increment: res.sent }, failedCount: { increment: res.failed },
+                },
+            });
+            decided += 1;
+            remainderSent += res.sent;
+        } catch (error) {
+            console.error(`[emailMarketing] A/B decide failed ${campaign.id}:`, error.message);
+        }
+    }
+    return { evaluated: testing.length, decided, remainderSent };
 };
 
 // POST /:id/send — envío inmediato de la campaña
@@ -286,10 +424,16 @@ export const sendCampaign = async (req, res) => {
         }
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
+        // Campaña con prueba A/B: dispara la fase de prueba (muestra dividida). El cron
+        // decidirá el ganador y enviará al resto cuando venza la ventana.
+        if (campaign.abEnabled && campaign.abPhase !== 'completed') {
+            const abResult = await dispatchAbTest({ campaign, baseUrl, userId: req.user?.id });
+            return res.json(abResult);
+        }
         const result = await dispatchCampaign({ campaign, baseUrl, userId: req.user?.id });
         res.json(result);
     } catch (error) {
-        if (error.code === 'NO_RECIPIENTS') {
+        if (error.code === 'NO_RECIPIENTS' || error.code === 'AB_TOO_SMALL') {
             return res.status(400).json({ error: error.message });
         }
         console.error('[emailMarketing] sendCampaign:', error);
@@ -391,7 +535,11 @@ export const processScheduledCampaigns = async ({ baseUrl, now = new Date() } = 
     let failed = 0;
     for (const campaign of due) {
         try {
-            await dispatchCampaign({ campaign, baseUrl, userId: campaign.createdById });
+            if (campaign.abEnabled && campaign.abPhase !== 'completed') {
+                await dispatchAbTest({ campaign, baseUrl, userId: campaign.createdById });
+            } else {
+                await dispatchCampaign({ campaign, baseUrl, userId: campaign.createdById });
+            }
             processed += 1;
         } catch (error) {
             failed += 1;
@@ -419,6 +567,39 @@ export const getReport = async (req, res) => {
         ]);
         const openRate = sent ? Math.round((uniqueOpens / sent) * 1000) / 10 : 0;
         const clickRate = sent ? Math.round((uniqueClicks / sent) * 1000) / 10 : 0;
+
+        // Desglose A/B (si aplica): métricas únicas por variante.
+        let ab = null;
+        if (campaign.abEnabled) {
+            try {
+                const r = await db.query(
+                    `SELECT variant,
+                        COUNT(*) FILTER (WHERE status='sent')::int AS sent,
+                        COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS opens,
+                        COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS clicks
+                     FROM "EmailCampaignRecipient" WHERE "campaignId" = $1 GROUP BY variant`,
+                    [campaign.id]
+                );
+                const v = { A: { sent: 0, opens: 0, clicks: 0 }, B: { sent: 0, opens: 0, clicks: 0 }, W: { sent: 0, opens: 0, clicks: 0 } };
+                for (const row of r.rows) { if (row.variant && v[row.variant]) v[row.variant] = { sent: row.sent, opens: row.opens, clicks: row.clicks }; }
+                const rateOf = (x, m) => (x.sent ? Math.round((x[m] / x.sent) * 1000) / 10 : 0);
+                ab = {
+                    metric: campaign.abMetric === 'clicks' ? 'clicks' : 'opens',
+                    winner: campaign.abWinner,
+                    phase: campaign.abPhase,
+                    windowHours: campaign.abWindowHours,
+                    samplePct: campaign.abSamplePct,
+                    subjectA: campaign.subject,
+                    subjectB: campaign.variantSubject || campaign.subject,
+                    variants: {
+                        A: { ...v.A, openRate: rateOf(v.A, 'opens'), clickRate: rateOf(v.A, 'clicks') },
+                        B: { ...v.B, openRate: rateOf(v.B, 'opens'), clickRate: rateOf(v.B, 'clicks') },
+                    },
+                    winnerSend: { ...v.W },
+                };
+            } catch (e) { console.error('[emailMarketing] report ab:', e.message); }
+        }
+
         res.json({
             campaign: { id: campaign.id, name: campaign.name, subject: campaign.subject, sentAt: campaign.sentAt, status: campaign.status },
             sent, failed,
@@ -426,6 +607,7 @@ export const getReport = async (req, res) => {
             totalClicks: campaign.clickCount,
             uniqueOpens, uniqueClicks,
             openRate, clickRate,
+            ab,
         });
     } catch (error) {
         console.error('[emailMarketing] getReport:', error);

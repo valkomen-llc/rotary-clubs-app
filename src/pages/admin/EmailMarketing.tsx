@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow, LayoutDashboard, Sparkles, Server, FlaskConical, Trophy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Automations from '../../components/admin/email-marketing/Automations';
@@ -36,6 +36,24 @@ interface Campaign {
     sentAt?: string | null;
     createdAt: string;
     design?: string | null;
+    abEnabled?: boolean;
+    variantSubject?: string | null;
+    variantPreheader?: string | null;
+    variantContent?: string | null;
+    abSamplePct?: number | null;
+    abWindowHours?: number | null;
+    abMetric?: string | null;
+    abPhase?: string | null;
+    abWinner?: string | null;
+}
+
+interface AbVariant { sent: number; opens: number; clicks: number; openRate: number; clickRate: number; }
+interface AbReport {
+    metric: string; winner?: string | null; phase?: string | null;
+    windowHours?: number | null; samplePct?: number | null;
+    subjectA: string; subjectB: string;
+    variants: { A: AbVariant; B: AbVariant };
+    winnerSend: { sent: number; opens: number; clicks: number };
 }
 
 interface CrmList {
@@ -73,6 +91,7 @@ interface Report {
     uniqueClicks: number;
     openRate: number;
     clickRate: number;
+    ab?: AbReport | null;
 }
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -89,6 +108,13 @@ const emptyForm = {
     segmentTag: '',
     scheduleEnabled: false,
     scheduledAt: '',
+    abEnabled: false,
+    variantSubject: '',
+    variantPreheader: '',
+    variantContent: '',
+    abSamplePct: 30,
+    abWindowHours: 4,
+    abMetric: 'opens' as 'opens' | 'clicks',
 };
 
 const STATUS_META: Record<Campaign['status'], { label: string; cls: string; icon: React.ReactNode }> = {
@@ -249,6 +275,13 @@ const EmailMarketing: React.FC = () => {
                 segmentTag: c.segmentTag || '',
                 scheduleEnabled: c.status === 'scheduled',
                 scheduledAt: toLocalInput(c.scheduledAt),
+                abEnabled: !!c.abEnabled,
+                variantSubject: c.variantSubject || '',
+                variantPreheader: c.variantPreheader || '',
+                variantContent: c.variantContent || '',
+                abSamplePct: c.abSamplePct || 30,
+                abWindowHours: c.abWindowHours || 4,
+                abMetric: (c.abMetric === 'clicks' ? 'clicks' : 'opens'),
             });
             const parsed = parseDesign(c.design);
             if (parsed) { setBuilderDesign(parsed); setContentMode('visual'); }
@@ -324,6 +357,7 @@ const EmailMarketing: React.FC = () => {
             if (!form.scheduledAt) { toast.error('Indica la fecha y hora de programación'); return; }
             if (new Date(form.scheduledAt).getTime() <= Date.now()) { toast.error('La fecha de programación debe ser futura'); return; }
         }
+        if (form.abEnabled && !form.variantSubject.trim()) { toast.error('Escribe el asunto de la variante B para la prueba A/B'); return; }
         setIsSubmitting(true);
         try {
             const designStr = contentMode === 'visual' && builderDesign ? JSON.stringify(builderDesign) : null;
@@ -364,14 +398,21 @@ const EmailMarketing: React.FC = () => {
     };
 
     const handleSend = async (c: Campaign) => {
-        if (!window.confirm(`¿Enviar la campaña "${c.name}" ahora? Esta acción no se puede deshacer.`)) return;
+        const confirmMsg = c.abEnabled
+            ? `¿Iniciar la prueba A/B de "${c.name}" ahora? Se enviará la muestra a las variantes A y B; el ganador se enviará al resto automáticamente.`
+            : `¿Enviar la campaña "${c.name}" ahora? Esta acción no se puede deshacer.`;
+        if (!window.confirm(confirmMsg)) return;
         setSendingId(c.id);
         try {
             const res = await fetch(`${API}/email-marketing/${c.id}/send`, { method: 'POST', headers: authHeaders() });
             const d = await res.json();
             if (!res.ok) throw new Error(d.error || 'No se pudo enviar la campaña');
-            const skippedTxt = d.skipped ? ` · ${d.skipped} pospuestos (límite por envío)` : '';
-            toast.success(`Enviada: ${d.sent} correo(s)${d.failed ? `, ${d.failed} fallido(s)` : ''}${skippedTxt}`);
+            if (d.phase === 'testing') {
+                toast.success(`Prueba A/B iniciada: ${d.aSent} variante A + ${d.bSent} variante B. El ganador se enviará al resto (${d.remainder}) al vencer la ventana.`);
+            } else {
+                const skippedTxt = d.skipped ? ` · ${d.skipped} pospuestos (límite por envío)` : '';
+                toast.success(`Enviada: ${d.sent} correo(s)${d.failed ? `, ${d.failed} fallido(s)` : ''}${skippedTxt}`);
+            }
             fetchCampaigns();
             fetchStats();
         } catch (err: any) {
@@ -508,6 +549,11 @@ const EmailMarketing: React.FC = () => {
                                         {c.status === 'scheduled' && c.scheduledAt && (
                                             <div className="flex items-center gap-1 text-[11px] text-violet-600 font-medium mt-1">
                                                 <Clock className="w-3 h-3" /> {new Date(c.scheduledAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        )}
+                                        {c.abEnabled && (
+                                            <div className="flex items-center gap-1 text-[11px] text-fuchsia-600 font-bold mt-1">
+                                                <FlaskConical className="w-3 h-3" /> {c.abPhase === 'testing' ? 'A/B en prueba' : c.abWinner ? `A/B · ganó ${c.abWinner}` : 'A/B'}
                                             </div>
                                         )}
                                     </td>
@@ -702,6 +748,71 @@ const EmailMarketing: React.FC = () => {
                                 )}
                             </div>
 
+                            <div className="bg-fuchsia-50/40 border border-fuchsia-100 rounded-lg p-3">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="w-4 h-4 text-fuchsia-600 rounded border-gray-300 focus:ring-fuchsia-500"
+                                        checked={form.abEnabled}
+                                        onChange={(e) => setForm({ ...form, abEnabled: e.target.checked })}
+                                    />
+                                    <span className="text-sm font-bold text-fuchsia-800 flex items-center gap-1.5"><FlaskConical className="w-4 h-4" /> Prueba A/B</span>
+                                </label>
+                                {form.abEnabled && (
+                                    <div className="mt-3 space-y-3">
+                                        <p className="text-[11px] text-gray-500">
+                                            Se envía una muestra dividida: <strong>A</strong> usa el asunto/contenido actual y <strong>B</strong> la variante de abajo. Al vencer la ventana, la variante con mejor <strong>{form.abMetric === 'clicks' ? 'tasa de clic' : 'tasa de apertura'}</strong> se envía automáticamente al resto de la audiencia.
+                                        </p>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Asunto · variante B</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-fuchsia-500 outline-none text-sm"
+                                                value={form.variantSubject}
+                                                onChange={(e) => setForm({ ...form, variantSubject: e.target.value })}
+                                                placeholder="Un asunto alternativo para comparar"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Preheader · variante B (opcional)</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-fuchsia-500 outline-none text-sm"
+                                                value={form.variantPreheader}
+                                                onChange={(e) => setForm({ ...form, variantPreheader: e.target.value })}
+                                            />
+                                        </div>
+                                        <details>
+                                            <summary className="text-[11px] font-bold text-fuchsia-700 cursor-pointer">Contenido HTML · variante B (opcional — si se deja vacío usa el mismo de A)</summary>
+                                            <textarea
+                                                rows={5}
+                                                className="mt-2 w-full px-3 py-2 font-mono text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-fuchsia-500 outline-none resize-y"
+                                                value={form.variantContent}
+                                                onChange={(e) => setForm({ ...form, variantContent: e.target.value })}
+                                                placeholder="<h2>Versión alternativa…</h2>"
+                                            />
+                                        </details>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Muestra: {form.abSamplePct}%</label>
+                                                <input type="range" min={10} max={50} step={5} value={form.abSamplePct} onChange={(e) => setForm({ ...form, abSamplePct: Number(e.target.value) })} className="w-full accent-fuchsia-600" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Ventana (horas)</label>
+                                                <input type="number" min={1} max={72} value={form.abWindowHours} onChange={(e) => setForm({ ...form, abWindowHours: Number(e.target.value) })} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-fuchsia-500 outline-none text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Métrica</label>
+                                                <select value={form.abMetric} onChange={(e) => setForm({ ...form, abMetric: e.target.value as 'opens' | 'clicks' })} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-fuchsia-500 outline-none bg-white text-sm">
+                                                    <option value="opens">Aperturas</option>
+                                                    <option value="clicks">Clics</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex flex-wrap items-end gap-2 bg-gray-50 border border-gray-100 rounded-lg p-3">
                                 <div className="flex-1 min-w-[180px]">
                                     <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1">
@@ -833,6 +944,38 @@ const EmailMarketing: React.FC = () => {
                                     <p className="text-[11px] text-gray-400 mt-4 text-center">
                                         Total de aperturas: {report.totalOpens} · Total de clics: {report.totalClicks}
                                     </p>
+
+                                    {report.ab && (
+                                        <div className="mt-5 border-t border-gray-100 pt-4">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <FlaskConical className="w-4 h-4 text-fuchsia-600" />
+                                                <p className="font-bold text-gray-800 text-sm">Prueba A/B</p>
+                                                <span className="text-[11px] text-gray-400">· métrica: {report.ab.metric === 'clicks' ? 'clics' : 'aperturas'}</span>
+                                                {report.ab.phase === 'testing' && <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full ml-auto">En prueba</span>}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {(['A', 'B'] as const).map((k) => {
+                                                    const v = report.ab!.variants[k];
+                                                    const isWinner = report.ab!.winner === k;
+                                                    const rate = report.ab!.metric === 'clicks' ? v.clickRate : v.openRate;
+                                                    return (
+                                                        <div key={k} className={`p-3 rounded-xl border ${isWinner ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="font-black text-gray-700">Variante {k}</span>
+                                                                {isWinner && <span className="flex items-center gap-1 text-[10px] font-black uppercase text-emerald-700"><Trophy className="w-3 h-3" /> Ganó</span>}
+                                                            </div>
+                                                            <p className="text-[11px] text-gray-500 truncate mt-0.5" title={k === 'A' ? report.ab!.subjectA : report.ab!.subjectB}>{k === 'A' ? report.ab!.subjectA : report.ab!.subjectB}</p>
+                                                            <p className="text-xl font-black text-gray-800 mt-1">{rate}% <span className="text-xs font-bold text-gray-400">{report.ab!.metric === 'clicks' ? 'clic' : 'apertura'}</span></p>
+                                                            <p className="text-[10px] text-gray-400">{v.sent} enviados · {v.opens} aperturas · {v.clicks} clics</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            {report.ab.winnerSend.sent > 0 && (
+                                                <p className="text-[11px] text-gray-400 mt-3 text-center">Variante ganadora enviada al resto: {report.ab.winnerSend.sent} correo(s).</p>
+                                            )}
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
