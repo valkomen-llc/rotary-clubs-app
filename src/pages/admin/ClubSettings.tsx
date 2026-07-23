@@ -20,6 +20,8 @@ import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUt
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
 import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 // Secciones/páginas del sistema que se pueden añadir al menú principal.
 const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
@@ -753,12 +755,14 @@ const ClubSettings: React.FC = () => {
                                 </div>
                                 <div className="md:col-span-2 space-y-1">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción / Misión</label>
-                                    <textarea
-                                        rows={3}
-                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium resize-none"
-                                        value={formData.description}
-                                        onChange={e => setFormData({...formData, description: e.target.value})}
-                                    />
+                                    <div className="bg-white rounded-xl overflow-hidden border border-gray-200">
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={formData.description}
+                                            onChange={val => setFormData({...formData, description: val})}
+                                            className="h-40"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ciudad</label>

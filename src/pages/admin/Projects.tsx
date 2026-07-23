@@ -525,10 +525,14 @@ const ProjectsManagement: React.FC = () => {
                 ? `${apiUrl}/admin/projects/${editingProject.id}`
                 : `${apiUrl}/admin/projects`;
 
+            const bodyPayload: any = { ...formData };
+            if (clubIdForFetch) bodyPayload.clubId = clubIdForFetch;
+            else if (club?.id && club.id !== 'loading') bodyPayload.clubId = club.id;
+
             const response = await fetch(url, {
                 method: editingProject ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(bodyPayload)
             });
 
             if (response.ok) {

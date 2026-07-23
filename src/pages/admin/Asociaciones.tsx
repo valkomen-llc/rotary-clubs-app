@@ -590,6 +590,7 @@ const AsociacionesManagement: React.FC = () => {
                                         <option value="club">Skin de Rotary Club (Socio)</option>
                                         <option value="district">Skin de Distrito Rotary</option>
                                         <option value="colrotarios">Skin de Colrotarios (Fundación)</option>
+                                        <option value="Feria de Proyectos">Skin de Feria de Proyectos</option>
                                     </select>
                                 </div>
 

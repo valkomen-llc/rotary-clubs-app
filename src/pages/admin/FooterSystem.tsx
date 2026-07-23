@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Save, Layout, Globe, Users, Building2, Image as ImageIcon, 
-    Link as LinkIcon, Plus, Trash2, ArrowRight, Search, X, Loader2 
+    Link as LinkIcon, Plus, Trash2, ArrowRight, Search, X, Loader2, Store 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminLayout from '../../components/admin/AdminLayout';
@@ -42,10 +42,11 @@ const FooterSystem = () => {
         club: getDefaultSkin('club'),
         district: getDefaultSkin('district'),
         association: getDefaultSkin('association'),
-        colrotarios: getDefaultSkin('colrotarios')
+        colrotarios: getDefaultSkin('colrotarios'),
+        projectfair: getDefaultSkin('projectfair')
     };
 
-    const [activeTab, setActiveTab] = useState<'club' | 'district' | 'association' | 'colrotarios'>('club');
+    const [activeTab, setActiveTab] = useState<'club' | 'district' | 'association' | 'colrotarios' | 'projectfair'>('club');
     const [skins, setSkins] = useState<Record<string, FooterSkinConfig>>(initialSkins);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -243,7 +244,8 @@ const FooterSystem = () => {
                         { id: 'club', label: 'Rotary Club', icon: Building2 },
                         { id: 'district', label: 'Distrito', icon: Globe },
                         { id: 'association', label: 'Asociación', icon: Users },
-                        { id: 'colrotarios', label: 'Colrotarios', icon: Building2 }
+                        { id: 'colrotarios', label: 'Colrotarios', icon: Building2 },
+                        { id: 'projectfair', label: 'Feria de Proyectos', icon: Store }
                     ].map((tab) => (
                         <button
                             key={tab.id}

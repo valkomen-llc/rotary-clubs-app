@@ -456,7 +456,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                             videoGallery: [...(prev.videoGallery || []), result.url]
                         }));
                     } else {
-                        setFormData(prev => ({ ...prev, images: [...prev.images, result.url] }));
+                        setFormData(prev => ({ ...prev, images: [...(prev.images || []), result.url] }));
                     }
                     successCount++;
                 } else {
