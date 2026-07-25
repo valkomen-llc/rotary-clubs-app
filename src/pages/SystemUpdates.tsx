@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.586.0 | 2026-07-24 (Fix traducción: originales por nodo de texto — se acabó el texto duplicado en el copyright del footer)
+// UI V4.587.0 | 2026-07-24 (Imagen de cabecera configurable sobre las 3 cajas de Estadísticas)
 // Cache bust: 2026-07-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.587.0',
+        title: 'Agrega una imagen de cabecera sobre las 3 cajas de estadísticas 🖼️📊',
+        description: 'La sección de estadísticas de la portada (las 3 cajas con cifras) ahora puede llevar una imagen de cabecera opcional: un banner que se muestra encima de las cajas ocupando el mismo ancho de las tres. Se personaliza desde Configuración → Identidad → "Sección de Estadísticas (3 Cajas)", donde puedes subir, cambiar o quitar la imagen (recomendada horizontal, por ejemplo 1600×500 — se recorta automáticamente para verse bien en cualquier pantalla). Disponible para los sitios con portada editable (Eventos y Ferias de Proyectos). Si no subes imagen, la sección se ve igual que siempre. Recuerda presionar Guardar después de subirla.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'estadisticas', 'imagen', 'banner', 'multimedia', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.586.0',
         title: 'Corregido: texto duplicado al traducir el sitio a otro idioma 🌐🧹',

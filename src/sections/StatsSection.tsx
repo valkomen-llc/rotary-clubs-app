@@ -98,9 +98,21 @@ const StatsSection = () => {
       }))
     : stats.map((s) => ({ Icon: s.icon, value: s.value, title: s.title, colorClass: s.color, colorStyle: undefined as CSSProperties | undefined }));
 
+  // Imagen de cabecera de la sección (opcional, configurable en Identidad): banner con el
+  // mismo ancho que las 3 cajas. Solo sitios con home editable (eventos + ferias).
+  const statsImage = isEventSite ? String((club as any)?.statsImage || '').trim() : '';
+
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {statsImage && (
+          <img
+            src={statsImage}
+            alt=""
+            loading="lazy"
+            className="w-full h-48 md:h-64 lg:h-80 object-cover rounded-3xl border border-gray-100 shadow-sm mb-8"
+          />
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {cards.map((card, index) => (
             <div
