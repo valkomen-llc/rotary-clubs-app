@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.585.0 | 2026-07-24 (Fix: el skin del footer de Feria de Proyectos ahora carga en el sitio)
+// UI V4.586.0 | 2026-07-24 (Fix traducción: originales por nodo de texto — se acabó el texto duplicado en el copyright del footer)
 // Cache bust: 2026-07-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.586.0',
+        title: 'Corregido: texto duplicado al traducir el sitio a otro idioma 🌐🧹',
+        description: 'Al cambiar el idioma del sitio (por ejemplo a inglés), la línea de copyright del pie de página repetía el nombre del sitio dos o tres veces y se perdían frases como "Todos los derechos reservados" y "Powered by". La causa estaba en el motor de traducción: cuando un mismo bloque contenía varios fragmentos de texto (año + nombre del sitio + frases + enlaces), todos los fragmentos recibían la traducción del primero. Ahora cada fragmento se traduce y se restaura de forma independiente, así que el copyright se muestra correctamente una sola vez, y cualquier otro bloque con contenido mixto también queda bien traducido. Al volver a español todo se restaura con exactitud. Sin cambios para quien no usa el selector de idiomas.',
+        date: new Date().toISOString(),
+        tags: ['traduccion', 'idiomas', 'footer', 'copyright', 'i18n', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.585.0',
         title: 'Corregido: el skin del footer de Feria de Proyectos ahora sí carga 🦶✅',

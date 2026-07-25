@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.585.0",
-  "cache_bust": "2026-07-24 (Fix skin del footer para Feria de Proyectos: el Footer System guarda el skin de Feria bajo el slug 'projectfair' (footer_skin_projectfair), pero el footer público consultaba /public/footer-skin con el Club.type crudo 'Feria de Proyectos' → clave inexistente → caía al skin por defecto de club. Ahora: (1) systemController normaliza el tipo (alias 'Feria de Proyectos'/'project_fair' → 'projectfair') en el endpoint público y en el guardado; (2) getFooterSkins del admin incluye footer_skin_projectfair (antes solo las 4 claves viejas, por lo que el panel no re-cargaba el skin guardado de Feria); (3) Footer.tsx pide el skin con el slug 'projectfair' para sitios Feria de Proyectos. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.586.0",
+  "cache_bust": "2026-07-24 (Fix motor de traducción — texto duplicado al traducir: el motor guardaba el texto original por ELEMENTO padre (data-ot) y usaba esa única clave para TODOS sus nodos de texto; un elemento con varios nodos (ej. el copyright del footer: año + nombre del sitio + 'Todos los derechos reservados.' + 'Powered by') terminaba con todos los nodos sobrescritos por la traducción del primero → el nombre del sitio se repetía 2-3 veces al cambiar de idioma. Ahora el original se guarda POR NODO de texto (WeakMap nodeOriginals + keyFor) y las tres rutas (applyAll, fetch inicial y MutationObserver) usan esa clave; restoreAll restaura por nodo y limpia los data-ot legacy. Arregla el copyright del footer y cualquier otro elemento con contenido mixto interpolado. Sin cambios de backend. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.585.0 | 2026-07-24 (Fix: el skin del footer de Feria de Proyectos ahora carga en el sitio)",
+  "//": "UI V4.586.0 | 2026-07-24 (Fix traducción: originales por nodo de texto — se acabó el texto duplicado en el copyright del footer)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

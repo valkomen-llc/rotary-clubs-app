@@ -80,19 +80,27 @@ function getNodes(root: Element): Text[] {
     return out;
 }
 
+// Original de cada NODO de texto. Antes se guardaba el original en el elemento PADRE
+// (data-ot) y se usaba esa única clave para TODOS sus nodos de texto: un elemento con
+// varios nodos (ej. el copyright del footer: año + nombre del sitio + "Todos los
+// derechos reservados." + "Powered by") terminaba con todos sus nodos sobrescritos por
+// la MISMA traducción (la del primer nodo) → texto duplicado/corrupto al traducir.
+const nodeOriginals = new WeakMap<Text, string>();
+function keyFor(node: Text): string {
+    let orig = nodeOriginals.get(node);
+    if (orig === undefined) {
+        orig = (node.textContent || '').trim();
+        nodeOriginals.set(node, orig);
+    }
+    return orig;
+}
+
 /** Apply everything in memCache[lang] to the DOM synchronously */
 function applyAll(root: Element, lang: string) {
     const cache = memCache[lang] ?? {};
     const nodes = getNodes(root);
     for (const node of nodes) {
-        const parent = node.parentElement;
-        if (!parent) continue;
-        // Record original text on first visit
-        if (!parent.hasAttribute(ORIG_ATTR)) {
-            parent.setAttribute(ORIG_ATTR, (node.textContent || '').trim());
-        }
-        const orig = parent.getAttribute(ORIG_ATTR) ?? '';
-        const tr = cache[orig];
+        const tr = cache[keyFor(node)];
         if (tr) {
             const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
             const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
@@ -104,19 +112,19 @@ function applyAll(root: Element, lang: string) {
 
 /** Restore original Spanish text */
 function restoreAll(root: Element) {
-    root.querySelectorAll(`[${ORIG_ATTR}]`).forEach(el => {
-        const orig = el.getAttribute(ORIG_ATTR);
-        if (orig === null) return;
-        for (const child of Array.from(el.childNodes)) {
-            if (child.nodeType === Node.TEXT_NODE) {
-                const lead = child.textContent?.match(/^\s*/)?.[0] ?? '';
-                const trail = child.textContent?.match(/\s*$/)?.[0] ?? '';
-                child.textContent = lead + orig + trail;
-                break;
-            }
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n: Node | null;
+    while ((n = w.nextNode())) {
+        const node = n as Text;
+        const orig = nodeOriginals.get(node);
+        if (orig !== undefined) {
+            const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
+            const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
+            node.textContent = lead + orig + trail;
         }
-        el.removeAttribute(ORIG_ATTR);
-    });
+    }
+    // Limpieza de atributos del esquema anterior (original por elemento).
+    root.querySelectorAll(`[${ORIG_ATTR}]`).forEach(el => el.removeAttribute(ORIG_ATTR));
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -253,10 +261,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const missing = [
                     ...new Set(
                         nodes
-                            .map(n =>
-                                n.parentElement?.getAttribute(ORIG_ATTR) ??
-                                (n.textContent ?? '').trim()
-                            )
+                            .map(n => keyFor(n))
                             .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
                     ),
                 ];
@@ -268,9 +273,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 // Apply newly translated strings
                 const freshNodes = getNodes(root);
                 for (const node of freshNodes) {
-                    const orig = node.parentElement?.getAttribute(ORIG_ATTR)
-                        ?? (node.textContent ?? '').trim();
-                    const tr = fresh[orig];
+                    const tr = fresh[keyFor(node)];
                     if (tr) {
                         const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
                         const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
@@ -315,10 +318,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     const missing = [
                         ...new Set(
                             nodes
-                                .map(n =>
-                                    n.parentElement?.getAttribute(ORIG_ATTR) ??
-                                    (n.textContent ?? '').trim()
-                                )
+                                .map(n => keyFor(n))
                                 .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
                         ),
                     ];
