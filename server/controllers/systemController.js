@@ -1,11 +1,24 @@
 import db from '../lib/db.js';
 import crypto from 'crypto';
 
+// Mapea el Club.type (que puede venir como nombre con espacios, ej. 'Feria de Proyectos')
+// al slug con el que el Footer System guarda el skin ('footer_skin_projectfair').
+// Sin esta normalización, el footer público buscaba 'footer_skin_Feria de Proyectos',
+// no encontraba nada y caía al skin por defecto de club.
+const SKIN_TYPE_ALIASES = {
+    'feria de proyectos': 'projectfair',
+    'project_fair': 'projectfair',
+};
+const normalizeSkinType = (type) => {
+    const v = String(type || '').trim().toLowerCase();
+    return SKIN_TYPE_ALIASES[v] || v;
+};
+
 export const getFooterSkins = async (req, res) => {
     try {
-        const skins = ['club', 'district', 'association', 'colrotarios'];
+        const skins = ['club', 'district', 'association', 'colrotarios', 'projectfair'];
         const result = await db.query(
-            "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios') AND \"clubId\" IS NULL"
+            "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios', 'footer_skin_projectfair') AND \"clubId\" IS NULL"
         );
 
         const results = {};
@@ -25,7 +38,7 @@ export const getFooterSkins = async (req, res) => {
 export const updateFooterSkin = async (req, res) => {
     const { type } = req.params;
     const { config } = req.body;
-    const key = `footer_skin_${type}`;
+    const key = `footer_skin_${normalizeSkinType(type)}`;
 
     try {
         const val = JSON.stringify(config);
@@ -51,12 +64,13 @@ export const getFooterSkinPublic = async (req, res) => {
         const { type } = req.query;
         if (!type) return res.status(400).json({ error: 'Tipo requerido' });
 
+        const skinType = normalizeSkinType(type);
         const result = await db.query(
             'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL',
-            [`footer_skin_${type}`]
+            [`footer_skin_${skinType}`]
         );
 
-        const config = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : getDefaultSkin(type);
+        const config = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : getDefaultSkin(skinType);
         res.json(config);
     } catch (error) {
         console.error('Public footer fetch error:', error);

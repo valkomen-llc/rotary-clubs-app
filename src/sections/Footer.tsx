@@ -9,9 +9,11 @@ const Footer = () => {
     const { club } = useClub();
     const currentHostname = window.location.hostname;
     const typeRaw = (club as any)?.type || 'club';
-    const type = (typeRaw === 'district' && currentHostname.toLowerCase().startsWith('rye')) || typeRaw === 'Programa de Intercambio' 
-        ? 'association' 
-        : typeRaw;
+    // Slug del skin de footer: los RYE/Programa de Intercambio usan el de asociación y
+    // 'Feria de Proyectos' se mapea a 'projectfair' (clave con la que guarda el Footer System).
+    const type = (typeRaw === 'district' && currentHostname.toLowerCase().startsWith('rye')) || typeRaw === 'Programa de Intercambio'
+        ? 'association'
+        : typeRaw === 'Feria de Proyectos' ? 'projectfair' : typeRaw;
     
     const [config, setConfig] = useState<any>(null);
 
