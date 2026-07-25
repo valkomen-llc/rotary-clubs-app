@@ -237,6 +237,8 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['stats_content'] ? JSON.parse(settings['stats_content']) : []; }
                 catch { return []; }
             })(),
+            // Imagen de cabecera de la sección de estadísticas (banner sobre las 3 cajas).
+            statsImage: settings['stats_section_image'] || '',
             // Contenido editable de la sección "Únete a Rotary" (Evento/Convención).
             joinContent: (() => {
                 try { return settings['join_section_content'] ? JSON.parse(settings['join_section_content']) : {}; }

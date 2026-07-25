@@ -144,6 +144,7 @@ const ClubSettings: React.FC = () => {
             { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
             { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
         ] as { icon: string; color: string; value: string; text: string }[],
+        statsImage: '',
         joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
@@ -350,6 +351,7 @@ const ClubSettings: React.FC = () => {
                         { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
                     ];
                 })(),
+                statsImage: (club as any).statsImage || settingsMap['stats_section_image'] || '',
                 joinContent: (() => {
                     const saved = (club as any).joinContent || (() => { try { return JSON.parse(settingsMap['join_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
@@ -497,6 +499,33 @@ const ClubSettings: React.FC = () => {
 
     const removeEventHeroImage = (idx: number) => {
         setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
+    };
+
+    // Subida de la imagen de cabecera de la sección de estadísticas (banner sobre las 3 cajas).
+    const handleStatsImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const uploadData = new FormData();
+            uploadData.append('file', file);
+            uploadData.append('folder', 'stats-banner');
+            const res = await fetch(`${API_URL}/media/upload?folder=stats-banner&clubId=${club?.id}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: uploadData
+            });
+            if (!res.ok) throw new Error('No se pudo subir la imagen');
+            const data = await res.json();
+            setFormData(prev => ({ ...prev, statsImage: data.url }));
+            toast.success('Imagen de cabecera agregada. Recuerda Guardar.');
+        } catch (error: any) {
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
     };
 
     // Helpers del orden unificado del menú principal (Evento/Convención).
@@ -1545,8 +1574,32 @@ const ClubSettings: React.FC = () => {
                                     {brainButton('stats')}
                                 </div>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada. O deja que el <strong>Cerebro</strong> las redacte con la información indexada del sitio.
+                                    Personaliza la imagen de cabecera y el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada. O deja que el <strong>Cerebro</strong> las redacte con la información indexada del sitio.
                                 </p>
+                                {/* Imagen de cabecera: banner con el ancho de las 3 cajas */}
+                                <div className="mb-6 p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
+                                    <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1">Imagen de cabecera (opcional)</p>
+                                    <p className="text-[11px] text-gray-400 mb-3">Se muestra encima de las 3 cajas, ocupando el ancho de las tres. Recomendada: horizontal (ej. 1600×500).</p>
+                                    {formData.statsImage ? (
+                                        <div className="space-y-3">
+                                            <img src={formData.statsImage} alt="Imagen de cabecera de estadísticas" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
+                                            <div className="flex items-center gap-3">
+                                                <label className="inline-flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-rotary-blue/90 transition-colors">
+                                                    <Upload className="w-4 h-4" /> {uploading ? 'Subiendo…' : 'Cambiar imagen'}
+                                                    <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageUpload} disabled={uploading} />
+                                                </label>
+                                                <button type="button" onClick={() => setFormData({ ...formData, statsImage: '' })} className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 text-sm font-bold rounded-lg hover:bg-red-100 transition-colors">
+                                                    <Trash2 className="w-4 h-4" /> Quitar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <label className="inline-flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-rotary-blue/90 transition-colors">
+                                            <Upload className="w-4 h-4" /> {uploading ? 'Subiendo…' : 'Subir imagen'}
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageUpload} disabled={uploading} />
+                                        </label>
+                                    )}
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {formData.statsContent.map((box, i) => (
                                         <div key={i} className="border border-gray-100 rounded-2xl p-4 space-y-3 bg-gray-50/50">
