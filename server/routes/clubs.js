@@ -239,6 +239,8 @@ router.get('/by-domain', async (req, res) => {
             })(),
             // Imagen de cabecera de la sección de estadísticas (banner sobre las 3 cajas).
             statsImage: settings['stats_section_image'] || '',
+            // Proporción del banner de estadísticas ('4:1' | '3:1' | '2:1' | '16:9').
+            statsImageAspect: settings['stats_section_image_aspect'] || '2:1',
             // Contenido editable de la sección "Únete a Rotary" (Evento/Convención).
             joinContent: (() => {
                 try { return settings['join_section_content'] ? JSON.parse(settings['join_section_content']) : {}; }

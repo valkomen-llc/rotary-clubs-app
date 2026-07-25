@@ -8,8 +8,10 @@ import {
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
     Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon,
-    ChevronUp, ChevronDown, GripVertical, Award
+    ChevronUp, ChevronDown, GripVertical, Award, X, Crop
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from '../../utils/cropImage';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
@@ -145,6 +147,7 @@ const ClubSettings: React.FC = () => {
             { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
         ] as { icon: string; color: string; value: string; text: string }[],
         statsImage: '',
+        statsImageAspect: '2:1',
         joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
@@ -352,6 +355,7 @@ const ClubSettings: React.FC = () => {
                     ];
                 })(),
                 statsImage: (club as any).statsImage || settingsMap['stats_section_image'] || '',
+                statsImageAspect: (club as any).statsImageAspect || settingsMap['stats_section_image_aspect'] || '2:1',
                 joinContent: (() => {
                     const saved = (club as any).joinContent || (() => { try { return JSON.parse(settingsMap['join_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
@@ -501,15 +505,49 @@ const ClubSettings: React.FC = () => {
         setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
     };
 
-    // Subida de la imagen de cabecera de la sección de estadísticas (banner sobre las 3 cajas).
-    const handleStatsImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Imagen de cabecera de la sección de estadísticas (banner sobre las 3 cajas):
+    // al elegir un archivo se abre un recortador (react-easy-crop) con la proporción del
+    // banner elegida, y se sube SOLO el área recortada. También se puede re-recortar la
+    // imagen ya subida (vía /media/proxy para evitar CORS en el canvas).
+    const [statsCropSrc, setStatsCropSrc] = useState<string | null>(null);
+    const [statsCrop, setStatsCrop] = useState({ x: 0, y: 0 });
+    const [statsZoom, setStatsZoom] = useState(1);
+    const [statsCropPixels, setStatsCropPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+    const STATS_ASPECT_RATIOS: Record<string, number> = { '4:1': 4, '3:1': 3, '2:1': 2, '16:9': 16 / 9 };
+    const statsAspectRatio = STATS_ASPECT_RATIOS[formData.statsImageAspect] || 2;
+
+    const handleStatsImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            setStatsCrop({ x: 0, y: 0 });
+            setStatsZoom(1);
+            setStatsCropPixels(null);
+            setStatsCropSrc(String(reader.result));
+        };
+        reader.readAsDataURL(file);
+        if (e.target) e.target.value = '';
+    };
+
+    const openStatsRecrop = () => {
+        if (!formData.statsImage) return;
+        const token = localStorage.getItem('rotary_token');
+        setStatsCrop({ x: 0, y: 0 });
+        setStatsZoom(1);
+        setStatsCropPixels(null);
+        setStatsCropSrc(`${API_URL}/media/proxy?url=${encodeURIComponent(formData.statsImage)}${token ? `&token=${token}` : ''}`);
+    };
+
+    const confirmStatsCrop = async () => {
+        if (!statsCropSrc || !statsCropPixels) return;
         setUploading(true);
         try {
+            const blob = await getCroppedImg(statsCropSrc, statsCropPixels, 0, 'image/jpeg');
             const token = localStorage.getItem('rotary_token');
             const uploadData = new FormData();
-            uploadData.append('file', file);
+            uploadData.append('file', new File([blob], 'stats-banner.jpg', { type: 'image/jpeg' }));
             uploadData.append('folder', 'stats-banner');
             const res = await fetch(`${API_URL}/media/upload?folder=stats-banner&clubId=${club?.id}`, {
                 method: 'POST',
@@ -519,12 +557,12 @@ const ClubSettings: React.FC = () => {
             if (!res.ok) throw new Error('No se pudo subir la imagen');
             const data = await res.json();
             setFormData(prev => ({ ...prev, statsImage: data.url }));
-            toast.success('Imagen de cabecera agregada. Recuerda Guardar.');
+            setStatsCropSrc(null);
+            toast.success('Imagen de cabecera actualizada. Recuerda Guardar.');
         } catch (error: any) {
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
-            if (e.target) e.target.value = '';
         }
     };
 
@@ -1576,18 +1614,35 @@ const ClubSettings: React.FC = () => {
                                 <p className="text-xs text-gray-400 mb-6">
                                     Personaliza la imagen de cabecera y el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada. O deja que el <strong>Cerebro</strong> las redacte con la información indexada del sitio.
                                 </p>
-                                {/* Imagen de cabecera: banner con el ancho de las 3 cajas */}
+                                {/* Imagen de cabecera: banner con el ancho de las 3 cajas (tamaño + recorte configurables) */}
                                 <div className="mb-6 p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
                                     <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1">Imagen de cabecera (opcional)</p>
-                                    <p className="text-[11px] text-gray-400 mb-3">Se muestra encima de las 3 cajas, ocupando el ancho de las tres. Recomendada: horizontal 2:1 (ej. 1600×800).</p>
+                                    <p className="text-[11px] text-gray-400 mb-3">Se muestra encima de las 3 cajas, ocupando el ancho de las tres. Elige el tamaño del banner y ajusta el área de recorte al subir la imagen.</p>
+                                    <div className="mb-3">
+                                        <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Tamaño del banner</label>
+                                        <select
+                                            value={formData.statsImageAspect}
+                                            onChange={e => setFormData({ ...formData, statsImageAspect: e.target.value })}
+                                            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
+                                        >
+                                            <option value="4:1">Franja 4:1 — bajita (ej. 1600×400)</option>
+                                            <option value="3:1">Panorámico 3:1 (ej. 1600×533)</option>
+                                            <option value="2:1">Estándar 2:1 (ej. 1600×800)</option>
+                                            <option value="16:9">Alto 16:9 (ej. 1600×900)</option>
+                                        </select>
+                                        <p className="text-[11px] text-gray-400 mt-1">Define la proporción con la que se muestra el banner en el sitio y el área de recorte al subir.</p>
+                                    </div>
                                     {formData.statsImage ? (
                                         <div className="space-y-3">
-                                            <img src={formData.statsImage} alt="Imagen de cabecera de estadísticas" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
-                                            <div className="flex items-center gap-3">
+                                            <img src={formData.statsImage} alt="Imagen de cabecera de estadísticas" style={{ aspectRatio: String(statsAspectRatio) }} className="w-full max-h-64 object-cover rounded-xl border border-gray-200" />
+                                            <div className="flex items-center flex-wrap gap-3">
                                                 <label className="inline-flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-rotary-blue/90 transition-colors">
                                                     <Upload className="w-4 h-4" /> {uploading ? 'Subiendo…' : 'Cambiar imagen'}
-                                                    <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageUpload} disabled={uploading} />
+                                                    <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageSelect} disabled={uploading} />
                                                 </label>
+                                                <button type="button" onClick={openStatsRecrop} className="inline-flex items-center gap-2 px-4 py-2 bg-sky-50 text-rotary-blue text-sm font-bold rounded-lg hover:bg-sky-100 transition-colors">
+                                                    <Crop className="w-4 h-4" /> Recortar
+                                                </button>
                                                 <button type="button" onClick={() => setFormData({ ...formData, statsImage: '' })} className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 text-sm font-bold rounded-lg hover:bg-red-100 transition-colors">
                                                     <Trash2 className="w-4 h-4" /> Quitar
                                                 </button>
@@ -1596,7 +1651,7 @@ const ClubSettings: React.FC = () => {
                                     ) : (
                                         <label className="inline-flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-rotary-blue/90 transition-colors">
                                             <Upload className="w-4 h-4" /> {uploading ? 'Subiendo…' : 'Subir imagen'}
-                                            <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageUpload} disabled={uploading} />
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleStatsImageSelect} disabled={uploading} />
                                         </label>
                                     )}
                                 </div>
@@ -2209,6 +2264,54 @@ const ClubSettings: React.FC = () => {
                             {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                             Guardar Configuración
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de recorte de la imagen de cabecera de Estadísticas */}
+            {statsCropSrc && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
+                        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="font-black text-gray-900">Selecciona el área a mostrar ({formData.statsImageAspect})</h3>
+                            <button onClick={() => setStatsCropSrc(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+                        <div className="relative h-[400px] bg-gray-900">
+                            <Cropper
+                                image={statsCropSrc}
+                                crop={statsCrop}
+                                zoom={statsZoom}
+                                aspect={statsAspectRatio}
+                                onCropChange={setStatsCrop}
+                                onCropComplete={(_, pixels) => setStatsCropPixels(pixels)}
+                                onZoomChange={setStatsZoom}
+                            />
+                        </div>
+                        <div className="p-6 bg-gray-50 flex flex-col gap-4">
+                            <div className="flex items-center gap-4">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Zoom</span>
+                                <input
+                                    type="range"
+                                    value={statsZoom}
+                                    min={1}
+                                    max={3}
+                                    step={0.1}
+                                    aria-labelledby="Zoom"
+                                    onChange={(e) => setStatsZoom(Number(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button onClick={() => setStatsCropSrc(null)} className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700">
+                                    Cancelar
+                                </button>
+                                <button onClick={confirmStatsCrop} disabled={uploading || !statsCropPixels} className="bg-rotary-blue text-white px-8 py-2.5 rounded-xl font-bold text-sm hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/20 disabled:opacity-50">
+                                    {uploading ? 'Subiendo…' : 'Guardar Recorte'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

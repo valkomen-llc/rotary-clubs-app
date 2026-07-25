@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.588.0",
-  "cache_bust": "2026-07-24 (Imagen de cabecera de Estadísticas ahora en proporción 2:1 (1600×800): el banner sobre las 3 cajas pasa de alturas fijas responsivas (h-48/64/80) a aspect-[2/1], escalando su altura con el ancho del contenedor — más alto y fiel a la imagen recomendada de 1600×800. Texto de ayuda del editor actualizado. Cambio de estilo menor. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.589.0",
+  "cache_bust": "2026-07-24 (Banner de Estadísticas: tamaño configurable + recorte interactivo. Nuevo selector 'Tamaño del banner' en Identidad → Sección de Estadísticas (Franja 4:1, Panorámico 3:1, Estándar 2:1, Alto 16:9; Setting stats_section_image_aspect, expuesto como club.statsImageAspect; StatsSection usa aspectRatio dinámico). Al subir la imagen se abre un recortador (react-easy-crop, patrón CropModal del onboarding) con la proporción elegida y zoom, y se sube SOLO el área recortada; botón 'Recortar' para re-encuadrar la imagen ya subida vía /media/proxy (token por query, evita CORS en canvas). Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.588.0 | 2026-07-24 (Imagen de cabecera de Estadísticas en proporción 2:1 — 1600×800)",
+  "//": "UI V4.589.0 | 2026-07-24 (Banner de Estadísticas: tamaño configurable + recorte interactivo al subir)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
