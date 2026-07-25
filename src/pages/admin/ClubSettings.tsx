@@ -1579,7 +1579,7 @@ const ClubSettings: React.FC = () => {
                                 {/* Imagen de cabecera: banner con el ancho de las 3 cajas */}
                                 <div className="mb-6 p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
                                     <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mb-1">Imagen de cabecera (opcional)</p>
-                                    <p className="text-[11px] text-gray-400 mb-3">Se muestra encima de las 3 cajas, ocupando el ancho de las tres. Recomendada: horizontal (ej. 1600×500).</p>
+                                    <p className="text-[11px] text-gray-400 mb-3">Se muestra encima de las 3 cajas, ocupando el ancho de las tres. Recomendada: horizontal 2:1 (ej. 1600×800).</p>
                                     {formData.statsImage ? (
                                         <div className="space-y-3">
                                             <img src={formData.statsImage} alt="Imagen de cabecera de estadísticas" className="w-full h-40 object-cover rounded-xl border border-gray-200" />

@@ -110,7 +110,7 @@ const StatsSection = () => {
             src={statsImage}
             alt=""
             loading="lazy"
-            className="w-full h-48 md:h-64 lg:h-80 object-cover rounded-3xl border border-gray-100 shadow-sm mb-8"
+            className="w-full aspect-[2/1] object-cover rounded-3xl border border-gray-100 shadow-sm mb-8"
           />
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

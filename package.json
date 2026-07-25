@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.587.0",
-  "cache_bust": "2026-07-24 (Imagen de cabecera en la sección de Estadísticas: nueva imagen opcional tipo banner que se muestra encima de las 3 cajas ocupando su mismo ancho, personalizable por sitio desde Configuración → Identidad → Sección de Estadísticas (subir/cambiar/quitar, upload vía /media/upload carpeta stats-banner). Solo sitios con home editable (eventos + ferias); si no se configura, nada cambia. Persistencia: Setting stats_section_image (destructure en updateClub, expuesto como club.statsImage en by-domain, tipado en ClubConfig). Render en StatsSection con object-cover y esquinas redondeadas. Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.588.0",
+  "cache_bust": "2026-07-24 (Imagen de cabecera de Estadísticas ahora en proporción 2:1 (1600×800): el banner sobre las 3 cajas pasa de alturas fijas responsivas (h-48/64/80) a aspect-[2/1], escalando su altura con el ancho del contenedor — más alto y fiel a la imagen recomendada de 1600×800. Texto de ayuda del editor actualizado. Cambio de estilo menor. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.587.0 | 2026-07-24 (Imagen de cabecera configurable sobre las 3 cajas de Estadísticas)",
+  "//": "UI V4.588.0 | 2026-07-24 (Imagen de cabecera de Estadísticas en proporción 2:1 — 1600×800)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
