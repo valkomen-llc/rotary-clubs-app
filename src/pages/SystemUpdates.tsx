@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.584.0 | 2026-07-23 (Título editable en la sección Áreas de Interés)
-// Cache bust: 2026-07-23
+// UI V4.585.0 | 2026-07-24 (Fix: el skin del footer de Feria de Proyectos ahora carga en el sitio)
+// Cache bust: 2026-07-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.585.0',
+        title: 'Corregido: el skin del footer de Feria de Proyectos ahora sí carga 🦶✅',
+        description: 'El Footer System guardaba el skin de "Feria de Proyectos" con una clave interna (projectfair), pero el sitio público lo buscaba con el nombre completo de la categoría, no lo encontraba y mostraba el footer por defecto de club. Ahora el sitio pide el skin con la clave correcta y el servidor además entiende ambos nombres, así que el footer configurado en el Footer System para las Ferias de Proyectos se muestra correctamente. También se corrigió que, al recargar el Footer System, el skin guardado de Feria no se volvía a cargar en el panel (solo se cargaban los 4 tipos antiguos). Sin cambios para los demás tipos de sitio.',
+        date: new Date().toISOString(),
+        tags: ['footer', 'skin', 'feria-de-proyectos', 'footer-system', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.584.0',
         title: 'Edita el título de la sección de Áreas de Interés 🏷️',
