@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.587.0 | 2026-07-24 (Imagen de cabecera configurable sobre las 3 cajas de Estadísticas)
+// UI V4.588.0 | 2026-07-24 (Imagen de cabecera de Estadísticas en proporción 2:1 — 1600×800)
 // Cache bust: 2026-07-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.588.0',
+        title: 'Imagen de cabecera de estadísticas más alta (proporción 2:1) 🖼️📐',
+        description: 'Ajuste de la imagen de cabecera de la sección de estadísticas: ahora se muestra en proporción 2:1 (recomendada 1600×800), escalando su altura con el ancho de las 3 cajas — antes usaba alturas fijas más bajas y recortaba demasiado la foto. El texto de ayuda del editor se actualizó con la nueva medida recomendada.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'estadisticas', 'imagen', 'banner', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.587.0',
         title: 'Agrega una imagen de cabecera sobre las 3 cajas de estadísticas 🖼️📊',
