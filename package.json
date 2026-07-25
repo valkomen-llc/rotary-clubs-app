@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.583.0",
-  "cache_bust": "2026-07-23 (Release 4.583.0 + Negrilla parcial en la sección 'Somos gente de acción')",
+  "version": "4.584.0",
+  "cache_bust": "2026-07-23 (Título editable en la sección de Áreas de Interés (CausesHexSection): antes el encabezado usaba fijo el nombre del sitio; ahora el editor de Configuración → Identidad → 'Áreas de Interés' tiene campo Título (con palabras a resaltar + color y soporte de **negrilla** vía renderRichText). Si se deja vacío, cae al nombre del sitio (compatibilidad). El texto descriptivo también pasa por renderRichText (soporta **negrilla**). Campos nuevos viajan dentro del JSON causes_section_content existente; sin cambios de backend. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.583.0 | Release 4.583.0",
+  "//": "UI V4.584.0 | 2026-07-23 (Título editable en la sección Áreas de Interés)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

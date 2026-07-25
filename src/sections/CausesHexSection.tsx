@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { renderRichText } from '../lib/richText';
 
 const ICON_EMOJI: Record<string, string> = {
   star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
@@ -566,10 +567,12 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         {showHeader && (
           <header className="areas-rotary__header">
             <h2 id="areas-title" className="areas-rotary__title">
-              {club?.name || 'Rotary Club'}
+              {causesContent.title
+                ? renderRichText(causesContent.title, { highlight: causesContent.titleHighlight, color: causesContent.titleHighlightColor })
+                : (club?.name || 'Rotary Club')}
             </h2>
             <p className="areas-rotary__description" style={{ whiteSpace: 'pre-line' }}>
-              {areasText}
+              {renderRichText(areasText)}
             </p>
           </header>
         )}

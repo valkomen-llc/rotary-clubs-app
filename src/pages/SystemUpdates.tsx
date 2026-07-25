@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.582.0 | 2026-07-22 (Negrilla parcial (**texto**) en título y cuerpo de la sección 'Somos gente de acción')
-// Cache bust: 2026-07-22
+// UI V4.584.0 | 2026-07-23 (Título editable en la sección Áreas de Interés)
+// Cache bust: 2026-07-23
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.584.0',
+        title: 'Edita el título de la sección de Áreas de Interés 🏷️',
+        description: 'La sección de "Áreas de Interés" de la portada (la del bloque de círculos con Promoción de la paz, Lucha contra las enfermedades, Agua salubre, etc.) tenía como título fijo el nombre del sitio. Ahora, desde Configuración → Identidad → sección "Áreas de Interés", puedes escribir el título que quieras, resaltar una parte en color y ponerla en negrilla con **texto**. Si lo dejas vacío, se sigue usando el nombre del sitio como antes. También el texto descriptivo de esa sección admite ahora negrilla con **texto**. Cambio aditivo.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'areas-de-interes', 'titulo', 'contenido', 'editor', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.582.0',
         title: 'Pon en negrilla el título o parte del texto de "Somos gente de acción" ✍️🔡',
