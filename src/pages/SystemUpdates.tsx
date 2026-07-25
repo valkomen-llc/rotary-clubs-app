@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.588.0 | 2026-07-24 (Imagen de cabecera de Estadísticas en proporción 2:1 — 1600×800)
+// UI V4.589.0 | 2026-07-24 (Banner de Estadísticas: tamaño configurable + recorte interactivo al subir)
 // Cache bust: 2026-07-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.589.0',
+        title: 'Elige el tamaño del banner de estadísticas y recorta la imagen a tu gusto ✂️🖼️',
+        description: 'Dos mejoras en la imagen de cabecera de la sección de estadísticas (Configuración → Identidad → "Sección de Estadísticas"): (1) Nuevo selector "Tamaño del banner" con cuatro proporciones — Franja 4:1 (bajita), Panorámico 3:1, Estándar 2:1 y Alto 16:9 — que definen la altura con la que se muestra el banner sobre las 3 cajas. (2) Al subir una imagen ahora se abre un recortador: mueves la foto y ajustas el zoom para elegir exactamente el área que se va a visualizar, con la proporción del tamaño elegido; solo se guarda el área recortada. Además, el botón "Recortar" permite re-encuadrar la imagen ya subida sin volver a subirla. Recuerda presionar Guardar después de los cambios.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'estadisticas', 'banner', 'recorte', 'imagen', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.588.0',
         title: 'Imagen de cabecera de estadísticas más alta (proporción 2:1) 🖼️📐',

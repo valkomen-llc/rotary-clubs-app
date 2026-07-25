@@ -71,6 +71,8 @@ export interface ClubConfig {
     defaultLanguage?: string;
     /** Imagen de cabecera de la sección de estadísticas (banner con el ancho de las 3 cajas). */
     statsImage?: string;
+    /** Proporción del banner de estadísticas: '4:1' | '3:1' | '2:1' | '16:9'. Default '2:1'. */
+    statsImageAspect?: string;
     /**
      * Botones CTA de la cabecera (navbar), configurables por sitio: hasta 2 entradas
      * { label, labelEs, url, urlEs }. `label`/`url` son el texto y enlace internacionales
