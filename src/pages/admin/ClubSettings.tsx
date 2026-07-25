@@ -146,7 +146,7 @@ const ClubSettings: React.FC = () => {
         ] as { icon: string; color: string; value: string; text: string }[],
         joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
-        causesContent: { text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { text: string; buttonText: string; buttonUrl: string; icon: string },
+        causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         avatarUrl: '',
         footerLogo: '',
@@ -360,7 +360,7 @@ const ClubSettings: React.FC = () => {
                 })(),
                 causesContent: (() => {
                     const saved = (club as any).causesContent || (() => { try { return JSON.parse(settingsMap['causes_section_content'] || '{}'); } catch { return {}; } })();
-                    return { text: '', buttonText: '', buttonUrl: '', icon: 'globe', ...saved };
+                    return { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe', ...saved };
                 })(),
                 logo: club.logo || '',
                 avatarUrl: (club as any).avatarUrl || '',
@@ -1719,13 +1719,32 @@ const ClubSettings: React.FC = () => {
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Áreas de Interés" (Texto y Botón)
                                 </h3>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el texto descriptivo y el botón de la sección "Áreas de Interés". Si dejas un campo vacío, se usa el texto por defecto. (El título usa el nombre del sitio.)
+                                    Personaliza el título, el texto descriptivo y el botón de la sección "Áreas de Interés". Si dejas un campo vacío, se usa el valor por defecto (el título cae al nombre del sitio).
                                 </p>
                                 <div className="space-y-4">
                                     <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
+                                        <textarea rows={2} value={formData.causesContent.title} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, title: e.target.value } })} placeholder={club?.name || 'Nombre del sitio'} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Si lo dejas vacío, se usa el nombre del sitio. Para poner una parte en <strong>negrilla</strong> enciérrala entre dobles asteriscos: <code>**texto**</code>.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Palabras a resaltar en el título</label>
+                                            <input type="text" value={formData.causesContent.titleHighlight} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, titleHighlight: e.target.value } })} placeholder="Ej: Projects Fair" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                            <p className="text-[11px] text-gray-400 mt-1">Esa parte del título se mostrará en el color elegido.</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del resaltado</label>
+                                            <div className="flex items-center gap-4 mt-1">
+                                                <input type="color" value={formData.causesContent.titleHighlightColor} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, titleHighlightColor: e.target.value } })} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.causesContent.titleHighlightColor} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, titleHighlightColor: e.target.value } })} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
                                         <textarea rows={5} value={formData.causesContent.text} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, text: e.target.value } })} placeholder="Descripción de la sección…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
-                                        <p className="text-[11px] text-gray-400 mt-1">Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
+                                        <p className="text-[11px] text-gray-400 mt-1">Presiona <strong>Enter</strong> para un salto de línea. Usa <code>**texto**</code> para negrilla.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
