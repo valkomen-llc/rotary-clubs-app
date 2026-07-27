@@ -2,16 +2,19 @@ import { Fragment, type ReactNode, type CSSProperties } from 'react';
 
 // Renderiza un texto con formato inline simple para los contenidos editables de la portada:
 //   - **negrilla**  → pone en negrita cualquier parte (o todo, si se envuelve completo)
+//   - bold → pone en negrita la PRIMERA aparición de ese texto (campo "palabras en negrilla"
+//     del editor; alternativa amigable al markup ** para quien no quiere escribir asteriscos).
 //   - highlight/color → resalta en color la PRIMERA aparición de `highlight` (misma lógica
 //     que el campo "palabras a resaltar" del editor).
 // Se conservan los saltos de línea del texto original (el contenedor usa whitespace-pre-line).
-export function renderRichText(text: string, opts?: { highlight?: string; color?: string }): ReactNode {
+export function renderRichText(text: string, opts?: { highlight?: string; color?: string; bold?: string }): ReactNode {
     if (!text) return text;
     const highlight = (opts?.highlight || '').trim();
     const color = opts?.color || '#f6a40a';
+    const boldText = (opts?.bold || '').trim();
 
     // 1) Partir por **...** en segmentos { text, bold }.
-    const runs: { text: string; bold: boolean }[] = [];
+    let runs: { text: string; bold: boolean }[] = [];
     const re = /\*\*([\s\S]+?)\*\*/g;
     let last = 0;
     let m: RegExpExecArray | null;
@@ -22,6 +25,24 @@ export function renderRichText(text: string, opts?: { highlight?: string; color?
     }
     if (last < text.length) runs.push({ text: text.slice(last), bold: false });
     if (runs.length === 0) runs.push({ text, bold: false });
+
+    // 1b) Aplicar el campo "palabras en negrilla" sobre la primera aparición en los tramos
+    // que aún no están en negrita.
+    if (boldText) {
+        let boldDone = false;
+        runs = runs.flatMap(run => {
+            if (boldDone || run.bold) return [run];
+            const idx = run.text.toLowerCase().indexOf(boldText.toLowerCase());
+            if (idx === -1) return [run];
+            boldDone = true;
+            const parts: { text: string; bold: boolean }[] = [];
+            if (idx > 0) parts.push({ text: run.text.slice(0, idx), bold: false });
+            parts.push({ text: run.text.slice(idx, idx + boldText.length), bold: true });
+            const rest = run.text.slice(idx + boldText.length);
+            if (rest) parts.push({ text: rest, bold: false });
+            return parts;
+        });
+    }
 
     // 2) Aplicar el resaltado de color a la primera aparición global de `highlight`.
     let highlightDone = false;

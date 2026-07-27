@@ -140,7 +140,7 @@ const ClubSettings: React.FC = () => {
         eventNavOrder: buildDefaultNavOrder({ inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true }, []) as NavOrderItem[],
         eventSections: { news: true } as Record<string, boolean>,
         footerConfig: buildDefaultFooter(null) as FooterConfig,
-        actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
+        actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a', titleBold: true, textBold: '' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string; titleBold: boolean; textBold: string },
         statsContent: [
             { icon: 'globe', color: '#004080', value: '+1.2M', text: 'Somos más de 1.2 millones de rotarios en el mundo, dedicados a servir, mejorar y transformar nuestras comunidades.' },
             { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
@@ -344,7 +344,7 @@ const ClubSettings: React.FC = () => {
                 })(),
                 actionContent: (() => {
                     const saved = (club as any).actionContent || (() => { try { return JSON.parse(settingsMap['action_section_content'] || '{}'); } catch { return {}; } })();
-                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
+                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a', titleBold: true, textBold: '', ...saved };
                 })(),
                 statsContent: (() => {
                     const saved = ((club as any).statsContent && (club as any).statsContent.length) ? (club as any).statsContent : (() => { try { const v = JSON.parse(settingsMap['stats_content'] || '[]'); return v.length ? v : null; } catch { return null; } })();
@@ -1554,7 +1554,16 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
                                         <textarea rows={2} value={formData.actionContent.title} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, title: e.target.value } })} placeholder="Somos gente de acción" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
-                                        <p className="text-[11px] text-gray-400 mt-1">Por defecto el título va todo en <strong>negrilla</strong>. Para poner en negrilla solo una parte, enciérrala entre dobles asteriscos: <code>**texto**</code> (el resto queda en peso normal). Presiona <strong>Enter</strong> para un salto de línea.</p>
+                                        <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.actionContent.titleBold !== false}
+                                                onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, titleBold: e.target.checked } })}
+                                                className="w-4 h-4 rounded accent-rotary-blue cursor-pointer"
+                                            />
+                                            <span className="text-xs font-bold text-gray-600">Título en negrilla</span>
+                                        </label>
+                                        <p className="text-[11px] text-gray-400 mt-1">Desmarca la casilla para mostrar el título en peso normal. Para poner en negrilla solo una parte, enciérrala entre dobles asteriscos: <code>**texto**</code>. Presiona <strong>Enter</strong> para un salto de línea.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                         <div>
@@ -1573,7 +1582,12 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
                                         <textarea rows={3} value={formData.actionContent.text} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, text: e.target.value } })} placeholder="Descripción del bloque…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
-                                        <p className="text-[11px] text-gray-400 mt-1">Para poner una parte en <strong>negrilla</strong>, enciérrala entre dobles asteriscos: <code>**texto**</code>.</p>
+                                        <p className="text-[11px] text-gray-400 mt-1">Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Palabras en negrilla del texto</label>
+                                        <input type="text" value={formData.actionContent.textBold} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, textBold: e.target.value } })} placeholder="Ej: Valledupar, Colombia" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Escribe el fragmento del texto que quieres en <strong>negrilla</strong> (tal cual aparece en el párrafo). También puedes marcar varias partes encerrándolas entre dobles asteriscos: <code>**texto**</code>.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>

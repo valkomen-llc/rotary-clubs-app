@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.590.0",
-  "cache_bust": "2026-07-26 (Altura personalizada del banner de Estadísticas: además de los presets (4:1, 3:1, 2:1, 16:9), el selector 'Tamaño del banner' suma la opción 'Personalizado', que habilita un campo de Altura en px (100-2000) sobre un ancho de referencia de 1600 (se guarda como 'custom:<px>' en el Setting stats_section_image_aspect). StatsSection y el recortador derivan la proporción de esa altura (1600/altura); updateClub valida/normaliza el valor (presets o custom en rango; valor incompleto cae a 2:1). Aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.591.0",
+  "cache_bust": "2026-07-26 (Control de negrilla en la sección 'Somos gente de acción': (1) nueva casilla 'Título en negrilla' (actionContent.titleBold, default true) para activar/desactivar la negrilla del título completo; (2) nuevo campo 'Palabras en negrilla del texto' (actionContent.textBold), análogo al de resaltado por color pero para negrilla: pone en negrita la primera aparición de ese fragmento en el párrafo, sin escribir asteriscos. renderRichText suma la opción `bold` (substring) que se combina con el markup **texto** y con el resaltado de color. Campos nuevos viajan dentro del JSON action_section_content existente; sin cambios de backend. Aditivo, sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.590.0 | 2026-07-26 (Banner de Estadísticas: altura personalizada además de los presets)",
+  "//": "UI V4.591.0 | 2026-07-26 (Negrilla configurable: casilla para el título + campo de palabras en negrilla del texto)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
