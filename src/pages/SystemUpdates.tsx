@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.606.0 | 2026-07-27 (Registro de asistentes a eventos con pago por Stripe)
+// UI V4.607.0 | 2026-07-27 (Galería en tres columnas con visor de imagen completa)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.607.0',
+        title: 'La galería del evento pasa a tres columnas, con vista ampliada al hacer clic 🖼️',
+        description: 'La galería de imágenes del evento se estandariza. En lugar de una sola imagen grande que iba cambiando —y cuya altura variaba con cada foto, dejando la sección despareja—, ahora se muestra un mosaico de tres columnas donde todas las miniaturas tienen exactamente el mismo tamaño, así que la galería se ve ordenada aunque mezcles afiches verticales con fotos horizontales. Las imágenes se pasan en grupos de tres con las flechas o los puntos, y en pantallas pequeñas el mosaico se acomoda solo a dos columnas o a una. Al hacer clic en cualquier miniatura se abre una vista ampliada a pantalla completa donde la imagen se ve completa, sin recortar y sin importar su tamaño original: desde ahí puedes pasar a la siguiente con las flechas —también con el teclado—, ver en qué número vas y cerrar con Escape o pulsando fuera. La galería quedó como un componente común, listo para usarse igual en otras secciones del sitio.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'galeria', 'imagenes', 'mosaico', 'vista previa', 'update'],
+        type: 'update'
+    },
     {
         version: '4.606.0',
         title: 'Los asistentes ya pueden registrarse y pagar su entrada desde el evento 💳🎟️',

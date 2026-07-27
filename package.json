@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.606.0",
-  "cache_bust": "2026-07-27 (Registro de asistentes a eventos con pago por Stripe. Config por evento en metadata.registration (aditiva, sin cambios de esquema): enabled, moneda, cierre, tickets [key,label,description,amount,capacity], maximo por inscripcion, correos de aviso y comprobante. Tabla EventRegistration creada de forma perezosa con SQL crudo, fuera de Prisma. Endpoints publicos en /api/event-registrations (config, crear, checkout, estado) y admin (lista con totales y export CSV, limitado al sitio del usuario). El importe se recalcula SIEMPRE en el servidor desde la configuracion; los cupos se validan contra lo ya vendido; las entradas de valor 0 se confirman sin pasar por Stripe. Reutiliza la cuenta y el webhook existentes con metadata.type=event_registration: checkout.session.completed confirma y envia comprobante (idempotente), y failed/expired/refunded actualizan el estado. Pagina publica /eventos/:evento/registro y pestaña Registro en el editor del evento. El boton del panel de inscripcion apunta solo al formulario cuando el registro esta abierto.)",
+  "version": "4.607.0",
+  "cache_bust": "2026-07-27 (Galeria de imagenes estandarizada: nuevo componente reutilizable src/components/MediaGallery.tsx con mosaico de tres columnas (1 en movil, 2 en tablet), miniaturas todas del mismo tamano en proporcion configurable (horizontal 4:3 por defecto, cuadrada o vertical) y paginacion en grupos con flechas y puntos. Al pulsar una miniatura se abre un visor a pantalla completa que muestra la imagen COMPLETA con object-contain, con flechas, contador, cierre por Escape o por el fondo, bloqueo del desplazamiento de la pagina y navegacion por teclado. La ficha del evento pasa a usarlo y se retira el carrusel anterior de una sola imagen grande, junto con su estado huerfano (currentImage, imageRatios, rotacion automatica) y los iconos que quedaban sin uso. Sin cambios de BD.)",
   "type": "module",
-  "//": "UI V4.606.0 | 2026-07-27 (Registro de asistentes a eventos con pago por Stripe)",
+  "//": "UI V4.607.0 | 2026-07-27 (Galería en tres columnas con visor de imagen completa)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
