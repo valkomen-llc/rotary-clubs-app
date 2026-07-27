@@ -447,12 +447,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         // v4.599 — Módulos de la Feria de Proyectos. Antes vivían sólo dentro del
         // bloque de super admin, así que no aparecían en el sitio propio de la
         // feria (dominio de club), que es justo donde el equipo los necesita.
-        const isProjectFairSite = ((club as any)?.type === 'Feria de Proyectos')
-            || ((club as any)?.organizationType === 'Feria de Proyectos');
+        // Se reconoce el sitio de una feria por cualquiera de los campos donde
+        // puede venir el tipo, sin depender de mayúsculas ni de una variante
+        // concreta ('Feria de Proyectos', 'project_fair', …).
+        const fairTypeHint = `${(club as any)?.type || ''} ${(club as any)?.organizationType || ''} ${(club as any)?.category || ''}`.toLowerCase();
+        const isProjectFairSite = /feria de proyectos|project[ _-]?fair/.test(fairTypeHint);
         if (isProjectFairSite && !isSuperAdmin) {
+            // Categoría 'General': en un sitio publicado la barra lateral sólo
+            // renderiza un conjunto fijo de categorías, y 'Management' no está
+            // entre ellas — por eso los módulos se calculaban pero no se veían.
             items.push(
-                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria'] },
-                { icon: ClipboardList, label: 'Postulación de Proyectos', path: '/admin/feria-proyectos', category: 'Management', keywords: ['feria', 'postulacion', 'inscripcion', 'convocatoria', 'formulario', 'trm', 'stripe', 'grants'] },
+                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'General', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria'] },
+                { icon: ClipboardList, label: 'Postulación de Proyectos', path: '/admin/feria-proyectos', category: 'General', keywords: ['feria', 'postulacion', 'inscripcion', 'convocatoria', 'formulario', 'trm', 'stripe', 'grants'] },
             );
         }
 
