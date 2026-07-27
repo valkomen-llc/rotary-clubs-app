@@ -127,10 +127,19 @@ export const stripeWebhook = async (req, res) => {
             case 'payment_intent.payment_failed':
                 const failedIntent = event.data.object;
                 await handleFailedPayment(failedIntent);
+                await routeProjectFairEvent(event, 'failed');
                 break;
             case 'checkout.session.completed':
                 const session = event.data.object;
-                await handleSuccessfulCheckoutSession(session);
+                await handleSuccessfulCheckoutSession(session, event);
+                break;
+            // v4.598 — Desenlaces del pago de la Feria de Proyectos. La fuente
+            // de verdad es el webhook, no el retorno del navegador.
+            case 'checkout.session.expired':
+                await routeProjectFairEvent(event, 'expired');
+                break;
+            case 'charge.refunded':
+                await routeProjectFairEvent(event, 'refunded');
                 break;
             case 'invoice.paid':
                 const invoice = event.data.object;
@@ -149,7 +158,33 @@ export const stripeWebhook = async (req, res) => {
     }
 };
 
-async function handleSuccessfulCheckoutSession(session) {
+// v4.598 — Enruta los eventos de Stripe que pertenecen a una postulación de la
+// Feria de Proyectos. Registra primero el evento crudo (idempotencia por
+// event.id) y sólo entonces aplica el cambio de estado.
+async function routeProjectFairEvent(event, kind) {
+    const object = event?.data?.object || {};
+    const isProjectFair =
+        object?.metadata?.type === 'project_fair_registration' ||
+        !!object?.metadata?.submissionId;
+
+    // charge.refunded no siempre trae metadata propia: se resuelve por sus
+    // identificadores dentro del controlador de la feria.
+    if (!isProjectFair && kind !== 'refunded') return;
+
+    try {
+        const mod = await import('./projectFairController.js');
+        const fresh = await mod.recordStripeEvent(event, object?.metadata?.submissionId || null);
+        if (!fresh) return; // ya procesado
+
+        if (kind === 'failed') await mod.handlePaymentFailed(object);
+        else if (kind === 'expired') await mod.handleCheckoutExpired(object);
+        else if (kind === 'refunded') await mod.handleRefund(object);
+    } catch (error) {
+        console.error(`[Stripe Webhook] ERROR procesando evento de Feria de Proyectos (${kind}):`, error?.message);
+    }
+}
+
+async function handleSuccessfulCheckoutSession(session, event = null) {
     console.log(`[Stripe Webhook] Checkout session completed: ${session.id}`);
 
     // 0. Donación pública (v4.409) — Maneras de Contribuir.
@@ -226,8 +261,14 @@ async function handleSuccessfulCheckoutSession(session) {
     //     referencia de la transacción y envía el comprobante. Idempotente.
     if (session.metadata && session.metadata.type === 'project_fair_registration') {
         try {
-            const { confirmPaidSession } = await import('./projectFairController.js');
-            await confirmPaidSession(session);
+            const mod = await import('./projectFairController.js');
+            // Idempotencia por event.id: si Stripe reenvía el mismo evento, no
+            // se vuelve a procesar ni se duplican registros.
+            if (event) {
+                const fresh = await mod.recordStripeEvent(event, session.metadata.submissionId || null);
+                if (!fresh) return;
+            }
+            await mod.confirmPaidSession(session);
         } catch (error) {
             console.error('[Stripe Webhook] ERROR confirmando inscripción de Feria de Proyectos:', error);
         }

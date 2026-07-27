@@ -103,6 +103,18 @@ export const DEFAULT_CONFIG = {
         adminEmails: [],
         sendReceipt: true,
     },
+    // Perfiles del módulo de gestión. El rol 'administrator' de la plataforma
+    // siempre tiene acceso total; estas listas otorgan permisos adicionales
+    // por correo sin tocar el modelo global de usuarios.
+    access: {
+        finance: [],    // ven pagos, comprobantes y pueden sincronizar con Stripe
+        reviewers: [],  // consultan, comentan y mueven estados de revisión
+    },
+    // Umbrales del panel de alertas.
+    alerts: {
+        pendingPaymentHours: 48,
+        budgetOutlierUsd: 500000,
+    },
     // Club/organización a la que se asocia el cobro en la billetera de la
     // plataforma. Si queda vacío, el pago se procesa igual (cuenta master)
     // pero no se registra fila en "Payment".
@@ -217,8 +229,184 @@ const ensureTables = async () => {
             "fetchedAt" TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+
+    // ── v4.598 — Gestión de Postulaciones y Pagos ────────────────────
+    // Todo lo que sigue es ADITIVO: columnas nuevas con ADD COLUMN IF NOT
+    // EXISTS y tablas nuevas con CREATE TABLE IF NOT EXISTS. Ninguna
+    // sentencia borra, trunca ni reescribe datos existentes.
+    //
+    // Nota de diseño: `status` sigue siendo el estado del PAGO (lo consume el
+    // formulario público); `workflowStatus` es el estado del proceso interno
+    // de revisión. Separarlos evita romper el flujo público al mover una
+    // postulación por el circuito administrativo.
+    const addColumn = async (sql) => { await db.query(sql).catch(() => {}); };
+    await Promise.all([
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(40) DEFAULT 'received'`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal'`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "internalCategory" VARCHAR(120)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "assigneeId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "assigneeName" VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMPTZ`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "reviewedBy" VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "stripeChargeId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "stripeCustomerId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "paymentMethod" VARCHAR(60)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "receiptUrl" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "amountReceived" NUMERIC(14,2)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "refundedAmount" NUMERIC(14,2)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "refundedAt" TIMESTAMPTZ`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "lastPaymentError" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "redirectedAt" TIMESTAMPTZ`),
+    ]);
+    // Postulaciones anteriores al módulo: se les da el estado de proceso que
+    // corresponde a su estado de pago (sólo donde aún está vacío).
+    await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET "workflowStatus" = CASE WHEN status = 'paid' THEN 'payment_confirmed' ELSE 'pending_payment' END
+        WHERE "workflowStatus" IS NULL
+    `).catch(() => {});
+
+    // Línea de tiempo + auditoría. Un solo registro cronológico por
+    // postulación: eventos del formulario, de Stripe y de la gestión interna
+    // (incluidos los comentarios, con type='comment').
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairEvent" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            title VARCHAR(250),
+            detail TEXT,
+            "actorId" TEXT,
+            "actorName" VARCHAR(160),
+            "actorRole" VARCHAR(60),
+            metadata JSONB DEFAULT '{}',
+            "createdAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairEvent_submission_idx" ON "ProjectFairEvent" ("submissionId", "createdAt" DESC);`).catch(() => {});
+
+    // Archivos adjuntos de la postulación (se suben a S3; aquí la metadata).
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairFile" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            "fileName" VARCHAR(300) NOT NULL,
+            "fileUrl" TEXT NOT NULL,
+            "fileSize" BIGINT,
+            "contentType" VARCHAR(120),
+            "uploadedBy" VARCHAR(160),
+            "createdAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairFile_submission_idx" ON "ProjectFairFile" ("submissionId");`).catch(() => {});
+
+    // Catálogo de etiquetas + relación con postulaciones.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairTag" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            label VARCHAR(120) NOT NULL,
+            color VARCHAR(20) DEFAULT 'slate',
+            "isSystem" BOOLEAN DEFAULT false,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairTag_label_key" ON "ProjectFairTag" (lower(label));`).catch(() => {});
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairSubmissionTag" (
+            "submissionId" TEXT NOT NULL,
+            "tagId" TEXT NOT NULL,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY ("submissionId", "tagId")
+        );
+    `);
+
+    // Eventos crudos recibidos de Stripe: fuente de verdad del pago y base de
+    // la idempotencia (un mismo event.id nunca se procesa dos veces).
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairStripeEvent" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "stripeEventId" TEXT NOT NULL UNIQUE,
+            type VARCHAR(80) NOT NULL,
+            "submissionId" TEXT,
+            "objectId" TEXT,
+            payload JSONB,
+            "receivedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairStripeEvent_submission_idx" ON "ProjectFairStripeEvent" ("submissionId", "receivedAt" DESC);`).catch(() => {});
+
+    // Etiquetas sugeridas por el equipo. Se crean una sola vez; el admin puede
+    // borrarlas o agregar las suyas desde el módulo.
+    for (const [label, color] of DEFAULT_TAGS) {
+        await db.query(
+            `INSERT INTO "ProjectFairTag" (label, color, "isSystem") VALUES ($1, $2, true) ON CONFLICT DO NOTHING`,
+            [label, color]
+        ).catch(() => {});
+    }
+
     _tablesReady = true;
 };
+
+// Etiquetas iniciales (se pueden borrar o ampliar desde el módulo).
+const DEFAULT_TAGS = [
+    ['Requiere revisión', 'amber'],
+    ['Prioridad alta', 'red'],
+    ['Documentación incompleta', 'orange'],
+    ['Pago confirmado', 'emerald'],
+    ['Potencial alianza', 'violet'],
+    ['Pendiente de traducción', 'sky'],
+];
+
+// ── Línea de tiempo ──────────────────────────────────────────────────
+// Registrar un evento nunca debe tumbar la operación principal (un pago
+// confirmado no se pierde porque falle su bitácora), por eso captura errores.
+export const logEvent = async (submissionId, { type, title, detail = null, actor = null, metadata = {} }) => {
+    if (!submissionId || !type) return null;
+    try {
+        const { rows } = await db.query(`
+            INSERT INTO "ProjectFairEvent" ("submissionId", type, title, detail, "actorId", "actorName", "actorRole", metadata)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) RETURNING *
+        `, [
+            submissionId, type, title || null, detail,
+            actor?.id || null, actor?.name || null, actor?.role || null,
+            JSON.stringify(metadata || {}),
+        ]);
+        return rows[0];
+    } catch (err) {
+        console.error('[project-fair] No pude registrar el evento:', err?.message);
+        return null;
+    }
+};
+
+// Guarda el evento crudo de Stripe. Devuelve false si ya había sido procesado
+// (idempotencia): el llamador debe abortar en ese caso.
+export const recordStripeEvent = async (event, submissionId = null) => {
+    if (!event?.id) return true;
+    await ensureTables();
+    try {
+        const { rowCount } = await db.query(`
+            INSERT INTO "ProjectFairStripeEvent" ("stripeEventId", type, "submissionId", "objectId", payload)
+            VALUES ($1,$2,$3,$4,$5::jsonb)
+            ON CONFLICT ("stripeEventId") DO NOTHING
+        `, [
+            event.id,
+            event.type || 'unknown',
+            submissionId,
+            event.data?.object?.id || null,
+            JSON.stringify(event.data?.object || {}).slice(0, 200000),
+        ]);
+        if (rowCount === 0) {
+            console.log(`[project-fair] Evento de Stripe ${event.id} ya procesado (skip)`);
+            return false;
+        }
+        return true;
+    } catch (err) {
+        console.error('[project-fair] No pude registrar el evento de Stripe:', err?.message);
+        return true; // ante la duda, se procesa: los handlers son idempotentes
+    }
+};
+
+export { ensureTables };
 
 // ── Configuración ────────────────────────────────────────────────────
 const readConfig = async () => {
@@ -230,6 +418,9 @@ const readConfig = async () => {
     }
     return deepMerge(DEFAULT_CONFIG, saved);
 };
+
+// La usa el módulo de Gestión de Postulaciones y Pagos.
+export const readConfigForAdmin = () => readConfig();
 
 // Config pública: sin datos sensibles de operación (clubId, correos internos).
 const toPublicConfig = (cfg) => ({
@@ -617,6 +808,13 @@ export const createSubmission = async (req, res) => {
             }),
         ]);
 
+        await logEvent(rows[0].id, {
+            type: 'form_submitted',
+            title: 'Formulario enviado',
+            detail: `${data.projectName} — ${data.clubName} (${data.district})`,
+            metadata: { focusArea: data.focusArea, budgetUsd: data.budgetUsd, publicRef: rows[0].publicRef },
+        });
+
         res.status(201).json({
             submission: mapSubmission(rows[0]),
             trm: trm ? { ...trm, amountCop, amountUsd } : null,
@@ -675,6 +873,16 @@ export const createCheckout = async (req, res) => {
             }],
             success_url: `${origin}${formPath}?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${origin}${formPath}?submission=${submission.id}&pago=cancelado`,
+            // La misma metadata viaja al PaymentIntent: así los eventos de
+            // pago fallido o reembolso llegan ligados a la postulación aunque
+            // no traigan la Checkout Session.
+            payment_intent_data: {
+                metadata: {
+                    type: 'project_fair_registration',
+                    submissionId: submission.id,
+                    publicRef: submission.publicRef || '',
+                },
+            },
             metadata: {
                 type: 'project_fair_registration',
                 submissionId: submission.id,
@@ -697,6 +905,13 @@ export const createCheckout = async (req, res) => {
                 "updatedAt" = NOW()
             WHERE id = $8
         `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, submission.id]);
+
+        await logEvent(submission.id, {
+            type: 'checkout_created',
+            title: 'Sesión de pago creada',
+            detail: `${fmtCop(amountCop)} COP${amountUsd ? ` · equivalente ${fmtUsd(amountUsd)}` : ''}`,
+            metadata: { sessionId: session.id, amountCop, amountUsd, trmRate: trm?.rate ?? null },
+        });
 
         res.json({ url: session.url, sessionId: session.id });
     } catch (error) {
@@ -724,23 +939,57 @@ export const confirmPaidSession = async (session) => {
         ? session.payment_intent
         : session.payment_intent?.id || null;
 
+    // Trazabilidad completa del cobro: además de la sesión, se consultan el
+    // PaymentIntent y el Charge para guardar cliente, método de pago,
+    // comprobante y monto realmente recibido. Si Stripe no responde, se sigue
+    // con lo que trae la sesión (el pago ya está confirmado).
+    let charge = null;
+    let customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id || null;
+    if (paymentIntentId) {
+        try {
+            const pi = await getStripe().paymentIntents.retrieve(paymentIntentId, {
+                expand: ['latest_charge.payment_method_details'],
+            });
+            charge = pi?.latest_charge || null;
+            customerId = customerId || (typeof pi?.customer === 'string' ? pi.customer : pi?.customer?.id || null);
+        } catch (err) {
+            console.warn('[project-fair] No pude leer el PaymentIntent en Stripe:', err?.message);
+        }
+    }
+
+    const amountReceived = (session.amount_total ?? charge?.amount ?? 0) / 100;
     const { rows: updated } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',
+            "workflowStatus" = CASE WHEN "workflowStatus" IN ('received','pending_payment','draft') OR "workflowStatus" IS NULL
+                                    THEN 'payment_confirmed' ELSE "workflowStatus" END,
             "stripeSessionId" = COALESCE($1, "stripeSessionId"),
             "stripePaymentIntentId" = COALESCE($2, "stripePaymentIntentId"),
+            "stripeChargeId" = COALESCE($3, "stripeChargeId"),
+            "stripeCustomerId" = COALESCE($4, "stripeCustomerId"),
+            "paymentMethod" = COALESCE($5, "paymentMethod"),
+            "receiptUrl" = COALESCE($6, "receiptUrl"),
+            "amountReceived" = COALESCE($7, "amountReceived"),
+            "lastPaymentError" = NULL,
             "paidAt" = NOW(),
-            metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+            metadata = COALESCE(metadata, '{}'::jsonb) || $8::jsonb,
             "updatedAt" = NOW()
-        WHERE id = $4
+        WHERE id = $9
         RETURNING *
     `, [
         session.id || null,
         paymentIntentId,
+        charge?.id || null,
+        customerId,
+        charge?.payment_method_details?.type || null,
+        charge?.receipt_url || null,
+        amountReceived || null,
         JSON.stringify({
             payment: {
                 sessionId: session.id,
                 paymentIntentId,
+                chargeId: charge?.id || null,
+                customerId,
                 amountTotal: (session.amount_total ?? null),
                 currency: (session.currency || '').toUpperCase(),
                 confirmedAt: new Date().toISOString(),
@@ -751,6 +1000,21 @@ export const confirmPaidSession = async (session) => {
 
     const paid = updated[0];
     console.log(`[project-fair] ✅ Pago confirmado — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntentId || session.id}`);
+
+    await logEvent(submissionId, {
+        type: 'payment_succeeded',
+        title: 'Pago aprobado',
+        detail: `${fmtCop(amountReceived)} ${(session.currency || 'cop').toUpperCase()}${charge?.payment_method_details?.type ? ` · ${charge.payment_method_details.type}` : ''}`,
+        metadata: {
+            sessionId: session.id,
+            paymentIntentId,
+            chargeId: charge?.id || null,
+            customerId,
+            receiptUrl: charge?.receipt_url || null,
+            amountReceived,
+            trmRate: paid.trmRate ? Number(paid.trmRate) : null,
+        },
+    });
 
     // Registro del cobro en la billetera de la plataforma (opcional: sólo si
     // el admin asoció un club/organización a la feria).
@@ -804,6 +1068,114 @@ export const confirmPaidSession = async (session) => {
     }
 
     return mapSubmission(paid);
+};
+
+// ── Otros desenlaces del pago (fuente de verdad: webhook de Stripe) ──
+// Los tres son idempotentes y sólo se aplican si la postulación no está ya
+// pagada, para que un evento fuera de orden no degrade un pago confirmado.
+const findSubmissionForStripe = async (object) => {
+    const id = object?.metadata?.submissionId;
+    if (id) {
+        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [id]);
+        if (rows[0]) return rows[0];
+    }
+    // Respaldo: buscar por los identificadores de Stripe ya guardados.
+    const candidates = [
+        ['stripeSessionId', object?.id],
+        ['stripePaymentIntentId', typeof object?.payment_intent === 'string' ? object.payment_intent : object?.payment_intent?.id],
+        ['stripePaymentIntentId', object?.object === 'payment_intent' ? object?.id : null],
+        ['stripeChargeId', object?.object === 'charge' ? object?.id : null],
+    ];
+    for (const [column, value] of candidates) {
+        if (!value) continue;
+        const { rows } = await db.query(`SELECT * FROM "ProjectFairSubmission" WHERE "${column}" = $1 LIMIT 1`, [value]);
+        if (rows[0]) return rows[0];
+    }
+    return null;
+};
+
+/** Pago rechazado por Stripe (payment_intent.payment_failed). */
+export const handlePaymentFailed = async (paymentIntent) => {
+    await ensureTables();
+    const submission = await findSubmissionForStripe(paymentIntent);
+    if (!submission || submission.status === 'paid') return null;
+
+    const reason = paymentIntent?.last_payment_error?.message
+        || paymentIntent?.last_payment_error?.code
+        || 'El pago fue rechazado por la pasarela.';
+
+    await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET status = 'failed', "workflowStatus" = 'payment_failed',
+            "stripePaymentIntentId" = COALESCE($1, "stripePaymentIntentId"),
+            "lastPaymentError" = $2, "updatedAt" = NOW()
+        WHERE id = $3
+    `, [paymentIntent?.id || null, String(reason).slice(0, 500), submission.id]);
+
+    await logEvent(submission.id, {
+        type: 'payment_failed',
+        title: 'Pago rechazado',
+        detail: String(reason).slice(0, 500),
+        metadata: { paymentIntentId: paymentIntent?.id || null, code: paymentIntent?.last_payment_error?.code || null },
+    });
+    console.log(`[project-fair] ⚠️ Pago rechazado — inscripción ${submission.publicRef}: ${reason}`);
+    return submission.id;
+};
+
+/** La sesión de pago caducó sin completarse (checkout.session.expired). */
+export const handleCheckoutExpired = async (session) => {
+    await ensureTables();
+    const submission = await findSubmissionForStripe(session);
+    if (!submission || submission.status === 'paid') return null;
+
+    await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET status = 'pending_payment', "workflowStatus" = 'pending_payment', "updatedAt" = NOW()
+        WHERE id = $1
+    `, [submission.id]);
+
+    await logEvent(submission.id, {
+        type: 'checkout_expired',
+        title: 'Sesión de pago caducada',
+        detail: 'El enlace de pago expiró sin completarse. La inscripción sigue disponible para reintentar.',
+        metadata: { sessionId: session?.id || null },
+    });
+    return submission.id;
+};
+
+/** Reembolso total o parcial (charge.refunded). */
+export const handleRefund = async (charge) => {
+    await ensureTables();
+    const submission = await findSubmissionForStripe(charge);
+    if (!submission) return null;
+
+    const refunded = (charge?.amount_refunded || 0) / 100;
+    const total = (charge?.amount || 0) / 100;
+    const isFull = refunded >= total && total > 0;
+
+    await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET status = $1, "workflowStatus" = $2,
+            "refundedAmount" = $3, "refundedAt" = NOW(),
+            "stripeChargeId" = COALESCE($4, "stripeChargeId"),
+            "updatedAt" = NOW()
+        WHERE id = $5
+    `, [
+        isFull ? 'refunded' : 'paid',
+        isFull ? 'refunded' : submission.workflowStatus || 'payment_confirmed',
+        refunded,
+        charge?.id || null,
+        submission.id,
+    ]);
+
+    await logEvent(submission.id, {
+        type: 'refund',
+        title: isFull ? 'Reembolso total' : 'Reembolso parcial',
+        detail: `${fmtCop(refunded)} de ${fmtCop(total)} ${(charge?.currency || 'cop').toUpperCase()}`,
+        metadata: { chargeId: charge?.id || null, refunded, total, isFull },
+    });
+    console.log(`[project-fair] ↩️ Reembolso ${isFull ? 'total' : 'parcial'} — inscripción ${submission.publicRef}: ${refunded}`);
+    return submission.id;
 };
 
 // GET /api/project-fair/submissions/:id  (público — pantalla de confirmación)
@@ -918,6 +1290,21 @@ const buildAdminNotificationHtml = (s, cfg) => `
   </ul>
 </div>`;
 
+// Reenvío del comprobante desde el módulo de gestión: misma plantilla que el
+// envío automático, devolviendo el resultado para poder informarlo en la UI.
+export const sendReceiptFor = async (submission, cfg) => {
+    try {
+        return await EmailService.sendPlatformEmail({
+            to: submission.email,
+            subject: `Inscripción confirmada ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
+            html: buildReceiptHtml(submission, cfg),
+            from: PLATFORM_SENDER,
+        });
+    } catch (error) {
+        return { success: false, error: error?.message || 'Error enviando el correo' };
+    }
+};
+
 const sendReceiptEmail = async (submission, cfg) => {
     if (!isEmail(submission.email)) return;
     const result = await EmailService.sendPlatformEmail({
@@ -928,6 +1315,41 @@ const sendReceiptEmail = async (submission, cfg) => {
     });
     if (result?.success) console.log(`[project-fair] ✉️ Comprobante enviado a ${submission.email}`);
     else console.error('[project-fair] Comprobante NO enviado:', result?.error || 'desconocido');
+};
+
+// Ficha completa de una postulación (datos + línea de tiempo + adjuntos +
+// etiquetas) para exportarla a PDF desde el módulo de gestión.
+export const buildSubmissionSnapshot = async (id, { includePayments = false } = {}) => {
+    await ensureTables();
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [id]);
+    if (!rows[0]) return null;
+
+    const [events, files, tags] = await Promise.all([
+        db.query('SELECT type, title, detail, "actorName", "createdAt" FROM "ProjectFairEvent" WHERE "submissionId" = $1 ORDER BY "createdAt" ASC', [id]),
+        db.query('SELECT "fileName", "fileUrl", "createdAt" FROM "ProjectFairFile" WHERE "submissionId" = $1 ORDER BY "createdAt" ASC', [id]),
+        db.query(`SELECT t.label, t.color FROM "ProjectFairSubmissionTag" st JOIN "ProjectFairTag" t ON t.id = st."tagId" WHERE st."submissionId" = $1`, [id]),
+    ]);
+
+    const s = rows[0];
+    const submission = mapSubmission(s);
+    submission.workflowStatus = s.workflowStatus;
+    submission.priority = s.priority;
+    submission.internalCategory = s.internalCategory;
+    submission.assigneeName = s.assigneeName;
+    submission.reviewedAt = s.reviewedAt;
+    submission.reviewedBy = s.reviewedBy;
+    if (includePayments) {
+        submission.stripeSessionId = s.stripeSessionId;
+        submission.stripePaymentIntentId = s.stripePaymentIntentId;
+        submission.stripeChargeId = s.stripeChargeId;
+        submission.stripeCustomerId = s.stripeCustomerId;
+        submission.paymentMethod = s.paymentMethod;
+        submission.receiptUrl = s.receiptUrl;
+        submission.amountReceived = s.amountReceived === null ? null : Number(s.amountReceived);
+        submission.refundedAmount = s.refundedAmount === null ? null : Number(s.refundedAmount);
+    }
+
+    return { submission, events: events.rows, files: files.rows, tags: tags.rows };
 };
 
 // ── Admin: listado y exportación ─────────────────────────────────────
