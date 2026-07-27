@@ -76,6 +76,7 @@ import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
 const RegistroFeria = React.lazy(() => import('./pages/RegistroFeria'));
+const RegistroEvento = React.lazy(() => import('./pages/RegistroEvento'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
 const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
@@ -449,6 +450,9 @@ function App() {
                 <Route path="/involucrate" element={<Involucrate />} />
                 <Route path="/eventos" element={<Eventos />} />
                 <Route path="/eventos/:id" element={<EventoDetalle />} />
+                {/* Registro de asistentes al evento (v4.606). El parámetro
+                    acepta el id o la dirección amigable del evento. */}
+                <Route path="/eventos/:eventRef/registro" element={<RegistroEvento />} />
                 <Route path="/aportes" element={<Aportes />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/order/success" element={<OrderSuccess />} />

@@ -128,6 +128,7 @@ export const stripeWebhook = async (req, res) => {
                 const failedIntent = event.data.object;
                 await handleFailedPayment(failedIntent);
                 await routeProjectFairEvent(event, 'failed');
+                await routeEventRegistration(event, 'failed');
                 break;
             case 'checkout.session.completed':
                 const session = event.data.object;
@@ -137,9 +138,11 @@ export const stripeWebhook = async (req, res) => {
             // de verdad es el webhook, no el retorno del navegador.
             case 'checkout.session.expired':
                 await routeProjectFairEvent(event, 'expired');
+                await routeEventRegistration(event, 'expired');
                 break;
             case 'charge.refunded':
                 await routeProjectFairEvent(event, 'refunded');
+                await routeEventRegistration(event, 'refunded');
                 break;
             case 'invoice.paid':
                 const invoice = event.data.object;
@@ -181,6 +184,23 @@ async function routeProjectFairEvent(event, kind) {
         else if (kind === 'refunded') await mod.handleRefund(object);
     } catch (error) {
         console.error(`[Stripe Webhook] ERROR procesando evento de Feria de Proyectos (${kind}):`, error?.message);
+    }
+}
+
+// v4.606 — Desenlaces del pago de un registro a un evento (fallido, expirado
+// o reembolsado). Sólo actúa sobre los eventos de Stripe que traen la
+// inscripción en su metadata; `charge.refunded` se resuelve por PaymentIntent
+// dentro del propio controlador.
+async function routeEventRegistration(event, kind) {
+    const object = event?.data?.object || {};
+    const isRegistration = object?.metadata?.type === 'event_registration' || !!object?.metadata?.registrationId;
+    if (!isRegistration && kind !== 'refunded') return;
+
+    try {
+        const mod = await import('./eventRegistrationController.js');
+        await mod.applyStripeStatus(object, kind);
+    } catch (error) {
+        console.error(`[Stripe Webhook] ERROR procesando registro de evento (${kind}):`, error?.message);
     }
 }
 
@@ -271,6 +291,18 @@ async function handleSuccessfulCheckoutSession(session, event = null) {
             await mod.confirmPaidSession(session);
         } catch (error) {
             console.error('[Stripe Webhook] ERROR confirmando inscripción de Feria de Proyectos:', error);
+        }
+    }
+
+    // 2.c v4.606 — Registro de asistentes a un evento. Confirma la inscripción
+    //     y envía el comprobante. Idempotente: si la inscripción ya está
+    //     pagada, no vuelve a notificar.
+    if (session.metadata && session.metadata.type === 'event_registration') {
+        try {
+            const mod = await import('./eventRegistrationController.js');
+            await mod.confirmPaidSession(session);
+        } catch (error) {
+            console.error('[Stripe Webhook] ERROR confirmando registro de evento:', error);
         }
     }
 
