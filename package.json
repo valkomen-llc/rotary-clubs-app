@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.602.0",
-  "cache_bust": "2026-07-27 (El botón de registro de los sitios de Feria de Proyectos abre /registro-feria, una página nueva que publica el mismo panel de inscripción de la Conferencia LATIR: logo, cuenta regresiva, botón, valor y fecha de cierre. El panel se extrae a src/components/RegistrationPanel.tsx y la ficha de LATIR (EventoDetalle) lo consume con sus mismos textos y colores por defecto, sin cambio visual. La página pública src/pages/RegistroFeria.tsx lee registrationPanel de /api/project-fair/config; el bloque se agrega a DEFAULT_CONFIG y a toPublicConfig de forma aditiva y opcional, y se edita en la tarjeta \"Panel de registro\" de la pestaña Convocatoria. Los campos vacíos caen en los datos de la edición (nombre, ciudad, valor, fecha límite) y el botón en /postular-proyecto. headerCtaDefaults pasa el segundo botón de Feria de Proyectos a Registro → /registro-feria. Aditivo, sin cambios de BD.)",
+  "version": "4.603.0",
+  "cache_bust": "2026-07-27 (El panel de inscripción deja de estar cableado al evento de la Conferencia LATIR: cualquier evento de cualquier sitio puede tener el suyo. En EventoDetalle se reemplaza la comparación contra el UUID por hasRegistrationPanel(event) —activo por la casilla del panel o por tener algún campo lleno— y los textos y precios por defecto de LATIR quedan restringidos a ese evento, así que un evento nuevo no hereda \"Distrito 4921 / USD 550\"; el título y el subtítulo caen en el nombre y el lugar del propio evento. En el admin de Eventos la pestaña pasa a llamarse \"Panel de inscripción\", se muestra para todos los eventos y suma casilla de activación, título, subtítulo, texto del botón y etiquetas de los dos precios. Se agrega metadata al tipo CalendarEvent y se define EventTab (limpia 40+ errores de tipos), y se importan ImageIcon y Loader2, que faltaban y hacían fallar el modal de Librería Multimedia. Sin cambios de BD.)",
   "type": "module",
-  "//": "UI V4.602.0 | 2026-07-27 (El botón de registro de la Feria abre el panel de inscripción de LATIR)",
+  "//": "UI V4.603.0 | 2026-07-27 (Cualquier evento puede tener el panel de inscripción, no sólo el de LATIR)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

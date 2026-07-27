@@ -26,25 +26,54 @@ const TYPE_LABELS: Record<string, string> = {
     conference: 'Conferencia', other: 'Otro',
 };
 
-// Barra lateral de la Conferencia LATIR. Desde v4.602 el panel vive en
-// `RegistrationPanel` para poder reutilizarlo en otros sitios; aquí sólo se
-// arman sus valores, incluidos los mismos textos por defecto de siempre, para
-// que la ficha publicada de LATIR no cambie en nada.
-const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metadata: any }) => {
-    const latirConfig = metadata?.latir || {};
+// Evento original de la Conferencia LATIR. El panel de inscripción nació
+// cableado a este id; desde v4.603 cualquier evento de cualquier sitio puede
+// tener el suyo, y este id sólo se conserva para que la ficha ya publicada de
+// LATIR siga viéndose exactamente igual (sus textos y precios por defecto).
+const LATIR_EVENT_ID = '2038324a-0e04-497c-9328-fbaeb9ce2992';
+
+/**
+ * ¿Este evento muestra el panel de inscripción?
+ * El evento original de LATIR siempre. Los demás, cuando el administrador
+ * activó el panel o llenó algún campo en la pestaña "Panel de inscripción".
+ */
+const hasRegistrationPanel = (event: any): boolean => {
+    if (event?.id === LATIR_EVENT_ID) return true;
+    const cfg = event?.metadata?.latir;
+    if (!cfg || typeof cfg !== 'object') return false;
+    if (cfg.enabled === true) return true;
+    if (cfg.enabled === false) return false;
+    return Object.values(cfg).some(v => typeof v === 'string' && v.trim() !== '');
+};
+
+// Barra lateral con el panel de inscripción del evento. Desde v4.602 el panel
+// vive en `RegistrationPanel` para poder reutilizarlo en otros sitios; aquí
+// sólo se arman sus valores.
+//
+// Los textos y precios por defecto son los del evento original de LATIR y se
+// aplican SÓLO a ese evento, para que su ficha publicada no cambie en nada. En
+// cualquier otro evento el panel muestra únicamente lo que el administrador
+// haya llenado, con el título y la sede del propio evento como respaldo — así
+// un evento nuevo nunca hereda los datos de la Conferencia.
+const EventRegistrationSidebar = ({ event }: { event: any }) => {
+    const cfg = event?.metadata?.latir || {};
+    const isLatir = event?.id === LATIR_EVENT_ID;
 
     return (
         <RegistrationPanel
-            headerLogo={latirConfig.headerLogo}
-            title={latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
-            subtitle={latirConfig.subtitle || 'El destino de nuestras\nnuevas historias.'}
-            startDate={startDate}
-            buttonLink={latirConfig.buttonLink || 'https://forms.gle/CXWqMj5w335h4qm69'}
-            ticketGeneral={latirConfig.ticketGeneral || 'USD 550'}
-            ticketNote={latirConfig.ticketDesc || 'A partir del 15/03: USD 625'}
-            ticketRotex={latirConfig.ticketRotex || 'USD 200'}
-            closeDateText={latirConfig.closeDateText || '31/03/2026'}
-            footerImage={latirConfig.footerImage}
+            headerLogo={cfg.headerLogo}
+            title={cfg.title || (isLatir ? 'Distrito 4921,\nPatagonia\nArgentina' : event?.title || '')}
+            subtitle={cfg.subtitle || (isLatir ? 'El destino de nuestras\nnuevas historias.' : event?.location || '')}
+            startDate={event?.startDate}
+            buttonLabel={cfg.buttonLabel || 'Inscripciones'}
+            buttonLink={cfg.buttonLink || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
+            ticketGeneralLabel={cfg.ticketGeneralLabel || 'Ticket general:'}
+            ticketGeneral={cfg.ticketGeneral || (isLatir ? 'USD 550' : '')}
+            ticketNote={cfg.ticketDesc || (isLatir ? 'A partir del 15/03: USD 625' : '')}
+            ticketRotexLabel={cfg.ticketRotexLabel || 'Ticket ROTEX:'}
+            ticketRotex={cfg.ticketRotex || (isLatir ? 'USD 200' : '')}
+            closeDateText={cfg.closeDateText || (isLatir ? '31/03/2026' : '')}
+            footerImage={cfg.footerImage}
         />
     );
 };
@@ -256,8 +285,8 @@ const EventoDetalle = () => {
 
                     {/* Sidebar info */}
                     <div className="space-y-4">
-                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
-                            <LatirSpecialSidebar startDate={event.startDate} metadata={event.metadata} />
+                        {hasRegistrationPanel(event) && (
+                            <EventRegistrationSidebar event={event} />
                         )}
 
                         <div className="bg-gray-50 rounded-2xl p-6 space-y-5 border border-gray-100">
@@ -301,7 +330,9 @@ const EventoDetalle = () => {
                             </div>
                         </div>
 
-                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
+                        {/* Mapa de la sede de la Conferencia LATIR: la dirección está
+                            escrita en el código, así que sigue siendo sólo de ese evento. */}
+                        {event.id === LATIR_EVENT_ID && (
                             <div className="bg-white rounded-2xl p-3 border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
                                 <h3 className="font-normal text-[1.1rem] mt-2 mb-3 text-center text-[#1B2B4D]">Ubicación de la Conferencia</h3>
                                 <div className="rounded-xl overflow-hidden h-96 relative bg-gray-100 pointer-events-auto">
