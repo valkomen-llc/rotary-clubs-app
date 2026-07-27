@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.593.0 | 2026-07-27 (Botón "Postular Proyecto" enlazado al formulario de postulación)
+// UI V4.594.0 | 2026-07-27 (Formulario de postulación en /postular-proyecto, conectado por defecto al botón)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.594.0',
+        title: 'El formulario de postulación ahora vive en /postular-proyecto 🔗',
+        description: 'La dirección del formulario cambia a "/postular-proyecto", en línea con el nombre del botón, y ese es el destino que trae por defecto el botón "Postular Proyecto" en los sitios de Feria de Proyectos: no hay que configurar nada para que funcione. Las direcciones anteriores siguen sirviendo — quien entre por "/feria-proyectos" o "/inscribir-proyecto" llega igual al formulario, conservando los datos de la dirección, así que los enlaces de regreso del pago que ya se hayan generado siguen funcionando. Además, en el configurador aparece el campo "Dirección pública del formulario", por si en el futuro quieres publicarlo en otra ruta: el sistema la usa también para traer de vuelta al usuario después de pagar.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'enlace', 'direccion', 'boton', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.593.0',
         title: 'El botón "Postular Proyecto" ya lleva directo al formulario 🔗📋',

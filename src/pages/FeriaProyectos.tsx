@@ -2,6 +2,8 @@
 // Postulación de Proyectos — Feria de Proyectos Rotary Colombia
 // v4.592.0 — Wizard público de inscripción (3 pasos + pago + confirmación).
 //
+// Ruta pública: /postular-proyecto (los slugs anteriores redirigen aquí).
+//
 // Todo el contenido variable (edición, ciudad, valor, fecha límite,
 // distritos habilitados, áreas de enfoque, URL de redirección) llega desde
 // /api/project-fair/config, que el administrador edita en

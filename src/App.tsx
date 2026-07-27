@@ -67,6 +67,7 @@ import { ClubProvider, useClub } from './contexts/ClubContext';
 import { CartProvider } from './contexts/CartContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from './components/ui/sonner';
+import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
@@ -312,6 +313,13 @@ const ScrollToTop = () => {
   return null;
 };
 
+// Slugs antiguos del formulario de postulación → ruta canónica, conservando
+// query string y hash para no perder los parámetros de retorno de Stripe.
+const ProjectFormRedirect = () => {
+  const { search, hash } = useLocation();
+  return <Navigate to={`${PROJECT_FAIR_FORM_PATH}${search}${hash}`} replace />;
+};
+
 // Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
 const HIDE_BANNERS_PATHS = ['/generador-pendones'];
@@ -450,10 +458,13 @@ function App() {
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />
 
-                {/* Postulación de proyectos — Feria de Proyectos Rotary Colombia */}
-                <Route path="/feria-proyectos" element={<FeriaProyectos />} />
-                <Route path="/postular-proyecto" element={<Navigate to="/feria-proyectos" replace />} />
-                <Route path="/inscribir-proyecto" element={<Navigate to="/feria-proyectos" replace />} />
+                {/* Postulación de proyectos — Feria de Proyectos Rotary Colombia.
+                    Ruta canónica /postular-proyecto; los slugs anteriores redirigen
+                    conservando los parámetros (los enlaces de retorno de Stripe ya
+                    emitidos apuntan a /feria-proyectos?submission=…&session_id=…). */}
+                <Route path="/postular-proyecto" element={<FeriaProyectos />} />
+                <Route path="/feria-proyectos" element={<ProjectFormRedirect />} />
+                <Route path="/inscribir-proyecto" element={<ProjectFormRedirect />} />
 
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />
