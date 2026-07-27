@@ -52,7 +52,8 @@ import {
     Brain,
     FileBarChart2,
     GraduationCap,
-    CalendarClock
+    CalendarClock,
+    ClipboardList
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -406,6 +407,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Network, label: 'Zonas', path: '/admin/zonas', category: 'Management', keywords: ['zona'] },
                 { icon: Briefcase, label: 'Programas de Intercambio', path: '/admin/programas-intercambio', category: 'Management', keywords: ['programa', 'intercambio'] },
                 { icon: FolderKanban, label: 'Ferias de Proyectos', path: '/admin/ferias-proyectos', category: 'Management', keywords: ['feria', 'proyectos'] },
+                { icon: ClipboardList, label: 'Postulación de Proyectos', path: '/admin/feria-proyectos', category: 'Management', keywords: ['feria', 'postulacion', 'inscripcion', 'proyectos', 'valledupar', 'trm', 'stripe', 'grants'] },
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },

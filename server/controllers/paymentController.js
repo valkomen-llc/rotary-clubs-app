@@ -221,6 +221,18 @@ async function handleSuccessfulCheckoutSession(session) {
         }
     }
 
+    // 2.b v4.592 — Inscripción de proyecto a la Feria de Proyectos Rotary
+    //     Colombia. Marca la inscripción como "Pago Confirmado", guarda la
+    //     referencia de la transacción y envía el comprobante. Idempotente.
+    if (session.metadata && session.metadata.type === 'project_fair_registration') {
+        try {
+            const { confirmPaidSession } = await import('./projectFairController.js');
+            await confirmPaidSession(session);
+        } catch (error) {
+            console.error('[Stripe Webhook] ERROR confirmando inscripción de Feria de Proyectos:', error);
+        }
+    }
+
     // 3. FASE 5: Reactivación Mágica (Renovación de Suscripción Anual)
     if (session.client_reference_id || session.customer) {
         await handleSaaSReactivation(session.client_reference_id, session.customer);

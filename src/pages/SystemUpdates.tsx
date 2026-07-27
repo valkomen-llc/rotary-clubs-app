@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.591.0 | 2026-07-26 (Negrilla configurable: casilla para el título + campo de palabras en negrilla del texto)
-// Cache bust: 2026-07-26
+// UI V4.592.0 | 2026-07-27 (Postulación de Proyectos 12ª Feria Rotary Colombia — Valledupar: wizard + TRM + Stripe + Rotary Grants)
+// Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.592.0',
+        title: 'Postulación de Proyectos — 12ª Feria de Proyectos Rotary Colombia, Valledupar 🇨🇴📋',
+        description: 'Nuevo módulo público en /feria-proyectos para que los clubes rotarios inscriban su proyecto a la 12ª Feria de Proyectos Rotary Colombia. El formulario es un asistente de 3 pasos con barra de progreso: (1) datos del representante (nombre, apellido, correo, WhatsApp, club y distrito habilitado), (2) datos del proyecto (nombre, descripción, presupuesto en USD y un selector con las siete Áreas de Enfoque de Rotary International, que se guarda de forma clasificable) y (3) resumen completo para revisar y corregir antes de enviar. Valida en tiempo real, avisa qué falta y autoguarda el avance para que no se pierda información. Luego aparece la pantalla de pago con el valor oficial de COP $250.000, la TRM vigente consultada en línea (fuente oficial de la Superintendencia Financiera, con proveedores de respaldo), el equivalente informativo en dólares y la hora de la última actualización. El cobro se hace con la pasarela de Stripe que ya usa la plataforma; cuando Stripe confirma la transacción, la inscripción pasa a "Pago Confirmado", se guardan la referencia del pago y la TRM aplicada, se envía el comprobante por correo y el usuario es redirigido automáticamente a Rotary Grants 25A (con botón manual por si la redirección falla). En el panel, "Postulación de Proyectos" permite preparar cada nueva edición sin tocar código: ciudad sede, número de versión, valor, fecha límite, distritos, áreas de enfoque, URL de redirección y proveedor de la TRM, además del listado de inscripciones con exportación a CSV.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'valledupar', 'inscripciones', 'stripe', 'trm', 'formulario', 'rotary grants', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.591.0',
         title: 'Activa o desactiva la negrilla del título y resalta palabras del texto ✍️',
