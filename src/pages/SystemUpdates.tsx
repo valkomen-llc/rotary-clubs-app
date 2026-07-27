@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.599.0 | 2026-07-27 (Los módulos de la Feria aparecen en el menú del sitio de la feria)
+// UI V4.600.0 | 2026-07-27 (Los módulos de la Feria se ven en la barra lateral del sitio publicado)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.600.0',
+        title: 'Ahora sí: "Postulaciones y Pagos" visible en el menú lateral 📋✅',
+        description: 'Los dos módulos de la Feria seguían sin aparecer aunque ya estaban habilitados: se agregaban al grupo "Management" del menú, y en un sitio publicado la barra lateral solo muestra los grupos General, Contenido, Finanzas, Programas, E-commerce, Compliance y Configuración e Identidad. Al no existir ese grupo, los módulos se calculaban pero nunca se dibujaban. Ahora aparecen dentro de "General", junto a Analytics y Proyectos. También se hizo más tolerante el reconocimiento del sitio de feria, que ahora acepta las distintas formas en que puede estar guardado el tipo. Recuerda que las direcciones /admin/postulaciones-pagos y /admin/feria-proyectos siempre funcionaron escribiéndolas en el navegador.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'menu', 'barra lateral', 'postulaciones', 'panel', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.599.0',
         title: 'Los módulos de la Feria ya aparecen en el menú de su propio sitio 📋',
