@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.592.0",
-  "cache_bust": "2026-07-27 (Módulo \"Postulación de Proyectos — 12ª Feria de Proyectos Rotary Colombia | Valledupar\": página pública /feria-proyectos con wizard de 3 pasos (representante → proyecto → resumen), barra de progreso, validación en tiempo real y autoguardado del borrador; selector de Áreas de Enfoque de Rotary (7 opciones, se almacena la clave); pantalla de pago con valor oficial COP $250.000, TRM vigente consultada en línea (Superintendencia Financiera vía datos.gov.co + proveedores de respaldo, caché por día calendario), equivalente informativo en USD y fecha/hora de actualización; cobro con la pasarela Stripe ya existente (metadata.type='project_fair_registration' en el webhook actual, sin integración nueva); al confirmar el pago se marca \"Pago Confirmado\", se guardan referencia/ID de transacción y la TRM aplicada, se envía comprobante y se redirecciona automáticamente a https://grants25a.org/ con botón manual de respaldo. Configurador en /admin/feria-proyectos (edición, ciudad, valor, fecha límite, distritos, áreas, URL de redirección, proveedor TRM) + listado de inscripciones y export CSV. Tablas ProjectFairConfig/ProjectFairSubmission/ProjectFairTrm creadas con CREATE TABLE IF NOT EXISTS fuera de Prisma; aditivo, sin operaciones destructivas de BD.)",
+  "version": "4.593.0",
+  "cache_bust": "2026-07-27 (Botón \"Postular Proyecto\" conectado al formulario: en los sitios tipo Feria de Proyectos el segundo botón de la cabecera tiene como valor por defecto \"Postular Proyecto\" → /feria-proyectos (helper src/lib/ctaLinks.ts, usado también por los placeholders del editor en Configuración → Identidad). resolveCtaUrl reescribe al formulario interno los enlaces heredados de inscripción de ediciones anteriores (slugs inscribir-proyecto / postular-proyecto / inscripción-proyecto), tanto en los botones de la cabecera como en los botones configurables de las secciones de la portada. Nuevo alias de ruta /postular-proyecto. La página del formulario ahora se muestra dentro del sitio, con el menú y el pie de página, en vez de como página suelta. Aditivo, sin cambios de backend ni de BD.)",
   "type": "module",
-  "//": "UI V4.592.0 | 2026-07-27 (Postulación de Proyectos 12ª Feria Rotary Colombia — Valledupar: wizard + TRM + Stripe + Rotary Grants)",
+  "//": "UI V4.593.0 | 2026-07-27 (Botón \"Postular Proyecto\" enlazado al formulario de postulación)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

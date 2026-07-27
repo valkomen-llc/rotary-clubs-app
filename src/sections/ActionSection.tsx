@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { resolveCtaUrl } from '../lib/ctaLinks';
 import { renderRichText, hasBoldMarkup } from '../lib/richText';
 
 // Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
@@ -24,7 +25,7 @@ const ActionSection = () => {
 
   // Contenido configurable (Evento/Convención y Feria de Proyectos). Si no hay valor, texto por defecto.
   const content = (canEditContent && (club as any)?.actionContent) ? (club as any).actionContent : {};
-  const buttonUrl = content.buttonUrl || '/involucrate';
+  const buttonUrl = resolveCtaUrl(content.buttonUrl) || '/involucrate';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
 

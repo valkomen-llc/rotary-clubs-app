@@ -4,6 +4,7 @@ import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { resolveCtaUrl } from '../lib/ctaLinks';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
@@ -38,7 +39,7 @@ const FoundationSection = () => {
   const isEventSite = hasCustomTheme((club as any)?.type);
   const canEditContent = hasEditableHome((club as any)?.type);
   const content = (canEditContent && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
-  const buttonUrl = content.buttonUrl || '';
+  const buttonUrl = resolveCtaUrl(content.buttonUrl) || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '🎁')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
 

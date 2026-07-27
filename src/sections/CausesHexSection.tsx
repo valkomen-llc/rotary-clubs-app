@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { resolveCtaUrl } from '../lib/ctaLinks';
 import { renderRichText } from '../lib/richText';
 
 const ICON_EMOJI: Record<string, string> = {
@@ -479,7 +480,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const causesContent = (canEditContent && (club as any)?.causesContent) ? (club as any).causesContent : {};
   const areasText = causesContent.text || DEFAULT_AREAS_TEXT;
   const ctaText = causesContent.buttonText || 'Nuestras Áreas de Interés';
-  const ctaUrl = causesContent.buttonUrl || '/nuestras-causas';
+  const ctaUrl = resolveCtaUrl(causesContent.buttonUrl) || '/nuestras-causas';
   const ctaExternal = /^https?:\/\//i.test(ctaUrl);
   const ctaEmoji = isEventSite && causesContent.icon
     ? (ICON_EMOJI[causesContent.icon] || (causesContent.icon.length <= 4 ? causesContent.icon : ''))

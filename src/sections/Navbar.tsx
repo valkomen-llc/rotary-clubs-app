@@ -9,6 +9,7 @@ import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
+import { headerCtaDefaults, resolveCtaUrl } from '../lib/ctaLinks';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -34,10 +35,14 @@ const Navbar = () => {
   // Comportamiento por idioma: en Español se usan el texto y el enlace en español (si se
   // configuraron); en los demás idiomas, los internacionales. Si falta uno, cae al otro; si no
   // hay ninguno personalizado, se usan los botones por defecto (Contribuye / Únete a un club).
-  const HEADER_CTA_DEFAULTS = [
-    { label: 'Contribuye', url: '/maneras-de-contribuir', cls: 'bg-rotary-blue text-white hover:bg-rotary-blue/90' },
-    { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio', cls: 'bg-sky-100 text-rotary-blue hover:bg-sky-200' },
+  // v4.593 — En las Ferias de Proyectos el segundo botón es "Postular Proyecto"
+  // y lleva al formulario público de postulación.
+  const CTA_CLASSES = [
+    'bg-rotary-blue text-white hover:bg-rotary-blue/90',
+    'bg-sky-100 text-rotary-blue hover:bg-sky-200',
   ];
+  const HEADER_CTA_DEFAULTS = headerCtaDefaults((club as any)?.type)
+    .map((def, i) => ({ ...def, cls: CTA_CLASSES[i] }));
   const headerCtasCfg = Array.isArray((club as any)?.headerCtas) ? (club as any).headerCtas : [];
   const isEs = lang === 'es';
   const headerCtas = HEADER_CTA_DEFAULTS.map((def, i) => {
@@ -49,7 +54,9 @@ const Navbar = () => {
     const hasCustom = !!intlLabel || !!esLabel;
     const customLabel = isEs ? (esLabel || intlLabel) : (intlLabel || esLabel);
     const customUrl = isEs ? (esUrl || intlUrl) : (intlUrl || esUrl);
-    return { label: hasCustom ? customLabel : def.label, isCustomLabel: hasCustom, url: customUrl || def.url, cls: def.cls };
+    // resolveCtaUrl: un enlace configurado hacia el formulario de inscripción
+    // de una edición anterior se redirige al formulario interno.
+    return { label: hasCustom ? customLabel : def.label, isCustomLabel: hasCustom, url: resolveCtaUrl(customUrl) || def.url, cls: def.cls };
   });
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

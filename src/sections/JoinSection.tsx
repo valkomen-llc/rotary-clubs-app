@@ -4,6 +4,7 @@ import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
+import { resolveCtaUrl } from '../lib/ctaLinks';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
@@ -44,7 +45,7 @@ const JoinSection = () => {
 
   // Contenido editable (Evento/Convención y Feria de Proyectos).
   const content = (canEditContent && (club as any)?.joinContent) ? (club as any).joinContent : {};
-  const buttonUrl = content.buttonUrl || '';
+  const buttonUrl = resolveCtaUrl(content.buttonUrl) || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
 

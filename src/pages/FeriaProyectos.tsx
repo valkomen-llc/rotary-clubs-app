@@ -13,7 +13,8 @@ import {
     CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText,
 } from 'lucide-react';
-import { logoDataUrl } from '../lib/rotaryLogo';
+import Navbar from '../sections/Navbar';
+import Footer from '../sections/Footer';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const DRAFT_KEY = 'feria_proyectos_draft_v1';
@@ -388,48 +389,55 @@ const FeriaProyectos = () => {
 
     if (loadingConfig) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-slate-50">
-                <div className="text-center text-slate-500">
-                    <Loader2 className="mx-auto mb-3 animate-spin" size={32} style={{ color: BLUE }} />
-                    <p className="text-sm">Cargando la convocatoria…</p>
+            <div className="min-h-screen bg-slate-50">
+                <Navbar />
+                <div className="flex min-h-[60vh] items-center justify-center">
+                    <div className="text-center text-slate-500">
+                        <Loader2 className="mx-auto mb-3 animate-spin" size={32} style={{ color: BLUE }} />
+                        <p className="text-sm">Cargando la convocatoria…</p>
+                    </div>
                 </div>
+                <Footer />
             </div>
         );
     }
 
     if (config && config.enabled === false) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-                <div className="max-w-lg rounded-2xl bg-white p-10 text-center shadow-sm">
-                    <Clock className="mx-auto mb-4" size={40} style={{ color: BLUE }} />
-                    <h1 className="mb-2 text-2xl font-bold text-slate-900">Convocatoria cerrada</h1>
-                    <p className="text-slate-600">
-                        En este momento no estamos recibiendo postulaciones para la {config.edition?.name}.
-                        Escríbenos si necesitas más información.
-                    </p>
+            <div className="min-h-screen bg-slate-50">
+                <Navbar />
+                <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
+                    <div className="max-w-lg rounded-2xl bg-white p-10 text-center shadow-sm">
+                        <Clock className="mx-auto mb-4" size={40} style={{ color: BLUE }} />
+                        <h1 className="mb-2 text-2xl font-bold text-slate-900">Convocatoria cerrada</h1>
+                        <p className="text-slate-600">
+                            En este momento no estamos recibiendo postulaciones para la {config.edition?.name}.
+                            Escríbenos si necesitas más información.
+                        </p>
+                    </div>
                 </div>
+                <Footer />
             </div>
         );
     }
 
     return (
         <div className="min-h-screen bg-slate-100" ref={topRef}>
-            {/* Cabecera institucional */}
-            <header style={{ background: BLUE }} className="px-4 py-7 text-white sm:px-6 sm:py-9">
-                <div className="mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-                    <img src={logoDataUrl('completo', 'blanco')} alt="Rotary" className="h-11 w-auto shrink-0 sm:h-14" />
-                    <div className="sm:border-l sm:border-white/25 sm:pl-5">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
-                            {config?.content?.title || 'Postulación de Proyectos'}
-                        </p>
-                        <h1 className="mt-1 text-xl font-bold leading-tight sm:text-2xl">
-                            {config?.edition?.name}
-                        </h1>
-                        <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-white/85 sm:justify-start">
-                            <MapPin size={14} /> {config?.edition?.city}{config?.edition?.country ? `, ${config.edition.country}` : ''}
-                            {config?.edition?.dates ? ` · ${config.edition.dates}` : ''}
-                        </p>
-                    </div>
+            <Navbar />
+
+            {/* Cabecera de la convocatoria */}
+            <header style={{ background: BLUE }} className="px-4 py-8 text-white sm:px-6 sm:py-10">
+                <div className="mx-auto max-w-4xl text-center sm:text-left">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
+                        {config?.content?.title || 'Postulación de Proyectos'}
+                    </p>
+                    <h1 className="mt-1.5 text-2xl font-bold leading-tight sm:text-3xl">
+                        {config?.edition?.name}
+                    </h1>
+                    <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-white/85 sm:justify-start">
+                        <MapPin size={14} /> {config?.edition?.city}{config?.edition?.country ? `, ${config.edition.country}` : ''}
+                        {config?.edition?.dates ? ` · ${config.edition.dates}` : ''}
+                    </p>
                 </div>
             </header>
 
@@ -758,10 +766,7 @@ const FeriaProyectos = () => {
                 )}
             </main>
 
-            <footer className="px-4 pb-10 text-center text-[13px] text-slate-500">
-                {config?.edition?.name} · {config?.edition?.city}
-                {config?.edition?.country ? `, ${config.edition.country}` : ''}
-            </footer>
+            <Footer />
         </div>
     );
 };
