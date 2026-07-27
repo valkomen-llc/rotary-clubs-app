@@ -91,13 +91,33 @@ router.post('/publications', authMiddleware, async (req, res) => {
 });
 
 // ── Events ────────────────────────────────────────────────────────────────────
+
+/**
+ * v4.605 — Normaliza el slug público de un evento: minúsculas, sin tildes y
+ * con guiones en lugar de espacios o signos. Devuelve null si queda vacío, que
+ * es como se representa "sin slug" (el evento se abre por su id).
+ */
+const normalizeSlug = (value) => {
+    const slug = String(value ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // quita tildes
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 120);
+    return slug || null;
+};
+
+/** El slug ya está tomado por otro evento del mismo sitio (índice único). */
+const isDuplicateSlug = (error) => error?.code === '23505';
+const DUPLICATE_SLUG_MESSAGE = 'Ya hay otro evento de este sitio con esa dirección. Elige otra.';
+
 router.post('/events', authMiddleware, async (req, res) => {
     try {
-        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata, slug } = req.body;
         const result = await db.query(
-            `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt", metadata)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId, metadata || {}]
+            `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt", metadata, slug)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12) RETURNING *`,
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId, metadata || {}, normalizeSlug(slug)]
         );
         const event = result.rows[0];
         if (event?.clubId) {
@@ -113,6 +133,7 @@ router.post('/events', authMiddleware, async (req, res) => {
         }
         res.json(event);
     } catch (error) {
+        if (isDuplicateSlug(error)) return res.status(409).json({ error: DUPLICATE_SLUG_MESSAGE });
         console.error(error);
         res.status(500).json({ error: 'Error al crear el evento' });
     }
@@ -126,13 +147,15 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         if (req.user.role !== 'administrator' && event.rows[0].clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'No autorizado' });
         }
-        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata, slug } = req.body;
+        // `slug` ausente en el cuerpo = no se toca; presente (aunque vacío) sí.
+        const nextSlug = slug === undefined ? event.rows[0].slug : normalizeSlug(slug);
         const result = await db.query(
             `UPDATE "CalendarEvent"
              SET title=$1, description=$2, "htmlContent"=$3, "startDate"=$4, "endDate"=$5,
-                 location=$6, type=$7, image=$8, images=$9, metadata=$10
+                 location=$6, type=$7, image=$8, images=$9, metadata=$10, slug=$12
              WHERE id=$11 RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], metadata || {}, id]
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], metadata || {}, id, nextSlug]
         );
         const updated = result.rows[0];
         if (updated?.clubId) {
@@ -148,6 +171,7 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         }
         res.json(updated);
     } catch (error) {
+        if (isDuplicateSlug(error)) return res.status(409).json({ error: DUPLICATE_SLUG_MESSAGE });
         console.error(error);
         res.status(500).json({ error: 'Error al actualizar el evento' });
     }

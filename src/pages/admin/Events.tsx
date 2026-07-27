@@ -30,7 +30,21 @@ interface CalendarEvent {
     publishTwitter?: boolean;
     /** Configuración extra del evento. `metadata.latir` guarda el panel de inscripción. */
     metadata?: Record<string, any>;
+    /** Dirección amigable del evento: /eventos/mi-evento. Sin slug se entra por el id. */
+    slug?: string | null;
 }
+
+/**
+ * v4.605 — Misma normalización que aplica el servidor, para que el campo
+ * muestre desde el principio la dirección que quedará publicada.
+ */
+export const slugify = (value: string) =>
+    String(value ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 120);
 
 /** Pestañas del editor de un evento. */
 type EventTab = 'info' | 'media' | 'html' | 'social' | 'metadata';
@@ -67,6 +81,7 @@ const emptyForm = {
     type: 'meeting',
     image: '',
     images: [] as string[],
+    slug: '',
 };
 
 // ── Simple HTML Editor with preview ──────────────────────────────────────────
@@ -889,6 +904,24 @@ const EventsManagement = () => {
                                 </select>
                             </div>
                             <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección del evento (opcional)</label>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-400 shrink-0">/eventos/</span>
+                                    <input type="text" value={newEvent.slug}
+                                        onChange={e => { setNewEvent({ ...newEvent, slug: e.target.value }); setFormError(''); }}
+                                        onBlur={e => setNewEvent(prev => ({ ...prev, slug: slugify(e.target.value) }))}
+                                        className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder={newEvent.title ? slugify(newEvent.title) : 'xii-feria-valledupar'} />
+                                    {!newEvent.slug.trim() && newEvent.title.trim() && (
+                                        <button type="button" onClick={() => setNewEvent(prev => ({ ...prev, slug: slugify(prev.title) }))}
+                                            className="shrink-0 text-sm font-semibold text-blue-600 hover:underline">Usar el título</button>
+                                    )}
+                                </div>
+                                <p className="mt-1 text-xs text-gray-400">
+                                    Dirección amigable para enlazar el evento desde botones y menús. Si la dejas vacía, el evento se abre por su código interno.
+                                </p>
+                            </div>
+                            <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Descripción breve</label>
                                 <textarea value={newEvent.description}
                                     onChange={e => setNewEvent({ ...newEvent, description: e.target.value })}
@@ -1056,6 +1089,28 @@ const EventsManagement = () => {
                                                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                                                                 {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                                             </select>
+                                                        </div>
+                                                        <div className="md:col-span-2">
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">Dirección del evento</label>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm text-gray-400 shrink-0">/eventos/</span>
+                                                                <input type="text"
+                                                                    value={event.slug || ''}
+                                                                    onChange={e => updateEventField(event.id, 'slug', e.target.value)}
+                                                                    onBlur={e => updateEventField(event.id, 'slug', slugify(e.target.value))}
+                                                                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                                                    placeholder={slugify(event.title) || 'mi-evento'} />
+                                                                <button type="button"
+                                                                    onClick={() => {
+                                                                        const path = `${window.location.origin}/eventos/${event.slug || event.id}`;
+                                                                        navigator.clipboard?.writeText(path);
+                                                                        alert(`Enlace copiado:\n${path}`);
+                                                                    }}
+                                                                    className="shrink-0 text-sm font-semibold text-blue-600 hover:underline">Copiar enlace</button>
+                                                            </div>
+                                                            <p className="mt-1 text-xs text-gray-400">
+                                                                Úsala para enlazar el evento desde botones y menús. Al cambiarla, los enlaces con la dirección anterior dejan de funcionar; el enlace por código interno siempre sirve.
+                                                            </p>
                                                         </div>
                                                         <div className="md:col-span-2">
                                                             <label className="block text-sm font-medium text-gray-700 mb-1">Descripción breve (texto plano)</label>

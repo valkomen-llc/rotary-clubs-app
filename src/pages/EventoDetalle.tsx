@@ -85,6 +85,16 @@ const EventoDetalle = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [currentImage, setCurrentImage] = useState(0);
+    // Proporción real de cada imagen de la galería, para que el contenedor se
+    // adapte a ella y ninguna quede recortada. Se acota para que un afiche muy
+    // alargado no ocupe una pantalla entera.
+    const [imageRatios, setImageRatios] = useState<Record<number, number>>({});
+    const registerImageRatio = (index: number, img: HTMLImageElement) => {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        if (!w || !h) return;
+        const ratio = Math.min(Math.max(w / h, 0.6), 2.6);
+        setImageRatios(prev => (prev[index] === ratio ? prev : { ...prev, [index]: ratio }));
+    };
 
     useEffect(() => { window.scrollTo(0, 0); }, [id]);
 
@@ -217,22 +227,23 @@ const EventoDetalle = () => {
                         )}
 
                         {/* Image gallery Carousel */}
+                        {/* v4.605 — El contenedor toma la proporción de la imagen que se
+                            está mostrando y las imágenes van en `object-contain`, así que
+                            se ven completas sea cual sea su tamaño. Antes el alto era fijo
+                            (21/9) con `object-cover` y recortaba los afiches verticales. */}
                         {hasImages && (
                             <div className="my-10">
-                                <div className="relative aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden shadow-xl ring-1 ring-gray-100 bg-gray-50">
-                                    <style>{`
-                                        @keyframes slowZoom {
-                                            from { transform: scale(1); }
-                                            to { transform: scale(1.1); }
-                                        }
-                                    `}</style>
+                                <div
+                                    className="relative rounded-2xl overflow-hidden shadow-xl ring-1 ring-gray-100 bg-gray-50 transition-[aspect-ratio] duration-500"
+                                    style={{ aspectRatio: imageRatios[currentImage] || 16 / 9 }}
+                                >
                                     {event.images.map((imgSrc: string, index: number) => (
                                         <img
                                             key={`${imgSrc}-${index}`}
                                             src={imgSrc}
                                             alt={`Gallery image ${index + 1}`}
-                                            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${index === currentImage ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
-                                            style={index === currentImage ? { animation: 'slowZoom 4.5s linear forwards' } : {}}
+                                            onLoad={e => registerImageRatio(index, e.currentTarget)}
+                                            className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-1000 ease-in-out ${index === currentImage ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
                                         />
                                     ))}
 
@@ -275,9 +286,13 @@ const EventoDetalle = () => {
                         )}
 
                         {/* Rich HTML content */}
+                        {/* Las imágenes pegadas dentro del contenido se muestran completas y
+                            centradas, aunque vengan con un ancho o un alto fijo en el HTML. */}
                         {event.htmlContent && (
                             <div
-                                className="prose prose-blue max-w-none text-gray-700"
+                                className="prose prose-blue max-w-none text-gray-700
+                                    [&_img]:mx-auto [&_img]:h-auto [&_img]:max-w-full [&_img]:w-auto
+                                    [&_img]:object-contain [&_img]:rounded-xl"
                                 dangerouslySetInnerHTML={{ __html: event.htmlContent }}
                             />
                         )}
