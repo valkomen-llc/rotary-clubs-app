@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.601.0 | 2026-07-27 (Un solo módulo de la Feria: la configuración es la pestaña Convocatoria)
+// UI V4.602.0 | 2026-07-27 (El botón de registro de la Feria abre el panel de inscripción de LATIR)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.602.0',
+        title: 'El botón de registro de la Feria ahora abre el panel de inscripción 🎟️',
+        description: 'Copiamos para la Feria de Proyectos el mismo panel de inscripción que ya está publicado en la Conferencia LATIR: logo del evento, cuenta regresiva en vivo, botón de inscripciones, valor y fecha de cierre. Vive en una página propia, /registro-feria, y es el destino del botón de registro del menú principal de los sitios de Feria de Proyectos; desde ahí se entra al formulario de postulación, que sigue funcionando igual en /postular-proyecto. La página se configura en Postulaciones y Pagos → Convocatoria, en la nueva tarjeta "Panel de registro": puedes cambiar título, subtítulo, logo, fecha de la cuenta regresiva, texto y enlace del botón, los valores que se muestran, la fecha de cierre y la imagen del pie, o cerrar el registro. Todos esos campos son opcionales: lo que dejes vacío se completa solo con los datos de la edición —nombre, ciudad, valor de inscripción y fecha límite—, así que la página funciona correctamente desde el primer momento sin tocar nada. La ficha de la Conferencia LATIR no cambia en absoluto: conserva sus mismos textos, colores y precios. Nota: si el botón del menú tiene un enlace escrito a mano en Configuración → Identidad → Botones del menú principal, hay que dejarlo vacío o apuntarlo a /registro-feria para que lleve al panel.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'registro', 'inscripciones', 'panel', 'cuenta regresiva', 'latir', 'cabecera', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.601.0',
         title: 'Un solo módulo para toda la Feria 🧩',

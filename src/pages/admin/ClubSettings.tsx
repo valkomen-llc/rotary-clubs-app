@@ -899,7 +899,7 @@ const ClubSettings: React.FC = () => {
                             <div className="space-y-6">
                                 {[0, 1].map((i) => {
                                     // Los placeholders muestran el valor por defecto real del sitio:
-                                    // en una Feria de Proyectos, el botón 2 es "Postular Proyecto".
+                                    // en una Feria de Proyectos, el botón 2 es el de registro (v4.602).
                                     const defaults = headerCtaDefaults((club as any)?.type)[i];
                                     const updateCta = (field: 'label' | 'labelEs' | 'url' | 'urlEs', value: string) => {
                                         const next = [...formData.headerCtas];

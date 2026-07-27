@@ -12,16 +12,41 @@
 import React, { useEffect, useState } from 'react';
 import {
     Save, Loader2, Plus, Trash2, RefreshCw, Calendar, MapPin,
-    CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2,
+    CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2, Ticket,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { PROJECT_FAIR_FORM_PATH, PROJECT_FAIR_REGISTER_PATH } from '../../../lib/ctaLinks';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
 
 interface Option { value: string; label: string }
 interface FocusArea { key: string; label: string }
+
+/**
+ * Panel público de registro (v4.602): copia del panel de inscripción de la
+ * Conferencia LATIR. Todos los campos son opcionales — lo que quede vacío se
+ * completa con los datos de la edición.
+ */
+export interface RegistrationPanelConfig {
+    enabled: boolean;
+    headerLogo: string;
+    title: string;
+    subtitle: string;
+    startDate: string;
+    buttonLabel: string;
+    buttonLink: string;
+    ticketGeneralLabel: string;
+    ticketGeneral: string;
+    ticketNote: string;
+    ticketRotexLabel: string;
+    ticketRotex: string;
+    closeLabel: string;
+    closeDateText: string;
+    footerImage: string;
+    intro: string;
+}
 
 export interface FairConfig {
     enabled: boolean;
@@ -37,6 +62,7 @@ export interface FairConfig {
     content: { title: string; subtitle: string; intro: string; requirements: string[]; note: string; priorityNote: string };
     notifications: { adminEmails: string[]; sendReceipt: boolean };
     access: { admins: string[]; finance: string[]; reviewers: string[] };
+    registrationPanel?: Partial<RegistrationPanelConfig>;
     clubId: string | null;
 }
 
@@ -156,15 +182,23 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
         return <div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando configuración…</div>;
     }
 
-    const publicUrl = `${window.location.origin}${config.formPath || '/postular-proyecto'}`;
+    const publicUrl = `${window.location.origin}${config.formPath || PROJECT_FAIR_FORM_PATH}`;
+    const registerUrl = `${window.location.origin}${PROJECT_FAIR_REGISTER_PATH}`;
+    const panel = config.registrationPanel || {};
 
     return (
         <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4">
-                <p className="text-sm text-slate-500">
-                    Formulario público ·{' '}
-                    <a href={publicUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{publicUrl}</a>
-                </p>
+                <div className="space-y-1 text-sm text-slate-500">
+                    <p>
+                        Formulario público ·{' '}
+                        <a href={publicUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{publicUrl}</a>
+                    </p>
+                    <p>
+                        Página de registro ·{' '}
+                        <a href={registerUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{registerUrl}</a>
+                    </p>
+                </div>
                 {canEdit ? (
                     <button onClick={save} disabled={saving}
                         className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:opacity-60">
@@ -318,6 +352,39 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     />
                     <Textarea label="Nota de prioridad" rows={3} value={config.content.priorityNote} onChange={(e: ChangeEvent) => patch('content.priorityNote', e.target.value)} />
                 </div>
+            </Card>
+
+            <Card title="Panel de registro (botón de la cabecera)" icon={Ticket}>
+                <p className="mb-4 text-xs text-slate-500">
+                    Es la página que abre el botón de <b>Registro</b> del menú principal, en{' '}
+                    <a href={registerUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{registerUrl}</a>.
+                    Muestra el mismo panel de inscripción de la Conferencia LATIR: logo, cuenta regresiva,
+                    botón, precios y fecha de cierre. <b>Todos los campos son opcionales</b>: lo que dejes
+                    vacío se completa solo con los datos de la edición (nombre, ciudad, valor y fecha límite).
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <Input label="Título del panel" value={panel.title || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.title', e.target.value)} hint="Vacío usa el nombre de la edición." />
+                    <Input label="Subtítulo" value={panel.subtitle || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.subtitle', e.target.value)} hint="Vacío usa la ciudad y el país." />
+                    <Input label="Fecha de la cuenta regresiva" type="date" value={(panel.startDate || '').slice(0, 10)} onChange={(e: ChangeEvent) => patch('registrationPanel.startDate', e.target.value)} hint="Vacío cuenta hasta la fecha límite de postulación." />
+                    <Input label="Texto del botón" value={panel.buttonLabel || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.buttonLabel', e.target.value)} hint='Por defecto "Inscripciones".' />
+                    <Input label="Enlace del botón" value={panel.buttonLink || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.buttonLink', e.target.value)} hint="Vacío lleva al formulario de postulación." />
+                    <Input label="Imagen del logo (URL)" value={panel.headerLogo || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.headerLogo', e.target.value)} hint="Se muestra sobre el título." />
+                    <Input label="Etiqueta del valor principal" value={panel.ticketGeneralLabel || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.ticketGeneralLabel', e.target.value)} />
+                    <Input label="Valor principal" value={panel.ticketGeneral || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.ticketGeneral', e.target.value)} hint="Vacío usa el valor de inscripción configurado arriba." />
+                    <Input label="Nota bajo el valor (cursiva)" value={panel.ticketNote || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.ticketNote', e.target.value)} hint="Ej: A partir del 15/07 el valor sube." />
+                    <Input label="Etiqueta del segundo valor" value={panel.ticketRotexLabel || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.ticketRotexLabel', e.target.value)} hint="Ej: Ticket acompañante." />
+                    <Input label="Segundo valor" value={panel.ticketRotex || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.ticketRotex', e.target.value)} hint="Vacío oculta esta línea." />
+                    <Input label="Etiqueta del cierre" value={panel.closeLabel || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.closeLabel', e.target.value)} />
+                    <Input label="Fecha de cierre (texto)" value={panel.closeDateText || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.closeDateText', e.target.value)} hint="Vacío usa la fecha límite de postulación." />
+                    <Input label="Imagen al pie del panel (URL)" value={panel.footerImage || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.footerImage', e.target.value)} />
+                </div>
+                <div className="mt-4">
+                    <Textarea label="Texto de la página (opcional)" rows={3} value={panel.intro || ''} onChange={(e: ChangeEvent) => patch('registrationPanel.intro', e.target.value)} hint="Vacío reutiliza la introducción de la página pública." />
+                </div>
+                <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={panel.enabled !== false} onChange={e => patch('registrationPanel.enabled', e.target.checked)} className="h-4 w-4" />
+                    Registro abierto (si se desactiva, la página muestra "Registro cerrado")
+                </label>
             </Card>
 
             <Card title="Perfiles del módulo de gestión" icon={Users}>
