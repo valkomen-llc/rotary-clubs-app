@@ -29,6 +29,7 @@ interface FocusArea { key: string; label: string }
 
 interface FairConfig {
     enabled: boolean;
+    formPath: string;
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string;
     presentation: { maxMinutes: number };
@@ -201,7 +202,7 @@ const FeriaProyectosConfig: React.FC = () => {
         );
     }
 
-    const publicUrl = `${window.location.origin}/feria-proyectos`;
+    const publicUrl = `${window.location.origin}${config.formPath || '/postular-proyecto'}`;
 
     return (
         <AdminLayout>
@@ -253,6 +254,7 @@ const FeriaProyectosConfig: React.FC = () => {
                                 <Input label="Clave interna de la edición" value={config.edition.key} onChange={(e: ChangeEvent) => patch('edition.key', e.target.value)} hint="Se guarda en cada inscripción para diferenciar ediciones." />
                                 <Input label="Fecha límite de postulación" type="date" value={config.deadline || ''} onChange={(e: ChangeEvent) => patch('deadline', e.target.value)} />
                                 <Input label="Minutos de presentación" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} />
+                                <Input label="Dirección pública del formulario" value={config.formPath || ''} onChange={(e: ChangeEvent) => patch('formPath', e.target.value)} hint="Ruta donde vive el formulario. Por defecto /postular-proyecto; las direcciones anteriores siguen redirigiendo aquí." />
                             </div>
                             <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
                                 <input type="checkbox" checked={config.enabled !== false} onChange={e => patch('enabled', e.target.checked)} className="h-4 w-4" />

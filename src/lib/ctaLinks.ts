@@ -15,8 +15,13 @@
 // cual, salvo que sea uno de los formularios viejos de inscripción.
 // ════════════════════════════════════════════════════════════════════
 
-/** Ruta canónica del formulario público de postulación de proyectos. */
-export const PROJECT_FAIR_FORM_PATH = '/feria-proyectos';
+/**
+ * Ruta canónica del formulario público de postulación de proyectos.
+ * v4.594 — el slug pasó a `/postular-proyecto` (antes `/feria-proyectos`) para
+ * que coincida con el botón "Postular Proyecto". Las rutas anteriores siguen
+ * funcionando: redirigen aquí conservando los parámetros de la URL.
+ */
+export const PROJECT_FAIR_FORM_PATH = '/postular-proyecto';
 
 const norm = (s?: string) => (s == null ? '' : String(s).trim().toLowerCase());
 
@@ -31,23 +36,24 @@ export const headerCtaDefaults = (type?: string): CtaDefault[] => {
     return [contribute, { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio' }];
 };
 
-// Formularios de inscripción de ediciones anteriores (WordPress/Fluent Forms).
-// Reconocerlos evita que un botón quede apuntando al formulario de la feria
-// pasada cuando ya existe el módulo interno.
-const LEGACY_FORM_PATTERNS = [
+// Enlaces que deben terminar en el formulario interno: los de ediciones
+// anteriores (WordPress/Fluent Forms) y los slugs antiguos de la plataforma.
+const FORM_URL_PATTERNS = [
     /inscribir-proyecto/i,
     /inscripcion-de-proyecto/i,
     /inscripci[oó]n-proyecto/i,
     /postular-proyecto/i,
+    /feria-proyectos/i,
 ];
 
 /**
- * Devuelve el enlace que debe usar un botón. Si apunta a un formulario de
- * postulación heredado, lo redirige al formulario interno; en cualquier otro
- * caso lo deja intacto.
+ * Devuelve el enlace que debe usar un botón. Si apunta al formulario de
+ * postulación (por un slug antiguo o por el formulario de una edición
+ * anterior), lo lleva a la ruta canónica; en cualquier otro caso lo deja
+ * intacto.
  */
 export const resolveCtaUrl = (url?: string): string => {
     const value = String(url || '').trim();
     if (!value) return value;
-    return LEGACY_FORM_PATTERNS.some(re => re.test(value)) ? PROJECT_FAIR_FORM_PATH : value;
+    return FORM_URL_PATTERNS.some(re => re.test(value)) ? PROJECT_FAIR_FORM_PATH : value;
 };

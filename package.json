@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.593.0",
-  "cache_bust": "2026-07-27 (Botón \"Postular Proyecto\" conectado al formulario: en los sitios tipo Feria de Proyectos el segundo botón de la cabecera tiene como valor por defecto \"Postular Proyecto\" → /feria-proyectos (helper src/lib/ctaLinks.ts, usado también por los placeholders del editor en Configuración → Identidad). resolveCtaUrl reescribe al formulario interno los enlaces heredados de inscripción de ediciones anteriores (slugs inscribir-proyecto / postular-proyecto / inscripción-proyecto), tanto en los botones de la cabecera como en los botones configurables de las secciones de la portada. Nuevo alias de ruta /postular-proyecto. La página del formulario ahora se muestra dentro del sitio, con el menú y el pie de página, en vez de como página suelta. Aditivo, sin cambios de backend ni de BD.)",
+  "version": "4.594.0",
+  "cache_bust": "2026-07-27 (El formulario de postulación cambia de dirección a /postular-proyecto, en línea con el botón \"Postular Proyecto\", y ese es el destino por defecto del botón en los sitios de Feria de Proyectos. Las direcciones anteriores (/feria-proyectos, /inscribir-proyecto) redirigen a la nueva conservando query string y hash, para que sigan funcionando los enlaces de retorno de Stripe ya emitidos (?submission=…&session_id=…). Nuevo campo de configuración `formPath` (backend + configurador) que define la ruta pública del formulario y la usa para armar success_url/cancel_url de Stripe, con normalización de barras. resolveCtaUrl también canoniza los enlaces que apunten a /feria-proyectos. Aditivo, sin cambios de esquema ni operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.593.0 | 2026-07-27 (Botón \"Postular Proyecto\" enlazado al formulario de postulación)",
+  "//": "UI V4.594.0 | 2026-07-27 (Formulario de postulación en /postular-proyecto, conectado por defecto al botón)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -22,10 +22,13 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 
-console.log('[projectFairController] v4.592.0 cargado — Postulación de Proyectos 12ª Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants');
+console.log('[projectFairController] v4.594.0 cargado — Postulación de Proyectos 12ª Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
+// Slug público del formulario (v4.594). Los anteriores (/feria-proyectos,
+// /inscribir-proyecto) siguen funcionando: el frontend los redirige aquí.
+const DEFAULT_FORM_PATH = '/postular-proyecto';
 
 // ── Configuración por defecto ───────────────────────────────────────
 // SOLO respaldo: los valores guardados por el admin siempre mandan (merge
@@ -33,6 +36,7 @@ const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 // aditiva y opcional para no invalidar lo ya guardado.
 export const DEFAULT_CONFIG = {
     enabled: true,
+    formPath: DEFAULT_FORM_PATH,
     edition: {
         number: 12,
         ordinal: '12ª',
@@ -135,6 +139,16 @@ const resolveOrigin = (req, returnUrl) => {
     return DEFAULT_FRONTEND_URL;
 };
 
+// Ruta pública del formulario. Se normaliza para que siempre empiece con "/"
+// y no termine en "/", de modo que las URLs de retorno de Stripe queden bien
+// formadas aunque el admin la escriba de otra manera.
+const normalizeFormPath = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return DEFAULT_FORM_PATH;
+    const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
+    return withSlash.replace(/\/+$/, '') || DEFAULT_FORM_PATH;
+};
+
 // Referencia corta y legible para el postulante (aparece en el comprobante).
 const buildPublicRef = () => {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -216,6 +230,7 @@ const readConfig = async () => {
 // Config pública: sin datos sensibles de operación (clubId, correos internos).
 const toPublicConfig = (cfg) => ({
     enabled: cfg.enabled !== false,
+    formPath: normalizeFormPath(cfg.formPath),
     edition: cfg.edition,
     deadline: cfg.deadline,
     presentation: cfg.presentation,
@@ -632,6 +647,9 @@ export const createCheckout = async (req, res) => {
         const amountUsd = trm?.rate > 0 ? Math.round((amountCop / trm.rate) * 100) / 100 : null;
 
         const origin = resolveOrigin(req, req.body?.returnUrl);
+        // Ruta del formulario a la que Stripe devuelve al usuario. Configurable
+        // (`formPath`) por si en el futuro cambia el slug público.
+        const formPath = normalizeFormPath(cfg.formPath);
         const stripe = getStripe();
         const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
 
@@ -651,8 +669,8 @@ export const createCheckout = async (req, res) => {
                 },
                 quantity: 1,
             }],
-            success_url: `${origin}/feria-proyectos?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/feria-proyectos?submission=${submission.id}&pago=cancelado`,
+            success_url: `${origin}${formPath}?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}${formPath}?submission=${submission.id}&pago=cancelado`,
             metadata: {
                 type: 'project_fair_registration',
                 submissionId: submission.id,

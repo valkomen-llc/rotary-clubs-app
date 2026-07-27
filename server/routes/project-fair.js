@@ -1,6 +1,6 @@
 // Rutas del módulo "Postulación de Proyectos — Feria de Proyectos Rotary
 // Colombia" (v4.592.0). Los endpoints públicos alimentan el wizard de
-// /feria-proyectos; los /admin/* requieren token y sirven al configurador.
+// /postular-proyecto; los /admin/* requieren token y sirven al configurador.
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
