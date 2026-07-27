@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useClub } from '../../contexts/ClubContext';
+import { headerCtaDefaults } from '../../lib/ctaLinks';
 import { useAuth } from '../../hooks/useAuth';
 import { 
     Save, Globe, MessageSquare, Phone, Palette, Upload, 
@@ -897,10 +898,9 @@ const ClubSettings: React.FC = () => {
                             <p className="text-[11px] text-gray-400 mb-5">Los dos botones de la cabecera del sitio. Las columnas <b>(otros idiomas)</b> se usan cuando el sitio está en inglés u otro idioma; las <b>(Español)</b> cuando el visitante ve el sitio en español. Deja un campo vacío para usar su variante (o el valor por defecto si ambos van vacíos). Si el enlace empieza con http, abre en una pestaña nueva.</p>
                             <div className="space-y-6">
                                 {[0, 1].map((i) => {
-                                    const defaults = [
-                                        { label: 'Contribuye', url: '/maneras-de-contribuir' },
-                                        { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio' },
-                                    ][i];
+                                    // Los placeholders muestran el valor por defecto real del sitio:
+                                    // en una Feria de Proyectos, el botón 2 es "Postular Proyecto".
+                                    const defaults = headerCtaDefaults((club as any)?.type)[i];
                                     const updateCta = (field: 'label' | 'labelEs' | 'url' | 'urlEs', value: string) => {
                                         const next = [...formData.headerCtas];
                                         next[i] = { ...(next[i] || { label: '', labelEs: '', url: '', urlEs: '' }), [field]: value };

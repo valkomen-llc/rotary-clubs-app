@@ -314,7 +314,7 @@ const ScrollToTop = () => {
 
 // Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/feria-proyectos'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -452,6 +452,7 @@ function App() {
 
                 {/* Postulación de proyectos — Feria de Proyectos Rotary Colombia */}
                 <Route path="/feria-proyectos" element={<FeriaProyectos />} />
+                <Route path="/postular-proyecto" element={<Navigate to="/feria-proyectos" replace />} />
                 <Route path="/inscribir-proyecto" element={<Navigate to="/feria-proyectos" replace />} />
 
                 {/* Club preview (provisional URL) */}

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.592.0 | 2026-07-27 (Postulación de Proyectos 12ª Feria Rotary Colombia — Valledupar: wizard + TRM + Stripe + Rotary Grants)
+// UI V4.593.0 | 2026-07-27 (Botón "Postular Proyecto" enlazado al formulario de postulación)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.593.0',
+        title: 'El botón "Postular Proyecto" ya lleva directo al formulario 🔗📋',
+        description: 'El botón de la cabecera queda conectado con el formulario de postulación: al hacer clic, el visitante entra directamente al asistente de inscripción. En los sitios de Feria de Proyectos, el segundo botón del menú principal trae de fábrica el texto "Postular Proyecto" y el enlace al formulario, así que funciona sin configurar nada; si prefieres otro destino, sigues mandando tú desde Configuración → Identidad → "Botones del menú principal". Además, cualquier botón (de la cabecera o de las secciones de la portada) que todavía apunte al formulario de inscripción de una feria anterior se redirige solo al formulario nuevo, y el formulario ahora se abre dentro del sitio, con el menú y el pie de página, en lugar de como una página suelta.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'boton', 'menu', 'enlace', 'postulacion', 'navegacion', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.592.0',
         title: 'Postulación de Proyectos — 12ª Feria de Proyectos Rotary Colombia, Valledupar 🇨🇴📋',
