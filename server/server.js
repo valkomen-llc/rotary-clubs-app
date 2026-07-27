@@ -172,6 +172,7 @@ import brainsRoutes from './routes/brains.js';
 import bannerRoutes from './routes/banner.js';
 import reportsRoutes from './routes/reports.js';
 import trainingRoutes from './routes/training.js';
+import projectFairRoutes from './routes/project-fair.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -216,6 +217,7 @@ app.use('/api/brains', brainsRoutes);
 app.use('/api/banner', bannerRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/training', trainingRoutes);
+app.use('/api/project-fair', projectFairRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {

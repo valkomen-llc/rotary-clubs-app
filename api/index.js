@@ -180,6 +180,8 @@ let _payouts;
 const getPayouts = async () => _payouts || (({ default: _payouts } = await import('../server/routes/payouts.js')), _payouts);
 let _training;
 const getTraining = async () => _training || (({ default: _training } = await import('../server/routes/training.js')), _training);
+let _projectFair;
+const getProjectFair = async () => _projectFair || (({ default: _projectFair } = await import('../server/routes/project-fair.js')), _projectFair);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -264,6 +266,7 @@ app.use('/api/payouts', async (req, res, next) => { try { return (await getPayou
 
 // Calendario de Capacitaciones y Soporte (v4.563.0)
 app.use('/api/training', async (req, res, next) => { try { return (await getTraining())(req, res, next); } catch (e) { console.error('API Error [training]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/project-fair', async (req, res, next) => { try { return (await getProjectFair())(req, res, next); } catch (e) { console.error('API Error [project-fair]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {

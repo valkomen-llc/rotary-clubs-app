@@ -73,12 +73,14 @@ import { Toaster } from './components/ui/sonner';
 // Only downloaded when the user navigates to /admin/*
 // ═══════════════════════════════════════════════════════════════
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
+const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
 const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
 const ZonasManagement = React.lazy(() => import('./pages/admin/Zonas'));
 const EventosManagement = React.lazy(() => import('./pages/admin/Eventos'));
 const FeriasManagement = React.lazy(() => import('./pages/admin/Ferias'));
+const FeriaProyectosConfig = React.lazy(() => import('./pages/admin/FeriaProyectosConfig'));
 const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
 const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
@@ -312,7 +314,7 @@ const ScrollToTop = () => {
 
 // Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
-const HIDE_BANNERS_PATHS = ['/generador-pendones'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/feria-proyectos'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -448,6 +450,10 @@ function App() {
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />
 
+                {/* Postulación de proyectos — Feria de Proyectos Rotary Colombia */}
+                <Route path="/feria-proyectos" element={<FeriaProyectos />} />
+                <Route path="/inscribir-proyecto" element={<Navigate to="/feria-proyectos" replace />} />
+
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />
 
@@ -535,6 +541,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <FeriasManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/feria-proyectos"
+                  element={
+                    <PrivateRoute>
+                      <FeriaProyectosConfig />
                     </PrivateRoute>
                   }
                 />
