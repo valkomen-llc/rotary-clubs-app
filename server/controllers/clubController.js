@@ -348,7 +348,19 @@ export const updateClub = async (req, res) => {
                 'action_section_content': actionContent !== undefined ? JSON.stringify(actionContent) : undefined,
                 'stats_content': statsContent !== undefined ? JSON.stringify(statsContent) : undefined,
                 'stats_section_image': statsImage !== undefined ? String(statsImage) : undefined,
-                'stats_section_image_aspect': statsImageAspect !== undefined ? String(statsImageAspect) : undefined,
+                // Proporción del banner: preset ('4:1'|'3:1'|'2:1'|'16:9') o altura personalizada
+                // 'custom:<px>' (100-2000 sobre un ancho de referencia de 1600). Un valor
+                // incompleto (ej. 'custom:' mientras se teclea) cae al estándar 2:1.
+                'stats_section_image_aspect': statsImageAspect !== undefined ? (() => {
+                    const v = String(statsImageAspect).trim();
+                    if (['4:1', '3:1', '2:1', '16:9'].includes(v)) return v;
+                    const m = /^custom:(\d+)$/.exec(v);
+                    if (m) {
+                        const h = Math.min(2000, Math.max(100, parseInt(m[1], 10)));
+                        return `custom:${h}`;
+                    }
+                    return '2:1';
+                })() : undefined,
                 'join_section_content': joinContent !== undefined ? JSON.stringify(joinContent) : undefined,
                 'foundation_section_content': foundationContent !== undefined ? JSON.stringify(foundationContent) : undefined,
                 'event_sections_visibility': eventSections !== undefined ? JSON.stringify(eventSections) : undefined,

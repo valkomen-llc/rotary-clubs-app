@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.589.0 | 2026-07-24 (Banner de Estadísticas: tamaño configurable + recorte interactivo al subir)
-// Cache bust: 2026-07-24
+// UI V4.590.0 | 2026-07-26 (Banner de Estadísticas: altura personalizada además de los presets)
+// Cache bust: 2026-07-26
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.590.0',
+        title: 'Define tú mismo la altura del banner de estadísticas 📏',
+        description: 'El selector "Tamaño del banner" (Configuración → Identidad → Sección de Estadísticas) ahora incluye la opción "Personalizado". Al elegirla aparece un campo donde escribes la altura que quieras en píxeles (entre 100 y 2000) sobre un ancho de referencia de 1600 — por ejemplo, 600 muestra el banner como 1600×600. La altura elegida se aplica tanto a cómo se ve el banner en el sitio como al área de recorte al subir o recortar la imagen, así que el encuadre siempre coincide con lo que se publica. Los tamaños predefinidos (4:1, 3:1, 2:1 y 16:9) siguen disponibles.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'estadisticas', 'banner', 'altura', 'imagen', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.589.0',
         title: 'Elige el tamaño del banner de estadísticas y recorta la imagen a tu gusto ✂️🖼️',

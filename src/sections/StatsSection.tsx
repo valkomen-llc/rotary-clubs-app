@@ -102,8 +102,14 @@ const StatsSection = () => {
   // mismo ancho que las 3 cajas. Solo sitios con home editable (eventos + ferias).
   // La proporción (tamaño del banner) también es configurable; default 2:1 (1600×800).
   const statsImage = isEventSite ? String((club as any)?.statsImage || '').trim() : '';
+  // Proporciones predefinidas + altura personalizada ('custom:<alturaPx>' sobre un ancho de
+  // referencia de 1600 px; ej. 'custom:600' → 1600/600).
   const STATS_ASPECTS: Record<string, string> = { '4:1': '4 / 1', '3:1': '3 / 1', '2:1': '2 / 1', '16:9': '16 / 9' };
-  const statsAspect = STATS_ASPECTS[String((club as any)?.statsImageAspect || '')] || '2 / 1';
+  const aspectSetting = String((club as any)?.statsImageAspect || '');
+  const customHeight = /^custom:(\d+)$/.exec(aspectSetting)?.[1];
+  const statsAspect = (customHeight && +customHeight >= 100 && +customHeight <= 2000)
+    ? `1600 / ${+customHeight}`
+    : (STATS_ASPECTS[aspectSetting] || '2 / 1');
 
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">

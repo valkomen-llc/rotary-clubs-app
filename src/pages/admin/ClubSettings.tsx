@@ -515,7 +515,13 @@ const ClubSettings: React.FC = () => {
     const [statsCropPixels, setStatsCropPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
     const STATS_ASPECT_RATIOS: Record<string, number> = { '4:1': 4, '3:1': 3, '2:1': 2, '16:9': 16 / 9 };
-    const statsAspectRatio = STATS_ASPECT_RATIOS[formData.statsImageAspect] || 2;
+    // Altura personalizada: 'custom:<alturaPx>' sobre un ancho de referencia de 1600 px.
+    const statsCustomHeight = /^custom:(\d+)$/.exec(formData.statsImageAspect)?.[1];
+    const isStatsCustomAspect = formData.statsImageAspect.startsWith('custom');
+    const statsAspectRatio = (statsCustomHeight && +statsCustomHeight >= 100 && +statsCustomHeight <= 2000)
+        ? 1600 / +statsCustomHeight
+        : (STATS_ASPECT_RATIOS[formData.statsImageAspect] || 2);
+    const statsAspectLabel = isStatsCustomAspect ? `1600×${statsCustomHeight || '?'}` : formData.statsImageAspect;
 
     const handleStatsImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -1621,15 +1627,39 @@ const ClubSettings: React.FC = () => {
                                     <div className="mb-3">
                                         <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Tamaño del banner</label>
                                         <select
-                                            value={formData.statsImageAspect}
-                                            onChange={e => setFormData({ ...formData, statsImageAspect: e.target.value })}
+                                            value={isStatsCustomAspect ? 'custom' : formData.statsImageAspect}
+                                            onChange={e => setFormData({ ...formData, statsImageAspect: e.target.value === 'custom' ? `custom:${statsCustomHeight || 600}` : e.target.value })}
                                             className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
                                         >
                                             <option value="4:1">Franja 4:1 — bajita (ej. 1600×400)</option>
                                             <option value="3:1">Panorámico 3:1 (ej. 1600×533)</option>
                                             <option value="2:1">Estándar 2:1 (ej. 1600×800)</option>
                                             <option value="16:9">Alto 16:9 (ej. 1600×900)</option>
+                                            <option value="custom">Personalizado — define la altura</option>
                                         </select>
+                                        {isStatsCustomAspect && (
+                                            <div className="mt-2 flex items-center gap-3">
+                                                <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider whitespace-nowrap">Altura (px)</label>
+                                                <input
+                                                    type="number"
+                                                    min={100}
+                                                    max={2000}
+                                                    step={10}
+                                                    value={statsCustomHeight || ''}
+                                                    placeholder="600"
+                                                    onChange={e => {
+                                                        const raw = e.target.value.replace(/\D/g, '');
+                                                        setFormData({ ...formData, statsImageAspect: `custom:${raw}` });
+                                                    }}
+                                                    onBlur={e => {
+                                                        const h = Math.min(2000, Math.max(100, parseInt(e.target.value || '600', 10) || 600));
+                                                        setFormData({ ...formData, statsImageAspect: `custom:${h}` });
+                                                    }}
+                                                    className="w-32 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold"
+                                                />
+                                                <span className="text-[11px] text-gray-400">sobre un ancho de referencia de 1600 px (ej. 600 → banner 1600×600). Entre 100 y 2000.</span>
+                                            </div>
+                                        )}
                                         <p className="text-[11px] text-gray-400 mt-1">Define la proporción con la que se muestra el banner en el sitio y el área de recorte al subir.</p>
                                     </div>
                                     {formData.statsImage ? (
@@ -2273,7 +2303,7 @@ const ClubSettings: React.FC = () => {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
                         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-black text-gray-900">Selecciona el área a mostrar ({formData.statsImageAspect})</h3>
+                            <h3 className="font-black text-gray-900">Selecciona el área a mostrar ({statsAspectLabel})</h3>
                             <button onClick={() => setStatsCropSrc(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                                 <X className="w-5 h-5 text-gray-400" />
                             </button>
