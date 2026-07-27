@@ -179,6 +179,8 @@ async function fetchMissing(
 // ─── Context ──────────────────────────────────────────────────────────────────
 interface LangCtx {
     lang: string;
+    /** true si el visitante eligió el idioma a mano (manda sobre cualquier default). */
+    languageChosen: boolean;
     setLang: (l: string) => void;
     applyDefaultLanguage: (code?: string) => void;
     translate: (text: string) => Promise<string>;
@@ -197,6 +199,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return stored;
     });
 
+    // ¿El visitante eligió el idioma explícitamente? Se usa para dar prioridad a
+    // su elección sobre las reglas automáticas (por ejemplo, la visibilidad del
+    // botón de postulación según el país).
+    const [languageChosen, setLanguageChosen] = useState<boolean>(() => !!localStorage.getItem('site_language'));
+
     const rootRef = useRef<Element | null>(null);
     const observerRef = useRef<MutationObserver | null>(null);
     const bgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,6 +214,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('site_language', l);
         if (l !== 'es') primeCache(l);
         setLangState(l);
+        setLanguageChosen(true);
     }, []);
 
     // Aplica el idioma por defecto configurado por el sitio (identidad). Se cachea para las
@@ -343,7 +351,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [lang]);
 
     return (
-        <LangContext.Provider value={{ lang, setLang, applyDefaultLanguage, translate, translateSync, isTranslating: false }}>
+        <LangContext.Provider value={{ lang, languageChosen, setLang, applyDefaultLanguage, translate, translateSync, isTranslating: false }}>
             {children}
         </LangContext.Provider>
     );

@@ -58,15 +58,39 @@ export const resolveCtaUrl = (url?: string): string => {
     return FORM_URL_PATTERNS.some(re => re.test(value)) ? PROJECT_FAIR_FORM_PATH : value;
 };
 
-/** ¿Este enlace (ya resuelto) lleva al formulario de postulación? */
-export const isProjectFairCta = (url?: string): boolean =>
-    String(url || '').trim() === PROJECT_FAIR_FORM_PATH;
+// Un botón puede llevar al formulario aunque su enlace esté configurado a mano
+// (por ejemplo, a la convocatoria de una edición anterior). Reconocerlo también
+// por el texto evita que se escape del filtro de audiencia.
+const PROJECT_FAIR_LABEL_PATTERNS = [
+    /postul\w*\s+(un\s+|el\s+|tu\s+)?proyecto/i,
+    /inscrib\w*\s+(un\s+|el\s+|tu\s+)?proyecto/i,
+    /inscripci[oó]n\s+de\s+proyecto/i,
+    /submit\s+(a\s+|your\s+|the\s+)?project/i,
+    /apply\s+with\s+(a\s+|your\s+)?project/i,
+];
 
-// ── Audiencia del botón "Postular Proyecto" (v4.595) ─────────────────
-// La convocatoria es para clubes rotarios colombianos, así que el botón sólo
-// se muestra a quien ve el sitio en Español (la bandera del selector es la de
-// Colombia) o a quien navega desde una IP colombiana. Un visitante que elige
-// inglés u otro idioma, y no está en Colombia, no lo ve.
+export interface ProjectFairCtaProbe {
+    /** Enlace ya resuelto por resolveCtaUrl. */
+    url?: string;
+    /** Textos del botón (todas las variantes de idioma configuradas). */
+    labels?: (string | null | undefined)[];
+}
+
+/** ¿Este botón lleva al formulario de postulación, por enlace o por texto? */
+export const isProjectFairCta = ({ url, labels = [] }: ProjectFairCtaProbe): boolean =>
+    String(url || '').trim() === PROJECT_FAIR_FORM_PATH ||
+    labels.some(label => !!label && PROJECT_FAIR_LABEL_PATTERNS.some(re => re.test(String(label))));
+
+// ── Audiencia del botón "Postular Proyecto" (v4.596) ─────────────────
+// La convocatoria es para clubes rotarios colombianos, así que el botón se
+// limita a esa audiencia:
+//
+//   1. En Español (el idioma cuya bandera es la de Colombia) siempre se ve.
+//   2. Si el visitante ELIGIÓ otro idioma, no se ve. Su preferencia manda,
+//      incluso si navega desde Colombia — es justamente el caso que reportó
+//      el equipo: sitio en inglés desde Bogotá y el botón seguía apareciendo.
+//   3. Si no eligió idioma (ve el sitio en el idioma por defecto), decide el
+//      país: se muestra a quien navega desde Colombia.
 export const COLOMBIA_COUNTRY_CODE = 'CO';
 export const PROJECT_FAIR_LANGUAGE = 'es';
 
@@ -75,8 +99,12 @@ export interface CtaAudience {
     lang?: string;
     /** País del visitante en ISO-3166 alpha-2; null si aún no se conoce. */
     country?: string | null;
+    /** true si el visitante eligió el idioma a mano en el selector. */
+    languageChosen?: boolean;
 }
 
-export const showProjectFairCta = ({ lang, country }: CtaAudience): boolean =>
-    norm(lang) === PROJECT_FAIR_LANGUAGE ||
-    String(country || '').trim().toUpperCase() === COLOMBIA_COUNTRY_CODE;
+export const showProjectFairCta = ({ lang, country, languageChosen }: CtaAudience): boolean => {
+    if (norm(lang) === PROJECT_FAIR_LANGUAGE) return true;
+    if (languageChosen) return false;
+    return String(country || '').trim().toUpperCase() === COLOMBIA_COUNTRY_CODE;
+};
