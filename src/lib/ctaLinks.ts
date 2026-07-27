@@ -57,3 +57,26 @@ export const resolveCtaUrl = (url?: string): string => {
     if (!value) return value;
     return FORM_URL_PATTERNS.some(re => re.test(value)) ? PROJECT_FAIR_FORM_PATH : value;
 };
+
+/** ¿Este enlace (ya resuelto) lleva al formulario de postulación? */
+export const isProjectFairCta = (url?: string): boolean =>
+    String(url || '').trim() === PROJECT_FAIR_FORM_PATH;
+
+// ── Audiencia del botón "Postular Proyecto" (v4.595) ─────────────────
+// La convocatoria es para clubes rotarios colombianos, así que el botón sólo
+// se muestra a quien ve el sitio en Español (la bandera del selector es la de
+// Colombia) o a quien navega desde una IP colombiana. Un visitante que elige
+// inglés u otro idioma, y no está en Colombia, no lo ve.
+export const COLOMBIA_COUNTRY_CODE = 'CO';
+export const PROJECT_FAIR_LANGUAGE = 'es';
+
+export interface CtaAudience {
+    /** Idioma activo del sitio ('es', 'en', …). */
+    lang?: string;
+    /** País del visitante en ISO-3166 alpha-2; null si aún no se conoce. */
+    country?: string | null;
+}
+
+export const showProjectFairCta = ({ lang, country }: CtaAudience): boolean =>
+    norm(lang) === PROJECT_FAIR_LANGUAGE ||
+    String(country || '').trim().toUpperCase() === COLOMBIA_COUNTRY_CODE;

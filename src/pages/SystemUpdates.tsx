@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.594.0 | 2026-07-27 (Formulario de postulación en /postular-proyecto, conectado por defecto al botón)
+// UI V4.595.0 | 2026-07-27 (Botón "Postular Proyecto" visible solo en Español o con IP de Colombia)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.595.0',
+        title: 'El botón "Postular Proyecto" se muestra solo a la audiencia de la convocatoria 🇨🇴',
+        description: 'Como la postulación es para los clubes rotarios colombianos, el botón ahora aparece únicamente cuando el visitante ve el sitio en Español (el idioma con la bandera de Colombia) o cuando su visita llega desde una dirección de Colombia. Si alguien cambia el sitio a inglés u otro idioma y no está navegando desde Colombia, el botón simplemente no se muestra — el resto del sitio queda igual. La detección del país se hace con la información que ya entrega el servidor de la web: no se consultan servicios externos, no se instalan cookies y no se guarda la dirección de nadie. La página del formulario sigue accesible por enlace directo, para que puedas compartirlo por correo o WhatsApp con quien tú quieras.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'boton', 'idioma', 'colombia', 'audiencia', 'postulacion', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.594.0',
         title: 'El formulario de postulación ahora vive en /postular-proyecto 🔗',
