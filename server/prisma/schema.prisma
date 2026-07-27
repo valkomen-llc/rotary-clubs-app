@@ -438,7 +438,13 @@ model CalendarEvent {
   image       String?
   images      String[]  @default([])
   metadata    Json?     @default("{}")
+  /// Dirección amigable del evento (/eventos/mi-evento). Opcional: sin slug se
+  /// sigue entrando por el id. Único dentro de cada sitio; varios eventos
+  /// pueden quedar sin slug porque Postgres no considera iguales dos NULL.
+  slug        String?
   club        Club      @relation(fields: [clubId], references: [id])
+
+  @@unique([clubId, slug])
 }
 
 model KnowledgeSource {

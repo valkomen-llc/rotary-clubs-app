@@ -356,13 +356,17 @@ router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
 // Public single event endpoint
+// v4.605 — El parámetro acepta el id o el slug del evento, para poder enlazarlo
+// con una dirección amigable (/eventos/mi-evento) desde botones y menús. Los
+// enlaces por id que ya estén publicados siguen funcionando igual.
 router.get('/:clubId/events/:id', async (req, res) => {
     try {
         const { clubId, id } = req.params;
         const result = await db.query(
-            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
+            `SELECT id, slug, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
              FROM "CalendarEvent"
-             WHERE id = $1 AND "clubId" = $2`,
+             WHERE (id = $1 OR slug = $1) AND "clubId" = $2
+             LIMIT 1`,
             [id, clubId]
         );
         if (!result.rows[0]) return res.status(404).json({ error: 'Evento no encontrado' });
@@ -378,7 +382,7 @@ router.get('/:clubId/events', async (req, res) => {
     try {
         const { clubId } = req.params;
         const result = await db.query(
-            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
+            `SELECT id, slug, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
              FROM "CalendarEvent"
              WHERE "clubId" = $1
              ORDER BY "startDate" ASC`,

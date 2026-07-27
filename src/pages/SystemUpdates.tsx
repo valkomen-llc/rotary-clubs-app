@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.604.0 | 2026-07-27 (El botón Guardar evento explica qué falta en vez de quedarse gris)
+// UI V4.605.0 | 2026-07-27 (Dirección amigable para eventos e imágenes que se ven completas)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.605.0',
+        title: 'Cada evento puede tener su propia dirección, y las imágenes ya no se recortan 🔗🖼️',
+        description: 'Dos mejoras para las páginas de eventos. La primera: ahora cada evento puede tener una dirección amigable propia —por ejemplo /eventos/xii-feria-valledupar en lugar del código interno—, para enlazarlo cómodamente desde botones, menús o correos. El campo está tanto al crear el evento como en la pestaña "Información" de uno existente, con un botón para tomar el título como dirección y otro para copiar el enlace listo para pegar. Es opcional: sin dirección, el evento se sigue abriendo por su código, y ese enlace nunca deja de funcionar aunque después cambies la dirección. Si escribes una dirección que ya usa otro evento del mismo sitio, el sistema te avisa en vez de guardarla. La segunda: la galería de la ficha del evento ya no recorta las imágenes. Antes el espacio tenía una altura fija muy alargada y las imágenes se ajustaban recortándose por arriba y por abajo, así que un afiche vertical se veía cortado. Ahora el contenedor toma la proporción real de la imagen que se está mostrando y la imagen se ve completa, sea cual sea su tamaño. Lo mismo aplica a las imágenes pegadas dentro del contenido del evento: se muestran completas y centradas.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'slug', 'enlaces', 'imagenes', 'galeria', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.604.0',
         title: 'Ya se pueden crear eventos: el botón dice qué falta 📅✅',
