@@ -211,6 +211,27 @@ router.post('/district-media', express.json(), async (req, res) => {
     }
 });
 
+// v4.595 — País del visitante a partir de los encabezados que agrega la CDN
+// (Vercel / Cloudflare). No se consulta ningún servicio externo, no se guarda
+// la IP y no se escribe nada en base de datos: sólo se lee el encabezado y se
+// devuelve el código ISO-3166 alpha-2. Lo usa el botón "Postular Proyecto"
+// para mostrarse únicamente a visitantes desde Colombia (o en Español).
+router.get('/geo', (req, res) => {
+    const header = (...names) => {
+        for (const name of names) {
+            const value = req.headers[name];
+            if (value) return String(value).trim().toUpperCase();
+        }
+        return null;
+    };
+    // 'XX' es lo que devuelve Vercel cuando no puede geolocalizar la petición.
+    const raw = header('x-vercel-ip-country', 'cf-ipcountry', 'x-country-code', 'x-geo-country');
+    const country = raw && /^[A-Z]{2}$/.test(raw) && raw !== 'XX' ? raw : null;
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ country });
+});
+
 import { getFooterSkinPublic } from '../controllers/systemController.js';
 router.get('/footer-skin', getFooterSkinPublic);
 

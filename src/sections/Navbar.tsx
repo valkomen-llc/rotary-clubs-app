@@ -9,7 +9,8 @@ import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
-import { headerCtaDefaults, resolveCtaUrl } from '../lib/ctaLinks';
+import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta } from '../lib/ctaLinks';
+import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -58,6 +59,19 @@ const Navbar = () => {
     // de una edición anterior se redirige al formulario interno.
     return { label: hasCustom ? customLabel : def.label, isCustomLabel: hasCustom, url: resolveCtaUrl(customUrl) || def.url, cls: def.cls };
   });
+
+  // v4.595 — El botón que lleva al formulario de postulación sólo se muestra
+  // a quien ve el sitio en Español (bandera de Colombia) o navega desde una IP
+  // colombiana. Mientras el país se resuelve no se pinta (salvo que el idioma
+  // ya sea Español), para que no aparezca y desaparezca.
+  // Sólo se consulta el país cuando puede cambiar algo: hay un botón hacia el
+  // formulario y el idioma no es Español (en Español el botón se muestra igual).
+  const hasProjectFairCta = headerCtas.some(cta => isProjectFairCta(cta.url));
+  const { country: visitorCountry, loading: countryLoading } = useVisitorCountry(hasProjectFairCta && !isEs);
+  const visibleHeaderCtas = headerCtas.filter(cta =>
+    !isProjectFairCta(cta.url) ||
+    showProjectFairCta({ lang, country: countryLoading ? null : visitorCountry })
+  );
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -434,7 +448,7 @@ const Navbar = () => {
           {/* Right Side Icons */}
           <div className="flex items-center space-x-4">
             {/* CTAs del header (configurables por sitio): default Contribuye + Únete a un club */}
-            {headerCtas.map((cta, i) => {
+            {visibleHeaderCtas.map((cta, i) => {
               const cls = `hidden lg:inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
               const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
               return /^https?:\/\//i.test(cta.url)
@@ -590,7 +604,7 @@ const Navbar = () => {
 
               {/* CTAs del header en móvil (configurables por sitio) */}
               <div className="flex flex-col gap-2 pt-2">
-                {headerCtas.map((cta, i) => {
+                {visibleHeaderCtas.map((cta, i) => {
                   const cls = `inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
                   const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
                   const close = () => setMobileMenuOpen(false);
