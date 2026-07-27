@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.600.0 | 2026-07-27 (Los módulos de la Feria se ven en la barra lateral del sitio publicado)
+// UI V4.601.0 | 2026-07-27 (Un solo módulo de la Feria: la configuración es la pestaña Convocatoria)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.601.0',
+        title: 'Un solo módulo para toda la Feria 🧩',
+        description: 'Los dos módulos separados —"Postulaciones y Pagos" y "Postulación de Proyectos"— ahora son uno. En el menú queda una única entrada, "Postulaciones y Pagos", y dentro encuentras cinco pestañas: Dashboard, Postulaciones, Alertas, Reportes y la nueva "Convocatoria", que es donde vive toda la configuración del evento (edición, ciudad, valor, fecha límite, distritos, áreas de enfoque, TRM, redirección, textos y perfiles del equipo). También desaparece la lista de inscripciones duplicada que tenía el configurador: la tabla de Postulaciones ya hace ese trabajo con muchas más opciones. Si tenías guardado el enlace del configurador, sigue funcionando y te lleva directo a la pestaña correcta.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'modulo', 'unificacion', 'panel', 'convocatoria', 'configuracion', 'update'],
+        type: 'update'
+    },
     {
         version: '4.600.0',
         title: 'Ahora sí: "Postulaciones y Pagos" visible en el menú lateral 📋✅',

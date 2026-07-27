@@ -81,7 +81,6 @@ const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociacion
 const ZonasManagement = React.lazy(() => import('./pages/admin/Zonas'));
 const EventosManagement = React.lazy(() => import('./pages/admin/Eventos'));
 const FeriasManagement = React.lazy(() => import('./pages/admin/Ferias'));
-const FeriaProyectosConfig = React.lazy(() => import('./pages/admin/FeriaProyectosConfig'));
 const PostulacionesPagos = React.lazy(() => import('./pages/admin/PostulacionesPagos'));
 const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
@@ -557,13 +556,11 @@ function App() {
                     </PrivateRoute>
                   }
                 />
+                {/* v4.601 — La configuración de la convocatoria es ahora una pestaña
+                    del módulo unificado; la ruta anterior sigue viva y lleva ahí. */}
                 <Route
                   path="/admin/feria-proyectos"
-                  element={
-                    <PrivateRoute>
-                      <FeriaProyectosConfig />
-                    </PrivateRoute>
-                  }
+                  element={<Navigate to="/admin/postulaciones-pagos?tab=config" replace />}
                 />
                 <Route
                   path="/admin/postulaciones-pagos"

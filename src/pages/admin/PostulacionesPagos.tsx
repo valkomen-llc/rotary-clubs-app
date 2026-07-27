@@ -15,7 +15,7 @@ import {
     AlertTriangle, ArrowUpDown, BarChart3, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
-    TrendingUp, Wallet, X, ShieldCheck, Paperclip,
+    TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -23,6 +23,7 @@ import {
     LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import AdminLayout from '../../components/admin/AdminLayout';
+import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -35,7 +36,8 @@ const CHART_COLORS = ['#17458F', '#F7A81B', '#0EA5E9', '#10B981', '#8B5CF6', '#E
 // ── Tipos ────────────────────────────────────────────────────────────
 interface Access {
     role: string; view: boolean; managePayments: boolean; viewPayments: boolean;
-    comment: boolean; edit: boolean; changeStatus: boolean; manageTags: boolean; export: boolean;
+    comment: boolean; edit: boolean; changeStatus: boolean; manageTags: boolean;
+    export: boolean; config: boolean;
 }
 interface StateDef { key: string; label: string; color: string; group?: string }
 interface Tag { id: string; label: string; color: string; usage?: number; isSystem?: boolean }
@@ -111,7 +113,14 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
 
 // ════════════════════════════════════════════════════════════════════
 const PostulacionesPagos: React.FC = () => {
-    const [tab, setTab] = useState<'dashboard' | 'submissions' | 'alerts' | 'reports'>('dashboard');
+    type Tab = 'dashboard' | 'submissions' | 'alerts' | 'reports' | 'config';
+    // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
+    // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
+    const [tab, setTab] = useState<Tab>(() => {
+        const requested = new URLSearchParams(window.location.search).get('tab');
+        return (['dashboard', 'submissions', 'alerts', 'reports', 'config'] as const).includes(requested as Tab)
+            ? (requested as Tab) : 'dashboard';
+    });
     const [access, setAccess] = useState<Access | null>(null);
     const [catalog, setCatalog] = useState<any>(null);
     const [tags, setTags] = useState<Tag[]>([]);
@@ -329,7 +338,8 @@ const PostulacionesPagos: React.FC = () => {
 
                 <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
                     {([['dashboard', 'Dashboard', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
-                       ['alerts', 'Alertas', AlertTriangle], ['reports', 'Reportes', TrendingUp]] as const).map(([key, label, Icon]) => (
+                       ['alerts', 'Alertas', AlertTriangle], ['reports', 'Reportes', TrendingUp],
+                       ['config', 'Convocatoria', Settings]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
                                 tab === key ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
@@ -631,6 +641,15 @@ const PostulacionesPagos: React.FC = () => {
                             </table>
                         </div>
                     </div>
+                )}
+                {/* ── Configuración de la convocatoria ──────────────── */}
+                {tab === 'config' && (
+                    <ConvocatoriaConfig canEdit={!!access.config} onSaved={() => {
+                        // Refrescar catálogo: la edición, los distritos y las áreas
+                        // alimentan los filtros y las cabeceras del módulo.
+                        fetch(`${API}/project-fair/admin/catalog`, { headers: authHeaders() })
+                            .then(r => r.json()).then(cat => { setCatalog(cat); setAccess(cat.access); }).catch(() => {});
+                    }} />
                 )}
             </div>
 

@@ -1353,71 +1353,10 @@ export const buildSubmissionSnapshot = async (id, { includePayments = false } = 
     return { submission, events: events.rows, files: files.rows, tags: tags.rows };
 };
 
-// ── Admin: listado y exportación ─────────────────────────────────────
-// GET /api/project-fair/admin/submissions
-export const listSubmissions = async (req, res) => {
-    try {
-        await ensureTables();
-        const status = clean(req.query.status, 30);
-        const search = clean(req.query.search, 120);
-        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
-
-        const where = [];
-        const params = [];
-        if (status && status !== 'all') { params.push(status); where.push(`status = $${params.length}`); }
-        if (search) {
-            params.push(`%${search}%`);
-            const i = params.length;
-            where.push(`("clubName" ILIKE $${i} OR "projectName" ILIKE $${i} OR email ILIKE $${i} OR "publicRef" ILIKE $${i})`);
-        }
-        params.push(limit);
-
-        const { rows } = await db.query(
-            `SELECT * FROM "ProjectFairSubmission"
-             ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-             ORDER BY "createdAt" DESC LIMIT $${params.length}`,
-            params
-        );
-
-        const { rows: statsRows } = await db.query(`
-            SELECT status, COUNT(*)::int AS count, COALESCE(SUM("amountCop"),0)::float AS total
-            FROM "ProjectFairSubmission" GROUP BY status
-        `);
-        const stats = statsRows.reduce((acc, r) => ({ ...acc, [r.status]: { count: r.count, totalCop: r.total } }), {});
-
-        res.json({ submissions: rows.map(r => mapSubmission(r, { includeInternal: true })), stats });
-    } catch (error) {
-        console.error('[project-fair] listSubmissions:', error);
-        res.status(500).json({ error: 'No se pudieron cargar las inscripciones' });
-    }
-};
-
-// GET /api/project-fair/admin/submissions.csv
-export const exportSubmissionsCsv = async (_req, res) => {
-    try {
-        await ensureTables();
-        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" ORDER BY "createdAt" DESC');
-        const headers = ['Referencia', 'Estado', 'Fecha', 'Nombre', 'Apellido', 'Email', 'Teléfono', 'Club', 'Distrito',
-            'Proyecto', 'Área de enfoque', 'Presupuesto USD', 'Inscripción COP', 'Equivalente USD', 'TRM', 'Fecha TRM', 'Pago (Stripe)'];
-        const cell = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-        const lines = [headers.join(';')];
-        for (const r of rows) {
-            lines.push([
-                r.publicRef, r.status, r.createdAt ? new Date(r.createdAt).toISOString() : '',
-                r.firstName, r.lastName, r.email, r.phone, r.clubName, r.district,
-                r.projectName, r.focusAreaLabel || r.focusArea, r.budgetUsd, r.amountCop, r.amountUsd,
-                r.trmRate, r.trmDate, r.stripePaymentIntentId || r.stripeSessionId,
-            ].map(cell).join(';'));
-        }
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="inscripciones-feria-proyectos.csv"');
-        // BOM para que Excel en español abra el CSV con acentos correctos.
-        res.send('﻿' + lines.join('\n'));
-    } catch (error) {
-        console.error('[project-fair] exportSubmissionsCsv:', error);
-        res.status(500).json({ error: 'No se pudo exportar' });
-    }
-};
+// ── Admin ────────────────────────────────────────────────────────────
+// El listado, la exportación y la ficha de las postulaciones viven ahora en
+// projectFairAdminController (módulo unificado "Postulaciones y Pagos"), que
+// aplica permisos por perfil. Aquí sólo queda el catálogo de proveedores TRM.
 
 // GET /api/project-fair/admin/trm-providers
 export const listTrmProviders = async (_req, res) => {
