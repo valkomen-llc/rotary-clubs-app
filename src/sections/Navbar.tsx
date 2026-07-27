@@ -36,8 +36,9 @@ const Navbar = () => {
   // Comportamiento por idioma: en Español se usan el texto y el enlace en español (si se
   // configuraron); en los demás idiomas, los internacionales. Si falta uno, cae al otro; si no
   // hay ninguno personalizado, se usan los botones por defecto (Contribuye / Únete a un club).
-  // v4.593 — En las Ferias de Proyectos el segundo botón es "Postular Proyecto"
-  // y lleva al formulario público de postulación.
+  // v4.602 — En las Ferias de Proyectos el segundo botón es el de registro y
+  // lleva a /registro-feria, la página con el panel de inscripción (cuenta
+  // regresiva, precios y fecha de cierre) desde la que se abre el formulario.
   const CTA_CLASSES = [
     'bg-rotary-blue text-white hover:bg-rotary-blue/90',
     'bg-sky-100 text-rotary-blue hover:bg-sky-200',

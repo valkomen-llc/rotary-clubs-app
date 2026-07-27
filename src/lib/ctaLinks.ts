@@ -23,6 +23,13 @@
  */
 export const PROJECT_FAIR_FORM_PATH = '/postular-proyecto';
 
+/**
+ * Página pública de registro de la Feria (v4.602). Publica el panel de
+ * inscripción — cuenta regresiva, botón, precios y fecha de cierre — copiado
+ * del de la Conferencia LATIR, y desde ahí se entra al formulario.
+ */
+export const PROJECT_FAIR_REGISTER_PATH = '/registro-feria';
+
 const norm = (s?: string) => (s == null ? '' : String(s).trim().toLowerCase());
 
 export interface CtaDefault { label: string; url: string }
@@ -31,7 +38,9 @@ export interface CtaDefault { label: string; url: string }
 export const headerCtaDefaults = (type?: string): CtaDefault[] => {
     const contribute = { label: 'Contribuye', url: '/maneras-de-contribuir' };
     if (norm(type) === norm('Feria de Proyectos')) {
-        return [contribute, { label: 'Postular Proyecto', url: PROJECT_FAIR_FORM_PATH }];
+        // v4.602 — El segundo botón es el de registro y lleva al panel de
+        // inscripción; el formulario de postulación se abre desde ahí.
+        return [contribute, { label: 'Registro', url: PROJECT_FAIR_REGISTER_PATH }];
     }
     return [contribute, { label: 'Únete a un club', url: '/contacto?asunto=Quiero+ser+socio' }];
 };

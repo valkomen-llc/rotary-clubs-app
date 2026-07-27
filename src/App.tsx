@@ -75,6 +75,7 @@ import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 // ═══════════════════════════════════════════════════════════════
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
+const RegistroFeria = React.lazy(() => import('./pages/RegistroFeria'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
 const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
@@ -465,6 +466,11 @@ function App() {
                 <Route path="/postular-proyecto" element={<FeriaProyectos />} />
                 <Route path="/feria-proyectos" element={<ProjectFormRedirect />} />
                 <Route path="/inscribir-proyecto" element={<ProjectFormRedirect />} />
+
+                {/* Registro de la Feria — destino del botón de registro de la
+                    cabecera. Publica el panel de inscripción (cuenta regresiva,
+                    botón, precios) copiado del de la Conferencia LATIR. */}
+                <Route path="/registro-feria" element={<RegistroFeria />} />
 
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />

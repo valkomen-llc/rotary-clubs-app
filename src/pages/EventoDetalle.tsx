@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import RegistrationPanel from '../components/RegistrationPanel';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 
@@ -25,84 +26,26 @@ const TYPE_LABELS: Record<string, string> = {
     conference: 'Conferencia', other: 'Otro',
 };
 
-function calculateTimeLeft(targetDate: string) {
-    const difference = new Date(targetDate).getTime() - new Date().getTime();
-    if (difference <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
-    return {
-        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-        minutes: Math.floor((difference / 1000 / 60) % 60),
-        seconds: Math.floor((difference / 1000) % 60),
-    };
-}
-
+// Barra lateral de la Conferencia LATIR. Desde v4.602 el panel vive en
+// `RegistrationPanel` para poder reutilizarlo en otros sitios; aquí sólo se
+// arman sus valores, incluidos los mismos textos por defecto de siempre, para
+// que la ficha publicada de LATIR no cambie en nada.
 const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metadata: any }) => {
     const latirConfig = metadata?.latir || {};
-    const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(startDate));
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setTimeLeft(calculateTimeLeft(startDate));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [startDate]);
-
-    const formatNum = (num: number) => num.toString().padStart(2, '0');
 
     return (
-        <div className="bg-white rounded-2xl p-6 mb-4 flex flex-col items-center border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
-            <div className="w-full text-left">
-                {latirConfig.headerLogo && (
-                    <img src={latirConfig.headerLogo} alt="Logo del Evento" className="w-full max-w-[320px] h-auto max-h-[140px] mb-6 object-contain object-left" />
-                )}
-                <h2 className="text-[2.2rem] leading-[1.1] font-normal text-[#1B2B4D]" style={{ whiteSpace: 'pre-line' }}>
-                    {latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
-                </h2>
-                <p className="text-[#475569] text-[1.15rem] mt-3 leading-snug" style={{ whiteSpace: 'pre-line' }}>
-                    {latirConfig.subtitle || 'El destino de nuestras\nnuevas historias.'}
-                </p>
-            </div>
-
-            {/* Countdown */}
-            <div className="flex gap-1 mt-8 mb-6 justify-center w-full">
-                {[
-                    { label: 'Días', val: timeLeft.days },
-                    { label: 'Horas', val: timeLeft.hours },
-                    { label: 'Minutos', val: timeLeft.minutes },
-                    { label: 'Segundos', val: timeLeft.seconds }
-                ].map(item => (
-                    <div key={item.label} className="bg-[#D57D2C] text-white flex flex-col items-center justify-center py-2.5 px-0.5 w-[4.5rem] rounded-md shadow-sm">
-                        <span className="text-[2.25rem] font-bold leading-none tracking-tight" style={{ fontFamily: '"Open Sans", sans-serif' }}>{formatNum(item.val)}</span>
-                        <span className="text-[11px] font-bold mt-1.5 capitalize">{item.label}</span>
-                    </div>
-                ))}
-            </div>
-
-            {/* Button */}
-            <a
-                href={latirConfig.buttonLink || "https://forms.gle/CXWqMj5w335h4qm69"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full max-w-[220px] block text-center bg-[#D57D2C] hover:bg-[#c46f23] text-white text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5"
-            >
-                Inscripciones
-            </a>
-
-            {/* Pricing details */}
-            <div className="text-center text-[14px] text-[#1B2B4D] space-y-1.5 w-full pb-2">
-                <p><strong className="font-extrabold">Ticket general:</strong> {latirConfig.ticketGeneral || 'USD 550'}</p>
-                <p className="italic font-medium text-[#1B2B4D]">{latirConfig.ticketDesc || 'A partir del 15/03: USD 625'}</p>
-                <p><strong className="font-extrabold">Ticket ROTEX:</strong> {latirConfig.ticketRotex || 'USD 200'}</p>
-                <p className="mt-3 text-[#1B2B4D]">Cierre de inscripciones: {latirConfig.closeDateText || '31/03/2026'}</p>
-            </div>
-
-            {/* Extra image at the bottom of the box */}
-            {latirConfig.footerImage && (
-                <div className="mt-5 w-[calc(100%+3rem)] -mx-6 -mb-6 border-t border-gray-100 overflow-hidden rounded-b-2xl">
-                    <img src={latirConfig.footerImage} alt="Conf Info" className="w-full h-auto object-cover" />
-                </div>
-            )}
-        </div>
+        <RegistrationPanel
+            headerLogo={latirConfig.headerLogo}
+            title={latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
+            subtitle={latirConfig.subtitle || 'El destino de nuestras\nnuevas historias.'}
+            startDate={startDate}
+            buttonLink={latirConfig.buttonLink || 'https://forms.gle/CXWqMj5w335h4qm69'}
+            ticketGeneral={latirConfig.ticketGeneral || 'USD 550'}
+            ticketNote={latirConfig.ticketDesc || 'A partir del 15/03: USD 625'}
+            ticketRotex={latirConfig.ticketRotex || 'USD 200'}
+            closeDateText={latirConfig.closeDateText || '31/03/2026'}
+            footerImage={latirConfig.footerImage}
+        />
     );
 };
 

@@ -22,7 +22,7 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 
-console.log('[projectFairController] v4.597.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto');
+console.log('[projectFairController] v4.602.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -110,6 +110,31 @@ export const DEFAULT_CONFIG = {
         admins: [],     // gestión completa del módulo (además del rol 'administrator')
         finance: [],    // ven pagos, comprobantes y pueden sincronizar con Stripe
         reviewers: [],  // consultan, comentan y mueven estados de revisión
+    },
+    // ── Panel público de registro (v4.602) ──────────────────────────
+    // Copia del panel de inscripción de la Conferencia LATIR: logo, cuenta
+    // regresiva, botón, precios y fecha de cierre. Vive en /registro-feria y
+    // es el destino del botón de registro de la cabecera.
+    // Aditivo y opcional: los campos vacíos se completan solos con los datos
+    // de la edición (nombre, ciudad, fecha límite) y el botón lleva al
+    // formulario de postulación, así que funciona sin configurar nada.
+    registrationPanel: {
+        enabled: true,
+        headerLogo: '',
+        title: '',            // vacío → nombre de la edición
+        subtitle: '',         // vacío → ciudad, país
+        startDate: '',        // vacío → cuenta regresiva hasta la fecha límite
+        buttonLabel: 'Inscripciones',
+        buttonLink: '',       // vacío → formulario de postulación (formPath)
+        ticketGeneralLabel: 'Inscripción de proyecto:',
+        ticketGeneral: '',    // vacío → valor de inscripción configurado
+        ticketNote: '',
+        ticketRotexLabel: '',
+        ticketRotex: '',
+        closeLabel: 'Cierre de inscripciones:',
+        closeDateText: '',    // vacío → fecha límite configurada
+        footerImage: '',
+        intro: '',            // texto opcional al lado del panel
     },
     // Umbrales del panel de alertas.
     alerts: {
@@ -440,6 +465,9 @@ const toPublicConfig = (cfg) => ({
     focusAreas: Array.isArray(cfg.focusAreas) ? cfg.focusAreas : [],
     redirect: cfg.redirect,
     content: cfg.content,
+    // Panel público de registro (v4.602): sólo textos e imágenes, nada
+    // sensible. Lo consume /registro-feria.
+    registrationPanel: cfg.registrationPanel || {},
 });
 
 // GET /api/project-fair/config  (público)
