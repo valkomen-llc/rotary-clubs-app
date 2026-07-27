@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.605.0 | 2026-07-27 (Dirección amigable para eventos e imágenes que se ven completas)
+// UI V4.606.0 | 2026-07-27 (Registro de asistentes a eventos con pago por Stripe)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.606.0',
+        title: 'Los asistentes ya pueden registrarse y pagar su entrada desde el evento 💳🎟️',
+        description: 'Cada evento puede ahora recibir inscripciones directamente, con cobro de las entradas por Stripe. En el evento aparece la pestaña "Registro", donde defines los tipos de entrada —nombre, descripción, precio y cupo—, la moneda, la fecha de cierre, cuántas entradas puede llevar una misma inscripción, si es obligatorio indicar el club y a qué correos avisar. Con el registro abierto, el botón del panel de inscripción lleva al formulario público del evento, en /eventos/tu-evento/registro: el asistente elige su entrada, escribe sus datos y paga con tarjeta; al confirmarse el pago recibe su comprobante con una referencia. Las entradas con precio cero se confirman de una vez, sin pasar por el pago. En esa misma pestaña ves las inscripciones recibidas con su estado —pagada, pendiente, fallida o reembolsada—, los totales de inscritos, asistentes y recaudo, y puedes exportarlas a CSV. Los cupos se respetan: cuando una entrada se agota deja de poder elegirse, y si quedan pocas se avisa. Por seguridad, el valor a cobrar se calcula siempre en el servidor a partir de tu configuración, nunca de lo que llegue desde el navegador, y la confirmación depende del aviso de Stripe y no de que el usuario regrese a la página. No se creó ninguna cuenta ni cobro nuevo: se usa la pasarela que la plataforma ya tenía.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'registro', 'inscripciones', 'stripe', 'pagos', 'entradas', 'cupos', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.605.0',
         title: 'Cada evento puede tener su propia dirección, y las imágenes ya no se recortan 🔗🖼️',

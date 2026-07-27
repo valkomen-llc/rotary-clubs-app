@@ -10,6 +10,7 @@ import {
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
+import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
 import { useAuth } from '../../hooks/useAuth';
 
 interface CalendarEvent {
@@ -47,7 +48,7 @@ export const slugify = (value: string) =>
         .slice(0, 120);
 
 /** Pestañas del editor de un evento. */
-type EventTab = 'info' | 'media' | 'html' | 'social' | 'metadata';
+type EventTab = 'info' | 'media' | 'html' | 'social' | 'metadata' | 'registro';
 
 const EVENT_TYPES = [
     { value: 'meeting', label: 'Reunión' },
@@ -1025,7 +1026,7 @@ const EventsManagement = () => {
                                                 {/* v4.603 — La pestaña del panel de inscripción estaba
                                                     reservada al evento de la Conferencia LATIR; ahora
                                                     cualquier evento de cualquier sitio puede tener el suyo. */}
-                                                {(['info', 'media', 'html', 'social', 'metadata'] as const).map(tab => (
+                                                {(['info', 'media', 'html', 'social', 'metadata', 'registro'] as const).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
@@ -1041,6 +1042,7 @@ const EventsManagement = () => {
                                                             html: '</> HTML',
                                                             social: '🚀 Social',
                                                             metadata: '🎟️ Panel de inscripción',
+                                                            registro: '💳 Registro',
                                                         }[tab as string]}
                                                     </button>
                                                 ))}
@@ -1303,6 +1305,16 @@ const EventsManagement = () => {
                                                             />
                                                         </div>
                                                     </div>
+                                                )}
+
+                                                {/* ── Tab: Registro (entradas y pago con Stripe) ── */}
+                                                {getTab(event.id) === 'registro' && (
+                                                    <EventRegistrationTab
+                                                        eventId={event.id}
+                                                        eventSlug={event.slug}
+                                                        config={event.metadata?.registration || {}}
+                                                        onChange={next => updateEventField(event.id, 'metadata', { ...event.metadata, registration: next })}
+                                                    />
                                                 )}
 
                                                 {/* ── Tab: Social ── */}

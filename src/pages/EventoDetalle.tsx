@@ -39,6 +39,9 @@ const LATIR_EVENT_ID = '2038324a-0e04-497c-9328-fbaeb9ce2992';
  */
 const hasRegistrationPanel = (event: any): boolean => {
     if (event?.id === LATIR_EVENT_ID) return true;
+    // v4.606 — Con el registro de asistentes abierto, el panel se muestra
+    // siempre: es la puerta de entrada al formulario de inscripción.
+    if (event?.metadata?.registration?.enabled === true) return true;
     const cfg = event?.metadata?.latir;
     if (!cfg || typeof cfg !== 'object') return false;
     if (cfg.enabled === true) return true;
@@ -58,6 +61,12 @@ const hasRegistrationPanel = (event: any): boolean => {
 const EventRegistrationSidebar = ({ event }: { event: any }) => {
     const cfg = event?.metadata?.latir || {};
     const isLatir = event?.id === LATIR_EVENT_ID;
+    // v4.606 — Si el evento tiene el registro de asistentes abierto y el
+    // administrador no puso un enlace propio, el botón lleva al formulario
+    // de inscripción del evento.
+    const selfRegistration = event?.metadata?.registration?.enabled === true
+        ? `/eventos/${event.slug || event.id}/registro`
+        : '';
 
     return (
         <RegistrationPanel
@@ -66,7 +75,7 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
             subtitle={cfg.subtitle || (isLatir ? 'El destino de nuestras\nnuevas historias.' : event?.location || '')}
             startDate={event?.startDate}
             buttonLabel={cfg.buttonLabel || 'Inscripciones'}
-            buttonLink={cfg.buttonLink || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
+            buttonLink={cfg.buttonLink || selfRegistration || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
             ticketGeneralLabel={cfg.ticketGeneralLabel || 'Ticket general:'}
             ticketGeneral={cfg.ticketGeneral || (isLatir ? 'USD 550' : '')}
             ticketNote={cfg.ticketDesc || (isLatir ? 'A partir del 15/03: USD 625' : '')}
