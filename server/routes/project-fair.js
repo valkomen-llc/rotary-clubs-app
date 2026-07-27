@@ -9,10 +9,6 @@ import {
     createSubmission,
     createCheckout,
     getSubmissionStatus,
-    getAdminConfig,
-    saveAdminConfig,
-    listSubmissions,
-    exportSubmissionsCsv,
     listTrmProviders,
 } from '../controllers/projectFairController.js';
 
@@ -52,11 +48,11 @@ router.get('/admin/tags', authMiddleware, fair.listTags);
 router.post('/admin/tags', authMiddleware, express.json(), fair.createTag);
 router.delete('/admin/tags/:id', authMiddleware, fair.deleteTag);
 
-// ── Configuración de la convocatoria ─────────────────────────────────
-router.get('/admin/config', authMiddleware, getAdminConfig);
-router.put('/admin/config', authMiddleware, express.json({ limit: '1mb' }), saveAdminConfig);
-router.get('/admin/submissions', authMiddleware, listSubmissions);
-router.get('/admin/submissions.csv', authMiddleware, exportSubmissionsCsv);
+// ── Configuración de la convocatoria (pestaña del módulo unificado) ──
+// Pasan por el control de permisos del módulo: leer exige acceso, guardar
+// exige el permiso de configuración.
+router.get('/admin/config', authMiddleware, fair.readConvocatoriaConfig);
+router.put('/admin/config', authMiddleware, express.json({ limit: '1mb' }), fair.writeConvocatoriaConfig);
 router.get('/admin/trm-providers', authMiddleware, listTrmProviders);
 
 export default router;

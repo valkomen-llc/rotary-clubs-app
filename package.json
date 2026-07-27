@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.600.0",
-  "cache_bust": "2026-07-27 (Los módulos de la Feria ya se ven en la barra lateral del sitio publicado: se calculaban con categoría 'Management', y en un sitio en producción el AdminLayout sólo renderiza un conjunto fijo de categorías (General, Contenido, Finanzas, Programas, E-commerce, Compliance, Configuración e Identidad) que NO incluye 'Management' — por eso los ítems existían pero nunca se pintaban. Ahora usan la categoría 'General' cuando no es super admin. Además la detección del sitio de feria es más tolerante: busca 'feria de proyectos' o 'project fair' en type, organizationType y category, sin depender de mayúsculas ni de una variante exacta. Las rutas /admin/postulaciones-pagos y /admin/feria-proyectos ya funcionaban por URL directa. Aditivo, sin cambios de backend ni de BD.)",
+  "version": "4.601.0",
+  "cache_bust": "2026-07-27 (Los dos módulos de la Feria se unifican en uno solo: \"Postulaciones y Pagos\" (/admin/postulaciones-pagos) incorpora la configuración de la convocatoria como una quinta pestaña, \"Convocatoria\". Queda una sola entrada en el menú. El formulario de configuración se extrae a src/components/admin/feria/ConvocatoriaConfig.tsx (sin AdminLayout, con prop canEdit) y la página src/pages/admin/FeriaProyectosConfig.tsx se elimina; /admin/feria-proyectos redirige a /admin/postulaciones-pagos?tab=config, y el módulo acepta ?tab= para enlaces directos. Se elimina la duplicación de la pestaña \"Inscripciones\" del configurador (la reemplaza la tabla completa) y con ella los endpoints legados /admin/submissions y /admin/submissions.csv, que además no aplicaban permisos por perfil y exponían referencias de Stripe a cualquier usuario autenticado. GET/PUT /admin/config pasan ahora por el control de permisos del módulo: consultar exige acceso y guardar exige el permiso 'config'. Aditivo, sin cambios de BD.)",
   "type": "module",
-  "//": "UI V4.600.0 | 2026-07-27 (Los módulos de la Feria se ven en la barra lateral del sitio publicado)",
+  "//": "UI V4.601.0 | 2026-07-27 (Un solo módulo de la Feria: la configuración es la pestaña Convocatoria)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

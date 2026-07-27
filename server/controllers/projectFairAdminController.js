@@ -26,6 +26,7 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import {
     ensureTables, logEvent, readConfigForAdmin, sendReceiptFor, buildSubmissionSnapshot,
+    getAdminConfig, saveAdminConfig,
 } from './projectFairController.js';
 
 console.log('[projectFairAdminController] v4.598.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
@@ -788,9 +789,17 @@ export const getSubmissionSnapshot = withAccess(async (req, res, { cfg, access }
     res.json({ ...snapshot, edition: cfg.edition, generatedAt: new Date().toISOString() });
 });
 
+// ── Configuración de la convocatoria ─────────────────────────────────
+// v4.601 — Al unificarse los dos módulos, la configuración pasa por el mismo
+// control de permisos que el resto: consultarla exige acceso al módulo y
+// guardarla exige el permiso 'config'. Antes bastaba con estar autenticado.
+export const readConvocatoriaConfig = withAccess((req, res) => getAdminConfig(req, res), 'view');
+export const writeConvocatoriaConfig = withAccess((req, res) => saveAdminConfig(req, res), 'config');
+
 export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
     addFile, deleteFile, syncStripe, resendReceipt,
     getAlerts, getReports, exportCsv, getCatalog, getSubmissionSnapshot,
+    readConvocatoriaConfig, writeConvocatoriaConfig,
 };
