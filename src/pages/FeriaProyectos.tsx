@@ -621,7 +621,7 @@ const FeriaProyectos = () => {
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tiempo de presentación</p>
                                         <p className="text-[15px] font-bold text-amber-800">
-                                            Máximo {config?.presentation?.maxMinutes || 5} minutos por proyecto
+                                            Máximo {config?.presentation?.maxMinutes || 9} minutos por proyecto
                                         </p>
                                     </div>
                                 </div>

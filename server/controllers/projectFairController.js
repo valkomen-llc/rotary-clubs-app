@@ -4,7 +4,7 @@
 //            + redirección a Rotary Grants tras la confirmación del pago.
 //
 // Edición vigente (configurable desde el admin, sin tocar código):
-//   12ª Feria de Proyectos Rotary Colombia — Valledupar.
+//   XII Feria de Proyectos Rotary Colombia — Valledupar.
 //
 // Persistencia: tablas creadas de forma perezosa con SQL crudo
 // (CREATE TABLE IF NOT EXISTS), mismo patrón que "BannerTemplate" y "Lead".
@@ -22,13 +22,15 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 
-console.log('[projectFairController] v4.594.0 cargado — Postulación de Proyectos 12ª Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto');
+console.log('[projectFairController] v4.597.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 // Slug público del formulario (v4.594). Los anteriores (/feria-proyectos,
 // /inscribir-proyecto) siguen funcionando: el frontend los redirige aquí.
 const DEFAULT_FORM_PATH = '/postular-proyecto';
+// Tiempo máximo de presentación de cada proyecto durante la feria.
+const DEFAULT_PRESENTATION_MINUTES = 9;
 
 // ── Configuración por defecto ───────────────────────────────────────
 // SOLO respaldo: los valores guardados por el admin siempre mandan (merge
@@ -39,8 +41,10 @@ export const DEFAULT_CONFIG = {
     formPath: DEFAULT_FORM_PATH,
     edition: {
         number: 12,
-        ordinal: '12ª',
-        name: '12ª Feria de Proyectos Rotary Colombia',
+        // Las ediciones del evento se nombran en número romano (convención
+        // habitual para versiones de eventos): XII, XIII, …
+        ordinal: 'XII',
+        name: 'XII Feria de Proyectos Rotary Colombia',
         city: 'Valledupar',
         country: 'Colombia',
         year: 2026,
@@ -48,7 +52,7 @@ export const DEFAULT_CONFIG = {
         key: '12-valledupar',
     },
     deadline: '2026-08-10',
-    presentation: { maxMinutes: 5 },
+    presentation: { maxMinutes: DEFAULT_PRESENTATION_MINUTES },
     registration: {
         amountCop: 250000,
         currency: 'COP',
@@ -85,8 +89,8 @@ export const DEFAULT_CONFIG = {
     },
     content: {
         title: 'Postulación de Proyectos',
-        subtitle: '12ª Feria de Proyectos Rotary Colombia — Valledupar',
-        intro: 'Los clubes rotarios podrán postular un (1) proyecto para presentarlo durante la 12ª Feria de Proyectos Rotary Colombia, que se realizará en la ciudad de Valledupar. La feria conecta proyectos de alto impacto con potenciales aliados nacionales e internacionales, patrocinadores, financiadores, fundaciones y colaboradores estratégicos.',
+        subtitle: 'XII Feria de Proyectos Rotary Colombia — Valledupar',
+        intro: 'Los clubes rotarios podrán postular un (1) proyecto para presentarlo durante la XII Feria de Proyectos Rotary Colombia, que se realizará en la ciudad de Valledupar. La feria conecta proyectos de alto impacto con potenciales aliados nacionales e internacionales, patrocinadores, financiadores, fundaciones y colaboradores estratégicos.',
         requirements: [
             'Proyectos en ejecución o listos para implementar',
             'Iniciativas que requieran acompañamiento técnico o cofinanciación',
@@ -888,7 +892,7 @@ const buildReceiptHtml = (s, cfg) => {
           <strong>Siguiente paso:</strong> continúa tu registro internacional en
           <a href="${esc(cfg.redirect?.url || 'https://grants25a.org/')}" style="color:${primary};font-weight:700">${esc(cfg.redirect?.name || 'Rotary Grants 25A')}</a>.
           Recuerda que la presentación del proyecto durante la feria tendrá un tiempo máximo de
-          ${esc(cfg.presentation?.maxMinutes || 5)} minutos.
+          ${esc(cfg.presentation?.maxMinutes || DEFAULT_PRESENTATION_MINUTES)} minutos.
         </p>
       </div>
     </div>

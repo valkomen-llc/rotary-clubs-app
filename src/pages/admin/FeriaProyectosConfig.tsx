@@ -86,6 +86,22 @@ const Textarea = ({ label, hint, ...props }: TextareaProps) => (
     </label>
 );
 
+// Las ediciones del evento se nombran en número romano (XII, XIII, …), que es
+// la convención habitual para versiones de eventos. Se usa como sugerencia en
+// el campo "Ordinal" al cambiar el número de la edición.
+const ROMAN_PAIRS: [number, string][] = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+];
+const toRoman = (value: number): string => {
+    let n = Math.floor(Number(value) || 0);
+    if (n <= 0 || n > 3999) return '';
+    return ROMAN_PAIRS.reduce((out, [amount, symbol]) => {
+        while (n >= amount) { out += symbol; n -= amount; }
+        return out;
+    }, '');
+};
+
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
     paid: { text: 'Pago confirmado', cls: 'bg-emerald-50 text-emerald-700' },
     pending_payment: { text: 'Pendiente de pago', cls: 'bg-amber-50 text-amber-700' },
@@ -247,13 +263,18 @@ const FeriaProyectosConfig: React.FC = () => {
                                 <Input label="Nombre completo del evento" value={config.edition.name} onChange={(e: ChangeEvent) => patch('edition.name', e.target.value)} />
                                 <Input label="Ciudad sede" value={config.edition.city} onChange={(e: ChangeEvent) => patch('edition.city', e.target.value)} />
                                 <Input label="Número de versión" type="number" value={config.edition.number} onChange={(e: ChangeEvent) => patch('edition.number', Number(e.target.value))} />
-                                <Input label="Ordinal (ej. 12ª)" value={config.edition.ordinal} onChange={(e: ChangeEvent) => patch('edition.ordinal', e.target.value)} />
+                                <Input
+                                    label="Ordinal de la edición"
+                                    value={config.edition.ordinal}
+                                    onChange={(e: ChangeEvent) => patch('edition.ordinal', e.target.value)}
+                                    hint={`Se usa número romano para las versiones del evento${toRoman(config.edition.number) ? ` — para la edición ${config.edition.number} sería ${toRoman(config.edition.number)}` : ''}.`}
+                                />
                                 <Input label="País" value={config.edition.country} onChange={(e: ChangeEvent) => patch('edition.country', e.target.value)} />
                                 <Input label="Año" type="number" value={config.edition.year} onChange={(e: ChangeEvent) => patch('edition.year', Number(e.target.value))} />
                                 <Input label="Fechas (opcional)" value={config.edition.dates || ''} onChange={(e: ChangeEvent) => patch('edition.dates', e.target.value)} hint="Ej: 15 y 16 de octubre de 2026" />
                                 <Input label="Clave interna de la edición" value={config.edition.key} onChange={(e: ChangeEvent) => patch('edition.key', e.target.value)} hint="Se guarda en cada inscripción para diferenciar ediciones." />
                                 <Input label="Fecha límite de postulación" type="date" value={config.deadline || ''} onChange={(e: ChangeEvent) => patch('deadline', e.target.value)} />
-                                <Input label="Minutos de presentación" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} />
+                                <Input label="Minutos de presentación" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} hint="Tiempo máximo de exposición de cada proyecto durante la feria." />
                                 <Input label="Dirección pública del formulario" value={config.formPath || ''} onChange={(e: ChangeEvent) => patch('formPath', e.target.value)} hint="Ruta donde vive el formulario. Por defecto /postular-proyecto; las direcciones anteriores siguen redirigiendo aquí." />
                             </div>
                             <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
