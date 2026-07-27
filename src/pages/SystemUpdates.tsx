@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.596.0 | 2026-07-27 (La elección de idioma manda sobre la IP para mostrar el botón "Postular Proyecto")
+// UI V4.597.0 | 2026-07-27 (Edición en número romano — XII Feria — y 9 minutos de presentación)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.597.0',
+        title: 'XII Feria de Proyectos y 9 minutos de presentación 🏛️⏱️',
+        description: 'La edición del evento ahora se nombra en número romano —"XII Feria de Proyectos Rotary Colombia"—, que es la forma habitual de identificar la versión de un evento; el cambio se aplica en el título, el subtítulo y el texto de presentación de la página de postulación. Además, el tiempo máximo de exposición de cada proyecto durante la feria pasa de 5 a 9 minutos. En el configurador, el campo "Ordinal de la edición" ahora explica la convención y te sugiere el número romano que corresponde según la edición que escribas, y el campo de minutos aclara para qué sirve. Si ya habías guardado la configuración de la feria, tus textos siguen mandando: actualízalos desde Postulación de Proyectos en el panel.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'edicion', 'numero romano', 'presentacion', 'minutos', 'update'],
+        type: 'update'
+    },
     {
         version: '4.596.0',
         title: 'El botón "Postular Proyecto" ya desaparece al cambiar de idioma 🌐',
