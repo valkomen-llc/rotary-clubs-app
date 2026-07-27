@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.603.0",
-  "cache_bust": "2026-07-27 (El panel de inscripción deja de estar cableado al evento de la Conferencia LATIR: cualquier evento de cualquier sitio puede tener el suyo. En EventoDetalle se reemplaza la comparación contra el UUID por hasRegistrationPanel(event) —activo por la casilla del panel o por tener algún campo lleno— y los textos y precios por defecto de LATIR quedan restringidos a ese evento, así que un evento nuevo no hereda \"Distrito 4921 / USD 550\"; el título y el subtítulo caen en el nombre y el lugar del propio evento. En el admin de Eventos la pestaña pasa a llamarse \"Panel de inscripción\", se muestra para todos los eventos y suma casilla de activación, título, subtítulo, texto del botón y etiquetas de los dos precios. Se agrega metadata al tipo CalendarEvent y se define EventTab (limpia 40+ errores de tipos), y se importan ImageIcon y Loader2, que faltaban y hacían fallar el modal de Librería Multimedia. Sin cambios de BD.)",
+  "version": "4.604.0",
+  "cache_bust": "2026-07-27 (El formulario de Nuevo Evento ya no deja el botón \"Guardar evento\" deshabilitado sin explicación. La causa era un datetime-local a medio llenar: el navegador no entrega valor mientras falte un segmento (a. m. / p. m.), así que newEvent.startDate llegaba vacío y la condición disabled del botón nunca se soltaba. Ahora el botón sólo se deshabilita mientras guarda; handleCreate valida al pulsarlo y muestra qué falta, distinguiendo \"sin fecha\" de \"fecha incompleta\" con validity.badInput del input. Además se dejan de tragar los errores: un POST fallido ahora muestra el mensaje del servidor en lugar de no hacer nada, y handleUpdate avisa cuando el guardado falla en vez de perder los cambios en silencio. Se agrega una ayuda bajo el campo de fecha. Sin cambios de BD.)",
   "type": "module",
-  "//": "UI V4.603.0 | 2026-07-27 (Cualquier evento puede tener el panel de inscripción, no sólo el de LATIR)",
+  "//": "UI V4.604.0 | 2026-07-27 (El botón Guardar evento explica qué falta en vez de quedarse gris)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

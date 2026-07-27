@@ -693,6 +693,10 @@ const EventsManagement = () => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [showAdd, setShowAdd] = useState(false);
     const [newEvent, setNewEvent] = useState(emptyForm);
+    /** Qué falta o qué falló al crear el evento. */
+    const [formError, setFormError] = useState('');
+    /** Permite distinguir "sin fecha" de "fecha a medio escribir" (validity.badInput). */
+    const startDateRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<Record<string, EventTab>>({});
 
     const API = import.meta.env.VITE_API_URL || '/api';
@@ -717,8 +721,26 @@ const EventsManagement = () => {
     const setTab = (id: string, tab: EventTab) =>
         setActiveTab(prev => ({ ...prev, [id]: tab }));
 
+    // v4.604 — El botón de guardar ya no se deshabilita por validación: se
+    // valida al pulsarlo y se dice qué falta. Antes quedaba gris sin ninguna
+    // explicación, y el caso típico es una fecha incompleta: los campos de
+    // fecha y hora del navegador no entregan ningún valor mientras les falte
+    // un segmento (a. m. / p. m., por ejemplo), así que el formulario se veía
+    // lleno pero la fecha de inicio llegaba vacía.
     const handleCreate = async () => {
-        if (!newEvent.title.trim() || !newEvent.startDate) return;
+        const missing: string[] = [];
+        if (!newEvent.title.trim()) missing.push('el título');
+        if (!newEvent.startDate) {
+            missing.push(startDateRef.current?.validity?.badInput
+                ? 'la fecha de inicio completa — revisa la hora y el a. m. / p. m.'
+                : 'la fecha de inicio');
+        }
+        if (missing.length) {
+            setFormError(`Falta ${missing.join(' y ')}.`);
+            return;
+        }
+
+        setFormError('');
         setSaving('new');
         try {
             const res = await fetch(`${API}/calendar/events`, {
@@ -730,7 +752,12 @@ const EventsManagement = () => {
                 setNewEvent(emptyForm);
                 setShowAdd(false);
                 await fetchEvents();
+            } else {
+                const data = await res.json().catch(() => null);
+                setFormError(data?.error || 'No pudimos guardar el evento. Inténtalo de nuevo.');
             }
+        } catch {
+            setFormError('No pudimos guardar el evento: revisa tu conexión e inténtalo de nuevo.');
         } finally {
             setSaving(null);
         }
@@ -739,12 +766,21 @@ const EventsManagement = () => {
     const handleUpdate = async (event: CalendarEvent) => {
         setSaving(event.id);
         try {
-            await fetch(`${API}/calendar/events/${event.id}`, {
+            const res = await fetch(`${API}/calendar/events/${event.id}`, {
                 method: 'PUT',
                 headers,
                 body: JSON.stringify(event),
             });
+            // Un guardado fallido pasaba desapercibido: la pantalla quedaba
+            // igual y los cambios se perdían sin aviso.
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                alert(data?.error || 'No pudimos guardar los cambios del evento.');
+                return;
+            }
             await fetchEvents();
+        } catch {
+            alert('No pudimos guardar los cambios: revisa tu conexión e inténtalo de nuevo.');
         } finally {
             setSaving(null);
         }
@@ -819,16 +855,17 @@ const EventsManagement = () => {
                                 <input
                                     type="text"
                                     value={newEvent.title}
-                                    onChange={e => setNewEvent({ ...newEvent, title: e.target.value })}
+                                    onChange={e => { setNewEvent({ ...newEvent, title: e.target.value }); setFormError(''); }}
                                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     placeholder="Nombre del evento"
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de inicio *</label>
-                                <input type="datetime-local" value={newEvent.startDate}
-                                    onChange={e => setNewEvent({ ...newEvent, startDate: e.target.value })}
+                                <input type="datetime-local" value={newEvent.startDate} ref={startDateRef}
+                                    onChange={e => { setNewEvent({ ...newEvent, startDate: e.target.value }); setFormError(''); }}
                                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <p className="mt-1 text-xs text-gray-400">Completa el día, la hora y el a. m. / p. m.: mientras falte alguno, la fecha se toma como vacía.</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de fin</label>
@@ -860,14 +897,19 @@ const EventsManagement = () => {
                                     placeholder="Describe el evento en pocas palabras..." />
                             </div>
                         </div>
+                        {formError && (
+                            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> <span>{formError}</span>
+                            </div>
+                        )}
                         <div className="flex gap-3">
                             <button onClick={handleCreate}
-                                disabled={saving === 'new' || !newEvent.title.trim() || !newEvent.startDate}
+                                disabled={saving === 'new'}
                                 className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
                                 <Save className="w-4 h-4" />
                                 {saving === 'new' ? 'Guardando...' : 'Guardar evento'}
                             </button>
-                            <button onClick={() => { setShowAdd(false); setNewEvent(emptyForm); }}
+                            <button onClick={() => { setShowAdd(false); setNewEvent(emptyForm); setFormError(''); }}
                                 className="px-4 py-2 text-gray-600 hover:text-gray-800">
                                 Cancelar
                             </button>

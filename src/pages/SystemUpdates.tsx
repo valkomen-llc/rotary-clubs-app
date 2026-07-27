@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.603.0 | 2026-07-27 (Cualquier evento puede tener el panel de inscripción, no sólo el de LATIR)
+// UI V4.604.0 | 2026-07-27 (El botón Guardar evento explica qué falta en vez de quedarse gris)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.604.0',
+        title: 'Ya se pueden crear eventos: el botón dice qué falta 📅✅',
+        description: 'Al crear un evento, el botón "Guardar evento" podía quedarse gris aunque el formulario se viera completo, y sin explicar por qué. La causa era la fecha: los campos de fecha y hora del navegador no entregan ningún valor mientras les falte un segmento —lo más común, el a. m. / p. m.—, así que el sistema recibía la fecha de inicio vacía y mantenía el botón bloqueado. Ahora el botón sólo se bloquea mientras está guardando: al pulsarlo, si falta algo, aparece un mensaje que dice exactamente qué —y si la fecha está a medio escribir, te avisa que revises la hora y el a. m. / p. m. en vez de decir que falta la fecha. Debajo del campo quedó también una nota recordándolo. Además, los errores dejan de pasar desapercibidos: si el evento no se puede guardar, ahora se muestra el motivo en lugar de no ocurrir nada, y al editar un evento existente también avisa si el guardado falla, para que no se pierdan cambios en silencio.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'formulario', 'fecha', 'validacion', 'errores', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.603.0',
         title: 'El panel de inscripción ya no es exclusivo del evento de LATIR 🎟️',
