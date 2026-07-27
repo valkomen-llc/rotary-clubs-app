@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.595.0",
-  "cache_bust": "2026-07-27 (El botón \"Postular Proyecto\" ahora sólo se muestra a la audiencia de la convocatoria: visitantes que ven el sitio en Español (bandera de Colombia) o cuya visita llega con IP de Colombia. En cualquier otro idioma sin IP colombiana el botón no aparece. Nuevo endpoint público GET /api/public/geo que lee el país del visitante de los encabezados de la CDN (x-vercel-ip-country / cf-ipcountry): sin servicios externos, sin cookies, sin guardar la IP ni escribir en BD; devuelve solo el código ISO-2 y responde con Cache-Control: no-store. Hook useVisitorCountry con caché en sessionStorage y una sola consulta por carga. showProjectFairCta/isProjectFairCta en ctaLinks.ts encapsulan la regla; el Navbar filtra los botones en escritorio y móvil, y mientras el país se resuelve no pinta el botón salvo que el idioma ya sea Español, para evitar parpadeo. La página /postular-proyecto sigue accesible por enlace directo. Aditivo, sin cambios de BD.)",
+  "version": "4.596.0",
+  "cache_bust": "2026-07-27 (Corrección del filtro del botón \"Postular Proyecto\": la elección de idioma del visitante ahora MANDA sobre el país. Antes la regla era un O literal (Español O IP de Colombia), así que un visitante en Colombia que cambiaba el sitio a inglés seguía viendo el botón. Nueva precedencia: (1) en Español siempre visible; (2) si el visitante eligió otro idioma en el selector, oculto sin importar la IP; (3) si no eligió idioma (ve el idioma por defecto del sitio), decide el país. LanguageContext expone `languageChosen` (basado en la clave site_language que ya distinguía elección explícita de default). Además isProjectFairCta reconoce el botón por enlace O por texto (Postular/Inscribir proyecto, Submit a project…), para que el filtro aplique también cuando el enlace del botón fue personalizado a otra URL. Aditivo, sin cambios de backend ni de BD.)",
   "type": "module",
-  "//": "UI V4.595.0 | 2026-07-27 (Botón \"Postular Proyecto\" visible solo en Español o con IP de Colombia)",
+  "//": "UI V4.596.0 | 2026-07-27 (La elección de idioma manda sobre la IP para mostrar el botón \"Postular Proyecto\")",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

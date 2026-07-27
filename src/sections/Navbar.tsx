@@ -23,7 +23,7 @@ const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sobreNosotrosOpen, setSobreNosotrosOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const { lang, setLang, applyDefaultLanguage } = useLang();
+  const { lang, languageChosen, setLang, applyDefaultLanguage } = useLang();
   const currentLanguage = SUPPORTED_LANGUAGES.find(l => l.code === lang) || SUPPORTED_LANGUAGES[0];
   // Idioma por defecto configurado en la identidad del sitio: va SIEMPRE de primero en el
   // listado y se aplica a los visitantes que aún no eligieron idioma.
@@ -57,20 +57,29 @@ const Navbar = () => {
     const customUrl = isEs ? (esUrl || intlUrl) : (intlUrl || esUrl);
     // resolveCtaUrl: un enlace configurado hacia el formulario de inscripción
     // de una edición anterior se redirige al formulario interno.
-    return { label: hasCustom ? customLabel : def.label, isCustomLabel: hasCustom, url: resolveCtaUrl(customUrl) || def.url, cls: def.cls };
+    return {
+      label: hasCustom ? customLabel : def.label,
+      isCustomLabel: hasCustom,
+      url: resolveCtaUrl(customUrl) || def.url,
+      cls: def.cls,
+      // Todas las variantes de texto: el filtro de audiencia reconoce el botón
+      // de postulación por enlace O por texto (si el enlace fue personalizado).
+      labels: [intlLabel, esLabel, def.label],
+    };
   });
 
-  // v4.595 — El botón que lleva al formulario de postulación sólo se muestra
-  // a quien ve el sitio en Español (bandera de Colombia) o navega desde una IP
-  // colombiana. Mientras el país se resuelve no se pinta (salvo que el idioma
-  // ya sea Español), para que no aparezca y desaparezca.
-  // Sólo se consulta el país cuando puede cambiar algo: hay un botón hacia el
-  // formulario y el idioma no es Español (en Español el botón se muestra igual).
-  const hasProjectFairCta = headerCtas.some(cta => isProjectFairCta(cta.url));
-  const { country: visitorCountry, loading: countryLoading } = useVisitorCountry(hasProjectFairCta && !isEs);
+  // v4.596 — Audiencia del botón que lleva al formulario de postulación:
+  // visible en Español; oculto si el visitante ELIGIÓ otro idioma (su
+  // preferencia manda sobre el país); y si no eligió idioma, decide la IP.
+  // El país sólo se consulta cuando puede cambiar algo, y mientras se resuelve
+  // el botón no se pinta para que no aparezca y desaparezca.
+  const isFormCta = (cta: { url: string; labels: string[] }) => isProjectFairCta({ url: cta.url, labels: cta.labels });
+  const hasProjectFairCta = headerCtas.some(isFormCta);
+  const { country: visitorCountry, loading: countryLoading } =
+    useVisitorCountry(hasProjectFairCta && !isEs && !languageChosen);
   const visibleHeaderCtas = headerCtas.filter(cta =>
-    !isProjectFairCta(cta.url) ||
-    showProjectFairCta({ lang, country: countryLoading ? null : visitorCountry })
+    !isFormCta(cta) ||
+    showProjectFairCta({ lang, languageChosen, country: countryLoading ? null : visitorCountry })
   );
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

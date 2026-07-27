@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.595.0 | 2026-07-27 (Botón "Postular Proyecto" visible solo en Español o con IP de Colombia)
+// UI V4.596.0 | 2026-07-27 (La elección de idioma manda sobre la IP para mostrar el botón "Postular Proyecto")
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.596.0',
+        title: 'El botón "Postular Proyecto" ya desaparece al cambiar de idioma 🌐',
+        description: 'Corrección: el botón seguía apareciendo al poner el sitio en inglés si la visita venía desde Colombia, porque las dos condiciones (idioma o país) pesaban igual. Ahora la preferencia del visitante manda: si elige un idioma distinto al Español en el selector, el botón no se muestra aunque esté navegando desde Colombia. En Español siempre se ve, y para quien no ha elegido idioma —es decir, ve el sitio en el idioma que trae por defecto— sigue decidiendo el país: se muestra si la visita llega desde Colombia. Además, el filtro ahora reconoce el botón tanto por su enlace como por su texto ("Postular Proyecto", "Submit a Project", "Inscribir proyecto"…), así que también funciona si el enlace del botón fue personalizado a mano.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'boton', 'idioma', 'colombia', 'audiencia', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.595.0',
         title: 'El botón "Postular Proyecto" se muestra solo a la audiencia de la convocatoria 🇨🇴',
