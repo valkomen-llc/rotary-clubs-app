@@ -444,6 +444,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             );
         }
 
+        // v4.599 — Módulos de la Feria de Proyectos. Antes vivían sólo dentro del
+        // bloque de super admin, así que no aparecían en el sitio propio de la
+        // feria (dominio de club), que es justo donde el equipo los necesita.
+        const isProjectFairSite = ((club as any)?.type === 'Feria de Proyectos')
+            || ((club as any)?.organizationType === 'Feria de Proyectos');
+        if (isProjectFairSite && !isSuperAdmin) {
+            items.push(
+                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria'] },
+                { icon: ClipboardList, label: 'Postulación de Proyectos', path: '/admin/feria-proyectos', category: 'Management', keywords: ['feria', 'postulacion', 'inscripcion', 'convocatoria', 'formulario', 'trm', 'stripe', 'grants'] },
+            );
+        }
+
         // Content — conditionally show based on module settings
         if (isSuperAdmin || mod.projects) {
             items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'General', keywords: ['proyecto', 'obra', 'servicio'] });

@@ -107,6 +107,7 @@ export const DEFAULT_CONFIG = {
     // siempre tiene acceso total; estas listas otorgan permisos adicionales
     // por correo sin tocar el modelo global de usuarios.
     access: {
+        admins: [],     // gestión completa del módulo (además del rol 'administrator')
         finance: [],    // ven pagos, comprobantes y pueden sincronizar con Stripe
         reviewers: [],  // consultan, comentan y mueven estados de revisión
     },

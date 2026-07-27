@@ -40,6 +40,7 @@ interface FairConfig {
     trm: { provider: string; fallbackProviders: string[]; manualRate: number | null; refreshHours: number };
     content: { title: string; subtitle: string; intro: string; requirements: string[]; note: string; priorityNote: string };
     notifications: { adminEmails: string[]; sendReceipt: boolean };
+    access: { admins: string[]; finance: string[]; reviewers: string[] };
     clubId: string | null;
 }
 
@@ -399,6 +400,34 @@ const FeriaProyectosConfig: React.FC = () => {
                                     onChange={(e: ChangeEvent) => patch('content.requirements', e.target.value.split('\n').map((x: string) => x.trim()).filter(Boolean))}
                                 />
                                 <Textarea label="Nota de prioridad" rows={3} value={config.content.priorityNote} onChange={(e: ChangeEvent) => patch('content.priorityNote', e.target.value)} />
+                            </div>
+                        </Card>
+
+                        <Card title="Perfiles del módulo de gestión" icon={Users}>
+                            <p className="mb-3 text-xs text-slate-500">
+                                Quién puede hacer qué en <b>Postulaciones y Pagos</b>. El rol "administrator" de la
+                                plataforma y quien administre el sitio de la feria ya tienen gestión completa; estas
+                                listas otorgan permisos adicionales por correo, separadas por coma.
+                            </p>
+                            <div className="grid gap-4">
+                                <Input
+                                    label="Administradores del módulo"
+                                    value={(config.access?.admins || []).join(', ')}
+                                    onChange={(e: ChangeEvent) => patch('access.admins', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
+                                    hint="Gestión completa: editar, cambiar estados, pagos, etiquetas y exportar."
+                                />
+                                <Input
+                                    label="Equipo financiero"
+                                    value={(config.access?.finance || []).join(', ')}
+                                    onChange={(e: ChangeEvent) => patch('access.finance', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
+                                    hint="Ven pagos y comprobantes, sincronizan con Stripe y reenvían recibos."
+                                />
+                                <Input
+                                    label="Revisores"
+                                    value={(config.access?.reviewers || []).join(', ')}
+                                    onChange={(e: ChangeEvent) => patch('access.reviewers', e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean))}
+                                    hint="Consultan proyectos, registran observaciones y mueven estados de revisión. No ven datos financieros."
+                                />
                             </div>
                         </Card>
 

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.598.0 | 2026-07-27 (Módulo Gestión de Postulaciones y Pagos: dashboard, trazabilidad Stripe, alertas y reportes)
+// UI V4.599.0 | 2026-07-27 (Los módulos de la Feria aparecen en el menú del sitio de la feria)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.599.0',
+        title: 'Los módulos de la Feria ya aparecen en el menú de su propio sitio 📋',
+        description: 'Corrección: "Postulaciones y Pagos" y "Postulación de Proyectos" solo se mostraban al entrar desde el panel general de la plataforma, no al administrar el sitio de la feria por su propia dirección. Ahora aparecen en el menú de cualquier sitio de tipo Feria de Proyectos, que es justo donde el equipo trabaja. Además, quien administra el sitio de la feria tiene gestión completa del módulo, y en la configuración de la convocatoria se agregó la tarjeta "Perfiles del módulo de gestión" para otorgar acceso por correo a tres grupos: administradores del módulo, equipo financiero (ven pagos y comprobantes) y revisores (consultan y comentan, sin acceso a los datos financieros).',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'menu', 'permisos', 'panel', 'postulaciones', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.598.0',
         title: 'Nuevo módulo: Gestión de Postulaciones y Pagos 📊💳',

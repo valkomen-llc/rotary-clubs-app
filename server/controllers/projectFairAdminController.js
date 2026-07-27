@@ -79,8 +79,14 @@ const listHas = (list, email) =>
 export const resolveAccess = (user, cfg) => {
     const email = user?.email || '';
     const access = cfg?.access || {};
+    // Administra el módulo quien es 'administrator' de la plataforma, quien
+    // esté en la lista de administradores del módulo, o quien administre el
+    // club/organización al que está asociada la feria (su propio sitio).
+    const ownsFairSite = !!cfg?.clubId && user?.clubId === cfg.clubId
+        && ['club_admin', 'district_admin', 'administrator'].includes(user?.role);
+
     let role = 'viewer';
-    if (user?.role === 'administrator') role = 'admin';
+    if (user?.role === 'administrator' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
     else if (listHas(access.finance, email)) role = 'finance';
     else if (listHas(access.reviewers, email)) role = 'reviewer';
     else if (['district_admin', 'club_admin', 'editor'].includes(user?.role)) role = 'viewer';
