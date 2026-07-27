@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.602.0 | 2026-07-27 (El botón de registro de la Feria abre el panel de inscripción de LATIR)
+// UI V4.603.0 | 2026-07-27 (Cualquier evento puede tener el panel de inscripción, no sólo el de LATIR)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.603.0',
+        title: 'El panel de inscripción ya no es exclusivo del evento de LATIR 🎟️',
+        description: 'El panel de la barra lateral —logo, cuenta regresiva, botón de inscripciones, precios y fecha de cierre— estaba amarrado por código a un único evento: el de la Conferencia LATIR. Ningún otro evento, de ningún otro sitio, podía tenerlo, y la pestaña para configurarlo tampoco aparecía. Ahora cualquier evento puede tener el suyo: en el panel, dentro del evento, está la pestaña "Panel de inscripción" con una casilla para mostrarlo y campos para el título, el subtítulo, el texto y el enlace del botón, las etiquetas y los valores de los dos precios, la fecha de cierre, el logo y la imagen del pie. Lo que dejes vacío no se muestra, y el título y el subtítulo toman el nombre y el lugar del propio evento. La cuenta regresiva corre hasta la fecha de inicio del evento. Importante: los textos y precios de la Conferencia LATIR siguen siendo sólo de ella —un evento nuevo nunca hereda "Distrito 4921, Patagonia" ni "USD 550"—, así que su página publicada no cambia en nada. Ten en cuenta que los eventos pertenecen a cada sitio: para que la Feria de Proyectos muestre el suyo, hay que crearlo desde el panel de la Feria. De paso se corrigió un error que hacía fallar la ventana "Seleccionar desde Librería Multimedia" al subir imágenes a un evento.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'panel', 'inscripciones', 'cuenta regresiva', 'latir', 'feria de proyectos', 'multimedia', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.602.0',
         title: 'El botón de registro de la Feria ahora abre el panel de inscripción 🎟️',
