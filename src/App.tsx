@@ -82,6 +82,7 @@ const ZonasManagement = React.lazy(() => import('./pages/admin/Zonas'));
 const EventosManagement = React.lazy(() => import('./pages/admin/Eventos'));
 const FeriasManagement = React.lazy(() => import('./pages/admin/Ferias'));
 const FeriaProyectosConfig = React.lazy(() => import('./pages/admin/FeriaProyectosConfig'));
+const PostulacionesPagos = React.lazy(() => import('./pages/admin/PostulacionesPagos'));
 const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
 const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
@@ -561,6 +562,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <FeriaProyectosConfig />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/postulaciones-pagos"
+                  element={
+                    <PrivateRoute>
+                      <PostulacionesPagos />
                     </PrivateRoute>
                   }
                 />

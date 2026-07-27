@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.597.0 | 2026-07-27 (Edición en número romano — XII Feria — y 9 minutos de presentación)
+// UI V4.598.0 | 2026-07-27 (Módulo Gestión de Postulaciones y Pagos: dashboard, trazabilidad Stripe, alertas y reportes)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.598.0',
+        title: 'Nuevo módulo: Gestión de Postulaciones y Pagos 📊💳',
+        description: 'Ya puedes administrar toda la Feria desde un solo lugar. El nuevo módulo "Postulaciones y Pagos" del panel recibe automáticamente lo que llega por el formulario —sin escribir nada a mano— y lo organiza en cuatro vistas. El Dashboard muestra cuántas postulaciones hay, cuántas están pagadas, pendientes, fallidas o reembolsadas, cuánto se ha recaudado en pesos, su equivalente en dólares según la TRM de cada transacción, los proyectos por distrito y por área de enfoque, y la evolución día a día. La tabla de postulaciones tiene búsqueda, filtros por estado, distrito, club, área, prioridad, etiqueta, fechas y rango de presupuesto, ordenamiento, paginación y exportación a CSV, Excel y PDF. Al abrir una postulación ves la ficha completa: datos del responsable y del club, descripción del proyecto, presupuesto, la trazabilidad del pago con sus referencias de Stripe y el comprobante, y un historial cronológico de todo lo ocurrido —formulario enviado, sesión de pago creada, pago aprobado o rechazado, reembolsos, cambios de estado y notas del equipo—. Desde ahí puedes cambiar el estado dejando el motivo, asignar un responsable, poner etiquetas como "Requiere revisión" o "Prioridad alta", escribir observaciones internas, reenviar el comprobante, sincronizar con Stripe y descargar la ficha en PDF. Se suma un panel de alertas que avisa de pagos pendientes hace demasiado tiempo, pagos fallidos, posibles duplicados, información incompleta, proyectos sin área de enfoque, presupuestos atípicos y diferencias entre lo esperado y lo recibido. Y todo respeta el perfil de cada persona: el superadministrador ve y gestiona todo, el equipo financiero ve pagos y comprobantes, los revisores consultan y comentan, y los demás perfiles solo consultan.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pagos', 'stripe', 'dashboard', 'reportes', 'alertas', 'auditoria', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.597.0',
         title: 'XII Feria de Proyectos y 9 minutos de presentación 🏛️⏱️',

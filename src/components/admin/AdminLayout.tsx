@@ -408,6 +408,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Briefcase, label: 'Programas de Intercambio', path: '/admin/programas-intercambio', category: 'Management', keywords: ['programa', 'intercambio'] },
                 { icon: FolderKanban, label: 'Ferias de Proyectos', path: '/admin/ferias-proyectos', category: 'Management', keywords: ['feria', 'proyectos'] },
                 { icon: ClipboardList, label: 'Postulación de Proyectos', path: '/admin/feria-proyectos', category: 'Management', keywords: ['feria', 'postulacion', 'inscripcion', 'proyectos', 'valledupar', 'trm', 'stripe', 'grants'] },
+                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria'] },
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
