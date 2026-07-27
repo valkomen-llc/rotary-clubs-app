@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.590.0 | 2026-07-26 (Banner de Estadísticas: altura personalizada además de los presets)
+// UI V4.591.0 | 2026-07-26 (Negrilla configurable: casilla para el título + campo de palabras en negrilla del texto)
 // Cache bust: 2026-07-26
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.591.0',
+        title: 'Activa o desactiva la negrilla del título y resalta palabras del texto ✍️',
+        description: 'Dos controles nuevos en el editor de la sección "Somos gente de acción" (Configuración → Identidad): (1) La casilla "Título en negrilla" permite activarla o desactivarla con un clic — desmarcada, el título se muestra en peso normal. (2) El nuevo campo "Palabras en negrilla del texto" funciona igual que el de resaltar palabras en color, pero para negrilla: escribes el fragmento del párrafo que quieres destacar (por ejemplo "Valledupar, Colombia") y se muestra en negrita, sin necesidad de escribir asteriscos. Ambas opciones se combinan con lo que ya existía: el resaltado por color y el marcado con **texto** para varias partes.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'contenido', 'negrilla', 'texto', 'editor', 'identidad', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.590.0',
         title: 'Define tú mismo la altura del banner de estadísticas 📏',

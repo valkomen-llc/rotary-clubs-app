@@ -28,6 +28,13 @@ const ActionSection = () => {
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
 
+  // Peso del título: interruptor "título en negrilla" (default true, como hasta ahora). Si se
+  // apaga, o si el texto marca partes con **, el peso base es normal para permitir el contraste.
+  const titleBoldOn = content.titleBold !== false;
+  const titleWeight = !content.title
+    ? 'font-light'
+    : (!titleBoldOn || hasBoldMarkup(content.title)) ? 'font-normal' : 'font-bold';
+
   const btnClass = `inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`;
   const btnInner = (
     <>
@@ -54,11 +61,11 @@ const ActionSection = () => {
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
       )}
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className={`text-3xl md:text-4xl ${content.title ? (hasBoldMarkup(content.title) ? 'font-normal' : 'font-bold') : 'font-light'} text-white mb-6 whitespace-pre-line`}>
+        <h2 className={`text-3xl md:text-4xl ${titleWeight} text-white mb-6 whitespace-pre-line`}>
           {content.title ? renderRichText(content.title, { highlight: content.titleHighlight, color: content.titleHighlightColor }) : <T>Somos gente de acción</T>}
         </h2>
         <p className="text-white/90 text-base md:text-lg mb-8 max-w-5xl mx-auto leading-relaxed whitespace-pre-line">
-          {content.text ? renderRichText(content.text) : <T>Nuestra red mundial de 1,4 millones de vecinos, amigos y líderes voluntarios ofrecen sus conocimientos y recursos para resolver problemas y abordar las necesidades de las comunidades.</T>}
+          {content.text ? renderRichText(content.text, { bold: content.textBold }) : <T>Nuestra red mundial de 1,4 millones de vecinos, amigos y líderes voluntarios ofrecen sus conocimientos y recursos para resolver problemas y abordar las necesidades de las comunidades.</T>}
         </p>
         {isExternal ? (
           <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>
