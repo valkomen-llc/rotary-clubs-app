@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.613.0",
-  "cache_bust": "2026-07-28 (Las cabeceras del modulo de la Feria (/postular-proyecto, /mi-proyecto, /registro-feria) pasan a usar el mismo fondo que la pagina de Contacto: azul oscuro #0c3c7c con la textura geometrica geo-darkblue.png repetida, en vez del azul plano #17458F. El estilo se centraliza en src/lib/pageHeader.ts (PAGE_HEADER_BACKGROUND) y Contacto pasa a leerlo de ahi, para que no se vuelvan a separar. Solo presentacion: no cambia ningun dato ni comportamiento.)",
+  "version": "4.614.0",
+  "cache_bust": "2026-07-28 (El fondo de las paginas del modulo de la Feria (/postular-proyecto, /mi-proyecto, /registro-feria) pasa de gris plano (bg-slate-50 / bg-slate-100) a bg-rotary-concrete, la misma textura de concreto que usa la seccion de estadisticas del home, para que el contenedor blanco del formulario se apoye sobre el mismo fondo que el resto del sitio. Solo presentacion.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

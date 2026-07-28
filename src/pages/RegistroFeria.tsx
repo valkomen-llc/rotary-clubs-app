@@ -102,7 +102,7 @@ const RegistroFeria = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50">
+            <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
                 <div className="flex min-h-[60vh] items-center justify-center">
                     <div className="text-center text-slate-500">
@@ -133,7 +133,7 @@ const RegistroFeria = () => {
     const intro = panel.intro || config?.content?.intro || '';
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        <div className="min-h-screen bg-rotary-concrete">
             <Navbar />
 
             <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-8 text-white sm:px-6 sm:py-10">

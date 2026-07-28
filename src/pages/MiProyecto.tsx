@@ -211,7 +211,7 @@ const MiProyecto = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-100">
+            <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
                 <div className="flex min-h-[60vh] items-center justify-center text-slate-500">
                     <Loader2 className="mr-2 animate-spin" size={22} style={{ color: BLUE }} /> Cargando tu panel…
@@ -227,7 +227,7 @@ const MiProyecto = () => {
     const submitted = data.form?.status === 'submitted';
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        <div className="min-h-screen bg-rotary-concrete">
             <Navbar />
 
             <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-7 text-white sm:px-6">
@@ -537,7 +537,7 @@ const PortalAccess = ({ onToken, notice }: { onToken: (t: string) => void; notic
     };
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        <div className="min-h-screen bg-rotary-concrete">
             <Navbar />
             <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
                 <div className="w-full rounded-2xl bg-white p-8 shadow-sm">

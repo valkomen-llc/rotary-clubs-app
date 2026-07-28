@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.613.0 | 2026-07-28 (Cabeceras de la Feria con el mismo fondo que Contacto)
+// UI V4.614.0 | 2026-07-28 (Fondo de la Feria con la textura de concreto del home)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.614.0',
+        title: 'El formulario se apoya sobre la misma textura del home 🧱',
+        description: 'Detrás de la tarjeta blanca del formulario de postulación había un gris plano que no correspondía al del resto del sitio. Ahora usa la misma textura de concreto de la sección de estadísticas del home —la del banner de la feria con las cifras—, así que la tarjeta se apoya sobre el mismo fondo y la página se lee como parte del sitio y no como algo aparte. El cambio cubre también el panel del club en "Mi Proyecto" y la página de registro de la feria. Es un ajuste de presentación únicamente.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'diseno', 'fondo', 'textura', 'consistencia', 'update'],
+        type: 'update'
+    },
     {
         version: '4.613.0',
         title: 'Las cabeceras de la Feria quedan iguales a las del resto del sitio 🎨',
