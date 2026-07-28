@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.609.0",
-  "cache_bust": "2026-07-28 (Tres ajustes al formulario de postulación: (1) se quita el subtítulo repetido del cuerpo — el nombre de la edición ya aparece en la cabecera azul, así que el texto queda una sola vez; (2) nuevo bloque \"Fechas importantes del proceso\" con las cinco fechas clave (1 sep Global Grants, 15 oct comunicación con los padres, 9 nov formato, 25 nov PowerPoint, 10 ene video), en línea de tiempo y configurables desde Convocatoria (content.schedule / content.scheduleTitle, con date, label y prefix opcional); (3) el campo de contacto pasa a tener selector de país con bandera e indicativo, Colombia por defecto — src/lib/countryPhones.ts con 56 países, banderas calculadas del código ISO (sin imágenes), composePhone/parsePhone para guardar un valor unificado y desempate para los indicativos compartidos como +1. Aditivo, sin cambios de BD.)",
+  "version": "4.610.0",
+  "cache_bust": "2026-07-28 (Dos ajustes al formulario de postulacion: (1) se elimina la tarjeta \"Plazo limite de inscripcion\" del encabezado — las fechas del proceso ya viven en la linea de tiempo; config.deadline se conserva y se sigue usando para la ventana de edicion del formulario maestro; (2) el tiempo de presentacion pasa de tope unico a rango: presentation ahora es { minMinutes: 5, maxMinutes: 6 } y el texto publico queda \"De 5 a 6 minutos por proyecto\". Nuevo helper presentationLabel en el backend para que el comprobante por correo use el mismo texto, dos campos min/max con vista previa en la pestana Convocatoria, y normalizacion de filas guardadas anteriores (sin minMinutes) para que no queden rangos incoherentes. Aditivo, sin cambios de BD.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

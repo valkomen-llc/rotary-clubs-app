@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)
+// UI V4.610.0 | 2026-07-28 (Sin tarjeta de plazo límite y presentación de 5 a 6 minutos)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.610.0',
+        title: 'El formulario deja de repetir el plazo y la presentación pasa a ser de 5 a 6 minutos ⏱️',
+        description: 'Dos ajustes en la página de postulación. Se quitó la tarjeta "Plazo límite de inscripción": las fechas del proceso ya están todas juntas en la línea de tiempo de abajo, así que mostrarla arriba solo duplicaba la información (el plazo sigue guardado y se sigue usando internamente para saber hasta cuándo un club puede editar su formulación). Y el tiempo de exposición deja de anunciarse como un tope y pasa a ser un rango: la tarjeta ahora dice "De 5 a 6 minutos por proyecto", que es como el equipo lo comunica a los clubes. El rango se edita desde Postulaciones y Pagos → Convocatoria, con un campo para el mínimo y otro para el máximo, y una vista previa del texto exacto que verá el postulante; si se deja el mínimo en cero, vuelve a anunciarse como "Máximo X minutos". El comprobante de pago que llega por correo usa el mismo texto, así que nunca queda desactualizado respecto a la página.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulario', 'presentacion', 'minutos', 'plazo', 'update'],
+        type: 'update'
+    },
     {
         version: '4.609.0',
         title: 'Fechas del proceso, teléfono con bandera y menos repetición 📅🇨🇴',

@@ -11,7 +11,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ArrowLeft, ArrowRight, Building2, Calendar, CheckCircle2, ClipboardList,
+    ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
 } from 'lucide-react';
@@ -32,7 +32,7 @@ interface FairConfig {
     enabled: boolean;
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string | null;
-    presentation: { maxMinutes: number };
+    presentation: { minMinutes?: number; maxMinutes: number };
     registration: { amountCop: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     focusAreas: FocusArea[];
@@ -103,6 +103,14 @@ const fmtDate = (value: string | null | undefined) => {
     const d = new Date(`${value}T12:00:00`);
     if (isNaN(d.getTime())) return String(value);
     return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+// Tiempo de exposición de cada proyecto: rango ("De 5 a 6 minutos") cuando el
+// admin configuró mínimo y máximo, o tope único si sólo hay máximo.
+const presentationText = (p: FairConfig['presentation'] | undefined) => {
+    const max = Number(p?.maxMinutes) || 6;
+    const min = Number(p?.minMinutes) || 0;
+    return min > 0 && min < max ? `De ${min} a ${max} minutos` : `Máximo ${max} minutos`;
 };
 
 // Validación en tiempo real (espejo de la del servidor).
@@ -710,22 +718,17 @@ const FeriaProyectos = () => {
                                 ))}
                             </ul>
 
-                            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                                {config?.deadline && (
-                                    <div className="flex items-center gap-3 rounded-xl px-4 py-3.5" style={{ background: `${BLUE}0f` }}>
-                                        <Calendar size={19} style={{ color: BLUE }} />
-                                        <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Plazo límite de inscripción</p>
-                                            <p className="text-[15px] font-bold" style={{ color: BLUE }}>{fmtDate(config.deadline)}</p>
-                                        </div>
-                                    </div>
-                                )}
+                            {/* El plazo límite ya no se muestra aquí (v4.610): las fechas del
+                                proceso van en la línea de tiempo de abajo. `config.deadline`
+                                se sigue usando internamente para la ventana de edición del
+                                formulario maestro. */}
+                            <div className="mt-6">
                                 <div className="flex items-center gap-3 rounded-xl px-4 py-3.5" style={{ background: `${GOLD}1f` }}>
                                     <Clock size={19} className="text-amber-700" />
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tiempo de presentación</p>
                                         <p className="text-[15px] font-bold text-amber-800">
-                                            Máximo {config?.presentation?.maxMinutes || 9} minutos por proyecto
+                                            {presentationText(config?.presentation)} por proyecto
                                         </p>
                                     </div>
                                 </div>
