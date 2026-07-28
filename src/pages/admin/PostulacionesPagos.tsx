@@ -148,6 +148,7 @@ const PostulacionesPagos: React.FC = () => {
     });
     const [sort, setSort] = useState({ sortBy: 'createdAt', sortDir: 'desc' });
     const [showFilters, setShowFilters] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const queryString = useCallback((extra: Record<string, any> = {}) => {
         const params = new URLSearchParams();
@@ -171,17 +172,31 @@ const PostulacionesPagos: React.FC = () => {
           .finally(() => setLoading(false));
     }, []);
 
+    // Un error del servidor no puede quedarse en silencio: antes se pintaba la
+    // respuesta de error como si fuera el resultado, y el panel mostraba ceros
+    // y una tabla vacía sin decir que algo había fallado.
+    const getJson = async (url: string) => {
+        const res = await fetch(url, { headers: authHeaders() });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || `El servidor respondió ${res.status}.`);
+        return data;
+    };
+
     const loadOverview = useCallback(() => {
-        fetch(`${API}/project-fair/admin/overview?${queryString()}`, { headers: authHeaders() })
-            .then(r => r.json()).then(setOverview).catch(() => toast.error('No se pudo cargar el panel'));
+        getJson(`${API}/project-fair/admin/overview?${queryString()}`)
+            .then(d => { setOverview(d); setLoadError(null); })
+            .catch(e => { setOverview(null); setLoadError(e?.message || 'No se pudo cargar el panel'); });
     }, [queryString]);
 
     const loadRows = useCallback((page = 1) => {
         setTableLoading(true);
-        fetch(`${API}/project-fair/admin/postulaciones?${queryString({ page, pageSize: pagination.pageSize })}`, { headers: authHeaders() })
-            .then(r => r.json())
-            .then(d => { setRows(d.submissions || []); setPagination(d.pagination); })
-            .catch(() => toast.error('No se pudieron cargar las postulaciones'))
+        getJson(`${API}/project-fair/admin/postulaciones?${queryString({ page, pageSize: pagination.pageSize })}`)
+            .then(d => {
+                setRows(d.submissions || []);
+                if (d.pagination) setPagination(d.pagination);
+                setLoadError(null);
+            })
+            .catch(e => { setRows([]); setLoadError(e?.message || 'No se pudieron cargar las postulaciones'); })
             .finally(() => setTableLoading(false));
     }, [queryString, pagination.pageSize]);
 
@@ -190,14 +205,19 @@ const PostulacionesPagos: React.FC = () => {
         if (tab === 'dashboard') loadOverview();
         if (tab === 'submissions') loadRows(1);
         if (tab === 'alerts') {
-            fetch(`${API}/project-fair/admin/alerts`, { headers: authHeaders() }).then(r => r.json()).then(setAlerts).catch(() => {});
+            getJson(`${API}/project-fair/admin/alerts`)
+                .then(d => { setAlerts(d); setLoadError(null); })
+                .catch(e => setLoadError(e?.message || 'No se pudieron cargar las alertas'));
         }
         if (tab === 'forms') {
-            fetch(`${API}/project-fair/admin/formularios`, { headers: authHeaders() })
-                .then(r => r.json()).then(setForms).catch(() => toast.error('No se pudo cargar la formulación'));
+            getJson(`${API}/project-fair/admin/formularios`)
+                .then(d => { setForms(d); setLoadError(null); })
+                .catch(e => setLoadError(e?.message || 'No se pudo cargar la formulación'));
         }
         if (tab === 'reports') {
-            fetch(`${API}/project-fair/admin/reports?${queryString()}`, { headers: authHeaders() }).then(r => r.json()).then(setReports).catch(() => {});
+            getJson(`${API}/project-fair/admin/reports?${queryString()}`)
+                .then(d => { setReports(d); setLoadError(null); })
+                .catch(e => setLoadError(e?.message || 'No se pudieron cargar los reportes'));
         }
     }, [tab, loading, loadOverview, loadRows, queryString]);
 
@@ -421,6 +441,12 @@ const PostulacionesPagos: React.FC = () => {
                             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                                 <ShieldCheck size={11} /> Perfil: {access.role}
                             </span>
+                            {catalog?.health && (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+                                    title="Registros que hay en la base, sin ningún filtro aplicado.">
+                                    {fmtNum(catalog.health.submissions)} en el sistema · {fmtNum(catalog.health.paid)} pagadas
+                                </span>
+                            )}
                         </p>
                     </div>
                     {access.export && (
@@ -431,6 +457,13 @@ const PostulacionesPagos: React.FC = () => {
                         </div>
                     )}
                 </header>
+
+                {loadError && (
+                    <div className="flex flex-wrap items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        <span><strong>No se pudo cargar esta pestaña.</strong> {loadError}</span>
+                    </div>
+                )}
 
                 <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
                     {([['dashboard', 'Dashboard', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
