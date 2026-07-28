@@ -21,7 +21,7 @@ import EmailService from '../services/EmailService.js';
 import { ensureTables, logEvent, readConfigForAdmin } from './projectFairController.js';
 import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairPortalController] v4.608.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
+console.log('[projectFairPortalController] v4.617.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
@@ -241,25 +241,32 @@ export const editability = (submission, form, cfg) => {
 };
 
 // Valores que se traen de la postulación inicial para no pedirlos dos veces.
+// El destino de cada dato lo decide el mapa `prefill` de la plantilla, así que
+// reordenar o renombrar las secciones del formulario no rompe la precarga.
 const seedAnswers = (submission, cfg) => {
-    const areas = submission.focusAreaLabel ? [submission.focusAreaLabel] : [];
-    return {
-        general: {
-            projectName: submission.projectName || '',
-            focusAreas: areas,
-            country: cfg?.edition?.country || 'Colombia',
-        },
-        sponsors: {
-            clubName: submission.clubName || '',
-            district: submission.district || '',
-            contactName: `${submission.firstName || ''} ${submission.lastName || ''}`.trim(),
-            contactEmail: submission.email || '',
-            contactPhone: submission.phone || '',
-        },
-        budget: {
-            totalUsd: submission.budgetUsd ? Number(submission.budgetUsd) : '',
-        },
+    const sources = {
+        projectName: submission.projectName || '',
+        clubName: submission.clubName || '',
+        district: submission.district || '',
+        city: '',
+        country: cfg?.edition?.country || 'Colombia',
+        focusArea: submission.focusAreaLabel ? [submission.focusAreaLabel] : [],
+        contactName: `${submission.firstName || ''} ${submission.lastName || ''}`.trim(),
+        contactEmail: submission.email || '',
+        contactPhone: submission.phone || '',
+        budgetUsd: submission.budgetUsd ? Number(submission.budgetUsd) : '',
     };
+
+    const prefill = cfg?.masterForm?.prefill || {};
+    const answers = {};
+    for (const [source, target] of Object.entries(prefill)) {
+        const value = sources[source];
+        if (value === undefined || value === '' || (Array.isArray(value) && !value.length)) continue;
+        const [sectionKey, fieldKey] = String(target).split('.');
+        if (!sectionKey || !fieldKey) continue;
+        answers[sectionKey] = { ...(answers[sectionKey] || {}), [fieldKey]: value };
+    }
+    return answers;
 };
 
 // GET /portal/me

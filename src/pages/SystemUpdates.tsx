@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.616.0 | 2026-07-28 (Al cambiar de paso el formulario ya no salta al tope)
+// UI V4.617.0 | 2026-07-28 (Formulario maestro igual al formulario oficial en Word)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.617.0',
+        title: 'La formulación del proyecto ahora es el formulario oficial de la feria 📄',
+        description: 'El formulario que llena el club en su panel después de pagar pasa a ser exactamente el formulario oficial en Word de la feria: mismas preguntas, mismo orden y los mismos límites de extensión. Queda en seis bloques: identificación (club, distrito, ciudad, nombre del proyecto y áreas de interés), objetivos (objetivo general y descripción), necesidades y beneficiarios (necesidades, atención de necesidades, beneficiarios y número de beneficiarios), sostenibilidad y participación de la comunidad, presupuesto y datos de contacto. El presupuesto es ahora un cuadro con los seis conceptos del documento —costo del proyecto, aporte del club local, aporte de clubes internacionales, distrito colombiano, distrito internacional y Fundación Rotaria— con casilla para pesos y para dólares. La descarga en Word también cambia: sale con el título en azul centrado, las preguntas en azul mayúscula, las áreas de interés como tabla con la casilla marcada, el cuadro de presupuesto, el párrafo de agradecimiento y el recuadro con los datos de la cuenta para el pago, igual que el documento de referencia. Los logos del encabezado se pueden configurar por enlace.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulacion', 'panel del club', 'word', 'presupuesto', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.616.0',
         title: 'Al pasar de un paso a otro, el formulario ya no te devuelve al principio 🎯',

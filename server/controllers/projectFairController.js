@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.615.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.617.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -583,6 +583,16 @@ const normalizeSavedConfig = (saved) => {
                 schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
             },
         };
+    }
+
+    // Antes de v4.617 el formulario maestro era una plantilla genérica de
+    // arranque, sin editor en el panel: nadie pudo haberla personalizado. Una
+    // copia guardada sin `version` es de esa época y se descarta para que
+    // aplique la plantilla oficial en Word. Las copias posteriores llevan
+    // versión y se respetan tal cual.
+    if (isPlainObject(out?.masterForm) && out.masterForm.version === undefined) {
+        const { masterForm, ...rest } = out;
+        out = rest;
     }
 
     // Los dos distritos venían en el orden equivocado por defecto (4281 antes

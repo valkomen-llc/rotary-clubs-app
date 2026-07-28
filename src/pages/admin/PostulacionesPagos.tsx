@@ -370,6 +370,14 @@ const PostulacionesPagos: React.FC = () => {
                         if (!rows.length) write('—', 9, 150, 52);
                         rows.forEach((r: any, i: number) => write(
                             `${i + 1}. ` + (field.columns || []).map((c: any) => `${c.label}: ${r[c.key] ?? '—'}`).join(' · '), 9, 40, 52));
+                    } else if (field.type === 'matrix') {
+                        // Filas fijas de la plantilla: se imprimen todas, con guion
+                        // en las celdas sin diligenciar.
+                        const defs = Array.isArray(field.rows) ? field.rows : [];
+                        if (!defs.length) write('—', 9, 150, 52);
+                        defs.forEach((row: any) => write(
+                            `${row.label}: ` + (field.columns || [])
+                                .map((c: any) => `${c.label} ${value?.[row.key]?.[c.key] ?? '—'}`).join(' · '), 9, 40, 52));
                     } else {
                         write(Array.isArray(value) ? value.join(', ') : (value ?? '—'), 9, 40, 52);
                     }

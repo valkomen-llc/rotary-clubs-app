@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantilla del formulario maestro de formulación de proyectos
-// v4.608.0
+// v4.617.0
 //
 // El formulario NO está codificado: se define aquí como datos (secciones →
 // campos) y se guarda en la configuración de la convocatoria, de modo que el
@@ -8,180 +8,153 @@
 // desde el panel sin tocar código. El panel del club lo renderiza, y las
 // descargas en Word y PDF lo recorren para armar el documento.
 //
-// Esta plantilla base sigue la estructura de una subvención global de Rotary
-// (comunidad y diagnóstico, objetivos, actividades, medición, presupuesto,
-// sostenibilidad y alianzas). Es un punto de partida editable, no una copia
-// del formulario oficial de Rotary International.
+// Esta plantilla reproduce el formulario oficial en Word de la Feria de
+// Proyectos (Valledupar): mismas preguntas, mismo orden y mismos límites de
+// extensión, para que lo que llena el club en línea y lo que se descarga en
+// Word sean el mismo documento.
 //
 // Tipos de campo soportados:
 //   text · textarea · number · currency · date · select · multiselect
-//   checkbox · url · email · phone · repeater (tabla de filas) · file
+//   checkbox · url · email · phone · repeater (filas que agrega el club)
+//   matrix (tabla de filas fijas × columnas) · file
 // ════════════════════════════════════════════════════════════════════
 
 export const FIELD_TYPES = [
     'text', 'textarea', 'number', 'currency', 'date', 'select',
-    'multiselect', 'checkbox', 'url', 'email', 'phone', 'repeater', 'file',
+    'multiselect', 'checkbox', 'url', 'email', 'phone', 'repeater', 'matrix', 'file',
 ];
 
+// Aproximación de caracteres por línea del formulario impreso, para traducir
+// los "(N líneas máximo)" del documento original a un tope de caracteres.
+const CHARS_PER_LINE = 120;
+const lines = (n) => n * CHARS_PER_LINE;
+
+// Versión de la plantilla base. Sirve para saber si la copia guardada en la
+// convocatoria viene de una plantilla anterior a la actual: una fila sin
+// `version` es de antes de la plantilla oficial en Word (v4.617) y se
+// reemplaza al leerla. A partir de aquí, lo guardado manda siempre.
+export const MASTER_FORM_VERSION = 2;
+
 export const DEFAULT_MASTER_FORM = {
+    version: MASTER_FORM_VERSION,
     enabled: true,
     title: 'Formulación del proyecto',
     intro: 'Completa la información de tu proyecto. Puedes guardar y volver cuantas veces necesites: el avance queda registrado. Cuando esté completo, envíalo para la revisión del comité.',
-    // Campos que se precargan desde la postulación inicial y el club ya no
-    // vuelve a escribir (se muestran como referencia, no editables).
+    // Campos que se precargan desde la postulación inicial para no pedirlos
+    // dos veces. Cada clave es un dato de la inscripción y su valor, el campo
+    // de la plantilla donde se copia ('sección.campo'). Si se reordena o
+    // renombra la plantilla, basta actualizar este mapa.
+    // Datos disponibles: projectName · clubName · district · city · country ·
+    // focusArea · contactName · contactEmail · contactPhone · budgetUsd
     prefill: {
-        projectName: 'general.projectName',
-        focusArea: 'general.focusAreas',
-        budgetUsd: 'budget.totalUsd',
+        projectName: 'identificacion.projectName',
+        clubName: 'identificacion.clubName',
+        district: 'identificacion.district',
+        focusArea: 'identificacion.focusAreas',
+        contactName: 'contacto.contactName',
+        contactEmail: 'contacto.contactEmail',
+        contactPhone: 'contacto.contactPhone',
+    },
+    // Elementos del documento en Word que no son campos del formulario:
+    // encabezado, texto de cierre y recuadro con los datos de pago. Se editan
+    // desde la configuración igual que el resto.
+    document: {
+        // Vacío = se arma con el nombre de la edición y la ciudad.
+        title: '',
+        // URLs de los logos del encabezado (opcional). Si no se pueden
+        // descargar, el documento sale igual pero sin ellos.
+        logos: [],
+        closing: 'Gracias a su apoyo nuestro club ayudará a la comunidad solventando sus más importantes necesidades. Apreciamos el análisis de este proyecto. Para más información contactar a:',
+        paymentBox: {
+            title: 'EL PAGO SE DEBE REALIZAR A NOMBRE DE:',
+            lines: [
+                'Fundación colombiana de rotarios (COLROTARIOS)',
+                'Banco de Occidente',
+                'CUENTA DE AHORROS NO. 019-84839-9',
+            ],
+            url: 'www.feriadeproyectosrotarycolombia.org',
+        },
     },
     sections: [
         {
-            key: 'general',
-            title: 'Información general del proyecto',
-            description: 'Datos de identificación de la iniciativa.',
+            key: 'identificacion',
+            title: 'Identificación del proyecto',
+            description: 'Datos del club que postula y del proyecto.',
             fields: [
-                { key: 'projectName', label: 'Nombre del proyecto', type: 'text', required: true, width: 'full' },
-                { key: 'focusAreas', label: 'Áreas de enfoque de Rotary', type: 'multiselect', required: true, width: 'full',
+                { key: 'clubName', label: 'Club Rotario', type: 'text', required: true, width: 'half' },
+                { key: 'district', label: 'Distrito Rotario', type: 'text', required: true, width: 'half' },
+                { key: 'city', label: 'Ciudad', type: 'text', required: true, width: 'half' },
+                { key: 'projectName', label: 'Nombre del proyecto', type: 'text', required: true, width: 'half' },
+                { key: 'focusAreas', label: 'Áreas de interés', type: 'multiselect', required: true, width: 'full',
                   help: 'Puedes seleccionar más de una si el proyecto es integral.', optionsFrom: 'focusAreas' },
-                { key: 'country', label: 'País', type: 'text', required: true, width: 'half' },
-                { key: 'department', label: 'Departamento', type: 'text', required: true, width: 'half' },
-                { key: 'city', label: 'Municipio o ciudad', type: 'text', required: true, width: 'half' },
-                { key: 'community', label: 'Comunidad o barrio específico', type: 'text', required: false, width: 'half' },
-                { key: 'startDate', label: 'Fecha estimada de inicio', type: 'date', required: true, width: 'half' },
-                { key: 'endDate', label: 'Fecha estimada de finalización', type: 'date', required: true, width: 'half' },
-                { key: 'stage', label: 'Estado actual del proyecto', type: 'select', required: true, width: 'half',
-                  options: ['Idea estructurada', 'Listo para implementar', 'En ejecución', 'En ejecución con financiación parcial'] },
-                { key: 'summary', label: 'Resumen ejecutivo', type: 'textarea', required: true, rows: 5, maxLength: 1500, width: 'full',
-                  help: 'En pocas líneas: qué hace el proyecto, a quién beneficia y qué cambio produce. Es lo primero que leerá un posible aliado.' },
             ],
         },
         {
-            key: 'sponsors',
-            title: 'Club y socios del proyecto',
-            description: 'Quién responde por el proyecto y con quién se ejecuta.',
+            key: 'objetivos',
+            title: 'Objetivos del proyecto',
             fields: [
-                { key: 'clubName', label: 'Club Rotario patrocinador', type: 'text', required: true, width: 'half' },
-                { key: 'district', label: 'Distrito', type: 'text', required: true, width: 'half' },
-                { key: 'contactName', label: 'Responsable del proyecto', type: 'text', required: true, width: 'half' },
-                { key: 'contactRole', label: 'Cargo en el club', type: 'text', required: false, width: 'half' },
-                { key: 'contactEmail', label: 'Correo del responsable', type: 'email', required: true, width: 'half' },
-                { key: 'contactPhone', label: 'Teléfono o WhatsApp', type: 'phone', required: true, width: 'half' },
-                { key: 'internationalPartner', label: 'Club o distrito patrocinador internacional', type: 'text', required: false, width: 'full',
-                  help: 'Si ya cuentas con un aliado internacional. Déjalo vacío si lo estás buscando en la feria.' },
-                { key: 'partners', label: 'Organizaciones aliadas', type: 'repeater', required: false, width: 'full',
-                  help: 'Entidades públicas, privadas o comunitarias que participan.',
-                  columns: [
-                      { key: 'name', label: 'Organización', type: 'text' },
-                      { key: 'role', label: 'Rol en el proyecto', type: 'text' },
-                      { key: 'contribution', label: 'Aporte (recursos, técnica, mano de obra)', type: 'text' },
-                  ] },
+                { key: 'generalObjective', label: 'Objetivo general', type: 'textarea', required: true,
+                  rows: 5, maxLength: lines(10), width: 'full', help: 'Máximo 10 líneas.' },
+                { key: 'projectDescription', label: 'Descripción del proyecto', type: 'textarea', required: true,
+                  rows: 7, maxLength: lines(15), width: 'full', help: 'Máximo 15 líneas.' },
             ],
         },
         {
-            key: 'diagnosis',
-            title: 'Comunidad y diagnóstico',
-            description: 'La necesidad que atiende el proyecto y cómo se identificó.',
+            key: 'necesidades',
+            title: 'Necesidades y beneficiarios',
+            description: 'Describa qué necesidades identificó, cómo el proyecto atenderá esas necesidades, quién será beneficiario del proyecto y cite un número estimado de beneficiarios.',
             fields: [
-                { key: 'communityDescription', label: 'Descripción de la comunidad beneficiaria', type: 'textarea', required: true, rows: 4, width: 'full' },
-                { key: 'problem', label: 'Problema o necesidad que se atiende', type: 'textarea', required: true, rows: 5, width: 'full' },
-                { key: 'needsAssessment', label: '¿Cómo se identificó la necesidad?', type: 'textarea', required: true, rows: 4, width: 'full',
-                  help: 'Describe la evaluación de necesidades: quién participó de la comunidad, cuándo y con qué método.' },
-                { key: 'directBeneficiaries', label: 'Beneficiarios directos', type: 'number', required: true, width: 'half' },
-                { key: 'indirectBeneficiaries', label: 'Beneficiarios indirectos', type: 'number', required: false, width: 'half' },
-                { key: 'population', label: 'Población objetivo', type: 'multiselect', required: false, width: 'full',
-                  options: ['Niñez', 'Adolescencia y juventud', 'Mujeres', 'Adultos mayores', 'Comunidades rurales',
-                            'Comunidades indígenas', 'Comunidades afrodescendientes', 'Población migrante',
-                            'Personas con discapacidad', 'Población en general'] },
+                { key: 'needs', label: 'Necesidades', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full', help: 'Máximo 5 líneas.' },
+                { key: 'needsResponse', label: 'Atención de necesidades', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full', help: 'Máximo 5 líneas.' },
+                { key: 'beneficiaries', label: 'Beneficiarios de este proyecto', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full', help: 'Máximo 5 líneas.' },
+                { key: 'beneficiariesCount', label: 'Número de beneficiarios', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full', help: 'Máximo 5 líneas.' },
             ],
         },
         {
-            key: 'objectives',
-            title: 'Objetivos y actividades',
-            description: 'Qué se propone lograr y cómo.',
+            key: 'sostenibilidad',
+            title: 'Sostenibilidad y participación de la comunidad',
             fields: [
-                { key: 'generalObjective', label: 'Objetivo general', type: 'textarea', required: true, rows: 3, width: 'full' },
-                { key: 'specificObjectives', label: 'Objetivos específicos', type: 'repeater', required: true, width: 'full',
-                  columns: [{ key: 'objective', label: 'Objetivo específico', type: 'text' }] },
-                { key: 'activities', label: 'Actividades principales', type: 'repeater', required: true, width: 'full',
-                  columns: [
-                      { key: 'activity', label: 'Actividad', type: 'text' },
-                      { key: 'responsible', label: 'Responsable', type: 'text' },
-                      { key: 'timeline', label: 'Mes o periodo', type: 'text' },
-                  ] },
-                { key: 'expectedResults', label: 'Resultados esperados', type: 'textarea', required: true, rows: 4, width: 'full' },
+                { key: 'sustainability', label: 'Sostenibilidad', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full',
+                  help: 'Explique cómo seguirá funcionando el proyecto una vez se termine el aporte económico que reciba en este proyecto. Máximo 5 líneas.' },
+                { key: 'communityRole', label: '¿Está involucrada la comunidad?', type: 'textarea', required: true,
+                  rows: 4, maxLength: lines(5), width: 'full',
+                  help: 'Describa el rol de la comunidad local en la implementación y continuidad del proyecto. Máximo 5 líneas.' },
             ],
         },
         {
-            key: 'measurement',
-            title: 'Medición del impacto',
-            description: 'Cómo se sabrá que el proyecto funcionó.',
-            fields: [
-                { key: 'indicators', label: 'Indicadores', type: 'repeater', required: true, width: 'full',
-                  columns: [
-                      { key: 'indicator', label: 'Indicador', type: 'text' },
-                      { key: 'baseline', label: 'Línea base', type: 'text' },
-                      { key: 'target', label: 'Meta', type: 'text' },
-                      { key: 'source', label: 'Medio de verificación', type: 'text' },
-                  ] },
-                { key: 'measurementResponsible', label: '¿Quién mide y con qué frecuencia?', type: 'textarea', required: true, rows: 3, width: 'full' },
-            ],
-        },
-        {
-            key: 'budget',
+            key: 'presupuesto',
             title: 'Presupuesto',
-            description: 'Todos los valores en dólares estadounidenses (USD).',
+            description: 'Diligencie los valores que apliquen a su proyecto.',
             fields: [
-                { key: 'totalUsd', label: 'Presupuesto total del proyecto', type: 'currency', required: true, width: 'half' },
-                { key: 'clubContribution', label: 'Aporte del club o distrito', type: 'currency', required: true, width: 'half' },
-                { key: 'securedFunds', label: 'Recursos ya asegurados', type: 'currency', required: false, width: 'half' },
-                { key: 'requestedAmount', label: 'Monto que se busca en la feria', type: 'currency', required: true, width: 'half' },
-                { key: 'breakdown', label: 'Detalle del presupuesto', type: 'repeater', required: true, width: 'full',
+                { key: 'budgetTable', label: 'Presupuesto del proyecto', type: 'matrix', required: true, width: 'full',
+                  rowsLabel: 'Concepto',
                   columns: [
-                      { key: 'concept', label: 'Concepto', type: 'text' },
-                      { key: 'quantity', label: 'Cantidad', type: 'number' },
-                      { key: 'unitCost', label: 'Valor unitario (USD)', type: 'currency' },
-                      { key: 'total', label: 'Total (USD)', type: 'currency' },
-                      { key: 'source', label: 'Fuente de financiación', type: 'text' },
+                      { key: 'pesos', label: 'Valor en pesos', type: 'currency' },
+                      { key: 'usd', label: 'Valor en dólares', type: 'currency' },
+                  ],
+                  rows: [
+                      { key: 'projectCost', label: 'Costo del Proyecto' },
+                      { key: 'localClub', label: 'Aporte Club local' },
+                      { key: 'internationalClubs', label: 'Aporte clubes internacionales' },
+                      { key: 'colombianDistrict', label: 'Distrito Colombiano' },
+                      { key: 'internationalDistrict', label: 'Distrito Internacional' },
+                      { key: 'rotaryFoundation', label: 'Fundación Rotaria' },
                   ] },
-                { key: 'quotes', label: '¿Cuenta con cotizaciones de respaldo?', type: 'select', required: false, width: 'half',
-                  options: ['Sí, adjuntas', 'Sí, en trámite', 'Todavía no'] },
             ],
         },
         {
-            key: 'sustainability',
-            title: 'Sostenibilidad',
-            description: 'Qué pasa con el proyecto cuando termine la financiación.',
+            key: 'contacto',
+            title: 'Datos de contacto',
+            description: 'Para más información sobre el proyecto, contactar a:',
             fields: [
-                { key: 'sustainabilityPlan', label: '¿Cómo se sostiene el proyecto al finalizar?', type: 'textarea', required: true, rows: 5, width: 'full' },
-                { key: 'operator', label: '¿Quién opera y mantiene lo entregado?', type: 'textarea', required: true, rows: 3, width: 'full' },
-                { key: 'training', label: 'Capacitación prevista para la comunidad', type: 'textarea', required: false, rows: 3, width: 'full' },
-                { key: 'maintenanceFunds', label: 'Recursos previstos para operación y mantenimiento', type: 'textarea', required: false, rows: 3, width: 'full' },
-            ],
-        },
-        {
-            key: 'fair',
-            title: 'Presentación en la feria',
-            description: 'Lo que verán los posibles aliados.',
-            fields: [
-                { key: 'seeking', label: '¿Qué busca en la feria?', type: 'multiselect', required: true, width: 'full',
-                  options: ['Cofinanciación', 'Club patrocinador internacional', 'Asistencia técnica',
-                            'Aliado corporativo', 'Voluntariado especializado', 'Visibilidad'] },
-                { key: 'pitch', label: 'Mensaje breve para posibles aliados', type: 'textarea', required: true, rows: 4, maxLength: 800, width: 'full',
-                  help: 'Recuerda que la presentación en la feria dura pocos minutos: este texto es tu carta de presentación.' },
-                { key: 'videoUrl', label: 'Enlace a video del proyecto', type: 'url', required: false, width: 'half' },
-                { key: 'presentationUrl', label: 'Enlace a la presentación', type: 'url', required: false, width: 'half' },
-            ],
-        },
-        {
-            key: 'documents',
-            title: 'Documentos de respaldo',
-            description: 'Adjunta los soportes del proyecto.',
-            fields: [
-                { key: 'communityNeedsForm', label: 'Formulario de Necesidades de la Comunidad', type: 'file', required: false, width: 'full',
-                  help: 'Documento requerido por la convocatoria.' },
-                { key: 'budgetFile', label: 'Presupuesto detallado y cotizaciones', type: 'file', required: false, width: 'full' },
-                { key: 'supportLetters', label: 'Cartas de apoyo o convenios', type: 'file', required: false, width: 'full' },
-                { key: 'photos', label: 'Fotografías del contexto', type: 'file', required: false, width: 'full' },
+                { key: 'contactName', label: 'Nombre', type: 'text', required: true, width: 'full' },
+                { key: 'contactEmail', label: 'Email', type: 'email', required: true, width: 'half' },
+                { key: 'contactPhone', label: 'Teléfono', type: 'phone', required: true, width: 'half' },
             ],
         },
     ],
@@ -213,6 +186,13 @@ export const missingRequired = (template, answers = {}) =>
         .filter(f => f.required && !hasValue(answers?.[f.sectionKey]?.[f.key], f.type))
         .map(f => ({ section: f.sectionTitle, sectionKey: f.sectionKey, key: f.key, label: f.label }));
 
+const anyCellFilled = (obj) =>
+    !!obj && typeof obj === 'object' && Object.values(obj).some(row =>
+        row && typeof row === 'object'
+            ? Object.values(row).some(v => String(v ?? '').trim() !== '')
+            : String(row ?? '').trim() !== ''
+    );
+
 export const hasValue = (value, type) => {
     if (value === null || value === undefined) return false;
     if (type === 'repeater') {
@@ -220,6 +200,7 @@ export const hasValue = (value, type) => {
             row && Object.values(row).some(v => String(v ?? '').trim() !== '')
         );
     }
+    if (type === 'matrix') return anyCellFilled(value);
     if (type === 'multiselect') return Array.isArray(value) && value.length > 0;
     if (type === 'checkbox') return value === true;
     if (type === 'number' || type === 'currency') return String(value).trim() !== '' && !Number.isNaN(Number(value));

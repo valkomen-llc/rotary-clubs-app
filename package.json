@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.616.0",
-  "cache_bust": "2026-07-28 (Al pasar de un paso a otro del formulario de postulacion, la pagina ya no salta al tope: hace scroll al inicio de la tarjeta del formulario, asi el paso siguiente queda a la vista sin tener que pasar otra vez por el texto informativo. Aplica tambien al boton Anterior y a la pantalla de pago. Se usa scroll-mt-32 para que el menu superior no tape el encabezado de la tarjeta y requestAnimationFrame para apuntar a la tarjeta recien montada. Solo presentacion.)",
+  "version": "4.617.0",
+  "cache_bust": "2026-07-28 (El formulario maestro del panel del club pasa a reproducir el formulario oficial en Word de la feria: seis secciones (identificacion, objetivos, necesidades y beneficiarios, sostenibilidad y comunidad, presupuesto, contacto) con las mismas preguntas, el mismo orden y los mismos limites de extension. Nuevo tipo de campo matrix (tabla de filas fijas x columnas) para el cuadro de presupuesto con los seis conceptos en pesos y dolares. La descarga en Word replica el diseno de referencia: titulo azul centrado, etiquetas en azul mayuscula, areas de interes como tabla con casillas marcadas, tabla de presupuesto, texto de cierre y recuadro con los datos de la cuenta; logos del encabezado opcionales por URL. La precarga desde la postulacion pasa a guiarse por el mapa prefill de la plantilla. La plantilla lleva version: una copia guardada sin version (plantilla generica anterior, sin editor en el panel) se reemplaza al leerla.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
