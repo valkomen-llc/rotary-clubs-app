@@ -23,6 +23,15 @@
  */
 export const PROJECT_FAIR_FORM_PATH = '/postular-proyecto';
 
+/** Panel privado del club que ya se inscribió: ahí formula su proyecto. */
+export const PROJECT_FAIR_PORTAL_PATH = '/mi-proyecto';
+
+/**
+ * Llave del token del panel del club. Es una identidad distinta de la de la
+ * plataforma (`rotary_token`), a propósito: un club nunca debe alcanzar /admin.
+ */
+export const PROJECT_FAIR_PORTAL_TOKEN_KEY = 'feria_portal_token';
+
 /**
  * Página pública de registro de la Feria (v4.602). Publica el panel de
  * inscripción — cuenta regresiva, botón, precios y fecha de cierre — copiado

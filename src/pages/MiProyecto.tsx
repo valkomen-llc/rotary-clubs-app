@@ -21,11 +21,12 @@ import {
     Mail, Plus, Save, Send, Trash2, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
+import { PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
-const TOKEN_KEY = 'feria_portal_token';
+const TOKEN_KEY = PROJECT_FAIR_PORTAL_TOKEN_KEY;
 
 const BLUE = '#17458F';
 
