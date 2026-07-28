@@ -10,6 +10,9 @@ tmp
 *.py
 *.cjs
 *.mjs
+# Los guardianes del despliegue deben viajar con el proyecto: el `prebuild`
+# los ejecuta y sin ellos falla la publicación.
+!scripts/*.mjs
 check_*.js
 test_*.js
 test-*.js
