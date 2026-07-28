@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.608.0",
-  "cache_bust": "2026-07-27 (Formulación de proyectos: el formulario público sigue siendo el filtro, pero ahora el club crea su contraseña en el paso 1 y, al confirmarse el pago, entra a /mi-proyecto —su panel— a formular el proyecto con el formulario maestro. Plantilla definida como datos (server/lib/projectFairMasterForm.js, 9 secciones tipo subvención global) y guardada en la config, editable desde el panel: el formulario, el panel del club y las descargas Word/PDF la recorren, así que agregar un campo no requiere tocar código. Tablas nuevas ProjectFairAccount / ProjectFairMasterForm / ProjectFairFormRevision. La identidad del postulante es propia del módulo (JWT con audiencia project-fair-portal), NO la tabla User: PrivateRoute sólo comprueba sesión iniciada, así que un club nunca puede alcanzar /admin/*. Autoguardado cada 3 s, avance por sección, envío con validación de obligatorios, edición hasta la fecha límite y reapertura/cierre por el administrador. Nueva pestaña Formulación en Postulaciones y Pagos con estado por club y descarga en Word (.docx real, librería docx) y PDF. Aditivo: ADD COLUMN/CREATE TABLE IF NOT EXISTS, sin operaciones destructivas.)",
+  "version": "4.609.0",
+  "cache_bust": "2026-07-28 (Tres ajustes al formulario de postulación: (1) se quita el subtítulo repetido del cuerpo — el nombre de la edición ya aparece en la cabecera azul, así que el texto queda una sola vez; (2) nuevo bloque \"Fechas importantes del proceso\" con las cinco fechas clave (1 sep Global Grants, 15 oct comunicación con los padres, 9 nov formato, 25 nov PowerPoint, 10 ene video), en línea de tiempo y configurables desde Convocatoria (content.schedule / content.scheduleTitle, con date, label y prefix opcional); (3) el campo de contacto pasa a tener selector de país con bandera e indicativo, Colombia por defecto — src/lib/countryPhones.ts con 56 países, banderas calculadas del código ISO (sin imágenes), composePhone/parsePhone para guardar un valor unificado y desempate para los indicativos compartidos como +1. Aditivo, sin cambios de BD.)",
   "type": "module",
-  "//": "UI V4.608.0 | 2026-07-27 (Panel del club: formulación del proyecto tras el pago, con descarga en Word y PDF)",
+  "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

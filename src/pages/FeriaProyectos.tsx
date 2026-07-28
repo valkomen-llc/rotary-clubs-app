@@ -13,8 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, ArrowRight, Building2, Calendar, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
-    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard,
+    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
 } from 'lucide-react';
+import { COUNTRIES, DEFAULT_COUNTRY, composePhone, findCountry, flagEmoji, parsePhone } from '../lib/countryPhones';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -39,7 +40,10 @@ interface FairConfig {
     content: {
         title: string; subtitle: string; intro: string;
         requirements: string[]; note: string; priorityNote: string;
+        scheduleTitle?: string;
+        schedule?: { date: string; label: string; prefix?: string }[];
     };
+    portal?: { path?: string; redirectAfterPayment?: boolean };
 }
 
 interface Trm {
@@ -176,6 +180,63 @@ const Field = ({
             ) : hint ? (
                 <p className="mt-1.5 text-[13px] text-slate-500">{hint}</p>
             ) : null}
+        </div>
+    );
+};
+
+// Teléfono con selector de país: el indicativo se elige de una lista con
+// banderas y el valor se guarda unificado ("+57 3001234567"). Colombia queda
+// por defecto por ser el país anfitrión.
+const PhoneField = ({ value, onChange, onBlur, error, touched }: {
+    value: string; onChange: (v: string) => void; onBlur: () => void;
+    error?: string | null; touched?: boolean;
+}) => {
+    const parsed = parsePhone(value);
+    const [iso, setIso] = useState(parsed.iso || DEFAULT_COUNTRY);
+    const national = parsed.national;
+    const invalid = touched && error;
+
+    const update = (nextIso: string, nextNational: string) => {
+        setIso(nextIso);
+        onChange(composePhone(nextIso, nextNational));
+    };
+
+    return (
+        <div>
+            <label htmlFor="phone" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                <Phone size={15} className="text-slate-400" />
+                Número de contacto o WhatsApp <span className="text-red-500">*</span>
+            </label>
+            <div className={`flex overflow-hidden rounded-xl border bg-white transition focus-within:ring-2 ${
+                invalid ? 'border-red-400 focus-within:ring-red-200' : 'border-slate-300 focus-within:border-[#17458F] focus-within:ring-[#17458F]/20'}`}>
+                <select
+                    aria-label="País del número de contacto"
+                    value={iso}
+                    onChange={e => update(e.target.value, national)}
+                    className="shrink-0 cursor-pointer border-r border-slate-200 bg-slate-50 py-3 pl-3 pr-2 text-[15px] font-medium text-slate-700 focus:outline-none"
+                >
+                    {COUNTRIES.map(c => (
+                        <option key={c.iso} value={c.iso}>{flagEmoji(c.iso)} {c.name} ({c.dial})</option>
+                    ))}
+                </select>
+                <span className="flex items-center gap-1.5 pl-3 text-[15px] font-semibold text-slate-500">
+                    <span className="text-lg leading-none">{flagEmoji(iso)}</span>
+                    {findCountry(iso).dial}
+                </span>
+                <input
+                    id="phone" name="phone" type="tel" inputMode="tel"
+                    value={national}
+                    onChange={e => update(iso, e.target.value)}
+                    onBlur={onBlur}
+                    placeholder="300 000 0000"
+                    className="w-full bg-transparent px-3 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                />
+            </div>
+            {invalid && (
+                <p className="mt-1.5 flex items-center gap-1 text-[13px] font-medium text-red-600">
+                    <AlertCircle size={13} /> {error}
+                </p>
+            )}
         </div>
     );
 };
@@ -634,10 +695,9 @@ const FeriaProyectos = () => {
                     /* ── Introducción + wizard ──────────────────────────── */
                     <>
                         <section className="mb-6 rounded-2xl bg-white p-6 shadow-sm sm:p-9">
-                            <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">
-                                {config?.content?.subtitle || config?.edition?.name}
-                            </h2>
-                            <p className="mt-3 text-[15px] leading-relaxed text-slate-600">{config?.content?.intro}</p>
+                            {/* El nombre de la edición ya aparece en la cabecera: aquí
+                                se muestra sólo el contenido, sin repetirlo. */}
+                            <p className="text-[15px] leading-relaxed text-slate-600">{config?.content?.intro}</p>
 
                             <p className="mt-4 text-[15px] leading-relaxed text-slate-600">{config?.content?.note}</p>
 
@@ -671,6 +731,26 @@ const FeriaProyectos = () => {
                                 </div>
                             </div>
 
+                            {(config?.content?.schedule || []).length > 0 && (
+                                <div className="mt-6 rounded-xl border border-slate-200 p-5">
+                                    <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide" style={{ color: BLUE }}>
+                                        <CalendarDays size={16} /> {config?.content?.scheduleTitle || 'Fechas importantes del proceso'}
+                                    </h3>
+                                    <ol className="relative space-y-4 border-l-2 border-slate-100 pl-5">
+                                        {(config?.content?.schedule || []).map((item, i) => (
+                                            <li key={i} className="relative">
+                                                <span className="absolute -left-[27px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white"
+                                                    style={{ background: GOLD }} />
+                                                <p className="text-[15px] font-bold" style={{ color: BLUE }}>
+                                                    {item.prefix ? `${item.prefix} ` : ''}{fmtDate(item.date)}
+                                                </p>
+                                                <p className="text-[15px] leading-relaxed text-slate-600">{item.label}</p>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </div>
+                            )}
+
                             {config?.content?.priorityNote && (
                                 <p className="mt-5 rounded-xl border-l-4 bg-slate-50 px-4 py-3 text-[14px] leading-relaxed text-slate-600" style={{ borderColor: GOLD }}>
                                     {config.content.priorityNote}
@@ -697,7 +777,13 @@ const FeriaProyectos = () => {
                                     <Field label="Nombre" name="firstName" icon={User} value={form.firstName} onChange={handleChange} onBlur={handleBlur} error={errors.firstName} touched={touched.firstName} placeholder="Introduce tu primer nombre" />
                                     <Field label="Apellido" name="lastName" icon={User} value={form.lastName} onChange={handleChange} onBlur={handleBlur} error={errors.lastName} touched={touched.lastName} placeholder="Escribe tu primer apellido" />
                                     <Field label="Correo electrónico" name="email" type="email" icon={Mail} value={form.email} onChange={handleChange} onBlur={handleBlur} error={errors.email} touched={touched.email} placeholder="nombre@correo.com" />
-                                    <Field label="Número de contacto o WhatsApp" name="phone" icon={Phone} value={form.phone} onChange={handleChange} onBlur={handleBlur} error={errors.phone} touched={touched.phone} placeholder="+57 300 000 0000" />
+                                    <PhoneField
+                                        value={form.phone}
+                                        onChange={v => setForm(prev => ({ ...prev, phone: v }))}
+                                        onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
+                                        error={errors.phone}
+                                        touched={touched.phone}
+                                    />
                                     <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
                                     <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
 
