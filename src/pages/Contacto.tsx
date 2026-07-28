@@ -16,6 +16,7 @@ import {
   Users,
   Award,
 } from 'lucide-react';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
@@ -253,16 +254,7 @@ const Contacto = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section
-        className="relative overflow-hidden"
-        style={{
-          backgroundColor: '#0c3c7c',
-          backgroundImage: "url('/geo-darkblue.png')",
-          backgroundPosition: '50% 0',
-          backgroundRepeat: 'repeat',
-          backgroundSize: '71px 85px'
-        }}
-      >
+      <section className="relative overflow-hidden" style={PAGE_HEADER_BACKGROUND}>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-3xl md:text-5xl text-white mb-6">

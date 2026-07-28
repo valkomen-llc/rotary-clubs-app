@@ -16,6 +16,7 @@ import {
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
 } from 'lucide-react';
 import { COUNTRIES, DEFAULT_COUNTRY, composePhone, findCountry, flagEmoji, parsePhone } from '../lib/countryPhones';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -543,7 +544,7 @@ const FeriaProyectos = () => {
             <Navbar />
 
             {/* Cabecera de la convocatoria */}
-            <header style={{ background: BLUE }} className="px-4 py-8 text-white sm:px-6 sm:py-10">
+            <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-8 text-white sm:px-6 sm:py-10">
                 <div className="mx-auto max-w-4xl text-center sm:text-left">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
                         {config?.content?.title || 'Postulación de Proyectos'}
