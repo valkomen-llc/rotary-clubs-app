@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.618.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.625.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -429,6 +429,12 @@ const ensureTables = async () => {
             "updatedAt" TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+    // v4.625 — Rol del postulante. Se otorga cuando el webhook de Stripe
+    // confirma el pago y se suspende ante un reembolso; nunca lo decide el
+    // navegador. Ver `grantProjectManagerRole` / `suspendProjectManagerRole`.
+    await db.query(`ALTER TABLE "ProjectFairAccount" ADD COLUMN IF NOT EXISTS role VARCHAR(40) DEFAULT 'applicant'`).catch(() => {});
+    await db.query(`ALTER TABLE "ProjectFairAccount" ADD COLUMN IF NOT EXISTS "roleGrantedAt" TIMESTAMPTZ`).catch(() => {});
+    await db.query(`ALTER TABLE "ProjectFairAccount" ADD COLUMN IF NOT EXISTS "roleRevokedAt" TIMESTAMPTZ`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_email_key" ON "ProjectFairAccount" (lower(email));`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_submission_key" ON "ProjectFairAccount" ("submissionId");`).catch(() => {});
 
@@ -555,6 +561,66 @@ export const recordStripeEvent = async (event, submissionId = null) => {
 };
 
 export { ensureTables };
+
+// ── Rol del postulante ───────────────────────────────────────────────
+// Un club que se inscribió es 'applicant'; cuando el pago queda confirmado
+// asciende a 'project_manager' (Gestor de Proyectos) y con un reembolso pasa
+// a 'project_manager_suspended' (conserva lectura y descarga, pierde edición).
+//
+// El ascenso SIEMPRE lo dispara el webhook de Stripe, nunca el regreso del
+// navegador, y es idempotente: repetir el evento no vuelve a otorgarlo ni
+// duplica la auditoría.
+export const APPLICANT_ROLES = {
+    APPLICANT: 'applicant',
+    MANAGER: 'project_manager',
+    SUSPENDED: 'project_manager_suspended',
+};
+
+export const grantProjectManagerRole = async (submission, { reason = null } = {}) => {
+    try {
+        const { rowCount } = await db.query(`
+            UPDATE "ProjectFairAccount"
+               SET role = $1, "roleGrantedAt" = NOW(), "roleRevokedAt" = NULL, "updatedAt" = NOW()
+             WHERE "submissionId" = $2 AND COALESCE(role, '') <> $1
+        `, [APPLICANT_ROLES.MANAGER, submission.id]);
+        if (!rowCount) return false;   // ya lo tenía, o no hay cuenta
+
+        await logEvent(submission.id, {
+            type: 'role_granted',
+            title: 'Rol de Gestor de Proyectos otorgado',
+            detail: 'El club puede formular y administrar su proyecto.',
+            metadata: { role: APPLICANT_ROLES.MANAGER, reason },
+        });
+        console.log(`[project-fair] 🎓 Gestor de Proyectos — ${submission.publicRef} (${submission.email})`);
+        return true;
+    } catch (err) {
+        // No bloquea la confirmación del pago: el pago es lo crítico.
+        console.error('[project-fair] No pude otorgar el rol de gestor:', err?.message);
+        return false;
+    }
+};
+
+export const suspendProjectManagerRole = async (submission, { reason = null } = {}) => {
+    try {
+        const { rowCount } = await db.query(`
+            UPDATE "ProjectFairAccount"
+               SET role = $1, "roleRevokedAt" = NOW(), "updatedAt" = NOW()
+             WHERE "submissionId" = $2 AND role = $3
+        `, [APPLICANT_ROLES.SUSPENDED, submission.id, APPLICANT_ROLES.MANAGER]);
+        if (!rowCount) return false;
+
+        await logEvent(submission.id, {
+            type: 'role_suspended',
+            title: 'Rol de Gestor de Proyectos suspendido',
+            detail: 'Conserva la consulta y la descarga; pierde la edición y el envío.',
+            metadata: { role: APPLICANT_ROLES.SUSPENDED, reason },
+        });
+        return true;
+    } catch (err) {
+        console.error('[project-fair] No pude suspender el rol de gestor:', err?.message);
+        return false;
+    }
+};
 
 // ── Configuración ────────────────────────────────────────────────────
 /**
@@ -1332,6 +1398,9 @@ export const confirmPaidSession = async (session) => {
     const paid = updated[0];
     console.log(`[project-fair] ✅ Pago confirmado — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntentId || session.id}`);
 
+    // El pago confirmado es lo que convierte al club en Gestor de Proyectos.
+    await grantProjectManagerRole(paid, { reason: paymentIntentId || session.id });
+
     await logEvent(submissionId, {
         type: 'payment_succeeded',
         title: 'Pago aprobado',
@@ -1505,6 +1574,8 @@ export const handleRefund = async (charge) => {
         detail: `${fmtAmount(refunded, charge?.currency)} de ${fmtAmount(total, charge?.currency)}`,
         metadata: { chargeId: charge?.id || null, refunded, total, isFull },
     });
+    // Un reembolso total deja el proyecto en consulta: se suspende el rol.
+    if (isFull) await suspendProjectManagerRole(submission, { reason: charge?.id || 'refund' });
     console.log(`[project-fair] ↩️ Reembolso ${isFull ? 'total' : 'parcial'} — inscripción ${submission.publicRef}: ${refunded}`);
     return submission.id;
 };

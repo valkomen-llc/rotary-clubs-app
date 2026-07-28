@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.624.0 | 2026-07-28 (Dos barreras para que ningún despliegue vuelva a borrar datos)
+// UI V4.625.0 | 2026-07-28 (Rol Gestor de Proyectos y guardián de rutas administrativas)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.625.0',
+        title: 'Nace el rol Gestor de Proyectos, con su propio ciclo de vida 🎓',
+        description: 'El club que se inscribe queda registrado como "Postulante" y, en el momento en que Stripe confirma el pago, el sistema lo asciende solo a "Gestor de Proyectos". Ese ascenso lo dispara el aviso de Stripe y no el regreso del navegador, así que nadie obtiene el rol sin haber pagado de verdad; repetir el aviso no lo otorga dos veces, y queda registrado en la línea de tiempo del proyecto con la referencia del pago que lo justificó. El rol se ve como distintivo en el panel del club, y la tarjeta de inscripción ahora distingue pago confirmado, pendiente, rechazado y reembolsado. Ante un reembolso total el rol queda suspendido: el club conserva la consulta y la descarga de su proyecto, pero pierde la edición y el envío — y ese bloqueo se aplica en el servidor, no solo escondiendo botones. Si una inscripción pagada quedó sin rol por cualquier motivo, se repara sola al abrir el panel. Aparte, se cerró un punto débil del panel administrativo: la guarda de las 114 pantallas de /admin solo comprobaba que hubiera una sesión iniciada, sin mirar el rol. Ahora exige un rol administrativo de una lista explícita, de modo que un rol nuevo debe habilitarse a propósito y no hereda el acceso por descuido.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'roles', 'permisos', 'seguridad', 'stripe', 'panel del club', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.624.0',
         title: 'Dos candados para que ningún despliegue vuelva a borrar datos 🔒',

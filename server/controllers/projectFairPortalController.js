@@ -17,10 +17,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
-import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail } from './projectFairController.js';
+import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
 import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairPortalController] v4.620.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
+console.log('[projectFairPortalController] v4.625.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
@@ -328,9 +328,13 @@ const loadForm = async (submissionId) => {
  * fecha límite; después queda en solo lectura salvo que el administrador
  * reabra el formulario.
  */
-export const editability = (submission, form, cfg) => {
+export const editability = (submission, form, cfg, account = null) => {
     if (submission?.status !== 'paid') {
         return { canEdit: false, reason: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.' };
+    }
+    // Rol suspendido (reembolso): conserva consulta y descarga, pierde edición.
+    if (account?.role === APPLICANT_ROLES.SUSPENDED) {
+        return { canEdit: false, reason: 'Tu inscripción fue reembolsada. Puedes consultar y descargar tu proyecto, pero ya no editarlo.' };
     }
     if (form?.lockedAt && !form?.reopenedAt) {
         return { canEdit: false, reason: 'El comité cerró la edición de este formulario.' };
@@ -398,8 +402,26 @@ export const getPortalData = async (req, res) => {
             });
         }
 
-        const edit = editability(submission, form, cfg);
+        // El rol vive en la cuenta, no en la inscripción: es lo que el webhook
+        // de Stripe mantiene. Si una inscripción quedó pagada antes de que
+        // existiera el rol (o el webhook falló en otorgarlo), se repara aquí.
+        const accountRes = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+        let account = accountRes.rows[0];
+        if (submission.status === 'paid' && account?.role !== APPLICANT_ROLES.MANAGER && account?.role !== APPLICANT_ROLES.SUSPENDED) {
+            if (await grantProjectManagerRole(submission, { reason: 'reparación al abrir el panel' })) {
+                const refreshed = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+                account = refreshed.rows[0] || account;
+            }
+        }
+
+        const edit = editability(submission, form, cfg, account);
         res.json({
+            role: account?.role || APPLICANT_ROLES.APPLICANT,
+            roleLabel: {
+                [APPLICANT_ROLES.MANAGER]: 'Gestor de Proyectos',
+                [APPLICANT_ROLES.SUSPENDED]: 'Gestor de Proyectos (suspendido)',
+                [APPLICANT_ROLES.APPLICANT]: 'Postulante',
+            }[account?.role || APPLICANT_ROLES.APPLICANT],
             submission: {
                 id: submission.id, publicRef: submission.publicRef,
                 projectName: submission.projectName, clubName: submission.clubName,
@@ -439,7 +461,10 @@ export const saveForm = async (req, res) => {
         if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
 
         const form = await loadForm(submission.id);
-        const edit = editability(submission, form, cfg);
+        // La autorización de escribir se revisa SIEMPRE en el servidor, con la
+        // cuenta en la mano: el navegador no decide si el rol permite editar.
+        const { rows: accRows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+        const edit = editability(submission, form, cfg, accRows[0]);
         if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
 
         const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
@@ -485,7 +510,10 @@ export const submitForm = async (req, res) => {
         if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
 
         const form = await loadForm(submission.id);
-        const edit = editability(submission, form, cfg);
+        // La autorización de escribir se revisa SIEMPRE en el servidor, con la
+        // cuenta en la mano: el navegador no decide si el rol permite editar.
+        const { rows: accRows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+        const edit = editability(submission, form, cfg, accRows[0]);
         if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
 
         const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : (form?.answers || {});

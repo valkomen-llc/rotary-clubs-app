@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock,
     ExternalLink, FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock,
-    Mail, Plus, Save, Send, Trash2, Wallet,
+    Mail, Plus, Save, Send, ShieldCheck, Trash2, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
@@ -43,6 +43,10 @@ interface Template { title: string; intro: string; sections: SectionDef[] }
 type Answers = Record<string, Record<string, any>>;
 
 interface PortalData {
+    // Rol del postulante: 'applicant' hasta que el pago queda confirmado,
+    // 'project_manager' después, 'project_manager_suspended' tras un reembolso.
+    role?: string;
+    roleLabel?: string;
     submission: {
         id: string; publicRef: string; projectName: string; clubName: string;
         district: string; email: string; paymentStatus: string; paidAt: string | null;
@@ -241,6 +245,11 @@ const MiProyecto = () => {
                         <p className="mt-1 text-sm text-white/85">
                             {data.submission.clubName} · {data.submission.district} · Ref. {data.submission.publicRef}
                         </p>
+                        {data.roleLabel && (
+                            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide">
+                                <ShieldCheck size={12} /> {data.roleLabel}
+                            </span>
+                        )}
                     </div>
                     <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
                         <LogOut size={14} /> Salir
@@ -264,8 +273,11 @@ const MiProyecto = () => {
                         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                             <Wallet size={13} /> Inscripción
                         </p>
-                        <p className="mt-1 text-lg font-bold text-emerald-600">
-                            {data.submission.paymentStatus === 'paid' ? 'Pago confirmado' : 'Pendiente de pago'}
+                        <p className={`mt-1 text-lg font-bold ${data.submission.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {data.submission.paymentStatus === 'paid' ? 'Pago confirmado'
+                                : data.submission.paymentStatus === 'failed' ? 'Pago rechazado'
+                                : data.submission.paymentStatus === 'refunded' ? 'Reembolsado'
+                                : 'Pendiente de pago'}
                         </p>
                         <p className="text-xs text-slate-500">{fmtCop(data.submission.amountCop)} COP · {fmtDateTime(data.submission.paidAt)}</p>
                     </div>
