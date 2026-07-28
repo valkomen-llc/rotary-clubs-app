@@ -13,6 +13,7 @@ import React, { useEffect, useState } from 'react';
 import {
     Save, Loader2, Plus, Trash2, RefreshCw, Calendar, MapPin,
     CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2, Ticket,
+    ArrowUp, ArrowDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -108,6 +109,15 @@ const toRoman = (value: number): string => {
         while (n >= amount) { out += symbol; n -= amount; }
         return out;
     }, '');
+};
+
+/** Mueve un elemento de una lista a otra posición, sin mutar el original. */
+const move = <T,>(list: T[], from: number, to: number): T[] => {
+    if (to < 0 || to >= list.length) return list;
+    const out = [...list];
+    const [item] = out.splice(from, 1);
+    out.splice(to, 0, item);
+    return out;
 };
 
 // Equivalente en dólares de un precio en pesos, con la TRM que se esté viendo.
@@ -335,6 +345,9 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
             </Card>
 
             <Card title="Distritos habilitados" icon={Users}>
+                <p className="mb-3 text-xs text-slate-500">
+                    Aparecen en la lista del formulario en este mismo orden. Usa las flechas para acomodarlos.
+                </p>
                 <div className="space-y-2">
                     {config.districts.map((d, i) => (
                         <div key={i} className="flex items-center gap-2">
@@ -343,6 +356,20 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                                 onChange={e => patch('districts', config.districts.map((x, ix) => ix === i ? { value: e.target.value, label: e.target.value } : x))}
                                 className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
+                            <button
+                                type="button"
+                                title="Subir"
+                                disabled={i === 0}
+                                onClick={() => patch('districts', move(config.districts, i, i - 1))}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            ><ArrowUp size={15} /></button>
+                            <button
+                                type="button"
+                                title="Bajar"
+                                disabled={i === config.districts.length - 1}
+                                onClick={() => patch('districts', move(config.districts, i, i + 1))}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            ><ArrowDown size={15} /></button>
                             <button
                                 onClick={() => patch('districts', config.districts.filter((_, ix) => ix !== i))}
                                 className="rounded-lg p-2 text-red-500 hover:bg-red-50"

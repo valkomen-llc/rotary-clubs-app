@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.614.0 | 2026-07-28 (Fondo de la Feria con la textura de concreto del home)
+// UI V4.615.0 | 2026-07-28 (Distrito 4271 primero y flechas para ordenar distritos)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.615.0',
+        title: 'El Distrito 4271 va primero en la lista del formulario ↕️',
+        description: 'En el formulario de postulación la lista de distritos mostraba primero el 4281 y después el 4271; ahora va al revés, como corresponde. El cambio se aplica también si esa lista ya estaba guardada con el orden anterior. Y para que esto no requiera un ajuste técnico la próxima vez, la pestaña Convocatoria ahora tiene flechas para subir y bajar cada distrito: el orden en que queden ahí es el orden exacto en que los ve el postulante. Si ya habían escrito su propia lista de distritos, no se toca.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulario', 'distritos', 'orden', 'convocatoria', 'update'],
+        type: 'update'
+    },
     {
         version: '4.614.0',
         title: 'El formulario se apoya sobre la misma textura del home 🧱',
