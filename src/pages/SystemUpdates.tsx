@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.610.0 | 2026-07-28 (Sin tarjeta de plazo límite y presentación de 5 a 6 minutos)
+// UI V4.611.0 | 2026-07-28 (Selector de indicativo compacto, CADRES y paso 1 con nombre completo)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.611.0',
+        title: 'Más espacio para el número, y la fecha de octubre ya dice CADRES 📞',
+        description: 'Tres correcciones en la página de postulación. La casilla del número de contacto le estaba robando casi todo el ancho al indicativo: ahora el selector de país muestra solamente la bandera y el indicativo (🇨🇴 +57), sin repetir el nombre del país, y se quitó el "+57" que aparecía otra vez pegado al campo. Así queda el espacio que corresponde para escribir el número. Al desplegarlo se sigue viendo el nombre completo de cada país, para poder encontrarlo entre los 56 de la lista, y en el celular se abre el selector propio del teléfono. Segundo, la fecha del 15 de octubre decía "Comunicación de los clubes con los padres" por un error de transcripción: son los CADRES, y así queda escrito —también se corrige solo si esa fecha ya estaba guardada con el texto equivocado. Y tercero, el primer paso del formulario ahora se llama "Datos del representante del club que postula el proyecto", para que quede claro de quién son los datos que se piden ahí.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulario', 'telefono', 'indicativo', 'cadres', 'textos', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.610.0',
         title: 'El formulario deja de repetir el plazo y la presentación pasa a ser de 5 a 6 minutos ⏱️',
