@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.617.0",
-  "cache_bust": "2026-07-28 (El formulario maestro del panel del club pasa a reproducir el formulario oficial en Word de la feria: seis secciones (identificacion, objetivos, necesidades y beneficiarios, sostenibilidad y comunidad, presupuesto, contacto) con las mismas preguntas, el mismo orden y los mismos limites de extension. Nuevo tipo de campo matrix (tabla de filas fijas x columnas) para el cuadro de presupuesto con los seis conceptos en pesos y dolares. La descarga en Word replica el diseno de referencia: titulo azul centrado, etiquetas en azul mayuscula, areas de interes como tabla con casillas marcadas, tabla de presupuesto, texto de cierre y recuadro con los datos de la cuenta; logos del encabezado opcionales por URL. La precarga desde la postulacion pasa a guiarse por el mapa prefill de la plantilla. La plantilla lleva version: una copia guardada sin version (plantilla generica anterior, sin editor en el panel) se reemplaza al leerla.)",
+  "version": "4.618.0",
+  "cache_bust": "2026-07-28 (Tres cambios en el modulo de la Feria: (1) nueva tarjeta \"Plantilla del correo\" en la pestana Convocatoria — logo de cabecera, logo y texto del pie, y remitente propio (nombre, correo y correo de respuesta). Si el proveedor rechaza el remitente propio (dominio sin verificar) el envio se reintenta con el de la plataforma y queda anotado en el log, para que el comprobante llegue igual. Los logos solo aceptan URLs http(s). (2) Acceso al panel del club recuperable: una inscripcion que quedo sin cuenta ya no deja al club por fuera — \"Olvide mi contrasena\" le crea la cuenta y le manda el enlace, y el regreso de Stripe tambien la crea. Una cuenta sin contrasena elegida responde con un mensaje explicito en vez de \"correo o contrasena incorrectos\", y el panel lleva directo a la pantalla de recuperacion. (3) Cuando la creacion de la cuenta falla, queda registrado con la referencia de la inscripcion.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.617.0 | 2026-07-28 (Formulario maestro igual al formulario oficial en Word)
+// UI V4.618.0 | 2026-07-28 (Plantilla del correo con logos y remitente propio, y acceso al panel recuperable)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.618.0',
+        title: 'El correo de confirmación ya se personaliza, y nadie se queda por fuera de su panel 📧🔑',
+        description: 'La pestaña Convocatoria tiene ahora una tarjeta "Plantilla del correo" para dejar el comprobante con la identidad de la feria: un logo arriba, sobre el texto "Comprobante de inscripción", y otro al pie del cuerpo del correo, con una línea de texto opcional debajo. Los logos se cargan pegando el enlace de una imagen ya publicada. Ahí mismo se define el remitente —nombre, correo y a dónde llegan las respuestas—, para que el club reciba el comprobante desde una dirección del propio dominio de la feria y no desde la de la plataforma. Si el dominio todavía no está verificado con el proveedor de envíos, el correo no se pierde: se reintenta solo con el remitente de la plataforma y queda anotado. También se corrigió un punto muerto en el acceso al panel: si por cualquier motivo una inscripción quedaba sin cuenta, el club no podía entrar ni recuperar su contraseña, porque "Olvidé mi contraseña" no encontraba nada y respondía como si todo estuviera bien. Ahora esa opción le crea la cuenta y le envía el enlace para definir su contraseña; el regreso desde Stripe también la crea; y si la cuenta existe pero aún no tiene contraseña elegida, el sistema lo dice con todas sus letras y lleva directo a la pantalla de recuperación, en vez de repetir "correo o contraseña incorrectos".',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'correo', 'plantilla', 'remitente', 'panel del club', 'acceso', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.617.0',
         title: 'La formulación del proyecto ahora es el formulario oficial de la feria 📄',

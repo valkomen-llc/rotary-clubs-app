@@ -13,7 +13,7 @@ import React, { useEffect, useState } from 'react';
 import {
     Save, Loader2, Plus, Trash2, RefreshCw, Calendar, MapPin,
     CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2, Ticket,
-    ArrowUp, ArrowDown,
+    ArrowUp, ArrowDown, Mail, AlertTriangle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -61,7 +61,11 @@ export interface FairConfig {
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     trm: { provider: string; fallbackProviders: string[]; manualRate: number | null; refreshHours: number };
     content: { title: string; subtitle: string; intro: string; requirements: string[]; note: string; priorityNote: string };
-    notifications: { adminEmails: string[]; sendReceipt: boolean };
+    notifications: {
+        adminEmails: string[]; sendReceipt: boolean;
+        branding?: { headerLogoUrl?: string; footerLogoUrl?: string; footerText?: string };
+        sender?: { name?: string; email?: string; replyTo?: string };
+    };
     access: { admins: string[]; finance: string[]; reviewers: string[] };
     registrationPanel?: Partial<RegistrationPanelConfig>;
     clubId: string | null;
@@ -515,6 +519,66 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                         Enviar comprobante por correo al postulante
                     </label>
                 </div>
+            </Card>
+
+            <Card title="Plantilla del correo" icon={Mail}>
+                <p className="mb-4 text-xs text-slate-500">
+                    Así se ve el comprobante que recibe el club al confirmarse su pago. Los logos se cargan por
+                    enlace: pega la dirección de una imagen ya publicada (por ejemplo, la del logo en este mismo sitio).
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <Input
+                        label="Logo de la cabecera"
+                        value={config.notifications?.branding?.headerLogoUrl || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.branding.headerLogoUrl', e.target.value)}
+                        hint="Va sobre el texto “Comprobante de inscripción”. Se muestra hasta 230 × 70 px."
+                    />
+                    <Input
+                        label="Logo del pie"
+                        value={config.notifications?.branding?.footerLogoUrl || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.branding.footerLogoUrl', e.target.value)}
+                        hint="Va al final del cuerpo del correo. Se muestra hasta 200 × 64 px."
+                    />
+                    <Input
+                        label="Texto bajo el logo del pie (opcional)"
+                        value={config.notifications?.branding?.footerText || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.branding.footerText', e.target.value)}
+                        hint="Ej: una línea de contacto o el lema de la feria."
+                    />
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <Input
+                        label="Nombre del remitente"
+                        value={config.notifications?.sender?.name || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.sender.name', e.target.value)}
+                        hint="Es lo que el club ve como “De:”. Si lo dejas vacío se usa el nombre de la edición."
+                    />
+                    <Input
+                        label="Correo del remitente"
+                        type="email"
+                        value={config.notifications?.sender?.email || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.sender.email', e.target.value.trim())}
+                        hint="Ej: inscripciones@tudominio.org"
+                    />
+                    <Input
+                        label="Correo para respuestas (opcional)"
+                        type="email"
+                        value={config.notifications?.sender?.replyTo || ''}
+                        onChange={(e: ChangeEvent) => patch('notifications.sender.replyTo', e.target.value.trim())}
+                        hint="A dónde llegan las respuestas del club si escribe de vuelta."
+                    />
+                </div>
+                {!!config.notifications?.sender?.email && (
+                    <p className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-900">
+                        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                        <span>
+                            El dominio de ese correo debe estar verificado con el proveedor de envíos. Si no lo está,
+                            el envío se reintenta automáticamente con el remitente de la plataforma para que el
+                            comprobante llegue igual, y queda anotado en el registro del servidor.
+                        </span>
+                    </p>
+                )}
             </Card>
             </fieldset>
 

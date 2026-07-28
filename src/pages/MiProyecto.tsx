@@ -587,6 +587,14 @@ const PortalAccess = ({ onToken, notice }: { onToken: (t: string) => void; notic
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
             });
             const data = await res.json();
+            // El proyecto existe pero todavía no tiene contraseña elegida: se
+            // lleva directo a la pantalla de recuperación con el correo puesto,
+            // en vez de dejarlo probando credenciales.
+            if (!res.ok && data?.needsPassword) {
+                setMode('forgot');
+                setMsg({ kind: 'error', text: data.error });
+                return;
+            }
             if (!res.ok) throw new Error(data?.error || 'No pudimos completar la acción.');
             if (data.token) { onToken(data.token); return; }
             setMsg({ kind: 'ok', text: data.message || 'Listo.' });

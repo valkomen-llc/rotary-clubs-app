@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.617.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.618.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -135,6 +135,20 @@ export const DEFAULT_CONFIG = {
     notifications: {
         adminEmails: [],
         sendReceipt: true,
+        // v4.618 — Plantilla del correo, editable desde el panel.
+        branding: {
+            headerLogoUrl: '',   // logo sobre "Comprobante de inscripción"
+            footerLogoUrl: '',   // logo al pie del cuerpo del correo
+            footerText: '',      // línea opcional bajo el logo del pie
+        },
+        // Remitente. Si el dominio no está verificado con el proveedor de
+        // correo, el envío se reintenta con el remitente de la plataforma para
+        // que el comprobante llegue igual.
+        sender: {
+            name: '',
+            email: '',
+            replyTo: '',
+        },
     },
     // Perfiles del módulo de gestión. El rol 'administrator' de la plataforma
     // siempre tiene acceso total; estas listas otorgan permisos adicionales
@@ -1373,11 +1387,11 @@ export const confirmPaidSession = async (session) => {
         }
         const admins = Array.isArray(cfg.notifications?.adminEmails) ? cfg.notifications.adminEmails.filter(isEmail) : [];
         if (admins.length) {
-            await EmailService.sendPlatformEmail({
+            await sendFairEmail({
                 to: admins.join(','),
                 subject: `Nueva inscripción pagada — ${paid.publicRef} · ${paid.clubName}`,
                 html: buildAdminNotificationHtml(paid, cfg),
-                from: PLATFORM_SENDER,
+                cfg,
             }).catch(() => {});
         }
     } catch (err) {
@@ -1541,6 +1555,31 @@ const fmtAmount = (n, currency) =>
     String(currency || 'usd').toLowerCase() === 'cop' ? fmtCop(n) : fmtUsd(n);
 const esc = (s) => String(s ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Sólo se admiten URLs http(s) para los logos: evita inyectar cualquier cosa
+// en el HTML del correo desde la configuración.
+const safeImageUrl = (url) => {
+    const raw = String(url || '').trim();
+    return /^https?:\/\/[^\s"'<>]+$/i.test(raw) ? raw : '';
+};
+
+/** Logo sobre "Comprobante de inscripción", si el admin configuró uno. */
+const headerLogoHtml = (cfg) => {
+    const url = safeImageUrl(cfg?.notifications?.branding?.headerLogoUrl);
+    if (!url) return '';
+    return `<div style="margin-bottom:18px"><img src="${url}" alt="" style="max-width:230px;max-height:70px;height:auto;display:inline-block"></div>`;
+};
+
+/** Logo y texto del pie del cuerpo del correo. */
+const footerBrandingHtml = (cfg) => {
+    const url = safeImageUrl(cfg?.notifications?.branding?.footerLogoUrl);
+    const text = String(cfg?.notifications?.branding?.footerText || '').trim();
+    if (!url && !text) return '';
+    return `<div style="text-align:center;padding:24px 32px 4px;border-top:1px solid #e5e7eb">
+      ${url ? `<img src="${url}" alt="" style="max-width:200px;max-height:64px;height:auto;display:inline-block">` : ''}
+      ${text ? `<div style="margin-top:10px;font-size:13px;color:#6b7280">${esc(text)}</div>` : ''}
+    </div>`;
+};
+
 const buildReceiptHtml = (s, cfg) => {
     const primary = '#17458F';
     const accent = '#F7A81B';
@@ -1553,6 +1592,7 @@ const buildReceiptHtml = (s, cfg) => {
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;max-width:620px;margin:0 auto;background:#f8fafc;padding:24px 0">
   <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06)">
     <div style="background:${primary};color:#fff;padding:34px 32px;text-align:center">
+      ${headerLogoHtml(cfg)}
       <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8;margin-bottom:8px">Comprobante de inscripción</div>
       <h1 style="margin:0;font-size:24px;font-weight:700;color:#fff">${esc(edition)}</h1>
       ${city ? `<div style="margin-top:6px;font-size:14px;opacity:.85">${esc(city)}, ${esc(cfg.edition?.country || 'Colombia')}</div>` : ''}
@@ -1589,6 +1629,7 @@ const buildReceiptHtml = (s, cfg) => {
         </p>
       </div>
     </div>
+    ${footerBrandingHtml(cfg)}
     <div style="background:#f8fafc;padding:18px 32px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e5e7eb">
       Comprobante automático · ${esc(edition)}<br>
       <span style="font-family:Menlo,monospace;font-size:11px;color:#cbd5e1">tx: ${esc((s.stripePaymentIntentId || s.stripeSessionId || '').slice(-18))}</span>
@@ -1611,30 +1652,58 @@ const buildAdminNotificationHtml = (s, cfg) => `
   </ul>
 </div>`;
 
-// Reenvío del comprobante desde el módulo de gestión: misma plantilla que el
-// envío automático, devolviendo el resultado para poder informarlo en la UI.
-export const sendReceiptFor = async (submission, cfg) => {
+/**
+ * Remitente configurado en la convocatoria, en formato `"Nombre" <correo>`.
+ * Devuelve null si no hay uno propio: entonces se usa el de la plataforma.
+ */
+export const resolveSender = (cfg) => {
+    const email = String(cfg?.notifications?.sender?.email || '').trim();
+    if (!isEmail(email)) return null;
+    const name = String(cfg?.notifications?.sender?.name || cfg?.edition?.name || 'Feria de Proyectos').trim();
+    return `"${name.replace(/"/g, '')}" <${email}>`;
+};
+
+/**
+ * Envío de los correos del módulo. Si la convocatoria define un remitente
+ * propio se usa ese; y si el proveedor lo rechaza —típicamente porque el
+ * dominio todavía no está verificado— se reintenta con el remitente de la
+ * plataforma, para que el correo llegue igual en vez de perderse.
+ */
+export const sendFairEmail = async ({ to, subject, html, cfg }) => {
+    const custom = resolveSender(cfg);
+    const replyTo = String(cfg?.notifications?.sender?.replyTo || '').trim() || undefined;
+
+    const attempt = (from) => EmailService.sendPlatformEmail({ to, subject, html, from, replyTo });
+
     try {
-        return await EmailService.sendPlatformEmail({
-            to: submission.email,
-            subject: `Inscripción confirmada ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
-            html: buildReceiptHtml(submission, cfg),
-            from: PLATFORM_SENDER,
-        });
+        if (custom) {
+            const first = await attempt(custom);
+            if (first?.success) return first;
+            console.warn(`[project-fair] El remitente propio (${custom}) fue rechazado: ${first?.error || 'sin detalle'}. Reintento con el remitente de la plataforma.`);
+            const fallback = await attempt(PLATFORM_SENDER);
+            return fallback?.success
+                ? { ...fallback, usedFallbackSender: true }
+                : fallback;
+        }
+        return await attempt(PLATFORM_SENDER);
     } catch (error) {
         return { success: false, error: error?.message || 'Error enviando el correo' };
     }
 };
 
+// Reenvío del comprobante desde el módulo de gestión: misma plantilla que el
+// envío automático, devolviendo el resultado para poder informarlo en la UI.
+export const sendReceiptFor = async (submission, cfg) => sendFairEmail({
+    to: submission.email,
+    subject: `Inscripción confirmada ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
+    html: buildReceiptHtml(submission, cfg),
+    cfg,
+});
+
 const sendReceiptEmail = async (submission, cfg) => {
     if (!isEmail(submission.email)) return;
-    const result = await EmailService.sendPlatformEmail({
-        to: submission.email,
-        subject: `Inscripción confirmada ${submission.publicRef} — ${cfg.edition?.name || 'Feria de Proyectos Rotary Colombia'}`,
-        html: buildReceiptHtml(submission, cfg),
-        from: PLATFORM_SENDER,
-    });
-    if (result?.success) console.log(`[project-fair] ✉️ Comprobante enviado a ${submission.email}`);
+    const result = await sendReceiptFor(submission, cfg);
+    if (result?.success) console.log(`[project-fair] ✉️ Comprobante enviado a ${submission.email}${result.usedFallbackSender ? ' (con el remitente de la plataforma)' : ''}`);
     else console.error('[project-fair] Comprobante NO enviado:', result?.error || 'desconocido');
 };
 

@@ -17,17 +17,15 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
-import EmailService from '../services/EmailService.js';
-import { ensureTables, logEvent, readConfigForAdmin } from './projectFairController.js';
+import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail } from './projectFairController.js';
 import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairPortalController] v4.617.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
+console.log('[projectFairPortalController] v4.618.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
 const PORTAL_AUDIENCE = 'project-fair-portal';
 const TOKEN_TTL = '30d';
-const PLATFORM_SENDER = '"Feria de Proyectos Rotary Colombia" <noreply@clubplatform.org>';
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const isEmail = (v) => /^\S+@\S+\.\S+$/.test(String(v || ''));
@@ -73,8 +71,37 @@ export const createAccountFor = async (submission, password) => {
     } catch (err) {
         // Correo ya usado por otra postulación: no es un error fatal del
         // formulario, la inscripción se guarda igual y el club puede entrar
-        // con la cuenta que ya tenía.
-        console.warn('[project-fair-portal] No pude crear la cuenta:', err?.message);
+        // con la cuenta que ya tenía. Se registra con la referencia para poder
+        // rastrearlo: una inscripción sin cuenta deja al club sin acceso.
+        console.error(`[project-fair-portal] ⚠️ La inscripción ${submission.publicRef || submission.id} (${submission.email}) quedó SIN cuenta: ${err?.message}`);
+        return null;
+    }
+};
+
+// Hash imposible de acertar: marca una cuenta creada por el sistema (al volver
+// de Stripe o al recuperar la contraseña) que todavía no tiene una contraseña
+// elegida por el club. No se puede iniciar sesión con ella; sólo entrar por el
+// enlace de recuperación o por la sesión de pago.
+const UNUSABLE_HASH = '!';
+
+/**
+ * Devuelve la cuenta de una inscripción, creándola si no existe. Se usa cuando
+ * el club llega verificado por otra vía (sesión de pago pagada, o recuperación
+ * de contraseña sobre su propio correo) pero su inscripción quedó sin cuenta.
+ * Devuelve null si ese correo ya pertenece a otra postulación.
+ */
+const ensureAccountFor = async (submission) => {
+    const existing = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
+    if (existing.rows[0]) return existing.rows[0];
+    try {
+        const { rows } = await db.query(`
+            INSERT INTO "ProjectFairAccount" ("submissionId", email, "passwordHash", "clubName")
+            VALUES ($1,$2,$3,$4)
+            RETURNING *
+        `, [submission.id, String(submission.email).toLowerCase(), UNUSABLE_HASH, submission.clubName]);
+        return rows[0];
+    } catch (err) {
+        console.warn('[project-fair-portal] No pude crear la cuenta pendiente:', err?.message);
         return null;
     }
 };
@@ -98,9 +125,18 @@ export const login = async (req, res) => {
 
         const { rows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [email]);
         const account = rows[0];
+        // Una cuenta creada por el sistema todavía no tiene contraseña elegida:
+        // se le dice explícitamente que la defina, en vez de dejarlo probando
+        // credenciales que nunca van a funcionar.
+        if (account && account.passwordHash === UNUSABLE_HASH) {
+            return res.status(409).json({
+                error: 'Tu proyecto está registrado pero aún no tiene contraseña. Usa "Olvidé mi contraseña" para crear una.',
+                needsPassword: true,
+            });
+        }
         // Mismo mensaje para correo inexistente y contraseña incorrecta: no se
         // revela qué correos están registrados.
-        const ok = account && await bcrypt.compare(password, account.passwordHash);
+        const ok = account && await bcrypt.compare(password, account.passwordHash).catch(() => false);
         if (!ok) return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
 
         await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
@@ -141,11 +177,19 @@ export const claim = async (req, res) => {
         }
 
         const accountRes = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submissionId]);
-        const account = accountRes.rows[0];
-        if (!account) return res.status(404).json({ error: 'Esta inscripción no tiene una cuenta creada.', needsPassword: true });
+        let account = accountRes.rows[0];
+
+        // Si la inscripción quedó sin cuenta (postulaciones anteriores al panel,
+        // o un choque de correo al crearla), se crea ahora: la sesión de pago ya
+        // probó que quien llega es el dueño de la inscripción. Queda sin
+        // contraseña utilizable hasta que el club defina una desde su panel.
+        if (!account) {
+            account = await ensureAccountFor(submission);
+            if (!account) return res.status(409).json({ error: 'Este correo ya tiene una cuenta de otra postulación. Ingresa con ella o usa "Olvidé mi contraseña".' });
+        }
 
         await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
-        res.json({ token: signToken(account), email: account.email, clubName: account.clubName });
+        res.json({ token: signToken(account), email: account.email, clubName: account.clubName, needsPassword: !account.passwordHash || account.passwordHash === UNUSABLE_HASH });
     } catch (error) {
         console.error('[project-fair-portal] claim:', error);
         res.status(500).json({ error: 'No pudimos abrir tu panel.' });
@@ -162,8 +206,19 @@ export const forgotPassword = async (req, res) => {
         if (!isEmail(email)) return res.json(generic);
 
         const { rows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [email]);
-        const account = rows[0];
-        if (!account) return res.json(generic);
+        let account = rows[0];
+
+        // Sin cuenta pero con inscripción: el club quedó sin forma de entrar.
+        // Se le crea la cuenta y se le manda el enlace para que defina su
+        // contraseña, en vez de dejarlo en un callejón sin salida.
+        if (!account) {
+            const pending = await db.query(
+                'SELECT * FROM "ProjectFairSubmission" WHERE lower(email) = $1 ORDER BY "createdAt" DESC LIMIT 1', [email]);
+            if (!pending.rows[0]) return res.json(generic);
+            account = await ensureAccountFor(pending.rows[0]);
+            if (!account) return res.json(generic);
+            console.log(`[project-fair-portal] Cuenta creada al recuperar contraseña para ${email} (inscripción ${pending.rows[0].publicRef})`);
+        }
 
         const token = jwt.sign({ sub: account.id, purpose: 'reset' }, JWT_SECRET, { expiresIn: '2h' });
         await db.query('UPDATE "ProjectFairAccount" SET "resetToken" = $1, "resetExpiry" = NOW() + interval \'2 hours\' WHERE id = $2', [token, account.id]);
@@ -171,10 +226,10 @@ export const forgotPassword = async (req, res) => {
         const cfg = await readConfigForAdmin();
         const origin = req.headers.origin || 'https://app.clubplatform.org';
         const link = `${origin}${cfg.portal?.path || '/mi-proyecto'}?reset=${encodeURIComponent(token)}`;
-        await EmailService.sendPlatformEmail({
+        await sendFairEmail({
             to: account.email,
             subject: `Restablece tu contraseña — ${cfg.edition?.name || 'Feria de Proyectos'}`,
-            from: PLATFORM_SENDER,
+            cfg,
             html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937">
                 <h2 style="color:#17458F">Restablece tu contraseña</h2>
                 <p>Recibimos una solicitud para restablecer la contraseña del panel de tu proyecto.</p>
