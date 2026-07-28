@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.612.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.615.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -79,9 +79,11 @@ export const DEFAULT_CONFIG = {
         concept: 'Inscripción de proyecto',
         maxProjectsPerClub: 1,
     },
+    // El orden es el que ve el postulante en la lista desplegable. Se puede
+    // reordenar desde la pestaña Convocatoria.
     districts: [
-        { value: 'Rotary Distrito 4281', label: 'Rotary Distrito 4281' },
         { value: 'Rotary Distrito 4271', label: 'Rotary Distrito 4271' },
+        { value: 'Rotary Distrito 4281', label: 'Rotary Distrito 4281' },
     ],
     // Las siete Áreas de Enfoque de Rotary International. `key` es el valor
     // que se almacena (estable para búsquedas/clasificación) y `label` el
@@ -581,6 +583,17 @@ const normalizeSavedConfig = (saved) => {
                 schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
             },
         };
+    }
+
+    // Los dos distritos venían en el orden equivocado por defecto (4281 antes
+    // que 4271). Si la fila guardada tiene exactamente esa pareja en ese orden,
+    // se invierte al leerla. Cualquier otra lista —con más distritos, con otros
+    // nombres o ya ordenada— queda intacta, y el admin puede reordenarla desde
+    // la pestaña Convocatoria.
+    if (Array.isArray(out?.districts) && out.districts.length === 2
+        && out.districts[0]?.value === 'Rotary Distrito 4281'
+        && out.districts[1]?.value === 'Rotary Distrito 4271') {
+        out = { ...out, districts: [out.districts[1], out.districts[0]] };
     }
 
     return out;
