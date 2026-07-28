@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.615.0",
-  "cache_bust": "2026-07-28 (Los distritos del formulario de postulacion pasan a listarse con el 4271 primero y el 4281 despues. Se corrige el orden por defecto y, al leer la configuracion, tambien la fila guardada que tenga exactamente esa pareja en el orden viejo (cualquier otra lista queda intacta). Ademas la pestana Convocatoria gana flechas para subir/bajar distritos, asi el orden se ajusta desde el admin sin tocar codigo. Solo presentacion.)",
+  "version": "4.616.0",
+  "cache_bust": "2026-07-28 (Al pasar de un paso a otro del formulario de postulacion, la pagina ya no salta al tope: hace scroll al inicio de la tarjeta del formulario, asi el paso siguiente queda a la vista sin tener que pasar otra vez por el texto informativo. Aplica tambien al boton Anterior y a la pantalla de pago. Se usa scroll-mt-32 para que el menu superior no tape el encabezado de la tarjeta y requestAnimationFrame para apuntar a la tarjeta recien montada. Solo presentacion.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

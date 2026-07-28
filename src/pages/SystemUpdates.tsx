@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.615.0 | 2026-07-28 (Distrito 4271 primero y flechas para ordenar distritos)
+// UI V4.616.0 | 2026-07-28 (Al cambiar de paso el formulario ya no salta al tope)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.616.0',
+        title: 'Al pasar de un paso a otro, el formulario ya no te devuelve al principio 🎯',
+        description: 'Al terminar el paso 1 y pulsar "Siguiente", la página subía hasta el tope y había que volver a bajar pasando por todo el texto informativo para retomar el diligenciamiento. Ahora salta directo al inicio de la tarjeta del formulario, así que el paso 2 queda a la vista de inmediato y no se pierde el hilo. Lo mismo aplica al botón "Anterior" y al llegar a la pantalla de pago. La tarjeta queda además con el espacio suficiente arriba para que el menú del sitio no le tape el encabezado con el número de paso.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulario', 'usabilidad', 'scroll', 'pasos', 'update'],
+        type: 'update'
+    },
     {
         version: '4.615.0',
         title: 'El Distrito 4271 va primero en la lista del formulario ↕️',
