@@ -46,6 +46,9 @@ tmp/
 *.py
 *.cjs
 *.mjs
+# Los guardianes del despliegue SÍ van al repositorio: sin ellos el
+# `prebuild` falla y, peor, se pierde la protección contra el borrado de datos.
+!scripts/*.mjs
 check_*.js
 test_*.js
 test-*.js
