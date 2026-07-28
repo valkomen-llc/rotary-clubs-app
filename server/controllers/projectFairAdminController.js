@@ -28,6 +28,7 @@ import {
     ensureTables, logEvent, readConfigForAdmin, sendReceiptFor, buildSubmissionSnapshot,
     getAdminConfig, saveAdminConfig,
 } from './projectFairController.js';
+import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 
 console.log('[projectFairAdminController] v4.598.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
@@ -789,6 +790,118 @@ export const getSubmissionSnapshot = withAccess(async (req, res, { cfg, access }
     res.json({ ...snapshot, edition: cfg.edition, generatedAt: new Date().toISOString() });
 });
 
+// ── Formulación: formularios maestros de los clubes (v4.608) ─────────
+// GET /admin/formularios — estado de la formulación por postulación.
+// Filtros propios (estado del formulario y búsqueda): los del listado de
+// postulaciones no aplican aquí porque esta consulta une tres tablas.
+export const listMasterForms = withAccess(async (req, res, { access }) => {
+    const where = [];
+    const params = [];
+    const formStatus = clean(req.query.formStatus, 30);
+    if (formStatus === 'not_started') where.push('f.id IS NULL');
+    else if (formStatus === 'draft') where.push(`f.status = 'draft'`);
+    else if (formStatus === 'submitted') where.push(`f.status = 'submitted'`);
+    else if (formStatus === 'paid_pending') where.push(`s.status = 'paid' AND (f.id IS NULL OR f.status = 'draft')`);
+
+    const search = clean(req.query.search, 160);
+    if (search) {
+        params.push(`%${search}%`);
+        const i = params.length;
+        where.push(`(s."clubName" ILIKE $${i} OR s."projectName" ILIKE $${i} OR s.email ILIKE $${i} OR s."publicRef" ILIKE $${i})`);
+    }
+
+    const { rows } = await db.query(`
+        SELECT s.id, s."publicRef", s."projectName", s."clubName", s.district, s.email,
+               s.status AS "paymentStatus", s."workflowStatus", s."budgetUsd", s."createdAt",
+               f.status AS "formStatus", f."completionPct", f."submittedAt", f."lastEditedAt",
+               f."lockedAt", f."reopenedAt",
+               (a.id IS NOT NULL) AS "hasAccount", a."lastLoginAt"
+        FROM "ProjectFairSubmission" s
+        LEFT JOIN "ProjectFairMasterForm" f ON f."submissionId" = s.id
+        LEFT JOIN "ProjectFairAccount" a ON a."submissionId" = s.id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY f."submittedAt" DESC NULLS LAST, s."createdAt" DESC
+    `, params);
+
+    const stats = rows.reduce((acc, r) => {
+        const key = r.formStatus || 'not_started';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {});
+    res.json({ forms: rows.map(r => ({ ...r, budgetUsd: num(r.budgetUsd) })), stats, access });
+});
+
+// GET /admin/postulaciones/:id/form — respuestas + plantilla, para verlo o exportarlo
+export const getMasterForm = withAccess(async (req, res, { cfg, access }) => {
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    const submission = rows[0];
+    if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+
+    const formRes = await db.query('SELECT * FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [req.params.id]);
+    const revisions = await db.query(
+        'SELECT id, action, "actorType", "actorName", "completionPct", "createdAt" FROM "ProjectFairFormRevision" WHERE "submissionId" = $1 ORDER BY "createdAt" DESC LIMIT 30',
+        [req.params.id]
+    );
+
+    res.json({
+        submission: mapRow(submission, access),
+        form: formRes.rows[0] || null,
+        template: cfg.masterForm,
+        revisions: revisions.rows,
+    });
+});
+
+// GET /admin/postulaciones/:id/form.docx — descarga en Word
+export const downloadMasterFormDocx = withAccess(async (req, res, { cfg, access }) => {
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
+    const submission = rows[0];
+    if (!submission) return res.status(404).json({ error: 'Postulación no encontrada' });
+
+    const formRes = await db.query('SELECT * FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [req.params.id]);
+    const buffer = await buildProjectDocx(submission, cfg.masterForm, formRes.rows[0]?.answers || {}, {
+        edition: cfg.edition,
+        includePayments: access.viewPayments,
+    });
+
+    const safeName = `${submission.publicRef || 'proyecto'}-${String(submission.projectName || '').replace(/[^\w\sáéíóúñÁÉÍÓÚÑ-]/g, '').trim().slice(0, 60).replace(/\s+/g, '-')}`;
+    res.setHeader('Content-Type', DOCX_MIME);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.docx"`);
+    res.send(buffer);
+}, 'export');
+
+// POST /admin/postulaciones/:id/form/reopen — devolver la edición al club
+export const reopenMasterForm = withAccess(async (req, res, { access }) => {
+    const reason = clean(req.body?.reason, 500);
+    const { rows } = await db.query(`
+        UPDATE "ProjectFairMasterForm"
+        SET status = 'draft', "reopenedAt" = NOW(), "reopenedBy" = $1, "lockedAt" = NULL, "updatedAt" = NOW()
+        WHERE "submissionId" = $2 RETURNING *
+    `, [actorFrom(req, access).name, req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Este club todavía no ha iniciado su formulario.' });
+
+    await logEvent(req.params.id, {
+        type: 'form_reopened', title: 'Formulación reabierta para edición',
+        detail: reason || null, actor: actorFrom(req, access),
+    });
+    res.json({ form: rows[0] });
+}, 'changeStatus');
+
+// POST /admin/postulaciones/:id/form/lock — cerrar la edición
+export const lockMasterForm = withAccess(async (req, res, { access }) => {
+    const { rows } = await db.query(`
+        UPDATE "ProjectFairMasterForm"
+        SET "lockedAt" = NOW(), "reopenedAt" = NULL, "updatedAt" = NOW()
+        WHERE "submissionId" = $1 RETURNING *
+    `, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Este club todavía no ha iniciado su formulario.' });
+
+    await logEvent(req.params.id, {
+        type: 'form_locked', title: 'Formulación cerrada',
+        detail: clean(req.body?.reason, 500) || null, actor: actorFrom(req, access),
+    });
+    res.json({ form: rows[0] });
+}, 'changeStatus');
+
 // ── Configuración de la convocatoria ─────────────────────────────────
 // v4.601 — Al unificarse los dos módulos, la configuración pasa por el mismo
 // control de permisos que el resto: consultarla exige acceso al módulo y
@@ -802,4 +915,5 @@ export default {
     addFile, deleteFile, syncStripe, resendReceipt,
     getAlerts, getReports, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
+    listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
 };

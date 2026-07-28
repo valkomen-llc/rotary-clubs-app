@@ -15,7 +15,7 @@ import {
     AlertTriangle, ArrowUpDown, BarChart3, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
-    TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings,
+    TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -113,12 +113,12 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
 
 // ════════════════════════════════════════════════════════════════════
 const PostulacionesPagos: React.FC = () => {
-    type Tab = 'dashboard' | 'submissions' | 'alerts' | 'reports' | 'config';
+    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'reports' | 'config';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
         const requested = new URLSearchParams(window.location.search).get('tab');
-        return (['dashboard', 'submissions', 'alerts', 'reports', 'config'] as const).includes(requested as Tab)
+        return (['dashboard', 'submissions', 'forms', 'alerts', 'reports', 'config'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     const [access, setAccess] = useState<Access | null>(null);
@@ -128,6 +128,8 @@ const PostulacionesPagos: React.FC = () => {
     const [overview, setOverview] = useState<any>(null);
     const [alerts, setAlerts] = useState<any>(null);
     const [reports, setReports] = useState<any>(null);
+    const [forms, setForms] = useState<any>(null);
+    const [formFilter, setFormFilter] = useState('all');
 
     const [rows, setRows] = useState<Submission[]>([]);
     const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0, pages: 1 });
@@ -184,6 +186,10 @@ const PostulacionesPagos: React.FC = () => {
         if (tab === 'submissions') loadRows(1);
         if (tab === 'alerts') {
             fetch(`${API}/project-fair/admin/alerts`, { headers: authHeaders() }).then(r => r.json()).then(setAlerts).catch(() => {});
+        }
+        if (tab === 'forms') {
+            fetch(`${API}/project-fair/admin/formularios`, { headers: authHeaders() })
+                .then(r => r.json()).then(setForms).catch(() => toast.error('No se pudo cargar la formulación'));
         }
         if (tab === 'reports') {
             fetch(`${API}/project-fair/admin/reports?${queryString()}`, { headers: authHeaders() }).then(r => r.json()).then(setReports).catch(() => {});
@@ -305,6 +311,82 @@ const PostulacionesPagos: React.FC = () => {
         }
     };
 
+    // ── Descargas y control de la formulación ────────────────────────
+    const downloadDocx = async (row: any) => {
+        try {
+            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form.docx`, { headers: authHeaders() });
+            if (!res.ok) throw new Error((await res.json())?.error || 'No se pudo descargar');
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${row.publicRef}-${String(row.projectName || 'proyecto').slice(0, 40)}.docx`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e: any) { toast.error(e?.message || 'No se pudo descargar el Word'); }
+    };
+
+    // El PDF se arma en el navegador recorriendo la misma plantilla, así el
+    // documento refleja cualquier campo que el administrador haya agregado.
+    const downloadFormPdf = async (row: any) => {
+        try {
+            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form`, { headers: authHeaders() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'No se pudo cargar el formulario');
+            const { default: JsPDF } = await import('jspdf');
+            const doc = new JsPDF({ unit: 'pt', format: 'a4' });
+            const answers = data.form?.answers || {};
+            const s = data.submission;
+
+            doc.setFillColor(23, 69, 143); doc.rect(0, 0, 595, 84, 'F');
+            doc.setTextColor(255).setFontSize(14).text(catalog?.edition?.name || 'Feria de Proyectos', 40, 36);
+            doc.setFontSize(11).text(String(s.projectName || '').slice(0, 70), 40, 58);
+            doc.setFontSize(8).text(`${s.clubName || ''} · ${s.district || ''} · Ref. ${s.publicRef}`, 40, 74);
+
+            let y = 115;
+            const write = (text: string, size = 9, color = 40, indent = 40, bold = false) => {
+                doc.setFontSize(size).setTextColor(color);
+                doc.setFont('helvetica', bold ? 'bold' : 'normal');
+                doc.splitTextToSize(String(text ?? '—'), 515 - (indent - 40)).forEach((ln: string) => {
+                    if (y > 790) { doc.addPage(); y = 50; }
+                    doc.text(ln, indent, y); y += size + 4;
+                });
+            };
+            (data.template?.sections || []).forEach((section: any) => {
+                if (y > 740) { doc.addPage(); y = 50; }
+                y += 10;
+                doc.setTextColor(23, 69, 143); write(section.title, 12, undefined as any, 40, true);
+                doc.setTextColor(40);
+                (section.fields || []).forEach((field: any) => {
+                    const value = answers?.[section.key]?.[field.key];
+                    write(field.label, 8, 120, 40, true);
+                    if (field.type === 'repeater') {
+                        const rows = Array.isArray(value) ? value.filter((r: any) => r && Object.values(r).some(v => String(v ?? '').trim() !== '')) : [];
+                        if (!rows.length) write('—', 9, 150, 52);
+                        rows.forEach((r: any, i: number) => write(
+                            `${i + 1}. ` + (field.columns || []).map((c: any) => `${c.label}: ${r[c.key] ?? '—'}`).join(' · '), 9, 40, 52));
+                    } else {
+                        write(Array.isArray(value) ? value.join(', ') : (value ?? '—'), 9, 40, 52);
+                    }
+                    y += 3;
+                });
+            });
+            doc.save(`${row.publicRef}-formulacion.pdf`);
+        } catch (e: any) { toast.error(e?.message || 'No se pudo generar el PDF'); }
+    };
+
+    const toggleFormLock = async (row: any, action: 'lock' | 'reopen') => {
+        try {
+            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form/${action}`, {
+                method: 'POST', headers: jsonHeaders(), body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'No se pudo completar la acción');
+            toast.success(action === 'lock' ? 'Edición cerrada' : 'Edición reabierta para el club');
+            fetch(`${API}/project-fair/admin/formularios?formStatus=${formFilter}`, { headers: authHeaders() })
+                .then(r => r.json()).then(setForms).catch(() => {});
+        } catch (e: any) { toast.error(e?.message); }
+    };
+
     if (loading) {
         return <AdminLayout><div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando módulo…</div></AdminLayout>;
     }
@@ -338,6 +420,7 @@ const PostulacionesPagos: React.FC = () => {
 
                 <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
                     {([['dashboard', 'Dashboard', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
+                       ['forms', 'Formulación', FileSignature],
                        ['alerts', 'Alertas', AlertTriangle], ['reports', 'Reportes', TrendingUp],
                        ['config', 'Convocatoria', Settings]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
@@ -642,7 +725,114 @@ const PostulacionesPagos: React.FC = () => {
                         </div>
                     </div>
                 )}
-                {/* ── Configuración de la convocatoria ──────────────── */}
+                {/* ── Formulación de proyectos ──────────────────────── */}
+                {tab === 'forms' && (
+                    <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-4">
+                            {[
+                                ['submitted', 'Enviados al comité', 'emerald'],
+                                ['draft', 'En elaboración', 'amber'],
+                                ['not_started', 'Sin iniciar', 'slate'],
+                            ].map(([key, label, tone]) => (
+                                <div key={key} className="rounded-xl border border-slate-200 bg-white p-4">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                                    <p className={`mt-1 text-2xl font-bold text-${tone}-600`} style={{ color: tone === 'slate' ? '#475569' : undefined }}>
+                                        {forms?.stats?.[key as string] || 0}
+                                    </p>
+                                </div>
+                            ))}
+                            <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white p-4">
+                                <select value={formFilter}
+                                    onChange={e => {
+                                        setFormFilter(e.target.value);
+                                        fetch(`${API}/project-fair/admin/formularios?formStatus=${e.target.value}`, { headers: authHeaders() })
+                                            .then(r => r.json()).then(setForms).catch(() => {});
+                                    }}
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                    <option value="all">Todas las postulaciones</option>
+                                    <option value="submitted">Solo enviadas</option>
+                                    <option value="draft">En elaboración</option>
+                                    <option value="not_started">Sin iniciar</option>
+                                    <option value="paid_pending">Pagadas sin enviar</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                            <table className="w-full min-w-[900px] text-sm">
+                                <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                                    <tr>
+                                        <th className="px-4 py-3">Ref.</th>
+                                        <th className="px-4 py-3">Proyecto / Club</th>
+                                        <th className="px-4 py-3">Cuenta</th>
+                                        <th className="px-4 py-3">Avance</th>
+                                        <th className="px-4 py-3">Estado</th>
+                                        <th className="px-4 py-3">Última edición</th>
+                                        <th className="px-4 py-3 text-right">Descargas</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {(forms?.forms || []).map((f: any) => (
+                                        <tr key={f.id} className="hover:bg-slate-50">
+                                            <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">{f.publicRef}</td>
+                                            <td className="px-4 py-3">
+                                                <p className="font-semibold text-slate-900">{f.projectName}</p>
+                                                <p className="text-xs text-slate-500">{f.clubName} · {f.district}</p>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {f.hasAccount
+                                                    ? <Badge color={f.lastLoginAt ? 'emerald' : 'sky'}>{f.lastLoginAt ? 'Ha ingresado' : 'Creada'}</Badge>
+                                                    : <Badge color="slate">Sin cuenta</Badge>}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200">
+                                                        <div className="h-full rounded-full" style={{ width: `${f.completionPct || 0}%`, background: BLUE }} />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-slate-600">{f.completionPct || 0}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {!f.formStatus ? <Badge color="slate">Sin iniciar</Badge>
+                                                    : f.formStatus === 'submitted' ? <Badge color="emerald">Enviado</Badge>
+                                                    : <Badge color="amber">En elaboración</Badge>}
+                                                {f.lockedAt && <span className="ml-1"><Badge color="red">Cerrado</Badge></span>}
+                                            </td>
+                                            <td className="px-4 py-3 text-xs text-slate-500">
+                                                {f.lastEditedAt ? fmtDateTime(f.lastEditedAt) : '—'}
+                                                {f.submittedAt && <><br /><span className="text-emerald-600">Enviado {fmtDate(f.submittedAt)}</span></>}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex justify-end gap-1.5">
+                                                    <button onClick={() => downloadDocx(f)} disabled={!f.formStatus}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                                                        title="Descargar en Word">
+                                                        <FileText size={13} /> Word
+                                                    </button>
+                                                    <button onClick={() => downloadFormPdf(f)} disabled={!f.formStatus}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                                                        title="Descargar en PDF">
+                                                        <FileText size={13} /> PDF
+                                                    </button>
+                                                    {access.changeStatus && f.formStatus && (
+                                                        f.lockedAt
+                                                            ? <button onClick={() => toggleFormLock(f, 'reopen')} className="rounded-lg border border-slate-300 p-1.5 text-emerald-600 hover:bg-emerald-50" title="Reabrir edición"><Unlock size={13} /></button>
+                                                            : <button onClick={() => toggleFormLock(f, 'lock')} className="rounded-lg border border-slate-300 p-1.5 text-slate-500 hover:bg-slate-100" title="Cerrar edición"><Lock size={13} /></button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {!forms?.forms?.length && (
+                                        <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">Todavía no hay formularios de proyecto.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (
                     <ConvocatoriaConfig canEdit={!!access.config} onSaved={() => {
                         // Refrescar catálogo: la edición, los distritos y las áreas

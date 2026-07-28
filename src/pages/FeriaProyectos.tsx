@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, ArrowRight, Building2, Calendar, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
-    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText,
+    ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -62,19 +62,25 @@ type FormState = {
     firstName: string; lastName: string; email: string; phone: string;
     clubName: string; district: string;
     projectName: string; projectDescription: string; focusArea: string; budgetUsd: string;
+    // v4.608 — La cuenta del club se crea con la postulación: la contraseña se
+    // pide aquí, mientras el club escribe su correo, y no después del pago.
+    password: string; passwordConfirm: string;
 };
 
 const EMPTY_FORM: FormState = {
     firstName: '', lastName: '', email: '', phone: '',
     clubName: '', district: '',
     projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
+    password: '', passwordConfirm: '',
 };
 
 const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
-    1: ['firstName', 'lastName', 'email', 'phone', 'clubName', 'district'],
+    1: ['firstName', 'lastName', 'email', 'phone', 'clubName', 'district', 'password', 'passwordConfirm'],
     2: ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'],
     3: [],
 };
+
+const PASSWORD_MIN = 8;
 
 const fmtCop = (n: number | null | undefined) =>
     `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
@@ -116,6 +122,9 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
         case 'focusArea':
             if (!v) return 'Selecciona el área de enfoque del proyecto.';
             return (config?.focusAreas || []).some(a => a.key === v) ? null : 'Selecciona un área válida.';
+        case 'password':
+            if (!v) return 'Crea una contraseña para acceder a tu panel.';
+            return v.length >= PASSWORD_MIN ? null : `Usa al menos ${PASSWORD_MIN} caracteres.`;
         case 'budgetUsd': {
             if (!v) return 'Indica el presupuesto total en USD.';
             const n = Number(v.replace(/[^\d.]/g, ''));
@@ -194,11 +203,16 @@ const FeriaProyectos = () => {
     const [trm, setTrm] = useState<Trm | null>(null);
     const [trmLoading, setTrmLoading] = useState(false);
     const [countdown, setCountdown] = useState<number | null>(null);
+    const [portalPath, setPortalPath] = useState<string | null>(null);
     const topRef = useRef<HTMLDivElement>(null);
 
     const errors = useMemo(() => {
         const out: Partial<Record<keyof FormState, string | null>> = {};
         (Object.keys(form) as (keyof FormState)[]).forEach(k => { out[k] = validateField(k, form[k], config); });
+        // La confirmación se valida contra la contraseña, no por sí sola.
+        out.passwordConfirm = !form.passwordConfirm
+            ? 'Repite la contraseña.'
+            : (form.passwordConfirm === form.password ? null : 'Las contraseñas no coinciden.');
         return out;
     }, [form, config]);
 
@@ -267,7 +281,11 @@ const FeriaProyectos = () => {
     // Autoguardado del progreso (evita perder información).
     useEffect(() => {
         if (stage !== 'form') return;
-        try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step, savedAt: Date.now() })); } catch { /* cuota llena */ }
+        try {
+            // Nunca se guarda la contraseña en el navegador.
+            const { password, passwordConfirm, ...safe } = form;
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ form: safe, step, savedAt: Date.now() }));
+        } catch { /* cuota llena */ }
     }, [form, step, stage]);
 
     // Reintento de confirmación: si Stripe ya cobró pero el webhook aún no
@@ -291,9 +309,17 @@ const FeriaProyectos = () => {
         return () => clearInterval(timer);
     }, [stage, submission]);
 
-    // Redirección automática a Rotary Grants tras confirmar el pago.
+    // v4.608 — Tras confirmar el pago el club va a SU PANEL a formular el
+    // proyecto. El enlace a Rotary Grants queda dentro del panel, como paso
+    // siguiente una vez tenga la formulación lista.
     useEffect(() => {
-        if (stage !== 'confirmed' || !config) return;
+        if (stage !== 'confirmed' || !config || !submission) return;
+        const portalPath = (config as any)?.portal?.path || '/mi-proyecto';
+        const goesToPortal = (config as any)?.portal?.redirectAfterPayment !== false;
+        const target = goesToPortal
+            ? `${portalPath}?submission=${submission.id}&session_id=${encodeURIComponent(new URLSearchParams(window.location.search).get('session_id') || '')}`
+            : (config.redirect?.url || 'https://grants25a.org/');
+
         const delay = Math.max(3, Number(config.redirect?.delaySeconds) || 8);
         setCountdown(delay);
         const tick = setInterval(() => {
@@ -301,14 +327,14 @@ const FeriaProyectos = () => {
                 if (prev === null) return null;
                 if (prev <= 1) {
                     clearInterval(tick);
-                    window.location.href = config.redirect?.url || 'https://grants25a.org/';
+                    window.location.href = target;
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(tick);
-    }, [stage, config]);
+    }, [stage, config, submission]);
 
     const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -350,6 +376,9 @@ const FeriaProyectos = () => {
                     setTouched(Object.fromEntries(Object.keys(form).map(k => [k, true])));
                     setStep(Object.keys(data.fields).some(f => STEP_FIELDS[1].includes(f as keyof FormState)) ? 1 : 2);
                 }
+                // Correo ya registrado: se ofrece entrar al panel en vez de
+                // dejar al club atascado en el formulario.
+                if (res.status === 409) setPortalPath(data?.portalPath || '/mi-proyecto');
                 throw new Error(data?.error || 'No pudimos registrar la inscripción.');
             }
             setSubmission(data.submission);
@@ -445,8 +474,13 @@ const FeriaProyectos = () => {
 
             <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
                 {globalError && (
-                    <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <div className="mb-5 flex flex-wrap items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                         <AlertCircle size={17} className="mt-0.5 shrink-0" /> <span>{globalError}</span>
+                        {portalPath && (
+                            <a href={portalPath} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[13px] font-bold text-red-700 ring-1 ring-red-200 hover:bg-red-100">
+                                Ir a mi panel <ArrowRight size={13} />
+                            </a>
+                        )}
                     </div>
                 )}
                 {notice && (
@@ -493,21 +527,31 @@ const FeriaProyectos = () => {
                             <SummaryRow label="Fecha del pago" value={fmtDateTime(submission.paidAt)} />
                         </div>
 
-                        <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
-                            <p className="text-[15px] leading-relaxed text-slate-700">
-                                Serás dirigido al portal oficial de <strong>{config?.redirect?.name || 'Rotary Grants 25A'}</strong> para
-                                continuar con el proceso de registro internacional
+                        <div className="mt-8 rounded-xl border-2 p-6 text-center" style={{ borderColor: `${BLUE}22` }}>
+                            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+                                <LayoutDashboard size={22} style={{ color: BLUE }} />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">Ahora formula tu proyecto</h3>
+                            <p className="mx-auto mt-2 max-w-xl text-[15px] leading-relaxed text-slate-600">
+                                Te llevamos a tu panel para que completes el formulario del proyecto
                                 {countdown !== null && countdown > 0 ? <> en <strong>{countdown}</strong> segundo{countdown === 1 ? '' : 's'}</> : null}.
+                                Puedes guardarlo y volver cuantas veces necesites hasta la fecha límite.
                             </p>
                             <a
-                                href={config?.redirect?.url || 'https://grants25a.org/'}
+                                href={`${(config as any)?.portal?.path || '/mi-proyecto'}?submission=${submission.id}&session_id=${encodeURIComponent(new URLSearchParams(window.location.search).get('session_id') || '')}`}
                                 className="mt-5 inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90"
                                 style={{ background: BLUE }}
                             >
-                                {config?.redirect?.label || 'Continuar hacia Rotary Grants 25A'} <ExternalLink size={17} />
+                                Ir a mi panel y formular el proyecto <ArrowRight size={17} />
                             </a>
-                            <p className="mt-3 text-[13px] text-slate-500">
-                                Si la redirección no ocurre automáticamente, usa el botón.
+                            <p className="mt-4 text-[13px] text-slate-500">
+                                Ingresas con <strong>{submission.email}</strong> y la contraseña que creaste al inscribirte.
+                            </p>
+                            <p className="mt-3 border-t border-slate-100 pt-3 text-[13px] text-slate-500">
+                                ¿Prefieres continuar primero en{' '}
+                                <a href={config?.redirect?.url || 'https://grants25a.org/'} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: BLUE }}>
+                                    {config?.redirect?.name || 'Rotary Grants 25A'} <ExternalLink size={11} className="inline" />
+                                </a>? También lo encontrarás dentro de tu panel.
                             </p>
                         </div>
                     </section>
@@ -656,6 +700,22 @@ const FeriaProyectos = () => {
                                     <Field label="Número de contacto o WhatsApp" name="phone" icon={Phone} value={form.phone} onChange={handleChange} onBlur={handleBlur} error={errors.phone} touched={touched.phone} placeholder="+57 300 000 0000" />
                                     <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
                                     <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
+
+                                    <div className="sm:col-span-2">
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                            <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                <KeyRound size={15} className="text-slate-400" /> Crea tu clave de acceso
+                                            </p>
+                                            <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
+                                                Con este correo y tu contraseña entrarás a tu panel para formular el proyecto
+                                                después del pago. Podrás guardarlo y editarlo cuantas veces necesites.
+                                            </p>
+                                            <div className="grid gap-4 sm:grid-cols-2">
+                                                <Field label="Contraseña" name="password" type="password" value={form.password} onChange={handleChange} onBlur={handleBlur} error={errors.password} touched={touched.password} placeholder="Mínimo 8 caracteres" />
+                                                <Field label="Repite la contraseña" name="passwordConfirm" type="password" value={form.passwordConfirm} onChange={handleChange} onBlur={handleBlur} error={errors.passwordConfirm} touched={touched.passwordConfirm} placeholder="Escríbela de nuevo" />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
