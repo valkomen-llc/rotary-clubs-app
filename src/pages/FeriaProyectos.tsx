@@ -287,6 +287,10 @@ const FeriaProyectos = () => {
     const [countdown, setCountdown] = useState<number | null>(null);
     const [portalPath, setPortalPath] = useState<string | null>(null);
     const topRef = useRef<HTMLDivElement>(null);
+    // Al cambiar de paso se vuelve al inicio de la tarjeta del formulario, no
+    // al tope de la página: si se subiera hasta arriba habría que pasar otra
+    // vez por todo el texto informativo para retomar el diligenciamiento.
+    const cardRef = useRef<HTMLElement>(null);
 
     const errors = useMemo(() => {
         const out: Partial<Record<keyof FormState, string | null>> = {};
@@ -419,6 +423,13 @@ const FeriaProyectos = () => {
     }, [stage, config, submission]);
 
     const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Se espera al siguiente frame porque la tarjeta destino puede ser una
+    // recién montada (la pantalla de pago reemplaza a la del wizard). El
+    // `scroll-mt-*` de la tarjeta deja el margen necesario para que el menú
+    // superior (sticky) no le tape el encabezado.
+    const scrollToCard = () => requestAnimationFrame(() => {
+        (cardRef.current || topRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -433,9 +444,9 @@ const FeriaProyectos = () => {
             return;
         }
         setStep(s => Math.min(3, s + 1));
-        scrollTop();
+        scrollToCard();
     };
-    const goBack = () => { setStep(s => Math.max(1, s - 1)); scrollTop(); };
+    const goBack = () => { setStep(s => Math.max(1, s - 1)); scrollToCard(); };
 
     // Paso final del wizard: registra la inscripción y abre la pantalla de pago.
     const handleSubmit = async () => {
@@ -467,7 +478,7 @@ const FeriaProyectos = () => {
             if (data.trm) setTrm(data.trm);
             else loadTrm();
             setStage('payment');
-            scrollTop();
+            scrollToCard();
         } catch (err: any) {
             setGlobalError(err?.message || 'No pudimos registrar la inscripción.');
         } finally {
@@ -644,7 +655,7 @@ const FeriaProyectos = () => {
                     </section>
                 ) : stage === 'payment' && submission ? (
                     /* ── Pantalla de pago ───────────────────────────────── */
-                    <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                    <section ref={cardRef} className="scroll-mt-32 rounded-2xl bg-white p-6 shadow-sm sm:p-9">
                         <div className="mb-6 flex items-center gap-3 border-b border-slate-100 pb-5">
                             <div className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
                                 <Wallet size={20} style={{ color: BLUE }} />
@@ -789,7 +800,7 @@ const FeriaProyectos = () => {
                             )}
                         </section>
 
-                        <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                        <section ref={cardRef} className="scroll-mt-32 rounded-2xl bg-white p-6 shadow-sm sm:p-9">
                             {/* Barra de progreso */}
                             <div className="mb-7">
                                 <div className="mb-2 flex items-center justify-between text-sm">
