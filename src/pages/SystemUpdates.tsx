@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.608.0 | 2026-07-27 (Panel del club: formulación del proyecto tras el pago, con descarga en Word y PDF)
-// Cache bust: 2026-07-27
+// UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)
+// Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.609.0',
+        title: 'Fechas del proceso, teléfono con bandera y menos repetición 📅🇨🇴',
+        description: 'Tres ajustes al formulario de postulación. Primero, se quitó el título "XII Feria de Proyectos Rotary Colombia — Valledupar" del cuerpo del formulario, porque ya aparece en la franja azul de arriba: ahora se lee una sola vez. Segundo, se agregó el bloque "Fechas importantes del proceso" con las cinco fechas clave —1 de septiembre para subir proyectos a Global Grants, 15 de octubre para la comunicación de los clubes con los padres, y los plazos máximos del 9 de noviembre para el formato, 25 de noviembre para el PowerPoint y 10 de enero para el video de presentación— presentadas como línea de tiempo. Esas fechas se editan desde Postulaciones y Pagos → Convocatoria, así que cada edición ajusta las suyas sin ayuda técnica. Y tercero, la casilla del número de contacto ahora trae un selector de país con su bandera e indicativo, con Colombia elegido por defecto, para que los clubes internacionales registren bien su WhatsApp.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulario', 'fechas', 'telefono', 'paises', 'update'],
+        type: 'update'
+    },
     {
         version: '4.608.0',
         title: 'Del pago directo a formular el proyecto: cada club con su propio panel 🗂️✍️',

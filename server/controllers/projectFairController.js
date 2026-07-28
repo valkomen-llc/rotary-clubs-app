@@ -98,6 +98,17 @@ export const DEFAULT_CONFIG = {
             'Propuestas alineadas con una o varias de las áreas de enfoque de Rotary International',
         ],
         note: 'El proyecto debe estar alineado con al menos una de las siete áreas de enfoque de Rotary International y contar con el Formulario de Necesidades de la Comunidad adjunto.',
+        // v4.609 — Fechas clave del proceso, editables desde el panel. Cada
+        // entrada tiene la fecha (para ordenarla y darle formato) y el texto
+        // que ve el club.
+        scheduleTitle: 'Fechas importantes del proceso',
+        schedule: [
+            { date: '2026-09-01', label: 'Plazo para subir proyectos a Global Grants' },
+            { date: '2026-10-15', label: 'Comunicación de los clubes con los padres' },
+            { date: '2026-11-09', label: 'Fecha máxima para enviar el formato', prefix: 'Hasta el' },
+            { date: '2026-11-25', label: 'Fecha máxima para enviar el PowerPoint', prefix: 'Hasta el' },
+            { date: '2027-01-10', label: 'Fecha máxima para enviar el video de presentación del proyecto', prefix: 'Hasta el' },
+        ],
         priorityNote: 'Los proyectos inscritos con anterioridad recibirán prioridad en la revisión técnica, observaciones CADRE y traducción oficial al inglés. ¡No dejes pasar esta oportunidad!',
     },
     notifications: {
