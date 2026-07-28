@@ -1,4 +1,5 @@
 import db from '../lib/db.js';
+import { PLATFORM_AUDIENCE, ADMIN_ROLES, JWT_SECRET } from '../middleware/auth.js';
 
 let bcrypt = null;
 let jwt = null;
@@ -12,41 +13,70 @@ const getJwt = async () => {
     return jwt;
 };
 
+/**
+ * Comprueba unas credenciales contra la identidad de plataforma (tabla `User`).
+ *
+ * Vive aparte de `login` porque el acceso unificado del encabezado
+ * (`sessionController`) necesita el mismo chequeo sin duplicar la lógica.
+ *
+ * @returns {Promise<{ok: true, user: object, token: string} | {ok: false}>}
+ *          Nunca distingue "el correo no existe" de "la contraseña no coincide".
+ */
+export const authenticatePlatform = async (email, password) => {
+    const clean = String(email || '').trim();
+    if (!clean || !password) return { ok: false };
+
+    const include = { club: { select: { id: true, name: true, subdomain: true } } };
+    // Primero tal cual se escribió (así se guardó históricamente) y, si no
+    // aparece, en minúsculas: quien registró su correo con mayúsculas sigue
+    // entrando aunque lo escriba distinto.
+    let user = await db.prisma.user.findUnique({ where: { email: clean }, include });
+    if (!user && clean !== clean.toLowerCase()) {
+        user = await db.prisma.user.findUnique({ where: { email: clean.toLowerCase() }, include });
+    }
+    if (!user) return { ok: false };
+
+    const bcryptLib = await getBcrypt();
+    const isMatch = await bcryptLib.compare(password, user.password).catch(() => false);
+    if (!isMatch) return { ok: false };
+
+    const jwtLib = await getJwt();
+    const token = jwtLib.sign(
+        {
+            id: user.id, email: user.email, role: user.role,
+            clubId: user.clubId, districtId: user.districtId,
+            aud: PLATFORM_AUDIENCE,
+        },
+        JWT_SECRET,
+        { expiresIn: '1d' }
+    );
+
+    return {
+        ok: true,
+        token,
+        user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            clubId: user.clubId || null,
+            club: user.club,
+        },
+    };
+};
+
+/**
+ * Ruta a la que entra una sesión de plataforma según su rol. Se calcula en el
+ * servidor para que cliente y servidor no puedan discrepar sobre el destino.
+ */
+export const platformRedirect = (user) =>
+    (ADMIN_ROLES.includes(String(user?.role || '')) ? '/admin/dashboard' : '/');
+
 export const login = async (req, res) => {
     const { email, password } = req.body;
     try {
-        const user = await db.prisma.user.findUnique({
-            where: { email },
-            include: {
-                club: {
-                    select: { id: true, name: true, subdomain: true }
-                }
-            }
-        });
-
-        if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-        const bcryptLib = await getBcrypt();
-        const isMatch = await bcryptLib.compare(password, user.password);
-        if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
-
-        const jwtLib = await getJwt();
-        const token = jwtLib.sign(
-            { id: user.id, email: user.email, role: user.role, clubId: user.clubId, districtId: user.districtId },
-            process.env.JWT_SECRET || 'rotary_secret_key_2026',
-            { expiresIn: '1d' }
-        );
-
-        res.json({
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                role: user.role,
-                clubId: user.clubId || null,
-                club: user.club
-            }
-        });
+        const result = await authenticatePlatform(email, password);
+        if (!result.ok) return res.status(401).json({ error: 'Invalid credentials' });
+        res.json({ token: result.token, user: result.user });
     } catch (err) {
         console.error('Login error:', err.message);
         res.status(500).json({ error: 'Server error' });
@@ -112,8 +142,8 @@ export const impersonate = async (req, res) => {
 
             const jwtLib = await getJwt();
             const token = jwtLib.sign(
-                { id: req.user.id, email: req.user.email, role: 'district_admin', districtId: district.id, clubId: mirrorClubId },
-                process.env.JWT_SECRET || 'rotary_secret_key_2026',
+                { id: req.user.id, email: req.user.email, role: 'district_admin', districtId: district.id, clubId: mirrorClubId, aud: PLATFORM_AUDIENCE },
+                JWT_SECRET,
                 { expiresIn: '3h' }
             );
 
@@ -142,8 +172,8 @@ export const impersonate = async (req, res) => {
         // Use the same user ID/Email but force role to 'club_admin' and assign the clubId
         const jwtLib = await getJwt();
         const token = jwtLib.sign(
-            { id: req.user.id, email: req.user.email, role: 'club_admin', clubId: club.id },
-            process.env.JWT_SECRET || 'rotary_secret_key_2026',
+            { id: req.user.id, email: req.user.email, role: 'club_admin', clubId: club.id, aud: PLATFORM_AUDIENCE },
+            JWT_SECRET,
             { expiresIn: '3h' }
         );
 
@@ -163,4 +193,4 @@ export const impersonate = async (req, res) => {
     }
 };
 
-export default { login, createInitialAdmin, impersonate };
+export default { login, createInitialAdmin, impersonate, authenticatePlatform, platformRedirect };

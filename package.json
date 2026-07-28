@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.626.0",
-  "cache_bust": "2026-07-28 (Seguridad: se eliminan siete scripts sueltos que tenian la contrasena de produccion de Neon escrita en texto plano y versionada — test-db.js, test-db-fetch.js, test_db.js, check.js, cleanPasto.js, viewPasto.js y server/add_new_clubs.js. Ninguno era importado por la aplicacion. Queda documentado en CLAUDE.md que las credenciales van siempre por variables de entorno y que borrar el archivo NO las saca del historial de git: la exposicion solo se resuelve rotando la credencial en Neon.)",
+  "version": "4.627.0",
+  "cache_bust": "2026-07-28 (Acceso unificado: el formulario del icono del encabezado es ahora el unico ingreso del sitio y resuelve solo si las credenciales son de un Administrador del Sitio o de un Gestor de Proyectos; el servidor devuelve la ruta de destino. /mi-proyecto deja de tener su propio formulario. Seguridad: authMiddleware ahora exige la audiencia del token —hasta v4.626 el token del panel del club pasaba y alcanzaba /api/project-fair/admin/*, que devuelve las postulaciones y pagos de todos los clubes— y esas 28 rutas exigen ademas rol administrativo del sitio. 20 pruebas en verde.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
