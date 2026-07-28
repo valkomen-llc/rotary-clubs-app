@@ -9,7 +9,7 @@ import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
-import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta } from '../lib/ctaLinks';
+import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
@@ -88,6 +88,11 @@ const Navbar = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // ¿Este usuario también tiene un proyecto postulado? Se marca cuando sus
+  // credenciales sirven en el panel del club, para ofrecerle el atajo.
+  const [hasProjectPanel, setHasProjectPanel] = useState(
+    () => !!localStorage.getItem(PORTAL_TOKEN_KEY)
+  );
 
   // Determine if it's a district site
   const currentHostname = window.location.hostname;
@@ -167,6 +172,31 @@ const Navbar = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, club.id]);
 
+  /**
+   * Ingreso del panel del club que postuló un proyecto (v4.619). Es una
+   * identidad aparte de la plataforma: vive en la tabla del módulo de la feria
+   * y su token va a otra llave del navegador.
+   * @returns 'ok' si entró · 'needs-password' si la cuenta existe pero aún no
+   *          tiene contraseña · null si esas credenciales no son de un club.
+   */
+  const tryProjectFairLogin = async (): Promise<'ok' | 'needs-password' | null> => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/project-fair/portal/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.token) {
+        localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
+        return 'ok';
+      }
+      return data?.needsPassword ? 'needs-password' : null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -180,10 +210,31 @@ const Navbar = () => {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Login failed');
+
+      // Quien no es usuario de la plataforma puede ser un club que postuló su
+      // proyecto: se prueban esas credenciales en el panel de la feria y, si
+      // son suyas, entra directo a formular su proyecto.
+      if (!response.ok) {
+        const fair = await tryProjectFairLogin();
+        if (fair) {
+          setLoginModalOpen(false);
+          navigate(PROJECT_FAIR_PORTAL_PATH);
+          return;
+        }
+        throw new Error(data.error || 'Login failed');
+      }
 
       login(data.token, data.user);
       setLoginModalOpen(false);
+      // Un administrador del sitio puede además haber postulado un proyecto.
+      // Se guarda su acceso al panel del club para ofrecérselo en el menú, sin
+      // sacarlo de su panel de control.
+      void tryProjectFairLogin().then(r => {
+        // Si estas credenciales no son de un club, se borra cualquier sesión
+        // de panel que hubiera quedado de otro usuario en este navegador.
+        if (r !== 'ok') localStorage.removeItem(PORTAL_TOKEN_KEY);
+        setHasProjectPanel(r === 'ok');
+      });
       if (data.user.role === 'administrator') {
         navigate('/admin/dashboard');
       }
@@ -515,6 +566,16 @@ const Navbar = () => {
                           <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
                           Panel de Control
                         </Link>
+                        {hasProjectPanel && (
+                          <Link
+                            to={PROJECT_FAIR_PORTAL_PATH}
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0"></span>
+                            Mi Proyecto
+                          </Link>
+                        )}
                         <button
                           onClick={() => { logout(); setUserMenuOpen(false); }}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -625,7 +686,12 @@ const Navbar = () => {
               </div>
 
               {isAuthenticated ? (
-                <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
+                <>
+                  <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
+                  {hasProjectPanel && (
+                    <Link to={PROJECT_FAIR_PORTAL_PATH} className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Mi Proyecto</Link>
+                  )}
+                </>
               ) : (
                 <button
                   onClick={() => {

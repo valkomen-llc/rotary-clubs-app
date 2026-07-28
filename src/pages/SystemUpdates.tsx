@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.618.0 | 2026-07-28 (Plantilla del correo con logos y remitente propio, y acceso al panel recuperable)
+// UI V4.619.0 | 2026-07-28 (Iniciar sesión del sitio lleva al club a su panel de proyecto)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.619.0',
+        title: 'Los clubes entran a su proyecto desde el "Iniciar Sesión" del sitio 🔓',
+        description: 'Hasta ahora el botón de iniciar sesión del sitio solo servía para los usuarios de la plataforma: un club que había postulado y pagado tenía que saber que su panel vivía en otra dirección. Ahora, si las credenciales no corresponden a un usuario de la plataforma, se prueban en el panel de la feria y, si son las suyas, el club entra directo a formular su proyecto. Si su cuenta existe pero todavía no tiene contraseña elegida, también se le lleva al panel, donde encuentra la opción de crearla. Para quien administra el sitio y además postuló un proyecto no cambia nada: sigue entrando a su panel de control, y le aparece un atajo "Mi Proyecto" en el menú de su perfil. Y si en un navegador compartido inicia sesión otra persona que no tiene proyecto, la sesión de panel que hubiera quedado se limpia.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'acceso', 'inicio de sesion', 'panel del club', 'update'],
+        type: 'update'
+    },
     {
         version: '4.618.0',
         title: 'El correo de confirmación ya se personaliza, y nadie se queda por fuera de su panel 📧🔑',
