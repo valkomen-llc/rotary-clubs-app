@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.625.0",
-  "cache_bust": "2026-07-28 (Rol Gestor de Proyectos con ciclo de vida propio. ProjectFairAccount gana role/roleGrantedAt/roleRevokedAt: un club queda como applicant al inscribirse y asciende a project_manager cuando el WEBHOOK de Stripe confirma el pago (nunca el regreso del navegador), de forma idempotente y auditada con eventos role_granted/role_suspended. Un reembolso total lo pasa a project_manager_suspended: conserva consulta y descarga, pierde edicion y envio, y el bloqueo se aplica en el SERVIDOR (saveForm/submitForm consultan la cuenta). Una inscripcion pagada sin rol se repara al abrir el panel. El panel muestra el distintivo del rol y distingue pago pendiente/rechazado/reembolsado. Ademas se cierra el hueco del guardian de rutas: PrivateRoute pasa de comprobar solo que haya sesion a exigir un rol administrativo de una lista explicita, para las 114 pantallas de /admin.)",
+  "version": "4.626.0",
+  "cache_bust": "2026-07-28 (Seguridad: se eliminan siete scripts sueltos que tenian la contrasena de produccion de Neon escrita en texto plano y versionada — test-db.js, test-db-fetch.js, test_db.js, check.js, cleanPasto.js, viewPasto.js y server/add_new_clubs.js. Ninguno era importado por la aplicacion. Queda documentado en CLAUDE.md que las credenciales van siempre por variables de entorno y que borrar el archivo NO las saca del historial de git: la exposicion solo se resuelve rotando la credencial en Neon.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

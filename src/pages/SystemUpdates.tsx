@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.625.0 | 2026-07-28 (Rol Gestor de Proyectos y guardián de rutas administrativas)
+// UI V4.626.0 | 2026-07-28 (Fuera del código las contraseñas de la base de datos)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.626.0',
+        title: 'Las contraseñas de la base de datos salen del código 🔑',
+        description: 'Había siete archivos sueltos en el repositorio con la contraseña de la base de datos de producción escrita en texto plano: pequeños scripts de prueba y de carga que en su momento se usaron a mano y quedaron ahí. Ninguno lo usa la aplicación, así que se eliminaron. Quedó documentado que las credenciales van siempre por variables de entorno del servidor, nunca dentro de un archivo del proyecto. Importante: borrar el archivo no lo saca del historial del repositorio, así que quien tenga una copia anterior todavía puede leer esa contraseña — por eso lo que realmente cierra la puerta es cambiar la credencial en el proveedor de la base de datos, no basta con borrar.',
+        date: new Date().toISOString(),
+        tags: ['seguridad', 'credenciales', 'base de datos', 'limpieza', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.625.0',
         title: 'Nace el rol Gestor de Proyectos, con su propio ciclo de vida 🎓',
