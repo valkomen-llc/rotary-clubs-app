@@ -62,10 +62,12 @@ function baseCard(appt, { headline, accent = '#2563eb' }) {
   </div>`;
 }
 
-function actionsRow(appt, origin) {
+function actionsRow(appt, origin, manageUrl) {
   const g = googleCalendarUrl({ ...appt, title: `Capacitación: ${appt.appointmentType?.name || 'Soporte'}`, description: appt.meetingUrl || '', location: appt.meetingUrl || 'Videollamada' });
   const o = outlookCalendarUrl({ ...appt, title: `Capacitación: ${appt.appointmentType?.name || 'Soporte'}`, description: appt.meetingUrl || '', location: appt.meetingUrl || 'Videollamada' });
-  const manage = origin ? `${origin}/admin/agenda-soporte` : '';
+  // Enlace de gestión: para reservas públicas usamos el enlace mágico por token
+  // (manageUrl); para las del panel, la sección autenticada.
+  const manage = manageUrl || (origin ? `${origin}/admin/agenda-soporte` : '');
   return `
   <div style="max-width:560px;margin:16px auto 0;text-align:center;font-size:13px">
     <a href="${g}" style="display:inline-block;margin:4px;padding:9px 14px;border-radius:10px;background:#eff6ff;color:#2563eb;text-decoration:none;font-weight:600">Agregar a Google Calendar</a>
@@ -97,9 +99,9 @@ async function sendWhatsAppSafe({ clubId, to, message }) {
 }
 
 // Confirmación inmediata al reservar.
-export async function sendConfirmation(appt, { origin } = {}) {
+export async function sendConfirmation(appt, { origin, manageUrl } = {}) {
   const subject = `✅ Capacitación agendada — ${appt.appointmentType?.name || 'Soporte'}`;
-  const html = baseCard(appt, { headline: 'Tu capacitación está agendada' }) + actionsRow(appt, origin);
+  const html = baseCard(appt, { headline: 'Tu capacitación está agendada' }) + actionsRow(appt, origin, manageUrl);
   const ics = icsFor(appt, `Capacitación: ${appt.appointmentType?.name || 'Soporte'}`);
   const attachments = [{ filename: 'capacitacion.ics', content: Buffer.from(ics).toString('base64') }];
 

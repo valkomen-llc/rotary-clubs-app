@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.627.0 | 2026-07-28 (Un solo formulario de ingreso para todo el sitio)
+// UI V4.628.0 | 2026-07-28 (Calendario de Capacitaciones público sin login — buscador de sitio, validación de suscripción + Stripe y gestión por enlace mágico)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.628.0',
+        title: 'Agenda tus capacitaciones sin iniciar sesión 🎓🔗',
+        description: 'El Calendario de Capacitaciones y Soporte ahora tiene una herramienta PÚBLICA, igual que el Generador de Pendones: cualquier persona puede entrar a /agendar-capacitacion sin usuario ni contraseña. Ahí busca su club, distrito u organización por nombre, el sistema valida automáticamente si el sitio tiene la suscripción vigente y, si está activo, permite reservar la capacitación en pocos pasos: elige el tipo de sesión, la fecha y la hora (mostradas en la zona horaria de quien reserva), y deja sus datos de contacto. Si el sitio está vencido o suspendido, no se puede reservar gratis: la misma pantalla ofrece un botón para activar o renovar el servicio con Stripe, y la activación se confirma sola por webhook (no depende de que el navegador regrese). Al confirmar, llega un correo con el archivo .ics, botones para agregar a Google/Outlook y un enlace privado (/mi-capacitacion/…) desde el cual la persona puede ver su cita, cancelarla o reprogramarla —también sin iniciar sesión— dentro de la ventana permitida. El panel interno de Capacitaciones para el equipo de soporte sigue funcionando igual; esto solo agrega el acceso público. Cambio aditivo: no afecta datos existentes ni el ingreso de los administradores.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'soporte', 'agenda', 'publico', 'sin login', 'reservas', 'stripe', 'enlace magico', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.627.0',
         title: 'Un solo formulario de ingreso para todo el sitio \ud83d\udd10',

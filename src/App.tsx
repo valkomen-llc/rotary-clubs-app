@@ -135,6 +135,8 @@ const AICore = React.lazy(() => import('./pages/admin/AICore'));
 const ClubPlatformInsights = React.lazy(() => import('./pages/admin/ClubPlatformInsights'));
 const AgendaSoporte = React.lazy(() => import('./pages/admin/AgendaSoporte'));
 const CapacitacionesAdmin = React.lazy(() => import('./pages/admin/CapacitacionesAdmin'));
+const AgendarCapacitacion = React.lazy(() => import('./pages/AgendarCapacitacion'));
+const MiCapacitacion = React.lazy(() => import('./pages/MiCapacitacion'));
 const SharedReport = React.lazy(() => import('./pages/SharedReport'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
@@ -342,7 +344,7 @@ const ProjectFormRedirect = () => {
 
 // Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
-const HIDE_BANNERS_PATHS = ['/generador-pendones'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -480,6 +482,9 @@ function App() {
 
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />
+                {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
+                <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
+                <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />
 
                 {/* Postulación de proyectos — Feria de Proyectos Rotary Colombia.
                     Ruta canónica /postular-proyecto; los slugs anteriores redirigen

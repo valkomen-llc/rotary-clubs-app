@@ -1972,6 +1972,8 @@ model TrainingAppointment {
   agreements         String? // acuerdos / próximos pasos
   outcome            Json?     @default("{}")
   bookedById         String? // User que reservó
+  source             String    @default("admin") // admin | public (herramienta pública sin login)
+  publicToken        String?   @unique // token del enlace mágico para gestionar la cita sin login
   confirmationSentAt DateTime?
   reminder24SentAt   DateTime?
   reminder1SentAt    DateTime?

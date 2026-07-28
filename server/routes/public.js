@@ -264,4 +264,20 @@ router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) =>
     }
 });
 
+// ── Calendario de Capacitaciones y Soporte — herramienta PÚBLICA (sin login) ──
+// El usuario busca su sitio, valida suscripción, reserva y gestiona su cita con
+// un enlace mágico (publicToken). Mismo patrón público que el generador de pendones.
+import * as trainingPublic from '../controllers/trainingPublicController.js';
+router.get('/training/sites', trainingPublic.searchSites);
+router.get('/training/config', trainingPublic.publicConfigAndTypes);
+router.get('/training/site-status', trainingPublic.publicSiteStatus);
+router.get('/training/slots', trainingPublic.publicSlots);
+router.post('/training/appointments', trainingPublic.createPublicAppointment);
+router.post('/training/activation-checkout', trainingPublic.publicActivationCheckout);
+router.get('/training/appointments/:token', trainingPublic.getPublicAppointment);
+router.get('/training/appointments/:token/ics', trainingPublic.publicIcs);
+router.get('/training/appointments/:token/calendar-links', trainingPublic.publicCalendarLinks);
+router.post('/training/appointments/:token/cancel', trainingPublic.cancelPublicAppointment);
+router.post('/training/appointments/:token/reschedule', trainingPublic.reschedulePublicAppointment);
+
 export default router;
