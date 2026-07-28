@@ -21,6 +21,7 @@
 import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
+import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
 console.log('[projectFairController] v4.602.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
@@ -135,6 +136,18 @@ export const DEFAULT_CONFIG = {
         closeDateText: '',    // vacío → fecha límite configurada
         footerImage: '',
         intro: '',            // texto opcional al lado del panel
+    },
+    // v4.608 — Formulario maestro de formulación (plantilla editable) y panel
+    // del club. `masterForm.sections` define el formulario completo; el panel
+    // lo renderiza y las descargas Word/PDF lo recorren.
+    masterForm: DEFAULT_MASTER_FORM,
+    portal: {
+        enabled: true,
+        path: '/mi-proyecto',
+        // Tras confirmarse el pago el club entra aquí a formular su proyecto;
+        // el enlace a Rotary Grants queda dentro del panel como paso siguiente.
+        redirectAfterPayment: true,
+        welcome: 'Tu inscripción está confirmada. Ahora formula tu proyecto: puedes guardar y volver cuantas veces necesites hasta la fecha límite.',
     },
     // Umbrales del panel de alertas.
     alerts: {
@@ -345,6 +358,63 @@ const ensureTables = async () => {
             PRIMARY KEY ("submissionId", "tagId")
         );
     `);
+
+    // ── v4.608 — Cuenta del club y formulario maestro ────────────────
+    // La identidad del postulante vive AQUÍ, no en la tabla User de la
+    // plataforma: así un club nunca puede alcanzar rutas /admin/*, cuyo
+    // guardián sólo comprueba que haya sesión iniciada.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairAccount" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            email VARCHAR(200) NOT NULL,
+            "passwordHash" TEXT NOT NULL,
+            "clubName" VARCHAR(200),
+            "lastLoginAt" TIMESTAMPTZ,
+            "resetToken" TEXT,
+            "resetExpiry" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_email_key" ON "ProjectFairAccount" (lower(email));`).catch(() => {});
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairAccount_submission_key" ON "ProjectFairAccount" ("submissionId");`).catch(() => {});
+
+    // Respuestas del formulario maestro. `answers` es un JSONB con la forma
+    // { seccion: { campo: valor } }, guiado por la plantilla de la config.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairMasterForm" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'draft',
+            answers JSONB NOT NULL DEFAULT '{}',
+            "completionPct" INTEGER NOT NULL DEFAULT 0,
+            "submittedAt" TIMESTAMPTZ,
+            "lastEditedAt" TIMESTAMPTZ,
+            "lockedAt" TIMESTAMPTZ,
+            "reopenedAt" TIMESTAMPTZ,
+            "reopenedBy" VARCHAR(160),
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairMasterForm_submission_key" ON "ProjectFairMasterForm" ("submissionId");`).catch(() => {});
+
+    // Historial de cada guardado y envío: permite auditar qué cambió y cuándo,
+    // y recuperar una versión anterior si el club se equivoca.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairFormRevision" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            answers JSONB NOT NULL DEFAULT '{}',
+            "completionPct" INTEGER,
+            action VARCHAR(30),
+            "actorType" VARCHAR(20),
+            "actorName" VARCHAR(160),
+            "createdAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairFormRevision_submission_idx" ON "ProjectFairFormRevision" ("submissionId", "createdAt" DESC);`).catch(() => {});
 
     // Eventos crudos recibidos de Stripe: fuente de verdad del pago y base de
     // la idempotencia (un mismo event.id nunca se procesa dos veces).
@@ -781,8 +851,21 @@ const validateSubmission = (body, cfg) => {
 
     if (!budgetUsd || !isFinite(budgetUsd) || budgetUsd <= 0) errors.budgetUsd = 'Indica el presupuesto total del proyecto en USD.';
 
+    // v4.608 — La cuenta del club se crea con la postulación: la contraseña
+    // se pide aquí, cuando el club ya está escribiendo su correo, y no
+    // después del pago (donde el abandono es mucho más caro).
+    const password = String(body.password || '');
+    if (cfg.portal?.enabled !== false && cfg.masterForm?.enabled !== false) {
+        if (!password) errors.password = 'Crea una contraseña para acceder a tu panel.';
+        else if (password.length < 8) errors.password = 'La contraseña debe tener al menos 8 caracteres.';
+        else if (body.passwordConfirm !== undefined && String(body.passwordConfirm) !== password) {
+            errors.passwordConfirm = 'Las contraseñas no coinciden.';
+        }
+    }
+
     return {
         errors,
+        password,
         data: {
             firstName, lastName, email, phone, clubName, district,
             projectName, projectDescription,
@@ -803,12 +886,23 @@ export const createSubmission = async (req, res) => {
             return res.status(403).json({ error: 'La convocatoria no está disponible en este momento.' });
         }
 
-        const { errors, data } = validateSubmission(req.body || {}, cfg);
+        const { errors, data, password } = validateSubmission(req.body || {}, cfg);
         if (Object.keys(errors).length) {
             return res.status(400).json({ error: 'Revisa los campos marcados.', fields: errors });
         }
 
         await ensureTables();
+
+        // Un correo, una postulación: si ya tiene cuenta, se le invita a entrar
+        // a su panel en vez de duplicar el registro y el cobro.
+        const existing = await db.query('SELECT id FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [data.email]);
+        if (existing.rows.length) {
+            return res.status(409).json({
+                error: 'Este correo ya tiene una postulación registrada. Ingresa a tu panel para continuar con tu proyecto.',
+                fields: { email: 'Ya existe una postulación con este correo.' },
+                portalPath: cfg.portal?.path || '/mi-proyecto',
+            });
+        }
 
         const amountCop = Number(cfg.registration?.amountCop) || 0;
         let trm = null;
@@ -836,6 +930,12 @@ export const createSubmission = async (req, res) => {
                 userAgent: clean(req.headers['user-agent'], 300),
             }),
         ]);
+
+        // Cuenta del club (identidad propia del módulo, no de la plataforma).
+        if (password) {
+            const { createAccountFor } = await import('./projectFairPortalController.js');
+            await createAccountFor(rows[0], password);
+        }
 
         await logEvent(rows[0].id, {
             type: 'form_submitted',

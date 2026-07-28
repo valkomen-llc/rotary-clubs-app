@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.607.0",
-  "cache_bust": "2026-07-27 (Galeria de imagenes estandarizada: nuevo componente reutilizable src/components/MediaGallery.tsx con mosaico de tres columnas (1 en movil, 2 en tablet), miniaturas todas del mismo tamano en proporcion configurable (horizontal 4:3 por defecto, cuadrada o vertical) y paginacion en grupos con flechas y puntos. Al pulsar una miniatura se abre un visor a pantalla completa que muestra la imagen COMPLETA con object-contain, con flechas, contador, cierre por Escape o por el fondo, bloqueo del desplazamiento de la pagina y navegacion por teclado. La ficha del evento pasa a usarlo y se retira el carrusel anterior de una sola imagen grande, junto con su estado huerfano (currentImage, imageRatios, rotacion automatica) y los iconos que quedaban sin uso. Sin cambios de BD.)",
+  "version": "4.608.0",
+  "cache_bust": "2026-07-27 (Formulación de proyectos: el formulario público sigue siendo el filtro, pero ahora el club crea su contraseña en el paso 1 y, al confirmarse el pago, entra a /mi-proyecto —su panel— a formular el proyecto con el formulario maestro. Plantilla definida como datos (server/lib/projectFairMasterForm.js, 9 secciones tipo subvención global) y guardada en la config, editable desde el panel: el formulario, el panel del club y las descargas Word/PDF la recorren, así que agregar un campo no requiere tocar código. Tablas nuevas ProjectFairAccount / ProjectFairMasterForm / ProjectFairFormRevision. La identidad del postulante es propia del módulo (JWT con audiencia project-fair-portal), NO la tabla User: PrivateRoute sólo comprueba sesión iniciada, así que un club nunca puede alcanzar /admin/*. Autoguardado cada 3 s, avance por sección, envío con validación de obligatorios, edición hasta la fecha límite y reapertura/cierre por el administrador. Nueva pestaña Formulación en Postulaciones y Pagos con estado por club y descarga en Word (.docx real, librería docx) y PDF. Aditivo: ADD COLUMN/CREATE TABLE IF NOT EXISTS, sin operaciones destructivas.)",
   "type": "module",
-  "//": "UI V4.607.0 | 2026-07-27 (Galería en tres columnas con visor de imagen completa)",
+  "//": "UI V4.608.0 | 2026-07-27 (Panel del club: formulación del proyecto tras el pago, con descarga en Word y PDF)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
@@ -56,6 +56,7 @@
     "cmdk": "^1.1.1",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
+    "docx": "^9.7.1",
     "dotenv": "^16.6.1",
     "embla-carousel-react": "^8.6.0",
     "emoji-picker-react": "4.18.0",

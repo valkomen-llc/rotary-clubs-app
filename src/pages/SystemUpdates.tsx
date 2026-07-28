@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.607.0 | 2026-07-27 (Galería en tres columnas con visor de imagen completa)
+// UI V4.608.0 | 2026-07-27 (Panel del club: formulación del proyecto tras el pago, con descarga en Word y PDF)
 // Cache bust: 2026-07-27
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.608.0',
+        title: 'Del pago directo a formular el proyecto: cada club con su propio panel 🗂️✍️',
+        description: 'La inscripción sigue siendo corta —funciona como filtro—, pero ahora al llenarla el club crea también su contraseña, y apenas se confirma el pago entra directo a su panel en "Mi Proyecto" para formular la propuesta completa. Ahí encuentra el formulario maestro dividido en nueve secciones (información general, club y socios, comunidad y diagnóstico, objetivos y actividades, medición del impacto, presupuesto, sostenibilidad, presentación en la feria y documentos), con barra de avance por sección, guardado automático mientras escribe y la posibilidad de volver cuantas veces quiera hasta la fecha límite. Al terminar lo envía al comité, y puede seguir ajustándolo. Todo queda guardado en la plataforma. En el panel administrativo, la nueva pestaña "Formulación" de Postulaciones y Pagos muestra qué club ya creó su cuenta, cuánto lleva avanzado y quién envió su proyecto, y permite descargar cada formulación en Word y en PDF, o cerrar y reabrir la edición. El formulario no está fijo en el código: sus secciones y campos se editan desde la configuración de la convocatoria, y tanto el panel del club como las descargas se ajustan solos.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'formulacion', 'panel del club', 'word', 'pdf', 'cuenta', 'stripe', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.607.0',
         title: 'La galería del evento pasa a tres columnas, con vista ampliada al hacer clic 🖼️',

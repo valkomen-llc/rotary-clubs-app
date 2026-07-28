@@ -75,6 +75,7 @@ import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 // ═══════════════════════════════════════════════════════════════
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
+const MiProyecto = React.lazy(() => import('./pages/MiProyecto'));
 const RegistroFeria = React.lazy(() => import('./pages/RegistroFeria'));
 const RegistroEvento = React.lazy(() => import('./pages/RegistroEvento'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
@@ -468,6 +469,8 @@ function App() {
                     conservando los parámetros (los enlaces de retorno de Stripe ya
                     emitidos apuntan a /feria-proyectos?submission=…&session_id=…). */}
                 <Route path="/postular-proyecto" element={<FeriaProyectos />} />
+                {/* v4.608 — Panel del club: formulación del proyecto tras el pago. */}
+                <Route path="/mi-proyecto" element={<MiProyecto />} />
                 <Route path="/feria-proyectos" element={<ProjectFormRedirect />} />
                 <Route path="/inscribir-proyecto" element={<ProjectFormRedirect />} />
 
