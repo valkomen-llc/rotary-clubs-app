@@ -120,6 +120,21 @@ Nunca volver a poner `db push` en el `build`.
 Las 14 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `EventRegistration`, `FAQ` y las once `ProjectFair*`.
 
+## Credenciales
+
+**Nunca escribir cadenas de conexión ni claves en el código.** Siempre
+`process.env.DATABASE_URL` (o la variable que corresponda), definida en el
+entorno del despliegue.
+
+El 2026-07-28 se encontraron siete archivos con la contraseña de producción de
+Neon escrita en texto plano (`test-db.js`, `test-db-fetch.js`, `test_db.js`,
+`check.js`, `cleanPasto.js`, `viewPasto.js`, `server/add_new_clubs.js`), todos
+versionados. Eran scripts sueltos que nadie importaba; se eliminaron.
+
+Borrarlos **no** los saca del historial de git: quien tenga un clon anterior
+sigue viendo la contraseña. Por eso, ante una exposición así, lo que resuelve
+es **rotar la credencial en Neon**, no sólo borrar el archivo.
+
 ## GitHub
 
 - Repo único: `valkomen-llc/rotary-clubs-app`.
