@@ -20,6 +20,7 @@ import {
     ExternalLink, FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock,
     Mail, Plus, Save, Send, Trash2, Wallet,
 } from 'lucide-react';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -229,7 +230,7 @@ const MiProyecto = () => {
         <div className="min-h-screen bg-slate-100">
             <Navbar />
 
-            <header style={{ background: BLUE }} className="px-4 py-7 text-white sm:px-6">
+            <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-7 text-white sm:px-6">
                 <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-4">
                     <div>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Mi proyecto</p>

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.612.0 | 2026-07-28 (Convocatoria editable por el admin del sitio y precio en pesos o dólares)
+// UI V4.613.0 | 2026-07-28 (Cabeceras de la Feria con el mismo fondo que Contacto)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.613.0',
+        title: 'Las cabeceras de la Feria quedan iguales a las del resto del sitio 🎨',
+        description: 'La franja azul que encabeza el formulario de postulación usaba un azul plano distinto al del resto del sitio. Ahora usa exactamente el mismo fondo de la página de Contacto —azul oscuro con la textura geométrica de Rotary— y lo mismo aplica al panel del club en "Mi Proyecto" y a la página de registro de la feria, así que las tres se ven como una sola pieza con el resto de las páginas. El estilo quedó definido en un solo lugar del código y Contacto ahora lo lee de ahí, para que a futuro no se vuelvan a separar: cambiarlo una vez lo cambia en todas. Es un ajuste de presentación únicamente, no cambia ningún dato ni comportamiento.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'diseno', 'cabecera', 'consistencia', 'update'],
+        type: 'update'
+    },
     {
         version: '4.612.0',
         title: 'La convocatoria ya se edita desde el sitio, y el precio puede ir en pesos o en dólares 💱',

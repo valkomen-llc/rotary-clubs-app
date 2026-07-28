@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Clock, Loader2, MapPin } from 'lucide-react';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
@@ -135,7 +136,7 @@ const RegistroFeria = () => {
         <div className="min-h-screen bg-slate-100">
             <Navbar />
 
-            <header style={{ background: BLUE }} className="px-4 py-8 text-white sm:px-6 sm:py-10">
+            <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-8 text-white sm:px-6 sm:py-10">
                 <div className="mx-auto max-w-5xl text-center sm:text-left">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Registro</p>
                     <h1 className="mt-1.5 text-2xl font-bold leading-tight sm:text-3xl">{edition?.name}</h1>
