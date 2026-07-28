@@ -20,7 +20,7 @@ import db from '../lib/db.js';
 import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail } from './projectFairController.js';
 import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairPortalController] v4.618.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
+console.log('[projectFairPortalController] v4.620.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
@@ -103,6 +103,53 @@ const ensureAccountFor = async (submission) => {
     } catch (err) {
         console.warn('[project-fair-portal] No pude crear la cuenta pendiente:', err?.message);
         return null;
+    }
+};
+
+/**
+ * GET /portal/link — puente entre la sesión de la plataforma y el panel del club.
+ *
+ * Un club que postuló y pagó suele tener también un usuario de la plataforma
+ * con el mismo correo. Antes tenía que iniciar sesión dos veces y conocer la
+ * dirección de su panel. Con este endpoint, quien ya está autenticado en la
+ * plataforma obtiene —si ese correo tiene una postulación— un token del panel
+ * y el resumen de su proyecto, para mostrarle el acceso directo.
+ *
+ * La identidad la da la sesión de la plataforma: sólo se emite el token del
+ * panel para el MISMO correo que ya venía autenticado, nunca para otro.
+ */
+export const linkPlatformUser = async (req, res) => {
+    try {
+        await ensureTables();
+        const email = String(req.user?.email || '').trim().toLowerCase();
+        if (!isEmail(email)) return res.json({ hasProject: false });
+
+        const { rows } = await db.query(`
+            SELECT * FROM "ProjectFairSubmission"
+            WHERE lower(email) = $1
+            ORDER BY (status = 'paid') DESC, "createdAt" DESC
+            LIMIT 1`, [email]);
+        const submission = rows[0];
+        if (!submission) return res.json({ hasProject: false });
+
+        const account = await ensureAccountFor(submission);
+        if (!account) return res.json({ hasProject: false });
+
+        const cfg = await readConfigForAdmin();
+        res.json({
+            hasProject: true,
+            portalToken: signToken(account),
+            path: cfg.portal?.path || '/mi-proyecto',
+            submission: {
+                publicRef: submission.publicRef,
+                projectName: submission.projectName,
+                clubName: submission.clubName,
+                status: submission.status,
+            },
+        });
+    } catch (error) {
+        console.error('[project-fair-portal] linkPlatformUser:', error);
+        res.json({ hasProject: false });
     }
 };
 
