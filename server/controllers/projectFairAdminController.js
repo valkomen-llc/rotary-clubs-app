@@ -30,7 +30,7 @@ import {
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 
-console.log('[projectFairAdminController] v4.620.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
+console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
@@ -827,11 +827,18 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
 
 // ── Catálogos para los filtros del panel ─────────────────────────────
 export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
-    const [districts, clubs, categories, assignees] = await Promise.all([
+    const [districts, clubs, categories, assignees, health] = await Promise.all([
         db.query(`SELECT DISTINCT district AS value FROM "ProjectFairSubmission" WHERE COALESCE(district,'') <> '' ORDER BY 1`),
         db.query(`SELECT DISTINCT "clubName" AS value FROM "ProjectFairSubmission" WHERE COALESCE("clubName",'') <> '' ORDER BY 1`),
         db.query(`SELECT DISTINCT "internalCategory" AS value FROM "ProjectFairSubmission" WHERE COALESCE("internalCategory",'') <> '' ORDER BY 1`),
         db.query(`SELECT DISTINCT "assigneeName" AS value FROM "ProjectFairSubmission" WHERE COALESCE("assigneeName",'') <> '' ORDER BY 1`),
+        // Conteo CRUDO, sin filtros: permite distinguir "no hay postulaciones"
+        // de "las hay pero algo las está escondiendo".
+        db.query(`SELECT
+                    (SELECT COUNT(*)::int FROM "ProjectFairSubmission") AS submissions,
+                    (SELECT COUNT(*)::int FROM "ProjectFairSubmission" WHERE status = 'paid') AS paid,
+                    (SELECT COUNT(*)::int FROM "ProjectFairAccount") AS accounts,
+                    (SELECT COUNT(*)::int FROM "ProjectFairMasterForm") AS forms`),
     ]);
     res.json({
         workflowStates: WORKFLOW_STATES,
@@ -845,6 +852,7 @@ export const getCatalog = withAccess(async (_req, res, { cfg, access }) => {
         assignees: assignees.rows.map(r => r.value),
         edition: cfg.edition,
         registration: cfg.registration,
+        health: health.rows[0] || { submissions: 0, paid: 0, accounts: 0, forms: 0 },
         access,
     });
 });

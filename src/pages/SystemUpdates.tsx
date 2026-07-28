@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.621.0 | 2026-07-28 (El postulante entra a su proyecto, no al panel administrativo)
+// UI V4.622.0 | 2026-07-28 (Postulaciones y Pagos deja de esconder los errores)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.622.0',
+        title: 'Postulaciones y Pagos ya avisa cuando algo falla, en vez de mostrar ceros ⚠️',
+        description: 'Si una pestaña del módulo no lograba cargar, el error del servidor se pintaba como si fuera el resultado: el panel quedaba en ceros y la tabla vacía, sin decir nada. Era imposible distinguir "no hay postulaciones todavía" de "hay un problema". Ahora se comprueba la respuesta del servidor y, si falla, aparece una franja roja con el motivo exacto. Además, junto al perfil se muestra ahora el conteo real de la base —cuántas postulaciones y cuántas pagadas hay en el sistema, sin ningún filtro aplicado—, así que de un vistazo se sabe si los registros están y algo los está ocultando, o si de verdad no hay ninguno.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'diagnostico', 'errores', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.621.0',
         title: 'Quien postuló entra a su proyecto, no al panel del sitio 🎯',

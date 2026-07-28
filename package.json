@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.621.0",
-  "cache_bust": "2026-07-28 (En el menu de perfil, \"Mi Proyecto\" pasa a ir PRIMERO y en negrita, por encima de \"Panel de Control\": quien postulo un proyecto entra a formularlo, no al panel administrativo. Quien no administra el sitio (rol distinto de administrator/club_admin/district_admin/editor) ya no ve \"Panel de Control\": su unico acceso es el panel de su proyecto. Mismo criterio en el menu movil.)",
+  "version": "4.622.0",
+  "cache_bust": "2026-07-28 (El modulo de Postulaciones y Pagos ya no esconde los errores: las pestanas verificaban solo que la respuesta fuera JSON, asi que un error del servidor se pintaba como resultado y el panel mostraba ceros y tabla vacia sin avisar. Ahora se comprueba el estado HTTP y se muestra el mensaje del servidor en una franja roja. Ademas la cabecera muestra el conteo CRUDO de la base (postulaciones y pagadas, sin ningun filtro), para distinguir de un vistazo \"no hay postulaciones\" de \"las hay pero algo las esconde\".)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
