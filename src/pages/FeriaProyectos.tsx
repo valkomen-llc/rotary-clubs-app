@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
-    CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
+    ChevronDown, CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
 } from 'lucide-react';
 import { COUNTRIES, DEFAULT_COUNTRY, composePhone, findCountry, flagEmoji, parsePhone } from '../lib/countryPhones';
@@ -195,6 +195,13 @@ const Field = ({
 // Teléfono con selector de país: el indicativo se elige de una lista con
 // banderas y el valor se guarda unificado ("+57 3001234567"). Colombia queda
 // por defecto por ser el país anfitrión.
+//
+// El selector cerrado muestra sólo bandera e indicativo (🇨🇴 +57) para que el
+// grueso del ancho quede libre para escribir el número. Como un <select>
+// nativo siempre pinta el texto completo de la opción elegida, se usa el
+// patrón de select transparente encima del texto visible: la lista desplegada
+// conserva el nombre del país —necesario para encontrarlo entre 56— y en
+// móvil se abre el selector nativo del sistema.
 const PhoneField = ({ value, onChange, onBlur, error, touched }: {
     value: string; onChange: (v: string) => void; onBlur: () => void;
     error?: string | null; touched?: boolean;
@@ -217,20 +224,23 @@ const PhoneField = ({ value, onChange, onBlur, error, touched }: {
             </label>
             <div className={`flex overflow-hidden rounded-xl border bg-white transition focus-within:ring-2 ${
                 invalid ? 'border-red-400 focus-within:ring-red-200' : 'border-slate-300 focus-within:border-[#17458F] focus-within:ring-[#17458F]/20'}`}>
-                <select
-                    aria-label="País del número de contacto"
-                    value={iso}
-                    onChange={e => update(e.target.value, national)}
-                    className="shrink-0 cursor-pointer border-r border-slate-200 bg-slate-50 py-3 pl-3 pr-2 text-[15px] font-medium text-slate-700 focus:outline-none"
-                >
-                    {COUNTRIES.map(c => (
-                        <option key={c.iso} value={c.iso}>{flagEmoji(c.iso)} {c.name} ({c.dial})</option>
-                    ))}
-                </select>
-                <span className="flex items-center gap-1.5 pl-3 text-[15px] font-semibold text-slate-500">
-                    <span className="text-lg leading-none">{flagEmoji(iso)}</span>
-                    {findCountry(iso).dial}
-                </span>
+                <div className="relative shrink-0 border-r border-slate-200 bg-slate-50">
+                    <div aria-hidden className="flex items-center gap-1.5 py-3 pl-3 pr-2 text-[15px] font-semibold text-slate-700">
+                        <span className="text-lg leading-none">{flagEmoji(iso)}</span>
+                        {findCountry(iso).dial}
+                        <ChevronDown size={14} className="text-slate-400" />
+                    </div>
+                    <select
+                        aria-label="País del número de contacto"
+                        value={iso}
+                        onChange={e => update(e.target.value, national)}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus:outline-none"
+                    >
+                        {COUNTRIES.map(c => (
+                            <option key={c.iso} value={c.iso}>{flagEmoji(c.iso)} {c.name} ({c.dial})</option>
+                        ))}
+                    </select>
+                </div>
                 <input
                     id="phone" name="phone" type="tel" inputMode="tel"
                     value={national}
@@ -766,7 +776,7 @@ const FeriaProyectos = () => {
                             <div className="mb-7">
                                 <div className="mb-2 flex items-center justify-between text-sm">
                                     <span className="font-semibold text-slate-700">
-                                        Paso {step} de 3 — {step === 1 ? 'Datos del representante' : step === 2 ? 'Datos del proyecto' : 'Revisión y confirmación'}
+                                        Paso {step} de 3 — {step === 1 ? 'Datos del representante del club que postula el proyecto' : step === 2 ? 'Datos del proyecto' : 'Revisión y confirmación'}
                                     </span>
                                     <span className="font-bold" style={{ color: BLUE }}>{progress}%</span>
                                 </div>

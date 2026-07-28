@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.610.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.611.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -116,7 +116,7 @@ export const DEFAULT_CONFIG = {
         scheduleTitle: 'Fechas importantes del proceso',
         schedule: [
             { date: '2026-09-01', label: 'Plazo para subir proyectos a Global Grants' },
-            { date: '2026-10-15', label: 'Comunicación de los clubes con los padres' },
+            { date: '2026-10-15', label: 'Comunicación de los clubes con los CADRES' },
             { date: '2026-11-09', label: 'Fecha máxima para enviar el formato', prefix: 'Hasta el' },
             { date: '2026-11-25', label: 'Fecha máxima para enviar el PowerPoint', prefix: 'Hasta el' },
             { date: '2027-01-10', label: 'Fecha máxima para enviar el video de presentación del proyecto', prefix: 'Hasta el' },
@@ -536,11 +536,41 @@ export { ensureTables };
  * ignora su `presentation` para que aplique el rango por defecto. En cuanto el
  * admin guarde el rango desde la pestaña Convocatoria, manda lo guardado.
  */
+// El texto por defecto de la fecha del 15 de octubre decía "los padres" por
+// error: son los CADRES (los asesores técnicos de Rotary). Si la fila guardada
+// tiene exactamente ese texto equivocado, se corrige al leerla. Sólo se toca
+// esa cadena literal: cualquier redacción propia del admin queda intacta.
+const LEGACY_CADRE_LABEL = 'Comunicación de los clubes con los padres';
+const CADRE_LABEL = 'Comunicación de los clubes con los CADRES';
+
 const normalizeSavedConfig = (saved) => {
-    if (!isPlainObject(saved?.presentation)) return saved;
-    if (saved.presentation.minMinutes !== undefined) return saved;
-    const { presentation, ...rest } = saved;
-    return rest;
+    let out = saved;
+
+    /*
+     * Antes de v4.610 el tiempo de presentación era un tope único
+     * (`presentation.maxMinutes`). Una fila guardada con ese formato, al
+     * mezclarse con el rango por defecto, dejaría un rango incoherente (min
+     * del defecto + max viejo). Si la fila guardada no trae `minMinutes`, es
+     * de esa época: se ignora su `presentation` para que aplique el rango por
+     * defecto. En cuanto el admin guarde el rango desde la pestaña
+     * Convocatoria, manda lo guardado.
+     */
+    if (isPlainObject(out?.presentation) && out.presentation.minMinutes === undefined) {
+        const { presentation, ...rest } = out;
+        out = rest;
+    }
+
+    if (Array.isArray(out?.content?.schedule) && out.content.schedule.some(i => i?.label === LEGACY_CADRE_LABEL)) {
+        out = {
+            ...out,
+            content: {
+                ...out.content,
+                schedule: out.content.schedule.map(i => (i?.label === LEGACY_CADRE_LABEL ? { ...i, label: CADRE_LABEL } : i)),
+            },
+        };
+    }
+
+    return out;
 };
 
 const readConfig = async () => {

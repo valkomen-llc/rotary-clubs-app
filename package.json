@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.610.0",
-  "cache_bust": "2026-07-28 (Dos ajustes al formulario de postulacion: (1) se elimina la tarjeta \"Plazo limite de inscripcion\" del encabezado — las fechas del proceso ya viven en la linea de tiempo; config.deadline se conserva y se sigue usando para la ventana de edicion del formulario maestro; (2) el tiempo de presentacion pasa de tope unico a rango: presentation ahora es { minMinutes: 5, maxMinutes: 6 } y el texto publico queda \"De 5 a 6 minutos por proyecto\". Nuevo helper presentationLabel en el backend para que el comprobante por correo use el mismo texto, dos campos min/max con vista previa en la pestana Convocatoria, y normalizacion de filas guardadas anteriores (sin minMinutes) para que no queden rangos incoherentes. Aditivo, sin cambios de BD.)",
+  "version": "4.611.0",
+  "cache_bust": "2026-07-28 (Tres ajustes en el formulario de postulacion: (1) el selector de pais del telefono muestra cerrado solo bandera + indicativo (patron de <select> transparente sobre el texto visible; la lista desplegada conserva el nombre del pais y en movil abre el selector nativo) y se quita el indicativo repetido junto al campo, asi el ancho queda para escribir el numero; (2) la fecha del 15 de octubre dice \"Comunicacion de los clubes con los CADRES\" — decia \"padres\" por error; se corrige el valor por defecto y, al leer la configuracion, tambien la fila guardada que tenga exactamente ese texto viejo; (3) el paso 1 pasa a llamarse \"Datos del representante del club que postula el proyecto\". Aditivo, sin cambios de BD.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
