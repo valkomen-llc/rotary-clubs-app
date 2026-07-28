@@ -1,13 +1,13 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.622.0",
-  "cache_bust": "2026-07-28 (El modulo de Postulaciones y Pagos ya no esconde los errores: las pestanas verificaban solo que la respuesta fuera JSON, asi que un error del servidor se pintaba como resultado y el panel mostraba ceros y tabla vacia sin avisar. Ahora se comprueba el estado HTTP y se muestra el mensaje del servidor en una franja roja. Ademas la cabecera muestra el conteo CRUDO de la base (postulaciones y pagadas, sin ningun filtro), para distinguir de un vistazo \"no hay postulaciones\" de \"las hay pero algo las esconde\".)",
+  "version": "4.623.0",
+  "cache_bust": "2026-07-28 (HOTFIX DE PERDIDA DE DATOS: el script de build ejecutaba \"prisma db push --accept-data-loss\" en cada despliegue. db push deja la base identica al schema, asi que BORRABA toda tabla que existiera en la base y no estuviera en schema.prisma — las once ProjectFair*, BannerTemplate, y las de CRM/WhatsApp, FAQs, agentes, brains, registro de eventos y leads. Reproducido: con una fila en ProjectFairSubmission el comando avisa \"You are about to drop the ProjectFairSubmission table, which is not empty (1 rows)\" y la elimina. Es la causa del incidente del 2026-07-13 con la plantilla de pendones y de la inscripcion pagada que desaparecio hoy. El build pasa a hacer solo prisma generate + vite build; la sincronizacion del schema queda en npm run db:push, a proposito. Verificado: con el build viejo la fila se pierde, con el nuevo sobrevive.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
     "dev": "vite",
-    "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
+    "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
     "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma",
     "db:push": "npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
     "lint": "eslint .",

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.622.0 | 2026-07-28 (Postulaciones y Pagos deja de esconder los errores)
+// UI V4.623.0 | 2026-07-28 (HOTFIX: cada despliegue borraba las tablas fuera de Prisma)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.623.0',
+        title: 'Encontrado y corregido: cada despliegue borraba datos del cliente 🛑',
+        description: 'La inscripción pagada de la feria no se perdió por un error del módulo: la borró el propio despliegue. El script que arma la aplicación ejecutaba en cada publicación un comando de sincronización de base de datos que deja la base "idéntica al plano", es decir, elimina cualquier tabla que exista en la base y no esté en ese plano — y venía con la opción que autoriza borrarlas aunque tengan datos. Todas las tablas que la plataforma crea sobre la marcha caían ahí: las once de la Feria de Proyectos, la plantilla de pendones, y las de CRM/WhatsApp, preguntas frecuentes, agentes, centro de inteligencia, registro de eventos y contactos. Es también lo que explica la pérdida de la plantilla de pendones del 13 de julio. Se comprobó reproduciendo el caso: con una inscripción guardada, el comando avisa que va a eliminar la tabla "aunque no está vacía (1 fila)" y la borra. A partir de ahora el despliegue sólo compila la aplicación y no toca la base; la sincronización del plano se hace aparte y a propósito, revisando antes qué se va a perder. Verificado: con el proceso anterior el registro desaparece, con el nuevo sobrevive.',
+        date: new Date().toISOString(),
+        tags: ['base de datos', 'despliegue', 'perdida de datos', 'feria de proyectos', 'pendones', 'hotfix'],
+        type: 'hotfix'
+    },
     {
         version: '4.622.0',
         title: 'Postulaciones y Pagos ya avisa cuando algo falla, en vez de mostrar ceros ⚠️',
