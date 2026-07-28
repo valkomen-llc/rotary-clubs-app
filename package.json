@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.611.0",
-  "cache_bust": "2026-07-28 (Tres ajustes en el formulario de postulacion: (1) el selector de pais del telefono muestra cerrado solo bandera + indicativo (patron de <select> transparente sobre el texto visible; la lista desplegada conserva el nombre del pais y en movil abre el selector nativo) y se quita el indicativo repetido junto al campo, asi el ancho queda para escribir el numero; (2) la fecha del 15 de octubre dice \"Comunicacion de los clubes con los CADRES\" — decia \"padres\" por error; se corrige el valor por defecto y, al leer la configuracion, tambien la fila guardada que tenga exactamente ese texto viejo; (3) el paso 1 pasa a llamarse \"Datos del representante del club que postula el proyecto\". Aditivo, sin cambios de BD.)",
+  "version": "4.612.0",
+  "cache_bust": "2026-07-28 (Dos cambios en el modulo de la Feria: (1) el administrador del propio sitio de la feria ya puede editar la Convocatoria — antes resolveAccess solo lo reconocia si habia un clubId asociado a mano, asi que entraba como viewer; ahora tambien cuenta como dueno quien administra un sitio cuyo tipo lo identifica como Feria de Proyectos, el mismo criterio de la barra lateral. (2) El precio de inscripcion se puede fijar en pesos o en dolares: registration.priceMode COP|USD. En COP se anuncia en pesos y Stripe cobra el equivalente en USD con la TRM oficial del dia del pago (sin TRM no se crea la sesion de pago); en USD se anuncia y se cobra el mismo valor, sin TRM. El cobro en Stripe pasa a hacerse siempre en USD. Nuevas columnas priceMode y chargeCurrency por inscripcion, KPIs/reportes/alertas y comprobantes conscientes de la moneda. Aditivo: solo ADD COLUMN IF NOT EXISTS.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

@@ -50,6 +50,7 @@ interface Submission {
     paymentStatus: string; workflowStatus: string; priority: string;
     internalCategory: string | null; assigneeName: string | null;
     reviewedAt: string | null; reviewedBy: string | null;
+    priceMode?: 'COP' | 'USD' | null; chargeCurrency?: string | null;
     amountCop: number | null; amountUsd: number | null; amountReceived: number | null;
     refundedAmount: number | null; refundedAt: string | null;
     trmRate: number | null; trmDate: string | null; trmSource: string | null; paidAt: string | null;
@@ -67,6 +68,10 @@ interface FairFile { id: string; fileName: string; fileUrl: string; createdAt: s
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 const fmtUsd = (n?: number | null) => (n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const fmtNum = (n?: number | null) => Number(n || 0).toLocaleString('es-CO');
+// Valor de una inscripción en la moneda en la que se anunció su precio: pesos
+// si se fijó en pesos (con el cobro en dólares al lado), dólares si no.
+const amountLabel = (s: { amountCop?: number | null; amountUsd?: number | null }) =>
+    (s.amountCop ? `${fmtCop(s.amountCop)} COP` : `${fmtUsd(s.amountUsd)} USD`);
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 const fmtDateTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
@@ -228,8 +233,8 @@ const PostulacionesPagos: React.FC = () => {
                 'Presupuesto USD': s.budgetUsd,
                 'Estado de la postulación': stateLabel(s.workflowStatus, catalog?.workflowStates).label,
                 'Estado del pago': stateLabel(s.paymentStatus, catalog?.paymentStates).label,
-                'Valor pagado COP': s.amountCop,
-                'Equivalente USD': s.amountUsd,
+                'Valor anunciado COP': s.amountCop,
+                'Valor cobrado USD': s.amountUsd,
                 'TRM aplicada': s.trmRate,
                 Prioridad: s.priority,
                 Etiquetas: s.tags.map(t => t.label).join(' | '),
@@ -270,8 +275,9 @@ const PostulacionesPagos: React.FC = () => {
                 ['Pagos fallidos', fmtNum(k.failed)],
                 ['Reembolsadas', fmtNum(k.refunded)],
                 ['Pendientes de revisión', fmtNum(k.pendingReview)],
-                ['Recaudo total', `${fmtCop(k.totalCop)} COP`],
-                ['Equivalente en dólares', `${fmtUsd(k.totalUsd)} USD`],
+                ...(k.priceMode === 'USD'
+                    ? [['Recaudo total', `${fmtUsd(k.totalUsd)} USD`]]
+                    : [['Recaudo total', `${fmtCop(k.totalCop)} COP`], ['Cobrado en dólares', `${fmtUsd(k.totalUsd)} USD`]]),
                 ['Tasa de conversión', `${k.conversionRate || 0}%`],
             ];
             let y = 145;
@@ -299,7 +305,7 @@ const PostulacionesPagos: React.FC = () => {
                 doc.text(String(s.clubName || '').slice(0, 26), 270, y);
                 doc.text(stateLabel(s.workflowStatus, catalog?.workflowStates).label.slice(0, 16), 400, y);
                 doc.text(stateLabel(s.paymentStatus, catalog?.paymentStates).label.slice(0, 12), 480, y);
-                doc.text(fmtCop(s.amountCop), 535, y, { align: 'right' } as any);
+                doc.text(amountLabel(s), 535, y, { align: 'right' } as any);
                 y += 14;
             });
             if (rows.length > 30) {
@@ -442,8 +448,14 @@ const PostulacionesPagos: React.FC = () => {
                             <Kpi label="Pagadas" value={fmtNum(k.paid)} sub={`Conversión ${k.conversionRate || 0}%`} icon={CheckCircle2} tone="emerald" />
                             <Kpi label="Pendientes de pago" value={fmtNum(k.pending)} icon={Clock} tone="amber" />
                             <Kpi label="Pagos fallidos" value={fmtNum(k.failed)} sub={`${k.refunded || 0} reembolsados`} icon={AlertTriangle} tone="red" />
-                            <Kpi label="Recaudo total" value={`${fmtCop(k.totalCop)}`} sub="Pesos colombianos" icon={Wallet} tone="blue" />
-                            <Kpi label="Equivalente en dólares" value={fmtUsd(k.totalUsd)} sub="Según la TRM de cada transacción" icon={CreditCard} tone="emerald" />
+                            {k.priceMode === 'USD' ? (
+                                <Kpi label="Recaudo total" value={fmtUsd(k.totalUsd)} sub="Dólares" icon={Wallet} tone="blue" />
+                            ) : (
+                                <>
+                                    <Kpi label="Recaudo total" value={`${fmtCop(k.totalCop)}`} sub="Pesos colombianos" icon={Wallet} tone="blue" />
+                                    <Kpi label="Cobrado en dólares" value={fmtUsd(k.totalUsd)} sub="Convertido con la TRM de cada pago" icon={CreditCard} tone="emerald" />
+                                </>
+                            )}
                             <Kpi label="Presupuesto de los proyectos" value={fmtUsd(k.totalBudget)} sub={`Promedio ${fmtUsd(k.avgBudget)}`} icon={TrendingUp} tone="indigo" />
                             <Kpi label="Reembolsado" value={fmtCop(k.totalRefunded)} icon={RefreshCw} tone="orange" />
                         </div>
@@ -595,7 +607,7 @@ const PostulacionesPagos: React.FC = () => {
                                                 <td className="px-3 py-3"><Badge color={wf.color}>{wf.label}</Badge></td>
                                                 <td className="px-3 py-3"><Badge color={pay.color}>{pay.label}</Badge></td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-right">
-                                                    <p className="font-semibold text-slate-800">{fmtCop(s.amountCop)}</p>
+                                                    <p className="font-semibold text-slate-800">{amountLabel(s)}</p>
                                                     {s.paidAt && <p className="text-[11px] text-slate-400">{fmtDate(s.paidAt)}</p>}
                                                 </td>
                                                 <td className="px-3 py-3">
@@ -675,7 +687,7 @@ const PostulacionesPagos: React.FC = () => {
                     <div className="space-y-5">
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <Kpi label="Proyectos" value={fmtNum(reports.summary.total)} icon={ClipboardList} tone="blue" />
-                            <Kpi label="Recaudo" value={fmtCop(reports.summary.totalCop)} sub={fmtUsd(reports.summary.totalUsd) + ' USD'} icon={Wallet} tone="emerald" />
+                            <Kpi label="Recaudo" value={reports.summary.priceMode === 'USD' ? fmtUsd(reports.summary.totalUsd) : fmtCop(reports.summary.totalCop)} sub={reports.summary.priceMode === 'USD' ? 'Dólares' : `${fmtUsd(reports.summary.totalUsd)} USD cobrados`} icon={Wallet} tone="emerald" />
                             <Kpi label="Conversión formulario → pago" value={`${reports.summary.conversionRate}%`} icon={TrendingUp} tone="indigo" />
                             <Kpi label="TRM promedio aplicada" value={fmtNum(Math.round(reports.summary.avgTrm))} sub="COP por dólar" icon={CreditCard} tone="amber" />
                         </div>
@@ -688,7 +700,7 @@ const PostulacionesPagos: React.FC = () => {
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                         <XAxis dataKey="key" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} />
                                         <Tooltip formatter={(v: any) => fmtCop(v)} />
-                                        <Bar dataKey="totalCop" name="Recaudo COP" fill={GOLD} radius={[6, 6, 0, 0]} />
+                                        <Bar dataKey="totalAmount" name={reports.summary?.priceMode === 'USD' ? 'Recaudo USD' : 'Recaudo COP'} fill={GOLD} radius={[6, 6, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -717,7 +729,7 @@ const PostulacionesPagos: React.FC = () => {
                                             <td className="px-4 py-2.5 text-slate-800">{c.key}</td>
                                             <td className="px-4 py-2.5 text-right">{c.count}</td>
                                             <td className="px-4 py-2.5 text-right text-emerald-700">{c.paid}</td>
-                                            <td className="px-4 py-2.5 text-right font-semibold">{fmtCop(c.totalCop)}</td>
+                                            <td className="px-4 py-2.5 text-right font-semibold">{reports.summary?.priceMode === 'USD' ? fmtUsd(c.totalAmount) : fmtCop(c.totalAmount)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -943,8 +955,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             });
             y += 10; doc.setFontSize(12).text('Pago', 40, y); y += 20;
             line('Estado del pago', s.status);
-            line('Valor', `${fmtCop(s.amountCop)} COP`);
-            line('Equivalente', `${fmtUsd(s.amountUsd)} USD`);
+            if (s.amountCop) line('Valor', `${fmtCop(s.amountCop)} COP`);
+            line(s.amountCop ? 'Cobrado' : 'Valor', `${fmtUsd(s.amountUsd)} USD`);
             line('TRM aplicada', s.trmRate ? `${fmtNum(s.trmRate)} (${s.trmDate || ''})` : '—');
             line('Confirmado el', fmtDateTime(s.paidAt));
             if (s.stripePaymentIntentId) line('Referencia Stripe', s.stripePaymentIntentId);
@@ -1128,9 +1140,9 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                     ) : (
                                         <>
                                             <Row label="Estado" value={pay?.label || s.paymentStatus} />
-                                            <Row label="Valor de inscripción" value={`${fmtCop(s.amountCop)} COP`} />
+                                            {s.amountCop ? <Row label="Valor de inscripción" value={`${fmtCop(s.amountCop)} COP`} /> : null}
                                             <Row label="Valor recibido" value={s.amountReceived ? `${fmtCop(s.amountReceived)} COP` : '—'} />
-                                            <Row label="Equivalente informativo" value={`${fmtUsd(s.amountUsd)} USD`} />
+                                            <Row label={s.amountCop ? 'Valor cobrado' : 'Valor de inscripción'} value={`${fmtUsd(s.amountUsd)} USD`} />
                                             <Row label="TRM aplicada" value={s.trmRate ? `${fmtNum(s.trmRate)} COP/USD · ${s.trmDate || ''}` : '—'} />
                                             <Row label="Fuente de la TRM" value={s.trmSource} />
                                             <Row label="Método de pago" value={s.paymentMethod} />
