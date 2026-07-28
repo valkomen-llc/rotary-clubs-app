@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.611.0 | 2026-07-28 (Selector de indicativo compacto, CADRES y paso 1 con nombre completo)
+// UI V4.612.0 | 2026-07-28 (Convocatoria editable por el admin del sitio y precio en pesos o dólares)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.612.0',
+        title: 'La convocatoria ya se edita desde el sitio, y el precio puede ir en pesos o en dólares 💱',
+        description: 'Dos cambios en el módulo de la Feria. El primero: quien administra el sitio de la feria entraba al módulo como "viewer" y solo podía mirar la configuración, no cambiarla —el sistema solo lo reconocía como dueño si alguien había asociado a mano el sitio a la convocatoria, cosa que nadie hacía—. Ahora se le reconoce por el tipo de sitio, el mismo criterio con el que aparece el módulo en el menú, así que puede editar su convocatoria directamente. Los demás perfiles no cambian. El segundo: el valor de inscripción ahora se puede fijar en pesos o en dólares, y se elige con un par de tarjetas en la pestaña Convocatoria. Si se fija en pesos, el formulario lo anuncia en pesos y el cobro se procesa en dólares convertidos con la TRM oficial vigente al momento del pago —el campo muestra en vivo cuánto sería con la TRM de hoy—; si se fija en dólares, se anuncia y se cobra ese mismo valor, sin conversión y sin depender de la TRM. Cada inscripción guarda en qué moneda se fijó su precio y en cuál se cobró, así que cambiar la convocatoria más adelante no altera la lectura de los pagos ya hechos, y los KPIs, reportes, alertas y comprobantes se muestran en la moneda que corresponde.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'convocatoria', 'permisos', 'precio', 'dolares', 'pesos', 'trm', 'stripe', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.611.0',
         title: 'Más espacio para el número, y la fecha de octubre ya dice CADRES 📞',

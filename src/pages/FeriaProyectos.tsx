@@ -33,7 +33,7 @@ interface FairConfig {
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
-    registration: { amountCop: number; currency: string; concept: string; maxProjectsPerClub: number };
+    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
@@ -47,8 +47,9 @@ interface FairConfig {
 }
 
 interface Trm {
-    rate: number; date: string; source: string; fetchedAt: string;
-    amountCop?: number; amountUsd?: number | null; stale?: boolean;
+    rate: number | null; date: string | null; source: string | null; fetchedAt: string | null;
+    priceMode?: 'COP' | 'USD';
+    amountCop?: number | null; amountUsd?: number | null; stale?: boolean;
 }
 
 interface Submission {
@@ -57,6 +58,7 @@ interface Submission {
     clubName: string; district: string;
     projectName: string; projectDescription: string;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
+    priceMode?: 'COP' | 'USD' | null; chargeCurrency?: string | null;
     amountCop: number | null; amountUsd: number | null;
     trmRate: number | null; trmDate: string | null; trmSource: string | null; trmFetchedAt: string | null;
     paidAt: string | null;
@@ -492,8 +494,13 @@ const FeriaProyectos = () => {
         }
     };
 
-    const amountCop = config?.registration?.amountCop ?? 0;
-    const amountUsd = trm?.rate ? Math.round((amountCop / trm.rate) * 100) / 100 : null;
+    // El precio se anuncia en la moneda que eligió el admin. En pesos, el
+    // valor en dólares —que es lo que Stripe cobra— sale de la TRM del día.
+    const priceMode = config?.registration?.priceMode === 'USD' ? 'USD' : 'COP';
+    const amountCop = priceMode === 'COP' ? (config?.registration?.amountCop ?? 0) : null;
+    const amountUsd = priceMode === 'USD'
+        ? (config?.registration?.amountUsd ?? 0)
+        : (trm?.rate ? Math.round(((amountCop || 0) / trm.rate) * 100) / 100 : null);
     const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
     const progress = stage === 'form' ? Math.round((step / 3) * 100) : 100;
 
@@ -596,12 +603,12 @@ const FeriaProyectos = () => {
                             <SummaryRow label="Club Rotario" value={submission.clubName} />
                             <SummaryRow label="Distrito" value={submission.district} />
                             <SummaryRow label="Área de enfoque" value={submission.focusAreaLabel || submission.focusArea} />
-                            <SummaryRow label="Valor pagado" value={`${fmtCop(submission.amountCop)} COP`} />
+                            {submission.amountCop ? (
+                                <SummaryRow label="Valor de la inscripción" value={`${fmtCop(submission.amountCop)} COP`} />
+                            ) : null}
+                            <SummaryRow label="Valor pagado" value={`${fmtUsd(submission.amountUsd)} USD`} />
                             {submission.trmRate ? (
-                                <SummaryRow
-                                    label="TRM aplicada"
-                                    value={`${fmtRate(submission.trmRate)} COP/USD${submission.amountUsd ? ` · ${fmtUsd(submission.amountUsd)} USD` : ''}`}
-                                />
+                                <SummaryRow label="TRM aplicada" value={`${fmtRate(submission.trmRate)} COP/USD`} />
                             ) : null}
                             <SummaryRow label="Fecha del pago" value={fmtDateTime(submission.paidAt)} />
                         </div>
@@ -655,43 +662,53 @@ const FeriaProyectos = () => {
                                     Valor oficial de inscripción
                                 </span>
                                 <span className="text-4xl font-extrabold" style={{ color: BLUE }}>
-                                    {fmtCop(amountCop)} <span className="text-lg font-bold">COP</span>
+                                    {priceMode === 'COP'
+                                        ? <>{fmtCop(amountCop)} <span className="text-lg font-bold">COP</span></>
+                                        : <>{fmtUsd(amountUsd)} <span className="text-lg font-bold">USD</span></>}
                                 </span>
                             </div>
 
-                            <div className="mt-5 space-y-3 text-[15px]">
-                                <div className="flex items-center justify-between gap-4">
-                                    <span className="text-slate-600">TRM vigente</span>
-                                    <span className="font-semibold text-slate-900">
-                                        {trmLoading ? <Loader2 size={15} className="animate-spin" /> : `${fmtRate(trm?.rate)} COP/USD`}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between gap-4">
-                                    <span className="text-slate-600">Valor equivalente (informativo)</span>
-                                    <span className="font-semibold text-slate-900">{fmtUsd(amountUsd)} USD</span>
-                                </div>
-                                <div className="flex items-start justify-between gap-4">
-                                    <span className="text-slate-600">Última actualización de la TRM</span>
-                                    <span className="text-right text-[13px] font-medium text-slate-500">
-                                        {fmtDateTime(trm?.fetchedAt)}
-                                        {trm?.source ? <><br /><span className="text-slate-400">Fuente: {trm.source}</span></> : null}
-                                    </span>
-                                </div>
-                            </div>
+                            {priceMode === 'COP' ? (
+                                <>
+                                    <div className="mt-5 space-y-3 text-[15px]">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-slate-600">TRM vigente</span>
+                                            <span className="font-semibold text-slate-900">
+                                                {trmLoading ? <Loader2 size={15} className="animate-spin" /> : `${fmtRate(trm?.rate)} COP/USD`}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-slate-600">Valor que se cobrará</span>
+                                            <span className="font-semibold text-slate-900">{fmtUsd(amountUsd)} USD</span>
+                                        </div>
+                                        <div className="flex items-start justify-between gap-4">
+                                            <span className="text-slate-600">Última actualización de la TRM</span>
+                                            <span className="text-right text-[13px] font-medium text-slate-500">
+                                                {fmtDateTime(trm?.fetchedAt)}
+                                                {trm?.source ? <><br /><span className="text-slate-400">Fuente: {trm.source}</span></> : null}
+                                            </span>
+                                        </div>
+                                    </div>
 
-                            <button
-                                type="button"
-                                onClick={() => loadTrm(true)}
-                                disabled={trmLoading}
-                                className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-700 disabled:opacity-50"
-                            >
-                                <RefreshCw size={13} className={trmLoading ? 'animate-spin' : ''} /> Actualizar TRM
-                            </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => loadTrm(true)}
+                                        disabled={trmLoading}
+                                        className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-700 disabled:opacity-50"
+                                    >
+                                        <RefreshCw size={13} className={trmLoading ? 'animate-spin' : ''} /> Actualizar TRM
+                                    </button>
 
-                            <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
-                                El cobro se realiza en <strong>pesos colombianos (COP)</strong>. El valor en dólares es
-                                únicamente informativo para usuarios internacionales y se calcula con la TRM vigente del día.
-                            </p>
+                                    <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
+                                        El valor de la inscripción está fijado en <strong>pesos colombianos</strong>. El cobro se
+                                        procesa en <strong>dólares</strong>, convertido con la TRM oficial vigente al momento del pago.
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
+                                    El valor de la inscripción está fijado en <strong>dólares</strong> y así se cobra, sin conversión.
+                                </p>
+                            )}
                         </div>
 
                         <button
@@ -886,11 +903,15 @@ const FeriaProyectos = () => {
                                     <div className="mt-4 flex items-center justify-between gap-4 rounded-xl px-5 py-4" style={{ background: `${BLUE}0f` }}>
                                         <div>
                                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Valor de la inscripción</p>
-                                            <p className="text-xl font-extrabold" style={{ color: BLUE }}>{fmtCop(amountCop)} COP</p>
+                                            <p className="text-xl font-extrabold" style={{ color: BLUE }}>
+                                                {priceMode === 'COP' ? `${fmtCop(amountCop)} COP` : `${fmtUsd(amountUsd)} USD`}
+                                            </p>
                                         </div>
-                                        <p className="text-right text-[13px] text-slate-500">
-                                            {amountUsd ? <>≈ {fmtUsd(amountUsd)} USD<br /><span className="text-slate-400">TRM {fmtRate(trm?.rate)}</span></> : 'Consultando TRM…'}
-                                        </p>
+                                        {priceMode === 'COP' ? (
+                                            <p className="text-right text-[13px] text-slate-500">
+                                                {amountUsd ? <>Se cobra {fmtUsd(amountUsd)} USD<br /><span className="text-slate-400">TRM {fmtRate(trm?.rate)}</span></> : 'Consultando TRM…'}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 </div>
                             )}

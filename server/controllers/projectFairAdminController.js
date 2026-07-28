@@ -26,11 +26,11 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import {
     ensureTables, logEvent, readConfigForAdmin, sendReceiptFor, buildSubmissionSnapshot,
-    getAdminConfig, saveAdminConfig,
+    getAdminConfig, saveAdminConfig, resolvePriceMode,
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 
-console.log('[projectFairAdminController] v4.598.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
+console.log('[projectFairAdminController] v4.612.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
@@ -75,17 +75,42 @@ const ROLE_CAPABILITIES = {
     viewer:   { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false },
 };
 
+// Columna sobre la que se agregan los recaudos: la del precio anunciado. Es un
+// literal controlado (nunca viene del request), no una interpolación de datos.
+const amountColumn = (priceMode) => (priceMode === 'USD' ? '"amountUsd"' : '"amountCop"');
+
 const listHas = (list, email) =>
     Array.isArray(list) && !!email && list.some(e => String(e).trim().toLowerCase() === String(email).toLowerCase());
 
-export const resolveAccess = (user, cfg) => {
+/**
+ * ¿El usuario administra el sitio donde vive este módulo?
+ *
+ * Antes esto sólo era cierto si el admin había asociado explícitamente un
+ * `clubId` a la convocatoria, algo que nadie hacía: el resultado era que el
+ * administrador del propio sitio de la feria entraba como 'viewer' y no podía
+ * editar su convocatoria. Ahora también cuenta como dueño quien administra un
+ * sitio cuyo tipo lo identifica como Feria de Proyectos — el mismo criterio con
+ * el que la barra lateral decide mostrar el módulo.
+ */
+export const isProjectFairSiteAdmin = async (user, cfg) => {
+    if (!['club_admin', 'district_admin', 'administrator'].includes(user?.role)) return false;
+    if (!user?.clubId) return false;
+    if (cfg?.clubId && user.clubId === cfg.clubId) return true;
+    try {
+        const { rows } = await db.query(
+            'SELECT type, "organizationType", category FROM "Club" WHERE id = $1 LIMIT 1', [user.clubId]);
+        if (!rows[0]) return false;
+        const hint = `${rows[0].type || ''} ${rows[0].organizationType || ''} ${rows[0].category || ''}`.toLowerCase();
+        return /feria de proyectos|project[ _-]?fair/.test(hint);
+    } catch (err) {
+        console.warn('[project-fair-admin] No pude verificar el tipo del sitio:', err?.message);
+        return false;
+    }
+};
+
+export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     const email = user?.email || '';
     const access = cfg?.access || {};
-    // Administra el módulo quien es 'administrator' de la plataforma, quien
-    // esté en la lista de administradores del módulo, o quien administre el
-    // club/organización al que está asociada la feria (su propio sitio).
-    const ownsFairSite = !!cfg?.clubId && user?.clubId === cfg.clubId
-        && ['club_admin', 'district_admin', 'administrator'].includes(user?.role);
 
     let role = 'viewer';
     if (user?.role === 'administrator' || listHas(access.admins, email) || ownsFairSite) role = 'admin';
@@ -105,7 +130,7 @@ const withAccess = (handler, capability = 'view') => async (req, res) => {
     try {
         await ensureTables();
         const cfg = await readConfigForAdmin();
-        const access = resolveAccess(req.user, cfg);
+        const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req.user, cfg) });
         if (!access[capability]) {
             return res.status(403).json({ error: 'Tu perfil no tiene permiso para esta acción.' });
         }
@@ -232,6 +257,8 @@ const SORTABLE = {
 export const getOverview = withAccess(async (req, res, { cfg, access }) => {
     const { clause, params } = buildFilters(req.query);
     const T = '"ProjectFairSubmission"';
+    const priceMode = resolvePriceMode(cfg);
+    const AMT = amountColumn(priceMode);
 
     const [totals, byPayment, byWorkflow, byDistrict, byFocus, timeline] = await Promise.all([
         db.query(`
@@ -250,7 +277,7 @@ export const getOverview = withAccess(async (req, res, { cfg, access }) => {
         db.query(`SELECT status AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY status`, params),
         db.query(`SELECT COALESCE("workflowStatus",'received') AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY 1`, params),
         db.query(`SELECT COALESCE(district,'Sin distrito') AS key, COUNT(*)::int AS count,
-                         COALESCE(SUM("amountCop") FILTER (WHERE status='paid'),0)::float AS "totalCop"
+                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
         db.query(`SELECT COALESCE("focusAreaLabel", "focusArea", 'Sin área') AS key, COUNT(*)::int AS count,
                          COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget"
@@ -273,6 +300,7 @@ export const getOverview = withAccess(async (req, res, { cfg, access }) => {
             failed: t.failed || 0,
             refunded: t.refunded || 0,
             pendingReview: t.pendingReview || 0,
+            priceMode,
             totalCop: t.totalCop || 0,
             totalUsd: Math.round((t.totalUsd || 0) * 100) / 100,
             totalRefunded: t.totalRefunded || 0,
@@ -620,8 +648,8 @@ export const resendReceipt = withAccess(async (req, res, { cfg, access }) => {
 // GET /admin/alerts
 export const getAlerts = withAccess(async (req, res, { cfg }) => {
     const pendingHours = Math.max(1, Number(cfg.alerts?.pendingPaymentHours) || 48);
-    const expectedCop = Number(cfg.registration?.amountCop) || 0;
     const budgetOutlier = Math.max(1, Number(cfg.alerts?.budgetOutlierUsd) || 500000);
+    const priceMode = resolvePriceMode(cfg);
 
     const [stale, failed, duplicates, incomplete, noFocus, outliers, mismatched] = await Promise.all([
         db.query(`
@@ -645,12 +673,15 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
                   FROM "ProjectFairSubmission"
                   WHERE "budgetUsd" IS NULL OR "budgetUsd" <= 0 OR "budgetUsd" > $1
                   ORDER BY "budgetUsd" DESC NULLS FIRST`, [budgetOutlier]),
-        expectedCop > 0
-            ? db.query(`SELECT id, "publicRef", "projectName", "amountReceived", "amountCop"
-                        FROM "ProjectFairSubmission"
-                        WHERE status = 'paid' AND "amountReceived" IS NOT NULL
-                          AND ABS("amountReceived" - $1) > 1`, [expectedCop])
-            : Promise.resolve({ rows: [] }),
+        // Se compara contra el valor que quedó registrado para ESA inscripción
+        // (en modo COP depende de la TRM del momento del pago, así que un valor
+        // fijo de la convocatoria no sirve). Sólo se miran los cobros hechos en
+        // dólares: los anteriores a v4.612 se procesaron en pesos.
+        db.query(`SELECT id, "publicRef", "projectName", "amountReceived", "amountUsd", "amountCop"
+                  FROM "ProjectFairSubmission"
+                  WHERE status = 'paid' AND "amountReceived" IS NOT NULL
+                    AND "chargeCurrency" = 'USD' AND "amountUsd" IS NOT NULL
+                    AND ABS("amountReceived" - "amountUsd") > 0.01`),
     ]);
 
     const alerts = [
@@ -663,7 +694,7 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
         { key: 'amount_mismatch', severity: 'danger', label: 'Diferencia entre el valor esperado y el recibido', items: mismatched.rows },
     ].map(a => ({ ...a, count: a.items.length }));
 
-    res.json({ alerts, total: alerts.reduce((n, a) => n + a.count, 0), thresholds: { pendingHours, budgetOutlier, expectedCop } });
+    res.json({ alerts, total: alerts.reduce((n, a) => n + a.count, 0), thresholds: { pendingHours, budgetOutlier, priceMode } });
 });
 
 // ── Reportes ─────────────────────────────────────────────────────────
@@ -671,6 +702,8 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
 export const getReports = withAccess(async (req, res, { cfg }) => {
     const { clause, params } = buildFilters(req.query);
     const T = '"ProjectFairSubmission"';
+    const priceMode = resolvePriceMode(cfg);
+    const AMT = amountColumn(priceMode);
 
     const [summary, byDistrict, byFocus, byClub, evolution, byWorkflow] = await Promise.all([
         db.query(`
@@ -686,19 +719,19 @@ export const getReports = withAccess(async (req, res, { cfg }) => {
             FROM ${T} ${clause}`, params),
         db.query(`SELECT COALESCE(district,'Sin distrito') AS key, COUNT(*)::int AS count,
                          COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM("amountCop") FILTER (WHERE status='paid'),0)::float AS "totalCop"
+                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
         db.query(`SELECT COALESCE("focusAreaLabel","focusArea",'Sin área') AS key, COUNT(*)::int AS count,
                          COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
         db.query(`SELECT COALESCE("clubName",'Sin club') AS key, COUNT(*)::int AS count,
                          COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM("amountCop") FILTER (WHERE status='paid'),0)::float AS "totalCop"
+                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC LIMIT 50`, params),
         db.query(`SELECT to_char(date_trunc('day',"createdAt"),'YYYY-MM-DD') AS day,
                          COUNT(*)::int AS total,
                          COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM("amountCop") FILTER (WHERE status='paid'),0)::float AS "totalCop"
+                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY 1`, params),
         db.query(`SELECT COALESCE("workflowStatus",'received') AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY 1`, params),
     ]);
@@ -707,6 +740,7 @@ export const getReports = withAccess(async (req, res, { cfg }) => {
     res.json({
         summary: {
             ...s,
+            priceMode,
             conversionRate: s.total > 0 ? Math.round((s.paid / s.total) * 1000) / 10 : 0,
         },
         byDistrict: byDistrict.rows,

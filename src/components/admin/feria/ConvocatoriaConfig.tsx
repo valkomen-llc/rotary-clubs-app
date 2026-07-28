@@ -54,7 +54,7 @@ export interface FairConfig {
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string;
     presentation: { minMinutes?: number; maxMinutes: number };
-    registration: { amountCop: number; currency: string; concept: string; maxProjectsPerClub: number };
+    registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
@@ -109,6 +109,10 @@ const toRoman = (value: number): string => {
         return out;
     }, '');
 };
+
+// Equivalente en dólares de un precio en pesos, con la TRM que se esté viendo.
+const usdPreview = (cop: number, rate: number) =>
+    `$${(Number(cop || 0) / Number(rate)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
 
 // Vista previa del texto que verá el postulante en el formulario público.
 const presentationPreview = (p: { minMinutes?: number; maxMinutes: number }) => {
@@ -192,6 +196,7 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
     const publicUrl = `${window.location.origin}${config.formPath || PROJECT_FAIR_FORM_PATH}`;
     const registerUrl = `${window.location.origin}${PROJECT_FAIR_REGISTER_PATH}`;
     const panel = config.registrationPanel || {};
+    const priceMode = config.registration.priceMode === 'USD' ? 'USD' : 'COP';
 
     return (
         <div className="space-y-5">
@@ -244,9 +249,52 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
             </Card>
 
             <Card title="Valor de inscripción y pago" icon={CreditCard}>
+                {/* El cobro en Stripe siempre se hace en dólares. Lo que se elige
+                    aquí es en qué moneda se FIJA y se anuncia el precio. */}
+                <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                    {([
+                        { key: 'COP', title: 'Fijar el precio en pesos', desc: 'Se anuncia en COP y se cobra su equivalente en dólares con la TRM oficial del día del pago.' },
+                        { key: 'USD', title: 'Fijar el precio en dólares', desc: 'Se anuncia y se cobra el mismo valor en USD, sin conversión ni TRM.' },
+                    ] as const).map(opt => {
+                        const active = priceMode === opt.key;
+                        return (
+                            <button
+                                key={opt.key}
+                                type="button"
+                                disabled={!canEdit}
+                                onClick={() => patch('registration.priceMode', opt.key)}
+                                className={`rounded-xl border-2 p-4 text-left transition disabled:cursor-not-allowed ${
+                                    active ? 'border-blue-600 bg-blue-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                            >
+                                <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                    <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${active ? 'border-blue-600' : 'border-slate-300'}`}>
+                                        {active && <span className="h-2 w-2 rounded-full bg-blue-600" />}
+                                    </span>
+                                    {opt.title}
+                                </span>
+                                <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">{opt.desc}</span>
+                            </button>
+                        );
+                    })}
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                    <Input label="Valor de inscripción (COP)" type="number" value={config.registration.amountCop} onChange={(e: ChangeEvent) => patch('registration.amountCop', Number(e.target.value))} hint="Se cobra en pesos colombianos vía Stripe." />
-                    <Input label="Moneda de cobro" value={config.registration.currency} onChange={(e: ChangeEvent) => patch('registration.currency', e.target.value.toUpperCase())} />
+                    {priceMode === 'COP' ? (
+                        <Input
+                            label="Valor de inscripción (COP)" type="number"
+                            value={config.registration.amountCop}
+                            onChange={(e: ChangeEvent) => patch('registration.amountCop', Number(e.target.value))}
+                            hint={trm?.rate
+                                ? `Con la TRM de hoy se cobrarían ${usdPreview(config.registration.amountCop, trm.rate)}.`
+                                : 'Se cobra su equivalente en dólares con la TRM del día del pago.'}
+                        />
+                    ) : (
+                        <Input
+                            label="Valor de inscripción (USD)" type="number" step="0.01"
+                            value={config.registration.amountUsd ?? 0}
+                            onChange={(e: ChangeEvent) => patch('registration.amountUsd', Number(e.target.value))}
+                            hint="Es el valor exacto que Stripe le cobra al club."
+                        />
+                    )}
                     <Input label="Concepto del cobro" value={config.registration.concept} onChange={(e: ChangeEvent) => patch('registration.concept', e.target.value)} />
                     <Input label="Club/organización asociada (clubId)" value={config.clubId || ''} onChange={(e: ChangeEvent) => patch('clubId', e.target.value || null)} hint="Opcional: asocia los cobros a la billetera de ese club." />
                 </div>

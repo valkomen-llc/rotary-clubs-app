@@ -23,7 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.611.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.612.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -67,7 +67,14 @@ export const DEFAULT_CONFIG = {
     deadline: '2026-08-10',
     presentation: { ...DEFAULT_PRESENTATION },
     registration: {
+        // Moneda en la que el admin fija el precio (v4.612):
+        //   'COP' → se anuncia en pesos y se cobra su equivalente en dólares
+        //           con la TRM del día del pago.
+        //   'USD' → se anuncia y se cobra el mismo valor en dólares, sin TRM.
+        // El cobro en Stripe siempre se hace en USD.
+        priceMode: 'COP',
         amountCop: 250000,
+        amountUsd: 0,
         currency: 'COP',
         concept: 'Inscripción de proyecto',
         maxProjectsPerClub: 1,
@@ -319,6 +326,12 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "refundedAt" TIMESTAMPTZ`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "lastPaymentError" TEXT`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "redirectedAt" TIMESTAMPTZ`),
+        // v4.612 — Moneda con la que se fijó el precio ('COP' o 'USD') y moneda
+        // con la que Stripe cobró realmente. Se guardan por inscripción para
+        // que un cambio posterior de la convocatoria no altere la lectura de
+        // los pagos ya hechos.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "priceMode" VARCHAR(3)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "chargeCurrency" VARCHAR(3)`),
     ]);
     // Postulaciones anteriores al módulo: se les da el estado de proceso que
     // corresponde a su estado de pago (sólo donde aún está vacío).
@@ -594,7 +607,9 @@ const toPublicConfig = (cfg) => ({
     deadline: cfg.deadline,
     presentation: cfg.presentation,
     registration: {
+        priceMode: resolvePriceMode(cfg),
         amountCop: Number(cfg.registration?.amountCop) || 0,
+        amountUsd: Number(cfg.registration?.amountUsd) || 0,
         currency: cfg.registration?.currency || 'COP',
         concept: cfg.registration?.concept || 'Inscripción de proyecto',
         maxProjectsPerClub: cfg.registration?.maxProjectsPerClub ?? 1,
@@ -655,6 +670,56 @@ export const saveAdminConfig = async (req, res) => {
         console.error('[project-fair] saveAdminConfig:', error);
         res.status(500).json({ error: 'No se pudo guardar la configuración' });
     }
+};
+
+// ── Precio de la inscripción ─────────────────────────────────────────
+// El cobro en Stripe SIEMPRE se hace en dólares; lo que cambia es cómo se
+// anuncia el precio y de dónde sale la cifra en dólares:
+//
+//   priceMode 'COP' → el admin fija pesos. Se muestran pesos y se cobra
+//                     amountCop / TRM del día. Sin TRM no se puede cobrar.
+//   priceMode 'USD' → el admin fija dólares. Se muestran y se cobran tal cual,
+//                     sin depender de la TRM.
+//
+// `amountUsd` es siempre lo que se le cobra al club; `amountCop` es el precio
+// anunciado en pesos (null cuando el precio se fijó en dólares).
+export const PRICE_MODES = ['COP', 'USD'];
+
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
+
+export const resolvePriceMode = (cfg) => {
+    const raw = String(cfg?.registration?.priceMode || cfg?.registration?.currency || 'COP').toUpperCase();
+    return PRICE_MODES.includes(raw) ? raw : 'COP';
+};
+
+/**
+ * Calcula el precio a partir de la configuración y (si hace falta) la TRM.
+ * @returns {{ mode, amountCop, amountUsd, needsTrm, trm, ready, error }}
+ */
+export const computePricing = (cfg, trm) => {
+    const mode = resolvePriceMode(cfg);
+
+    if (mode === 'USD') {
+        const amountUsd = round2(Number(cfg?.registration?.amountUsd) || 0);
+        return {
+            mode, amountCop: null, amountUsd, needsTrm: false, trm: null,
+            ready: amountUsd > 0,
+            error: amountUsd > 0 ? null : 'El valor de inscripción en dólares no está configurado.',
+        };
+    }
+
+    const amountCop = Math.round(Number(cfg?.registration?.amountCop) || 0);
+    const rate = Number(trm?.rate) || 0;
+    if (amountCop <= 0) {
+        return { mode, amountCop, amountUsd: null, needsTrm: true, trm: null, ready: false, error: 'El valor de inscripción no está configurado.' };
+    }
+    if (rate <= 0) {
+        return {
+            mode, amountCop, amountUsd: null, needsTrm: true, trm: null, ready: false,
+            error: 'No fue posible consultar la TRM vigente para calcular el valor en dólares. Intenta nuevamente en unos minutos.',
+        };
+    }
+    return { mode, amountCop, amountUsd: round2(amountCop / rate), needsTrm: true, trm, ready: true, error: null };
 };
 
 // ── TRM (Tasa Representativa del Mercado) ────────────────────────────
@@ -833,15 +898,27 @@ export const resolveTrm = async (cfg, { force = false } = {}) => {
 };
 
 // GET /api/project-fair/trm  (público)
+// Con el precio fijado en dólares la TRM no interviene en el cobro, así que se
+// responde el precio sin consultarla: la pantalla de pago no depende de un
+// proveedor externo para algo que no necesita.
 export const getTrm = async (req, res) => {
     try {
         const cfg = await readConfig();
+        if (resolvePriceMode(cfg) === 'USD') {
+            const pricing = computePricing(cfg, null);
+            return res.json({
+                rate: null, date: null, source: null, fetchedAt: null,
+                priceMode: pricing.mode, amountCop: null, amountUsd: pricing.amountUsd,
+                currency: 'USD',
+            });
+        }
         const trm = await resolveTrm(cfg, { force: req.query?.force === 'true' });
-        const amountCop = Number(cfg.registration?.amountCop) || 0;
+        const pricing = computePricing(cfg, trm);
         res.json({
             ...trm,
-            amountCop,
-            amountUsd: trm.rate > 0 ? Math.round((amountCop / trm.rate) * 100) / 100 : null,
+            priceMode: pricing.mode,
+            amountCop: pricing.amountCop,
+            amountUsd: pricing.amountUsd,
             currency: 'COP',
         });
     } catch (error) {
@@ -869,6 +946,8 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
         focusAreaLabel: row.focusAreaLabel,
         budgetUsd: row.budgetUsd === null ? null : Number(row.budgetUsd),
         status: row.status,
+        priceMode: row.priceMode || null,
+        chargeCurrency: row.chargeCurrency || null,
         amountCop: row.amountCop === null ? null : Number(row.amountCop),
         amountUsd: row.amountUsd === null ? null : Number(row.amountUsd),
         trmRate: row.trmRate === null ? null : Number(row.trmRate),
@@ -972,26 +1051,30 @@ export const createSubmission = async (req, res) => {
             });
         }
 
-        const amountCop = Number(cfg.registration?.amountCop) || 0;
+        // Sólo se consulta la TRM si el precio está fijado en pesos.
         let trm = null;
-        try { trm = await resolveTrm(cfg); } catch { /* la pantalla de pago reintenta */ }
-        const amountUsd = trm?.rate > 0 ? Math.round((amountCop / trm.rate) * 100) / 100 : null;
+        if (resolvePriceMode(cfg) === 'COP') {
+            try { trm = await resolveTrm(cfg); } catch { /* la pantalla de pago reintenta */ }
+        }
+        const pricing = computePricing(cfg, trm);
 
         const { rows } = await db.query(`
             INSERT INTO "ProjectFairSubmission"
                 ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
                  "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
-                 status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId", metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)
+                 status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
+                 "priceMode", metadata)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)
             RETURNING *
         `, [
             buildPublicRef(),
             cfg.edition?.key || null,
             data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
             data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd,
-            'pending_payment', amountCop, amountUsd,
+            'pending_payment', pricing.amountCop, pricing.amountUsd,
             trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,
             cfg.clubId || null,
+            pricing.mode,
             JSON.stringify({
                 edition: cfg.edition,
                 submittedAt: new Date().toISOString(),
@@ -1014,7 +1097,7 @@ export const createSubmission = async (req, res) => {
 
         res.status(201).json({
             submission: mapSubmission(rows[0]),
-            trm: trm ? { ...trm, amountCop, amountUsd } : null,
+            trm: trm ? { ...trm, priceMode: pricing.mode, amountCop: pricing.amountCop, amountUsd: pricing.amountUsd } : null,
         });
     } catch (error) {
         console.error('[project-fair] createSubmission:', error);
@@ -1036,14 +1119,17 @@ export const createCheckout = async (req, res) => {
         }
 
         // El monto NUNCA viene del cliente: se toma de la configuración.
-        const amountCop = Number(cfg.registration?.amountCop) || 0;
-        if (amountCop <= 0) return res.status(400).json({ error: 'El valor de inscripción no está configurado.' });
-
-        // TRM vigente al momento del pago (informativa para el usuario, se
-        // conserva junto a la inscripción).
+        // Con el precio en pesos, la TRM del momento del pago es la que define
+        // cuánto se cobra en dólares: si no se puede consultar, no se cobra.
         let trm = null;
-        try { trm = await resolveTrm(cfg); } catch { /* seguimos: el cobro es en COP */ }
-        const amountUsd = trm?.rate > 0 ? Math.round((amountCop / trm.rate) * 100) / 100 : null;
+        if (resolvePriceMode(cfg) === 'COP') {
+            try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
+        }
+        const pricing = computePricing(cfg, trm);
+        if (!pricing.ready) {
+            return res.status(pricing.needsTrm && pricing.amountCop > 0 ? 503 : 400).json({ error: pricing.error });
+        }
+        const { amountCop, amountUsd } = pricing;
 
         const origin = resolveOrigin(req, req.body?.returnUrl);
         // Ruta del formulario a la que Stripe devuelve al usuario. Configurable
@@ -1058,13 +1144,17 @@ export const createCheckout = async (req, res) => {
             customer_email: submission.email,
             line_items: [{
                 price_data: {
-                    // Stripe cobra en COP (moneda decimal): monto en centavos.
-                    currency: (cfg.registration?.currency || 'COP').toLowerCase(),
+                    // El cobro se hace siempre en dólares (monto en centavos).
+                    // Con el precio en pesos, el valor en dólares sale de la TRM
+                    // vigente en este momento.
+                    currency: 'usd',
                     product_data: {
                         name: `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`,
-                        description: `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
+                        description: pricing.mode === 'COP'
+                            ? `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName} · ${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+                            : `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
                     },
-                    unit_amount: Math.round(amountCop) * 100,
+                    unit_amount: Math.round(amountUsd * 100),
                 },
                 quantity: 1,
             }],
@@ -1087,8 +1177,10 @@ export const createCheckout = async (req, res) => {
                 editionKey: cfg.edition?.key || '',
                 clubName: String(submission.clubName || '').slice(0, 150),
                 district: String(submission.district || '').slice(0, 100),
+                priceMode: pricing.mode,
                 trmRate: trm?.rate ? String(trm.rate) : '',
                 trmDate: trm?.date || '',
+                amountCop: amountCop ? String(amountCop) : '',
                 amountUsd: amountUsd ? String(amountUsd) : '',
                 clubId: cfg.clubId || '',
             },
@@ -1099,15 +1191,18 @@ export const createCheckout = async (req, res) => {
             SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = $3,
                 "trmRate" = COALESCE($4, "trmRate"), "trmDate" = COALESCE($5, "trmDate"),
                 "trmSource" = COALESCE($6, "trmSource"), "trmFetchedAt" = COALESCE($7, "trmFetchedAt"),
+                "priceMode" = $8, "chargeCurrency" = 'USD',
                 "updatedAt" = NOW()
-            WHERE id = $8
-        `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, submission.id]);
+            WHERE id = $9
+        `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, submission.id]);
 
         await logEvent(submission.id, {
             type: 'checkout_created',
             title: 'Sesión de pago creada',
-            detail: `${fmtCop(amountCop)} COP${amountUsd ? ` · equivalente ${fmtUsd(amountUsd)}` : ''}`,
-            metadata: { sessionId: session.id, amountCop, amountUsd, trmRate: trm?.rate ?? null },
+            detail: pricing.mode === 'COP'
+                ? `${fmtCop(amountCop)} · se cobra ${fmtUsd(amountUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+                : `Se cobra ${fmtUsd(amountUsd)}`,
+            metadata: { sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd, trmRate: trm?.rate ?? null },
         });
 
         res.json({ url: session.url, sessionId: session.id });
@@ -1167,6 +1262,7 @@ export const confirmPaidSession = async (session) => {
             "paymentMethod" = COALESCE($5, "paymentMethod"),
             "receiptUrl" = COALESCE($6, "receiptUrl"),
             "amountReceived" = COALESCE($7, "amountReceived"),
+            "chargeCurrency" = COALESCE($10, "chargeCurrency"),
             "lastPaymentError" = NULL,
             "paidAt" = NOW(),
             metadata = COALESCE(metadata, '{}'::jsonb) || $8::jsonb,
@@ -1193,6 +1289,7 @@ export const confirmPaidSession = async (session) => {
             },
         }),
         submissionId,
+        (session.currency || '').toUpperCase() || null,
     ]);
 
     const paid = updated[0];
@@ -1201,7 +1298,7 @@ export const confirmPaidSession = async (session) => {
     await logEvent(submissionId, {
         type: 'payment_succeeded',
         title: 'Pago aprobado',
-        detail: `${fmtCop(amountReceived)} ${(session.currency || 'cop').toUpperCase()}${charge?.payment_method_details?.type ? ` · ${charge.payment_method_details.type}` : ''}`,
+        detail: `${fmtAmount(amountReceived, session.currency)}${charge?.payment_method_details?.type ? ` · ${charge.payment_method_details.type}` : ''}`,
         metadata: {
             sessionId: session.id,
             paymentIntentId,
@@ -1368,7 +1465,7 @@ export const handleRefund = async (charge) => {
     await logEvent(submission.id, {
         type: 'refund',
         title: isFull ? 'Reembolso total' : 'Reembolso parcial',
-        detail: `${fmtCop(refunded)} de ${fmtCop(total)} ${(charge?.currency || 'cop').toUpperCase()}`,
+        detail: `${fmtAmount(refunded, charge?.currency)} de ${fmtAmount(total, charge?.currency)}`,
         metadata: { chargeId: charge?.id || null, refunded, total, isFull },
     });
     console.log(`[project-fair] ↩️ Reembolso ${isFull ? 'total' : 'parcial'} — inscripción ${submission.publicRef}: ${refunded}`);
@@ -1415,6 +1512,10 @@ export const getSubmissionStatus = async (req, res) => {
 // ── Comprobante / notificaciones ─────────────────────────────────────
 const fmtCop = (n) => `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP`;
 const fmtUsd = (n) => (n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
+// Monto en la moneda con la que Stripe procesó el cobro (hoy siempre USD; los
+// pagos anteriores a v4.612 se hicieron en COP y se siguen leyendo bien).
+const fmtAmount = (n, currency) =>
+    String(currency || 'usd').toLowerCase() === 'cop' ? fmtCop(n) : fmtUsd(n);
 const esc = (s) => String(s ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const buildReceiptHtml = (s, cfg) => {
@@ -1449,9 +1550,9 @@ const buildReceiptHtml = (s, cfg) => {
         ${row('Distrito', esc(s.district))}
         ${row('Área de enfoque', esc(s.focusAreaLabel || s.focusArea))}
         ${row('Presupuesto del proyecto', fmtUsd(s.budgetUsd))}
-        ${row('Valor de inscripción', fmtCop(s.amountCop))}
+        ${s.amountCop ? row('Valor de inscripción', fmtCop(s.amountCop)) : ''}
         ${s.trmRate ? row('TRM aplicada', `${Number(s.trmRate).toLocaleString('es-CO', { maximumFractionDigits: 2 })} COP/USD${s.trmDate ? ` · ${esc(s.trmDate)}` : ''}`) : ''}
-        ${s.amountUsd ? row('Equivalente informativo', fmtUsd(s.amountUsd)) : ''}
+        ${s.amountUsd ? row(s.amountCop ? 'Valor cobrado' : 'Valor de inscripción', fmtUsd(s.amountUsd)) : ''}
         ${paidAt ? row('Fecha del pago', esc(paidAt)) : ''}
         ${row('Estado', '<span style="color:#059669">Pago confirmado</span>')}
       </table>
@@ -1483,7 +1584,7 @@ const buildAdminNotificationHtml = (s, cfg) => `
     <li><strong>Representante:</strong> ${esc(s.firstName)} ${esc(s.lastName)} — ${esc(s.email)} · ${esc(s.phone)}</li>
     <li><strong>Área de enfoque:</strong> ${esc(s.focusAreaLabel || s.focusArea)}</li>
     <li><strong>Presupuesto:</strong> ${fmtUsd(s.budgetUsd)}</li>
-    <li><strong>Inscripción:</strong> ${fmtCop(s.amountCop)}${s.trmRate ? ` · TRM ${Number(s.trmRate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}` : ''}</li>
+    <li><strong>Inscripción:</strong> ${s.amountCop ? `${fmtCop(s.amountCop)} · cobrados ${fmtUsd(s.amountUsd)}` : fmtUsd(s.amountUsd)}${s.trmRate ? ` · TRM ${Number(s.trmRate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}` : ''}</li>
   </ul>
 </div>`;
 
