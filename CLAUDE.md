@@ -79,6 +79,33 @@ Módulo: configurador en el admin (`src/components/admin/content-studio/BannerTe
 
 **⚠️ Aplica a TODAS las áreas, no solo a pendones.** El 2026-07-13 se perdió la plantilla guardada por un **reseteo/migración a nivel de base de datos** originado en despliegues de OTRAS áreas (no del módulo de pendones). Por lo tanto, NINGÚN módulo/deploy/migración debe ejecutar operaciones destructivas de BD (drop de base, recreación, restore de un backup viejo, `TRUNCATE`, borrado de tablas no gestionadas por Prisma) que puedan eliminar `BannerTemplate` u otros datos del cliente. Si una tarea requiere tocar la base, preservar explícitamente esa fila. Ante la duda, preguntar antes de correr algo que pueda vaciar datos de producción.
 
+## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
+
+**El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:
+
+```
+npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss
+```
+
+`db push` deja la base **idéntica al schema**: toda tabla que exista en la base y
+**no** esté en `schema.prisma` se **BORRA**, y `--accept-data-loss` autoriza que
+se borre aunque tenga datos. Como el build corre en cada despliegue, **cada
+deploy vaciaba todas las tablas creadas fuera de Prisma**.
+
+Reproducido el 2026-07-28: con una fila en `ProjectFairSubmission`, ese comando
+imprime *"You are about to drop the `ProjectFairSubmission` table, which is not
+empty (1 rows)"* y la elimina. Es exactamente lo que ocurrió el 2026-07-13 con
+`BannerTemplate`, y lo que hizo desaparecer una inscripción pagada de la feria.
+
+Tablas afectadas (creadas con `CREATE TABLE IF NOT EXISTS` en tiempo de
+ejecución, fuera de Prisma): `BannerTemplate`, las once `ProjectFair*`, y las de
+CRM/WhatsApp, FAQs, agentes, brains, registro de eventos y leads.
+
+**Regla durable**: el build sólo hace `prisma generate` + `vite build`. Si un
+cambio toca `server/prisma/schema.prisma`, hay que sincronizar la base **a
+propósito** con `npm run db:push`, revisando antes el aviso de pérdida de datos.
+Nunca volver a poner `db push` en el `build`.
+
 ## GitHub
 
 - Repo único: `valkomen-llc/rotary-clubs-app`.
