@@ -33,7 +33,9 @@ const BLUE = '#17458F';
 interface FieldDef {
     key: string; label: string; type: string; required?: boolean; help?: string;
     options?: string[]; optionsFrom?: string; width?: 'full' | 'half';
-    rows?: number; maxLength?: number; columns?: { key: string; label: string; type: string }[];
+    rows?: number | { key: string; label: string }[];
+    maxLength?: number; columns?: { key: string; label: string; type: string }[];
+    rowsLabel?: string;
 }
 interface SectionDef { key: string; title: string; description?: string; fields: FieldDef[] }
 interface Template { title: string; intro: string; sections: SectionDef[] }
@@ -395,6 +397,10 @@ const MiProyecto = () => {
 const hasValue = (value: any, type?: string) => {
     if (value === null || value === undefined) return false;
     if (type === 'repeater') return Array.isArray(value) && value.some(r => r && Object.values(r).some(v => String(v ?? '').trim() !== ''));
+    if (type === 'matrix') {
+        return !!value && typeof value === 'object' && Object.values(value).some((row: any) =>
+            row && typeof row === 'object' && Object.values(row).some(v => String(v ?? '').trim() !== ''));
+    }
     if (type === 'multiselect') return Array.isArray(value) && value.length > 0;
     if (type === 'checkbox') return value === true;
     return String(value).trim() !== '';
@@ -421,7 +427,7 @@ const FormField = ({ field, value, onChange, disabled, focusAreas }: {
         <div className={full ? 'sm:col-span-2' : ''}>
             {label}
             {field.type === 'textarea' ? (
-                <textarea value={value || ''} disabled={disabled} rows={field.rows || 4} maxLength={field.maxLength}
+                <textarea value={value || ''} disabled={disabled} rows={typeof field.rows === 'number' ? field.rows : 4} maxLength={field.maxLength}
                     onChange={e => onChange(e.target.value)} className={`${inputCls(disabled)} resize-y leading-relaxed`} />
             ) : field.type === 'select' ? (
                 <select value={value || ''} disabled={disabled} onChange={e => onChange(e.target.value)} className={inputCls(disabled)}>
@@ -448,6 +454,8 @@ const FormField = ({ field, value, onChange, disabled, focusAreas }: {
                     <input type="checkbox" checked={!!value} disabled={disabled} onChange={e => onChange(e.target.checked)} className="h-4 w-4" />
                     {field.help || 'Sí'}
                 </label>
+            ) : field.type === 'matrix' ? (
+                <Matrix field={field} value={value && typeof value === 'object' ? value : {}} disabled={disabled} onChange={onChange} />
             ) : field.type === 'repeater' ? (
                 <Repeater field={field} rows={Array.isArray(value) ? value : []} disabled={disabled} onChange={onChange} />
             ) : field.type === 'file' ? (
@@ -460,6 +468,60 @@ const FormField = ({ field, value, onChange, disabled, focusAreas }: {
                     onChange={e => onChange(e.target.value)} className={inputCls(disabled)} />
             )}
             {field.help && <p className="mt-1.5 text-[13px] text-slate-500">{field.help}</p>}
+        </div>
+    );
+};
+
+// Tabla de filas fijas definidas en la plantilla (presupuesto): el club no
+// agrega ni quita filas, sólo llena las celdas.
+const Matrix = ({ field, value, onChange, disabled }: {
+    field: FieldDef; value: Record<string, any>; onChange: (v: any) => void; disabled: boolean;
+}) => {
+    const columns = field.columns || [];
+    const rows = Array.isArray(field.rows) ? field.rows : [];
+    const update = (rowKey: string, colKey: string, v: any) =>
+        onChange({ ...value, [rowKey]: { ...(value?.[rowKey] || {}), [colKey]: v } });
+
+    if (!rows.length || !columns.length) return null;
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] border-collapse text-sm">
+                <thead>
+                    <tr>
+                        <th className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            {field.rowsLabel || 'Concepto'}
+                        </th>
+                        {columns.map(c => (
+                            <th key={c.key} className="border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {c.label}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map(row => (
+                        <tr key={row.key}>
+                            <th scope="row" className="border border-slate-200 bg-slate-50/60 px-3 py-2 text-left font-semibold text-slate-700">
+                                {row.label}
+                            </th>
+                            {columns.map(c => (
+                                <td key={c.key} className="border border-slate-200 p-0">
+                                    <input
+                                        type={c.type === 'number' || c.type === 'currency' ? 'number' : 'text'}
+                                        step={c.type === 'currency' ? '0.01' : undefined}
+                                        value={value?.[row.key]?.[c.key] ?? ''}
+                                        disabled={disabled}
+                                        onChange={e => update(row.key, c.key, e.target.value)}
+                                        className={`w-full border-0 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#17458F]/30 ${
+                                            disabled ? 'bg-slate-50 text-slate-500' : 'bg-white'}`}
+                                    />
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 };

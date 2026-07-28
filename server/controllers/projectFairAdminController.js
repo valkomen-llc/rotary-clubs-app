@@ -894,6 +894,7 @@ export const downloadMasterFormDocx = withAccess(async (req, res, { cfg, access 
     const formRes = await db.query('SELECT * FROM "ProjectFairMasterForm" WHERE "submissionId" = $1 LIMIT 1', [req.params.id]);
     const buffer = await buildProjectDocx(submission, cfg.masterForm, formRes.rows[0]?.answers || {}, {
         edition: cfg.edition,
+        focusAreas: cfg.focusAreas,
         includePayments: access.viewPayments,
     });
 
