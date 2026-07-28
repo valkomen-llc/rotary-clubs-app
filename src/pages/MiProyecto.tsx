@@ -13,6 +13,11 @@
 //
 // La sesión es propia del módulo (token con audiencia project-fair-portal):
 // nunca da acceso al panel administrativo de la plataforma.
+//
+// v4.627 — Esta pantalla ya NO tiene formulario de ingreso propio. El acceso
+// del sitio es uno solo, el del ícono del encabezado; cuando aquí no hay
+// sesión, se pide que se abra ése. Lo único que queda es la creación de
+// contraseña desde el enlace del correo (/mi-proyecto?reset=…).
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -21,7 +26,8 @@ import {
     Mail, Plus, Save, Send, ShieldCheck, Trash2, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
-import { PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { openLoginModal } from '../lib/loginModal';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -83,6 +89,9 @@ const MiProyecto = () => {
     const [missing, setMissing] = useState<{ section: string; label: string }[]>([]);
     const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
     const dirty = useRef(false);
+    // Enlace de recuperación enviado por correo: es lo único que esta pantalla
+    // resuelve por su cuenta, porque crear una contraseña no es ingresar.
+    const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
 
     // ── Sesión ───────────────────────────────────────────────────────
     const logout = useCallback(() => {
@@ -228,7 +237,15 @@ const MiProyecto = () => {
         );
     }
 
-    if (!token || !data) return <PortalAccess onToken={t => { localStorage.setItem(TOKEN_KEY, t); setToken(t); }} notice={notice} />;
+    // Sin sesión hay dos caminos, y ninguno es un formulario de ingreso propio:
+    // el enlace de correo abre la creación de contraseña; todo lo demás manda
+    // al formulario único del encabezado.
+    if (!token || !data) {
+        const accept = t => { localStorage.setItem(TOKEN_KEY, t); setToken(t); };
+        return resetToken
+            ? <PortalReset token={resetToken} onToken={accept} />
+            : <PortalSignIn notice={notice} />;
+    }
 
     const pct = data.form?.completionPct ?? 0;
     const submitted = data.form?.status === 'submitted';
@@ -582,36 +599,91 @@ const Repeater = ({ field, rows, onChange, disabled }: {
     );
 };
 
-// ── Ingreso al panel ─────────────────────────────────────────────────
-const PortalAccess = ({ onToken, notice }: { onToken: (t: string) => void; notice: any }) => {
-    const resetToken = new URLSearchParams(window.location.search).get('reset');
-    const [mode, setMode] = useState<'login' | 'forgot' | 'reset'>(resetToken ? 'reset' : 'login');
-    const [email, setEmail] = useState('');
+// ── Sin sesión: se manda al formulario único del encabezado ──────────
+//
+// Esta pantalla NO dibuja su propio formulario de ingreso. Hasta v4.626 tenía
+// uno (`PortalAccess`), de modo que el sitio pedía credenciales en dos lugares
+// distintos con reglas distintas. Ahora hay un solo acceso —el del ícono del
+// encabezado—, que resuelve por sí mismo si esas credenciales son de un
+// administrador del sitio o de un Gestor de Proyectos.
+const PortalSignIn = ({ notice }: { notice: any }) => {
+    // Se abre solo al llegar: quien entra a /mi-proyecto viene a entrar.
+    useEffect(() => {
+        openLoginModal({
+            next: PROJECT_FAIR_PORTAL_PATH,
+            reason: notice?.text || 'Ingresa con el correo y la contraseña que registraste al inscribir tu proyecto.',
+        });
+        // Sólo al montar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    return (
+        <div className="min-h-screen bg-rotary-concrete">
+            <Navbar />
+            <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+                <div className="w-full rounded-2xl bg-white p-8 text-center shadow-sm">
+                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
+                        <LayoutDashboard size={22} style={{ color: BLUE }} />
+                    </div>
+                    <h1 className="text-xl font-bold text-slate-900">Ingresa a tu panel</h1>
+                    <p className="mt-1.5 text-sm text-slate-500">
+                        Con el correo y la contraseña que registraste al inscribir tu proyecto.
+                    </p>
+
+                    {notice?.text && (
+                        <div className={`mt-4 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-left text-[13px] ${
+                            notice.kind === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+                            {notice.kind === 'ok' ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertCircle size={15} className="mt-0.5 shrink-0" />}
+                            <span>{notice.text}</span>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => openLoginModal({ next: PROJECT_FAIR_PORTAL_PATH })}
+                        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90"
+                        style={{ background: BLUE }}>
+                        Iniciar sesión <ArrowRight size={16} />
+                    </button>
+
+                    <button
+                        onClick={() => openLoginModal({ mode: 'forgot', next: PROJECT_FAIR_PORTAL_PATH })}
+                        className="mt-3 text-[13px] font-semibold text-slate-500 hover:text-slate-800">
+                        Olvidé mi contraseña
+                    </button>
+
+                    <p className="mt-6 border-t border-slate-100 pt-4 text-[13px] text-slate-500">
+                        ¿Todavía no inscribes tu proyecto?{' '}
+                        <a href="/postular-proyecto" className="font-semibold" style={{ color: BLUE }}>Postúlalo aquí</a>
+                    </p>
+                </div>
+            </div>
+            <Footer />
+        </div>
+    );
+};
+
+// ── Crear una contraseña nueva (enlace del correo) ───────────────────
+// Esto sí vive aquí: el enlace de recuperación aterriza en /mi-proyecto?reset=…
+// y crear una contraseña no es un segundo formulario de ingreso.
+const PortalReset = ({ token, onToken }: { token: string; onToken: (t: string) => void }) => {
     const [password, setPassword] = useState('');
     const [busy, setBusy] = useState(false);
-    const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(
-        notice ? { kind: notice.kind, text: notice.text } : null
-    );
+    const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-    const call = async (path: string, body: any) => {
+    const submit = async () => {
         setBusy(true); setMsg(null);
         try {
-            const res = await fetch(`${API}/project-fair/portal/${path}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            const res = await fetch(`${API}/project-fair/portal/reset`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password }),
             });
             const data = await res.json();
-            // El proyecto existe pero todavía no tiene contraseña elegida: se
-            // lleva directo a la pantalla de recuperación con el correo puesto,
-            // en vez de dejarlo probando credenciales.
-            if (!res.ok && data?.needsPassword) {
-                setMode('forgot');
-                setMsg({ kind: 'error', text: data.error });
-                return;
+            if (!res.ok) throw new Error(data?.error || 'No pudimos guardar la contraseña.');
+            // El servidor devuelve ya la sesión: se entra sin volver a escribirla.
+            if (data.token) {
+                window.history.replaceState(null, '', window.location.pathname);
+                onToken(data.token);
             }
-            if (!res.ok) throw new Error(data?.error || 'No pudimos completar la acción.');
-            if (data.token) { onToken(data.token); return; }
-            setMsg({ kind: 'ok', text: data.message || 'Listo.' });
-            if (path === 'forgot') setMode('login');
         } catch (e: any) {
             setMsg({ kind: 'error', text: e?.message });
         } finally {
@@ -626,70 +698,33 @@ const PortalAccess = ({ onToken, notice }: { onToken: (t: string) => void; notic
                 <div className="w-full rounded-2xl bg-white p-8 shadow-sm">
                     <div className="mb-6 text-center">
                         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${BLUE}14` }}>
-                            <LayoutDashboard size={22} style={{ color: BLUE }} />
+                            <KeyRound size={22} style={{ color: BLUE }} />
                         </div>
-                        <h1 className="text-xl font-bold text-slate-900">
-                            {mode === 'login' ? 'Ingresa a tu panel' : mode === 'forgot' ? 'Recupera tu acceso' : 'Crea una contraseña nueva'}
-                        </h1>
-                        <p className="mt-1.5 text-sm text-slate-500">
-                            {mode === 'login'
-                                ? 'Con el correo y la contraseña que registraste al inscribir tu proyecto.'
-                                : mode === 'forgot'
-                                    ? 'Te enviaremos un enlace para restablecerla.'
-                                    : 'Escribe la contraseña con la que entrarás de ahora en adelante.'}
-                        </p>
+                        <h1 className="text-xl font-bold text-slate-900">Crea una contraseña nueva</h1>
+                        <p className="mt-1.5 text-sm text-slate-500">Escribe la contraseña con la que entrarás de ahora en adelante.</p>
                     </div>
 
                     {msg && (
-                        <div className={`mb-4 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${
-                            msg.kind === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
-                            {msg.kind === 'ok' ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertCircle size={15} className="mt-0.5 shrink-0" />}
+                        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-800">
+                            <AlertCircle size={15} className="mt-0.5 shrink-0" />
                             <span>{msg.text}</span>
                         </div>
                     )}
 
-                    <div className="space-y-4">
-                        {mode !== 'reset' && (
-                            <label className="block">
-                                <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><Mail size={14} className="text-slate-400" /> Correo electrónico</span>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls(false)} placeholder="tucorreo@club.org" />
-                            </label>
-                        )}
-                        {mode !== 'forgot' && (
-                            <label className="block">
-                                <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><KeyRound size={14} className="text-slate-400" /> Contraseña</span>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputCls(false)}
-                                    onKeyDown={e => e.key === 'Enter' && mode === 'login' && call('login', { email, password })} />
-                            </label>
-                        )}
+                    <label className="block">
+                        <span className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><KeyRound size={14} className="text-slate-400" /> Contraseña</span>
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputCls(false)}
+                            onKeyDown={e => e.key === 'Enter' && submit()} />
+                    </label>
 
-                        <button
-                            disabled={busy}
-                            onClick={() => {
-                                if (mode === 'login') call('login', { email, password });
-                                else if (mode === 'forgot') call('forgot', { email });
-                                else call('reset', { token: resetToken, password });
-                            }}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
-                            style={{ background: BLUE }}>
-                            {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-                            {mode === 'login' ? 'Entrar' : mode === 'forgot' ? 'Enviar enlace' : 'Guardar contraseña'}
-                            {!busy && mode === 'login' && <ArrowRight size={16} />}
-                        </button>
-
-                        <div className="text-center text-[13px]">
-                            {mode === 'login' ? (
-                                <button onClick={() => setMode('forgot')} className="font-semibold text-slate-500 hover:text-slate-800">Olvidé mi contraseña</button>
-                            ) : (
-                                <button onClick={() => setMode('login')} className="font-semibold text-slate-500 hover:text-slate-800">Volver a ingresar</button>
-                            )}
-                        </div>
-
-                        <p className="border-t border-slate-100 pt-4 text-center text-[13px] text-slate-500">
-                            ¿Todavía no inscribes tu proyecto?{' '}
-                            <a href="/postular-proyecto" className="font-semibold" style={{ color: BLUE }}>Postúlalo aquí</a>
-                        </p>
-                    </div>
+                    <button
+                        disabled={busy}
+                        onClick={submit}
+                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                        style={{ background: BLUE }}>
+                        {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+                        Guardar contraseña
+                    </button>
                 </div>
             </div>
             <Footer />

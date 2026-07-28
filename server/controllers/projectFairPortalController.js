@@ -7,11 +7,12 @@
 // envía al comité.
 //
 // SEGURIDAD — decisión deliberada: la cuenta del postulante NO vive en la
-// tabla `User` de la plataforma. El guardián de rutas del panel
-// administrativo (`PrivateRoute`) sólo comprueba que haya sesión iniciada,
-// así que un usuario de esa tabla podría alcanzar pantallas de /admin. Por
-// eso el club tiene identidad propia (`ProjectFairAccount`) y un token con
-// audiencia distinta, que el middleware de abajo exige explícitamente.
+// tabla `User` de la plataforma. El club tiene identidad propia
+// (`ProjectFairAccount`) y un token con audiencia `project-fair-portal`, que
+// el middleware de abajo exige. Desde v4.627 la separación es simétrica:
+// `authMiddleware` rechaza este token en las rutas de plataforma, así que un
+// Gestor de Proyectos no alcanza el panel administrativo ni escribiendo la
+// URL a mano.
 // ════════════════════════════════════════════════════════════════════
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -20,7 +21,7 @@ import db from '../lib/db.js';
 import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
 import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairPortalController] v4.625.0 cargado — Panel del club: cuenta propia, formulario maestro y envío al comité');
+console.log('[projectFairPortalController] v4.627.0 cargado — Panel del club: acceso unificado desde el encabezado, rol y destino resueltos en el servidor');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
@@ -162,32 +163,98 @@ export const checkEmail = async (req, res) => {
     res.json({ exists: rows.length > 0 });
 };
 
+export const ROLE_LABELS = {
+    [APPLICANT_ROLES.MANAGER]: 'Gestor de Proyectos',
+    [APPLICANT_ROLES.SUSPENDED]: 'Gestor de Proyectos (suspendido)',
+    [APPLICANT_ROLES.APPLICANT]: 'Postulante',
+};
+
+/**
+ * Proyectos que administra una cuenta del panel, con la ruta a la que debe
+ * entrar. Hoy la relación es de uno a uno (`ProjectFairAccount.submissionId`),
+ * así que la lista trae 0 ó 1 elementos; la forma es de lista a propósito, para
+ * que cuando una cuenta pueda gestionar varios sólo haya que ampliar esta
+ * consulta y agregar la vista de listado, sin tocar quien la consume.
+ */
+export const projectsForAccount = async (account) => {
+    if (!account?.submissionId) return [];
+    const { rows } = await db.query(
+        'SELECT id, "publicRef", "projectName", "clubName", district, status, "workflowStatus" FROM "ProjectFairSubmission" WHERE id = $1',
+        [account.submissionId]
+    );
+    return rows.map(r => ({
+        id: r.id, publicRef: r.publicRef, projectName: r.projectName,
+        clubName: r.clubName, district: r.district,
+        paymentStatus: r.status, workflowStatus: r.workflowStatus,
+    }));
+};
+
+/**
+ * Resumen de sesión del panel del club: rol, proyectos y ruta de destino. Lo
+ * calcula el servidor —no el navegador— para que la redirección y los permisos
+ * no puedan discrepar.
+ */
+export const describePortalSession = async (account) => {
+    const cfg = await readConfigForAdmin().catch(() => ({}));
+    const path = cfg?.portal?.path || '/mi-proyecto';
+    const projects = await projectsForAccount(account);
+    const role = account?.role || APPLICANT_ROLES.APPLICANT;
+    return {
+        realm: 'portal',
+        role,
+        roleLabel: ROLE_LABELS[role] || ROLE_LABELS[APPLICANT_ROLES.APPLICANT],
+        projects,
+        // Con un solo proyecto se entra directo a él. Con varios habrá que
+        // pasar antes por el listado; mientras la relación sea 1:1 ese caso no
+        // puede darse y no se inventa una ruta que no existe.
+        redirect: path,
+        needsPassword: !account?.passwordHash || account.passwordHash === UNUSABLE_HASH,
+    };
+};
+
+/**
+ * Comprueba unas credenciales contra la identidad del panel del club.
+ * @returns {Promise<{ok:true, account, token} | {ok:false, needsPassword?:boolean}>}
+ */
+export const authenticatePortal = async (email, password) => {
+    await ensureTables();
+    const mail = clean(email, 200).toLowerCase();
+    if (!isEmail(mail) || !password) return { ok: false };
+
+    const { rows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [mail]);
+    const account = rows[0];
+    // Una cuenta creada por el sistema todavía no tiene contraseña elegida: se
+    // le dice explícitamente que la defina, en vez de dejarlo probando
+    // credenciales que nunca van a funcionar.
+    if (account && account.passwordHash === UNUSABLE_HASH) return { ok: false, needsPassword: true };
+
+    // Mismo resultado para correo inexistente y contraseña incorrecta: no se
+    // revela qué correos están registrados.
+    const ok = account && await bcrypt.compare(password, account.passwordHash).catch(() => false);
+    if (!ok) return { ok: false };
+
+    await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
+    return { ok: true, account, token: signToken(account) };
+};
+
 // POST /portal/login
 export const login = async (req, res) => {
     try {
-        await ensureTables();
         const email = clean(req.body?.email, 200).toLowerCase();
         const password = String(req.body?.password || '');
         if (!isEmail(email) || !password) return res.status(400).json({ error: 'Ingresa tu correo y contraseña.' });
 
-        const { rows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE lower(email) = $1 LIMIT 1', [email]);
-        const account = rows[0];
-        // Una cuenta creada por el sistema todavía no tiene contraseña elegida:
-        // se le dice explícitamente que la defina, en vez de dejarlo probando
-        // credenciales que nunca van a funcionar.
-        if (account && account.passwordHash === UNUSABLE_HASH) {
+        const result = await authenticatePortal(email, password);
+        if (result.needsPassword) {
             return res.status(409).json({
                 error: 'Tu proyecto está registrado pero aún no tiene contraseña. Usa "Olvidé mi contraseña" para crear una.',
                 needsPassword: true,
             });
         }
-        // Mismo mensaje para correo inexistente y contraseña incorrecta: no se
-        // revela qué correos están registrados.
-        const ok = account && await bcrypt.compare(password, account.passwordHash).catch(() => false);
-        if (!ok) return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
+        if (!result.ok) return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
 
-        await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
-        res.json({ token: signToken(account), email: account.email, clubName: account.clubName });
+        const session = await describePortalSession(result.account);
+        res.json({ token: result.token, email: result.account.email, clubName: result.account.clubName, ...session });
     } catch (error) {
         console.error('[project-fair-portal] login:', error);
         res.status(500).json({ error: 'No pudimos iniciar sesión.' });
@@ -236,7 +303,8 @@ export const claim = async (req, res) => {
         }
 
         await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
-        res.json({ token: signToken(account), email: account.email, clubName: account.clubName, needsPassword: !account.passwordHash || account.passwordHash === UNUSABLE_HASH });
+        const session = await describePortalSession(account);
+        res.json({ token: signToken(account), email: account.email, clubName: account.clubName, ...session });
     } catch (error) {
         console.error('[project-fair-portal] claim:', error);
         res.status(500).json({ error: 'No pudimos abrir tu panel.' });
@@ -417,11 +485,7 @@ export const getPortalData = async (req, res) => {
         const edit = editability(submission, form, cfg, account);
         res.json({
             role: account?.role || APPLICANT_ROLES.APPLICANT,
-            roleLabel: {
-                [APPLICANT_ROLES.MANAGER]: 'Gestor de Proyectos',
-                [APPLICANT_ROLES.SUSPENDED]: 'Gestor de Proyectos (suspendido)',
-                [APPLICANT_ROLES.APPLICANT]: 'Postulante',
-            }[account?.role || APPLICANT_ROLES.APPLICANT],
+            roleLabel: ROLE_LABELS[account?.role || APPLICANT_ROLES.APPLICANT],
             submission: {
                 id: submission.id, publicRef: submission.publicRef,
                 projectName: submission.projectName, clubName: submission.clubName,

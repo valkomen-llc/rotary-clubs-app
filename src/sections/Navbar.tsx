@@ -11,7 +11,15 @@ import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
+import { onOpenLoginModal } from '../lib/loginModal';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
+
+// El ingreso con Google todavía no tiene flujo: el botón no llevaba ningún
+// manejador, así que no hacía nada. Se oculta hasta implementar el OAuth
+// (/api/auth/google/start + callback que verifica el id_token en el servidor);
+// entonces converge en la misma resolución de rol que el ingreso con
+// contraseña y basta poner esto en true.
+const GOOGLE_LOGIN_ENABLED = false;
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -89,6 +97,13 @@ const Navbar = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Un único formulario para las dos identidades del sitio. `mode` alterna
+  // entre ingresar y recuperar la contraseña; `notice` explica por qué se
+  // está pidiendo la sesión cuando la pide otra pantalla.
+  const [loginMode, setLoginMode] = useState<'login' | 'forgot'>('login');
+  const [loginNotice, setLoginNotice] = useState('');
+  const [loginOk, setLoginOk] = useState('');
+  const [afterLogin, setAfterLogin] = useState<string | null>(null);
   // ¿Este usuario también tiene un proyecto postulado? Se consulta al servidor
   // por el correo de su sesión, así el atajo aparece siempre que corresponda y
   // no sólo justo después de iniciar sesión.
@@ -178,13 +193,12 @@ const Navbar = () => {
   }, [searchQuery, club.id]);
 
   /**
-   * Ingreso del panel del club que postuló un proyecto (v4.619). Es una
-   * identidad aparte de la plataforma: vive en la tabla del módulo de la feria
-   * y su token va a otra llave del navegador.
-   * @returns 'ok' si entró · 'needs-password' si la cuenta existe pero aún no
-   *          tiene contraseña · null si esas credenciales no son de un club.
+   * Prueba las credenciales en el panel del club (v4.619). Sólo se usa como
+   * complemento cuando quien entró es un administrador del sitio que ADEMÁS
+   * postuló un proyecto con esas mismas credenciales, para ofrecerle el atajo
+   * en su menú sin sacarlo de su panel de control.
    */
-  const tryProjectFairLogin = async (): Promise<'ok' | 'needs-password' | null> => {
+  const tryProjectFairLogin = async (): Promise<boolean> => {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/project-fair/portal/login`, {
         method: 'POST',
@@ -194,58 +208,99 @@ const Navbar = () => {
       const data = await res.json();
       if (res.ok && data?.token) {
         localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
-        return 'ok';
+        return true;
       }
-      return data?.needsPassword ? 'needs-password' : null;
+      return false;
     } catch {
-      return null;
+      return false;
     }
   };
 
+  /** Cierra el formulario y deja los campos limpios para la próxima vez. */
+  const closeLoginModal = () => {
+    setLoginModalOpen(false);
+    setPassword('');
+    setError(''); setLoginOk(''); setLoginNotice('');
+    setLoginMode('login');
+    setAfterLogin(null);
+  };
+
+  /**
+   * ACCESO UNIFICADO (v4.627). Un solo envío a /auth/session: el servidor
+   * averigua si esas credenciales son de un administrador del sitio o de un
+   * Gestor de Proyectos, emite el token que corresponda y devuelve la ruta de
+   * destino ya calculada. Aquí no se decide a dónde va cada rol.
+   */
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(''); setLoginOk('');
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/login`, {
+      if (loginMode === 'forgot') {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/project-fair/portal/forgot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const body = await res.json();
+        setLoginOk(body?.message || 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
       const data = await response.json();
 
-      // Quien no es usuario de la plataforma puede ser un club que postuló su
-      // proyecto: se prueban esas credenciales en el panel de la feria y, si
-      // son suyas, entra directo a formular su proyecto.
-      if (!response.ok) {
-        const fair = await tryProjectFairLogin();
-        if (fair) {
-          setLoginModalOpen(false);
-          navigate(PROJECT_FAIR_PORTAL_PATH);
-          return;
-        }
-        throw new Error(data.error || 'Login failed');
+      // La cuenta existe pero nunca eligió contraseña: se pasa a la pantalla
+      // de recuperación con el correo puesto, en vez de dejarlo probando
+      // credenciales que no van a funcionar.
+      if (!response.ok && data?.needsPassword) {
+        setLoginMode('forgot');
+        setLoginNotice(data.error);
+        return;
+      }
+      if (!response.ok) throw new Error(data?.error || 'Correo o contraseña incorrectos.');
+
+      const target = afterLogin || data.redirect || '/';
+
+      if (data.realm === 'portal') {
+        // Gestor de Proyectos: identidad del módulo, token en su propia llave.
+        localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
+        setJustLinked(true);
+        closeLoginModal();
+        navigate(target);
+        return;
       }
 
       login(data.token, data.user);
-      setLoginModalOpen(false);
+      closeLoginModal();
       // Un administrador del sitio puede además haber postulado un proyecto.
       // Se guarda su acceso al panel del club para ofrecérselo en el menú, sin
       // sacarlo de su panel de control.
-      // Además del puente por correo, se prueban sus credenciales en el panel
-      // del club: cubre a quien usa un correo distinto del de la plataforma.
-      void tryProjectFairLogin().then(r => setJustLinked(r === 'ok'));
-      if (data.user.role === 'administrator') {
-        navigate('/admin/dashboard');
-      }
+      void tryProjectFairLogin().then(setJustLinked);
+      if (data.warning) { navigate('/'); return; }
+      navigate(target);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Otra pantalla pide la sesión (p. ej. /mi-proyecto sin token): se abre ESTE
+  // formulario, el único del sitio, en vez de que cada pantalla dibuje el suyo.
+  useEffect(() => onOpenLoginModal(opts => {
+    setError(''); setLoginOk('');
+    setLoginNotice(opts.reason || '');
+    setLoginMode(opts.mode || 'login');
+    setAfterLogin(opts.next || null);
+    if (opts.email) setEmail(opts.email);
+    setLoginModalOpen(true);
+  }), []);
 
   // Categorías especiales de socios (Honorarios / Gobernadores / Autores): cada
   // enlace aparece en el desplegable solo si el club tiene miembros de esa
@@ -722,12 +777,29 @@ const Navbar = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
             <div className="p-8">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-rotary-blue">Iniciar Sesión</h2>
-                <button onClick={() => setLoginModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-2xl font-bold text-rotary-blue">
+                  {loginMode === 'login' ? 'Iniciar Sesión' : 'Recupera tu acceso'}
+                </h2>
+                <button onClick={closeLoginModal} className="text-gray-400 hover:text-gray-600">
                   <X className="w-6 h-6" />
                 </button>
               </div>
+
+              {/* Un solo acceso para las dos identidades del sitio: quien
+                  ingresa no tiene por qué saber cuál le corresponde. */}
+              <p className="mb-6 text-sm text-gray-500">
+                {loginMode === 'login'
+                  ? 'Administradores del sitio y clubes que postularon su proyecto ingresan aquí, con las credenciales que crearon al registrarse.'
+                  : 'Escribe tu correo y te enviaremos un enlace para crear una contraseña nueva.'}
+              </p>
+
+              {loginNotice && (
+                <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">{loginNotice}</p>
+              )}
+              {loginOk && (
+                <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">{loginOk}</p>
+              )}
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
@@ -738,20 +810,22 @@ const Navbar = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                    placeholder="admin@rotary-platform.org"
+                    placeholder="tucorreo@club.org"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                    placeholder="••••••••"
-                  />
-                </div>
+                {loginMode === 'login' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                )}
 
                 {error && <p className="text-red-500 text-sm">{error}</p>}
 
@@ -760,9 +834,29 @@ const Navbar = () => {
                   disabled={loading}
                   className="w-full bg-rotary-blue hover:bg-rotary-blue/90 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 mt-6"
                 >
-                  {loading ? 'Ingresando...' : <>Iniciar sesión <LogIn className="w-5 h-5" /></>}
+                  {loading
+                    ? (loginMode === 'login' ? 'Ingresando...' : 'Enviando...')
+                    : loginMode === 'login'
+                      ? <>Iniciar sesión <LogIn className="w-5 h-5" /></>
+                      : 'Enviar enlace'}
                 </button>
 
+                <div className="text-center text-[13px]">
+                  {loginMode === 'login' ? (
+                    <button type="button" onClick={() => { setLoginMode('forgot'); setError(''); setLoginOk(''); }}
+                      className="font-semibold text-gray-500 hover:text-gray-800">
+                      Olvidé mi contraseña
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => { setLoginMode('login'); setError(''); setLoginOk(''); setLoginNotice(''); }}
+                      className="font-semibold text-gray-500 hover:text-gray-800">
+                      Volver a ingresar
+                    </button>
+                  )}
+                </div>
+
+                {GOOGLE_LOGIN_ENABLED && loginMode === 'login' && (
+                <>
                 <div className="relative my-8">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-100"></div>
@@ -784,6 +878,8 @@ const Navbar = () => {
                   </svg>
                   Google
                 </button>
+                </>
+                )}
               </form>
             </div>
           </div>

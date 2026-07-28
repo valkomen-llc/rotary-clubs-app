@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.626.0 | 2026-07-28 (Fuera del código las contraseñas de la base de datos)
+// UI V4.627.0 | 2026-07-28 (Un solo formulario de ingreso para todo el sitio)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.627.0',
+        title: 'Un solo formulario de ingreso para todo el sitio \ud83d\udd10',
+        description: 'Hasta ahora el sitio pedía credenciales en dos lugares distintos: el formulario del ícono del encabezado y otro propio dentro de "Mi Proyecto", cada uno con sus reglas. Ahora el ingreso es uno solo, el del encabezado, y sirve tanto para el Administrador del Sitio como para el Gestor de Proyectos que creó sus credenciales al inscribir el proyecto: quien entra escribe su correo y su contraseña una sola vez y el sistema averigua por sí mismo a cuál de los dos corresponde. El destino también lo decide el servidor y no la pantalla — el administrador entra a su panel de control y el gestor entra directo a su proyecto —, así que el menú y la redirección no pueden contradecirse. Se agregó "Olvidé mi contraseña" al mismo formulario, y quien se registró pero nunca eligió contraseña ya no queda probando credenciales: se le lleva directo a crear una. El enlace de recuperación del correo sigue funcionando igual, porque crear una contraseña no es un segundo ingreso. Además se corrigió un acceso indebido: la sesión del panel del club servía para consultar en el servidor las postulaciones y los pagos de TODOS los clubes, porque la verificación miraba la firma del token pero no de cuál de las dos identidades era. Ahora cada identidad tiene la suya y esas 28 direcciones exigen además un rol administrativo del sitio. Nadie pierde la sesión que ya tenía abierta. Verificado con 20 pruebas automáticas sobre una base de datos real: ingreso de administrador, ingreso de gestor con las credenciales del registro, credenciales incorrectas sin revelar cuál falló, cuenta sin contraseña, sesión vencida y el rechazo del token del club en las rutas administrativas.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'inicio de sesion', 'roles', 'permisos', 'seguridad', 'feria de proyectos', 'panel del club', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.626.0',
         title: 'Las contraseñas de la base de datos salen del código 🔑',

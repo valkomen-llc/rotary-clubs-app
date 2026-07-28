@@ -120,6 +120,48 @@ Nunca volver a poner `db push` en el `build`.
 Las 14 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `EventRegistration`, `FAQ` y las once `ProjectFair*`.
 
+## Acceso e identidades (v4.627)
+
+El sitio tiene **un solo formulario de ingreso**: el del ícono del encabezado
+(`src/sections/Navbar.tsx`). Ninguna pantalla dibuja el suyo. Cuando otra
+pantalla necesita sesión, llama a `openLoginModal()` (`src/lib/loginModal.ts`).
+
+Detrás hay **dos identidades**, y quien ingresa no tiene por qué saber cuál le
+toca:
+
+| Identidad | Tabla | Audiencia del token | Llave en el navegador | Destino |
+|---|---|---|---|---|
+| Administrador del sitio | `User` | `rotary-platform` | `rotary_token` | `/admin/dashboard` |
+| Gestor de Proyectos | `ProjectFairAccount` | `project-fair-portal` | `feria_portal_token` | `/mi-proyecto` |
+
+`POST /api/auth/session` (`server/controllers/sessionController.js`) recibe el
+correo y la contraseña una sola vez, prueba primero la plataforma y después el
+panel del club, y **devuelve la ruta de destino ya calculada**. El navegador la
+obedece; no recalcula a dónde va cada rol. Al agregar un rol o un destino,
+cambiarlo ahí, no en el `Navbar`.
+
+**Reglas durables:**
+
+- **La redirección es comodidad, no seguridad.** Toda ruta restringida se
+  protege también en el servidor. `authMiddleware` exige la audiencia
+  `rotary-platform`; `requireSiteAdmin` exige rol administrativo. Ambos en
+  `server/middleware/auth.js`.
+- **Las dos identidades comparten `JWT_SECRET`.** Por eso la audiencia es
+  obligatoria: hasta v4.626 `authMiddleware` sólo verificaba la firma, así que
+  el token del panel de un club pasaba y alcanzaba `/api/project-fair/admin/*`
+  —que devuelve las postulaciones y los pagos de **todos** los clubes—.
+  Nunca quitar la comprobación de `aud`.
+- Los tokens sin `aud` (emitidos antes de v4.627) se siguen aceptando a
+  propósito, para no cerrar sesiones en marcha. Duran un día y rotan solos;
+  esa tolerancia se puede quitar pasada una semana del despliegue.
+- El ingreso con Google **no está implementado**: el botón nunca tuvo
+  manejador. Está oculto tras `GOOGLE_LOGIN_ENABLED` en `Navbar.tsx`. Cuando
+  se implemente, debe verificar el `id_token` en el servidor y converger en
+  `resolveSession`, no ser una vía de acceso con reglas propias.
+- `ADMIN_ROLES` está declarado dos veces a propósito (`src/App.tsx` y
+  `server/middleware/auth.js`): el cliente decide qué pinta, el servidor qué
+  responde. Si cambia una lista, cambiar la otra.
+
 ## Credenciales
 
 **Nunca escribir cadenas de conexión ni claves en el código.** Siempre
