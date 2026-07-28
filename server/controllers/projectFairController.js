@@ -23,15 +23,27 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 
-console.log('[projectFairController] v4.602.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.610.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 // Slug público del formulario (v4.594). Los anteriores (/feria-proyectos,
 // /inscribir-proyecto) siguen funcionando: el frontend los redirige aquí.
 const DEFAULT_FORM_PATH = '/postular-proyecto';
-// Tiempo máximo de presentación de cada proyecto durante la feria.
-const DEFAULT_PRESENTATION_MINUTES = 9;
+// Tiempo de exposición de cada proyecto durante la feria. Es un rango
+// (de 5 a 6 minutos), no un tope único: el equipo lo comunica así a los clubes.
+const DEFAULT_PRESENTATION = { minMinutes: 5, maxMinutes: 6 };
+
+/**
+ * Texto del tiempo de presentación: "de 5 a 6 minutos" cuando hay rango,
+ * "de máximo 6 minutos" cuando sólo se configuró el tope.
+ */
+export const presentationLabel = (presentation) => {
+    const max = Number(presentation?.maxMinutes) || DEFAULT_PRESENTATION.maxMinutes;
+    const min = Number(presentation?.minMinutes) || 0;
+    if (min > 0 && min < max) return `de ${min} a ${max} minutos`;
+    return `de máximo ${max} minutos`;
+};
 
 // ── Configuración por defecto ───────────────────────────────────────
 // SOLO respaldo: los valores guardados por el admin siempre mandan (merge
@@ -53,7 +65,7 @@ export const DEFAULT_CONFIG = {
         key: '12-valledupar',
     },
     deadline: '2026-08-10',
-    presentation: { maxMinutes: DEFAULT_PRESENTATION_MINUTES },
+    presentation: { ...DEFAULT_PRESENTATION },
     registration: {
         amountCop: 250000,
         currency: 'COP',
@@ -516,6 +528,21 @@ export const recordStripeEvent = async (event, submissionId = null) => {
 export { ensureTables };
 
 // ── Configuración ────────────────────────────────────────────────────
+/**
+ * Antes de v4.610 el tiempo de presentación era un tope único
+ * (`presentation.maxMinutes`). Una fila guardada con ese formato, al mezclarse
+ * con el rango por defecto, dejaría un rango incoherente (min del defecto +
+ * max viejo). Si la fila guardada no trae `minMinutes`, es de esa época: se
+ * ignora su `presentation` para que aplique el rango por defecto. En cuanto el
+ * admin guarde el rango desde la pestaña Convocatoria, manda lo guardado.
+ */
+const normalizeSavedConfig = (saved) => {
+    if (!isPlainObject(saved?.presentation)) return saved;
+    if (saved.presentation.minMinutes !== undefined) return saved;
+    const { presentation, ...rest } = saved;
+    return rest;
+};
+
 const readConfig = async () => {
     await ensureTables();
     const { rows } = await db.query('SELECT config FROM "ProjectFairConfig" WHERE key = $1 LIMIT 1', ['active']);
@@ -523,7 +550,7 @@ const readConfig = async () => {
     if (typeof saved === 'string') {
         try { saved = JSON.parse(saved); } catch { saved = {}; }
     }
-    return deepMerge(DEFAULT_CONFIG, saved);
+    return deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(saved));
 };
 
 // La usa el módulo de Gestión de Postulaciones y Pagos.
@@ -1403,8 +1430,8 @@ const buildReceiptHtml = (s, cfg) => {
         <p style="margin:0;font-size:14px;line-height:1.6;color:#334155">
           <strong>Siguiente paso:</strong> continúa tu registro internacional en
           <a href="${esc(cfg.redirect?.url || 'https://grants25a.org/')}" style="color:${primary};font-weight:700">${esc(cfg.redirect?.name || 'Rotary Grants 25A')}</a>.
-          Recuerda que la presentación del proyecto durante la feria tendrá un tiempo máximo de
-          ${esc(cfg.presentation?.maxMinutes || DEFAULT_PRESENTATION_MINUTES)} minutos.
+          Recuerda que la presentación del proyecto durante la feria tendrá una duración
+          ${esc(presentationLabel(cfg.presentation))}.
         </p>
       </div>
     </div>

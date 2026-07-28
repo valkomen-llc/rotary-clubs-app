@@ -53,7 +53,7 @@ export interface FairConfig {
     formPath: string;
     edition: { number: number; ordinal: string; name: string; city: string; country: string; year: number; dates?: string; key: string };
     deadline: string;
-    presentation: { maxMinutes: number };
+    presentation: { minMinutes?: number; maxMinutes: number };
     registration: { amountCop: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     focusAreas: FocusArea[];
@@ -108,6 +108,13 @@ const toRoman = (value: number): string => {
         while (n >= amount) { out += symbol; n -= amount; }
         return out;
     }, '');
+};
+
+// Vista previa del texto que verá el postulante en el formulario público.
+const presentationPreview = (p: { minMinutes?: number; maxMinutes: number }) => {
+    const max = Number(p?.maxMinutes) || 6;
+    const min = Number(p?.minMinutes) || 0;
+    return min > 0 && min < max ? `De ${min} a ${max} minutos` : `Máximo ${max} minutos`;
 };
 
 /** @param canEdit  Sólo los perfiles con permiso de configuración guardan cambios. */
@@ -226,7 +233,8 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     <Input label="Fechas (opcional)" value={config.edition.dates || ''} onChange={(e: ChangeEvent) => patch('edition.dates', e.target.value)} hint="Ej: 15 y 16 de octubre de 2026" />
                     <Input label="Clave interna de la edición" value={config.edition.key} onChange={(e: ChangeEvent) => patch('edition.key', e.target.value)} hint="Se guarda en cada inscripción para diferenciar ediciones." />
                     <Input label="Fecha límite de postulación" type="date" value={config.deadline || ''} onChange={(e: ChangeEvent) => patch('deadline', e.target.value)} />
-                    <Input label="Minutos de presentación" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} hint="Tiempo máximo de exposición de cada proyecto durante la feria." />
+                    <Input label="Minutos de presentación (mínimo)" type="number" value={config.presentation.minMinutes ?? ''} onChange={(e: ChangeEvent) => patch('presentation.minMinutes', Number(e.target.value))} hint="Déjalo en 0 si sólo quieres anunciar un tope máximo." />
+                    <Input label="Minutos de presentación (máximo)" type="number" value={config.presentation.maxMinutes} onChange={(e: ChangeEvent) => patch('presentation.maxMinutes', Number(e.target.value))} hint={`Con ambos valores el formulario público muestra "${presentationPreview(config.presentation)} por proyecto".`} />
                     <Input label="Dirección pública del formulario" value={config.formPath || ''} onChange={(e: ChangeEvent) => patch('formPath', e.target.value)} hint="Ruta donde vive el formulario. Por defecto /postular-proyecto; las direcciones anteriores siguen redirigiendo aquí." />
                 </div>
                 <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
