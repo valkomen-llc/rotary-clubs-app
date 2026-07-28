@@ -1,15 +1,17 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.623.0",
-  "cache_bust": "2026-07-28 (HOTFIX DE PERDIDA DE DATOS: el script de build ejecutaba \"prisma db push --accept-data-loss\" en cada despliegue. db push deja la base identica al schema, asi que BORRABA toda tabla que existiera en la base y no estuviera en schema.prisma — las once ProjectFair*, BannerTemplate, y las de CRM/WhatsApp, FAQs, agentes, brains, registro de eventos y leads. Reproducido: con una fila en ProjectFairSubmission el comando avisa \"You are about to drop the ProjectFairSubmission table, which is not empty (1 rows)\" y la elimina. Es la causa del incidente del 2026-07-13 con la plantilla de pendones y de la inscripcion pagada que desaparecio hoy. El build pasa a hacer solo prisma generate + vite build; la sincronizacion del schema queda en npm run db:push, a proposito. Verificado: con el build viejo la fila se pierde, con el nuevo sobrevive.)",
+  "version": "4.624.0",
+  "cache_bust": "2026-07-28 (Dos barreras para que ningun despliegue vuelva a borrar datos. (1) prebuild: scripts/check-build-safety.mjs corre en CADA despliegue, sin tocar la base, y detiene el build si build/vercel-build/postinstall/start contienen \"prisma db push\" o \"prisma migrate reset\". Si alguien lo reintroduce, el despliegue falla en vez de borrar en silencio. (2) npm run db:push pasa antes por scripts/db-push-guard.mjs, que compara las tablas de la base con los modelos del schema y aborta listando las que se perderian y cuantas filas tienen; para sincronizar de todos modos existe db:push:force. Verificado: la barrera del build deja pasar el build actual y detiene uno con db push; la del db:push detecta las 12 tablas fuera del schema y marca la que tiene datos.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-build-safety.mjs",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
     "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma",
-    "db:push": "npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
+    "db:push": "node scripts/db-push-guard.mjs && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
+    "db:push:force": "npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
     "lint": "eslint .",
     "preview": "vite preview"
   },

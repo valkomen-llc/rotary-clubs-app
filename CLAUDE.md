@@ -106,6 +106,20 @@ cambio toca `server/prisma/schema.prisma`, hay que sincronizar la base **a
 propósito** con `npm run db:push`, revisando antes el aviso de pérdida de datos.
 Nunca volver a poner `db push` en el `build`.
 
+### Dos barreras que lo hacen cumplir (v4.624)
+
+1. **`prebuild` → `scripts/check-build-safety.mjs`.** Corre en cada despliegue,
+   sin tocar la base. Si `build`, `vercel-build`, `postinstall` o `start`
+   vuelven a contener `prisma db push` o `prisma migrate reset`, **rompe el
+   despliegue** con la explicación, en vez de dejar que borre datos.
+2. **`npm run db:push` → `scripts/db-push-guard.mjs`.** Compara las tablas de
+   la base con los modelos del schema y **aborta** listando las que se
+   perderían y cuántas filas tienen. Para sincronizar de todos modos, a
+   sabiendas: `npm run db:push:force`.
+
+Las 14 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `EventRegistration`, `FAQ` y las once `ProjectFair*`.
+
 ## GitHub
 
 - Repo único: `valkomen-llc/rotary-clubs-app`.

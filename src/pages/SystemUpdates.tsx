@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.623.0 | 2026-07-28 (HOTFIX: cada despliegue borraba las tablas fuera de Prisma)
+// UI V4.624.0 | 2026-07-28 (Dos barreras para que ningún despliegue vuelva a borrar datos)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.624.0',
+        title: 'Dos candados para que ningún despliegue vuelva a borrar datos 🔒',
+        description: 'Quitar el comando que borraba las tablas era necesario pero no suficiente: nada impedía que alguien lo volviera a poner más adelante. Ahora hay dos barreras automáticas. La primera se ejecuta en cada publicación, antes de compilar: si detecta que un paso automático del despliegue volvió a incluir una sincronización de base de datos, detiene la publicación y explica por qué, en vez de dejar que borre en silencio. La segunda protege la sincronización manual: cuando se corre a propósito, primero compara lo que hay en la base con el plano y se detiene mostrando exactamente qué tablas se perderían y cuántos registros tiene cada una; para seguir de todos modos hay que usar una orden distinta, que no se escribe por accidente. Entre las dos cubren las 14 tablas que la plataforma crea sobre la marcha: las inscripciones y pagos de la Feria de Proyectos, la plantilla de pendones, las inscripciones a eventos y las preguntas frecuentes. Ambas quedaron probadas: la del despliegue deja pasar el proceso actual y detiene uno con el comando peligroso; la de la sincronización detecta las tablas en riesgo y marca las que tienen datos.',
+        date: new Date().toISOString(),
+        tags: ['base de datos', 'despliegue', 'proteccion', 'perdida de datos', 'feria de proyectos', 'pendones', 'hotfix'],
+        type: 'hotfix'
+    },
     {
         version: '4.623.0',
         title: 'Encontrado y corregido: cada despliegue borraba datos del cliente 🛑',
