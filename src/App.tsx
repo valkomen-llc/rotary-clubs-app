@@ -172,10 +172,27 @@ function injectGA4Tag(gaId: string) {
   document.head.appendChild(s2);
 }
 
+// Roles de la plataforma que pueden entrar al panel administrativo. Es una
+// lista EXPLÍCITA a propósito: hasta v4.625 el guardián sólo comprobaba que
+// hubiera sesión iniciada, así que cualquier identidad de la tabla `User`
+// alcanzaba las 114 pantallas de /admin. Un rol nuevo debe agregarse aquí
+// deliberadamente, no heredar el acceso por descuido.
+//
+// El Gestor de Proyectos NO está —ni puede estar— en esta lista: su identidad
+// vive en otra tabla (`ProjectFairAccount`) y su token usa otra audiencia, así
+// que nunca llega hasta aquí. Su lugar es /mi-proyecto.
+const ADMIN_ROLES = [
+  'administrator', 'superadmin', 'district_admin', 'club_admin',
+  'editor', 'member', 'crowdfunder',
+];
+
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, user } = useAuth();
   const { club } = useClub();
   if (!isAuthenticated) return <Navigate to="/" />;
+  if (!ADMIN_ROLES.includes(String((user as any)?.role || ''))) {
+    return <Navigate to="/" replace />;
+  }
   // Gate: club admins must complete onboarding first
   // Check both context and localStorage to avoid race conditions after reload
   const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
