@@ -507,7 +507,7 @@ const FeriaProyectos = () => {
 
     if (loadingConfig) {
         return (
-            <div className="min-h-screen bg-slate-50">
+            <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
                 <div className="flex min-h-[60vh] items-center justify-center">
                     <div className="text-center text-slate-500">
@@ -522,7 +522,7 @@ const FeriaProyectos = () => {
 
     if (config && config.enabled === false) {
         return (
-            <div className="min-h-screen bg-slate-50">
+            <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
                 <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
                     <div className="max-w-lg rounded-2xl bg-white p-10 text-center shadow-sm">
@@ -540,7 +540,7 @@ const FeriaProyectos = () => {
     }
 
     return (
-        <div className="min-h-screen bg-slate-100" ref={topRef}>
+        <div className="min-h-screen bg-rotary-concrete" ref={topRef}>
             <Navbar />
 
             {/* Cabecera de la convocatoria */}
