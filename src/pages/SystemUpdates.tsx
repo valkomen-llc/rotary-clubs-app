@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.620.0 | 2026-07-28 ("Mi Proyecto" aparece solo para quien postuló, dentro del panel)
+// UI V4.621.0 | 2026-07-28 (El postulante entra a su proyecto, no al panel administrativo)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.621.0',
+        title: 'Quien postuló entra a su proyecto, no al panel del sitio 🎯',
+        description: 'En el menú del perfil, "Mi Proyecto" pasa a ir de primero y resaltado, por encima de "Panel de Control": quien postuló un proyecto lo que quiere es entrar a formularlo, no al panel administrativo del sitio. Y quien no administra el sitio —el caso de la mayoría de los clubes que postulan— ya no ve la opción "Panel de Control" en absoluto: su único acceso es el panel de su proyecto. Para quien sí administra el sitio y además postuló, aparecen los dos, con el proyecto primero. El menú móvil sigue el mismo criterio.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'panel del club', 'menu', 'acceso', 'update'],
+        type: 'update'
+    },
     {
         version: '4.620.0',
         title: 'Quien postuló un proyecto lo encuentra dentro de su propio panel 📁',
