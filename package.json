@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.619.0",
-  "cache_bust": "2026-07-28 (El \"Iniciar Sesion\" del sitio ahora tambien sirve para los clubes que postularon su proyecto: si las credenciales no son de un usuario de la plataforma, se prueban en el panel de la feria y, si son suyas, entra directo a /mi-proyecto a formular su proyecto. Si la cuenta existe pero aun no tiene contrasena elegida, tambien se le lleva al panel, donde encuentra la recuperacion. Un administrador que ademas postulo un proyecto conserva su panel de control y gana un atajo \"Mi Proyecto\" en el menu de perfil (y en el menu movil); si sus credenciales no son de un club, se limpia cualquier sesion de panel que hubiera quedado de otro usuario en ese navegador. La ruta del panel y la llave del token se centralizan en src/lib/ctaLinks.ts.)",
+  "version": "4.620.0",
+  "cache_bust": "2026-07-28 (El club que postulo y pago queda enlazado con su usuario de la plataforma por el correo: nuevo GET /project-fair/portal/link (con token de la plataforma) que devuelve, si ese correo tiene postulacion, un token del panel y el resumen del proyecto. Con eso el atajo \"Mi Proyecto\" aparece siempre que corresponda —en el menu de perfil del sitio y como item de la barra lateral del panel de control— y no solo justo despues de iniciar sesion; al abrirlo entra al panel sin escribir la contrasena otra vez. Si el usuario no tiene proyecto se limpia cualquier sesion de panel que hubiera quedado en ese navegador. Ademas, la deteccion del administrador del sitio de la feria gana un respaldo por dominio de la peticion (cubre los tokens con clubId espejo) y admite el rol editor.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {

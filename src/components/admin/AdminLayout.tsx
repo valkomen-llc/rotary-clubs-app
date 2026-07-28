@@ -55,6 +55,7 @@ import {
     CalendarClock
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProjectFairLink } from '../../lib/useProjectFairLink';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
 import { SYSTEM_UPDATES } from '../../pages/SystemUpdates';
@@ -75,6 +76,8 @@ interface MenuItem {
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
+    // ¿Este usuario tiene además un proyecto postulado en la feria?
+    const projectLink = useProjectFairLink(!!user);
     const { club } = useClub();
     const navigate = useNavigate();
     const location = useLocation();
@@ -456,6 +459,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             // entre ellas — por eso los módulos se calculaban pero no se veían.
             items.push(
                 { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'General', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'formulario', 'trm', 'grants'] },
+            );
+        }
+
+        // v4.620 — Quien además postuló un proyecto entra a formularlo desde su
+        // propio panel, sin tener que conocer la dirección del panel del club.
+        if (projectLink.hasProject) {
+            items.push(
+                { icon: ClipboardList, label: 'Mi Proyecto', path: projectLink.path, category: 'General', keywords: ['mi proyecto', 'formulacion', 'postulacion', 'feria'] },
             );
         }
 

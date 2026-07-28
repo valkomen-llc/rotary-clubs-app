@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.619.0 | 2026-07-28 (Iniciar sesión del sitio lleva al club a su panel de proyecto)
+// UI V4.620.0 | 2026-07-28 ("Mi Proyecto" aparece solo para quien postuló, dentro del panel)
 // Cache bust: 2026-07-28
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.620.0',
+        title: 'Quien postuló un proyecto lo encuentra dentro de su propio panel 📁',
+        description: 'El sistema ahora reconoce por el correo que un usuario de la plataforma es también el club que postuló y pagó un proyecto. Con eso, el acceso "Mi Proyecto" aparece por sí solo en dos lugares: en el menú del perfil del sitio y como una sección más de la barra lateral del panel de control, junto al resto de los módulos. Al abrirlo entra directo a formular su proyecto, sin escribir la contraseña otra vez, porque la sesión del panel se abre con la identidad que ya tenía. Antes el atajo solo aparecía si acababa de iniciar sesión en esa misma visita, así que quien ya estaba dentro no lo veía nunca. Si el usuario no tiene proyecto, se limpia cualquier sesión de panel que hubiera quedado en ese navegador. También se reforzó el reconocimiento del administrador del sitio de la feria: además del tipo de sitio, ahora se comprueba el dominio desde el que llega la petición, para los casos en que la sesión venía de una suplantación de distrito y por eso el módulo se abría en modo solo lectura.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'panel del club', 'acceso', 'permisos', 'update'],
+        type: 'update'
+    },
     {
         version: '4.619.0',
         title: 'Los clubes entran a su proyecto desde el "Iniciar Sesión" del sitio 🔓',

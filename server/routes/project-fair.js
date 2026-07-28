@@ -27,6 +27,9 @@ router.get('/submissions/:id', getSubmissionStatus);
 import * as portal from '../controllers/projectFairPortalController.js';
 
 router.get('/portal/check-email', portal.checkEmail);
+// Puente con la sesión de la plataforma: exige token de la plataforma y sólo
+// emite un token del panel para el mismo correo ya autenticado.
+router.get('/portal/link', authMiddleware, portal.linkPlatformUser);
 router.post('/portal/login', express.json(), portal.login);
 router.post('/portal/claim', express.json(), portal.claim);
 router.post('/portal/forgot', express.json(), portal.forgotPassword);

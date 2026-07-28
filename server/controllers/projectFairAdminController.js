@@ -30,7 +30,7 @@ import {
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
 
-console.log('[projectFairAdminController] v4.612.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
+console.log('[projectFairAdminController] v4.620.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
@@ -92,20 +92,52 @@ const listHas = (list, email) =>
  * sitio cuyo tipo lo identifica como Feria de Proyectos — el mismo criterio con
  * el que la barra lateral decide mostrar el módulo.
  */
-export const isProjectFairSiteAdmin = async (user, cfg) => {
-    if (!['club_admin', 'district_admin', 'administrator'].includes(user?.role)) return false;
+const FAIR_SITE_HINT = /feria de proyectos|project[ _-]?fair/;
+
+const isFairClubRow = (row) =>
+    !!row && FAIR_SITE_HINT.test(`${row.type || ''} ${row.organizationType || ''} ${row.category || ''}`.toLowerCase());
+
+/** El sitio (Club) desde cuyo dominio llega la petición, si se puede resolver. */
+const clubFromHost = async (req) => {
+    const host = String(req?.headers?.host || '').toLowerCase().replace(/:\d+$/, '');
+    if (!host) return null;
+    const bare = host.replace(/^www\./, '');
+    const sub = bare.split('.')[0];
+    try {
+        const { rows } = await db.query(`
+            SELECT id, type, "organizationType", category FROM "Club"
+            WHERE lower(domain) IN ($1, $2) OR lower(subdomain) = $3
+            LIMIT 1`, [host, bare, sub]);
+        return rows[0] || null;
+    } catch (err) {
+        console.warn('[project-fair-admin] No pude resolver el sitio por dominio:', err?.message);
+        return null;
+    }
+};
+
+export const isProjectFairSiteAdmin = async (req, cfg) => {
+    const user = req?.user;
+    if (!['club_admin', 'district_admin', 'administrator', 'editor'].includes(user?.role)) return false;
     if (!user?.clubId) return false;
     if (cfg?.clubId && user.clubId === cfg.clubId) return true;
+
+    // 1) El sitio del que administra el usuario está marcado como Feria de
+    //    Proyectos (mismo criterio con el que la barra lateral muestra el
+    //    módulo).
     try {
         const { rows } = await db.query(
             'SELECT type, "organizationType", category FROM "Club" WHERE id = $1 LIMIT 1', [user.clubId]);
-        if (!rows[0]) return false;
-        const hint = `${rows[0].type || ''} ${rows[0].organizationType || ''} ${rows[0].category || ''}`.toLowerCase();
-        return /feria de proyectos|project[ _-]?fair/.test(hint);
+        if (isFairClubRow(rows[0])) return true;
     } catch (err) {
         console.warn('[project-fair-admin] No pude verificar el tipo del sitio:', err?.message);
-        return false;
     }
+
+    // 2) Respaldo: la petición llega desde el dominio de un sitio de feria y el
+    //    usuario administra ese mismo sitio. Cubre los casos donde el `clubId`
+    //    del token apunta a un club espejo (p. ej. tras una suplantación de
+    //    distrito) y por eso el tipo no se reconocía.
+    const host = await clubFromHost(req);
+    return !!host && host.id === user.clubId && isFairClubRow(host);
 };
 
 export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
@@ -130,7 +162,7 @@ const withAccess = (handler, capability = 'view') => async (req, res) => {
     try {
         await ensureTables();
         const cfg = await readConfigForAdmin();
-        const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req.user, cfg) });
+        const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req, cfg) });
         if (!access[capability]) {
             return res.status(403).json({ error: 'Tu perfil no tiene permiso para esta acción.' });
         }

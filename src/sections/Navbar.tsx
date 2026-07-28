@@ -10,6 +10,7 @@ import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
@@ -88,11 +89,12 @@ const Navbar = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // ¿Este usuario también tiene un proyecto postulado? Se marca cuando sus
-  // credenciales sirven en el panel del club, para ofrecerle el atajo.
-  const [hasProjectPanel, setHasProjectPanel] = useState(
-    () => !!localStorage.getItem(PORTAL_TOKEN_KEY)
-  );
+  // ¿Este usuario también tiene un proyecto postulado? Se consulta al servidor
+  // por el correo de su sesión, así el atajo aparece siempre que corresponda y
+  // no sólo justo después de iniciar sesión.
+  const [justLinked, setJustLinked] = useState(false);
+  const projectLink = useProjectFairLink(isAuthenticated);
+  const hasProjectPanel = projectLink.hasProject || justLinked;
 
   // Determine if it's a district site
   const currentHostname = window.location.hostname;
@@ -229,12 +231,9 @@ const Navbar = () => {
       // Un administrador del sitio puede además haber postulado un proyecto.
       // Se guarda su acceso al panel del club para ofrecérselo en el menú, sin
       // sacarlo de su panel de control.
-      void tryProjectFairLogin().then(r => {
-        // Si estas credenciales no son de un club, se borra cualquier sesión
-        // de panel que hubiera quedado de otro usuario en este navegador.
-        if (r !== 'ok') localStorage.removeItem(PORTAL_TOKEN_KEY);
-        setHasProjectPanel(r === 'ok');
-      });
+      // Además del puente por correo, se prueban sus credenciales en el panel
+      // del club: cubre a quien usa un correo distinto del de la plataforma.
+      void tryProjectFairLogin().then(r => setJustLinked(r === 'ok'));
       if (data.user.role === 'administrator') {
         navigate('/admin/dashboard');
       }
