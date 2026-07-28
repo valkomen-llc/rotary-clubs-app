@@ -95,6 +95,9 @@ const Navbar = () => {
   const [justLinked, setJustLinked] = useState(false);
   const projectLink = useProjectFairLink(isAuthenticated);
   const hasProjectPanel = projectLink.hasProject || justLinked;
+  // Un postulante que no administra el sitio no tiene nada que hacer en el
+  // panel administrativo: su acceso es el panel de su proyecto.
+  const canManageSite = ['administrator', 'club_admin', 'district_admin', 'editor'].includes((user as any)?.role);
 
   // Determine if it's a district site
   const currentHostname = window.location.hostname;
@@ -557,22 +560,27 @@ const Navbar = () => {
                       </div>
                       {/* Actions */}
                       <div className="py-1">
-                        <Link
-                          to="/admin/dashboard"
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
-                          Panel de Control
-                        </Link>
+{/* Quien postuló un proyecto entra primero a formularlo. Si además
+                            administra el sitio, conserva debajo su panel de control;
+                            si sólo es postulante, ese acceso no aparece. */}
                         {hasProjectPanel && (
                           <Link
                             to={PROJECT_FAIR_PORTAL_PATH}
-                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
                             onClick={() => setUserMenuOpen(false)}
                           >
                             <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0"></span>
                             Mi Proyecto
+                          </Link>
+                        )}
+                        {canManageSite && (
+                          <Link
+                            to="/admin/dashboard"
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
+                            Panel de Control
                           </Link>
                         )}
                         <button
@@ -686,9 +694,11 @@ const Navbar = () => {
 
               {isAuthenticated ? (
                 <>
-                  <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
                   {hasProjectPanel && (
-                    <Link to={PROJECT_FAIR_PORTAL_PATH} className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Mi Proyecto</Link>
+                    <Link to={PROJECT_FAIR_PORTAL_PATH} className="font-semibold text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Mi Proyecto</Link>
+                  )}
+                  {canManageSite && (
+                    <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
                   )}
                 </>
               ) : (

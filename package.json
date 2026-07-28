@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.620.0",
-  "cache_bust": "2026-07-28 (El club que postulo y pago queda enlazado con su usuario de la plataforma por el correo: nuevo GET /project-fair/portal/link (con token de la plataforma) que devuelve, si ese correo tiene postulacion, un token del panel y el resumen del proyecto. Con eso el atajo \"Mi Proyecto\" aparece siempre que corresponda —en el menu de perfil del sitio y como item de la barra lateral del panel de control— y no solo justo despues de iniciar sesion; al abrirlo entra al panel sin escribir la contrasena otra vez. Si el usuario no tiene proyecto se limpia cualquier sesion de panel que hubiera quedado en ese navegador. Ademas, la deteccion del administrador del sitio de la feria gana un respaldo por dominio de la peticion (cubre los tokens con clubId espejo) y admite el rol editor.)",
+  "version": "4.621.0",
+  "cache_bust": "2026-07-28 (En el menu de perfil, \"Mi Proyecto\" pasa a ir PRIMERO y en negrita, por encima de \"Panel de Control\": quien postulo un proyecto entra a formularlo, no al panel administrativo. Quien no administra el sitio (rol distinto de administrator/club_admin/district_admin/editor) ya no ve \"Panel de Control\": su unico acceso es el panel de su proyecto. Mismo criterio en el menu movil.)",
   "type": "module",
   "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
   "scripts": {
