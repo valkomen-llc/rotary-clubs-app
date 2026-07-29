@@ -182,6 +182,11 @@ let _training;
 const getTraining = async () => _training || (({ default: _training } = await import('../server/routes/training.js')), _training);
 let _projectFair;
 const getProjectFair = async () => _projectFair || (({ default: _projectFair } = await import('../server/routes/project-fair.js')), _projectFair);
+// v4.649 — Inscripciones a eventos. El archivo de rutas existía desde v4.606
+// pero NUNCA se montó aquí, así que todo /api/event-registrations caía en el
+// catch-all del frontend y se quedaba colgado.
+let _eventRegistrations;
+const getEventRegistrations = async () => _eventRegistrations || (({ default: _eventRegistrations } = await import('../server/routes/event-registrations.js')), _eventRegistrations);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -267,10 +272,19 @@ app.use('/api/payouts', async (req, res, next) => { try { return (await getPayou
 // Calendario de Capacitaciones y Soporte (v4.563.0)
 app.use('/api/training', async (req, res, next) => { try { return (await getTraining())(req, res, next); } catch (e) { console.error('API Error [training]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/project-fair', async (req, res, next) => { try { return (await getProjectFair())(req, res, next); } catch (e) { console.error('API Error [project-fair]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/event-registrations', async (req, res, next) => { try { return (await getEventRegistrations())(req, res, next); } catch (e) { console.error('API Error [event-registrations]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
-    if (req.path.startsWith('/api')) return;
+    // v4.649 — Una ruta /api que no esté montada arriba llega hasta aquí. Antes
+    // se hacía `return` a secas: la petición se quedaba SIN RESPUESTA y el
+    // navegador giraba hasta el timeout, sin ningún error que mirar. Fue lo que
+    // escondió durante tres versiones que /api/event-registrations nunca se
+    // había montado. Ahora se contesta 404 y se deja constancia en el log.
+    if (req.path.startsWith('/api')) {
+        console.error(`[api] Ruta no montada: ${req.method} ${req.path}`);
+        return res.status(404).json({ error: `Ruta de API no encontrada: ${req.path}` });
+    }
 
     // ── Global SaaS Redirect Logic ──
     const hostname = req.hostname || '';
