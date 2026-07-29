@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.639.0 | 2026-07-29 (Enlace provisional de reunión con alcance/prioridad + confirmación con botón/copiar/código + recordatorio 1h y auditoría de correos)
+// UI V4.640.0 | 2026-07-29 (Agenda pública: fondo del login, logo +20px, título sin negrilla, barra superior con solo Iniciar sesión)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.640.0',
+        title: 'Agenda pública con la imagen del Panel 🎨',
+        description: 'Ajustes visuales en la herramienta pública para agendar capacitaciones: (1) el fondo ahora es el mismo del inicio de sesión del Panel de Administración, para una imagen más consistente; (2) el logo del encabezado se ve más grande; (3) el título "Agenda de Capacitaciones y Soporte" queda sin negrilla y se quitó el subtítulo "Reserva tu sesión sin iniciar sesión"; y (4) en la barra superior se retiraron los enlaces de Endpolio.org y My Rotary, dejando un único enlace "Iniciar sesión" que lleva directamente al Panel (app.clubplatform.org). Cambio solo visual.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'ui', 'fondo', 'login', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.639.0',
         title: 'Enlace de reunión provisional + recordatorio automático 1 hora antes 🎥⏰',

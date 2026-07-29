@@ -176,17 +176,16 @@ const AgendarCapacitacion: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-indigo-50/40">
-            {/* Barra superior estilo Rotary (Endpolio · My Rotary · idioma) */}
+        <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white">
+            {/* Barra superior (Iniciar sesión · idioma) */}
             <PublicTopBar />
 
             {/* Header */}
-            <header className="bg-white border-b border-gray-100">
+            <header>
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-3">
-                    <img src={PLATFORM_LOGO} alt="Club Platform" className="h-9 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+                    <img src={PLATFORM_LOGO} alt="Club Platform" className="h-14 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3">
-                        <div className="font-black text-gray-900 leading-tight flex items-center gap-2"><CalendarClock className="w-4 h-4 text-indigo-600" />Agenda de Capacitaciones y Soporte</div>
-                        <div className="text-xs text-gray-400">Reserva tu sesión sin iniciar sesión</div>
+                        <div className="font-medium text-gray-900 leading-tight flex items-center gap-2 text-lg"><CalendarClock className="w-5 h-5 text-indigo-600" />Agenda de Capacitaciones y Soporte</div>
                     </div>
                 </div>
             </header>
