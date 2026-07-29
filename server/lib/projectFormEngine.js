@@ -15,8 +15,17 @@
 // Reglas que valen para todos los formularios:
 //   · Un campo `computed` lo calcula el motor: nunca se guarda como respuesta
 //     del club ni cuenta para el avance.
-//   · Una sección `adminOnly` no la diligencia el club: no cuenta para su
-//     avance ni bloquea el envío.
+//   · Una sección `adminOnly` no la diligencia el club: se guarda aparte, en
+//     la columna `approval`, y toda escritura que llega del panel del club la
+//     descarta.
+//   · Una sección `districtSpace` es el espacio institucional del formato (la
+//     aprobación del Gobernador de Distrito y del presidente del Comité de
+//     LFRI): la diligencia el club Y el Distrito, y es la que apunta el
+//     endpoint de aprobación del panel administrativo. Se guarda con el resto
+//     de las respuestas.
+//
+// La diferencia entre las dos es quién escribe, no cómo se ve: las dos se
+// dibujan como espacio institucional.
 // ════════════════════════════════════════════════════════════════════
 
 export const FIELD_TYPES = [
@@ -50,6 +59,20 @@ export const hasValue = (value, type) => {
     }
     return String(value).trim() !== '';
 };
+
+/** ¿La sección la escribe únicamente el panel administrativo? */
+export const isProtectedSection = (section) => section?.adminOnly === true;
+
+/** ¿Es el espacio institucional del formato (aprobación del Distrito)? */
+export const isDistrictSection = (section) =>
+    section?.districtSpace === true || section?.adminOnly === true;
+
+/**
+ * La sección de aprobación institucional de una plantilla, si la tiene. Es la
+ * que apunta `PUT /admin/postulaciones/:id/forms/:formKey/approval`.
+ */
+export const districtSectionOf = (template) =>
+    (template?.sections || []).find(isDistrictSection) || null;
 
 /** Todos los campos de la plantilla, aplanados, con su sección de origen. */
 export const flattenFields = (template) =>

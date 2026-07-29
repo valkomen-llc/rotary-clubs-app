@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.642.0",
-  "cache_bust": "2026-07-29 (Solicitud de Aportes del FDD 2026-2027: nuevo formulario del proyecto, con la misma experiencia que la Formulacion. El panel de Gestion de Proyectos pasa a mostrar una tarjeta por formulario con su estado y avance; el espacio de firmas del GD y del presidente del Comite de LFRI queda bloqueado para el Gestor de Proyectos y solo se diligencia desde el panel administrativo.)",
+  "version": "4.643.0",
+  "cache_bust": "2026-07-29 (Solicitud de Aportes del FDD: la seccion Aprobacion institucional pasa a ser editable por el Gestor de Proyectos, para que la diligencie con la informacion del proyecto y del club. Conserva su identidad de espacio institucional, es opcional (no bloquea el envio ni resta avance) y el Distrito la confirma o corrige desde el panel administrativo, donde queda registrado quien la toco por ultima vez.)",
   "type": "module",
   "//": "UI V4.641.0 | 2026-07-29 (Agenda pública: header en blanco + stepper con contraste (círculos/línea visibles sobre la textura))",
   "scripts": {

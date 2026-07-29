@@ -259,13 +259,22 @@ export const DEFAULT_FDD_FORM = {
             ],
         },
         {
-            // Espacio del formato oficial reservado al Gobernador de Distrito y
-            // al presidente del Comité de LFRI. El Gestor de Proyectos la ve en
-            // solo lectura; sólo el panel administrativo la escribe.
+            // Espacio del formato oficial correspondiente al Gobernador de
+            // Distrito y al presidente del Comité de LFRI.
+            //
+            // v4.643 — Lo diligencia TAMBIÉN el Gestor de Proyectos, con la
+            // información que le corresponde al proyecto y al club; el Distrito
+            // lo revisa y lo corrige desde el panel administrativo, y ahí queda
+            // registrado quién lo tocó por última vez. Por eso `districtSpace`
+            // en vez de `adminOnly`: conserva su identidad visual de espacio
+            // institucional, pero es editable.
+            //
+            // Ninguno de sus campos es obligatorio a propósito: el club puede
+            // enviar la solicitud aunque el Distrito todavía no haya firmado.
             key: 'aprobacion',
             title: 'Aprobación institucional',
-            description: 'Espacio para ser llenado por el Gobernador de Distrito y el presidente del Comité de LFRI. El club no lo diligencia.',
-            adminOnly: true,
+            description: 'Espacio del Gobernador de Distrito y del presidente del Comité de LFRI. Diligencia lo que corresponda al proyecto y al club; el Distrito lo confirma al resolver la solicitud.',
+            districtSpace: true,
             fields: [
                 { key: 'approvedAmountUsd', label: 'Aporte aprobado (US$)', type: 'currency', required: false, width: 'half' },
                 { key: 'decisionDate', label: 'Fecha de la decisión', type: 'date', required: false, width: 'half' },

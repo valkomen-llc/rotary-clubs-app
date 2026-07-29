@@ -26,7 +26,16 @@ export interface FieldDef {
 }
 
 export interface SectionDef {
-    key: string; title: string; description?: string; adminOnly?: boolean; fields: FieldDef[];
+    key: string; title: string; description?: string;
+    /** Sólo la escribe el panel administrativo; el club la ve en solo lectura. */
+    adminOnly?: boolean;
+    /**
+     * Espacio institucional del formato (aprobación del Gobernador de Distrito
+     * y del presidente del Comité de LFRI). Lo diligencian el club y el
+     * Distrito; se dibuja distinto, pero es editable.
+     */
+    districtSpace?: boolean;
+    fields: FieldDef[];
 }
 
 export interface FormTemplate {
@@ -78,12 +87,20 @@ export const hasValue = (value: any, type?: string): boolean => {
     return String(value).trim() !== '';
 };
 
-/** Los campos que le tocan al club: ni derivados ni de la sección del Distrito. */
+/** Las secciones que el club diligencia. Incluye el espacio institucional. */
 export const applicantSections = (template?: FormTemplate | null) =>
     (template?.sections || []).filter(s => !s.adminOnly);
 
-export const adminSections = (template?: FormTemplate | null) =>
+/** Las que el club sólo puede leer. */
+export const readOnlySections = (template?: FormTemplate | null) =>
     (template?.sections || []).filter(s => s.adminOnly);
+
+/** El espacio institucional del formato, se escriba o no desde el panel del club. */
+export const isDistrictSection = (section?: SectionDef | null) =>
+    section?.districtSpace === true || section?.adminOnly === true;
+
+export const districtSectionOf = (template?: FormTemplate | null) =>
+    (template?.sections || []).find(isDistrictSection) || null;
 
 // ── Campos derivados ─────────────────────────────────────────────────
 const numberAt = (answers: Answers, path?: string) => {
