@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.638.0",
-  "cache_bust": "2026-07-29 (Rediseño del paso 4 'Tus datos' de la agenda pública con el estilo del formulario de la Feria de Proyectos: campos etiquetados con ícono y asterisco de obligatorio, layout en 2 columnas (Nombre/Apellido, Correo/Teléfono), inputs redondeados con foco resaltado, y motivo a ancho completo. Se agrega una tarjeta 'Datos del club' (solo lectura) con el nombre del sitio y su correo/teléfono de contacto, precargados desde el sitio elegido — el endpoint público site-status ahora devuelve contactEmail/contactPhone. Importante para notificaciones: la confirmación de la agenda también se envía al correo de contacto del club (server-side, autoritativo), además del solicitante y el responsable. Solo frontend + endpoint público.)",
+  "version": "4.639.0",
+  "cache_bust": "2026-07-29 (Enlace provisional de reunión + ciclo de notificaciones. Admin > Disponibilidad: nueva sección 'Enlace provisional de reunión' (URL https + interruptor + texto de ayuda) mientras se completa Zoom/Meet automático. Alcance con prioridad facilitador → tipo de cita → global; el enlace automático (cuando exista) tiene prioridad sobre el provisional, sin tocar el flujo. La confirmación muestra botón 'Ingresar a la reunión' + 'Copiar enlace' + código de confirmación (solo tras confirmar). Correos: confirmación inmediata (resumen, tz del usuario, duración, enlace, instrucciones, código) y recordatorio 1h antes con CTA; el recordatorio se programa al confirmar, se reprograma al cambiar fecha y se elimina al cancelar; reservas con <1h de anticipación solo reciben confirmación (regla documentada). Auditoría por cita: confirmación enviada/error, recordatorio programado/enviado/reintentos, con reintentos automáticos ante fallas temporales y acción 'Reenviar confirmación' en el admin. Fechas en UTC, mostradas en la tz elegida. Aditivo (columnas nuevas creadas en runtime por ensureTrainingSchema); validado con Postgres.)",
   "type": "module",
-  "//": "UI V4.638.0 | 2026-07-29 (Paso 4 rediseñado estilo Feria de Proyectos + datos del club que reciben la confirmación de la agenda)",
+  "//": "UI V4.639.0 | 2026-07-29 (Enlace provisional de reunión con alcance/prioridad + confirmación con botón/copiar/código + recordatorio 1h y auditoría de correos)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

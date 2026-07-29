@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
     Search, Clock, CheckCircle2, ChevronRight, ChevronLeft, Loader2, Video,
     ShieldAlert, CreditCard, Sparkles, ArrowRight, Building2, CalendarClock, Link as LinkIcon,
-    User, Mail, Phone, FileText, MapPin
+    User, Mail, Phone, FileText, MapPin, Copy
 } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
 import PublicTopBar from '../components/PublicTopBar';
@@ -478,22 +478,42 @@ const ReadField: React.FC<{ icon: any; label: string; value?: string | null }> =
 
 const SuccessCard: React.FC<{ done: any }> = ({ done }) => {
     const a = done.appointment;
+    const [copied, setCopied] = useState(false);
+    const copyLink = async () => {
+        try { await navigator.clipboard.writeText(a.meetingUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* noop */ }
+    };
     return (
         <div className="max-w-xl mx-auto bg-white rounded-3xl border border-emerald-100 shadow-sm overflow-hidden">
             <div className="bg-gradient-to-br from-emerald-500 to-green-600 p-8 text-white text-center">
                 <CheckCircle2 className="w-14 h-14 mx-auto mb-3" />
                 <h2 className="text-2xl font-black">¡Reserva confirmada!</h2>
                 <p className="opacity-90 mt-1 capitalize">{fmtDay(a.startAt)} · {fmtTime(a.startAt)}</p>
+                {a.code && <p className="opacity-80 text-xs mt-2">Código de confirmación: <b>{a.code}</b></p>}
             </div>
             <div className="p-8 space-y-4 text-center">
-                <p className="text-gray-600 text-sm">Te enviamos la confirmación por correo con el enlace de la sesión y un enlace privado para gestionar tu cita.</p>
-                {done.manageUrl && (
-                    <a href={done.manageUrl} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">
-                        <LinkIcon className="w-4 h-4" />Gestionar mi cita
-                    </a>
+                {/* El enlace de la reunión sólo se muestra tras confirmar. */}
+                {a.meetingUrl ? (
+                    <div className="space-y-2">
+                        <a href={a.meetingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 text-white font-bold shadow-lg shadow-indigo-500/25 hover:scale-[1.02] transition">
+                            <Video className="w-5 h-5" />Ingresar a la reunión
+                        </a>
+                        <div>
+                            <button onClick={copyLink} className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-indigo-600">
+                                <Copy className="w-4 h-4" />{copied ? '¡Copiado!' : 'Copiar enlace'}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-gray-500 text-sm">El enlace de la reunión se enviará por correo antes de la sesión.</p>
                 )}
-                <div>
-                    <a href={`${API}/public/training/appointments/${a.token}/ics`} className="text-sm font-semibold text-gray-500 hover:text-gray-700">Descargar .ics</a>
+                <p className="text-gray-600 text-sm">Te enviamos la confirmación por correo, con instrucciones de acceso y un enlace privado para gestionar tu cita.</p>
+                <div className="flex flex-wrap justify-center gap-2 pt-1">
+                    {done.manageUrl && (
+                        <a href={done.manageUrl} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100">
+                            <LinkIcon className="w-4 h-4" />Gestionar mi cita
+                        </a>
+                    )}
+                    <a href={`${API}/public/training/appointments/${a.token}/ics`} className="inline-flex items-center px-5 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200">Descargar .ics</a>
                 </div>
             </div>
         </div>

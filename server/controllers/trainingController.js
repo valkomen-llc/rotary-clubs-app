@@ -10,6 +10,7 @@ import {
   publicConfig,
 } from '../services/trainingAvailabilityService.js';
 import { createMeeting, AVAILABLE_MEETING_PROVIDERS } from '../services/meetingService.js';
+import { resolveMeetingUrl, isValidMeetingUrl } from '../lib/meetingLink.js';
 import { buildICS, googleCalendarUrl, outlookCalendarUrl } from '../lib/ics.js';
 import {
   sendConfirmation,
@@ -52,7 +53,11 @@ export async function updateConfig(req, res) {
     const allowed = [
       'timezone', 'slotDurationMin', 'bufferMin', 'maxPerDay',
       'minNoticeHours', 'cancelWindowHours', 'leadDays', 'meetingProvider', 'active',
+      'provisionalMeetingEnabled', 'provisionalMeetingUrl',
     ];
+    if ('provisionalMeetingUrl' in req.body && !isValidMeetingUrl(req.body.provisionalMeetingUrl)) {
+      return res.status(400).json({ error: 'El enlace debe iniciar con https://' });
+    }
     const data = {};
     for (const k of allowed) if (k in req.body) data[k] = req.body[k];
     const cfg = await getTrainingConfig();
@@ -171,10 +176,11 @@ export async function listResponsibles(req, res) {
 
 export async function createResponsible(req, res) {
   try {
-    const { name, email, phone, userId } = req.body;
+    const { name, email, phone, userId, provisionalMeetingUrl } = req.body;
     if (!name) return res.status(400).json({ error: 'Nombre requerido' });
+    if (!isValidMeetingUrl(provisionalMeetingUrl)) return res.status(400).json({ error: 'El enlace debe iniciar con https://' });
     const responsible = await prisma.trainingResponsible.create({
-      data: { name, email: email || null, phone: phone || null, userId: userId || null },
+      data: { name, email: email || null, phone: phone || null, userId: userId || null, provisionalMeetingUrl: provisionalMeetingUrl || null },
     });
     res.json({ responsible });
   } catch (e) {
@@ -185,7 +191,10 @@ export async function createResponsible(req, res) {
 export async function updateResponsible(req, res) {
   try {
     const data = {};
-    for (const k of ['name', 'email', 'phone', 'userId', 'active']) if (k in req.body) data[k] = req.body[k];
+    for (const k of ['name', 'email', 'phone', 'userId', 'active', 'provisionalMeetingUrl']) if (k in req.body) data[k] = req.body[k];
+    if ('provisionalMeetingUrl' in req.body && !isValidMeetingUrl(req.body.provisionalMeetingUrl)) {
+      return res.status(400).json({ error: 'El enlace debe iniciar con https://' });
+    }
     const responsible = await prisma.trainingResponsible.update({ where: { id: req.params.id }, data });
     res.json({ responsible });
   } catch (e) {
@@ -369,6 +378,7 @@ export async function createType(req, res) {
         currency: b.currency || 'USD',
         color: b.color || '#2563eb',
         icon: b.icon || null,
+        provisionalMeetingUrl: b.provisionalMeetingUrl || null,
         responsibleId: b.responsibleId || null,
         sortOrder: Number(b.sortOrder) || 0,
       },
@@ -382,8 +392,11 @@ export async function createType(req, res) {
 export async function updateType(req, res) {
   try {
     const data = {};
-    for (const k of ['name', 'description', 'modality', 'prerequisites', 'currency', 'color', 'icon', 'responsibleId', 'active']) {
+    for (const k of ['name', 'description', 'modality', 'prerequisites', 'currency', 'color', 'icon', 'responsibleId', 'active', 'provisionalMeetingUrl']) {
       if (k in req.body) data[k] = req.body[k];
+    }
+    if ('provisionalMeetingUrl' in req.body && !isValidMeetingUrl(req.body.provisionalMeetingUrl)) {
+      return res.status(400).json({ error: 'El enlace debe iniciar con https://' });
     }
     if ('categoryId' in req.body) data.categoryId = req.body.categoryId || null;
     if ('durationMin' in req.body) data.durationMin = Number(req.body.durationMin) || 45;
@@ -537,27 +550,42 @@ export async function createAppointment(req, res) {
       include: APPT_INCLUDE,
     });
 
-    // 6. Crear enlace de videoconferencia (best-effort, no bloquea).
+    // 6. Enlace de reunión: automático (Zoom/Meet) o provisional según prioridad.
+    let autoMeeting = null;
     if (cfg.meetingProvider && cfg.meetingProvider !== 'manual') {
-      const meeting = await createMeeting({
+      autoMeeting = await createMeeting({
         provider: cfg.meetingProvider,
         topic: `Capacitación: ${type?.name || 'Soporte'} — ${entity?.name || ''}`,
-        startAt,
-        durationMin: durationMin || cfg.slotDurationMin,
-        timezone: cfg.timezone,
+        startAt, durationMin: durationMin || cfg.slotDurationMin, timezone: cfg.timezone,
       });
-      if (meeting.url) {
-        appt = await prisma.trainingAppointment.update({
-          where: { id: appt.id },
-          data: { meetingUrl: meeting.url, meetingId: meeting.id, meetingProvider: meeting.provider, meetingPayload: meeting.payload || {} },
-          include: APPT_INCLUDE,
-        });
-      }
     }
+    const link = resolveMeetingUrl({ config: cfg, type, responsible, autoUrl: autoMeeting?.url });
 
-    // 7. Confirmación (email + WhatsApp) + marca idempotente.
-    await sendConfirmation(appt, { origin: originOf(req) });
-    await prisma.trainingAppointment.update({ where: { id: appt.id }, data: { confirmationSentAt: new Date() } });
+    // 7. Programación del recordatorio de 1h y regla de <1h de anticipación.
+    const startMs = new Date(startAt).getTime();
+    const lessThan1h = startMs - Date.now() < 60 * 60000;
+
+    appt = await prisma.trainingAppointment.update({
+      where: { id: appt.id },
+      data: {
+        meetingUrl: link.url || null,
+        meetingProvider: link.provider || cfg.meetingProvider,
+        meetingId: autoMeeting?.id || null,
+        meetingPayload: autoMeeting?.payload || {},
+        reminder1ScheduledFor: new Date(startMs - 60 * 60000),
+        // <1h: se envía solo la confirmación; el recordatorio se marca resuelto.
+        reminder1SentAt: lessThan1h ? new Date() : null,
+      },
+      include: APPT_INCLUDE,
+    });
+
+    // 8. Confirmación (email + WhatsApp) + auditoría del envío.
+    const conf = await sendConfirmation(appt, { origin: originOf(req) });
+    appt = await prisma.trainingAppointment.update({
+      where: { id: appt.id },
+      data: { confirmationSentAt: conf?.success ? new Date() : null, confirmationError: conf?.success ? null : (conf?.error || 'send_failed') },
+      include: APPT_INCLUDE,
+    });
 
     res.json({ appointment: appt });
   } catch (e) {
@@ -685,9 +713,17 @@ export async function rescheduleAppointment(req, res) {
     const check = await isSlotBookable({ startAt, durationMin });
     if (!check.ok) return res.status(409).json({ error: check.reason, message: 'El nuevo horario no está disponible.' });
 
+    // Reprogramar cancela el recordatorio anterior y programa uno nuevo; si la
+    // nueva hora está a <1h, no se programa recordatorio separado.
+    const startMs = new Date(startAt).getTime();
+    const lessThan1h = startMs - Date.now() < 60 * 60000;
     const updated = await prisma.trainingAppointment.update({
       where: { id: appt.id },
-      data: { startAt: new Date(startAt), endAt: check.endAt, status: 'rescheduled', reminder24SentAt: null, reminder1SentAt: null },
+      data: {
+        startAt: new Date(startAt), endAt: check.endAt, status: 'rescheduled',
+        reminder24SentAt: null, reminder1SentAt: lessThan1h ? new Date() : null,
+        reminder1ScheduledFor: new Date(startMs - 60 * 60000), reminder1Error: null, reminder1Attempts: 0,
+      },
       include: APPT_INCLUDE,
     });
     await sendConfirmation(updated, { origin: originOf(req) });
@@ -816,12 +852,35 @@ export async function adminUpdateAppointment(req, res) {
       if (k in req.body) data[k] = req.body[k];
     }
     if ('outcome' in req.body) data.outcome = req.body.outcome;
+    if ('meetingUrl' in req.body && !isValidMeetingUrl(req.body.meetingUrl)) {
+      return res.status(400).json({ error: 'El enlace debe iniciar con https://' });
+    }
     const appt = await prisma.trainingAppointment.update({
       where: { id: req.params.id },
       data,
       include: APPT_INCLUDE,
     });
     res.json({ appointment: appt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// Reenvío manual del correo de confirmación (con auditoría).
+export async function resendConfirmation(req, res) {
+  try {
+    const appt = await prisma.trainingAppointment.findUnique({ where: { id: req.params.id }, include: APPT_INCLUDE });
+    if (!appt) return res.status(404).json({ error: 'No encontrada' });
+    if (!appt.requesterEmail) return res.status(400).json({ error: 'La reserva no tiene un correo válido.' });
+    const manageUrl = appt.publicToken ? `${originOf(req)}/mi-capacitacion/${appt.publicToken}` : undefined;
+    const conf = await sendConfirmation(appt, { origin: originOf(req), manageUrl });
+    const out = await prisma.trainingAppointment.update({
+      where: { id: appt.id },
+      data: { confirmationSentAt: conf?.success ? new Date() : appt.confirmationSentAt, confirmationError: conf?.success ? null : (conf?.error || 'send_failed') },
+      include: APPT_INCLUDE,
+    });
+    if (!conf?.success) return res.status(502).json({ error: conf?.error || 'No se pudo enviar', appointment: out });
+    res.json({ ok: true, appointment: out });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

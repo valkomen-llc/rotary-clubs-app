@@ -1876,6 +1876,9 @@ model TrainingConfig {
   cancelWindowHours Int      @default(12) // ventana para cancelar / reprogramar
   leadDays          Int      @default(30) // horizonte de reservas hacia adelante
   meetingProvider   String   @default("manual") // manual | google_meet | zoom
+  // Enlace provisional de reunión (mientras se completa Zoom/Meet automático).
+  provisionalMeetingEnabled Boolean @default(false)
+  provisionalMeetingUrl     String? // URL global https:// para las reservas
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -1914,6 +1917,7 @@ model TrainingResponsible {
   email              String?
   phone              String?
   userId             String? // vínculo opcional a un User (staff de soporte)
+  provisionalMeetingUrl String? // enlace provisional específico del facilitador
   active             Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -1953,6 +1957,7 @@ model TrainingAppointmentType {
   currency      String   @default("USD")
   color         String   @default("#2563eb")
   icon          String? // nombre de icono lucide opcional
+  provisionalMeetingUrl String? // enlace provisional específico del tipo de cita
   responsibleId String?
   active        Boolean  @default(true)
   sortOrder     Int      @default(0)
@@ -1995,8 +2000,12 @@ model TrainingAppointment {
   source             String    @default("admin") // admin | public (herramienta pública sin login)
   publicToken        String?   @unique // token del enlace mágico para gestionar la cita sin login
   confirmationSentAt DateTime?
+  confirmationError  String? // último error del correo de confirmación
   reminder24SentAt   DateTime?
   reminder1SentAt    DateTime?
+  reminder1ScheduledFor DateTime? // instante en que debe salir el recordatorio de 1h (UTC)
+  reminder1Error     String? // último error del recordatorio de 1h
+  reminder1Attempts  Int       @default(0) // intentos de envío del recordatorio de 1h
   cancelledAt        DateTime?
   cancelReason       String?
   createdAt          DateTime  @default(now())

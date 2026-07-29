@@ -62,6 +62,7 @@ router.delete('/admin/types/:id', superOnly, ctrl.deleteType);
 
 router.get('/admin/appointments', superOnly, ctrl.adminListAppointments);
 router.put('/admin/appointments/:id', superOnly, ctrl.adminUpdateAppointment);
+router.post('/admin/appointments/:id/resend-confirmation', superOnly, ctrl.resendConfirmation);
 router.post('/admin/appointments/:id/materials', superOnly, ctrl.addMaterial);
 router.delete('/admin/appointments/:id/materials/:materialId', superOnly, ctrl.deleteMaterial);
 router.get('/admin/stats', superOnly, ctrl.adminStats);

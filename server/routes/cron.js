@@ -388,19 +388,27 @@ router.get('/training-reminders', async (req, res) => {
             include,
         });
 
-        let sent24 = 0, sent1 = 0;
+        let sent24 = 0, sent1 = 0, failed = 0;
         for (const a of due24) {
-            await sendReminder(a, '24h', {});
+            const r = await sendReminder(a, '24h', {});
+            // El de 24h no bloquea; se marca enviado igual (best-effort).
             await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder24SentAt: new Date() } });
-            sent24++;
+            if (r?.success !== false) sent24++;
         }
         for (const a of due1) {
-            await sendReminder(a, '1h', {});
-            await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder1SentAt: new Date() } });
-            sent1++;
+            const r = await sendReminder(a, '1h', {});
+            if (r?.success !== false) {
+                // Éxito: marca enviado (evita duplicados) y limpia el error.
+                await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder1SentAt: new Date(), reminder1Error: null, reminder1Attempts: { increment: 1 } } });
+                sent1++;
+            } else {
+                // Falla temporal: NO marca enviado; se reintenta en la próxima corrida.
+                await prisma.trainingAppointment.update({ where: { id: a.id }, data: { reminder1Error: String(r.error || 'send_failed').slice(0, 300), reminder1Attempts: { increment: 1 } } });
+                failed++;
+            }
         }
-        console.log(`[CRON training-reminders] 24h=${sent24} 1h=${sent1}`);
-        res.json({ ok: true, sent24, sent1 });
+        console.log(`[CRON training-reminders] 24h=${sent24} 1h=${sent1} fail=${failed}`);
+        res.json({ ok: true, sent24, sent1, failed });
     } catch (e) {
         console.error('[CRON training-reminders] error:', e);
         res.status(500).json({ error: e.message });

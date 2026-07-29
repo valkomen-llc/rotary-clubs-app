@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import {
     Loader2, ChevronLeft, ChevronRight, Filter, X, Plus, Trash2, Video, Save,
-    CalendarDays, List as ListIcon, Columns, Square
+    CalendarDays, List as ListIcon, Columns, Square, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -208,6 +208,16 @@ const DetailDrawer: React.FC<{ appt: any; responsibles: any[]; H: any; onClose: 
         if (res.ok) { setMaterial({ label: '', url: '', kind: 'document' }); onReload(); toast.success('Material agregado'); }
     };
     const delMaterial = async (mid: string) => { await fetch(`${API}/training/admin/appointments/${appt.id}/materials/${mid}`, { method: 'DELETE', headers: H }); onReload(); };
+    const [resending, setResending] = useState(false);
+    const resend = async () => {
+        setResending(true);
+        const res = await fetch(`${API}/training/admin/appointments/${appt.id}/resend-confirmation`, { method: 'POST', headers: H, body: '{}' });
+        setResending(false);
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { toast.success('Confirmación reenviada'); if (d.appointment) onUpdated(d.appointment); }
+        else toast.error(d.error || 'No se pudo reenviar');
+    };
+    const fmtDT = (v: any) => v ? new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(v)) : null;
 
     return (
         <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl border-l border-gray-100 z-50 overflow-y-auto">
@@ -256,6 +266,34 @@ const DetailDrawer: React.FC<{ appt: any; responsibles: any[]; H: any; onClose: 
                 <button onClick={save} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold disabled:opacity-60">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}Guardar cambios
                 </button>
+
+                {/* Estado de correos */}
+                <div className="pt-3 border-t border-gray-100">
+                    <div className="text-sm font-black text-gray-900 mb-2">Correos</div>
+                    <div className="space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Confirmación</span>
+                            {appt.confirmationSentAt
+                                ? <span className="text-emerald-600 font-semibold">Enviada · {fmtDT(appt.confirmationSentAt)}</span>
+                                : appt.confirmationError
+                                    ? <span className="text-red-500 font-semibold">Error: {appt.confirmationError}</span>
+                                    : <span className="text-gray-400">Pendiente</span>}
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-gray-500">Recordatorio 1h</span>
+                            {appt.reminder1SentAt
+                                ? <span className="text-emerald-600 font-semibold">Enviado · {fmtDT(appt.reminder1SentAt)}</span>
+                                : appt.reminder1Error
+                                    ? <span className="text-amber-600 font-semibold">Reintentando ({appt.reminder1Attempts || 0})</span>
+                                    : appt.reminder1ScheduledFor
+                                        ? <span className="text-indigo-600 font-semibold">Programado · {fmtDT(appt.reminder1ScheduledFor)}</span>
+                                        : <span className="text-gray-400">—</span>}
+                        </div>
+                    </div>
+                    <button onClick={resend} disabled={resending} className="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm disabled:opacity-60">
+                        {resending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Reenviar confirmación
+                    </button>
+                </div>
 
                 {/* Materiales */}
                 <div className="pt-3 border-t border-gray-100">

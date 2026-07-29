@@ -11,7 +11,7 @@ const MODALITIES = ['videollamada', 'telefonica', 'presencial'];
 const EMOJI_CHOICES = ['🚀', '🌐', '🤖', '📱', '❤️', '🛒', '📅', '👥', '📊', '🎓', '🛠', '💡', '🔧', '⭐', '📈', '🎯'];
 
 const emptyCat = { name: '', description: '', emoji: '🚀', color: '#4f46e5' };
-const emptyType = { name: '', description: '', categoryId: '', durationMin: 45, modality: 'videollamada', prerequisites: '', price: '', color: '#2563eb', responsibleId: '' };
+const emptyType = { name: '', description: '', categoryId: '', durationMin: 45, modality: 'videollamada', prerequisites: '', price: '', color: '#2563eb', responsibleId: '', provisionalMeetingUrl: '' };
 
 const AppointmentTypesManager: React.FC = () => {
     const { token } = useAuth();
@@ -144,7 +144,7 @@ const AppointmentTypesManager: React.FC = () => {
                 <span className="flex items-center gap-1"><Video className="w-3 h-3" />{t.modality}</span>
                 {t.price ? <span className="text-amber-600 flex items-center gap-1"><Tag className="w-3 h-3" />${t.price}</span> : <span className="text-emerald-600">Incluido</span>}
             </span>
-            <button onClick={() => setEditingType({ ...t, price: t.price ?? '', responsibleId: t.responsibleId ?? '', categoryId: t.categoryId ?? '' })} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg"><Pencil className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setEditingType({ ...t, price: t.price ?? '', responsibleId: t.responsibleId ?? '', categoryId: t.categoryId ?? '', provisionalMeetingUrl: t.provisionalMeetingUrl ?? '' })} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg"><Pencil className="w-3.5 h-3.5" /></button>
             <button onClick={() => delType(t.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
     );
@@ -279,6 +279,10 @@ const AppointmentTypesManager: React.FC = () => {
                                 </div>
                             </div>
                             <input placeholder="Requisitos previos (opcional)" value={editingType.prerequisites || ''} onChange={e => setEditingType((s: any) => ({ ...s, prerequisites: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+                            <div>
+                                <label className="text-xs font-semibold text-gray-500">Enlace provisional de reunión (opcional, sobrescribe el global)</label>
+                                <input value={editingType.provisionalMeetingUrl || ''} onChange={e => setEditingType((s: any) => ({ ...s, provisionalMeetingUrl: e.target.value }))} placeholder="https://..." className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+                            </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-500">Responsable</label>
                                 <select value={editingType.responsibleId || ''} onChange={e => setEditingType((s: any) => ({ ...s, responsibleId: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm">
