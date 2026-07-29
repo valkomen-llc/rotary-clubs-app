@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.650.0 | 2026-07-29 (Ficha del evento: botón principal segmentado por visitante + Registro CADRES siempre visible, cada uno con su formulario bloqueado)
-// Cache bust: 2026-07-29f
+// UI V4.651.0 | 2026-07-30 (Pestaña Botones: vista previa de lo que ve el público con el motivo exacto si algo no aparece; corregida una categoría sin cupo calculado que se daba por agotada)
+// Cache bust: 2026-07-30a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.651.0',
+        title: 'Vista previa de los botones de inscripción 👁️',
+        description: 'La pestaña "Botones" del evento estrena una vista previa que muestra, lado a lado, exactamente lo que verá un visitante desde Colombia y lo que verá uno de fuera: qué botón principal le aparece, con qué texto y con qué valor, y qué botones secundarios lo acompañan. La calcula el servidor con la misma función que usa la página pública, así que no puede decir una cosa distinta de la que realmente se publica. La razón de fondo para construirla es que hasta ahora un botón que no aparecía no dejaba ningún rastro: no había error, ni aviso, ni nada que mirar, y la única forma de averiguar por qué faltaba era ir probando. Con la vista previa, si la ficha no va a mostrar ningún botón, la pantalla lo dice y explica el motivo concreto —el registro de la edición está cerrado, no hay categorías activas, la edición todavía no abre o su plazo ya venció— con un acceso directo a la pestaña donde se corrige. Y si un botón concreto queda oculto porque su categoría está desactivada, agotada o fuera de fechas, lo señala por separado y recuerda que basta con escribir un mensaje de cierre para mostrarlo apagado en vez de esconderlo. En la misma línea, la página pública dejó de fallar en silencio: cuando decide no mostrar los botones, ahora deja escrita la razón en la consola del navegador, de modo que cualquier revisión futura empiece con el motivo a la vista en lugar de con una suposición. Además se corrigió un defecto que esta misma vista previa destapó: una categoría con cupo definido pero cuyo número de lugares disponibles todavía no se había calculado se daba por agotada y su botón desaparecía. Era un descuido de comparación —en programación, "ningún dato" y "cero" no son lo mismo, pero se comparaban igual— y ahora una categoría sólo se considera agotada cuando existe de verdad una cuenta de cupos y esa cuenta llegó a cero.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'diagnostico', 'fix'],
+        type: 'improvement'
+    },
     {
         version: '4.650.0',
         title: 'Dos botones de inscripción en la ficha del evento 🎯',

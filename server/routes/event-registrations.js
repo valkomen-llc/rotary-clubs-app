@@ -26,6 +26,8 @@ router.post('/admin/editions/clone', authMiddleware, json, admin.cloneEdition);
 router.put('/admin/categories', authMiddleware, json, admin.saveCategory);
 router.delete('/admin/categories/:key', authMiddleware, admin.removeCategory);
 router.get('/admin/categories/:key/form', authMiddleware, admin.previewCategoryForm);
+// Diagnóstico: qué botones ve el público y por qué falta alguno.
+router.get('/admin/cta/preview', authMiddleware, admin.previewCta);
 
 // Tablero, tabla y exportación
 router.get('/admin/dashboard', authMiddleware, admin.getDashboard);

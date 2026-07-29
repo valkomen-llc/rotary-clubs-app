@@ -18,12 +18,16 @@
 //   desde Colombia. Los "secundarios" (CADRES) se ven siempre, debajo.
 // - **El texto que se pone aquí es el que se ve.** No se traduce solo.
 // ════════════════════════════════════════════════════════════════════
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    AlertCircle, ArrowDown, ArrowUp, Globe2, Info, Loader2, Plus, Save, Trash2,
+    AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, Globe2, Info, Loader2,
+    Plus, RefreshCw, Save, Trash2,
 } from 'lucide-react';
 import { money } from '../../../lib/eventRegistrationSpec';
 import type { AdminCategory } from './EventCategoriesManager';
+
+const API = (import.meta as any).env?.VITE_API_URL || '/api';
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 const labelCls = 'mb-1 block text-xs font-semibold text-gray-600';
@@ -47,6 +51,7 @@ export interface CtaConfig {
 }
 
 interface Props {
+    eventId: string;
     cta: CtaConfig;
     categories: AdminCategory[];
     saving: boolean;
@@ -54,10 +59,39 @@ interface Props {
     onSave: () => void;
     /** Lleva a la pestaña de categorías, donde sí se editan precios. */
     onGoToCategories: () => void;
+    /** Lleva a la pestaña de edición, donde se abre o cierra el registro. */
+    onGoToEdition: () => void;
 }
 
-const EventCtaManager = ({ cta, categories, saving, onChange, onSave, onGoToCategories }: Props) => {
+const AUDIENCE_LABELS: Record<string, string> = {
+    international: 'Visitante de fuera de Colombia',
+    national: 'Visitante desde Colombia',
+};
+
+const REASONS: Record<string, string> = {
+    inactive: 'la categoría está desactivada',
+    not_yet: 'la categoría todavía no abre',
+    closed: 'la categoría ya cerró',
+    sold_out: 'la categoría está agotada',
+};
+
+const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, onGoToCategories, onGoToEdition }: Props) => {
     const [newLang, setNewLang] = useState('');
+    const [preview, setPreview] = useState<any>(null);
+    const [previewing, setPreviewing] = useState(false);
+
+    // Vista previa: la calcula el servidor con la MISMA función que usa la
+    // ficha pública, así que no puede decir una cosa distinta de la que se ve.
+    const loadPreview = useCallback(() => {
+        setPreviewing(true);
+        fetch(`${API}/event-registrations/admin/cta/preview?eventRef=${encodeURIComponent(eventId)}`, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(d => { if (!d?.error) setPreview(d); })
+            .catch(() => { /* la configuración sigue siendo editable */ })
+            .finally(() => setPreviewing(false));
+    }, [eventId]);
+
+    useEffect(() => { loadPreview(); }, [loadPreview]);
 
     const patch = (partial: Partial<CtaConfig>) => onChange({ ...cta, ...partial });
     const patchButton = (index: number, partial: Partial<CtaButtonConfig>) =>
@@ -89,6 +123,80 @@ const EventCtaManager = ({ cta, categories, saving, onChange, onSave, onGoToCate
                     onChange={e => patch({ enabled: e.target.checked })} />
                 Mostrar los botones de inscripción en la ficha pública
             </label>
+
+            {/* ── Vista previa ────────────────────────────────────── */}
+            <div className="rounded-xl border-2 border-gray-200 bg-white p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                        <Eye className="h-4 w-4 text-blue-600" /> Qué ve el público ahora mismo
+                    </p>
+                    <button type="button" onClick={loadPreview}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline">
+                        <RefreshCw className={`h-3.5 w-3.5 ${previewing ? 'animate-spin' : ''}`} /> Actualizar
+                    </button>
+                </div>
+
+                {!preview ? (
+                    <p className="py-3 text-center text-xs text-gray-400">Calculando…</p>
+                ) : preview.blockers?.length ? (
+                    // Sin esto, un botón que no aparece no deja rastro en ningún
+                    // sitio y sólo queda adivinar. Aquí se dice el motivo exacto.
+                    <div className="space-y-2 rounded-lg bg-red-50 p-4">
+                        <p className="flex items-center gap-1.5 text-sm font-bold text-red-800">
+                            <AlertCircle className="h-4 w-4" /> La ficha pública no muestra ningún botón
+                        </p>
+                        <ul className="ml-5 list-disc space-y-1 text-xs text-red-700">
+                            {preview.blockers.map((b: string) => <li key={b}>{b}</li>)}
+                        </ul>
+                        <button type="button" onClick={onGoToEdition}
+                            className="text-xs font-bold text-red-800 underline">Ir a Edición</button>
+                    </div>
+                ) : (
+                    <div className="grid gap-3 md:grid-cols-2">
+                        {(preview.audiences || []).map((a: any) => {
+                            const visibles = [a.primary, ...(a.secondary || [])].filter((b: any) => b && !b.hidden);
+                            return (
+                                <div key={a.audience} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                        {AUDIENCE_LABELS[a.audience] || a.audience}
+                                    </p>
+                                    {visibles.length === 0 ? (
+                                        <p className="text-xs font-semibold text-red-600">No vería ningún botón.</p>
+                                    ) : (
+                                        <div className="space-y-1.5">
+                                            {visibles.map((b: any) => (
+                                                <div key={b.key}
+                                                    className={`rounded-lg px-3 py-2 text-center text-xs font-bold ${b.role === 'primary'
+                                                        ? 'bg-[#D57D2C] text-white'
+                                                        : 'border-2 border-[#1B2B4D] text-[#1B2B4D]'} ${b.available ? '' : 'opacity-45'}`}>
+                                                    {b.label}
+                                                    {b.price > 0 && (
+                                                        <span className="ml-1 font-normal">· {money(b.price, b.currency)}</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {/* Botones configurados que NO se ven, y por qué. */}
+                                    {[a.primary, ...(a.secondary || [])].filter((b: any) => b?.hidden).map((b: any) => (
+                                        <p key={b.key} className="mt-1.5 text-[11px] text-amber-700">
+                                            «{b.label}» oculto: {REASONS[b.unavailableReason] || b.unavailableReason}.
+                                            Escribe un mensaje de cierre si prefieres mostrarlo apagado.
+                                        </p>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {preview && !preview.blockers?.length && (
+                    <p className="mt-3 flex items-center gap-1.5 text-[11px] text-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Si en la ficha pública no los ves igual, es caché del navegador: ábrela en una ventana de incógnito.
+                    </p>
+                )}
+            </div>
 
             {/* ── Cómo se decide el botón principal ───────────────── */}
             <div className="rounded-xl border border-gray-200 bg-white p-4">

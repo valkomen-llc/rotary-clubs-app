@@ -68,12 +68,23 @@ export const useEventCta = (clubId?: string, eventRef?: string) => {
         fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`)
             .then(r => r.json())
             .then(data => {
-                if (cancelled || data?.error) return;
-                // Sin registro abierto no hay botones que mostrar.
-                if (!data.enabled || data.closed) return setCta(null);
-                setCta(data.cta?.enabled ? data.cta : null);
+                if (cancelled) return;
+                // Un botón que no aparece no deja rastro en ningún sitio, y eso
+                // convierte cualquier problema de configuración en media hora de
+                // adivinanzas. Se deja dicho el motivo en la consola.
+                const descartar = (motivo: string) => {
+                    console.warn(`[inscripciones] La ficha no muestra botones: ${motivo}.`);
+                    setCta(null);
+                };
+                if (data?.error) return descartar(data.error);
+                if (!data.enabled) return descartar('el registro de la edición está cerrado o no hay categorías activas');
+                if (data.closed) return descartar('la edición está fuera de su ventana de fechas');
+                if (!data.cta?.enabled) return descartar('los botones están desactivados en el panel');
+                setCta(data.cta);
             })
-            .catch(() => { /* la ficha del evento sigue viéndose igual */ })
+            .catch(err => {
+                console.warn('[inscripciones] No se pudo consultar la configuración:', err?.message);
+            })
             .finally(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };

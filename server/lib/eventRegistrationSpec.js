@@ -683,7 +683,10 @@ export const resolveCtaButtons = ({ categories = [], config = {}, audience = 'in
         const category = categoryOf(button.categoryKey);
         if (!category) return null;
         const window = categoryWindow(category);
-        const soldOut = category.capacity !== null && category.remaining !== undefined && category.remaining <= 0;
+        // Sólo se declara agotada si hay un número de cupos restantes. Comparar
+        // `null <= 0` da `true` en JavaScript, y eso escondía el botón de una
+        // categoría cuyo cupo simplemente no se había calculado.
+        const soldOut = typeof category.remaining === 'number' && category.remaining <= 0;
         const available = window.open && !soldOut;
         return {
             key: button.key,

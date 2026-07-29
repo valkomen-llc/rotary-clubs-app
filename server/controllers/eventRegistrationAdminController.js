@@ -23,7 +23,7 @@ import {
     STATUSES, STATUS_KEYS, STATUS, SETTLED_STATUSES,
     SYSTEM_TAGS, SYSTEM_TAG_KEYS, normalizeTag, statusMeta,
     CATEGORY_BLUEPRINTS, CURRENCIES, AUDIENCES, buildFormSchema,
-    normalizeCtaConfig, defaultCtaButtons,
+    normalizeCtaConfig, defaultCtaButtons, resolveCtaButtons, categoryWindow,
 } from '../lib/eventRegistrationSpec.js';
 import {
     clean, isEmail, parseJson, loadEvent, ensureEdition, updateEdition,
@@ -32,7 +32,7 @@ import {
     listMessages, recordHistory, recordMessage, assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
 
-console.log('[eventRegistrationAdminController] v4.648.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
+console.log('[eventRegistrationAdminController] v4.651.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 
@@ -212,6 +212,67 @@ export const removeCategory = async (req, res) => {
     } catch (error) {
         console.error('[event-registrations][admin] removeCategory:', error);
         res.status(500).json({ error: 'No se pudo borrar la categoría' });
+    }
+};
+
+// GET /admin/cta/preview?eventRef=
+// Qué botones verá el público y, si alguno no se ve, POR QUÉ.
+//
+// Corre exactamente la misma lógica que el endpoint público —no una copia— para
+// que la vista previa no pueda mentir. Existe porque un botón que no aparece no
+// deja rastro en ningún sitio: sin esto, la única forma de saber qué falla es
+// adivinar.
+export const previewCta = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const edition = await ensureEdition(event);
+        const categories = await listCategories(event.id, { onlyActive: true });
+
+        // El cupo restante se calcula de verdad: la vista previa debe reflejar
+        // también las categorías agotadas, no sólo las cerradas por fecha.
+        const decorated = await Promise.all(categories.map(async (c) => {
+            const window = categoryWindow(c);
+            const remaining = c.capacity
+                ? Math.max(0, c.capacity - (await categoryUsage(event.id, c.key)).seats)
+                : null;
+            return { ...c, remaining, open: window.open, closedReason: window.reason };
+        }));
+
+        const today = new Date().toISOString().slice(0, 10);
+        const editionClosed = Boolean(edition.closesAt && today > edition.closesAt)
+            || Boolean(edition.opensAt && today < edition.opensAt);
+        const publicEnabled = edition.registrationOpen && decorated.length > 0;
+
+        // Los motivos por los que la ficha pública NO pintaría ningún botón,
+        // en el mismo orden en que los evalúa el navegador.
+        const blockers = [];
+        if (!edition.registrationOpen) blockers.push('El registro de la edición está cerrado (pestaña Edición → "Registro abierto").');
+        if (!categories.length) blockers.push('No hay categorías activas en esta edición.');
+        if (edition.opensAt && today < edition.opensAt) blockers.push(`El registro de la edición abre el ${edition.opensAt}.`);
+        if (edition.closesAt && today > edition.closesAt) blockers.push(`El registro de la edición cerró el ${edition.closesAt}.`);
+
+        const audiences = ['international', 'national'].map(audience => ({
+            audience,
+            ...resolveCtaButtons({ categories: decorated, config: edition.settings?.cta || {}, audience }),
+        }));
+
+        res.json({
+            publicEnabled,
+            editionClosed,
+            blockers,
+            registrationOpen: edition.registrationOpen,
+            opensAt: edition.opensAt,
+            closesAt: edition.closesAt,
+            categories: decorated.map(c => ({
+                key: c.key, name: c.name, audience: c.audience, active: c.active,
+                open: c.open, closedReason: c.closedReason, opensAt: c.opensAt, closesAt: c.closesAt,
+            })),
+            audiences,
+        });
+    } catch (error) {
+        console.error('[event-registrations][admin] previewCta:', error);
+        res.status(500).json({ error: 'No se pudo calcular la vista previa' });
     }
 };
 
@@ -908,7 +969,7 @@ export const cloneEdition = async (req, res) => {
 
 export default {
     getEdition, saveEdition, seedEditionCategories,
-    saveCategory, removeCategory, previewCategoryForm,
+    saveCategory, removeCategory, previewCategoryForm, previewCta,
     listRegistrations, getDashboard, getRegistrationDetail,
     changeStatus, updateTags, updateNotes,
     lookupForCheckIn, checkIn, sendMessage,
