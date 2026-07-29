@@ -23,6 +23,7 @@ import {
     STATUSES, STATUS_KEYS, STATUS, SETTLED_STATUSES,
     SYSTEM_TAGS, SYSTEM_TAG_KEYS, normalizeTag, statusMeta,
     CATEGORY_BLUEPRINTS, CURRENCIES, AUDIENCES, buildFormSchema,
+    normalizeCtaConfig, defaultCtaButtons,
 } from '../lib/eventRegistrationSpec.js';
 import {
     clean, isEmail, parseJson, loadEvent, ensureEdition, updateEdition,
@@ -85,6 +86,11 @@ export const getEdition = async (req, res) => {
             event: { id: event.id, slug: event.slug, title: event.title, startDate: event.startDate, location: event.location },
             edition,
             categories: withUsage,
+            // Configuración de los botones de la ficha pública, ya resuelta:
+            // si el administrador nunca la tocó, llegan los botones por defecto
+            // deducidos de las categorías, listos para editar.
+            cta: normalizeCtaConfig(edition.settings?.cta || {}, categories),
+            ctaDefaults: defaultCtaButtons(categories),
             // Catálogos que el panel necesita para pintar los formularios.
             catalog: {
                 statuses: STATUSES,
@@ -137,6 +143,10 @@ export const saveEdition = async (req, res) => {
                 sendReceipt: s.sendReceipt !== false,
                 adminEmails: (Array.isArray(s.adminEmails) ? s.adminEmails : []).filter(isEmail).slice(0, 20),
                 termsUrl: clean(s.termsUrl, 400),
+                // Botones de inscripción de la ficha pública. Se normalizan
+                // contra las categorías reales del evento: un botón que apunte
+                // a una categoría inexistente no se guarda.
+                cta: normalizeCtaConfig(s.cta || {}, await listCategories(event.id)),
             };
         }
 

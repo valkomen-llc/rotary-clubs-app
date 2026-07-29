@@ -152,8 +152,7 @@ const BarList = ({ title, rows, icon: Icon }: {
 
 // ── Ficha detallada ──────────────────────────────────────────────────
 
-const DetailSheet = ({ eventId, registrationId, statuses, onClose, onChanged }: {
-    eventId: string;
+const DetailSheet = ({ registrationId, statuses, onClose, onChanged }: {
     registrationId: string;
     statuses: { key: string; label: string }[];
     onClose: () => void;
@@ -950,7 +949,7 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
             )}
 
             {selected && (
-                <DetailSheet eventId={eventId} registrationId={selected} statuses={statuses}
+                <DetailSheet registrationId={selected} statuses={statuses}
                     onClose={() => setSelected(null)} onChanged={refresh} />
             )}
         </div>

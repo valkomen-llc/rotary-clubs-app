@@ -155,6 +155,9 @@ const mapCategory = (row) => normalizeCategory({
     extraFieldsLabel: row.extraFieldsLabel,
     sortOrder: row.sortOrder,
     active: row.active,
+    // Alimenta `tariffVersionOf`: cada guardado de la categoría produce una
+    // versión de tarifa nueva, sin llevar un contador aparte.
+    updatedAt: row.updatedAt,
 });
 
 export const listCategories = async (eventId, { onlyActive = false } = {}) => {
