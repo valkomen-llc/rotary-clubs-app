@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.648.0 | 2026-07-29 (Eventos: inscripciones por edición de la feria, tres categorías con formulario y moneda propios, acompañantes, pago Stripe multimoneda, tablero, acreditación con QR y exportación)
-// Cache bust: 2026-07-29d
+// UI V4.649.0 | 2026-07-29 (Corrige la pestaña Registro en blanco: /api/event-registrations nunca se había montado en la API)
+// Cache bust: 2026-07-29e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.649.0',
+        title: 'Corregido: la pestaña Registro se quedaba en blanco 🔧',
+        description: 'Al abrir la pestaña "Registro" de un evento, la pantalla mostraba el círculo de carga para siempre y nunca aparecía nada. El motivo estaba en la capa de rutas de la plataforma: la dirección de internet que usa el módulo de inscripciones (/api/event-registrations) nunca había quedado registrada en el servidor, ni siquiera desde la versión en que se creó ese archivo. Como no estaba registrada, las peticiones caían en el bloque final que se encarga de servir la página web y ahí se detenían sin devolver nada: ni un dato, ni un error. El navegador se quedaba esperando una respuesta que jamás iba a llegar, y por eso lo único visible era el círculo girando. Con este cambio la dirección queda registrada y la pestaña carga con normalidad: la edición, las categorías, el tablero, las fichas y la acreditación. Se corrigió también la causa de fondo, que era más grave que el síntoma: cualquier dirección de la API que no estuviera registrada dejaba la petición colgada en silencio, sin responder y sin dejar rastro en los registros del sistema. Eso fue justamente lo que mantuvo el problema oculto. A partir de ahora, una dirección desconocida responde de inmediato "ruta no encontrada" y queda anotada en el registro del servidor, de modo que un fallo así se ve en segundos en lugar de manifestarse como una pantalla que no termina de cargar. Ninguna otra cosa cambió: el módulo de inscripciones es el mismo que se publicó en la versión anterior.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'api', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.648.0',
         title: 'Inscripciones de la Feria de Proyectos, por edición 🎟️',
