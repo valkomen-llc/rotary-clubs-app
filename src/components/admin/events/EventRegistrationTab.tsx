@@ -327,9 +327,10 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
 
             {/* ── Botones de la ficha pública ─────────────────────── */}
             {pane === 'botones' && cta && (
-                <EventCtaManager cta={cta} categories={categories} saving={saving}
+                <EventCtaManager eventId={eventId} cta={cta} categories={categories} saving={saving}
                     onChange={setCta} onSave={saveEdition}
-                    onGoToCategories={() => setPane('categorias')} />
+                    onGoToCategories={() => setPane('categorias')}
+                    onGoToEdition={() => setPane('edicion')} />
             )}
 
             {/* ── Inscripciones ───────────────────────────────────── */}
