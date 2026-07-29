@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.633.0 | 2026-07-29 (Agenda pública: el paso 'Tu sitio' lista por defecto los 10 sitios activos en orden alfabético)
+// UI V4.634.0 | 2026-07-29 (Agenda pública: sitios por dominio .org conectado, sin la plataforma y sin duplicados)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.634.0',
+        title: 'Agendar capacitación: listado de sitios más limpio y correcto 🧹🌐',
+        description: 'Afinamos el listado de sitios del paso "Tu sitio" en la agenda pública según tres reglas: (1) ahora se consideran "activos" los sitios que tienen un dominio .org conectado —esa es la señal real de un sitio en funcionamiento—; (2) se dejó de mostrar "Club Platform for Rotary", que es la plataforma/herramienta en sí y no un club reservable; y (3) se eliminan los duplicados, de modo que un mismo sitio (por ejemplo COLROTARIOS) aparece una sola vez. La búsqueda por texto también aplica estas reglas. Ajuste de solo lectura: no cambia datos ni el resto del flujo.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'sitios', 'dominio', 'duplicados', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.633.0',
         title: 'Agendar capacitación: ahora ves los sitios activos de una vez 🔎🏫',

@@ -61,48 +61,74 @@ function publicView(appt) {
 // ── Buscar sitio (autocomplete público) ─────────────────────────────────────
 // Predicado de "sitio activo" a nivel de BD (equivale a evaluateSiteStatus):
 // no suspendido, suscripción no vencida y expiración futura o nula.
-const ACTIVE_WHERE = {
-  status: { not: 'inactive' },
-  subscriptionStatus: { not: 'expired' },
-  OR: [{ expirationDate: null }, { expirationDate: { gt: new Date() } }],
-};
+// El sitio "master"/plataforma (Club Platform for Rotary, subdomain 'origen')
+// es el ecosistema mismo: no debe aparecer como sitio reservable.
+const PLATFORM_DOMAINS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org'];
+function isPlatformSite(row) {
+  const domain = (row.domain || '').toLowerCase();
+  return (
+    row.subdomain === 'origen' ||
+    PLATFORM_DOMAINS.includes(domain) ||
+    /club\s*platform\s*for\s*rotary/i.test(row.name || '')
+  );
+}
+
+// Deduplica por nombre (normalizado) para que un sitio no aparezca dos veces.
+function dedupeByName(list) {
+  const seen = new Set();
+  const out = [];
+  for (const s of list) {
+    const key = (s.name || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+const bySpanishName = (a, b) => (a.name || '').localeCompare(b.name || '', 'es');
 
 export async function searchSites(req, res) {
   try {
     const q = String(req.query.q || '').trim();
 
-    // Sin búsqueda: mostramos los primeros sitios ACTIVOS en orden alfabético.
+    // Sin búsqueda: sitios ACTIVOS = los que tienen un dominio .org conectado.
+    // Se excluye la plataforma (Club Platform for Rotary) y se deduplica.
     if (q.length < 2) {
+      const orgDomain = { domain: { endsWith: '.org', mode: 'insensitive' } };
       const [clubs, districts] = await Promise.all([
-        prisma.club.findMany({ where: ACTIVE_WHERE, select: { id: true, name: true, type: true }, take: 10, orderBy: { name: 'asc' } }),
-        prisma.district.findMany({ where: ACTIVE_WHERE, select: { id: true, name: true, number: true }, take: 10, orderBy: { name: 'asc' } }),
+        prisma.club.findMany({ where: orgDomain, select: { id: true, name: true, type: true, domain: true, subdomain: true }, take: 60, orderBy: { name: 'asc' } }),
+        prisma.district.findMany({ where: orgDomain, select: { id: true, name: true, number: true, domain: true, subdomain: true }, take: 60, orderBy: { name: 'asc' } }),
       ]);
-      const sites = [
-        ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, active: true })),
-        ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', active: true })),
-      ].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).slice(0, 10);
+      const merged = [
+        ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, domain: c.domain, subdomain: c.subdomain, active: true })),
+        ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', domain: d.domain, subdomain: d.subdomain, active: true })),
+      ].filter((s) => !isPlatformSite(s));
+      const sites = dedupeByName(merged.sort(bySpanishName)).slice(0, 10)
+        .map(({ domain, subdomain, ...rest }) => rest);
       return res.json({ sites });
     }
 
     const [clubs, districts] = await Promise.all([
       prisma.club.findMany({
         where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { subdomain: { contains: q, mode: 'insensitive' } }] },
-        select: { id: true, name: true, type: true, status: true, subscriptionStatus: true, expirationDate: true },
-        take: 12,
+        select: { id: true, name: true, type: true, status: true, subscriptionStatus: true, expirationDate: true, domain: true, subdomain: true },
+        take: 20,
         orderBy: { name: 'asc' },
       }),
       prisma.district.findMany({
         where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { subdomain: { contains: q, mode: 'insensitive' } }] },
-        select: { id: true, name: true, number: true, status: true, subscriptionStatus: true, expirationDate: true },
-        take: 8,
+        select: { id: true, name: true, number: true, status: true, subscriptionStatus: true, expirationDate: true, domain: true, subdomain: true },
+        take: 12,
         orderBy: { name: 'asc' },
       }),
     ]);
 
-    const sites = [
-      ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, active: evaluateSiteStatus(c).active })),
-      ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', active: evaluateSiteStatus(d).active })),
-    ].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+    const merged = [
+      ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, domain: c.domain, subdomain: c.subdomain, active: evaluateSiteStatus(c).active })),
+      ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', domain: d.domain, subdomain: d.subdomain, active: evaluateSiteStatus(d).active })),
+    ].filter((s) => !isPlatformSite(s));
+    const sites = dedupeByName(merged.sort(bySpanishName)).map(({ domain, subdomain, ...rest }) => rest);
     res.json({ sites });
   } catch (e) {
     res.status(500).json({ error: e.message });
