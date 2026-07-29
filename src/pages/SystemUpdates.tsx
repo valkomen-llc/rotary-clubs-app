@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.634.0 | 2026-07-29 (Agenda pública: sitios por dominio .org conectado, sin la plataforma y sin duplicados)
+// UI V4.635.0 | 2026-07-29 (Agenda pública: listado real de sitios en producción con dominio propio conectado — top 9)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.635.0',
+        title: 'Agendar capacitación: ahora sí solo aparecen los sitios en producción 🌐✅',
+        description: 'Corregimos el listado de sitios del paso "Tu sitio": antes se colaban sitios que no tienen un dominio propio conectado, porque el filtro miraba únicamente si el dominio terminaba en ".org" — y todos los clubes reciben por defecto un subdominio *.clubplatform.org, que también termina en ".org". Ahora el criterio es el correcto y el mismo que usa el sitio para saber qué está "en producción": el sitio debe estar activo (status active) y tener un dominio propio conectado (un dominio que no sea el *.clubplatform.org por defecto). Así, en la lista aparecen únicamente los clubes/organizaciones realmente en producción con su dominio conectado. Se sigue excluyendo "Club Platform for Rotary" (la plataforma) y evitando duplicados, y ahora se muestran 9. Ajuste de solo lectura; no cambia datos.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'sitios', 'dominio', 'produccion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.634.0',
         title: 'Agendar capacitación: listado de sitios más limpio y correcto 🧹🌐',
