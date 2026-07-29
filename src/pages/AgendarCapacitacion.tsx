@@ -180,8 +180,8 @@ const AgendarCapacitacion: React.FC = () => {
             {/* Barra superior (Iniciar sesión · idioma) */}
             <PublicTopBar />
 
-            {/* Header */}
-            <header>
+            {/* Header (franja blanca con logo + título) */}
+            <header className="bg-white border-b border-gray-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-3">
                     <img src={PLATFORM_LOGO} alt="Club Platform" className="h-14 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3">
@@ -200,12 +200,12 @@ const AgendarCapacitacion: React.FC = () => {
                             {STEPS.map((s, i) => (
                                 <React.Fragment key={s}>
                                     <div className="flex flex-col items-center gap-1.5 flex-1">
-                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition shadow-sm ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border-2 border-slate-300'}`}>
                                             {i < step ? <CheckCircle2 className="w-5 h-5" /> : i + 1}
                                         </div>
-                                        <span className={`text-[11px] font-semibold text-center ${i === step ? 'text-indigo-600' : 'text-gray-400'}`}>{s}</span>
+                                        <span className={`text-[11px] font-semibold text-center ${i === step ? 'text-indigo-600' : 'text-slate-500'}`}>{s}</span>
                                     </div>
-                                    {i < STEPS.length - 1 && <div className={`h-0.5 flex-1 -mt-5 ${i < step ? 'bg-emerald-400' : 'bg-gray-100'}`} />}
+                                    {i < STEPS.length - 1 && <div className={`h-[3px] flex-1 -mt-5 rounded-full ${i < step ? 'bg-emerald-400' : 'bg-slate-300'}`} />}
                                 </React.Fragment>
                             ))}
                         </div>

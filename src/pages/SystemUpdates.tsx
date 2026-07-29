@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.640.0 | 2026-07-29 (Agenda pública: fondo del login, logo +20px, título sin negrilla, barra superior con solo Iniciar sesión)
+// UI V4.641.0 | 2026-07-29 (Agenda pública: header en blanco + stepper con contraste (círculos/línea visibles sobre la textura))
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.641.0',
+        title: 'Agenda pública: encabezado blanco y pasos más visibles 👁️',
+        description: 'Dos ajustes de contraste en la agenda pública: la franja del encabezado (donde están el logo y el título "Agenda de Capacitaciones y Soporte") vuelve a tener fondo blanco, y el indicador de pasos (1 Tipo, 2 Tu sitio, 3 Fecha y hora, 4 Tus datos, 5 Confirmar) ya no se pierde sobre la textura del fondo: los círculos de los pasos aún no completados ahora son blancos con borde y sombra, y la línea que los conecta usa un gris más marcado, para que se distingan con claridad. Cambio solo visual.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'ui', 'contraste', 'stepper', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.640.0',
         title: 'Agenda pública con la imagen del Panel 🎨',
