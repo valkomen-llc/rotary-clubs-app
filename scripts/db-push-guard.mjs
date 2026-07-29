@@ -7,9 +7,9 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 14 tablas en tiempo de ejecución que no están en el
-// schema (las once ProjectFair*, BannerTemplate, EventRegistration, FAQ).
-// Sin esta barrera, un `db push` las borra sin preguntar.
+// La aplicación crea 15 tablas en tiempo de ejecución que no están en el
+// schema (las once ProjectFair*, BannerTemplate, EventRegistration, FAQ y
+// OutroProject). Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // Para sincronizar de todos modos, a sabiendas:  npm run db:push:force
 // ════════════════════════════════════════════════════════════════════

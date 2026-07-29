@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.644.0",
-  "cache_bust": "2026-07-29 (Capacitaciones: la categoria Onboarding e Implementacion del Ecosistema queda disponible para TODOS los sitios (se puede reservar sin suscripcion activa ni dominio conectado). Las demas categorias siguen exigiendo un sitio activo/de pago/con dominio. Nuevo interruptor por categoria en el panel + apertura automatica unica de Onboarding.)",
+  "version": "4.645.0",
+  "cache_bust": "2026-07-29 (Content Studio: nuevo Generador de Outros IA. Cierres de ~5 segundos a partir de una imagen fija, con voz en off opcional, 8 estilos, formatos 9:16/1:1/4:5/16:9, validacion automatica de calidad del archivo y guardado en la Biblioteca. Los outros listos se pueden enganchar al final de un video desde el Creador de Video.)",
   "type": "module",
-  "//": "UI V4.644.0 | 2026-07-29 (Agenda pública: Onboarding reservable por todos los sitios; interruptor 'Disponible para todos los sitios' por categoría)",
+  "//": "UI V4.645.0 | 2026-07-29 (Generador de Outros IA: cierres de 5s desde una imagen, voz en off opcional via KIE.AI, validacion de calidad y clip de cierre en el Creador de Video)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

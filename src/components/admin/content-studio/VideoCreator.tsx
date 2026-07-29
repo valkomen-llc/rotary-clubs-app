@@ -1,18 +1,23 @@
-import React, { useState } from 'react';
-import { 
-    Plus, 
-    Trash2, 
-    GripVertical, 
-    Settings2, 
-    Type, 
-    Music, 
-    Sparkles, 
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    Plus,
+    Trash2,
+    GripVertical,
+    Settings2,
+    Type,
+    Music,
+    Sparkles,
     Play,
-    Loader2
+    Loader2,
+    Clapperboard,
+    X,
+    CheckCircle2,
+    Volume2
 } from 'lucide-react';
-import { Reorder, motion } from 'framer-motion';
+import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
+import type { Outro } from '../../../lib/outroSpec';
 
 interface MediaItem {
     id: string;
@@ -21,11 +26,29 @@ interface MediaItem {
     type: 'image' | 'video' | 'document';
 }
 
+// Clip de cierre que se engancha al final del video. Viaja en `config.outro` y
+// NO se manda al motor de imágenes: el outro ya está renderizado y se adjunta
+// tal cual, conservando su duración, su resolución y su voz.
+interface AttachedOutro {
+    id: string;
+    title: string;
+    url: string;
+    durationSec: number | null;
+    format: string;
+    hasAudio: boolean | null;
+    posterUrl: string;
+}
+
 const VideoCreator: React.FC = () => {
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    
+
+    const [outro, setOutro] = useState<AttachedOutro | null>(null);
+    const [availableOutros, setAvailableOutros] = useState<Outro[]>([]);
+    const [showOutroPicker, setShowOutroPicker] = useState(false);
+    const [loadingOutros, setLoadingOutros] = useState(false);
+
     // Config states
     const [config, setConfig] = useState({
         format: '9:16',
@@ -35,6 +58,27 @@ const VideoCreator: React.FC = () => {
         caption: '',
         music: 'default'
     });
+
+    // Sólo los outros que pasaron la validación de calidad pueden colgarse al
+    // final de un video.
+    const fetchOutros = useCallback(async () => {
+        setLoadingOutros(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(
+                `${import.meta.env.VITE_API_URL || '/api'}/content-studio/outros?readyOnly=true`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                setAvailableOutros(data.outros || []);
+            }
+        } catch { /* el selector queda vacío y se puede reintentar */ } finally {
+            setLoadingOutros(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchOutros(); }, [fetchOutros]);
 
     const handleGenerate = async () => {
         if (selectedMedia.length === 0) {
@@ -54,8 +98,10 @@ const VideoCreator: React.FC = () => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    // El outro NO va en `images`: no debe volver a pasar por la IA.
+                    // Viaja aparte, en la configuración, como clip ya renderizado.
                     images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
-                    config
+                    config: { ...config, outro }
                 })
             });
 
@@ -135,6 +181,58 @@ const VideoCreator: React.FC = () => {
                                 </Reorder.Item>
                             ))}
                         </Reorder.Group>
+                    )}
+                </div>
+
+                {/* Clip de cierre (Outro) — v4.645 */}
+                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 className="text-lg font-black text-gray-900">Clip de cierre</h3>
+                            <p className="text-sm text-gray-500 font-medium">
+                                Se adjunta al final como clip independiente, sin volver a procesarse por IA.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => { setShowOutroPicker(true); fetchOutros(); }}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50 flex-shrink-0"
+                        >
+                            <Clapperboard className="w-4 h-4" />
+                            {outro ? 'Cambiar outro' : 'Añadir outro'}
+                        </button>
+                    </div>
+
+                    {!outro ? (
+                        <div
+                            onClick={() => { setShowOutroPicker(true); fetchOutros(); }}
+                            className="border-2 border-dashed border-gray-100 rounded-2xl py-8 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50/10 transition-all"
+                        >
+                            <Clapperboard className="w-8 h-8 text-gray-200" />
+                            <p className="text-sm text-gray-400 font-bold">Sin clip de cierre</p>
+                            <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
+                                Se generan en la pestaña Generador de Outros IA
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                            <div className="w-16 h-16 rounded-xl overflow-hidden shadow-sm bg-black flex-shrink-0">
+                                <img src={outro.posterUrl} alt="" className="w-full h-full object-cover opacity-70" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-gray-800 truncate">{outro.title}</p>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5 flex items-center gap-2">
+                                    Clip de {outro.durationSec ?? 5}s · {outro.format}
+                                    {outro.hasAudio && <span className="inline-flex items-center gap-1 text-indigo-500"><Volume2 className="w-3 h-3" />Con voz</span>}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setOutro(null)}
+                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                title="Quitar el clip de cierre"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -271,12 +369,95 @@ const VideoCreator: React.FC = () => {
                 </div>
             </div>
 
-            <MediaPicker 
+            <MediaPicker
                 isOpen={showPicker}
                 initialSelection={selectedMedia.map(m => m.id)}
                 onClose={() => setShowPicker(false)}
                 onSelect={setSelectedMedia}
             />
+
+            {/* Selector de clip de cierre */}
+            {showOutroPicker && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={() => setShowOutroPicker(false)}
+                >
+                    <div
+                        className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div>
+                                <h3 className="text-xl font-black text-gray-900">Elegí el clip de cierre</h3>
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-0.5">
+                                    Sólo aparecen los outros que pasaron la validación de calidad
+                                </p>
+                            </div>
+                            <button onClick={() => setShowOutroPicker(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {loadingOutros ? (
+                                <div className="flex flex-col items-center justify-center py-16">
+                                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                                    <p className="text-gray-400 font-bold text-sm">Cargando outros...</p>
+                                </div>
+                            ) : availableOutros.length === 0 ? (
+                                <div className="text-center py-16">
+                                    <Clapperboard className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                                    <p className="text-gray-400 font-bold">Todavía no hay outros listos</p>
+                                    <p className="text-[11px] text-gray-300 mt-1 font-bold">
+                                        Creá uno en la pestaña "Generador de Outros IA"
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    {availableOutros.map(o => {
+                                        const selected = outro?.id === o.id;
+                                        return (
+                                            <button
+                                                key={o.id}
+                                                onClick={() => {
+                                                    setOutro({
+                                                        id: o.id,
+                                                        title: o.title,
+                                                        url: o.videoUrl!,
+                                                        durationSec: o.durationSec,
+                                                        format: o.format,
+                                                        hasAudio: o.hasAudio,
+                                                        posterUrl: o.sourceImageUrl
+                                                    });
+                                                    setShowOutroPicker(false);
+                                                }}
+                                                className={`group relative rounded-2xl overflow-hidden border-2 text-left transition-all ${
+                                                    selected ? 'border-indigo-600 ring-4 ring-indigo-600/10' : 'border-gray-100 hover:border-indigo-200'
+                                                }`}
+                                            >
+                                                <div className="aspect-[9/16] max-h-48 bg-black">
+                                                    <img src={o.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" loading="lazy" />
+                                                </div>
+                                                {selected && (
+                                                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                                    </div>
+                                                )}
+                                                <div className="p-3 bg-white">
+                                                    <p className="text-xs font-black text-gray-800 line-clamp-2 leading-tight">{o.title}</p>
+                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
+                                                        {o.durationSec ?? 5}s · {o.format} · {o.hasAudio ? 'con voz' : 'sin voz'}
+                                                    </p>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

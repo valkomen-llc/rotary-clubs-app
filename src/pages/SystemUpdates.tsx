@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.644.0 | 2026-07-29 (Capacitaciones: Onboarding disponible para todos los sitios; interruptor por categoría)
+// UI V4.645.0 | 2026-07-29 (Generador de Outros IA: cierres de 5s desde una imagen, voz en off opcional, validación de calidad)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.645.0',
+        title: 'Generador de Outros IA 🎬',
+        description: 'Content Studio suma una pestaña nueva: "Generador de Outros IA", para crear el cierre audiovisual de un Reel a partir de una sola imagen. Se elige la imagen —desde la Biblioteca multimedia o subiéndola desde el equipo—, se escribe lo que debe decir la voz (el nombre de la organización, un eslogan, una frase institucional) y la IA devuelve un clip corto con movimiento de cámara suave, luz en movimiento y locución. La imagen se conserva tal cual: el logo, los textos, los colores y la composición no se rediseñan; la IA solo agrega movimiento y luz. Hay ocho estilos —institucional, elegante, corporativo, moderno, inspiracional, tecnológico, ceremonial y minimalista—, cada uno con su propia cámara, iluminación, ritmo y sonido, y cuatro formatos: 9:16 para Reels e Historias (el de siempre), 1:1, 4:5 y 16:9. La voz en off es opcional y se configura: idioma y acento (diez opciones, incluidas cinco variantes del español), voz femenina, masculina o neutra, velocidad, tono y volumen. Mientras se escribe, el sistema va contando si el mensaje cabe en el tiempo del cierre; si se pasa, avisa cuántas palabras sobran y ofrece resumirlo con IA en un clic, para que la locución nunca quede cortada. Antes de dar un outro por listo, la plataforma abre el archivo y lo mide: resolución, duración, tasa de bits, fotogramas por segundo, pista de audio, sincronización y que no venga truncado. Si algo no llega al mínimo, el outro queda marcado como "Requiere revisión" con el motivo explicado y no se puede guardar por accidente. Desde la vista previa se puede reproducir, regenerar, duplicar para probar otra voz o estilo, descargar o guardar en la Biblioteca multimedia, dentro de la carpeta "Outros" y con toda su ficha técnica. Por último, en el Creador de Video aparece un apartado nuevo, "Clip de cierre", donde se elige cualquier outro ya aprobado para engancharlo al final del video: se adjunta como clip independiente, sin volver a pasar por la IA, conservando su duración, su resolución y su voz.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'outros', 'video', 'reels', 'kie-ai', 'voz-en-off', 'biblioteca', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.644.0',
         title: 'Onboarding disponible para todos los sitios 🚀',

@@ -9,7 +9,8 @@
 // Contexto: hasta v4.622 el `build` ejecutaba `prisma db push
 // --accept-data-loss`. Ese comando deja la base idéntica al schema, así que
 // BORRABA todas las tablas que la aplicación crea en tiempo de ejecución
-// (las once ProjectFair*, BannerTemplate, EventRegistration, FAQ…). Cada
+// (las once ProjectFair*, BannerTemplate, EventRegistration, FAQ,
+// OutroProject…). Cada
 // despliegue vaciaba los datos del cliente: se perdió una inscripción pagada
 // el 2026-07-28 y la plantilla de pendones el 2026-07-13.
 //

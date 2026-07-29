@@ -14,6 +14,19 @@ import {
     generatePost,
     downloadProxy
 } from '../controllers/contentStudioController.js';
+import {
+    getOutroOptions,
+    preflightOutro,
+    summarizeOutroSpeech,
+    createOutro,
+    listOutros,
+    getOutro,
+    syncOutro,
+    retryOutro,
+    duplicateOutro,
+    saveOutroToLibrary,
+    deleteOutro
+} from '../controllers/outroController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
@@ -58,6 +71,21 @@ router.post('/projects', authMiddleware, createVideoProject);
 router.get('/projects', authMiddleware, getVideoProjects);
 router.get('/projects/:id/sync', authMiddleware, syncProjectStatus);
 router.delete('/projects/:id', authMiddleware, deleteVideoProject);
+
+// ── Generador de Outros IA (v4.645) ──
+// Cierres de ~5s desde una imagen fija. El orden importa: las rutas fijas van
+// antes que /outros/:id para que "options" no se lea como un id.
+router.get('/outros/options', authMiddleware, getOutroOptions);
+router.post('/outros/preflight', authMiddleware, preflightOutro);
+router.post('/outros/speech/summary', authMiddleware, summarizeOutroSpeech);
+router.post('/outros', authMiddleware, createOutro);
+router.get('/outros', authMiddleware, listOutros);
+router.get('/outros/:id', authMiddleware, getOutro);
+router.get('/outros/:id/sync', authMiddleware, syncOutro);
+router.post('/outros/:id/retry', authMiddleware, retryOutro);
+router.post('/outros/:id/duplicate', authMiddleware, duplicateOutro);
+router.post('/outros/:id/library', authMiddleware, saveOutroToLibrary);
+router.delete('/outros/:id', authMiddleware, deleteOutro);
 
 // Social Accounts
 router.post('/accounts', authMiddleware, connectSocialAccount);

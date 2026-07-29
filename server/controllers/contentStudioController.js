@@ -642,17 +642,39 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
     }
 };
 
+// Proxy de descarga: fuerza el "Guardar como" para archivos que viven en S3 o
+// en el proveedor, donde el atributo `download` del navegador no aplica por ser
+// otro origen.
+//
+// v4.645: respeta el tipo real del archivo. Antes forzaba image/png, lo que
+// dejaba los outros descargados como .png ilegibles. El default sigue siendo png
+// para no cambiarle el comportamiento a quien ya lo usaba con imágenes.
 export const downloadProxy = async (req, res) => {
     try {
-        const { url } = req.query;
+        const { url, filename } = req.query;
         const response = await fetch(url);
+        if (!response.ok) return res.status(502).send('No se pudo descargar el archivo');
         const buffer = Buffer.from(await response.arrayBuffer());
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Disposition', `attachment; filename=rotary-ai-post-${Date.now()}.png`);
+
+        const upstreamType = response.headers.get('content-type') || '';
+        const isVideo = upstreamType.startsWith('video/');
+        const contentType = isVideo ? upstreamType : 'image/png';
+        const extension = isVideo ? 'mp4' : 'png';
+        const safeName = String(filename || `rotary-ai-${Date.now()}`)
+            .replace(/[^a-zA-Z0-9._-]/g, '-')
+            .replace(/\.(png|mp4)$/i, '');
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename=${safeName}.${extension}`);
         res.send(buffer);
     } catch (e) { res.status(500).send('Error'); }
 };
 
+// v4.645: `config.outro` puede traer un clip de cierre ya renderizado por el
+// Generador de Outros IA. Se guarda con el proyecto pero NO entra en las
+// imágenes que se le mandan al motor: el outro ya está hecho y debe conservar su
+// duración, su resolución y su voz. Si algún día se le pasa a la IA, se pierde
+// justamente lo que lo hacía servible.
 export const createVideoProject = async (req, res) => {
     try {
         const { images, config } = req.body;
@@ -699,14 +721,43 @@ export const getScheduledPosts = async (req, res) => {
     } catch (e) { res.status(500).json({ error: 'Error' }); }
 };
 
+// Webhook único de KIE.AI para todo Content Studio. Un mismo task_id puede ser
+// de un video del Creador de Video o de un outro (v4.645), así que se busca en
+// los dos lados: primero VideoProject, y si no aparece, OutroProject.
+//
+// KIE reintenta el webhook si no recibe 2xx, y sus payloads varían entre
+// modelos; por eso el task id se lee de varias claves posibles.
 export const handleKieWebhook = async (req, res) => {
     try {
-        const { task_id, status, output } = req.body;
-        const project = await prisma.videoProject.findFirst({ where: { kieJobId: task_id } });
-        if (!project) return res.status(404).json({ error: 'Not found' });
-        await prisma.videoProject.update({ where: { id: project.id }, data: { status: status === 'COMPLETED' ? 'ready' : 'failed', videoUrl: output?.video_url } });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Error' }); }
+        const payload = req.body || {};
+        const taskId = payload.task_id || payload.taskId || payload.data?.taskId || payload.data?.task_id;
+        const status = payload.status || payload.state || payload.data?.state;
+        const output = payload.output || payload.data?.output;
+
+        if (!taskId) return res.status(400).json({ error: 'Webhook sin task_id' });
+
+        const project = await prisma.videoProject.findFirst({ where: { kieJobId: taskId } });
+        if (project) {
+            const done = String(status).toUpperCase() === 'COMPLETED' || String(status).toLowerCase() === 'success';
+            await prisma.videoProject.update({
+                where: { id: project.id },
+                data: { status: done ? 'ready' : 'failed', videoUrl: output?.video_url }
+            });
+            return res.json({ success: true, kind: 'video-project' });
+        }
+
+        const { handleOutroWebhook } = await import('./outroController.js');
+        const handled = await handleOutroWebhook(taskId, payload);
+        if (handled) return res.json({ success: true, kind: 'outro' });
+
+        // 200 a propósito: si el task no es nuestro, un 404 haría que KIE
+        // reintentara el webhook indefinidamente.
+        console.warn(`[STUDIO] Webhook de KIE con task_id desconocido: ${taskId}`);
+        res.json({ success: true, ignored: true });
+    } catch (e) {
+        console.error('[STUDIO] Webhook error:', e);
+        res.status(500).json({ error: e.message });
+    }
 };
 
 export const syncProjectStatus = async (req, res) => {
