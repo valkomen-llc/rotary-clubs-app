@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.647.0",
-  "cache_bust": "2026-07-29c (Generador de Outros IA: la camara queda fija en los ocho estilos y el logotipo se mantiene quieto y completo; ahora solo se anima el fondo decorativo. La voz en off pide hablante nativo y el idioma por defecto pasa a espanol latino neutro.)",
+  "version": "4.648.0",
+  "cache_bust": "2026-07-29d (Modulo de Eventos: estructura por ediciones de la feria. Categorias de registro Rotario Internacional / Rotario Nacional / CADRES con formulario, moneda y precio propios; multimoneda con tasa registrada; acompanantes; asistente publico por pasos con autoguardado; pago con Stripe confirmado por webhook; tablero, fichas, etiquetas, historial, acreditacion con QR y exportacion a CSV, Excel y PDF.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
