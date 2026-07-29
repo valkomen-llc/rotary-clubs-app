@@ -3,9 +3,15 @@
 import express from 'express';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import * as ctrl from '../controllers/trainingController.js';
+import { ensureTrainingSchema } from '../lib/ensureTrainingSchema.js';
 
 const router = express.Router();
 const superOnly = roleMiddleware(['administrator']);
+
+// Asegura las tablas del módulo (el build no corre db push; se crean en runtime).
+router.use(async (req, res, next) => {
+  try { await ensureTrainingSchema(); next(); } catch (e) { console.error('[training] ensureSchema:', e); res.status(500).json({ error: 'No se pudo preparar el módulo de capacitaciones' }); }
+});
 
 // Todo el módulo requiere autenticación.
 router.use(authMiddleware);

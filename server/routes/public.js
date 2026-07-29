@@ -268,6 +268,11 @@ router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) =>
 // El usuario busca su sitio, valida suscripción, reserva y gestiona su cita con
 // un enlace mágico (publicToken). Mismo patrón público que el generador de pendones.
 import * as trainingPublic from '../controllers/trainingPublicController.js';
+import { ensureTrainingSchema as ensureTrainingSchemaPublic } from '../lib/ensureTrainingSchema.js';
+// Asegura las tablas del módulo también en las rutas públicas (el build no corre db push).
+router.use('/training', async (req, res, next) => {
+    try { await ensureTrainingSchemaPublic(); next(); } catch (e) { console.error('[public training] ensureSchema:', e); res.status(500).json({ error: 'No se pudo preparar el módulo' }); }
+});
 router.get('/training/sites', trainingPublic.searchSites);
 router.get('/training/config', trainingPublic.publicConfigAndTypes);
 router.get('/training/site-status', trainingPublic.publicSiteStatus);
