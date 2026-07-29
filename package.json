@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.630.0",
-  "cache_bust": "2026-07-29 (Agenda pública de Capacitaciones — 3 ajustes: (1) se agrega la barra superior estilo Rotary del sitio (Endpolio.org · My Rotary · selector de idioma con banderas) en /agendar-capacitacion y /mi-capacitacion, reutilizando el mismo diseño del Navbar; (2) el idioma por defecto del calendario es Español (salvo que el visitante ya haya elegido otro a mano); (3) el ancho del formulario deja de ser a sangre completa y usa el contenedor centrado del sitio (max-w-7xl con márgenes laterales). Se retira el selector ES/EN propio porque ahora vive en la barra superior. Solo frontend.)",
+  "version": "4.631.0",
+  "cache_bust": "2026-07-29 (Catálogo de Capacitaciones por categorías: el módulo Capacitaciones y Soporte deja de ser una lista plana de tipos de cita y pasa a ser un catálogo organizado por CATEGORÍAS (Onboarding, Sitio Web, IA, Marketing, Fundraising, Ecommerce, Eventos, Gestión Institucional, Analítica, Programa de Intercambio, Mesa de Ayuda…). Todo dinámico en BD (modelo TrainingCategory + categoryId en TrainingAppointmentType, aditivo). En el admin (Tipos de cita) cada categoría se expande/contrae, se edita, cambia color/emoji, muestra el número de servicios y se reordena por drag-and-drop; los servicios se mueven entre categorías (dropdown o arrastrando) y se reordenan. Botón 'Cargar catálogo sugerido' que precarga el catálogo de ejemplo como filas EDITABLES. En la reserva pública, el usuario primero elige la categoría y luego ve solo los servicios de esa categoría. Eliminar una categoría NO borra sus servicios (quedan 'sin categoría') ni afecta el historial de citas. prisma db push solo agrega tabla+columna; sin operaciones destructivas.)",
   "type": "module",
-  "//": "UI V4.630.0 | 2026-07-29 (Agenda pública: barra superior Rotary + idioma por defecto Español + ancho del contenedor del sitio)",
+  "//": "UI V4.631.0 | 2026-07-29 (Catálogo de Capacitaciones por categorías — admin con expandir/color/DnD y reserva pública categoría→servicios)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

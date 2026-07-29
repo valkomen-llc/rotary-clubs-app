@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.630.0 | 2026-07-29 (Agenda pública: barra superior Rotary + idioma por defecto Español + ancho del contenedor del sitio)
+// UI V4.631.0 | 2026-07-29 (Catálogo de Capacitaciones por categorías — admin con expandir/color/DnD y reserva pública categoría→servicios)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.631.0',
+        title: 'Capacitaciones ahora es un catálogo organizado por categorías 📚🗂️',
+        description: 'El módulo Capacitaciones y Soporte deja de manejar una lista suelta de tipos de cita y se convierte en un verdadero catálogo de servicios organizado por categorías (por ejemplo: Onboarding e Implementación, Sitio Web, Inteligencia Artificial, Marketing y Comunicaciones, Fundraising, Comercio Electrónico, Eventos, Gestión Institucional, Analítica, Programa de Intercambio y Mesa de Ayuda). Todo es dinámico y se guarda en la base de datos: el superadministrador puede crear, editar, colorear, poner un ícono y eliminar categorías, y dentro de cada una crear varios servicios. En la pantalla "Tipos de cita" cada categoría se expande y contrae, muestra cuántos servicios tiene y se reordena arrastrando; los servicios se mueven entre categorías (arrastrando o desde el desplegable "Categoría" del formulario) y también se reordenan. Hay un botón "Cargar catálogo sugerido" que precarga un catálogo de ejemplo listo para editar. Del lado de quien reserva, el flujo ahora pregunta primero "¿Sobre qué tema necesitas apoyo?" (la categoría) y luego muestra únicamente los servicios de esa categoría. Eliminar una categoría no borra sus servicios (quedan "sin categoría") ni afecta el historial de citas. Cambio aditivo: no toca datos existentes; los servicios que ya existían siguen funcionando como "sin categoría" hasta que se asignen.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'catalogo', 'categorias', 'servicios', 'admin', 'reservas', 'drag-and-drop', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.630.0',
         title: 'Agenda pública: barra Rotary, español por defecto y ancho del sitio 🧭🇪🇸',

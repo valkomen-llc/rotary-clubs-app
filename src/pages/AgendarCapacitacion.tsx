@@ -12,7 +12,8 @@ const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const PLATFORM_LOGO = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png';
 
 interface Site { id: string; name: string; type: 'club' | 'district'; active: boolean; }
-interface ApptType { id: string; name: string; description?: string; durationMin: number; modality: string; price?: number | null; color?: string; responsible?: { name: string } | null; }
+interface ApptType { id: string; name: string; description?: string; categoryId?: string | null; durationMin: number; modality: string; price?: number | null; color?: string; responsible?: { name: string } | null; }
+interface Category { id: string; name: string; description?: string; emoji?: string; color?: string; }
 interface Slot { startAt: string; endAt: string; }
 interface DaySlots { dateKey: string; slots: Slot[]; }
 
@@ -46,6 +47,8 @@ const AgendarCapacitacion: React.FC = () => {
 
     // Tipos / slots
     const [types, setTypes] = useState<ApptType[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedType, setSelectedType] = useState<ApptType | null>(null);
     const [days, setDays] = useState<DaySlots[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
@@ -60,7 +63,7 @@ const AgendarCapacitacion: React.FC = () => {
 
     // Cargar tipos al inicio.
     useEffect(() => {
-        fetch(`${API}/public/training/config`).then(r => r.json()).then(d => setTypes(d.types || [])).catch(() => {});
+        fetch(`${API}/public/training/config`).then(r => r.json()).then(d => { setTypes(d.types || []); setCategories(d.categories || []); }).catch(() => {});
     }, []);
 
     // Volver del checkout de Stripe: revalidar el sitio y saltar al paso de tipo.
@@ -247,14 +250,76 @@ const AgendarCapacitacion: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Paso "Tipo" (primero) */}
-                            {step === 0 && (
-                                <div>
-                                    <h3 className="text-lg font-black text-gray-900 mb-1">¿Qué necesitas?</h3>
-                                    <p className="text-gray-500 text-sm mb-5">Elige el tipo de capacitación o soporte.</p>
-                                    {types.length === 0 ? <p className="text-gray-400 text-sm py-8 text-center">No hay tipos disponibles por ahora.</p> : (
-                                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                            {types.map(t => (
+                            {/* Paso "Tipo" (primero): categoría → servicios */}
+                            {step === 0 && (() => {
+                                // Categorías con al menos un servicio + "Otros" para los sin categoría.
+                                const withCat = categories
+                                    .map(c => ({ ...c, count: types.filter(t => t.categoryId === c.id).length }))
+                                    .filter(c => c.count > 0);
+                                const noneCount = types.filter(t => !t.categoryId).length;
+                                const cats: any[] = [...withCat];
+                                if (noneCount > 0) cats.push({ id: '__none__', name: 'Otros', emoji: '📋', color: '#64748b', description: 'Otros servicios', count: noneCount });
+                                const servicesOfSelected = selectedCategory
+                                    ? types.filter(t => (selectedCategory === '__none__' ? !t.categoryId : t.categoryId === selectedCategory))
+                                    : [];
+                                const currentCat = cats.find(c => c.id === selectedCategory);
+
+                                if (types.length === 0) return <p className="text-gray-400 text-sm py-8 text-center">No hay servicios disponibles por ahora.</p>;
+
+                                // Sin categorías configuradas: lista plana de servicios (compat).
+                                if (cats.length === 0 || (cats.length === 1 && cats[0].id === '__none__' && categories.length === 0)) {
+                                    return (
+                                        <div>
+                                            <h3 className="text-lg font-black text-gray-900 mb-1">¿Qué necesitas?</h3>
+                                            <p className="text-gray-500 text-sm mb-5">Elige el servicio.</p>
+                                            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                                {types.map(t => (
+                                                    <button key={t.id} onClick={() => { setSelectedType(t); setSelectedSlot(null); loadSlots(t); }}
+                                                        className={`text-left p-4 rounded-2xl border-2 transition ${selectedType?.id === t.id ? 'border-indigo-500 bg-indigo-50/50' : 'border-gray-100 hover:border-gray-200'}`}>
+                                                        <div className="flex items-center gap-2 mb-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color || '#2563eb' }} /><span className="font-bold text-gray-900">{t.name}</span></div>
+                                                        {t.description && <p className="text-xs text-gray-500 line-clamp-2 mb-2">{t.description}</p>}
+                                                        <div className="flex items-center gap-3 text-[11px] text-gray-400 font-semibold">
+                                                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{t.durationMin} min</span>
+                                                            {t.price ? <span className="text-amber-600">${t.price}</span> : <span className="text-emerald-600">Incluido</span>}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // 1) Selección de categoría.
+                                if (!selectedCategory) {
+                                    return (
+                                        <div>
+                                            <h3 className="text-lg font-black text-gray-900 mb-1">¿Sobre qué tema necesitas apoyo?</h3>
+                                            <p className="text-gray-500 text-sm mb-5">Elige una categoría para ver los servicios.</p>
+                                            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                                {cats.map(c => (
+                                                    <button key={c.id} onClick={() => setSelectedCategory(c.id)}
+                                                        className="text-left p-4 rounded-2xl border-2 border-gray-100 hover:border-indigo-300 transition flex items-start gap-3" style={{ borderLeftColor: c.color, borderLeftWidth: 4 }}>
+                                                        <span className="text-2xl">{c.emoji || '📁'}</span>
+                                                        <div className="min-w-0">
+                                                            <div className="font-black text-gray-900">{c.name}</div>
+                                                            {c.description && <p className="text-xs text-gray-500 line-clamp-2">{c.description}</p>}
+                                                            <div className="text-[11px] text-gray-400 font-semibold mt-1">{c.count} servicio{c.count === 1 ? '' : 's'}</div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // 2) Servicios de la categoría elegida.
+                                return (
+                                    <div>
+                                        <button onClick={() => { setSelectedCategory(null); setSelectedType(null); }} className="text-xs font-bold text-indigo-600 flex items-center gap-1 mb-3"><ChevronLeft className="w-4 h-4" />Categorías</button>
+                                        <h3 className="text-lg font-black text-gray-900 mb-1 flex items-center gap-2"><span className="text-xl">{currentCat?.emoji}</span>{currentCat?.name}</h3>
+                                        <p className="text-gray-500 text-sm mb-5">Elige el servicio que necesitas.</p>
+                                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {servicesOfSelected.map(t => (
                                                 <button key={t.id} onClick={() => { setSelectedType(t); setSelectedSlot(null); loadSlots(t); }}
                                                     className={`text-left p-4 rounded-2xl border-2 transition ${selectedType?.id === t.id ? 'border-indigo-500 bg-indigo-50/50' : 'border-gray-100 hover:border-gray-200'}`}>
                                                     <div className="flex items-center gap-2 mb-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color || '#2563eb' }} /><span className="font-bold text-gray-900">{t.name}</span></div>
@@ -267,9 +332,9 @@ const AgendarCapacitacion: React.FC = () => {
                                                 </button>
                                             ))}
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Step 2: Fecha y hora */}
                             {step === 2 && (

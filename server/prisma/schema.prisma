@@ -1923,11 +1923,29 @@ model TrainingResponsible {
 }
 
 // Tipos de cita configurables (capacitación inicial, soporte técnico, etc.).
+// Categoría del catálogo de capacitaciones (Onboarding, Sitio Web, IA, etc.).
+// Dinámica: el superadmin las crea/edita/reordena; nada hardcodeado.
+model TrainingCategory {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  emoji       String? // ícono emoji del catálogo (🚀, 🌐, 🤖…)
+  color       String   @default("#4f46e5")
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  types       TrainingAppointmentType[]
+
+  @@index([active, sortOrder])
+}
+
 model TrainingAppointmentType {
   id            String   @id @default(uuid())
   name          String
   slug          String?  @unique
   description   String?
+  categoryId    String? // categoría del catálogo (nullable = "Sin categoría")
   durationMin   Int      @default(45)
   modality      String   @default("videollamada") // videollamada | telefonica | presencial
   prerequisites String?
@@ -1940,10 +1958,12 @@ model TrainingAppointmentType {
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  category      TrainingCategory?    @relation(fields: [categoryId], references: [id])
   responsible   TrainingResponsible? @relation(fields: [responsibleId], references: [id])
   appointments  TrainingAppointment[]
 
   @@index([active, sortOrder])
+  @@index([categoryId, sortOrder])
 }
 
 // Reserva de capacitación / soporte de un sitio.
