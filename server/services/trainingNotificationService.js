@@ -98,8 +98,9 @@ async function sendWhatsAppSafe({ clubId, to, message }) {
   }
 }
 
-// Confirmación inmediata al reservar.
-export async function sendConfirmation(appt, { origin, manageUrl } = {}) {
+// Confirmación inmediata al reservar. `ccEmails` recibe copias adicionales
+// (p. ej. el correo de contacto del club).
+export async function sendConfirmation(appt, { origin, manageUrl, ccEmails = [] } = {}) {
   const subject = `✅ Capacitación agendada — ${appt.appointmentType?.name || 'Soporte'}`;
   const html = baseCard(appt, { headline: 'Tu capacitación está agendada' }) + actionsRow(appt, origin, manageUrl);
   const ics = icsFor(appt, `Capacitación: ${appt.appointmentType?.name || 'Soporte'}`);
@@ -108,6 +109,13 @@ export async function sendConfirmation(appt, { origin, manageUrl } = {}) {
   await sendEmailSafe({ clubId: appt.clubId, to: appt.requesterEmail, subject, html, attachments });
   if (appt.responsible?.email) {
     await sendEmailSafe({ clubId: null, to: appt.responsible.email, subject: `Nueva reserva — ${appt.organizationName || 'Sitio'}`, html, attachments });
+  }
+  // Copia al contacto del club (notificación de la agenda), evitando duplicar
+  // el correo del solicitante.
+  for (const cc of ccEmails) {
+    if (cc && cc.toLowerCase() !== (appt.requesterEmail || '').toLowerCase()) {
+      await sendEmailSafe({ clubId: appt.clubId, to: cc, subject, html, attachments });
+    }
   }
   const { dateLabel, timeLabel, tz } = fmt(appt);
   await sendWhatsAppSafe({

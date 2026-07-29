@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.637.0",
-  "cache_bust": "2026-07-29 (Fix visual del paso 3 'Fecha y hora': el hover de los chips de horario (y de los días) usaba hover:scale, que al agrandar el elemento dentro del contenedor con overflow-y-auto recortaba el borde redondeado y hacía ver la selección 'incompleta'. Se elimina el escalado en hover, se usa transition-colors (sin transform), borde/relleno más limpios y anillo de foco accesible (focus-visible). Solo frontend.)",
+  "version": "4.638.0",
+  "cache_bust": "2026-07-29 (Rediseño del paso 4 'Tus datos' de la agenda pública con el estilo del formulario de la Feria de Proyectos: campos etiquetados con ícono y asterisco de obligatorio, layout en 2 columnas (Nombre/Apellido, Correo/Teléfono), inputs redondeados con foco resaltado, y motivo a ancho completo. Se agrega una tarjeta 'Datos del club' (solo lectura) con el nombre del sitio y su correo/teléfono de contacto, precargados desde el sitio elegido — el endpoint público site-status ahora devuelve contactEmail/contactPhone. Importante para notificaciones: la confirmación de la agenda también se envía al correo de contacto del club (server-side, autoritativo), además del solicitante y el responsable. Solo frontend + endpoint público.)",
   "type": "module",
-  "//": "UI V4.637.0 | 2026-07-29 (Fix hover de los horarios del paso 3: se quita el escalado que recortaba el borde y hacía ver la selección incompleta)",
+  "//": "UI V4.638.0 | 2026-07-29 (Paso 4 rediseñado estilo Feria de Proyectos + datos del club que reciben la confirmación de la agenda)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

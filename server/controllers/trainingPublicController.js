@@ -174,7 +174,15 @@ export async function publicSiteStatus(req, res) {
     res.json({
       active: status.active,
       reason: status.reason,
-      site: { id: entity.id, name: entity.name || `Distrito ${entity.number || ''}`.trim(), type },
+      site: {
+        id: entity.id,
+        name: entity.name || `Distrito ${entity.number || ''}`.trim(),
+        type,
+        // Contacto del club/sitio: se muestra en el formulario y también recibe
+        // la confirmación de la agenda.
+        contactEmail: entity.billingContactEmail || null,
+        contactPhone: entity.billingContactPhone || null,
+      },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -283,7 +291,9 @@ export async function createPublicAppointment(req, res) {
       }
     }
 
-    await sendConfirmation(appt, { origin: originOf(req), manageUrl: manageUrlFor(req, token) });
+    // El contacto del club/sitio también recibe la confirmación de la agenda.
+    const ccEmails = [entity.billingContactEmail].filter(Boolean);
+    await sendConfirmation(appt, { origin: originOf(req), manageUrl: manageUrlFor(req, token), ccEmails });
     await prisma.trainingAppointment.update({ where: { id: appt.id }, data: { confirmationSentAt: new Date() } });
 
     res.json({ appointment: publicView(appt), manageUrl: manageUrlFor(req, token) });

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.637.0 | 2026-07-29 (Fix hover de los horarios del paso 3: se quita el escalado que recortaba el borde y hacía ver la selección incompleta)
+// UI V4.638.0 | 2026-07-29 (Paso 4 rediseñado estilo Feria de Proyectos + datos del club que reciben la confirmación de la agenda)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.638.0',
+        title: 'Paso "Tus datos" con mejor formulario y datos del club 🧾🏫',
+        description: 'Rediseñamos el paso 4 (Tus datos) de la agenda de capacitaciones para que las casillas se vean como en el formulario de postulación de la Feria de Proyectos: cada campo tiene su etiqueta con ícono y el asterisco de obligatorio, el formulario va en dos columnas (Nombre / Apellido, Correo / Teléfono) con inputs redondeados y foco resaltado, y el motivo ocupa todo el ancho. Además agregamos una tarjeta "Datos del club" que muestra el club/sitio elegido y su correo y teléfono de contacto (tomados automáticamente del sitio). Esto es importante porque la confirmación de la agenda ahora también se envía al correo de contacto del club, además de a la persona que reserva y al responsable de la sesión. Cambio visual del formulario público + notificación al club.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'formulario', 'datos', 'club', 'notificaciones', 'ui', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.637.0',
         title: 'Arreglado: el hover de los horarios se veía "incompleto" 🖱️✅',
