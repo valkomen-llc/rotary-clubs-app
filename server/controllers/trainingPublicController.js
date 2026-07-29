@@ -13,6 +13,7 @@ import {
   publicConfig,
 } from '../services/trainingAvailabilityService.js';
 import { createMeeting } from '../services/meetingService.js';
+import { resolveMeetingUrl, confirmationCode } from '../lib/meetingLink.js';
 import { buildICS, googleCalendarUrl, outlookCalendarUrl } from '../lib/ics.js';
 import { sendConfirmation, sendCancellation } from '../services/trainingNotificationService.js';
 
@@ -39,6 +40,7 @@ async function resolveByType(siteId, siteType) {
 function publicView(appt) {
   return {
     id: appt.id,
+    code: confirmationCode(appt.id),
     token: appt.publicToken,
     status: appt.status,
     startAt: appt.startAt,
@@ -257,7 +259,8 @@ export async function createPublicAppointment(req, res) {
         responsibleId: responsible?.id || null,
         startAt: new Date(startAt),
         endAt: check.endAt,
-        timezone: cfg.timezone,
+        // Zona horaria del usuario durante la reserva (para confirmación/recordatorios).
+        timezone: (req.body.timezone && String(req.body.timezone).slice(0, 64)) || cfg.timezone,
         status: 'confirmed',
         modality: apptType?.modality || 'videollamada',
         requesterName: String(requesterName).slice(0, 150),
@@ -273,28 +276,41 @@ export async function createPublicAppointment(req, res) {
       include: { appointmentType: true, responsible: true, materials: true },
     });
 
-    // Enlace de videoconferencia (best-effort).
+    // Enlace de reunión: automático (Zoom/Meet) o provisional según prioridad.
+    let autoMeeting = null;
     if (cfg.meetingProvider && cfg.meetingProvider !== 'manual') {
-      const meeting = await createMeeting({
+      autoMeeting = await createMeeting({
         provider: cfg.meetingProvider,
         topic: `Capacitación: ${apptType?.name || 'Soporte'} — ${entity.name || ''}`,
-        startAt,
-        durationMin: apptType?.durationMin || cfg.slotDurationMin,
-        timezone: cfg.timezone,
+        startAt, durationMin: apptType?.durationMin || cfg.slotDurationMin, timezone: cfg.timezone,
       });
-      if (meeting.url) {
-        appt = await prisma.trainingAppointment.update({
-          where: { id: appt.id },
-          data: { meetingUrl: meeting.url, meetingId: meeting.id, meetingProvider: meeting.provider, meetingPayload: meeting.payload || {} },
-          include: { appointmentType: true, responsible: true, materials: true },
-        });
-      }
     }
+    const link = resolveMeetingUrl({ config: cfg, type: apptType, responsible, autoUrl: autoMeeting?.url });
+
+    // Recordatorio de 1h + regla de <1h de anticipación (solo confirmación).
+    const startMs = new Date(startAt).getTime();
+    const lessThan1h = startMs - Date.now() < 60 * 60000;
+    appt = await prisma.trainingAppointment.update({
+      where: { id: appt.id },
+      data: {
+        meetingUrl: link.url || null,
+        meetingProvider: link.provider || cfg.meetingProvider,
+        meetingId: autoMeeting?.id || null,
+        meetingPayload: autoMeeting?.payload || {},
+        reminder1ScheduledFor: new Date(startMs - 60 * 60000),
+        reminder1SentAt: lessThan1h ? new Date() : null,
+      },
+      include: { appointmentType: true, responsible: true, materials: true },
+    });
 
     // El contacto del club/sitio también recibe la confirmación de la agenda.
     const ccEmails = [entity.billingContactEmail].filter(Boolean);
-    await sendConfirmation(appt, { origin: originOf(req), manageUrl: manageUrlFor(req, token), ccEmails });
-    await prisma.trainingAppointment.update({ where: { id: appt.id }, data: { confirmationSentAt: new Date() } });
+    const conf = await sendConfirmation(appt, { origin: originOf(req), manageUrl: manageUrlFor(req, token), ccEmails });
+    appt = await prisma.trainingAppointment.update({
+      where: { id: appt.id },
+      data: { confirmationSentAt: conf?.success ? new Date() : null, confirmationError: conf?.success ? null : (conf?.error || 'send_failed') },
+      include: { appointmentType: true, responsible: true, materials: true },
+    });
 
     res.json({ appointment: publicView(appt), manageUrl: manageUrlFor(req, token) });
   } catch (e) {
@@ -402,9 +418,16 @@ export async function reschedulePublicAppointment(req, res) {
     const check = await isSlotBookable({ startAt, durationMin: appt.appointmentType?.durationMin });
     if (!check.ok) return res.status(409).json({ error: check.reason, message: 'El nuevo horario no está disponible.' });
 
+    // Reprograma el recordatorio; si la nueva hora está a <1h, no se programa.
+    const startMs = new Date(startAt).getTime();
+    const lessThan1h = startMs - Date.now() < 60 * 60000;
     const updated = await prisma.trainingAppointment.update({
       where: { id: appt.id },
-      data: { startAt: new Date(startAt), endAt: check.endAt, status: 'rescheduled', reminder24SentAt: null, reminder1SentAt: null },
+      data: {
+        startAt: new Date(startAt), endAt: check.endAt, status: 'rescheduled',
+        reminder24SentAt: null, reminder1SentAt: lessThan1h ? new Date() : null,
+        reminder1ScheduledFor: new Date(startMs - 60 * 60000), reminder1Error: null, reminder1Attempts: 0,
+      },
       include: { appointmentType: true, responsible: true, materials: true },
     });
     await sendConfirmation(updated, { origin: originOf(req), manageUrl: manageUrlFor(req, updated.publicToken) });

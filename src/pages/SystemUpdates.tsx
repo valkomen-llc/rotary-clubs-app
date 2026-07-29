@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.638.0 | 2026-07-29 (Paso 4 rediseñado estilo Feria de Proyectos + datos del club que reciben la confirmación de la agenda)
+// UI V4.639.0 | 2026-07-29 (Enlace provisional de reunión con alcance/prioridad + confirmación con botón/copiar/código + recordatorio 1h y auditoría de correos)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.639.0',
+        title: 'Enlace de reunión provisional + recordatorio automático 1 hora antes 🎥⏰',
+        description: 'Mientras se completa la integración automática con Google Meet y Zoom, agregamos una solución provisional. En Configuración → Capacitaciones y Soporte → Disponibilidad hay una nueva sección "Enlace provisional de reunión": el administrador registra una URL (https://) y la activa con un interruptor; ese enlace se usará en las nuevas reservas confirmadas. Se puede definir el alcance con esta prioridad: enlace del facilitador, luego del tipo de capacitación y por último el global. Cuando lleguen Zoom/Meet automáticos, su enlace tendrá prioridad, sin cambiar el flujo. En la pantalla de confirmación (y solo después de confirmar) aparece un botón "Ingresar a la reunión", la opción "Copiar enlace" y un código de confirmación. Por correo, la persona recibe: (1) la confirmación inmediata con el resumen completo (tipo, fecha y hora en su zona horaria, duración, enlace, instrucciones y código) y (2) un recordatorio automático una hora antes con el botón para ingresar. El recordatorio se programa al confirmar, se reprograma si cambia la fecha y se elimina si se cancela; y si la reserva se hace con menos de una hora de anticipación, solo se envía la confirmación (para no mandar dos correos casi juntos). Cada correo queda auditado (enviado, programado, reintentos, error) y el administrador puede reenviar la confirmación desde el detalle de la reserva.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'reunion', 'zoom', 'google meet', 'notificaciones', 'recordatorio', 'correo', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.638.0',
         title: 'Paso "Tus datos" con mejor formulario y datos del club 🧾🏫',

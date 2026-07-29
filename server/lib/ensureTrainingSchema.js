@@ -160,6 +160,16 @@ export async function ensureTrainingSchema() {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE UNIQUE INDEX IF NOT EXISTS "TrainingSurvey_appointmentId_key" ON "TrainingSurvey"("appointmentId");
+
+    -- v4.639: enlace provisional de reunión + auditoría de notificaciones.
+    ALTER TABLE "TrainingConfig" ADD COLUMN IF NOT EXISTS "provisionalMeetingEnabled" BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE "TrainingConfig" ADD COLUMN IF NOT EXISTS "provisionalMeetingUrl" TEXT;
+    ALTER TABLE "TrainingAppointmentType" ADD COLUMN IF NOT EXISTS "provisionalMeetingUrl" TEXT;
+    ALTER TABLE "TrainingResponsible" ADD COLUMN IF NOT EXISTS "provisionalMeetingUrl" TEXT;
+    ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "confirmationError" TEXT;
+    ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1ScheduledFor" TIMESTAMP(3);
+    ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1Error" TEXT;
+    ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1Attempts" INTEGER NOT NULL DEFAULT 0;
   `);
   _ready = true;
   console.log('[ensureTrainingSchema] tablas de Capacitaciones verificadas/creadas');
