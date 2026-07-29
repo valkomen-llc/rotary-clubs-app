@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
+import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/EventRegistrationCta';
 import MediaGallery from '../components/MediaGallery';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
@@ -62,6 +63,7 @@ const hasRegistrationPanel = (event: any): boolean => {
 const EventRegistrationSidebar = ({ event }: { event: any }) => {
     const cfg = event?.metadata?.latir || {};
     const isLatir = event?.id === LATIR_EVENT_ID;
+    const { club } = useClub();
     // v4.606 — Si el evento tiene el registro de asistentes abierto y el
     // administrador no puso un enlace propio, el botón lleva al formulario
     // de inscripción del evento.
@@ -69,8 +71,18 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
         ? `/eventos/${event.slug || event.id}/registro`
         : '';
 
+    // v4.650 — Cuando el evento tiene categorías de inscripción configuradas,
+    // el botón único se reemplaza por la botonera segmentada: el registro
+    // principal según de dónde mire el visitante, y CADRES debajo.
+    const eventRef = event?.slug || event?.id;
+    const { cta } = useEventCta((club as any)?.id, eventRef);
+    const actions = hasVisibleCta(cta)
+        ? <EventRegistrationCta cta={cta!} eventRef={eventRef} />
+        : undefined;
+
     return (
         <RegistrationPanel
+            actions={actions}
             headerLogo={cfg.headerLogo}
             title={cfg.title || (isLatir ? 'Distrito 4921,\nPatagonia\nArgentina' : event?.title || '')}
             subtitle={cfg.subtitle || (isLatir ? 'El destino de nuestras\nnuevas historias.' : event?.location || '')}

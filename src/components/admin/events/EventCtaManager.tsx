@@ -1,0 +1,320 @@
+// ════════════════════════════════════════════════════════════════════
+// Botones de inscripción de la ficha pública — v4.650.0
+//
+// Configura, por evento, la botonera que ve el visitante: qué botones existen,
+// con qué texto, en qué orden, a qué categoría llevan y qué se muestra cuando
+// esa categoría está cerrada.
+//
+// Reglas de la pantalla:
+//
+// - **El precio, la moneda y el formulario NO se editan aquí.** Son de la
+//   categoría, que es su única fuente de verdad; el botón sólo apunta a ella.
+//   Se muestran en modo lectura para poder comprobar de un vistazo a qué lleva
+//   cada botón, con un acceso a la pestaña de categorías para cambiarlos.
+//   Duplicarlos aquí abriría la puerta a que el botón anuncie un precio y el
+//   formulario cobre otro.
+// - **Un botón "principal" por audiencia.** El de audiencia internacional se le
+//   muestra a quien entra desde fuera de Colombia; el nacional, a quien entra
+//   desde Colombia. Los "secundarios" (CADRES) se ven siempre, debajo.
+// - **El texto que se pone aquí es el que se ve.** No se traduce solo.
+// ════════════════════════════════════════════════════════════════════
+import { useState } from 'react';
+import {
+    AlertCircle, ArrowDown, ArrowUp, Globe2, Info, Loader2, Plus, Save, Trash2,
+} from 'lucide-react';
+import { money } from '../../../lib/eventRegistrationSpec';
+import type { AdminCategory } from './EventCategoriesManager';
+
+const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const labelCls = 'mb-1 block text-xs font-semibold text-gray-600';
+
+export interface CtaButtonConfig {
+    key: string;
+    categoryKey: string;
+    label: string;
+    role: 'primary' | 'secondary';
+    audience: string | null;
+    active: boolean;
+    order: number;
+    unavailableMessage: string;
+}
+
+export interface CtaConfig {
+    enabled: boolean;
+    buttons: CtaButtonConfig[];
+    defaultByLanguage: Record<string, string>;
+    nationalCountries: string[];
+}
+
+interface Props {
+    cta: CtaConfig;
+    categories: AdminCategory[];
+    saving: boolean;
+    onChange: (next: CtaConfig) => void;
+    onSave: () => void;
+    /** Lleva a la pestaña de categorías, donde sí se editan precios. */
+    onGoToCategories: () => void;
+}
+
+const EventCtaManager = ({ cta, categories, saving, onChange, onSave, onGoToCategories }: Props) => {
+    const [newLang, setNewLang] = useState('');
+
+    const patch = (partial: Partial<CtaConfig>) => onChange({ ...cta, ...partial });
+    const patchButton = (index: number, partial: Partial<CtaButtonConfig>) =>
+        patch({ buttons: cta.buttons.map((b, i) => (i === index ? { ...b, ...partial } : b)) });
+
+    const move = (index: number, delta: number) => {
+        const target = index + delta;
+        if (target < 0 || target >= cta.buttons.length) return;
+        const next = [...cta.buttons];
+        [next[index], next[target]] = [next[target], next[index]];
+        patch({ buttons: next.map((b, i) => ({ ...b, order: i + 1 })) });
+    };
+
+    const categoryOf = (key: string) => categories.find(c => c.key === key) || null;
+    const primaries = cta.buttons.filter(b => b.role === 'primary');
+
+    return (
+        <div className="space-y-5">
+            <div>
+                <h3 className="text-base font-bold text-gray-900">Botones de inscripción</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                    Lo que ve el visitante en la ficha del evento. El botón principal cambia según de dónde
+                    entre; los secundarios se muestran siempre debajo.
+                </p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" className="h-4 w-4" checked={cta.enabled !== false}
+                    onChange={e => patch({ enabled: e.target.checked })} />
+                Mostrar los botones de inscripción en la ficha pública
+            </label>
+
+            {/* ── Cómo se decide el botón principal ───────────────── */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                    <Globe2 className="h-4 w-4 text-blue-600" /> Cómo se elige el botón principal
+                </p>
+                <ol className="mt-2 space-y-1 pl-5 text-xs leading-relaxed text-gray-500" style={{ listStyle: 'decimal' }}>
+                    <li>Si el sitio puede determinar el país del visitante, manda el país.</li>
+                    <li>Si no, manda el idioma: <b>es-CO</b> ve el registro nacional; cualquier otro, el internacional.</li>
+                    <li>Si abajo fijas un botón para un idioma, ese gana sobre todo lo anterior.</li>
+                </ol>
+
+                <div className="mt-4">
+                    <label className={labelCls}>Países que cuentan como nacionales</label>
+                    <input type="text" className={`${inputCls} max-w-xs font-mono uppercase`}
+                        value={(cta.nationalCountries || []).join(', ')}
+                        onChange={e => patch({
+                            nationalCountries: e.target.value.split(',')
+                                .map(c => c.trim().toUpperCase().slice(0, 2)).filter(Boolean),
+                        })}
+                        placeholder="CO" />
+                    <p className="mt-1 text-xs text-gray-400">
+                        Códigos de dos letras, separados por coma. Quien entre desde estos países verá el
+                        registro nacional.
+                    </p>
+                </div>
+
+                <div className="mt-4">
+                    <label className={labelCls}>Botón principal fijado por idioma</label>
+                    {Object.keys(cta.defaultByLanguage || {}).length === 0 && (
+                        <p className="mb-2 text-xs text-gray-400">
+                            Sin nada fijado: se usa la detección automática de arriba.
+                        </p>
+                    )}
+                    <div className="space-y-2">
+                        {Object.entries(cta.defaultByLanguage || {}).map(([lang, key]) => (
+                            <div key={lang} className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-lg bg-gray-100 px-2.5 py-1.5 font-mono text-xs font-bold text-gray-700">
+                                    {lang}
+                                </span>
+                                <span className="text-xs text-gray-400">→</span>
+                                <select className={`${inputCls} max-w-xs`} value={key}
+                                    onChange={e => patch({
+                                        defaultByLanguage: { ...cta.defaultByLanguage, [lang]: e.target.value },
+                                    })}>
+                                    {primaries.map(b => (
+                                        <option key={b.categoryKey} value={b.categoryKey}>{b.label}</option>
+                                    ))}
+                                </select>
+                                <button type="button"
+                                    onClick={() => {
+                                        const next = { ...cta.defaultByLanguage };
+                                        delete next[lang];
+                                        patch({ defaultByLanguage: next });
+                                    }}
+                                    className="rounded-lg p-2 text-red-500 hover:bg-red-50">
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <input type="text" className={`${inputCls} max-w-[140px] font-mono`}
+                            value={newLang} onChange={e => setNewLang(e.target.value)}
+                            placeholder="es-CO, en…" />
+                        <button type="button" disabled={!newLang.trim() || !primaries.length}
+                            onClick={() => {
+                                patch({
+                                    defaultByLanguage: {
+                                        ...cta.defaultByLanguage,
+                                        [newLang.trim().toLowerCase()]: primaries[0].categoryKey,
+                                    },
+                                });
+                                setNewLang('');
+                            }}
+                            className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:underline disabled:opacity-40">
+                            <Plus className="h-3.5 w-3.5" /> Fijar idioma
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Botones ─────────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-bold text-gray-800">Botones ({cta.buttons.length})</h4>
+                <button type="button" disabled={!categories.length}
+                    onClick={() => patch({
+                        buttons: [...cta.buttons, {
+                            key: `boton_${cta.buttons.length + 1}`,
+                            categoryKey: categories[0].key,
+                            label: categories[0].name,
+                            role: 'secondary', audience: null,
+                            active: true, order: cta.buttons.length + 1,
+                            unavailableMessage: '',
+                        }],
+                    })}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                    <Plus className="h-4 w-4" /> Agregar botón
+                </button>
+            </div>
+
+            {cta.buttons.length === 0 && (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-8 text-center text-sm text-gray-500">
+                    Sin botones configurados. La ficha pública no mostrará acceso a la inscripción.
+                </div>
+            )}
+
+            <div className="space-y-3">
+                {cta.buttons.map((b, i) => {
+                    const category = categoryOf(b.categoryKey);
+                    return (
+                        <div key={`${b.key}-${i}`} className="rounded-xl border border-gray-200 bg-white p-4">
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${b.role === 'primary'
+                                    ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
+                                    {b.role === 'primary' ? 'Principal' : 'Secundario (siempre visible)'}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 disabled:opacity-30">
+                                        <ArrowUp className="h-4 w-4" />
+                                    </button>
+                                    <button type="button" onClick={() => move(i, 1)} disabled={i === cta.buttons.length - 1}
+                                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 disabled:opacity-30">
+                                        <ArrowDown className="h-4 w-4" />
+                                    </button>
+                                    <button type="button"
+                                        onClick={() => patch({ buttons: cta.buttons.filter((_, ix) => ix !== i) })}
+                                        className="rounded-lg p-1.5 text-red-500 hover:bg-red-50">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div>
+                                    <label className={labelCls}>Texto del botón</label>
+                                    <input type="text" className={inputCls} value={b.label}
+                                        onChange={e => patchButton(i, { label: e.target.value })}
+                                        placeholder="Registro Internacional" />
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Categoría de destino</label>
+                                    <select className={inputCls} value={b.categoryKey}
+                                        onChange={e => patchButton(i, { categoryKey: e.target.value })}>
+                                        {categories.map(c => (
+                                            <option key={c.key} value={c.key}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Tipo</label>
+                                    <select className={inputCls} value={b.role}
+                                        onChange={e => patchButton(i, {
+                                            role: e.target.value as 'primary' | 'secondary',
+                                            audience: e.target.value === 'secondary' ? null : b.audience,
+                                        })}>
+                                        <option value="primary">Principal (según el visitante)</option>
+                                        <option value="secondary">Secundario (siempre visible)</option>
+                                    </select>
+                                </div>
+                                {b.role === 'primary' && (
+                                    <div>
+                                        <label className={labelCls}>Se muestra a visitantes</label>
+                                        <select className={inputCls} value={b.audience || ''}
+                                            onChange={e => patchButton(i, { audience: e.target.value || null })}>
+                                            <option value="">Cualquiera (respaldo)</option>
+                                            <option value="international">Internacionales</option>
+                                            <option value="national">Nacionales</option>
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>Mensaje si la categoría está cerrada</label>
+                                    <input type="text" className={inputCls} value={b.unavailableMessage}
+                                        onChange={e => patchButton(i, { unavailableMessage: e.target.value })}
+                                        placeholder="Vacío = el botón se oculta" />
+                                    <p className="mt-1 text-xs text-gray-400">
+                                        Con mensaje, el botón se ve apagado y con la explicación. Sin mensaje, no se
+                                        muestra.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" className="h-4 w-4" checked={b.active}
+                                        onChange={e => patchButton(i, { active: e.target.checked })} />
+                                    Botón activo
+                                </label>
+                                {category ? (
+                                    <p className="text-xs text-gray-500">
+                                        Lleva a <b>{category.name}</b> · {money(category.price, category.currency)}
+                                        {!category.active && <span className="ml-1 font-bold text-red-600">· categoría inactiva</span>}
+                                    </p>
+                                ) : (
+                                    <p className="flex items-center gap-1 text-xs font-semibold text-red-600">
+                                        <AlertCircle className="h-3.5 w-3.5" /> La categoría ya no existe
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                    El precio, la moneda y el formulario los define la <b>categoría</b>, no el botón: así lo que
+                    anuncia el botón y lo que cobra el formulario nunca pueden discrepar.{' '}
+                    <button type="button" onClick={onGoToCategories} className="font-bold underline">
+                        Ir a Categorías de Registro
+                    </button>
+                </span>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+                <button type="button" onClick={onSave} disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Guardar botones
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export default EventCtaManager;

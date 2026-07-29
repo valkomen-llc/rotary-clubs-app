@@ -233,6 +233,36 @@ XIII se levante **sin tocar código**.
   hasta 213 bytes, que es de sobra para un código de inscripción. Lleva el
   **código**, no una URL: en la sede puede no haber internet.
 
+### Botones de la ficha pública (v4.650)
+
+La ficha del evento muestra **dos** botones: el principal —nacional o
+internacional según quien mire— y **Registro CADRES** debajo, siempre visible.
+Cada uno abre `/eventos/:ref/registro?categoria=<clave>`.
+
+| Archivo | Qué es |
+|---|---|
+| `resolveAudienceHint` / `resolveCtaButtons` en `eventRegistrationSpec.js` | Detección y resolución de los botones |
+| `src/components/EventRegistrationCta.tsx` | Los botones en la ficha |
+| `src/components/admin/events/EventCtaManager.tsx` | Pestaña "Botones" del panel |
+
+- **Los botones se arman por `audience`, nunca por nombre ni por clave.** El
+  administrador renombra las categorías (ya lo hizo: «Rotario Internacional» →
+  «Registro Internacional») y los botones deben seguir apuntando a donde deben.
+- **La segmentación es del servidor, no de la pantalla.** Con `?categoria=`, el
+  endpoint público devuelve **sólo** esa categoría: los precios y los campos de
+  las otras no llegan siquiera al navegador. No "mostrar una y ocultar dos".
+- **La detección es una sugerencia.** País (`x-vercel-ip-country`) y, si no hay,
+  idioma (`es-CO` = nacional). El otro camino siempre queda a un clic en la
+  ficha; no se le cierra la puerta a nadie por geolocalización.
+- **El precio y el formulario los define la categoría, no el botón.** Si se
+  duplicaran en el botón, podría anunciar un valor y el formulario cobrar otro.
+- **Categoría cerrada**: con mensaje configurado el botón se ve apagado y
+  explicado; sin mensaje se oculta. Nunca un botón que no lleva a ninguna parte.
+- `decorateCategory` **debe** incluir `active`: su salida vuelve a pasar por
+  `categoryWindow` dentro de `resolveCtaButtons`, y sin ese campo se dan todas
+  las categorías por inactivas y desaparecen todos los botones (error real,
+  corregido antes de publicar v4.650).
+
 **Nueva edición**: crear el `CalendarEvent`, abrir la pestaña Registro y usar
 "clonar" desde la edición anterior. El número de edición y la ciudad se deducen
 del título (`XIII …`) y de `location`. La edición clonada nace con el registro

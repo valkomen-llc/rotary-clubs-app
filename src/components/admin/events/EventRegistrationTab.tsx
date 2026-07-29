@@ -17,9 +17,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
     AlertCircle, BadgeCheck, Calendar, Coins, ExternalLink, LayoutGrid, Loader2,
-    Save, Settings2, Users,
+    MousePointerClick, Save, Settings2, Users,
 } from 'lucide-react';
 import EventCategoriesManager, { type AdminCategory } from './EventCategoriesManager';
+import EventCtaManager, { type CtaConfig } from './EventCtaManager';
 import EventRegistrationsManager from './EventRegistrationsManager';
 import EventAccreditation from './EventAccreditation';
 
@@ -29,11 +30,12 @@ const authHeaders = () => ({
     Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
 });
 
-type Pane = 'edicion' | 'categorias' | 'inscripciones' | 'acreditacion';
+type Pane = 'edicion' | 'categorias' | 'botones' | 'inscripciones' | 'acreditacion';
 
 const PANES: { key: Pane; label: string; icon: any }[] = [
     { key: 'edicion', label: 'Edición', icon: Settings2 },
     { key: 'categorias', label: 'Categorías de Registro', icon: LayoutGrid },
+    { key: 'botones', label: 'Botones', icon: MousePointerClick },
     { key: 'inscripciones', label: 'Inscripciones', icon: Users },
     { key: 'acreditacion', label: 'Acreditación', icon: BadgeCheck },
 ];
@@ -62,6 +64,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
     const [pane, setPane] = useState<Pane>('edicion');
     const [edition, setEdition] = useState<Edition | null>(null);
     const [categories, setCategories] = useState<AdminCategory[]>([]);
+    const [cta, setCta] = useState<CtaConfig | null>(null);
     const [catalog, setCatalog] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -78,6 +81,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
                 if (data?.error) throw new Error(data.error);
                 setEdition(data.edition);
                 setCategories(data.categories || []);
+                setCta(data.cta || null);
                 setCatalog(data.catalog || null);
             })
             .catch(err => setError(err?.message || 'No se pudo cargar la configuración del registro.'))
@@ -97,11 +101,18 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
         try {
             const res = await fetch(`${API}/event-registrations/admin/edition`, {
                 method: 'PUT', headers: authHeaders(),
-                body: JSON.stringify({ eventRef: eventId, ...edition }),
+                body: JSON.stringify({
+                    eventRef: eventId,
+                    ...edition,
+                    // Los botones viajan dentro de `settings`, junto al resto de
+                    // la configuración de la edición.
+                    settings: { ...edition.settings, cta: cta || undefined },
+                }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo guardar.');
             setEdition(data.edition);
+            if (data.edition?.settings?.cta) setCta(data.edition.settings.cta);
             setSaved(true);
             setTimeout(() => setSaved(false), 2500);
         } catch (err: any) {
@@ -312,6 +323,13 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
             {pane === 'categorias' && (
                 <EventCategoriesManager eventId={eventId} categories={categories} catalog={catalog}
                     hasFxRate={hasFxRate} onReload={load} />
+            )}
+
+            {/* ── Botones de la ficha pública ─────────────────────── */}
+            {pane === 'botones' && cta && (
+                <EventCtaManager cta={cta} categories={categories} saving={saving}
+                    onChange={setCta} onSave={saveEdition}
+                    onGoToCategories={() => setPane('categorias')} />
             )}
 
             {/* ── Inscripciones ───────────────────────────────────── */}

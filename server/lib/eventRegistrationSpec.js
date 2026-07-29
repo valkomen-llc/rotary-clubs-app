@@ -474,6 +474,19 @@ export const CATEGORY_BLUEPRINTS = [
     },
 ];
 
+/**
+ * Versión de tarifa: identifica el precio con el que se abrió una inscripción.
+ *
+ * Se deriva de la última modificación de la categoría, así que cambiar el
+ * precio produce una versión nueva sin tener que llevar un contador aparte. Se
+ * congela en `pricing.tariffVersion` de cada inscripción para poder responder
+ * "con qué tarifa entró esta persona" aunque el precio ya haya cambiado.
+ */
+export const tariffVersionOf = (category) => {
+    const stamp = category?.updatedAt ? new Date(category.updatedAt).getTime() : 0;
+    return `${category?.key || 'categoria'}@${stamp}`;
+};
+
 /** Normaliza una categoría venida de la base o del panel. */
 export const normalizeCategory = (raw = {}) => {
     const key = normalizeTag(raw.key) || 'categoria';
@@ -520,6 +533,7 @@ export const normalizeCategory = (raw = {}) => {
         extraFieldsLabel: String(raw.extraFieldsLabel || '').trim().slice(0, 80) || null,
         sortOrder: Number(raw.sortOrder) || 0,
         active: raw.active !== false,
+        updatedAt: raw.updatedAt || null,
     };
 };
 
@@ -530,6 +544,186 @@ export const categoryWindow = (category, now = new Date()) => {
     if (category.opensAt && today < category.opensAt) return { open: false, reason: 'not_yet', opensAt: category.opensAt };
     if (category.closesAt && today > category.closesAt) return { open: false, reason: 'closed', closesAt: category.closesAt };
     return { open: true, reason: null };
+};
+
+// ── Botones de inscripción de la ficha del evento ────────────────────
+//
+// La ficha pública muestra DOS botones: uno principal, que depende de si quien
+// mira es de Colombia o de fuera, y debajo el de CADRES, que se ve siempre.
+// Cada botón abre el formulario de UNA categoría, ya elegida y bloqueada.
+//
+// La configuración vive en `EventEdition.settings.cta`, así que es por evento:
+// dos ediciones pueden tener botones y textos distintos.
+
+/** Países que cuentan como "nacional" mientras el administrador no diga otra cosa. */
+export const DEFAULT_NATIONAL_COUNTRIES = ['CO'];
+
+/**
+ * Botones por defecto, deducidos de las categorías que tenga el evento.
+ *
+ * Se arman por `audience`, NO por el nombre ni por la clave: el administrador
+ * puede renombrar "Rotario Internacional" a "Registro Internacional" —de hecho
+ * ya lo hizo— y los botones tienen que seguir apuntando a donde deben.
+ */
+export const defaultCtaButtons = (categories = []) => {
+    const byAudience = (audience) => categories.find(c => c.audience === audience);
+    const buttons = [];
+
+    const international = byAudience('international');
+    if (international) {
+        buttons.push({
+            key: 'primary_international', categoryKey: international.key,
+            label: 'Registro Internacional', role: 'primary', audience: 'international',
+            active: true, order: 1, unavailableMessage: '',
+        });
+    }
+    const national = byAudience('national');
+    if (national) {
+        buttons.push({
+            key: 'primary_national', categoryKey: national.key,
+            label: 'Registro Nacional', role: 'primary', audience: 'national',
+            active: true, order: 2, unavailableMessage: '',
+        });
+    }
+    const cadre = byAudience('cadre');
+    if (cadre) {
+        buttons.push({
+            key: 'secondary_cadres', categoryKey: cadre.key,
+            label: 'Registro CADRES', role: 'secondary', audience: null,
+            active: true, order: 3, unavailableMessage: '',
+        });
+    }
+    return buttons;
+};
+
+export const normalizeCtaConfig = (raw = {}, categories = []) => {
+    const known = new Set(categories.map(c => c.key));
+    const configured = (Array.isArray(raw.buttons) ? raw.buttons : [])
+        .map((b, i) => ({
+            key: normalizeTag(b?.key) || `boton_${i + 1}`,
+            categoryKey: normalizeTag(b?.categoryKey),
+            label: String(b?.label || '').trim().slice(0, 80),
+            role: b?.role === 'secondary' ? 'secondary' : 'primary',
+            audience: AUDIENCES.some(a => a.key === b?.audience) ? b.audience : null,
+            active: b?.active !== false,
+            order: Number(b?.order) || i + 1,
+            unavailableMessage: String(b?.unavailableMessage || '').trim().slice(0, 240),
+        }))
+        // Un botón que apunte a una categoría borrada se descarta: no tiene a
+        // dónde llevar.
+        .filter(b => b.categoryKey && known.has(b.categoryKey) && b.label);
+
+    const defaultByLanguage = {};
+    if (raw.defaultByLanguage && typeof raw.defaultByLanguage === 'object') {
+        for (const [lang, key] of Object.entries(raw.defaultByLanguage)) {
+            const code = String(lang || '').toLowerCase().slice(0, 5);
+            const target = normalizeTag(key);
+            if (code && target && known.has(target)) defaultByLanguage[code] = target;
+        }
+    }
+
+    return {
+        enabled: raw.enabled !== false,
+        buttons: configured.length ? configured.sort((a, b) => a.order - b.order) : defaultCtaButtons(categories),
+        defaultByLanguage,
+        nationalCountries: (Array.isArray(raw.nationalCountries) && raw.nationalCountries.length
+            ? raw.nationalCountries
+            : DEFAULT_NATIONAL_COUNTRIES)
+            .map(c => String(c || '').toUpperCase().slice(0, 2)).filter(Boolean),
+    };
+};
+
+/**
+ * Decide si a quien mira la ficha se le ofrece el registro nacional o el
+ * internacional.
+ *
+ * El país manda cuando se conoce —lo entrega la red de Vercel en la cabecera
+ * `x-vercel-ip-country`—. Si no se conoce, decide el idioma, tal como pidió el
+ * cliente. Y es sólo una SUGERENCIA: el botón de la otra categoría sigue
+ * disponible desde la ficha, no se le cierra la puerta a nadie.
+ */
+export const resolveAudienceHint = ({ countryCode, languages = [], config = {} } = {}) => {
+    const national = config.nationalCountries?.length ? config.nationalCountries : DEFAULT_NATIONAL_COUNTRIES;
+    const country = String(countryCode || '').toUpperCase().slice(0, 2);
+
+    if (country) {
+        return {
+            audience: national.includes(country) ? 'national' : 'international',
+            source: 'country',
+            countryCode: country,
+        };
+    }
+
+    // Sin país: manda el idioma. "es-CO" es nacional; cualquier otro español
+    // (es-MX, es-ES) es de fuera, igual que un idioma distinto del español.
+    const tags = languages.map(l => String(l || '').toLowerCase()).filter(Boolean);
+    for (const tag of tags) {
+        if (tag === 'es-co') return { audience: 'national', source: 'language', language: tag };
+        if (tag.startsWith('es')) return { audience: 'international', source: 'language', language: tag };
+        if (/^[a-z]{2}/.test(tag)) return { audience: 'international', source: 'language', language: tag };
+    }
+    return { audience: 'international', source: 'fallback' };
+};
+
+/**
+ * Resuelve los botones que se pintan en la ficha, ya cruzados con el estado
+ * real de cada categoría (activa, dentro de fechas, con cupo).
+ *
+ * Devuelve `{ primary, secondary[] }`. Un botón cuya categoría esté cerrada se
+ * muestra deshabilitado SI el administrador escribió un mensaje; si no lo
+ * escribió, se oculta. Es la regla que pidió el cliente y evita botones mudos.
+ */
+export const resolveCtaButtons = ({ categories = [], config = {}, audience = 'international', language = '' } = {}) => {
+    const cfg = normalizeCtaConfig(config, categories);
+    if (!cfg.enabled) return { enabled: false, primary: null, secondary: [] };
+
+    const categoryOf = (key) => categories.find(c => c.key === key) || null;
+
+    const decorate = (button) => {
+        const category = categoryOf(button.categoryKey);
+        if (!category) return null;
+        const window = categoryWindow(category);
+        const soldOut = category.capacity !== null && category.remaining !== undefined && category.remaining <= 0;
+        const available = window.open && !soldOut;
+        return {
+            key: button.key,
+            label: button.label,
+            role: button.role,
+            categoryKey: category.key,
+            categoryName: category.name,
+            currency: category.currency,
+            price: category.price,
+            available,
+            unavailableReason: available ? null : (soldOut ? 'sold_out' : window.reason),
+            unavailableMessage: button.unavailableMessage,
+            // Sin mensaje configurado, un botón que no lleva a ninguna parte se
+            // esconde en vez de quedarse gris sin explicación.
+            hidden: !available && !button.unavailableMessage,
+            href: `/registro?categoria=${encodeURIComponent(category.key)}`,
+        };
+    };
+
+    const active = cfg.buttons.filter(b => b.active);
+    const primaries = active.filter(b => b.role === 'primary');
+
+    // El administrador puede fijar el botón principal de cada versión
+    // lingüística; eso gana sobre la audiencia deducida.
+    const forcedKey = cfg.defaultByLanguage[String(language || '').toLowerCase()]
+        || cfg.defaultByLanguage[String(language || '').toLowerCase().slice(0, 2)];
+
+    const chosen =
+        (forcedKey && primaries.find(b => b.categoryKey === forcedKey))
+        || primaries.find(b => b.audience === audience)
+        || primaries[0]
+        || null;
+
+    return {
+        enabled: true,
+        audience,
+        forcedByAdmin: Boolean(forcedKey),
+        primary: chosen ? decorate(chosen) : null,
+        secondary: active.filter(b => b.role === 'secondary').map(decorate).filter(Boolean),
+    };
 };
 
 // ── Cobro y conversión de moneda ─────────────────────────────────────
@@ -670,7 +864,9 @@ export default {
     INTERNATIONAL_FIELDS, NATIONAL_FIELDS, CADRE_FIELDS, AUDIENCES, AUDIENCE_BY_CATEGORY,
     buildFormSchema, flattenFields, isFieldVisible, validateAnswers,
     COMPANION_FIELDS, validateCompanion,
-    CATEGORY_BLUEPRINTS, normalizeCategory, categoryWindow,
+    CATEGORY_BLUEPRINTS, normalizeCategory, categoryWindow, tariffVersionOf,
+    DEFAULT_NATIONAL_COUNTRIES, defaultCtaButtons, normalizeCtaConfig,
+    resolveAudienceHint, resolveCtaButtons,
     resolveRate, resolveCharge,
     parseRomanEdition, parseLocation, buildCodePrefix, randomCodeSuffix, buildRegistrationCode,
 };

@@ -22,10 +22,10 @@
 //   segundos en vez de dar por bueno el retorno del navegador.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
     AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, Clock,
-    CreditCard, Loader2, MapPin, Plus, ShieldCheck, Trash2, Users,
+    CreditCard, Loader2, Lock, MapPin, Plus, ShieldCheck, Trash2, Users,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -46,6 +46,8 @@ interface RegistrationConfig {
     closed: boolean;
     successMessage: string;
     categories: PublicCategory[];
+    /** Clave de la categoría con la que se entró desde la ficha del evento. */
+    lockedCategory: string | null;
 }
 
 interface Registration {
@@ -189,6 +191,7 @@ const RegistroEvento = () => {
     const { eventRef } = useParams<{ eventRef: string }>();
     const { club } = useClub();
     const [params] = useSearchParams();
+    const navigate = useNavigate();
 
     const [config, setConfig] = useState<RegistrationConfig | null>(null);
     const [loading, setLoading] = useState(true);
@@ -211,6 +214,14 @@ const RegistroEvento = () => {
     const returningId = params.get('registro');
     const returningToken = params.get('t') || '';
     const paymentCancelled = params.get('pago') === 'cancelado';
+    /**
+     * Categoría fijada desde la ficha del evento. Cuando viene, este formulario
+     * es el de ESA categoría y nada más: el servidor devuelve únicamente sus
+     * datos, no se muestra el selector y no se puede cambiar desde aquí. Para
+     * elegir otra hay que volver al evento, que es donde están los botones.
+     */
+    const lockedCategory = params.get('categoria') || '';
+    const eventUrl = `/eventos/${eventRef}`;
 
     useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -218,15 +229,24 @@ const RegistroEvento = () => {
     useEffect(() => {
         if (!clubId || !eventRef) return;
         setLoading(true);
-        fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}`)
+        const query = new URLSearchParams();
+        if (lockedCategory) query.set('categoria', lockedCategory);
+        // El idioma que el visitante tiene puesto: el servidor lo usa para
+        // decidir la audiencia cuando no puede determinar el país.
+        if (typeof navigator !== 'undefined' && navigator.language) query.set('lang', navigator.language);
+
+        fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`)
             .then(r => r.json())
             .then(data => {
                 if (data?.error) throw new Error(data.error);
                 setConfig(data);
+                // Con categoría fijada se entra directo al primer paso del
+                // formulario, sin pasar por la pantalla de selección.
+                if (data.lockedCategory) setCategoryKey(data.lockedCategory);
             })
-            .catch(() => setError('No pudimos cargar el registro de este evento.'))
+            .catch(err => setError(err?.message || 'No pudimos cargar el registro de este evento.'))
             .finally(() => setLoading(false));
-    }, [clubId, eventRef]);
+    }, [clubId, eventRef, lockedCategory]);
 
     // ── Regreso desde Stripe ─────────────────────────────────────────
     useEffect(() => {
@@ -627,10 +647,18 @@ const RegistroEvento = () => {
                     <div className="space-y-5">
                         {/* Barra de pasos */}
                         <nav className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-2xl bg-white p-4 shadow-sm">
-                            <button type="button" onClick={() => { setCategoryKey(''); setStepIndex(0); setMaxVisited(0); }}
-                                className="text-xs font-semibold text-slate-400 hover:text-slate-700">
-                                {category.name} ✕
-                            </button>
+                            {lockedCategory ? (
+                                // Categoría fijada desde la ficha: se muestra, no se cambia.
+                                // Para elegir otra hay que volver al evento.
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
+                                    <Lock size={11} /> {category.name}
+                                </span>
+                            ) : (
+                                <button type="button" onClick={() => { setCategoryKey(''); setStepIndex(0); setMaxVisited(0); }}
+                                    className="text-xs font-semibold text-slate-400 hover:text-slate-700">
+                                    {category.name} ✕
+                                </button>
+                            )}
                             <span className="text-slate-300">|</span>
                             {steps.map((s, i) => (
                                 <button key={s.key} type="button" disabled={i > maxVisited}
@@ -807,9 +835,16 @@ const RegistroEvento = () => {
                         {/* Navegación entre pasos */}
                         <div className="flex items-center justify-between gap-3">
                             <button type="button"
-                                onClick={() => stepIndex === 0 ? setCategoryKey('') : goTo(stepIndex - 1)}
+                                onClick={() => {
+                                    if (stepIndex > 0) return goTo(stepIndex - 1);
+                                    // En el primer paso, "Atrás" sale del formulario: al
+                                    // selector si se entró por él, o a la ficha del evento
+                                    // si se entró por uno de sus botones.
+                                    if (lockedCategory) navigate(eventUrl);
+                                    else setCategoryKey('');
+                                }}
                                 className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-                                <ArrowLeft size={15} /> Atrás
+                                <ArrowLeft size={15} /> {stepIndex === 0 && lockedCategory ? 'Cambiar categoría' : 'Atrás'}
                             </button>
                             {currentStep?.key !== 'summary' && (
                                 <button type="button" onClick={nextStep}

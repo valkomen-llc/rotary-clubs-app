@@ -12,7 +12,7 @@
 // que ya está publicado (mismos textos, mismos colores) y la Feria usa los
 // propios sin heredar nada de LATIR.
 // ════════════════════════════════════════════════════════════════════
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 /** Clases de color del panel. Por defecto, las de la Conferencia LATIR. */
@@ -50,6 +50,13 @@ export interface RegistrationPanelProps {
     buttonLabel?: string;
     /** Destino del botón. Si va vacío, el botón no se muestra. */
     buttonLink?: string;
+    /**
+     * Botonera propia, en lugar del botón único. La usa el módulo de
+     * inscripciones por categoría (v4.650) para poner el botón principal —
+     * nacional o internacional según quien mire— y el de CADRES debajo.
+     * Cuando viene, reemplaza a `buttonLink`.
+     */
+    actions?: ReactNode;
     ticketGeneralLabel?: string;
     ticketGeneral?: string;
     /** Línea en cursiva bajo el ticket general (ej. precio a partir de una fecha). */
@@ -89,6 +96,7 @@ const RegistrationPanel = ({
     startDate,
     buttonLabel = 'Inscripciones',
     buttonLink,
+    actions,
     ticketGeneralLabel = 'Ticket general:',
     ticketGeneral,
     ticketNote,
@@ -151,7 +159,9 @@ const RegistrationPanel = ({
             )}
 
             {/* Button */}
-            {link && (
+            {actions ? (
+                <div className="w-full mb-5">{actions}</div>
+            ) : link && (
                 isExternal(link) ? (
                     <a href={link} target="_blank" rel="noopener noreferrer" className={buttonClasses}>
                         {buttonLabel}

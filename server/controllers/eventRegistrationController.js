@@ -33,7 +33,8 @@ import {
     STATUS, STATUSES, SETTLED_STATUSES, COMMITTED_STATUSES,
     toStripeAmount, ZERO_DECIMAL, formatMoney, buildFormSchema, validateAnswers, validateCompanion,
     categoryWindow, resolveCharge, deriveSystemTags, SYSTEM_TAG_KEYS,
-    COMPANION_FIELDS, randomCodeSuffix,
+    COMPANION_FIELDS, randomCodeSuffix, tariffVersionOf,
+    resolveAudienceHint, resolveCtaButtons, normalizeCtaConfig,
 } from '../lib/eventRegistrationSpec.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -42,7 +43,7 @@ import store, {
     assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
 
-console.log('[eventRegistrationController] v4.648.0 cargado — inscripciones por categoría (Rotario Internacional / Rotario Nacional / CADRES), acompañantes, multimoneda y pago por Stripe. Asistente público en /eventos/:evento/registro');
+console.log('[eventRegistrationController] v4.650.0 cargado — inscripciones por categoría con botones segmentados en la ficha del evento (nacional / internacional + CADRES), formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -88,6 +89,10 @@ const decorateCategory = async (eventId, category, edition) => {
         opensAt: category.opensAt,
         closesAt: category.closesAt,
         capacity: category.capacity,
+        // Va explícito porque `resolveCtaButtons` vuelve a pasar esta categoría
+        // decorada por `categoryWindow`, y sin `active` la daría por inactiva y
+        // escondería todos los botones.
+        active: category.active,
         remaining,
         soldOut: remaining !== null && remaining <= 0,
         open: window.open && !(remaining !== null && remaining <= 0),
@@ -107,7 +112,34 @@ const decorateCategory = async (eventId, category, edition) => {
 
 // ── Público: configuración ───────────────────────────────────────────
 
+/**
+ * De dónde viene quien está mirando la ficha.
+ *
+ * El país lo entrega la red de Vercel en `x-vercel-ip-country`; se aceptan
+ * también las cabeceras equivalentes de otros proveedores por si algún día se
+ * cambia de infraestructura. Si no hay país, decide el `Accept-Language`.
+ * El navegador puede además mandar su propio idioma en `?lang=`, que es lo que
+ * el visitante realmente eligió en el selector del sitio.
+ */
+const readVisitorOrigin = (req) => {
+    const headers = req.headers || {};
+    const countryCode = clean(
+        headers['x-vercel-ip-country'] || headers['cf-ipcountry'] || headers['x-geo-country'] || '', 2);
+
+    const languages = [];
+    const explicit = clean(req.query?.lang, 10);
+    if (explicit) languages.push(explicit);
+    for (const part of String(headers['accept-language'] || '').split(',')) {
+        const tag = part.split(';')[0].trim();
+        if (tag && tag !== '*') languages.push(tag);
+    }
+    return { countryCode, languages };
+};
+
 // GET /api/event-registrations/config/:clubId/:eventRef
+// `?categoria=<clave>` devuelve SÓLO esa categoría. Es lo que usa el formulario
+// cuando se entra por uno de los botones: así el navegador no recibe siquiera
+// los precios ni los campos de las otras categorías.
 export const getPublicRegistrationConfig = async (req, res) => {
     try {
         await ensureEventRegistrationSchema();
@@ -115,14 +147,40 @@ export const getPublicRegistrationConfig = async (req, res) => {
         if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
 
         const edition = await ensureEdition(event);
-        const categories = await listCategories(event.id, { onlyActive: true });
+        const all = await listCategories(event.id, { onlyActive: true });
+
+        const requested = clean(req.query?.categoria, 60);
+        if (requested && !all.some(c => c.key === requested)) {
+            return res.status(404).json({ error: 'Esa categoría de inscripción no existe en este evento.' });
+        }
+        const categories = requested ? all.filter(c => c.key === requested) : all;
         const decorated = await Promise.all(categories.map(c => decorateCategory(event.id, c, edition)));
+
+        // Los botones se calculan siempre sobre TODAS las categorías, aunque la
+        // respuesta venga filtrada: son la navegación de la ficha, no del
+        // formulario.
+        const allDecorated = requested
+            ? await Promise.all(all.map(c => decorateCategory(event.id, c, edition)))
+            : decorated;
+        const { countryCode, languages } = readVisitorOrigin(req);
+        const ctaConfig = edition.settings?.cta || {};
+        const hint = resolveAudienceHint({ countryCode, languages, config: normalizeCtaConfig(ctaConfig, allDecorated) });
+        const cta = resolveCtaButtons({
+            categories: allDecorated,
+            config: ctaConfig,
+            audience: hint.audience,
+            language: languages[0] || '',
+        });
 
         const today = new Date().toISOString().slice(0, 10);
         const editionClosed = Boolean(edition.closesAt && today > edition.closesAt)
             || Boolean(edition.opensAt && today < edition.opensAt);
 
         res.json({
+            visitor: { audience: hint.audience, source: hint.source, countryCode: hint.countryCode || null },
+            cta,
+            /** La categoría que quedó fijada por el botón, si se entró por uno. */
+            lockedCategory: requested || null,
             event: {
                 id: event.id,
                 slug: event.slug,
@@ -298,6 +356,9 @@ const saveRegistration = async (req, res, mode) => {
     const pricing = {
         categoryKey: category.key,
         categoryName: category.name,
+        // Identifica la tarifa vigente al abrir la inscripción. Si mañana se
+        // cambia el precio, esta foto sigue diciendo con cuál entró.
+        tariffVersion: tariffVersionOf(category),
         holderAmount: charge.holderAmount,
         companionUnit: charge.companionUnit,
         companionsAmount: charge.companionsAmount,
