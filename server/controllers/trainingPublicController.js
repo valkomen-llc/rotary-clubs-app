@@ -92,19 +92,26 @@ export async function searchSites(req, res) {
   try {
     const q = String(req.query.q || '').trim();
 
-    // Sin búsqueda: sitios ACTIVOS = los que tienen un dominio .org conectado.
-    // Se excluye la plataforma (Club Platform for Rotary) y se deduplica.
+    // Sin búsqueda: sólo sitios EN PRODUCCIÓN con un dominio propio conectado.
+    // "En producción" = status 'active' (misma señal que el sitemap). "Dominio
+    // propio conectado" = domain no nulo y que NO sea el subdominio por defecto
+    // *.clubplatform.org (que todos los clubes reciben al crearse). Se excluye
+    // la plataforma, se deduplica y se muestran 9.
     if (q.length < 2) {
-      const orgDomain = { domain: { endsWith: '.org', mode: 'insensitive' } };
+      const LIVE_WITH_DOMAIN = {
+        status: 'active',
+        domain: { not: null },
+        NOT: { domain: { contains: 'clubplatform.org', mode: 'insensitive' } },
+      };
       const [clubs, districts] = await Promise.all([
-        prisma.club.findMany({ where: orgDomain, select: { id: true, name: true, type: true, domain: true, subdomain: true }, take: 60, orderBy: { name: 'asc' } }),
-        prisma.district.findMany({ where: orgDomain, select: { id: true, name: true, number: true, domain: true, subdomain: true }, take: 60, orderBy: { name: 'asc' } }),
+        prisma.club.findMany({ where: LIVE_WITH_DOMAIN, select: { id: true, name: true, type: true, domain: true, subdomain: true }, take: 100, orderBy: { name: 'asc' } }),
+        prisma.district.findMany({ where: LIVE_WITH_DOMAIN, select: { id: true, name: true, number: true, domain: true, subdomain: true }, take: 100, orderBy: { name: 'asc' } }),
       ]);
       const merged = [
         ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, domain: c.domain, subdomain: c.subdomain, active: true })),
         ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', domain: d.domain, subdomain: d.subdomain, active: true })),
       ].filter((s) => !isPlatformSite(s));
-      const sites = dedupeByName(merged.sort(bySpanishName)).slice(0, 10)
+      const sites = dedupeByName(merged.sort(bySpanishName)).slice(0, 9)
         .map(({ domain, subdomain, ...rest }) => rest);
       return res.json({ sites });
     }

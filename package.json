@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.634.0",
-  "cache_bust": "2026-07-29 (Agenda pública — refinado el listado de sitios del paso 'Tu sitio': (1) 'activo' ahora se determina por tener un DOMINIO .org conectado (domain endsWith .org), que es la señal real de un sitio en vivo; (2) se EXCLUYE la plataforma misma 'Club Platform for Rotary' (subdomain 'origen' / dominios clubplatform.org); (3) se DEDUPLICA por nombre para que un sitio no aparezca dos veces (p. ej. COLROTARIOS una sola vez). La búsqueda por texto también excluye la plataforma y deduplica; no se exponen domain/subdomain en la respuesta. Solo lectura, sin cambios de datos.)",
+  "version": "4.635.0",
+  "cache_bust": "2026-07-29 (Agenda pública — corrección del listado de sitios: el filtro anterior (domain endsWith .org) dejaba pasar sitios NO conectados porque el subdominio por defecto de cada club es *.clubplatform.org (también termina en .org). Ahora el criterio es el correcto y autoritativo: status='active' (mismo que usa el sitemap para 'en producción') + dominio propio conectado = domain no nulo y que NO contenga 'clubplatform.org'. Así solo aparecen sitios realmente en producción con dominio propio. Se sigue excluyendo la plataforma y deduplicando por nombre. Se muestran 9 (antes 10). Validado con Postgres real: excluye sin-dominio, subdominios por defecto, drafts, suspendidos y la plataforma. Solo lectura.)",
   "type": "module",
-  "//": "UI V4.634.0 | 2026-07-29 (Agenda pública: sitios por dominio .org conectado, sin la plataforma y sin duplicados)",
+  "//": "UI V4.635.0 | 2026-07-29 (Agenda pública: listado real de sitios en producción con dominio propio conectado — top 9)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",
