@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.646.0 | 2026-07-29 (Fix Generador de Outros IA: la petición al motor de video llevaba campos que el modelo no acepta y le faltaba el obligatorio)
-// Cache bust: 2026-07-29b
+// UI V4.647.0 | 2026-07-29 (Outros: cámara fija en los ocho estilos, logotipo protegido, solo se anima el fondo; voz nativa en español latino neutro)
+// Cache bust: 2026-07-29c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.647.0',
+        title: 'Outros: la cámara se queda quieta y el logotipo, intacto 🎯',
+        description: 'Cambia la forma en que el Generador de Outros IA le pide el cierre al motor de video, siguiendo los criterios de dirección de arte del Distrito. Antes, cada uno de los ocho estilos traía su propio movimiento de cámara: acercamientos lentos, zooms, aperturas amplias, elevaciones. En una pieza institucional eso es justamente lo que sobra —un acercamiento recorta el logotipo y, en un motor generativo, cada encuadre nuevo es una oportunidad de que lo vuelva a dibujar mal—. A partir de esta versión la cámara queda fija en los ocho estilos y el logotipo se mantiene quieto y completo dentro del cuadro: la rueda no gira, los textos no cambian de tamaño y la única animación que recibe es una aparición limpia. Lo que se mueve ahora es únicamente el fondo decorativo: las ondas, los degradados y la luz. Los ocho estilos siguen existiendo y se siguen distinguiendo entre sí, pero por su luz, su ritmo, su música y su carácter, no por cómo se desplaza la cámara. Sus descripciones en pantalla se actualizaron para decir lo que realmente hace cada uno. También se le pide al motor que la paleta institucional —el azul, el blanco y el dorado— se conserve igual del primer al último fotograma, y que el cierre termine en la imagen original tal como se entregó. En la voz en off hay dos cambios. El idioma por defecto pasa a ser español latino neutro, que es el que corresponde a las piezas institucionales del Distrito. Y a la locución se le pide de forma explícita un hablante nativo del idioma elegido: el riesgo real de un motor de audio multilingüe es entregar una voz inglesa leyendo español, con acento extranjero, y eso arruina una pieza institucional. La música quedó descrita como un fondo instrumental corporativo, mezclado por debajo de la voz para que la narración se entienda sin competencia.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'outros', 'video', 'branding', 'voz-en-off', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.646.0',
         title: 'Corregido: el Generador de Outros no llegaba a generar 🔧',
