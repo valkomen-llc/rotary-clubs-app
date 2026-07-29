@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.645.0 | 2026-07-29 (Generador de Outros IA: cierres de 5s desde una imagen, voz en off opcional, validación de calidad)
-// Cache bust: 2026-07-29
+// UI V4.646.0 | 2026-07-29 (Fix Generador de Outros IA: la petición al motor de video llevaba campos que el modelo no acepta y le faltaba el obligatorio)
+// Cache bust: 2026-07-29b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.646.0',
+        title: 'Corregido: el Generador de Outros no llegaba a generar 🔧',
+        description: 'El Generador de Outros IA, estrenado esta misma semana, fallaba siempre al pulsar "Generar outro": aparecía el aviso rojo "KIE createTask (kling-2.6/image-to-video): This field is required" y no se creaba nada. La causa estaba en la petición que la plataforma le enviaba al motor de video: incluía datos que ese modelo no reconoce —la relación de aspecto, la resolución y dos formas distintas de pedir el audio— y, al mismo tiempo, le faltaba el único dato que el modelo exige de forma obligatoria, el que indica si el cierre lleva sonido o no. El motor rechazaba la solicitud completa sin decir cuál era el dato que faltaba. Ahora la petición se arma con exactamente los campos que el modelo declara y ninguno más, así que la generación arranca con normalidad. El mismo error afectaba al Creador de Video, que le pedía las piezas al mismo motor con la misma petición incompleta: también quedó corregido. La voz en off cambió de motor: pasa a usar el audio nativo de Kling 2.6, que genera la locución dentro del mismo archivo de video. Antes apuntaba a un modelo distinto (Veo 3 Fast) que no está disponible por esa vía, de modo que activar la voz nunca habría funcionado. El cambio tiene dos efectos visibles: el cierre con voz dura 5 segundos en lugar de 8 —el contador de palabras se ajusta solo y avisa cuánto cabe—, y el consumo estimado de un outro con locución quedó reflejado aparte del silencioso, porque el proveedor lo cobra distinto. Por último, se agregó un aviso que aparece antes de gastar créditos: si la imagen que se sube no está en la proporción del formato elegido —por ejemplo, una imagen vertical con el formato horizontal seleccionado—, la plataforma lo advierte de entrada y explica que el cierre conserva la proporción de la imagen original. Es información, no un bloqueo: se puede generar igual. El archivo que devuelve el modelo se sigue guardando tal cual, sin recortes ni retoques, como manda la regla del módulo. Y cuando el motor rechace una petición, el mensaje de error ahora incluye los datos enviados, para poder identificar el problema sin tener que reproducirlo.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'outros', 'video', 'kie-ai', 'voz-en-off', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.645.0',
         title: 'Generador de Outros IA 🎬',

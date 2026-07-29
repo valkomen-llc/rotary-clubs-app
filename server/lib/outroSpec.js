@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — especificación compartida
-// v4.645.0
+// v4.646.0
 //
 // Única fuente de verdad de: formatos, motores de video de KIE.AI, estilos de
 // cierre, catálogo de voces, presupuesto de locución y construcción del prompt.
@@ -36,40 +36,41 @@ export const TARGET_DURATION_SEC = 5;
 // modelo es configurable por variable de entorno: si KIE renombra o publica una
 // versión nueva, se cambia el entorno y no el código.
 //
-// `kling` es el motor probado en esta base de código (lo usa el Creador de Video
-// desde v4.44) y es el DEFAULT: silencioso, 5s exactos, movimiento sutil.
+// Un solo motor, a propósito (v4.646). Kling 2.6 tiene AUDIO NATIVO: con
+// `sound: true` genera voz, ambiente y efectos dentro del mismo archivo, que es
+// la única forma de entregar un MP4 con locución —la función corre en Vercel sin
+// ffmpeg, así que no podemos mezclar una pista de TTS después—. Hasta v4.645 la
+// voz apuntaba a `veo3_fast`, que NO es un modelo de /jobs/createTask sino del
+// endpoint dedicado /veo/generate: esa ruta nunca pudo funcionar.
 //
-// `veo` es el motor con voz en off NATIVA — el modelo genera la locución dentro
-// del mismo archivo. Es el único camino para entregar un MP4 con audio: la
-// función de la API corre en Vercel sin ffmpeg, así que no podemos mezclar una
-// pista de TTS con el video después. Si el id por defecto no coincide con el
-// catálogo vigente de KIE, se corrige con KIE_OUTRO_MODEL_AUDIO sin tocar código
-// (el error de KIE se propaga textual a la UI, con esa indicación).
+// `aspectRatios` lista los cuatro formatos porque el modelo no restringe
+// ninguno: en image-to-video la relación de aspecto la hereda de la imagen de
+// entrada. Por eso el formato pedido se contrasta contra la imagen ANTES de
+// gastar créditos (inspectSourceImage) y contra el archivo entregado DESPUÉS
+// (validateOutroFile); nunca se corrige recortando.
 export const OUTRO_ENGINES = {
     kling: {
         id: 'kling',
         label: 'KIE.AI · Kling 2.6 — movimiento sutil',
         model: process.env.KIE_OUTRO_MODEL_SILENT || 'kling-2.6/image-to-video',
-        nativeAudio: false,
+        nativeAudio: true,
         durations: [5, 10],
-        aspectRatios: ['9:16', '1:1', '16:9'],
+        aspectRatios: ['9:16', '1:1', '4:5', '16:9'],
         resolutions: ['1080p'],
         creditEstimate: 20,
-        note: 'Sin locución. Duración exacta de 5 segundos.'
-    },
-    veo: {
-        id: 'veo',
-        label: 'KIE.AI · Veo 3 Fast — voz en off nativa',
-        model: process.env.KIE_OUTRO_MODEL_AUDIO || 'veo3_fast',
-        nativeAudio: true,
-        durations: [8],
-        aspectRatios: ['9:16', '16:9'],
-        resolutions: ['1080p'],
-        creditEstimate: 60,
-        note: 'Genera la voz dentro del mismo archivo. Su duración nativa es de 8 segundos.'
+        // El audio nativo se cobra aparte: el mismo clip con locución consume
+        // más que el silencioso.
+        creditEstimateAudio: 45,
+        note: 'Duración exacta de 5 segundos. La voz en off se genera dentro del mismo archivo.'
     }
 };
 export const DEFAULT_ENGINE = 'kling';
+
+// Modelo con el que se pide la voz. Es el mismo de siempre salvo que el entorno
+// diga otra cosa: KIE_OUTRO_MODEL_AUDIO existe para corregir el id sin desplegar
+// si KIE renombra el modelo.
+export const audioModelFor = (engine) =>
+    process.env.KIE_OUTRO_MODEL_AUDIO || engine.model;
 
 export const isEngineAvailable = (engineId) =>
     Boolean(process.env.KIE_API_KEY) && Boolean(OUTRO_ENGINES[engineId]);
@@ -263,13 +264,24 @@ export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_F
         notes.push(`El proveedor entrega hasta ${resolution} para este modelo; el maestro queda en ${OUTRO_FORMATS[resolvedFormat].master.width}×${OUTRO_FORMATS[resolvedFormat].master.height}.`);
     }
 
+    // Nada que anotar sobre la relación de aspecto: el modelo la hereda de la
+    // imagen, y el aviso útil es el que la compara de verdad contra el formato
+    // pedido (`inspectSourceImage`), no una advertencia genérica en cada outro.
+
+    const withVoice = voiceEnabled && selected.nativeAudio;
+
     return {
         engine: selected,
         engineId: chosenId,
+        // El modelo con voz puede diferir del silencioso si el entorno lo pide.
+        model: withVoice ? audioModelFor(selected) : selected.model,
+        creditEstimate: withVoice
+            ? (selected.creditEstimateAudio || selected.creditEstimate)
+            : selected.creditEstimate,
         format: resolvedFormat,
         durationSec,
         resolution,
-        voiceEnabled: voiceEnabled && selected.nativeAudio,
+        voiceEnabled: withVoice,
         notes
     };
 };

@@ -12,6 +12,45 @@
 
 const KIE_API_BASE = 'https://api.kie.ai/api/v1';
 
+// ── Construcción del `input` por familia de modelos ────────────────────────
+//
+// KIE.AI valida el `input` contra el esquema del modelo elegido: los campos que
+// el modelo no declara sobran, y los que declara obligatorios no pueden faltar.
+// Mandar todos los alias "por si acaso" NO es gratis — es exactamente lo que
+// rompió el Generador de Outros en v4.645: el payload llevaba `aspect_ratio`,
+// `image_size`, `resolution`, `enable_audio` y `generate_audio`, que kling-2.6
+// no conoce, y le faltaba `sound`, que sí exige. KIE respondía
+// `This field is required` sin decir cuál.
+//
+// Por eso cada familia arma su propio input, con los campos que su
+// documentación declara y ninguno más.
+const buildVideoInput = (model, { prompt, imageUrls, duration, aspectRatio, resolution, enableAudio }) => {
+    // Kling image-to-video (2.x / 3.x). El formato de salida lo hereda de la
+    // imagen de entrada: el modelo NO recibe relación de aspecto ni resolución.
+    // `sound` es obligatorio y es el interruptor del audio nativo — con él en
+    // `true`, Kling 2.6 genera voz, ambiente y efectos dentro del mismo archivo.
+    if (/^kling/i.test(model) && /image-to-video/i.test(model)) {
+        return {
+            prompt,
+            image_urls: imageUrls,
+            duration: String(duration),
+            sound: Boolean(enableAudio)
+        };
+    }
+
+    // Modelo que este código no conoce —el id es configurable por entorno— : se
+    // manda la forma más común del mercado de KIE. Si el modelo nuevo exige
+    // otro campo, el error de KIE llega textual a la UI junto con la lista de
+    // lo que se envió, que es el dato necesario para corregir esta función.
+    return {
+        prompt,
+        image_urls: imageUrls,
+        duration: String(duration),
+        aspect_ratio: aspectRatio,
+        resolution
+    };
+};
+
 export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) {
@@ -21,6 +60,7 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     try {
         // Prepare the request for KIE.ai
         // Using Kling 2.6 as the default high-quality model for short videos
+        const model = 'kling-2.6/image-to-video';
         const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
             method: 'POST',
             headers: {
@@ -28,15 +68,14 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: "kling-2.6/image-to-video",
+                model,
                 callBackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/webhook`,
-                input: {
+                input: buildVideoInput(model, {
                     prompt: config.prompt || "Ken Burns effect, smooth transitions, high quality social media content",
-                    image_urls: imageUrls,
+                    imageUrls,
                     duration: config.duration || "10",
-                    resolution: "1080p",
-                    aspect_ratio: "9:16"
-                },
+                    enableAudio: false
+                }),
                 metadata: {
                     projectId: projectId
                 }
@@ -252,15 +291,17 @@ export const fetchKieImageBuffer = async (kieImageUrl) => {
 //
 // `triggerVideoGeneration` above is hard-wired to Kling with a fixed prompt shape,
 // kept as-is so the Creador de Video keeps working. Outros need to pick the model at
-// call time (silent Kling vs. native-audio Veo), so they use these three functions:
-// create → check → fetch, with no polling loop inside the request (KIE video jobs run
-// 1-3 minutes, well past the 120s ceiling of the serverless function).
+// call time (the id is configurable per environment), so they use these three
+// functions: create → check → fetch, with no polling loop inside the request (KIE
+// video jobs run 1-3 minutes, well past the 120s ceiling of the serverless function).
 
 // Submit an image-to-video task. Returns the task id immediately.
 //
-// As with images, KIE.ai's gateway normalises parameter names per model, so we send
-// both `image_url` and `image_urls`, and both `aspect_ratio` and `image_size`.
-// Unknown fields are silently ignored by the gateway.
+// El `input` lo arma `buildVideoInput` con los campos que declara el modelo
+// elegido. `aspectRatio` y `resolution` son deseos, no garantías: los modelos
+// image-to-video de Kling heredan el formato de la imagen de entrada y no
+// reciben esos parámetros. Lo que realmente entregó el proveedor se mide
+// después sobre el archivo (outroQuality.js) — nunca se corrige recortando.
 export const createKieVideoTask = async ({
     model,
     prompt,
@@ -275,22 +316,19 @@ export const createKieVideoTask = async ({
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) throw new Error('KIE_API_KEY no configurada');
 
+    const input = buildVideoInput(model, {
+        prompt,
+        imageUrls: [imageUrl],
+        duration,
+        aspectRatio,
+        resolution,
+        enableAudio
+    });
+
     const body = {
         model,
         ...(callBackUrl ? { callBackUrl } : {}),
-        input: {
-            prompt,
-            image_url: imageUrl,
-            image_urls: [imageUrl],
-            aspect_ratio: aspectRatio,
-            image_size: aspectRatio,
-            duration: String(duration),
-            resolution,
-            // Native-audio models (Veo) gate speech behind a flag; silent models
-            // ignore it.
-            enable_audio: enableAudio,
-            generate_audio: enableAudio
-        },
+        input,
         metadata
     };
 
@@ -306,11 +344,13 @@ export const createKieVideoTask = async ({
     const data = await response.json();
     if (!response.ok || (data.code && data.code !== 200)) {
         const rawBody = JSON.stringify(data).slice(0, 400);
-        console.error('[KIE video] createTask error response:', rawBody);
+        console.error('[KIE video] createTask error response:', rawBody, '— input enviado:', JSON.stringify(input));
         const reason = data.msg || data.message || `HTTP ${response.status} ${rawBody}`;
-        // El id del modelo se puede corregir por entorno sin desplegar código; el
-        // mensaje lo dice para que quien vea el error en la UI sepa qué hacer.
-        throw new Error(`KIE createTask (${model}): ${reason}`);
+        // Dos datos, porque son los dos que hacen falta para arreglarlo: el id
+        // del modelo (corregible por entorno, sin desplegar) y los campos que se
+        // enviaron. KIE contesta "This field is required" sin decir cuál, así
+        // que la lista de lo enviado es lo que permite deducir el que falta.
+        throw new Error(`KIE createTask (${model}): ${reason} — campos enviados: ${Object.keys(input).join(', ')}`);
     }
 
     const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
