@@ -1879,6 +1879,8 @@ model TrainingConfig {
   // Enlace provisional de reunión (mientras se completa Zoom/Meet automático).
   provisionalMeetingEnabled Boolean @default(false)
   provisionalMeetingUrl     String? // URL global https:// para las reservas
+  // Marca de backfill único: abre "Onboarding" a todos los sitios una sola vez.
+  onboardingOpenedInit Boolean @default(false)
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -1935,6 +1937,10 @@ model TrainingCategory {
   description String?
   emoji       String? // ícono emoji del catálogo (🚀, 🌐, 🤖…)
   color       String   @default("#4f46e5")
+  // Si true, los servicios de esta categoría se pueden reservar desde CUALQUIER
+  // sitio, aunque no tenga suscripción activa ni dominio conectado (ej. Onboarding).
+  // El resto de categorías sigue exigiendo sitio activo/pago/dominio.
+  openToAll   Boolean  @default(false)
   sortOrder   Int      @default(0)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())

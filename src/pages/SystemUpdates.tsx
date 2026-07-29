@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.643.0 | 2026-07-29 (FDD: la Aprobación institucional pasa a ser editable por el Gestor de Proyectos)
+// UI V4.644.0 | 2026-07-29 (Capacitaciones: Onboarding disponible para todos los sitios; interruptor por categoría)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.644.0',
+        title: 'Onboarding disponible para todos los sitios 🚀',
+        description: 'En la Agenda de Capacitaciones y Soporte, la categoría "Onboarding e Implementación del Ecosistema" ahora se puede reservar desde cualquier sitio, aunque todavía no tenga la suscripción activa, un plan de pago o un dominio propio conectado. La idea es que un club recién creado pueda agendar su puesta en marcha sin ningún bloqueo. Todas las demás categorías siguen exactamente igual: solo las reservan los sitios activos (con suscripción vigente o dominio conectado); si el sitio no está activo, se le sigue ofreciendo activar o renovar con Stripe. En el flujo público, cuando la persona elige un servicio de Onboarding y selecciona un sitio inactivo, ya no ve el aviso de pago sino una confirmación de que puede continuar. En el panel (Content Studio → Capacitaciones → Catálogo) cada categoría tiene un nuevo interruptor "Disponible para todos los sitios" para abrir o cerrar ese acceso cuando se necesite, y las categorías abiertas se marcan con una etiqueta "Todos los sitios". La categoría de Onboarding queda abierta automáticamente una sola vez al actualizar; de ahí en adelante el control es manual desde el panel.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'onboarding', 'categorias', 'suscripcion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.643.0',
         title: 'La Aprobación institucional ahora la diligencia el club ✍️',

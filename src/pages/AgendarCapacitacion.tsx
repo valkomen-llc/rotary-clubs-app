@@ -15,7 +15,7 @@ const PLATFORM_LOGO = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com
 
 interface Site { id: string; name: string; type: 'club' | 'district'; active: boolean; }
 interface ApptType { id: string; name: string; description?: string; categoryId?: string | null; durationMin: number; modality: string; price?: number | null; color?: string; responsible?: { name: string } | null; }
-interface Category { id: string; name: string; description?: string; emoji?: string; color?: string; }
+interface Category { id: string; name: string; description?: string; emoji?: string; color?: string; openToAll?: boolean; }
 interface Slot { startAt: string; endAt: string; }
 interface DaySlots { dateKey: string; slots: Slot[]; }
 
@@ -147,6 +147,10 @@ const AgendarCapacitacion: React.FC = () => {
 
     const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
+    // ¿El servicio elegido pertenece a una categoría abierta a todos los sitios
+    // (ej. Onboarding)? Entonces se puede reservar aunque el sitio no esté activo.
+    const catOpenToAll = !!categories.find(c => c.id === selectedType?.categoryId)?.openToAll;
+
     const submit = async () => {
         if (!site || !selectedSlot) return;
         setSubmitting(true); setError('');
@@ -169,7 +173,7 @@ const AgendarCapacitacion: React.FC = () => {
 
     const canNext = () => {
         if (step === 0) return !!selectedType;
-        if (step === 1) return !!site && siteActive === true;
+        if (step === 1) return !!site && (siteActive === true || catOpenToAll);
         if (step === 2) return !!selectedSlot;
         if (step === 3) return requester.firstName.trim() && isEmail(requester.email);
         return true;
@@ -256,7 +260,16 @@ const AgendarCapacitacion: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {site && siteActive === false && (
+                                    {/* Sitio inactivo pero el servicio elegido es de acceso abierto
+                                        (ej. Onboarding): se puede reservar sin activar el plan. */}
+                                    {site && siteActive === false && catOpenToAll && (
+                                        <div className="mt-4 flex items-center gap-3 p-4 rounded-2xl bg-sky-50 border border-sky-100">
+                                            <CheckCircle2 className="w-7 h-7 text-sky-500 shrink-0" />
+                                            <div><div className="font-bold text-gray-900">{site.name}</div><div className="text-xs text-sky-700 font-semibold">{selectedType?.name || 'Onboarding'} está disponible para todos los sitios · puedes reservar</div></div>
+                                        </div>
+                                    )}
+
+                                    {site && siteActive === false && !catOpenToAll && (
                                         <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-100 p-5 text-center">
                                             <ShieldAlert className="w-9 h-9 text-amber-500 mx-auto mb-2" />
                                             <div className="font-black text-gray-900 mb-1">Capacitación solo para sitios activos</div>

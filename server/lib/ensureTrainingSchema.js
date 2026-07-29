@@ -170,6 +170,11 @@ export async function ensureTrainingSchema() {
     ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1ScheduledFor" TIMESTAMP(3);
     ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1Error" TEXT;
     ALTER TABLE "TrainingAppointment" ADD COLUMN IF NOT EXISTS "reminder1Attempts" INTEGER NOT NULL DEFAULT 0;
+
+    -- v4.644: categoría abierta a todos los sitios (Onboarding) sin exigir
+    -- suscripción activa/dominio. Marca de backfill único en la config.
+    ALTER TABLE "TrainingCategory" ADD COLUMN IF NOT EXISTS "openToAll" BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE "TrainingConfig" ADD COLUMN IF NOT EXISTS "onboardingOpenedInit" BOOLEAN NOT NULL DEFAULT false;
   `);
   _ready = true;
   console.log('[ensureTrainingSchema] tablas de Capacitaciones verificadas/creadas');

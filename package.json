@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.643.0",
-  "cache_bust": "2026-07-29 (Solicitud de Aportes del FDD: la seccion Aprobacion institucional pasa a ser editable por el Gestor de Proyectos, para que la diligencie con la informacion del proyecto y del club. Conserva su identidad de espacio institucional, es opcional (no bloquea el envio ni resta avance) y el Distrito la confirma o corrige desde el panel administrativo, donde queda registrado quien la toco por ultima vez.)",
+  "version": "4.644.0",
+  "cache_bust": "2026-07-29 (Capacitaciones: la categoria Onboarding e Implementacion del Ecosistema queda disponible para TODOS los sitios (se puede reservar sin suscripcion activa ni dominio conectado). Las demas categorias siguen exigiendo un sitio activo/de pago/con dominio. Nuevo interruptor por categoria en el panel + apertura automatica unica de Onboarding.)",
   "type": "module",
-  "//": "UI V4.641.0 | 2026-07-29 (Agenda pública: header en blanco + stepper con contraste (círculos/línea visibles sobre la textura))",
+  "//": "UI V4.644.0 | 2026-07-29 (Agenda pública: Onboarding reservable por todos los sitios; interruptor 'Disponible para todos los sitios' por categoría)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",
