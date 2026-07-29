@@ -4,6 +4,7 @@ import {
     Search, Clock, CheckCircle2, ChevronRight, ChevronLeft, Loader2, Video,
     ShieldAlert, CreditCard, Sparkles, ArrowRight, Building2, CalendarClock, Link as LinkIcon
 } from 'lucide-react';
+import { useLang } from '../contexts/LanguageContext';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -14,12 +15,14 @@ interface ApptType { id: string; name: string; description?: string; durationMin
 interface Slot { startAt: string; endAt: string; }
 interface DaySlots { dateKey: string; slots: Slot[]; }
 
-const STEPS = ['Tu sitio', 'Tipo', 'Fecha y hora', 'Tus datos', 'Confirmar'];
+// Orden del flujo: primero el tipo de capacitación, luego el sitio.
+const STEPS = ['Tipo', 'Tu sitio', 'Fecha y hora', 'Tus datos', 'Confirmar'];
 const fmtDay = (iso: string) => new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long', timeZone: USER_TZ }).format(new Date(iso));
 const fmtTime = (iso: string) => new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit', timeZone: USER_TZ }).format(new Date(iso));
 
 const AgendarCapacitacion: React.FC = () => {
     const [params] = useSearchParams();
+    const { lang, setLang } = useLang();
     const [step, setStep] = useState(0);
 
     // Sitio
@@ -66,7 +69,9 @@ const AgendarCapacitacion: React.FC = () => {
                         setSite({ id: d.site.id, name: d.site.name, type: d.site.type, active: d.active });
                         setSiteActive(d.active);
                         setStatusReason(d.reason);
-                        if (d.active) setStep(1);
+                        // El tipo se pierde al redirigir a Stripe; volvemos al paso 0 (Tipo)
+                        // con el sitio ya validado y activo para continuar el flujo.
+                        if (d.active) setStep(0);
                     }
                 } finally { setCheckingStatus(false); }
             })();
@@ -142,8 +147,8 @@ const AgendarCapacitacion: React.FC = () => {
     };
 
     const canNext = () => {
-        if (step === 0) return !!site && siteActive === true;
-        if (step === 1) return !!selectedType;
+        if (step === 0) return !!selectedType;
+        if (step === 1) return !!site && siteActive === true;
         if (step === 2) return !!selectedSlot;
         if (step === 3) return requester.name.trim() && isEmail(requester.email);
         return true;
@@ -153,16 +158,25 @@ const AgendarCapacitacion: React.FC = () => {
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-indigo-50/40">
             {/* Header */}
             <header className="bg-white border-b border-gray-100">
-                <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+                <div className="w-full px-4 md:px-10 py-4 flex items-center gap-3">
                     <img src={PLATFORM_LOGO} alt="Club Platform" className="h-9 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3">
                         <div className="font-black text-gray-900 leading-tight flex items-center gap-2"><CalendarClock className="w-4 h-4 text-indigo-600" />Agenda de Capacitaciones y Soporte</div>
                         <div className="text-xs text-gray-400">Reserva tu sesión sin iniciar sesión</div>
                     </div>
+                    {/* Selector de idioma (Español / Inglés) */}
+                    <div className="ml-auto flex items-center gap-1" data-no-translate>
+                        {['es', 'en'].map((code) => (
+                            <button key={code} onClick={() => setLang(code)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase transition ${lang === code ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                {code === 'es' ? 'ES' : 'EN'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </header>
 
-            <main className="max-w-3xl mx-auto px-4 py-8">
+            <main className="w-full px-4 md:px-10 py-8">
                 {done ? (
                     <SuccessCard done={done} />
                 ) : (
@@ -183,8 +197,8 @@ const AgendarCapacitacion: React.FC = () => {
                         </div>
 
                         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-7 min-h-[340px]">
-                            {/* Step 0: Sitio */}
-                            {step === 0 && (
+                            {/* Paso "Tu sitio" (segundo) */}
+                            {step === 1 && (
                                 <div>
                                     <h3 className="text-lg font-black text-gray-900 mb-1">Encuentra tu sitio</h3>
                                     <p className="text-gray-500 text-sm mb-4">Escribe el nombre de tu club, distrito u organización.</p>
@@ -231,13 +245,13 @@ const AgendarCapacitacion: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Step 1: Tipo */}
-                            {step === 1 && (
+                            {/* Paso "Tipo" (primero) */}
+                            {step === 0 && (
                                 <div>
                                     <h3 className="text-lg font-black text-gray-900 mb-1">¿Qué necesitas?</h3>
                                     <p className="text-gray-500 text-sm mb-5">Elige el tipo de capacitación o soporte.</p>
                                     {types.length === 0 ? <p className="text-gray-400 text-sm py-8 text-center">No hay tipos disponibles por ahora.</p> : (
-                                        <div className="grid sm:grid-cols-2 gap-3">
+                                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                             {types.map(t => (
                                                 <button key={t.id} onClick={() => { setSelectedType(t); setSelectedSlot(null); loadSlots(t); }}
                                                     className={`text-left p-4 rounded-2xl border-2 transition ${selectedType?.id === t.id ? 'border-indigo-500 bg-indigo-50/50' : 'border-gray-100 hover:border-gray-200'}`}>

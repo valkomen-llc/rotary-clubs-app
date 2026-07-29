@@ -4,6 +4,7 @@ import {
     Loader2, CheckCircle2, XCircle, Video, Clock, CalendarClock, Download,
     CalendarPlus, RefreshCw, AlertTriangle
 } from 'lucide-react';
+import { useLang } from '../contexts/LanguageContext';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -25,6 +26,7 @@ interface DaySlots { dateKey: string; slots: { startAt: string; endAt: string }[
 
 const MiCapacitacion: React.FC = () => {
     const { token } = useParams<{ token: string }>();
+    const { lang, setLang } = useLang();
     const [loading, setLoading] = useState(true);
     const [appt, setAppt] = useState<any>(null);
     const [cancelWindow, setCancelWindow] = useState(12);
@@ -81,9 +83,17 @@ const MiCapacitacion: React.FC = () => {
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-indigo-50/40">
             <header className="bg-white border-b border-gray-100">
-                <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
+                <div className="w-full px-4 md:px-10 py-4 flex items-center gap-3">
                     <img src={PLATFORM_LOGO} alt="Club Platform" className="h-9 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3 font-black text-gray-900 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-indigo-600" />Mi capacitación</div>
+                    <div className="ml-auto flex items-center gap-1" data-no-translate>
+                        {['es', 'en'].map((code) => (
+                            <button key={code} onClick={() => setLang(code)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase transition ${lang === code ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                {code === 'es' ? 'ES' : 'EN'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </header>
 
