@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.629.0",
-  "cache_bust": "2026-07-29 (Agenda pública de Capacitaciones — 3 ajustes de UX: (1) la página /agendar-capacitacion ahora usa ancho completo; (2) selector de idioma Español/Inglés (ES/EN) en el encabezado de las páginas públicas /agendar-capacitacion y /mi-capacitacion, integrado al sistema de traducción del sitio; (3) el flujo se reordena para elegir PRIMERO el tipo de capacitación y luego el sitio: 1) Tipo → 2) Tu sitio → 3) Fecha y hora → 4) Tus datos → 5) Confirmar. Cambio solo de frontend, aditivo.)",
+  "version": "4.630.0",
+  "cache_bust": "2026-07-29 (Agenda pública de Capacitaciones — 3 ajustes: (1) se agrega la barra superior estilo Rotary del sitio (Endpolio.org · My Rotary · selector de idioma con banderas) en /agendar-capacitacion y /mi-capacitacion, reutilizando el mismo diseño del Navbar; (2) el idioma por defecto del calendario es Español (salvo que el visitante ya haya elegido otro a mano); (3) el ancho del formulario deja de ser a sangre completa y usa el contenedor centrado del sitio (max-w-7xl con márgenes laterales). Se retira el selector ES/EN propio porque ahora vive en la barra superior. Solo frontend.)",
   "type": "module",
-  "//": "UI V4.629.0 | 2026-07-29 (Agenda pública: ancho completo, selector ES/EN y flujo con el tipo de cita primero)",
+  "//": "UI V4.630.0 | 2026-07-29 (Agenda pública: barra superior Rotary + idioma por defecto Español + ancho del contenedor del sitio)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

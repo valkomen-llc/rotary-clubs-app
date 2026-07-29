@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.629.0 | 2026-07-29 (Agenda pública: ancho completo, selector ES/EN y flujo con el tipo de cita primero)
+// UI V4.630.0 | 2026-07-29 (Agenda pública: barra superior Rotary + idioma por defecto Español + ancho del contenedor del sitio)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.630.0',
+        title: 'Agenda pública: barra Rotary, español por defecto y ancho del sitio 🧭🇪🇸',
+        description: 'Tres ajustes finos a la herramienta pública de capacitaciones para que se sienta parte del sitio: (1) ahora muestra la barra superior estilo Rotary del resto de las páginas —con Endpolio.org, My Rotary y el selector de idioma con banderas— en la parte de arriba de /agendar-capacitacion y de la pantalla de gestión de la cita; (2) el calendario abre por defecto en Español (si el visitante ya eligió otro idioma a mano, se respeta su elección); y (3) el formulario deja de ocupar todo el ancho a sangre completa y usa el mismo contenedor centrado del sitio, con márgenes laterales, para verse más ordenado. El selector de idioma pasa a vivir en esa barra superior. Cambio solo visual.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'idioma', 'español', 'barra superior', 'ux', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.629.0',
         title: 'Agenda pública de capacitaciones: más ancha, bilingüe y con mejor orden 🖥️🌐',

@@ -5,6 +5,7 @@ import {
     ShieldAlert, CreditCard, Sparkles, ArrowRight, Building2, CalendarClock, Link as LinkIcon
 } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
+import PublicTopBar from '../components/PublicTopBar';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -22,8 +23,15 @@ const fmtTime = (iso: string) => new Intl.DateTimeFormat('es', { hour: '2-digit'
 
 const AgendarCapacitacion: React.FC = () => {
     const [params] = useSearchParams();
-    const { lang, setLang } = useLang();
+    const { setLang, languageChosen } = useLang();
     const [step, setStep] = useState(0);
+
+    // Idioma por defecto del calendario: Español (a menos que el visitante ya
+    // haya elegido otro idioma a mano).
+    useEffect(() => {
+        if (!languageChosen) setLang('es');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Sitio
     const [query, setQuery] = useState('');
@@ -156,27 +164,21 @@ const AgendarCapacitacion: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-slate-50 to-indigo-50/40">
+            {/* Barra superior estilo Rotary (Endpolio · My Rotary · idioma) */}
+            <PublicTopBar />
+
             {/* Header */}
             <header className="bg-white border-b border-gray-100">
-                <div className="w-full px-4 md:px-10 py-4 flex items-center gap-3">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-3">
                     <img src={PLATFORM_LOGO} alt="Club Platform" className="h-9 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3">
                         <div className="font-black text-gray-900 leading-tight flex items-center gap-2"><CalendarClock className="w-4 h-4 text-indigo-600" />Agenda de Capacitaciones y Soporte</div>
                         <div className="text-xs text-gray-400">Reserva tu sesión sin iniciar sesión</div>
                     </div>
-                    {/* Selector de idioma (Español / Inglés) */}
-                    <div className="ml-auto flex items-center gap-1" data-no-translate>
-                        {['es', 'en'].map((code) => (
-                            <button key={code} onClick={() => setLang(code)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase transition ${lang === code ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                                {code === 'es' ? 'ES' : 'EN'}
-                            </button>
-                        ))}
-                    </div>
                 </div>
             </header>
 
-            <main className="w-full px-4 md:px-10 py-8">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {done ? (
                     <SuccessCard done={done} />
                 ) : (
