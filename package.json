@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.635.0",
-  "cache_bust": "2026-07-29 (Agenda pública — corrección del listado de sitios: el filtro anterior (domain endsWith .org) dejaba pasar sitios NO conectados porque el subdominio por defecto de cada club es *.clubplatform.org (también termina en .org). Ahora el criterio es el correcto y autoritativo: status='active' (mismo que usa el sitemap para 'en producción') + dominio propio conectado = domain no nulo y que NO contenga 'clubplatform.org'. Así solo aparecen sitios realmente en producción con dominio propio. Se sigue excluyendo la plataforma y deduplicando por nombre. Se muestran 9 (antes 10). Validado con Postgres real: excluye sin-dominio, subdominios por defecto, drafts, suspendidos y la plataforma. Solo lectura.)",
+  "version": "4.636.0",
+  "cache_bust": "2026-07-29 (Rediseño del paso 3 'Fecha y hora' de la agenda pública: se reemplaza la lista larga de fechas+horas por una experiencia estilo Calendly/Google Calendar (componente AgendaDateTimePicker). Mini-calendario mensual con los días disponibles resaltados en azul (con punto indicador y navegación entre meses) + panel de horarios del día elegido como chips interactivos. Selección en 2 clics (día → hora), el botón Continuar se activa solo. Resumen con tipo, duración, zona horaria e instructor, y la fecha/hora elegida destacada. Responsive: dos columnas en escritorio, apilado en móvil. Animaciones suaves, estados hover/activo, estado vacío y de carga, accesibilidad (aria-pressed/labels). Al cambiar el tipo de capacitación, la disponibilidad se recalcula. Solo frontend.)",
   "type": "module",
-  "//": "UI V4.635.0 | 2026-07-29 (Agenda pública: listado real de sitios en producción con dominio propio conectado — top 9)",
+  "//": "UI V4.636.0 | 2026-07-29 (Paso 3 rediseñado: calendario tipo Calendly con días disponibles resaltados y horarios en chips — 2 clics)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

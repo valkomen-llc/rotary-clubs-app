@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
 import PublicTopBar from '../components/PublicTopBar';
+import AgendaDateTimePicker from '../components/AgendaDateTimePicker';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -355,30 +356,18 @@ const AgendarCapacitacion: React.FC = () => {
                                 );
                             })()}
 
-                            {/* Step 2: Fecha y hora */}
+                            {/* Step 2: Fecha y hora — calendario estilo Calendly */}
                             {step === 2 && (
-                                <div>
-                                    <h3 className="text-lg font-black text-gray-900 mb-1">Elige fecha y hora</h3>
-                                    <p className="text-gray-500 text-sm mb-1">Horarios en tu zona: <span className="font-semibold">{USER_TZ}</span></p>
-                                    {loadingSlots ? <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
-                                        : days.length === 0 ? <p className="text-gray-400 text-sm py-12 text-center">No hay horarios disponibles. Intenta más tarde.</p> : (
-                                            <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1 mt-3">
-                                                {days.map(d => (
-                                                    <div key={d.dateKey}>
-                                                        <div className="text-xs font-black text-gray-700 uppercase tracking-wide mb-2 capitalize">{fmtDay(d.slots[0].startAt)}</div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {d.slots.map(s => (
-                                                                <button key={s.startAt} onClick={() => setSelectedSlot(s)}
-                                                                    className={`px-3.5 py-2 rounded-xl text-sm font-semibold border-2 transition ${selectedSlot?.startAt === s.startAt ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-100 text-gray-700 hover:border-indigo-200'}`}>
-                                                                    {fmtTime(s.startAt)}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                </div>
+                                <AgendaDateTimePicker
+                                    days={days}
+                                    loading={loadingSlots}
+                                    typeName={selectedType?.name}
+                                    durationMin={selectedType?.durationMin}
+                                    instructor={selectedType?.responsible?.name || null}
+                                    timezone={USER_TZ}
+                                    selectedStart={selectedSlot?.startAt || null}
+                                    onSelect={(s) => setSelectedSlot(s)}
+                                />
                             )}
 
                             {/* Step 3: Datos */}

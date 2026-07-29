@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.635.0 | 2026-07-29 (Agenda pública: listado real de sitios en producción con dominio propio conectado — top 9)
+// UI V4.636.0 | 2026-07-29 (Paso 3 rediseñado: calendario tipo Calendly con días disponibles resaltados y horarios en chips — 2 clics)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.636.0',
+        title: 'Nuevo selector de fecha y hora tipo calendario 🗓️✨',
+        description: 'Rediseñamos por completo el paso "Fecha y hora" de la agenda de capacitaciones. En lugar de una lista larga de fechas con botones de horas debajo, ahora hay una experiencia visual tipo Calendly / Google Calendar (adaptada a Club Platform): un mini-calendario mensual donde los días con cupos se resaltan en azul (con un puntito indicador) y se puede navegar entre meses, y al lado un panel con los horarios de ese día como tarjetas seleccionables. La reserva se hace en solo dos clics —día y hora— y el botón Continuar se activa automáticamente. Arriba se ve el resumen: tipo de capacitación, duración, zona horaria e instructor, y la fecha y hora elegidas quedan destacadas. Es responsive (dos columnas en computador, apilado en celular), con animaciones suaves, estados de carga y vacío, y mejoras de accesibilidad. Si cambias el tipo de capacitación, la disponibilidad se actualiza sola. Cambio solo visual del flujo público.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'calendario', 'fecha y hora', 'calendly', 'ux', 'ui', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.635.0',
         title: 'Agendar capacitación: ahora sí solo aparecen los sitios en producción 🌐✅',
