@@ -66,7 +66,7 @@ Prompts largos con listas negras son contraproducentes — el modelo se obsesion
 - `OPENAI_API_KEY` — gpt-image-1 directo + GPT-4o para copy.
 - `HIGGSFIELD_API_KEY` — pendiente, se usará cuando implementemos ese engine.
 
-## Generador de Outros IA — v4.646
+## Generador de Outros IA — v4.647
 
 Cierres audiovisuales de ~5 s a partir de una imagen fija. Pestaña propia en
 Content Studio (`src/components/admin/content-studio/OutroGenerator.tsx`),
@@ -140,7 +140,22 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
   No afirmar en la UI que se mide algo que no se mide.
 - **Prompts cortos y en positivo**, igual que en el Generador de Publicaciones.
   `buildOutroPrompt` describe lo que sí se quiere («la pieza se conserva exacta;
-  se añade movimiento y luz»). Nada de listas de prohibiciones.
+  se añade movimiento y luz»). Nada de listas de prohibiciones. Cuando el
+  cliente pida una restricción («que no gire la rueda», «que no haya zoom»),
+  se traduce a la cualidad positiva equivalente («la rueda se mantiene quieta»,
+  «la cámara está fija») — no se pega el pedido literal en el prompt.
+- **La cámara está fija y el logotipo no se anima** (v4.647, criterio de
+  dirección de arte del Distrito). La cámara **no** es un eje de estilo: los
+  ocho estilos se distinguen por luz, ritmo, música y carácter, y lo único que
+  se mueve es el fondo decorativo (`motion` en `OUTRO_STYLES`). El motivo es
+  doble: un acercamiento recorta el logotipo, y en un motor generativo cada
+  encuadre nuevo es una ocasión de redibujarlo. No reintroducir `camera` con
+  desplazamientos.
+- **La voz se pide con hablante nativo del idioma elegido** (`tongue` en
+  `VOICE_LANGUAGES`). El fallo concreto de un motor de audio multilingüe es una
+  voz inglesa leyendo español. `tongue` no se deduce del acento: pedir «lengua
+  materna española» en la voz en inglés sería una contradicción. Idioma por
+  defecto: **español latino neutro** (`es-419`).
 - El medidor de créditos es **propio** (`creditsEstimated` por motor), no el
   saldo real de KIE. Sirve para ver el gasto del mes y frenar con
   `OUTRO_MONTHLY_CREDIT_LIMIT`. No presentarlo como el saldo del proveedor.

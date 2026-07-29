@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — especificación compartida
-// v4.646.0
+// v4.647.0
 //
 // Única fuente de verdad de: formatos, motores de video de KIE.AI, estilos de
 // cierre, catálogo de voces, presupuesto de locución y construcción del prompt.
@@ -76,48 +76,57 @@ export const isEngineAvailable = (engineId) =>
     Boolean(process.env.KIE_API_KEY) && Boolean(OUTRO_ENGINES[engineId]);
 
 // ─── Estilos de outro ──────────────────────────────────────────────────────
-// Cada estilo es una combinación de cámara, iluminación, ritmo y sonido. Los
-// descriptores van en inglés porque son la entrada del modelo; las etiquetas en
-// español porque son lo que ve el usuario.
+//
+// Cada estilo combina movimiento del FONDO, iluminación, ritmo, música y ánimo.
+// Los descriptores van en inglés porque son la entrada del modelo; las etiquetas
+// en español porque son lo que ve el usuario.
+//
+// La cámara NO es un eje de estilo (v4.647). Antes cada estilo traía su propio
+// desplazamiento —push-in, dolly, crane, zoom— y eso es justo lo que arruina un
+// cierre institucional: un acercamiento recorta el logotipo, y en un modelo
+// generativo cada fotograma nuevo es una oportunidad de redibujarlo. La cámara
+// queda fija en todos los estilos y lo que se mueve es el fondo decorativo: las
+// ondas, los degradados y la luz. Es la indicación del equipo del cliente
+// («la cámara debe permanecer prácticamente fija durante toda la secuencia»).
 export const OUTRO_STYLES = {
     institucional: {
-        label: 'Institucional', description: 'Sobrio y oficial. Acercamiento lento y luz pareja.',
-        camera: 'slow steady push-in, locked horizon', light: 'even neutral light with a gentle warm lift',
-        rhythm: 'calm and constant', sound: 'soft ambient pad', mood: 'formal, trustworthy, institutional'
+        label: 'Institucional', description: 'Sobrio y oficial. El fondo respira apenas y la luz se mantiene pareja.',
+        motion: 'it breathes almost imperceptibly', light: 'even neutral light with a gentle warm lift',
+        rhythm: 'calm and constant', sound: 'a soft ambient pad', mood: 'formal, trustworthy, institutional'
     },
     elegante: {
-        label: 'Elegante', description: 'Movimiento suave, luz cálida y destellos finos.',
-        camera: 'gentle parallax drift with a soft focus pull', light: 'warm golden sweep across the surface',
-        rhythm: 'unhurried, flowing', sound: 'soft piano tail', mood: 'refined, warm, premium'
+        label: 'Elegante', description: 'El fondo fluye como seda y una luz cálida lo recorre.',
+        motion: 'it glides slowly, like silk settling', light: 'a warm light travelling softly across the background',
+        rhythm: 'unhurried, flowing', sound: 'a soft piano tail', mood: 'refined, warm, premium'
     },
     corporativo: {
-        label: 'Corporativo', description: 'Preciso y limpio, ritmo firme.',
-        camera: 'precise linear dolly-in', light: 'clean bright key light, crisp edges',
-        rhythm: 'firm and measured', sound: 'clean corporate swell', mood: 'professional, confident, orderly'
+        label: 'Corporativo', description: 'Preciso y limpio: el fondo avanza con ritmo firme.',
+        motion: 'it advances in a clean, measured drift', light: 'clean bright light, crisp edges',
+        rhythm: 'firm and measured', sound: 'a clean corporate swell', mood: 'professional, confident, orderly'
     },
     moderno: {
-        label: 'Moderno', description: 'Dinámico, contraste alto, entrada rápida.',
-        camera: 'quick ease-in zoom settling into stillness', light: 'high-contrast light with a bright rim',
-        rhythm: 'brisk, then settled', sound: 'short rhythmic accent', mood: 'fresh, energetic, contemporary'
+        label: 'Moderno', description: 'Dinámico: el fondo entra con brío y se aquieta.',
+        motion: 'it shifts briskly and then settles', light: 'high-contrast light with a bright rim',
+        rhythm: 'brisk, then settled', sound: 'a short rhythmic accent', mood: 'fresh, energetic, contemporary'
     },
     inspiracional: {
-        label: 'Inspiracional', description: 'Apertura luminosa y ascendente.',
-        camera: 'slow rising crane-like lift', light: 'blooming light growing from the centre outwards',
+        label: 'Inspiracional', description: 'Apertura luminosa y ascendente en el fondo.',
+        motion: 'it opens upward in a slow rising drift', light: 'light blooming from the centre outwards',
         rhythm: 'building, uplifting', sound: 'rising strings', mood: 'hopeful, human, uplifting'
     },
     tecnologico: {
-        label: 'Tecnológico', description: 'Luz fría, partículas finas, precisión digital.',
-        camera: 'smooth digital glide with a subtle depth shift', light: 'cool directional light with fine light particles',
-        rhythm: 'precise, modern', sound: 'subtle digital shimmer', mood: 'technical, precise, forward-looking'
+        label: 'Tecnológico', description: 'Luz fría y partículas finas recorriendo el fondo.',
+        motion: 'fine light particles travel along its lines', light: 'cool directional light',
+        rhythm: 'precise, modern', sound: 'a subtle digital shimmer', mood: 'technical, precise, forward-looking'
     },
     ceremonial: {
-        label: 'Ceremonial', description: 'Solemne, apertura amplia y luz dorada.',
-        camera: 'wide reveal easing into a slow hold', light: 'golden ceremonial light with soft flares',
-        rhythm: 'solemn, deliberate', sound: 'orchestral tail', mood: 'ceremonial, dignified, celebratory'
+        label: 'Ceremonial', description: 'Solemne: el fondo se abre amplio y la luz se asienta.',
+        motion: 'it eases open and holds', light: 'a solemn light with soft flares',
+        rhythm: 'solemn, deliberate', sound: 'an orchestral tail', mood: 'ceremonial, dignified, celebratory'
     },
     minimalista: {
         label: 'Minimalista', description: 'Casi quieto. Aparición progresiva y nada más.',
-        camera: 'almost static, barely perceptible drift', light: 'flat soft light, no highlights',
+        motion: 'it is almost perfectly still, with a barely perceptible breath', light: 'flat soft light, no highlights',
         rhythm: 'still and quiet', sound: 'near silence', mood: 'clean, quiet, minimal'
     }
 };
@@ -127,19 +136,28 @@ export const DEFAULT_STYLE = 'institucional';
 // La voz se pide al modelo por descripción — es lo que entiende un motor de
 // audio nativo. No hay un selector de "voice id" porque el proveedor no expone
 // un catálogo estable a través de la pasarela.
+//
+// `tongue` es la lengua materna que se le pide a la voz. Existe porque el riesgo
+// concreto de un modelo de audio multilingüe es entregar una voz inglesa
+// leyendo español: suena a locutor extranjero y arruina una pieza institucional.
+// Se pide explícitamente hablante nativo, y por eso el dato no se puede deducir
+// del acento sin más (pedir "lengua materna española" en la voz en inglés sería
+// una contradicción).
 export const VOICE_LANGUAGES = {
-    'es-CO': { label: 'Español · Colombia',   accent: 'neutral Colombian Spanish', wordsPerSecond: 2.5 },
-    'es-MX': { label: 'Español · México',     accent: 'Mexican Spanish',           wordsPerSecond: 2.5 },
-    'es-AR': { label: 'Español · Argentina',  accent: 'Rioplatense Spanish',       wordsPerSecond: 2.4 },
-    'es-ES': { label: 'Español · España',     accent: 'Castilian Spanish',         wordsPerSecond: 2.6 },
-    'es-419': { label: 'Español · Neutro LATAM', accent: 'neutral Latin-American Spanish', wordsPerSecond: 2.5 },
-    'en-US': { label: 'Inglés · Estados Unidos', accent: 'American English',       wordsPerSecond: 2.7 },
-    'en-GB': { label: 'Inglés · Reino Unido', accent: 'British English',           wordsPerSecond: 2.6 },
-    'pt-BR': { label: 'Portugués · Brasil',   accent: 'Brazilian Portuguese',      wordsPerSecond: 2.5 },
-    'fr-FR': { label: 'Francés · Francia',    accent: 'French',                    wordsPerSecond: 2.4 },
-    'it-IT': { label: 'Italiano · Italia',    accent: 'Italian',                   wordsPerSecond: 2.5 }
+    'es-419': { label: 'Español · Neutro LATAM', accent: 'neutral Latin-American Spanish', tongue: 'Spanish', wordsPerSecond: 2.5 },
+    'es-CO': { label: 'Español · Colombia',   accent: 'neutral Colombian Spanish', tongue: 'Spanish',    wordsPerSecond: 2.5 },
+    'es-MX': { label: 'Español · México',     accent: 'Mexican Spanish',           tongue: 'Spanish',    wordsPerSecond: 2.5 },
+    'es-AR': { label: 'Español · Argentina',  accent: 'Rioplatense Spanish',       tongue: 'Spanish',    wordsPerSecond: 2.4 },
+    'es-ES': { label: 'Español · España',     accent: 'Castilian Spanish',         tongue: 'Spanish',    wordsPerSecond: 2.6 },
+    'en-US': { label: 'Inglés · Estados Unidos', accent: 'American English',       tongue: 'English',    wordsPerSecond: 2.7 },
+    'en-GB': { label: 'Inglés · Reino Unido', accent: 'British English',           tongue: 'English',    wordsPerSecond: 2.6 },
+    'pt-BR': { label: 'Portugués · Brasil',   accent: 'Brazilian Portuguese',      tongue: 'Portuguese', wordsPerSecond: 2.5 },
+    'fr-FR': { label: 'Francés · Francia',    accent: 'French',                    tongue: 'French',     wordsPerSecond: 2.4 },
+    'it-IT': { label: 'Italiano · Italia',    accent: 'Italian',                   tongue: 'Italian',    wordsPerSecond: 2.5 }
 };
-export const DEFAULT_LANGUAGE = 'es-CO';
+// Español latino neutro por defecto: es el que pidió el equipo del cliente para
+// las piezas institucionales y el que primero ve quien abre el generador.
+export const DEFAULT_LANGUAGE = 'es-419';
 
 export const VOICE_GENDERS = {
     female: { label: 'Femenina', descriptor: 'female' },
@@ -301,9 +319,14 @@ export const buildOutroPrompt = ({
 } = {}) => {
     const s = OUTRO_STYLES[style] || OUTRO_STYLES[DEFAULT_STYLE];
     const parts = [
-        `A ${durationSec}-second cinematic closing shot animated from the provided artwork.`,
-        'The artwork stays exactly as delivered: same logo, same text, same colours, same layout, same proportions. Only motion and light are added.',
-        `Camera: ${s.camera}. Lighting: ${s.light}. Pacing: ${s.rhythm}. Mood: ${s.mood}.`
+        `A ${durationSec}-second institutional closing card, animated from the provided artwork.`,
+        // Lo que se conserva, enumerado en positivo. La pieza es el diseño final:
+        // el modelo la anima, no la rediseña.
+        'The artwork is the finished design: same logo, same wordmark, same typography, same palette, same layout, same proportions, full frame. It stays that way from the first frame to the last, and the closing frame matches the artwork exactly.',
+        // La cámara y el logotipo, quietos. Se dice como una cualidad de la
+        // pieza —"held", "settles"— y no como una lista de prohibiciones.
+        'The camera is locked off: the framing never travels, and the whole logo — wordmark, gear and slogan — is held perfectly still and complete inside the frame, settling in with one clean fade.',
+        `Motion belongs to the decorative background alone: ${s.motion}. Lighting: ${s.light}. Pacing: ${s.rhythm}. Mood: ${s.mood}.`
     ];
 
     if (withAudio && speech) {
@@ -313,11 +336,15 @@ export const buildOutroPrompt = ({
         const tone = (VOICE_TONES[voice.tone] || VOICE_TONES.institutional).descriptor;
         const volume = (VOICE_VOLUMES[voice.volume] || VOICE_VOLUMES.normal).descriptor;
         parts.push(
-            `Audio: a single ${gender} voiceover in ${lang.accent}, ${tone}, ${pace}, speaking ${volume}, saying exactly: "${speech}".`,
-            `The line finishes comfortably before the end of the ${durationSec} seconds. Music stays underneath the voice: ${s.sound}.`
+            // "native speaker … mother tongue" es la parte que importa: el
+            // riesgo real de un modelo de audio multilingüe es una voz inglesa
+            // leyendo español. Se pide la cualidad que se quiere, no se prohíbe
+            // el acento que no.
+            `Audio: one ${gender} voiceover, a native ${lang.accent} speaker with ${lang.tongue} as their mother tongue and fully native diction, ${tone}, ${pace}, speaking ${volume}, saying exactly: "${speech}".`,
+            `The line lands comfortably before the end of the ${durationSec} seconds. Under the voice, an elegant instrumental corporate bed, mixed low so the words stay clear: ${s.sound}.`
         );
     } else {
-        parts.push(`Audio: ${s.sound}, no speech.`);
+        parts.push(`Audio: an elegant instrumental corporate bed, ${s.sound}. No speech.`);
     }
 
     return parts.join(' ');

@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — controlador
-// v4.645.0
+// v4.647.0
 //
 // Crea cierres audiovisuales de ~5 segundos a partir de una imagen fija, con
 // voz en off opcional, y los deja listos para colgarse al final de un Reel.
@@ -44,7 +44,7 @@ import { probeMp4, validateOutroFile, inspectSourceImage } from '../lib/outroQua
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 
-export const OUTRO_MODULE_VERSION = '4.646.0';
+export const OUTRO_MODULE_VERSION = '4.647.0';
 
 console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outros IA: cierres de ~5s desde una imagen, voz en off por audio nativo de Kling 2.6, validación de calidad y guardado en la Biblioteca`);
 

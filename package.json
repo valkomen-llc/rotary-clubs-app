@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.646.0",
-  "cache_bust": "2026-07-29b (Generador de Outros IA: corregido el error KIE createTask - This field is required. La peticion a Kling 2.6 ahora lleva los campos que el modelo exige y ninguno mas, la voz en off usa el audio nativo de Kling y se avisa antes de gastar creditos si la imagen no viene en el formato elegido.)",
+  "version": "4.647.0",
+  "cache_bust": "2026-07-29c (Generador de Outros IA: la camara queda fija en los ocho estilos y el logotipo se mantiene quieto y completo; ahora solo se anima el fondo decorativo. La voz en off pide hablante nativo y el idioma por defecto pasa a espanol latino neutro.)",
   "type": "module",
-  "//": "UI V4.646.0 | 2026-07-29 (Fix Generador de Outros IA: payload correcto para kling-2.6/image-to-video, voz en off por audio nativo de Kling, aviso de proporcion de la imagen)",
+  "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",
