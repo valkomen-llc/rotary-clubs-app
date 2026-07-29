@@ -59,10 +59,30 @@ function publicView(appt) {
 }
 
 // ── Buscar sitio (autocomplete público) ─────────────────────────────────────
+// Predicado de "sitio activo" a nivel de BD (equivale a evaluateSiteStatus):
+// no suspendido, suscripción no vencida y expiración futura o nula.
+const ACTIVE_WHERE = {
+  status: { not: 'inactive' },
+  subscriptionStatus: { not: 'expired' },
+  OR: [{ expirationDate: null }, { expirationDate: { gt: new Date() } }],
+};
+
 export async function searchSites(req, res) {
   try {
     const q = String(req.query.q || '').trim();
-    if (q.length < 2) return res.json({ sites: [] });
+
+    // Sin búsqueda: mostramos los primeros sitios ACTIVOS en orden alfabético.
+    if (q.length < 2) {
+      const [clubs, districts] = await Promise.all([
+        prisma.club.findMany({ where: ACTIVE_WHERE, select: { id: true, name: true, type: true }, take: 10, orderBy: { name: 'asc' } }),
+        prisma.district.findMany({ where: ACTIVE_WHERE, select: { id: true, name: true, number: true }, take: 10, orderBy: { name: 'asc' } }),
+      ]);
+      const sites = [
+        ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, active: true })),
+        ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', active: true })),
+      ].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).slice(0, 10);
+      return res.json({ sites });
+    }
 
     const [clubs, districts] = await Promise.all([
       prisma.club.findMany({
@@ -82,7 +102,7 @@ export async function searchSites(req, res) {
     const sites = [
       ...clubs.map((c) => ({ id: c.id, name: c.name, type: 'club', subtype: c.type, active: evaluateSiteStatus(c).active })),
       ...districts.map((d) => ({ id: d.id, name: d.name || `Distrito ${d.number || ''}`.trim(), type: 'district', active: evaluateSiteStatus(d).active })),
-    ];
+    ].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
     res.json({ sites });
   } catch (e) {
     res.status(500).json({ error: e.message });
