@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     Search, Clock, CheckCircle2, ChevronRight, ChevronLeft, Loader2, Video,
-    ShieldAlert, CreditCard, Sparkles, ArrowRight, Building2, CalendarClock, Link as LinkIcon
+    ShieldAlert, CreditCard, Sparkles, ArrowRight, Building2, CalendarClock, Link as LinkIcon,
+    User, Mail, Phone, FileText, MapPin
 } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
 import PublicTopBar from '../components/PublicTopBar';
@@ -57,7 +58,8 @@ const AgendarCapacitacion: React.FC = () => {
     const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
 
     // Datos del solicitante
-    const [requester, setRequester] = useState({ name: '', email: '', phone: '' });
+    const [requester, setRequester] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+    const [clubContact, setClubContact] = useState<{ email?: string | null; phone?: string | null }>({});
     const [reason, setReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [done, setDone] = useState<any>(null);
@@ -116,6 +118,7 @@ const AgendarCapacitacion: React.FC = () => {
             const r = await fetch(`${API}/public/training/site-status?siteId=${s.id}&siteType=${s.type}`);
             const d = await r.json();
             setSiteActive(d.active); setStatusReason(d.reason);
+            setClubContact({ email: d.site?.contactEmail, phone: d.site?.contactPhone });
         } catch { setSiteActive(null); } finally { setCheckingStatus(false); }
     };
 
@@ -153,8 +156,8 @@ const AgendarCapacitacion: React.FC = () => {
                 body: JSON.stringify({
                     siteId: site.id, siteType: site.type, typeId: selectedType?.id,
                     startAt: selectedSlot.startAt, reason,
-                    requesterName: requester.name, requesterEmail: requester.email, requesterPhone: requester.phone,
-                    participants: [{ name: requester.name, email: requester.email }],
+                    requesterName: `${requester.firstName} ${requester.lastName}`.trim(), requesterEmail: requester.email, requesterPhone: requester.phone,
+                    participants: [{ name: `${requester.firstName} ${requester.lastName}`.trim(), email: requester.email }],
                 }),
             });
             const d = await r.json();
@@ -168,7 +171,7 @@ const AgendarCapacitacion: React.FC = () => {
         if (step === 0) return !!selectedType;
         if (step === 1) return !!site && siteActive === true;
         if (step === 2) return !!selectedSlot;
-        if (step === 3) return requester.name.trim() && isEmail(requester.email);
+        if (step === 3) return requester.firstName.trim() && isEmail(requester.email);
         return true;
     };
 
@@ -370,16 +373,45 @@ const AgendarCapacitacion: React.FC = () => {
                                 />
                             )}
 
-                            {/* Step 3: Datos */}
+                            {/* Step 3: Tus datos (estilo formulario Feria de Proyectos) */}
                             {step === 3 && (
                                 <div>
                                     <h3 className="text-lg font-black text-gray-900 mb-1">Tus datos</h3>
-                                    <p className="text-gray-500 text-sm mb-5">Para enviarte la confirmación y el enlace de la sesión.</p>
-                                    <div className="space-y-3">
-                                        <input placeholder="Nombre completo *" value={requester.name} onChange={e => setRequester(r => ({ ...r, name: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm" />
-                                        <input placeholder="Correo electrónico *" value={requester.email} onChange={e => setRequester(r => ({ ...r, email: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm" />
-                                        <input placeholder="Teléfono / WhatsApp (opcional)" value={requester.phone} onChange={e => setRequester(r => ({ ...r, phone: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm" />
-                                        <textarea placeholder="Motivo de la sesión (opcional)" value={reason} onChange={e => setReason(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm resize-none" />
+                                    <p className="text-gray-500 text-sm mb-6">Para enviarte la confirmación y el enlace de la sesión.</p>
+
+                                    <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+                                        <Field icon={User} label="Nombre" required>
+                                            <input value={requester.firstName} onChange={e => setRequester(r => ({ ...r, firstName: e.target.value }))} placeholder="Tu nombre" className={inputCls} />
+                                        </Field>
+                                        <Field icon={User} label="Apellido">
+                                            <input value={requester.lastName} onChange={e => setRequester(r => ({ ...r, lastName: e.target.value }))} placeholder="Tu apellido" className={inputCls} />
+                                        </Field>
+                                        <Field icon={Mail} label="Correo electrónico" required>
+                                            <input type="email" value={requester.email} onChange={e => setRequester(r => ({ ...r, email: e.target.value }))} placeholder="nombre@correo.com" className={inputCls} />
+                                        </Field>
+                                        <Field icon={Phone} label="Teléfono / WhatsApp">
+                                            <input value={requester.phone} onChange={e => setRequester(r => ({ ...r, phone: e.target.value }))} placeholder="300 000 0000" className={inputCls} />
+                                        </Field>
+                                        <div className="sm:col-span-2">
+                                            <Field icon={FileText} label="Motivo de la sesión">
+                                                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Cuéntanos brevemente qué te gustaría cubrir (opcional)" className={`${inputCls} resize-none`} />
+                                            </Field>
+                                        </div>
+                                    </div>
+
+                                    {/* Datos del club (reciben también la confirmación) */}
+                                    <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <Building2 className="w-4 h-4 text-indigo-600" />
+                                            <span className="text-sm font-black text-gray-800">Datos del club</span>
+                                            <span className="text-[11px] text-indigo-600 font-semibold">· también recibe la confirmación</span>
+                                        </div>
+                                        <div className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+                                            <ReadField icon={Building2} label="Club / Sitio" value={site?.name} />
+                                            <ReadField icon={MapPin} label="Tipo" value={site?.type === 'district' ? 'Distrito' : 'Sitio'} />
+                                            <ReadField icon={Mail} label="Correo del club" value={clubContact.email || 'No registrado'} />
+                                            <ReadField icon={Phone} label="Teléfono del club" value={clubContact.phone || 'No registrado'} />
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -393,8 +425,9 @@ const AgendarCapacitacion: React.FC = () => {
                                         <Row label="Tipo" value={selectedType?.name} />
                                         <Row label="Fecha" value={selectedSlot ? fmtDay(selectedSlot.startAt) : ''} />
                                         <Row label="Hora" value={selectedSlot ? `${fmtTime(selectedSlot.startAt)} (${USER_TZ})` : ''} />
-                                        <Row label="A nombre de" value={requester.name} />
+                                        <Row label="A nombre de" value={`${requester.firstName} ${requester.lastName}`.trim()} />
                                         <Row label="Correo" value={requester.email} />
+                                        {clubContact.email && <Row label="Notifica al club" value={clubContact.email} />}
                                     </div>
                                 </div>
                             )}
@@ -422,6 +455,25 @@ const AgendarCapacitacion: React.FC = () => {
 
 const Row: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
     <div className="flex justify-between items-center py-2.5 border-b border-gray-50"><span className="text-gray-400 font-medium">{label}</span><span className="text-gray-900 font-bold text-right">{value || '—'}</span></div>
+);
+
+// Estilo de inputs y campos etiquetados (referencia: formulario Feria de Proyectos).
+const inputCls = 'w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-colors';
+
+const Field: React.FC<{ icon: any; label: string; required?: boolean; children: React.ReactNode }> = ({ icon: Icon, label, required, children }) => (
+    <label className="block">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-1.5">
+            <Icon className="w-4 h-4 text-indigo-500" />{label}{required && <span className="text-red-500">*</span>}
+        </span>
+        {children}
+    </label>
+);
+
+const ReadField: React.FC<{ icon: any; label: string; value?: string | null }> = ({ icon: Icon, label, value }) => (
+    <div>
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1"><Icon className="w-3.5 h-3.5 text-gray-400" />{label}</span>
+        <div className="px-3.5 py-2 rounded-xl bg-white border border-gray-100 text-sm font-semibold text-gray-800 truncate">{value || '—'}</div>
+    </div>
 );
 
 const SuccessCard: React.FC<{ done: any }> = ({ done }) => {
