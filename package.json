@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.628.0",
-  "cache_bust": "2026-07-28 (Calendario de Capacitaciones y Soporte PÚBLICO: nueva herramienta pública sin login en /agendar-capacitacion (como el generador de pendones). El usuario busca su club/distrito/organización con un buscador global, el sistema valida automáticamente la suscripción vigente y, si el sitio está activo, reserva su capacitación (tipo, fecha/hora en su zona horaria, datos de contacto). Si el sitio está vencido/suspendido, lo dirige al checkout de Stripe (activación por webhook, no por retorno del navegador). Cada reserva envía confirmación por correo con .ics + botones Google/Outlook y un ENLACE MÁGICO privado (/mi-capacitacion/:token) para ver, cancelar o reprogramar sin contraseña. Nuevos endpoints públicos en /api/public/training/*. Aditivo: se agrega solo el campo publicToken+source a TrainingAppointment; sin operaciones destructivas de BD.)",
+  "version": "4.629.0",
+  "cache_bust": "2026-07-29 (Agenda pública de Capacitaciones — 3 ajustes de UX: (1) la página /agendar-capacitacion ahora usa ancho completo; (2) selector de idioma Español/Inglés (ES/EN) en el encabezado de las páginas públicas /agendar-capacitacion y /mi-capacitacion, integrado al sistema de traducción del sitio; (3) el flujo se reordena para elegir PRIMERO el tipo de capacitación y luego el sitio: 1) Tipo → 2) Tu sitio → 3) Fecha y hora → 4) Tus datos → 5) Confirmar. Cambio solo de frontend, aditivo.)",
   "type": "module",
-  "//": "UI V4.628.0 | 2026-07-28 (Calendario de Capacitaciones público sin login — buscador de sitio, validación de suscripción + Stripe y gestión por enlace mágico)",
+  "//": "UI V4.629.0 | 2026-07-29 (Agenda pública: ancho completo, selector ES/EN y flujo con el tipo de cita primero)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

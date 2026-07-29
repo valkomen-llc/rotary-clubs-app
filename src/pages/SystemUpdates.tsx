@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.628.0 | 2026-07-28 (Calendario de Capacitaciones público sin login — buscador de sitio, validación de suscripción + Stripe y gestión por enlace mágico)
-// Cache bust: 2026-07-28
+// UI V4.629.0 | 2026-07-29 (Agenda pública: ancho completo, selector ES/EN y flujo con el tipo de cita primero)
+// Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.629.0',
+        title: 'Agenda pública de capacitaciones: más ancha, bilingüe y con mejor orden 🖥️🌐',
+        description: 'Tres mejoras a la herramienta pública para agendar capacitaciones (/agendar-capacitacion): (1) ahora ocupa el ancho completo de la pantalla, para verse mejor y aprovechar el espacio; (2) se agregó un selector de idioma Español/Inglés (ES/EN) en el encabezado —tanto al agendar como en la pantalla de gestión de la cita—, conectado al mismo sistema de traducción del resto del sitio, para los clubes y personas que prefieren inglés; y (3) se reordenaron los pasos: ahora se elige PRIMERO el tipo de capacitación y luego el club u organización, quedando el flujo así: 1) Tipo de capacitación → 2) Tu sitio → 3) Fecha y hora → 4) Tus datos → 5) Confirmar. Es un ajuste solo visual/de experiencia; no cambia los datos ni el funcionamiento interno.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'idioma', 'ingles', 'ux', 'ancho completo', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.628.0',
         title: 'Agenda tus capacitaciones sin iniciar sesión 🎓🔗',
