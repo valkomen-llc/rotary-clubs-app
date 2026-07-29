@@ -19,9 +19,18 @@ import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
 import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
-import { completionOf, missingRequired } from '../lib/projectFairMasterForm.js';
+import { completionOf } from '../lib/projectFairMasterForm.js';
+import { resolveForm } from '../lib/projectFormsRegistry.js';
+import {
+    editability, listPortalForms, seedAnswersFor,
+    saveForm as saveProjectForm, submitForm as submitProjectForm,
+} from './projectFormsController.js';
 
-console.log('[projectFairPortalController] v4.627.0 cargado — Panel del club: acceso unificado desde el encabezado, rol y destino resueltos en el servidor');
+console.log('[projectFairPortalController] v4.642.0 cargado — Panel del club: varios formularios por proyecto (Formulación + Solicitud de Aportes del FDD)');
+
+// La edición de un formulario la decide un solo lugar, compartido por todos
+// (`projectFormsController`). Se reexporta porque este módulo era su casa.
+export { editability };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 // Audiencia propia: un token del panel administrativo no sirve aquí, ni al revés.
@@ -391,57 +400,12 @@ const loadForm = async (submissionId) => {
     return rows[0] || null;
 };
 
-/**
- * ¿Puede el club editar? La convocatoria confirmada permite editar hasta la
- * fecha límite; después queda en solo lectura salvo que el administrador
- * reabra el formulario.
- */
-export const editability = (submission, form, cfg, account = null) => {
-    if (submission?.status !== 'paid') {
-        return { canEdit: false, reason: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.' };
-    }
-    // Rol suspendido (reembolso): conserva consulta y descarga, pierde edición.
-    if (account?.role === APPLICANT_ROLES.SUSPENDED) {
-        return { canEdit: false, reason: 'Tu inscripción fue reembolsada. Puedes consultar y descargar tu proyecto, pero ya no editarlo.' };
-    }
-    if (form?.lockedAt && !form?.reopenedAt) {
-        return { canEdit: false, reason: 'El comité cerró la edición de este formulario.' };
-    }
-    const deadline = cfg?.deadline ? new Date(`${cfg.deadline}T23:59:59-05:00`) : null;
-    if (deadline && !Number.isNaN(deadline.getTime()) && new Date() > deadline && !form?.reopenedAt) {
-        return { canEdit: false, reason: `El plazo de postulación cerró el ${cfg.deadline}. Escríbenos si necesitas hacer un ajuste.` };
-    }
-    return { canEdit: true, reason: null };
-};
-
 // Valores que se traen de la postulación inicial para no pedirlos dos veces.
 // El destino de cada dato lo decide el mapa `prefill` de la plantilla, así que
 // reordenar o renombrar las secciones del formulario no rompe la precarga.
-const seedAnswers = (submission, cfg) => {
-    const sources = {
-        projectName: submission.projectName || '',
-        clubName: submission.clubName || '',
-        district: submission.district || '',
-        city: '',
-        country: cfg?.edition?.country || 'Colombia',
-        focusArea: submission.focusAreaLabel ? [submission.focusAreaLabel] : [],
-        contactName: `${submission.firstName || ''} ${submission.lastName || ''}`.trim(),
-        contactEmail: submission.email || '',
-        contactPhone: submission.phone || '',
-        budgetUsd: submission.budgetUsd ? Number(submission.budgetUsd) : '',
-    };
-
-    const prefill = cfg?.masterForm?.prefill || {};
-    const answers = {};
-    for (const [source, target] of Object.entries(prefill)) {
-        const value = sources[source];
-        if (value === undefined || value === '' || (Array.isArray(value) && !value.length)) continue;
-        const [sectionKey, fieldKey] = String(target).split('.');
-        if (!sectionKey || !fieldKey) continue;
-        answers[sectionKey] = { ...(answers[sectionKey] || {}), [fieldKey]: value };
-    }
-    return answers;
-};
+// v4.642 — La precarga es común a todos los formularios (`seedAnswersFor`).
+const seedAnswers = (submission, cfg) =>
+    seedAnswersFor(resolveForm(cfg, 'master')?.template || cfg?.masterForm, submission, cfg);
 
 // GET /portal/me
 export const getPortalData = async (req, res) => {
@@ -502,6 +466,10 @@ export const getPortalData = async (req, res) => {
                 lastEditedAt: form.lastEditedAt,
             } : null,
             template: cfg.masterForm,
+            // v4.642 — Todos los formularios del proyecto, con su estado y su
+            // avance: son las tarjetas de "Gestión de Proyectos". Un formulario
+            // nuevo aparece aquí sólo con registrarlo.
+            forms: await listPortalForms(submission, cfg, account),
             focusAreas: cfg.focusAreas || [],
             edition: cfg.edition,
             deadline: cfg.deadline,
@@ -515,111 +483,16 @@ export const getPortalData = async (req, res) => {
     }
 };
 
-// PUT /portal/form — guardar borrador (lo llama el autoguardado)
-export const saveForm = async (req, res) => {
-    try {
-        await ensureTables();
-        const cfg = await readConfigForAdmin();
-        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
-        const submission = rows[0];
-        if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
-
-        const form = await loadForm(submission.id);
-        // La autorización de escribir se revisa SIEMPRE en el servidor, con la
-        // cuenta en la mano: el navegador no decide si el rol permite editar.
-        const { rows: accRows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
-        const edit = editability(submission, form, cfg, accRows[0]);
-        if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
-
-        const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
-        const pct = completionOf(cfg.masterForm, answers);
-
-        const { rows: saved } = await db.query(`
-            INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", "lastEditedAt")
-            VALUES ($1, $2::jsonb, $3, NOW())
-            ON CONFLICT ("submissionId") DO UPDATE
-            SET answers = $2::jsonb, "completionPct" = $3, "lastEditedAt" = NOW(), "updatedAt" = NOW()
-            RETURNING *
-        `, [submission.id, JSON.stringify(answers), pct]);
-
-        // Historial: se guarda una revisión por envío explícito y, en los
-        // autoguardados, como máximo una cada 10 minutos, para no llenar la
-        // tabla con cada tecleo.
-        const last = await db.query(
-            `SELECT "createdAt" FROM "ProjectFairFormRevision" WHERE "submissionId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
-            [submission.id]
-        );
-        const lastAt = last.rows[0]?.createdAt ? new Date(last.rows[0].createdAt).getTime() : 0;
-        if (Date.now() - lastAt > 10 * 60 * 1000) {
-            await db.query(`
-                INSERT INTO "ProjectFairFormRevision" ("submissionId", answers, "completionPct", action, "actorType", "actorName")
-                VALUES ($1,$2::jsonb,$3,'save','club',$4)
-            `, [submission.id, JSON.stringify(answers), pct, submission.email]).catch(() => {});
-        }
-
-        res.json({ completionPct: pct, savedAt: saved[0].lastEditedAt, status: saved[0].status });
-    } catch (error) {
-        console.error('[project-fair-portal] saveForm:', error);
-        res.status(500).json({ error: 'No pudimos guardar los cambios.' });
-    }
+// ── Rutas heredadas de la Formulación ────────────────────────────────
+// PUT /portal/form y POST /portal/form/submit siguen existiendo para no
+// romper una pestaña abierta con la versión anterior del panel, pero ya no
+// tienen lógica propia: son el formulario 'master' del controlador común.
+// Toda mejora (validación de formato, historial por formulario, campos
+// derivados) les llega sola.
+const asMasterForm = (handler) => (req, res) => {
+    req.params = { ...req.params, formKey: 'master' };
+    return handler(req, res);
 };
 
-// POST /portal/form/submit
-export const submitForm = async (req, res) => {
-    try {
-        await ensureTables();
-        const cfg = await readConfigForAdmin();
-        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
-        const submission = rows[0];
-        if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
-
-        const form = await loadForm(submission.id);
-        // La autorización de escribir se revisa SIEMPRE en el servidor, con la
-        // cuenta en la mano: el navegador no decide si el rol permite editar.
-        const { rows: accRows } = await db.query('SELECT * FROM "ProjectFairAccount" WHERE "submissionId" = $1 LIMIT 1', [submission.id]);
-        const edit = editability(submission, form, cfg, accRows[0]);
-        if (!edit.canEdit) return res.status(403).json({ error: edit.reason });
-
-        const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : (form?.answers || {});
-        const missing = missingRequired(cfg.masterForm, answers);
-        if (missing.length) {
-            return res.status(400).json({ error: 'Faltan campos obligatorios por completar.', missing });
-        }
-
-        const pct = completionOf(cfg.masterForm, answers);
-        const { rows: saved } = await db.query(`
-            INSERT INTO "ProjectFairMasterForm" ("submissionId", answers, "completionPct", status, "submittedAt", "lastEditedAt")
-            VALUES ($1,$2::jsonb,$3,'submitted',NOW(),NOW())
-            ON CONFLICT ("submissionId") DO UPDATE
-            SET answers = $2::jsonb, "completionPct" = $3, status = 'submitted',
-                "submittedAt" = NOW(), "lastEditedAt" = NOW(), "updatedAt" = NOW()
-            RETURNING *
-        `, [submission.id, JSON.stringify(answers), pct]);
-
-        await db.query(`
-            INSERT INTO "ProjectFairFormRevision" ("submissionId", answers, "completionPct", action, "actorType", "actorName")
-            VALUES ($1,$2::jsonb,$3,'submit','club',$4)
-        `, [submission.id, JSON.stringify(answers), pct, submission.email]).catch(() => {});
-
-        // La postulación entra a revisión salvo que ya esté más avanzada.
-        await db.query(`
-            UPDATE "ProjectFairSubmission"
-            SET "workflowStatus" = CASE WHEN "workflowStatus" IN ('payment_confirmed','received','pending_payment')
-                                        THEN 'in_review' ELSE "workflowStatus" END,
-                "updatedAt" = NOW()
-            WHERE id = $1
-        `, [submission.id]);
-
-        await logEvent(submission.id, {
-            type: 'form_submitted_master',
-            title: 'Formulario del proyecto enviado',
-            detail: `El club envió la formulación completa (${pct}%).`,
-            actor: { name: submission.email, role: 'club' },
-        });
-
-        res.json({ status: 'submitted', completionPct: pct, submittedAt: saved[0].submittedAt });
-    } catch (error) {
-        console.error('[project-fair-portal] submitForm:', error);
-        res.status(500).json({ error: 'No pudimos enviar el formulario.' });
-    }
-};
+export const saveForm = asMasterForm(saveProjectForm);
+export const submitForm = asMasterForm(submitProjectForm);

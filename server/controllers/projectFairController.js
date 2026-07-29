@@ -22,6 +22,7 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
+import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 
 console.log('[projectFairController] v4.625.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
@@ -187,6 +188,12 @@ export const DEFAULT_CONFIG = {
     // del club. `masterForm.sections` define el formulario completo; el panel
     // lo renderiza y las descargas Word/PDF lo recorren.
     masterForm: DEFAULT_MASTER_FORM,
+    // v4.642 — Segundo formulario del proyecto: Solicitud de Aportes del FDD
+    // 2026-2027. Se agrega de forma aditiva, igual que `masterForm`: quien no
+    // lo haya configurado recibe la plantilla oficial y nada de lo guardado
+    // se toca. Los formularios disponibles se listan en
+    // `server/lib/projectFormsRegistry.js`.
+    fddForm: DEFAULT_FDD_FORM,
     portal: {
         enabled: true,
         path: '/mi-proyecto',
@@ -259,6 +266,26 @@ const buildPublicRef = () => {
 };
 
 // ── Esquema (creación perezosa, nunca destructiva) ───────────────────
+/**
+ * Columnas que comparten todas las tablas de formularios del proyecto
+ * (v4.642). Se aplican con ADD COLUMN IF NOT EXISTS sobre cada tabla para que
+ * la Formulación —que tiene tabla propia desde antes— y los formularios
+ * nuevos se puedan leer y escribir con el mismo código.
+ *
+ *   approval      respuestas de la sección reservada al Distrito (firmas del
+ *                 GD y del presidente del Comité de LFRI, aporte aprobado).
+ *                 Vive aparte de `answers` a propósito: así ninguna escritura
+ *                 del club puede alcanzarla ni siquiera por error.
+ *   reviewStatus  decisión del Distrito: in_review · approved · rejected
+ */
+const PROJECT_FORM_COLUMNS = (table) => [
+    `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS approval JSONB NOT NULL DEFAULT '{}'`,
+    `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "reviewStatus" VARCHAR(30)`,
+    `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMPTZ`,
+    `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "reviewedBy" VARCHAR(160)`,
+    `ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "reviewNote" TEXT`,
+];
+
 let _tablesReady = false;
 const ensureTables = async () => {
     if (_tablesReady) return;
@@ -458,6 +485,40 @@ const ensureTables = async () => {
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairMasterForm_submission_key" ON "ProjectFairMasterForm" ("submissionId");`).catch(() => {});
 
+    // v4.642 — Columnas comunes a todos los formularios del proyecto. Se
+    // agregan también aquí para que la Formulación y los formularios nuevos
+    // tengan la misma forma y el código los trate igual (ver
+    // `projectFormsRegistry.storageOf`). Aditivo: no toca ningún dato.
+    for (const sql of PROJECT_FORM_COLUMNS('ProjectFairMasterForm')) {
+        await db.query(sql).catch(() => {});
+    }
+
+    // v4.642 — Respuestas de los DEMÁS formularios del proyecto (hoy, la
+    // Solicitud de Aportes del FDD). Una fila por proyecto y formulario. La
+    // Formulación se queda en su tabla: mover datos ya guardados de los clubes
+    // sería una operación destructiva y no hace falta para nada.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ProjectFairProjectForm" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "submissionId" TEXT NOT NULL,
+            "formKey" VARCHAR(60) NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'draft',
+            answers JSONB NOT NULL DEFAULT '{}',
+            "completionPct" INTEGER NOT NULL DEFAULT 0,
+            "submittedAt" TIMESTAMPTZ,
+            "lastEditedAt" TIMESTAMPTZ,
+            "lockedAt" TIMESTAMPTZ,
+            "reopenedAt" TIMESTAMPTZ,
+            "reopenedBy" VARCHAR(160),
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    for (const sql of PROJECT_FORM_COLUMNS('ProjectFairProjectForm')) {
+        await db.query(sql).catch(() => {});
+    }
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairProjectForm_form_key" ON "ProjectFairProjectForm" ("submissionId", "formKey");`).catch(() => {});
+
     // Historial de cada guardado y envío: permite auditar qué cambió y cuándo,
     // y recuperar una versión anterior si el club se equivoca.
     await db.query(`
@@ -472,6 +533,9 @@ const ensureTables = async () => {
             "createdAt" TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+    // El historial es de todos los formularios. Las revisiones anteriores a
+    // v4.642 son de la Formulación, de ahí el valor por defecto.
+    await db.query(`ALTER TABLE "ProjectFairFormRevision" ADD COLUMN IF NOT EXISTS "formKey" VARCHAR(60) DEFAULT 'master'`).catch(() => {});
     await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairFormRevision_submission_idx" ON "ProjectFairFormRevision" ("submissionId", "createdAt" DESC);`).catch(() => {});
 
     // Eventos crudos recibidos de Stripe: fuente de verdad del pago y base de

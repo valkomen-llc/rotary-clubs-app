@@ -152,13 +152,16 @@ export const resolveAccess = (user, cfg, { ownsFairSite = false } = {}) => {
     return { role, ...ROLE_CAPABILITIES[role] };
 };
 
-const actorFrom = (req, access) => ({
+export const actorFrom = (req, access) => ({
     id: req.user?.id || null,
     name: req.user?.email || 'Administrador',
     role: access?.role || req.user?.role || null,
 });
 
-const withAccess = (handler, capability = 'view') => async (req, res) => {
+// v4.642 — Exportado para que los formularios del proyecto
+// (`projectFormsController.js`) resuelvan los permisos con este mismo
+// guardián, en vez de tener uno propio que se desincronice.
+export const withAccess = (handler, capability = 'view') => async (req, res) => {
     try {
         await ensureTables();
         const cfg = await readConfigForAdmin();
