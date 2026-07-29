@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Formularios del proyecto — panel del club y panel administrativo
-// v4.642.0
+// v4.643.0
 //
 // Un proyecto inscrito tiene varios formularios: la Formulación del Proyecto
 // y la Solicitud de Aportes del FDD 2026-2027 (y los que se registren
@@ -11,12 +11,22 @@
 // Es lo que hace escalable el módulo: agregar un formulario no agrega
 // endpoints ni tablas ni pantallas, sólo una entrada en el registro.
 //
-// SEGURIDAD — dos reglas que no dependen del navegador:
-//   1. La sección `adminOnly` de una plantilla (las firmas del Gobernador y
-//      del presidente del Comité de LFRI) se guarda en una columna aparte,
-//      `approval`, y toda escritura que llega del panel del club pasa antes
-//      por `stripProtected`. Un club no puede firmar por el Distrito ni
-//      aunque llame al endpoint a mano.
+// EL ESPACIO INSTITUCIONAL (aprobación del Gobernador de Distrito y del
+// presidente del Comité de LFRI) tiene dos modos, y la plantilla elige cuál:
+//   · `districtSpace` — lo diligencian el club Y el Distrito. Es el caso del
+//     FDD desde v4.643: el Gestor de Proyectos lo llena con lo que le
+//     corresponde al proyecto y al club, y el Distrito lo confirma desde el
+//     panel administrativo, donde queda registrado quién lo hizo y cuándo.
+//     Se guarda con el resto de las respuestas.
+//   · `adminOnly` — no lo escribe nunca el club: vive en la columna `approval`
+//     y `stripProtected` descarta cualquier intento que llegue del panel del
+//     club, aunque llame al endpoint a mano.
+//
+// SEGURIDAD — dos reglas que no dependen del navegador, valga el modo que
+// valga:
+//   1. `saveApproval` escribe SÓLO la sección institucional, y sólo los campos
+//      que la plantilla declara: no puede alterar ninguna otra respuesta del
+//      club. Exige rol administrativo del sitio y el permiso 'changeStatus'.
 //   2. Si el formulario se puede editar lo decide siempre el servidor
 //      (`editability`), con la cuenta y el estado del pago en la mano.
 // ════════════════════════════════════════════════════════════════════
@@ -25,15 +35,16 @@ import { ensureTables, logEvent, readConfigForAdmin, APPLICANT_ROLES } from './p
 import { withAccess, actorFrom } from './projectFairAdminController.js';
 import {
     completionOf, missingRequired, validateAnswers, stripProtected,
-    onlyAdminSections, withComputed, flattenFields,
+    withComputed, flattenFields, districtSectionOf, isProtectedSection,
 } from '../lib/projectFormEngine.js';
 import {
     resolveForm, resolveForms, storageOf, storageIsShared, MASTER_FORM_KEY,
 } from '../lib/projectFormsRegistry.js';
 
-console.log('[projectFormsController] v4.642.0 cargado — Formularios del proyecto: Formulación + Solicitud de Aportes del FDD 2026-2027 sobre una misma arquitectura');
+console.log('[projectFormsController] v4.643.0 cargado — Formularios del proyecto: el espacio institucional (aprobación del GD y del Comité de LFRI) lo diligencian el club y el Distrito');
 
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
+const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
 
 // Tablas donde pueden vivir las respuestas. Lista blanca explícita: el nombre
 // de la tabla entra literal en el SQL (no se puede parametrizar un
@@ -283,8 +294,24 @@ export const cardFor = (form, record, { submission, cfg, account }) => {
         lockedAt: record?.lockedAt || null,
         canEdit: edit.canEdit,
         reason: edit.reason,
-        hasApproval: (form.template?.sections || []).some(s => s.adminOnly),
-        approvalFilled: !!record?.approval && Object.keys(record.approval || {}).length > 0,
+        ...approvalState(form.template, record),
+    };
+};
+
+/**
+ * Estado del espacio institucional: si el formulario lo tiene y si ya está
+ * diligenciado. Mira donde corresponda —la columna `approval` o las respuestas—
+ * según cómo esté declarada la sección.
+ */
+const approvalState = (template, record) => {
+    const section = districtSectionOf(template);
+    if (!section) return { hasApproval: false, approvalFilled: false };
+    const values = isProtectedSection(section)
+        ? record?.approval?.[section.key]
+        : record?.answers?.[section.key];
+    return {
+        hasApproval: true,
+        approvalFilled: !!values && Object.values(values).some(v => String(v ?? '').trim() !== ''),
     };
 };
 
@@ -503,7 +530,7 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
         SELECT s.id, s."publicRef", s."projectName", s."clubName", s.district, s.email,
                s.status AS "paymentStatus", s."workflowStatus", s."createdAt",
                f.status AS "formStatus", f."completionPct", f."submittedAt", f."lastEditedAt",
-               f."lockedAt", f."reopenedAt", f."reviewStatus", f."reviewedAt", f.approval,
+               f."lockedAt", f."reopenedAt", f."reviewStatus", f."reviewedAt", f.approval, f.answers,
                (a.id IS NOT NULL) AS "hasAccount", a."lastLoginAt"
         FROM "ProjectFairSubmission" s
         ${join}
@@ -512,9 +539,12 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
         ORDER BY f."submittedAt" DESC NULLS LAST, s."createdAt" DESC
     `, params);
 
-    const forms = rows.map(r => ({
+    // `answers` y `approval` se leen para saber si el espacio institucional ya
+    // está diligenciado, pero no se devuelven: el listado no necesita cargar
+    // las respuestas completas de cada club.
+    const forms = rows.map(({ answers, approval, ...r }) => ({
         ...r,
-        approvalFilled: !!r.approval && Object.keys(r.approval || {}).length > 0,
+        ...approvalState(form.template, { answers, approval }),
         state: deriveState(r),
     }));
     const stats = forms.reduce((acc, r) => {
@@ -530,7 +560,7 @@ export const adminListForms = withAccess(async (req, res, { cfg, access }) => {
             title: f.template?.title,
             shortTitle: f.template?.shortTitle || f.template?.title,
             docx: !!f.docx,
-            hasApproval: (f.template?.sections || []).some(s => s.adminOnly),
+            hasApproval: !!districtSectionOf(f.template),
         })),
         forms, stats, access, states: FORM_STATES,
     });
@@ -581,34 +611,52 @@ export const adminGetForm = withAccess(async (req, res, { cfg }) => {
 export const saveApproval = withAccess(async (req, res, { cfg, access }) => {
     const form = resolveForm(cfg, req.params.formKey);
     if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
-    if (!(form.template?.sections || []).some(s => s.adminOnly)) {
-        return res.status(400).json({ error: 'Este formulario no tiene sección de aprobación.' });
-    }
+
+    const section = districtSectionOf(form.template);
+    if (!section) return res.status(400).json({ error: 'Este formulario no tiene sección de aprobación.' });
 
     const record = await readRecord(req.params.id, form.key);
     if (!record) return res.status(404).json({ error: 'Este club todavía no ha iniciado este formulario.' });
 
-    // Sólo lo que la plantilla declara como sección del Distrito. Cualquier
-    // otra clave del cuerpo se descarta.
-    const approval = onlyAdminSections(form.template, req.body?.approval);
     const reviewStatus = REVIEW_STATES.includes(req.body?.reviewStatus) ? req.body.reviewStatus : null;
     const reviewNote = clean(req.body?.reviewNote, 1000) || null;
     const actor = actorFrom(req, access);
 
+    // Dónde vive la sección depende de quién la puede escribir:
+    //   · `adminOnly`     → columna `approval`, fuera del alcance del club.
+    //   · `districtSpace` → con el resto de las respuestas, porque el club
+    //                       también la diligencia (v4.643). Se mezcla campo a
+    //                       campo para no borrar lo que ya hubiera escrito.
+    // En los dos casos se guarda SÓLO esa sección: el cuerpo no puede tocar
+    // ninguna otra respuesta del club.
+    const protectedSection = isProtectedSection(section);
+    const incoming = req.body?.approval?.[section.key];
+    const values = isPlainObject(incoming) ? incoming : {};
+    const allowed = new Set((section.fields || []).map(f => f.key));
+    const clamped = Object.fromEntries(Object.entries(values).filter(([k]) => allowed.has(k)));
+
+    const approval = protectedSection
+        ? { [section.key]: clamped }
+        : (record.approval || {});
+    const answers = protectedSection
+        ? (record.answers || {})
+        : { ...(record.answers || {}), [section.key]: { ...(record.answers?.[section.key] || {}), ...clamped } };
+
     const table = tableFor(form.key);
-    const { rows } = storageIsShared(form.key)
-        ? await db.query(`
-            UPDATE "${table}"
-            SET approval = $1::jsonb, "reviewStatus" = COALESCE($2, "reviewStatus"),
-                "reviewNote" = COALESCE($3, "reviewNote"), "reviewedAt" = NOW(), "reviewedBy" = $4, "updatedAt" = NOW()
-            WHERE "submissionId" = $5 AND "formKey" = $6 RETURNING *
-        `, [JSON.stringify(approval), reviewStatus, reviewNote, actor.name, req.params.id, form.key])
-        : await db.query(`
-            UPDATE "${table}"
-            SET approval = $1::jsonb, "reviewStatus" = COALESCE($2, "reviewStatus"),
-                "reviewNote" = COALESCE($3, "reviewNote"), "reviewedAt" = NOW(), "reviewedBy" = $4, "updatedAt" = NOW()
-            WHERE "submissionId" = $5 RETURNING *
-        `, [JSON.stringify(approval), reviewStatus, reviewNote, actor.name, req.params.id]);
+    const params = [
+        JSON.stringify(approval), reviewStatus, reviewNote, actor.name,
+        JSON.stringify(answers), completionOf(form.template, answers), req.params.id,
+    ];
+    if (storageIsShared(form.key)) params.push(form.key);
+
+    const { rows } = await db.query(`
+        UPDATE "${table}"
+        SET approval = $1::jsonb, "reviewStatus" = COALESCE($2, "reviewStatus"),
+            "reviewNote" = COALESCE($3, "reviewNote"), "reviewedAt" = NOW(), "reviewedBy" = $4,
+            answers = $5::jsonb, "completionPct" = $6, "updatedAt" = NOW()
+        WHERE "submissionId" = $7${storageIsShared(form.key) ? ` AND "formKey" = $8` : ''}
+        RETURNING *
+    `, params);
 
     await logEvent(req.params.id, {
         type: 'project_form_reviewed',

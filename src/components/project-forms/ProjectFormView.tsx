@@ -20,8 +20,8 @@ import {
 } from 'lucide-react';
 import { FormField, BLUE } from './FormFields';
 import {
-    FORM_STATE_META, adminSections, applicantSections, fieldError, fmtDay, fmtDateTime,
-    hasValue, sectionProgress,
+    FORM_STATE_META, applicantSections, fieldError, fmtDay, fmtDateTime,
+    hasValue, isDistrictSection, readOnlySections, sectionProgress,
     type Answers, type FormState, type FormTemplate,
 } from '../../lib/projectForms';
 
@@ -183,7 +183,7 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
     const pct = data.form?.completionPct ?? 0;
     const meta = FORM_STATE_META[data.state] || FORM_STATE_META.not_started;
     const sections = applicantSections(data.template);
-    const admin = adminSections(data.template);
+    const readOnly = readOnlySections(data.template);
     const submitted = data.form?.status === 'submitted';
 
     return (
@@ -274,29 +274,48 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
                         const open = openSection === section.key;
                         const prog = progress[section.key] || { done: 0, total: 0 };
                         const complete = prog.total > 0 && prog.done === prog.total;
+                        // El espacio institucional se diligencia igual que el
+                        // resto (v4.643), pero se distingue: no es una sección
+                        // más del club, es el recuadro del Distrito.
+                        const district = isDistrictSection(section);
                         return (
-                            <div key={section.key} className="overflow-hidden rounded-xl border border-slate-200">
+                            <div key={section.key} className={`overflow-hidden rounded-xl border ${
+                                district ? 'border-dashed border-slate-300' : 'border-slate-200'}`}>
                                 <button
                                     onClick={() => setOpenSection(open ? null : section.key)}
-                                    className="flex w-full items-center justify-between gap-3 bg-slate-50 px-5 py-4 text-left hover:bg-slate-100">
+                                    className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left ${
+                                        district ? 'bg-slate-100/70 hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
                                     <div className="flex items-center gap-3">
                                         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                                             complete ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                                            {complete ? <Check size={14} /> : index + 1}
+                                            {complete ? <Check size={14} /> : district ? <ShieldCheck size={14} /> : index + 1}
                                         </span>
                                         <div>
-                                            <p className="font-bold text-slate-800">{section.title}</p>
+                                            <p className="font-bold text-slate-800">
+                                                {section.title}
+                                                {district && (
+                                                    <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                                        Espacio institucional
+                                                    </span>
+                                                )}
+                                            </p>
                                             {section.description && <p className="text-[13px] text-slate-500">{section.description}</p>}
                                         </div>
                                     </div>
                                     <span className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                                        {prog.done}/{prog.total}
+                                        {district ? 'Opcional' : `${prog.done}/${prog.total}`}
                                         {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                     </span>
                                 </button>
 
                                 {open && (
                                     <div className="grid gap-5 border-t border-slate-100 p-5 sm:grid-cols-2">
+                                        {district && (
+                                            <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900 sm:col-span-2">
+                                                Diligencia lo que corresponda al proyecto y al club. El Distrito confirma
+                                                estos datos al resolver la solicitud, y no hace falta completarlos para enviarla.
+                                            </p>
+                                        )}
                                         {section.fields.map(field => (
                                             <FormField
                                                 key={field.key}
@@ -314,8 +333,10 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
                         );
                     })}
 
-                    {/* Espacio reservado al Distrito: siempre en solo lectura aquí */}
-                    {admin.map(section => (
+                    {/* Secciones que el club sólo puede leer (`adminOnly`). El
+                        espacio institucional del FDD ya no es una de ellas:
+                        desde v4.643 lo diligencia también el Gestor, arriba. */}
+                    {readOnly.map(section => (
                         <div key={section.key} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
                             <div className="flex items-start gap-3 px-5 py-4">
                                 <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500">

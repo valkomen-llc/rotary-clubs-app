@@ -15,8 +15,8 @@ import { AlertCircle, CheckCircle2, Loader2, Save, ShieldCheck, X, XCircle } fro
 import { toast } from 'sonner';
 import { FormField } from '../../project-forms/FormFields';
 import {
-    FORM_STATE_META, adminSections, applicantSections, computeValue, fmtDay, fmtDateTime,
-    hasValue, type Answers, type FormState, type FormTemplate,
+    FORM_STATE_META, computeValue, districtSectionOf, fmtDay, fmtDateTime,
+    hasValue, isDistrictSection, type Answers, type FormState, type FormTemplate,
 } from '../../../lib/projectForms';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -70,7 +70,15 @@ const ProjectFormApproval = ({ submissionId, formKey, canEdit, onClose, onSaved 
             })
             .then(body => {
                 setData(body);
-                setApproval(body.approval || {});
+                // El espacio institucional vive en `approval` cuando la
+                // plantilla lo declara `adminOnly`, y con el resto de las
+                // respuestas cuando también lo diligencia el club
+                // (`districtSpace`, el caso del FDD desde v4.643).
+                const section = districtSectionOf(body.template);
+                const current = section
+                    ? (section.adminOnly ? body.approval?.[section.key] : body.answers?.[section.key])
+                    : null;
+                setApproval(section && current ? { [section.key]: current } : {});
                 setDecision(body.form?.reviewStatus || null);
                 setNote(body.form?.reviewNote || '');
             })
@@ -156,7 +164,7 @@ const ProjectFormApproval = ({ submissionId, formKey, canEdit, onClose, onSaved 
                                 )}
                             </div>
 
-                            {applicantSections(data.template).map(section => (
+                            {(data.template?.sections || []).filter(s => !isDistrictSection(s)).map(section => (
                                 <div key={section.key} className="rounded-xl border border-slate-200">
                                     <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[12px] font-bold uppercase tracking-wide text-slate-600">
                                         {section.title}
@@ -180,14 +188,21 @@ const ProjectFormApproval = ({ submissionId, formKey, canEdit, onClose, onSaved 
                             ))}
                         </div>
 
-                        {/* Sección reservada al Distrito: lo único editable aquí */}
-                        {adminSections(data.template).map(section => (
+                        {/* Espacio institucional: lo único editable aquí. El club
+                            pudo haberlo diligenciado ya; esto es la confirmación
+                            del Distrito, y sobrescribe lo que el club escribió. */}
+                        {[districtSectionOf(data.template)].filter(Boolean).map(section => section && (
                             <div key={section.key} className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 p-5">
                                 <div className="mb-4 flex items-start gap-2.5">
                                     <ShieldCheck size={18} className="mt-0.5 shrink-0" style={{ color: BLUE }} />
                                     <div>
                                         <p className="font-bold text-slate-800">{section.title}</p>
                                         {section.description && <p className="text-[13px] text-slate-500">{section.description}</p>}
+                                        {!section.adminOnly && (
+                                            <p className="mt-1 text-[13px] text-amber-700">
+                                                El club también puede diligenciar este espacio. Lo que guardes aquí reemplaza lo que él haya escrito.
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="grid gap-5 sm:grid-cols-2">

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.642.0 | 2026-07-29 (Gestión de Proyectos: nuevo formulario "Solicitud de Aportes del FDD 2026-2027" + panel con una tarjeta por formulario)
+// UI V4.643.0 | 2026-07-29 (FDD: la Aprobación institucional pasa a ser editable por el Gestor de Proyectos)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.643.0',
+        title: 'La Aprobación institucional ahora la diligencia el club ✍️',
+        description: 'En la "Solicitud de Aportes del FDD 2026-2027", la sección "Aprobación institucional" —el espacio del Gobernador de Distrito y del presidente del Comité de LFRI— dejó de ser de solo lectura para el Gestor de Proyectos: ahora puede diligenciarla con la información que le corresponde al proyecto y al club (aporte aprobado, fecha de la decisión, las dos firmas y las observaciones). La sección conserva su identidad de espacio institucional —recuadro punteado, ícono de escudo y la etiqueta "Espacio institucional"— y es opcional: si el Distrito todavía no ha resuelto, el club puede enviar la solicitud igual, porque esos campos no restan avance ni bloquean el envío. Desde el panel administrativo (Postulaciones y Pagos → Formulación → botón "Aprobar") el Distrito revisa lo que escribió el club, lo confirma o lo corrige, y decide si la solicitud queda En revisión, Aprobada o Rechazada con observaciones; lo que guarde ahí reemplaza lo del club y queda registrado quién lo hizo y cuándo. Guardar la aprobación no puede tocar ninguna otra respuesta del formulario.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'gestion-de-proyectos', 'fdd', 'formularios', 'aprobacion', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.642.0',
         title: 'Solicitud de Aportes del FDD 2026-2027 📄',

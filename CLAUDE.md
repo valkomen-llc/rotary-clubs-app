@@ -87,12 +87,22 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `ProjectFairMasterForm` porque migrar respuestas ya guardadas de los clubes
   sería una operación destructiva sobre datos de producción. Tienen la misma
   forma; `storageOf(formKey)` decide cuál se usa. No unificarlas.
-- **Una sección con `adminOnly: true` no la escribe nunca el club.** Se guarda
-  en la columna `approval`, aparte de `answers`, y toda escritura que llega del
-  panel del club pasa por `stripProtected`. Es lo que protege las firmas del
-  Gobernador de Distrito y del presidente del Comité de LFRI. El único camino
-  para escribirla es `PUT /admin/postulaciones/:id/forms/:formKey/approval`,
-  con rol administrativo del sitio y permiso `changeStatus`.
+- **Dos formas de marcar el espacio institucional**, y la diferencia es quién
+  escribe, no cómo se ve:
+  - `districtSpace: true` — lo diligencian el club **y** el Distrito. Se guarda
+    con el resto de `answers`. Es lo que usa la Aprobación institucional del
+    FDD (decisión del cliente, v4.643): el Gestor la llena con lo que le
+    corresponde al proyecto y al club, y el Distrito la confirma. Sus campos
+    van **sin `required`** a propósito, para que no bloqueen el envío.
+  - `adminOnly: true` — no la escribe nunca el club. Se guarda en la columna
+    `approval`, aparte de `answers`, y toda escritura que llega del panel del
+    club pasa por `stripProtected`. Queda disponible para un formulario futuro
+    que sí necesite una sección cerrada.
+
+  En ambos casos el único camino administrativo es
+  `PUT /admin/postulaciones/:id/forms/:formKey/approval`, con rol
+  administrativo del sitio y permiso `changeStatus`; sólo escribe la sección
+  institucional y sólo los campos que la plantilla declara.
 - **El estado que ve el usuario se deriva, no se guarda** (`deriveState`): así
   no puede haber una fila "enviada" con 40% de avance.
 - **`prefill` y `prefillFrom`** son la precarga: el primero copia datos de la
