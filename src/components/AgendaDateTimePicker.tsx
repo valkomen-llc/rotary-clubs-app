@@ -130,10 +130,10 @@ const AgendaDateTimePicker: React.FC<Props> = ({ days, loading, typeName, durati
                                         aria-label={enabled ? `${fmtLongDate(key)}, ${count} horarios` : undefined}
                                         aria-pressed={isSel}
                                         className={[
-                                            'relative aspect-square rounded-xl text-sm font-bold flex flex-col items-center justify-center transition-all',
+                                            'relative aspect-square rounded-xl text-sm font-bold flex flex-col items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
                                             !inMonth ? 'text-gray-200' : '',
-                                            isSel ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 scale-[1.03]' : '',
-                                            !isSel && enabled ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:scale-[1.03] cursor-pointer' : '',
+                                            isSel ? 'bg-indigo-600 text-white shadow-sm' : '',
+                                            !isSel && enabled ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer' : '',
                                             !enabled && inMonth ? 'text-gray-300 cursor-default' : '',
                                             isToday && !isSel ? 'ring-1 ring-indigo-300' : '',
                                         ].join(' ')}>
@@ -161,9 +161,9 @@ const AgendaDateTimePicker: React.FC<Props> = ({ days, loading, typeName, durati
                                         return (
                                             <button key={s.startAt} onClick={() => onSelect(s)} aria-pressed={active}
                                                 className={[
-                                                    'py-2.5 rounded-xl text-sm font-bold border-2 transition-all',
-                                                    active ? 'border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
-                                                        : 'border-gray-100 text-gray-700 hover:border-indigo-300 hover:bg-indigo-50/50 hover:scale-[1.03]',
+                                                    'py-2.5 rounded-xl text-sm font-bold border-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1',
+                                                    active ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                                                        : 'border-gray-200 text-gray-700 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700',
                                                 ].join(' ')}>
                                                 {fmtTime(s.startAt, timezone)}
                                             </button>

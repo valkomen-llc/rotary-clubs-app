@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.636.0 | 2026-07-29 (Paso 3 rediseñado: calendario tipo Calendly con días disponibles resaltados y horarios en chips — 2 clics)
+// UI V4.637.0 | 2026-07-29 (Fix hover de los horarios del paso 3: se quita el escalado que recortaba el borde y hacía ver la selección incompleta)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.637.0',
+        title: 'Arreglado: el hover de los horarios se veía "incompleto" 🖱️✅',
+        description: 'Corregimos un detalle visual del nuevo selector de fecha y hora: al pasar el cursor por encima de un horario, el recuadro se agrandaba un poco (efecto zoom) y, como la lista de horarios tiene desplazamiento, el borde redondeado quedaba recortado y la selección se veía "incompleta". Quitamos ese efecto de agrandado en el hover (tanto en los horarios como en los días del calendario) y lo reemplazamos por un resaltado limpio de color, además de un anillo de foco accesible para navegación con teclado. Ahora el estado activo y el hover se ven completos y nítidos. Cambio solo visual.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'calendario', 'hover', 'ui', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.636.0',
         title: 'Nuevo selector de fecha y hora tipo calendario 🗓️✨',
