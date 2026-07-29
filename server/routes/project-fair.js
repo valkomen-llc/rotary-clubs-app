@@ -35,8 +35,21 @@ router.post('/portal/claim', express.json(), portal.claim);
 router.post('/portal/forgot', express.json(), portal.forgotPassword);
 router.post('/portal/reset', express.json(), portal.resetPassword);
 router.get('/portal/me', portal.portalAuth, portal.getPortalData);
+// Rutas heredadas: son el formulario 'master' de las genéricas de abajo.
 router.put('/portal/form', portal.portalAuth, express.json({ limit: '2mb' }), portal.saveForm);
 router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb' }), portal.submitForm);
+
+// ── Formularios del proyecto (v4.642) ────────────────────────────────
+// Un proyecto tiene varios formularios (Formulación, Solicitud de Aportes del
+// FDD 2026-2027, …). Estas cuatro rutas los atienden a todos: agregar uno
+// nuevo no agrega endpoints, sólo una entrada en
+// `server/lib/projectFormsRegistry.js`.
+import projectForms from '../controllers/projectFormsController.js';
+
+router.get('/portal/forms', portal.portalAuth, projectForms.getForms);
+router.get('/portal/forms/:formKey', portal.portalAuth, projectForms.getForm);
+router.put('/portal/forms/:formKey', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.saveForm);
+router.post('/portal/forms/:formKey/submit', portal.portalAuth, express.json({ limit: '2mb' }), projectForms.submitForm);
 
 // ── Gestión de Postulaciones y Pagos (v4.598) ────────────────────────
 // Estas rutas devuelven las postulaciones y los pagos de TODOS los clubes, así
@@ -71,6 +84,16 @@ router.get('/admin/postulaciones/:id/form', authMiddleware, requireSiteAdmin, fa
 router.get('/admin/postulaciones/:id/form.docx', authMiddleware, requireSiteAdmin, fair.downloadMasterFormDocx);
 router.post('/admin/postulaciones/:id/form/reopen', authMiddleware, requireSiteAdmin, express.json(), fair.reopenMasterForm);
 router.post('/admin/postulaciones/:id/form/lock', authMiddleware, requireSiteAdmin, express.json(), fair.lockMasterForm);
+
+// Formularios del proyecto, en genérico (v4.642). `/admin/forms?formKey=…`
+// lista cualquiera de ellos; la aprobación institucional (firmas del GD y del
+// presidente del Comité de LFRI) sólo se escribe por aquí, con rol
+// administrativo del sitio y permiso 'changeStatus' del módulo.
+router.get('/admin/forms', authMiddleware, requireSiteAdmin, projectForms.adminListForms);
+router.get('/admin/postulaciones/:id/forms/:formKey', authMiddleware, requireSiteAdmin, projectForms.adminGetForm);
+router.put('/admin/postulaciones/:id/forms/:formKey/approval', authMiddleware, requireSiteAdmin, express.json({ limit: '1mb' }), projectForms.saveApproval);
+router.post('/admin/postulaciones/:id/forms/:formKey/reopen', authMiddleware, requireSiteAdmin, express.json(), projectForms.reopenForm);
+router.post('/admin/postulaciones/:id/forms/:formKey/lock', authMiddleware, requireSiteAdmin, express.json(), projectForms.lockForm);
 
 router.get('/admin/tags', authMiddleware, requireSiteAdmin, fair.listTags);
 router.post('/admin/tags', authMiddleware, requireSiteAdmin, express.json(), fair.createTag);

@@ -66,6 +66,42 @@ Prompts largos con listas negras son contraproducentes — el modelo se obsesion
 - `OPENAI_API_KEY` — gpt-image-1 directo + GPT-4o para copy.
 - `HIGGSFIELD_API_KEY` — pendiente, se usará cuando implementemos ese engine.
 
+## Formularios del proyecto (Gestión de Proyectos) — v4.642
+
+Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en
+`server/lib/projectFormsRegistry.js`:
+
+| `formKey` | Plantilla | Tabla | Config editable |
+|---|---|---|---|
+| `master` | `projectFairMasterForm.js` — Formulación del Proyecto | `ProjectFairMasterForm` | `cfg.masterForm` |
+| `fdd_2026_2027` | `projectFairFddForm.js` — Solicitud de Aportes del FDD | `ProjectFairProjectForm` | `cfg.fddForm` |
+
+**Agregar un formulario nuevo** = escribir su plantilla + una entrada en el
+registro. No se tocan rutas, ni pantallas, ni el modelo de datos: el panel del
+club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
+`/portal/me → forms`, y `ProjectFormView` renderiza cualquier plantilla.
+
+**Reglas durables:**
+
+- **Las dos tablas conviven a propósito.** La Formulación se queda en
+  `ProjectFairMasterForm` porque migrar respuestas ya guardadas de los clubes
+  sería una operación destructiva sobre datos de producción. Tienen la misma
+  forma; `storageOf(formKey)` decide cuál se usa. No unificarlas.
+- **Una sección con `adminOnly: true` no la escribe nunca el club.** Se guarda
+  en la columna `approval`, aparte de `answers`, y toda escritura que llega del
+  panel del club pasa por `stripProtected`. Es lo que protege las firmas del
+  Gobernador de Distrito y del presidente del Comité de LFRI. El único camino
+  para escribirla es `PUT /admin/postulaciones/:id/forms/:formKey/approval`,
+  con rol administrativo del sitio y permiso `changeStatus`.
+- **El estado que ve el usuario se deriva, no se guarda** (`deriveState`): así
+  no puede haber una fila "enviada" con 40% de avance.
+- **`prefill` y `prefillFrom`** son la precarga: el primero copia datos de la
+  inscripción; el segundo, respuestas de otro formulario del mismo proyecto
+  (`'master.objetivos.generalObjective'`). Sólo actúan al crear el borrador.
+- El motor común (avance, validación, campos derivados) está en
+  `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
+  El servidor valida siempre, aunque el navegador ya lo haya hecho.
+
 ## Generador de Pendones
 
 Módulo: configurador en el admin (`src/components/admin/content-studio/BannerTemplateManager.tsx`, pestaña "Pendones" de Content Studio) + generador público (`src/pages/GeneradorPendones.tsx`, ruta `/generador-pendones`) + motor de render/PDF (`src/lib/bannerRender.ts`, preview `src/components/BannerPreview.tsx`) + backend (`server/controllers/bannerTemplateController.js`).

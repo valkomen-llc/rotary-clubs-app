@@ -24,6 +24,7 @@ import {
 } from 'recharts';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
+import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -135,6 +136,10 @@ const PostulacionesPagos: React.FC = () => {
     const [reports, setReports] = useState<any>(null);
     const [forms, setForms] = useState<any>(null);
     const [formFilter, setFormFilter] = useState('all');
+    // v4.642 — Un proyecto tiene varios formularios. Este es el que se está
+    // mirando en la pestaña; la lista de cuáles hay la manda el servidor.
+    const [formKey, setFormKey] = useState('master');
+    const [approving, setApproving] = useState<{ id: string; formKey: string } | null>(null);
 
     const [rows, setRows] = useState<Submission[]>([]);
     const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0, pages: 1 });
@@ -210,7 +215,7 @@ const PostulacionesPagos: React.FC = () => {
                 .catch(e => setLoadError(e?.message || 'No se pudieron cargar las alertas'));
         }
         if (tab === 'forms') {
-            getJson(`${API}/project-fair/admin/formularios`)
+            getJson(`${API}/project-fair/admin/forms?formKey=${formKey}&formStatus=${formFilter}`)
                 .then(d => { setForms(d); setLoadError(null); })
                 .catch(e => setLoadError(e?.message || 'No se pudo cargar la formulación'));
         }
@@ -219,7 +224,14 @@ const PostulacionesPagos: React.FC = () => {
                 .then(d => { setReports(d); setLoadError(null); })
                 .catch(e => setLoadError(e?.message || 'No se pudieron cargar los reportes'));
         }
-    }, [tab, loading, loadOverview, loadRows, queryString]);
+    }, [tab, loading, loadOverview, loadRows, queryString, formKey, formFilter]);
+
+    // Refresco de la pestaña de formularios tras una acción (cerrar edición,
+    // reabrir, guardar la aprobación institucional).
+    const reloadForms = () => {
+        getJson(`${API}/project-fair/admin/forms?formKey=${formKey}&formStatus=${formFilter}`)
+            .then(setForms).catch(() => {});
+    };
 
     const stateLabel = (key: string, list: StateDef[] = []) => list.find(s => s.key === key) || { key, label: key, color: 'slate' };
 
@@ -355,12 +367,15 @@ const PostulacionesPagos: React.FC = () => {
     // documento refleja cualquier campo que el administrador haya agregado.
     const downloadFormPdf = async (row: any) => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form`, { headers: authHeaders() });
+            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}`, { headers: authHeaders() });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo cargar el formulario');
             const { default: JsPDF } = await import('jspdf');
             const doc = new JsPDF({ unit: 'pt', format: 'a4' });
-            const answers = data.form?.answers || {};
+            // `computed` trae las respuestas con los campos derivados ya
+            // resueltos por el servidor, y `approval` la sección del Distrito:
+            // el PDF debe salir completo, con firmas incluidas.
+            const answers = { ...(data.computed || data.answers || {}), ...(data.approval || {}) };
             const s = data.submission;
 
             doc.setFillColor(23, 69, 143); doc.rect(0, 0, 595, 84, 'F');
@@ -404,20 +419,21 @@ const PostulacionesPagos: React.FC = () => {
                     y += 3;
                 });
             });
-            doc.save(`${row.publicRef}-formulacion.pdf`);
+            doc.save(`${row.publicRef}-${formKey}.pdf`);
         } catch (e: any) { toast.error(e?.message || 'No se pudo generar el PDF'); }
     };
 
+    // v4.642 — Vale para cualquier formulario del proyecto, no sólo la
+    // Formulación: la ruta lleva la `formKey` que se esté mirando.
     const toggleFormLock = async (row: any, action: 'lock' | 'reopen') => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form/${action}`, {
+            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}/${action}`, {
                 method: 'POST', headers: jsonHeaders(), body: JSON.stringify({}),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo completar la acción');
             toast.success(action === 'lock' ? 'Edición cerrada' : 'Edición reabierta para el club');
-            fetch(`${API}/project-fair/admin/formularios?formStatus=${formFilter}`, { headers: authHeaders() })
-                .then(r => r.json()).then(setForms).catch(() => {});
+            reloadForms();
         } catch (e: any) { toast.error(e?.message); }
     };
 
@@ -779,8 +795,27 @@ const PostulacionesPagos: React.FC = () => {
                     </div>
                 )}
                 {/* ── Formulación de proyectos ──────────────────────── */}
-                {tab === 'forms' && (
+                {tab === 'forms' && (() => {
+                    const selectedForm = (forms?.available || []).find((f: any) => f.key === formKey);
+                    return (
                     <div className="space-y-4">
+                        {/* Selector de formulario (v4.642). Aparece solo si hay
+                            más de uno; las opciones las manda el servidor, así
+                            que registrar uno nuevo lo agrega aquí sin tocar
+                            esta pantalla. */}
+                        {(forms?.available?.length || 0) > 1 && (
+                            <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+                                {forms.available.map((f: any) => (
+                                    <button key={f.key} onClick={() => setFormKey(f.key)}
+                                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                                            formKey === f.key ? 'text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                                        style={formKey === f.key ? { background: BLUE } : undefined}>
+                                        {f.shortTitle || f.title}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="grid gap-3 sm:grid-cols-4">
                             {[
                                 ['submitted', 'Enviados al comité', 'emerald'],
@@ -796,11 +831,7 @@ const PostulacionesPagos: React.FC = () => {
                             ))}
                             <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white p-4">
                                 <select value={formFilter}
-                                    onChange={e => {
-                                        setFormFilter(e.target.value);
-                                        fetch(`${API}/project-fair/admin/formularios?formStatus=${e.target.value}`, { headers: authHeaders() })
-                                            .then(r => r.json()).then(setForms).catch(() => {});
-                                    }}
+                                    onChange={e => setFormFilter(e.target.value)}
                                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                                     <option value="all">Todas las postulaciones</option>
                                     <option value="submitted">Solo enviadas</option>
@@ -850,6 +881,9 @@ const PostulacionesPagos: React.FC = () => {
                                                     : f.formStatus === 'submitted' ? <Badge color="emerald">Enviado</Badge>
                                                     : <Badge color="amber">En elaboración</Badge>}
                                                 {f.lockedAt && <span className="ml-1"><Badge color="red">Cerrado</Badge></span>}
+                                                {f.reviewStatus === 'approved' && <span className="ml-1"><Badge color="emerald">Aprobado</Badge></span>}
+                                                {f.reviewStatus === 'rejected' && <span className="ml-1"><Badge color="red">Rechazado</Badge></span>}
+                                                {f.reviewStatus === 'in_review' && <span className="ml-1"><Badge color="indigo">En revisión</Badge></span>}
                                             </td>
                                             <td className="px-4 py-3 text-xs text-slate-500">
                                                 {f.lastEditedAt ? fmtDateTime(f.lastEditedAt) : '—'}
@@ -857,9 +891,20 @@ const PostulacionesPagos: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex justify-end gap-1.5">
-                                                    <button onClick={() => downloadDocx(f)} disabled={!f.formStatus}
+                                                    {/* La aprobación institucional (firmas del GD y del
+                                                        presidente del Comité de LFRI) sólo se escribe
+                                                        desde aquí; el club la ve en solo lectura. */}
+                                                    {selectedForm?.hasApproval && f.formStatus && (
+                                                        <button onClick={() => setApproving({ id: f.id, formKey })}
+                                                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 ${
+                                                                f.approvalFilled ? 'border-emerald-300 text-emerald-700' : 'border-slate-300 text-slate-700'}`}
+                                                            title="Aprobación institucional (GD y Comité LFRI)">
+                                                            <ShieldCheck size={13} /> {f.approvalFilled ? 'Aprobación' : 'Aprobar'}
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => downloadDocx(f)} disabled={!f.formStatus || !selectedForm?.docx}
                                                         className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                                                        title="Descargar en Word">
+                                                        title={selectedForm?.docx ? 'Descargar en Word' : 'Este formulario no tiene plantilla en Word'}>
                                                         <FileText size={13} /> Word
                                                     </button>
                                                     <button onClick={() => downloadFormPdf(f)} disabled={!f.formStatus}
@@ -882,8 +927,19 @@ const PostulacionesPagos: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {approving && (
+                            <ProjectFormApproval
+                                submissionId={approving.id}
+                                formKey={approving.formKey}
+                                canEdit={!!access.changeStatus}
+                                onClose={() => setApproving(null)}
+                                onSaved={reloadForms}
+                            />
+                        )}
                     </div>
-                )}
+                    );
+                })()}
 
                 {/* ── Configuración de la convocatoria ──────────────────── */}
                 {tab === 'config' && (

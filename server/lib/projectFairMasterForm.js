@@ -14,15 +14,19 @@
 // Word sean el mismo documento.
 //
 // Tipos de campo soportados:
-//   text · textarea · number · currency · date · select · multiselect
+//   text · textarea · number · currency · percent · date · select · multiselect
 //   checkbox · url · email · phone · repeater (filas que agrega el club)
-//   matrix (tabla de filas fijas × columnas) · file
+//   matrix (tabla de filas fijas × columnas) · file · computed (derivado)
+//
+// v4.642 — El motor que recorre la plantilla (avance, validación, campos
+// derivados) vive ahora en `projectFormEngine.js`, compartido con los demás
+// formularios del proyecto. Aquí queda sólo la plantilla. Se reexporta para
+// no romper a quien ya importaba estas funciones desde este archivo.
 // ════════════════════════════════════════════════════════════════════
-
-export const FIELD_TYPES = [
-    'text', 'textarea', 'number', 'currency', 'date', 'select',
-    'multiselect', 'checkbox', 'url', 'email', 'phone', 'repeater', 'matrix', 'file',
-];
+export {
+    FIELD_TYPES, flattenFields, applicantFields, completionOf, missingRequired,
+    hasValue, computeValue, withComputed, validateAnswers, stripProtected,
+} from './projectFormEngine.js';
 
 // Aproximación de caracteres por línea del formulario impreso, para traducir
 // los "(N líneas máximo)" del documento original a un tope de caracteres.
@@ -160,49 +164,5 @@ export const DEFAULT_MASTER_FORM = {
     ],
 };
 
-/** Todos los campos de la plantilla, aplanados, para validar y calcular avance. */
-export const flattenFields = (template) =>
-    (template?.sections || []).flatMap(section =>
-        (section.fields || []).map(field => ({ ...field, sectionKey: section.key, sectionTitle: section.title }))
-    );
-
-/**
- * Porcentaje de avance: proporción de campos obligatorios con contenido.
- * Si la plantilla no tiene campos obligatorios, se mide sobre todos.
- */
-export const completionOf = (template, answers = {}) => {
-    const fields = flattenFields(template);
-    const required = fields.filter(f => f.required);
-    const target = required.length ? required : fields;
-    if (!target.length) return 0;
-
-    const filled = target.filter(f => hasValue(answers?.[f.sectionKey]?.[f.key], f.type)).length;
-    return Math.round((filled / target.length) * 100);
-};
-
-/** Campos obligatorios sin responder (para avisar antes de enviar). */
-export const missingRequired = (template, answers = {}) =>
-    flattenFields(template)
-        .filter(f => f.required && !hasValue(answers?.[f.sectionKey]?.[f.key], f.type))
-        .map(f => ({ section: f.sectionTitle, sectionKey: f.sectionKey, key: f.key, label: f.label }));
-
-const anyCellFilled = (obj) =>
-    !!obj && typeof obj === 'object' && Object.values(obj).some(row =>
-        row && typeof row === 'object'
-            ? Object.values(row).some(v => String(v ?? '').trim() !== '')
-            : String(row ?? '').trim() !== ''
-    );
-
-export const hasValue = (value, type) => {
-    if (value === null || value === undefined) return false;
-    if (type === 'repeater') {
-        return Array.isArray(value) && value.some(row =>
-            row && Object.values(row).some(v => String(v ?? '').trim() !== '')
-        );
-    }
-    if (type === 'matrix') return anyCellFilled(value);
-    if (type === 'multiselect') return Array.isArray(value) && value.length > 0;
-    if (type === 'checkbox') return value === true;
-    if (type === 'number' || type === 'currency') return String(value).trim() !== '' && !Number.isNaN(Number(value));
-    return String(value).trim() !== '';
-};
+// El motor (avance, validación, campos derivados) se reexporta arriba desde
+// `projectFormEngine.js`: esta plantilla ya no lo implementa.

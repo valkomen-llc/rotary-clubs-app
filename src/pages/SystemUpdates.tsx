@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.641.0 | 2026-07-29 (Agenda pública: header en blanco + stepper con contraste (círculos/línea visibles sobre la textura))
+// UI V4.642.0 | 2026-07-29 (Gestión de Proyectos: nuevo formulario "Solicitud de Aportes del FDD 2026-2027" + panel con una tarjeta por formulario)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.642.0',
+        title: 'Solicitud de Aportes del FDD 2026-2027 📄',
+        description: 'Gestión de Proyectos deja de ser un solo formulario. Al entrar a "Mi proyecto", el Gestor de Proyectos encuentra ahora una tarjeta por cada formulario que debe diligenciar —"Formulación del Proyecto" y la nueva "Solicitud de Aportes del FDD 2026-2027"— cada una con su estado (No iniciado, En progreso, Completado, Enviado, En revisión, Aprobado o Rechazado), su porcentaje de avance y la acción que corresponde. El nuevo formulario reproduce el formato oficial del Distrito (Subvenciones Globales) organizado en 14 secciones desplegables en vez de una tabla larga: información general, club, presidente 2026-2027, presidente del Comité de LFRI, objetivo y beneficiarios, proyecto, evaluación de necesidades, Subvención Global, contactos, presupuesto, aportes esperados, solicitud del FDD, declaraciones y firmas. Todo lo que la plataforma ya sabe se precarga solo (club, distrito, proyecto, área de interés, contacto y presupuesto), e incluso el objetivo y los beneficiarios se toman de la Formulación para no escribirlos dos veces. El avance se guarda solo cada pocos segundos, se puede volver cuantas veces se necesite y el envío avisa qué falta y qué está mal escrito (correos, teléfonos, fechas y montos). Dos totales se calculan solos: el total de aportes esperados y el 25% mínimo del aporte al FAP. El espacio de firmas del Gobernador de Distrito y del presidente del Comité de LFRI aparece en el panel del club solo como lectura —para que sepa qué le aprobaron— y únicamente se diligencia desde el panel administrativo, en Postulaciones y Pagos → Formulación, donde además se elige entre los dos formularios, se descarga el PDF y se puede aprobar o rechazar la solicitud con observaciones para el club.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'gestion-de-proyectos', 'fdd', 'formularios', 'distrito-4271', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.641.0',
         title: 'Agenda pública: encabezado blanco y pasos más visibles 👁️',
