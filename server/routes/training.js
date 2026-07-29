@@ -41,6 +41,15 @@ router.post('/admin/responsibles', superOnly, ctrl.createResponsible);
 router.put('/admin/responsibles/:id', superOnly, ctrl.updateResponsible);
 router.delete('/admin/responsibles/:id', superOnly, ctrl.deleteResponsible);
 
+// Catálogo: categorías + reordenamiento + precarga sugerida.
+router.get('/admin/categories', superOnly, ctrl.listCategories);
+router.post('/admin/categories', superOnly, ctrl.createCategory);
+router.put('/admin/categories/:id', superOnly, ctrl.updateCategory);
+router.delete('/admin/categories/:id', superOnly, ctrl.deleteCategory);
+router.post('/admin/categories/reorder', superOnly, ctrl.reorderCategories);
+router.post('/admin/types/reorder', superOnly, ctrl.reorderTypes);
+router.post('/admin/catalog/seed', superOnly, ctrl.seedCatalog);
+
 router.post('/admin/types', superOnly, ctrl.createType);
 router.put('/admin/types/:id', superOnly, ctrl.updateType);
 router.delete('/admin/types/:id', superOnly, ctrl.deleteType);

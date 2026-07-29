@@ -202,6 +202,141 @@ export async function deleteResponsible(req, res) {
   }
 }
 
+// ── Categorías del catálogo ──
+export async function listCategories(req, res) {
+  try {
+    const where = isSuper(req) ? {} : { active: true };
+    const categories = await prisma.trainingCategory.findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ categories });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+export async function createCategory(req, res) {
+  try {
+    const { name, description, emoji, color, sortOrder } = req.body;
+    if (!name) return res.status(400).json({ error: 'Nombre requerido' });
+    const count = await prisma.trainingCategory.count();
+    const category = await prisma.trainingCategory.create({
+      data: {
+        name,
+        description: description || null,
+        emoji: emoji || null,
+        color: color || '#4f46e5',
+        sortOrder: sortOrder != null ? Number(sortOrder) : count,
+      },
+    });
+    res.json({ category });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+export async function updateCategory(req, res) {
+  try {
+    const data = {};
+    for (const k of ['name', 'description', 'emoji', 'color', 'active']) if (k in req.body) data[k] = req.body[k];
+    if ('sortOrder' in req.body) data.sortOrder = Number(req.body.sortOrder) || 0;
+    const category = await prisma.trainingCategory.update({ where: { id: req.params.id }, data });
+    res.json({ category });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// Eliminar categoría: los servicios NO se borran (se dejan sin categoría) para
+// no afectar el historial de citas.
+export async function deleteCategory(req, res) {
+  try {
+    await prisma.trainingAppointmentType.updateMany({ where: { categoryId: req.params.id }, data: { categoryId: null } });
+    await prisma.trainingCategory.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// Reordenar categorías: recibe [{id, sortOrder}].
+export async function reorderCategories(req, res) {
+  try {
+    const items = Array.isArray(req.body?.order) ? req.body.order : [];
+    await prisma.$transaction(
+      items.map((it, i) => prisma.trainingCategory.update({ where: { id: it.id }, data: { sortOrder: it.sortOrder ?? i } }))
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// Reordenar / mover servicios: recibe [{id, categoryId, sortOrder}].
+export async function reorderTypes(req, res) {
+  try {
+    const items = Array.isArray(req.body?.order) ? req.body.order : [];
+    await prisma.$transaction(
+      items.map((it, i) => prisma.trainingAppointmentType.update({
+        where: { id: it.id },
+        data: { sortOrder: it.sortOrder ?? i, ...(it.categoryId !== undefined ? { categoryId: it.categoryId || null } : {}) },
+      }))
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// Catálogo sugerido (solo como PUNTO DE PARTIDA editable; se insertan como
+// filas en BD y el superadmin puede cambiarlas/eliminarlas libremente).
+const SUGGESTED_CATALOG = [
+  { name: 'Onboarding e Implementación', emoji: '🚀', color: '#6366f1', description: 'Puesta en marcha del ecosistema y configuración inicial del sitio.', services: ['Bienvenida a Club Platform', 'Configuración Inicial del Sitio', 'Capacitación General del Ecosistema'] },
+  { name: 'Sitio Web', emoji: '🌐', color: '#0ea5e9', description: 'Administración del sitio institucional y gestión de contenidos.', services: ['Administración del Sitio Web', 'Gestión de Noticias y Blog', 'SEO y Posicionamiento Digital'] },
+  { name: 'Inteligencia Artificial', emoji: '🤖', color: '#8b5cf6', description: 'Configuración y uso de las herramientas de IA integradas.', services: ['Creación de Contenido con IA', 'Configuración del Cerebro Inteligente', 'Agentes Virtuales', 'Automatizaciones'] },
+  { name: 'Marketing y Comunicaciones', emoji: '📱', color: '#ec4899', description: 'Imagen pública y comunicaciones digitales.', services: ['Redes Sociales', 'CRM', 'Email Marketing', 'WhatsApp Marketing', 'Imagen Pública', 'Content Studio'] },
+  { name: 'Fundraising y Crowdfunding', emoji: '❤️', color: '#ef4444', description: 'Recaudación de fondos y campañas solidarias.', services: ['Crowdfunding', 'Fundraising', 'Donaciones', 'Stripe', 'Bóveda de Fondos'] },
+  { name: 'Comercio Electrónico', emoji: '🛒', color: '#f59e0b', description: 'Venta de productos, souvenirs, inscripciones y servicios.', services: ['Tienda Virtual', 'Catálogo de Productos', 'Inventario', 'Pagos', 'Órdenes'] },
+  { name: 'Eventos', emoji: '📅', color: '#10b981', description: 'Gestión de eventos, conferencias, seminarios y ferias.', services: ['Eventos', 'Inscripciones', 'Tickets', 'Check-in', 'Agenda'] },
+  { name: 'Gestión Institucional', emoji: '👥', color: '#3b82f6', description: 'Administración interna del club.', services: ['Directorio de Socios', 'Junta Directiva', 'Comités', 'Gestión Documental', 'Biblioteca'] },
+  { name: 'Analítica', emoji: '📊', color: '#14b8a6', description: 'Estadísticas y comportamiento del ecosistema.', services: ['Dashboard', 'Google Analytics', 'Reportes', 'SEO', 'Conversiones'] },
+  { name: 'Programa de Intercambio', emoji: '🎓', color: '#a855f7', description: 'Programas de intercambio de jóvenes.', services: ['Gestión de Estudiantes', 'Familias Anfitrionas', 'YEO', 'Documentación', 'CRM del Programa'] },
+  { name: 'Mesa de Ayuda', emoji: '🛠', color: '#64748b', description: 'Soporte técnico y acompañamiento especializado.', services: ['Help Desk', 'Incidentes', 'Configuración', 'Integraciones', 'Corrección de errores', 'Consultoría Técnica'] },
+];
+
+// Precarga el catálogo sugerido sin duplicar (idempotente por nombre).
+export async function seedCatalog(req, res) {
+  try {
+    const existingCats = await prisma.trainingCategory.findMany();
+    const byName = new Map(existingCats.map((c) => [c.name.toLowerCase(), c]));
+    let createdCats = 0, createdTypes = 0;
+
+    for (let i = 0; i < SUGGESTED_CATALOG.length; i++) {
+      const c = SUGGESTED_CATALOG[i];
+      let cat = byName.get(c.name.toLowerCase());
+      if (!cat) {
+        cat = await prisma.trainingCategory.create({
+          data: { name: c.name, emoji: c.emoji, color: c.color, description: c.description, sortOrder: existingCats.length + i },
+        });
+        createdCats++;
+      }
+      const existingTypes = await prisma.trainingAppointmentType.findMany({ where: { categoryId: cat.id }, select: { name: true } });
+      const typeNames = new Set(existingTypes.map((t) => t.name.toLowerCase()));
+      for (let j = 0; j < c.services.length; j++) {
+        if (typeNames.has(c.services[j].toLowerCase())) continue;
+        await prisma.trainingAppointmentType.create({
+          data: { name: c.services[j], categoryId: cat.id, color: c.color, sortOrder: j, durationMin: 45, modality: 'videollamada' },
+        });
+        createdTypes++;
+      }
+    }
+    res.json({ ok: true, createdCategories: createdCats, createdServices: createdTypes });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
 // ── Tipos de cita ──
 export async function listTypes(req, res) {
   try {
@@ -209,7 +344,7 @@ export async function listTypes(req, res) {
     const where = isSuper(req) ? {} : { active: true };
     const types = await prisma.trainingAppointmentType.findMany({
       where,
-      include: { responsible: true },
+      include: { responsible: true, category: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
     res.json({ types });
@@ -226,6 +361,7 @@ export async function createType(req, res) {
       data: {
         name: b.name,
         description: b.description || null,
+        categoryId: b.categoryId || null,
         durationMin: Number(b.durationMin) || 45,
         modality: b.modality || 'videollamada',
         prerequisites: b.prerequisites || null,
@@ -249,6 +385,7 @@ export async function updateType(req, res) {
     for (const k of ['name', 'description', 'modality', 'prerequisites', 'currency', 'color', 'icon', 'responsibleId', 'active']) {
       if (k in req.body) data[k] = req.body[k];
     }
+    if ('categoryId' in req.body) data.categoryId = req.body.categoryId || null;
     if ('durationMin' in req.body) data.durationMin = Number(req.body.durationMin) || 45;
     if ('sortOrder' in req.body) data.sortOrder = Number(req.body.sortOrder) || 0;
     if ('price' in req.body) data.price = req.body.price != null && req.body.price !== '' ? Number(req.body.price) : null;

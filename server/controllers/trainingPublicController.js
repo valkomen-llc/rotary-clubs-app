@@ -93,12 +93,18 @@ export async function searchSites(req, res) {
 export async function publicConfigAndTypes(req, res) {
   try {
     const cfg = await getTrainingConfig();
-    const types = await prisma.trainingAppointmentType.findMany({
-      where: { active: true },
-      include: { responsible: { select: { name: true } } },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    });
-    res.json({ config: publicConfig(cfg), types });
+    const [types, categories] = await Promise.all([
+      prisma.trainingAppointmentType.findMany({
+        where: { active: true },
+        include: { responsible: { select: { name: true } }, category: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      prisma.trainingCategory.findMany({
+        where: { active: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+    ]);
+    res.json({ config: publicConfig(cfg), types, categories });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
