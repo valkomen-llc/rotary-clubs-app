@@ -1,97 +1,57 @@
 // ════════════════════════════════════════════════════════════════════
-// Registro de asistentes a un evento — v4.606.0
+// Inscripciones a un evento — flujo público — v4.648.0
 //
-// Permite que el público se inscriba directamente desde la ficha de un
-// evento y pague su entrada con Stripe.
+// El público elige su categoría, llena el formulario que esa categoría define,
+// agrega acompañantes si aplica y paga con Stripe. Todo cuelga de un `eventId`:
+// la XII Feria de Valledupar no comparte inscripciones, precios ni formularios
+// con las ediciones siguientes.
 //
-// Configuración: vive en `metadata.registration` del propio evento, así que
-// es aditiva y no cambia el esquema. La edita el administrador en la pestaña
-// "Registro" del evento:
+// Reglas del módulo:
 //
-//   { enabled, currency, closesAt, tickets: [{ key, label, description,
-//     amount, capacity }], requireClub, adminEmails, sendReceipt,
-//     successMessage }
+// - **El precio no viene del navegador, nunca.** Se calcula en el servidor a
+//   partir de la categoría y se CONGELA en la inscripción (`pricing`). El
+//   checkout lee esa foto guardada, no la configuración viva: así el
+//   administrador puede cambiar el precio o la moneda de una categoría sin
+//   afectar a quien ya se inscribió.
+// - **La confirmación la da el webhook, no el navegador.** El retorno de Stripe
+//   sólo sirve para mostrar el estado; quien pasa la inscripción a "Pago
+//   confirmado" es `/api/payments/webhook`.
+// - **Moneda doble.** Si la categoría publica en pesos y la pasarela liquida en
+//   dólares, se guardan el valor original, el convertido y la tasa usada.
+// - **Se reutiliza la cuenta y el webhook de Stripe que ya existen.** No hay
+//   integración nueva: la Checkout Session viaja con
+//   `metadata.type = 'event_registration'`.
 //
-// Persistencia: la tabla "EventRegistration" se crea de forma perezosa con
-// SQL crudo (CREATE TABLE IF NOT EXISTS), igual que "ProjectFairSubmission" y
-// "BannerTemplate". Queda FUERA de Prisma a propósito: el `prisma db push`
-// del build no la toca y los datos del cliente sobreviven a los despliegues.
-// NINGUNA operación de este archivo es destructiva.
-//
-// Pagos: NO se crea una integración nueva de Stripe. Se reutiliza la cuenta y
-// el webhook existentes (/api/payments/webhook) creando una Checkout Session
-// con metadata.type = 'event_registration'.
+// Persistencia: tablas creadas en runtime (ver `ensureEventRegistrationSchema`),
+// fuera de Prisma. Ninguna operación de este archivo es destructiva.
 // ════════════════════════════════════════════════════════════════════
 import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
+import { ensureEventRegistrationSchema } from '../lib/ensureEventRegistrationSchema.js';
+import {
+    STATUS, STATUSES, SETTLED_STATUSES, COMMITTED_STATUSES,
+    toStripeAmount, ZERO_DECIMAL, formatMoney, buildFormSchema, validateAnswers, validateCompanion,
+    categoryWindow, resolveCharge, deriveSystemTags, SYSTEM_TAG_KEYS,
+    COMPANION_FIELDS, randomCodeSuffix,
+} from '../lib/eventRegistrationSpec.js';
+import store, {
+    clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
+    categoryUsage, findRegistration, listCompanions, replaceCompanions,
+    toPublicRegistration, recordHistory, recordMessage, recordPayment,
+    assignRegistrationCode,
+} from '../lib/eventRegistrationStore.js';
 
-console.log('[eventRegistrationController] v4.606.0 cargado — registro de asistentes a eventos con pago por Stripe. Formulario en /eventos/:evento/registro');
+console.log('[eventRegistrationController] v4.648.0 cargado — inscripciones por categoría (Rotario Internacional / Rotario Nacional / CADRES), acompañantes, multimoneda y pago por Stripe. Asistente público en /eventos/:evento/registro');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 const PLATFORM_SENDER = '"Registro de eventos" <noreply@clubplatform.org>';
 
-// Monedas que Stripe cobra sin decimales: su importe va tal cual, no en
-// centavos. El resto se multiplica por 100.
-const ZERO_DECIMAL = new Set(['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf']);
-const toStripeAmount = (amount, currency) =>
-    ZERO_DECIMAL.has(String(currency || '').toLowerCase())
-        ? Math.round(Number(amount) || 0)
-        : Math.round((Number(amount) || 0) * 100);
+export { STATUS };
 
-/** Estados posibles de una inscripción. */
-export const STATUS = {
-    PENDING: 'pending_payment',
-    PAID: 'paid',
-    FREE: 'confirmed',        // entradas sin costo: no pasan por Stripe
-    FAILED: 'payment_failed',
-    EXPIRED: 'expired',
-    REFUNDED: 'refunded',
-};
-
-// ── Tabla ────────────────────────────────────────────────────────────
-let _tableReady = false;
-const ensureTable = async () => {
-    if (_tableReady) return;
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS "EventRegistration" (
-            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            "publicRef" VARCHAR(20),
-            "eventId" TEXT NOT NULL,
-            "clubId" TEXT,
-            "firstName" VARCHAR(120),
-            "lastName" VARCHAR(120),
-            email VARCHAR(200) NOT NULL,
-            phone VARCHAR(60),
-            country VARCHAR(120),
-            "clubName" VARCHAR(200),
-            "ticketKey" VARCHAR(80),
-            "ticketLabel" VARCHAR(200),
-            quantity INTEGER NOT NULL DEFAULT 1,
-            "unitAmount" NUMERIC(14,2) NOT NULL DEFAULT 0,
-            "totalAmount" NUMERIC(14,2) NOT NULL DEFAULT 0,
-            currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-            status VARCHAR(30) NOT NULL DEFAULT 'pending_payment',
-            notes TEXT,
-            "stripeSessionId" TEXT,
-            "stripePaymentIntentId" TEXT,
-            "paidAt" TIMESTAMPTZ,
-            metadata JSONB DEFAULT '{}',
-            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
-            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
-        );
-    `);
-    await db.query(`CREATE INDEX IF NOT EXISTS "EventRegistration_event_idx" ON "EventRegistration" ("eventId");`).catch(() => {});
-    await db.query(`CREATE INDEX IF NOT EXISTS "EventRegistration_status_idx" ON "EventRegistration" (status);`).catch(() => {});
-    await db.query(`CREATE INDEX IF NOT EXISTS "EventRegistration_session_idx" ON "EventRegistration" ("stripeSessionId");`).catch(() => {});
-    await db.query(`CREATE INDEX IF NOT EXISTS "EventRegistration_email_idx" ON "EventRegistration" (email);`).catch(() => {});
-    _tableReady = true;
-};
-
-// ── Utilidades ───────────────────────────────────────────────────────
-const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
-const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+/** Estados desde los que se puede retomar una inscripción sin duplicarla. */
+const RESUMABLE = [STATUS.DRAFT, STATUS.STARTED, STATUS.PENDING, STATUS.FAILED, STATUS.EXPIRED];
 
 const resolveOrigin = (req, returnUrl) => {
     if (returnUrl && /^https?:\/\//.test(returnUrl)) return returnUrl.replace(/\/$/, '');
@@ -100,107 +60,67 @@ const resolveOrigin = (req, returnUrl) => {
     return DEFAULT_FRONTEND_URL;
 };
 
-/** Referencia corta y legible que el asistente puede citar por correo. */
-const buildPublicRef = () => {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let out = '';
-    for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return `EV-${out}`;
-};
+/** Referencia corta que el asistente puede citar antes incluso de pagar. */
+const buildPublicRef = () => `EV-${randomCodeSuffix(6)}`;
 
-/** Busca el evento por id o por slug y devuelve también su configuración. */
-const loadEvent = async (eventRef, clubId) => {
-    const params = clubId ? [eventRef, clubId] : [eventRef];
-    const where = clubId ? '(id = $1 OR slug = $1) AND "clubId" = $2' : '(id = $1 OR slug = $1)';
-    const { rows } = await db.query(
-        `SELECT id, slug, title, "startDate", location, "clubId", metadata
-         FROM "CalendarEvent" WHERE ${where} LIMIT 1`,
-        params
-    );
-    return rows[0] || null;
-};
+// ── Disponibilidad ───────────────────────────────────────────────────
 
-/** Configuración de registro del evento, con los valores por defecto. */
-export const readRegistrationConfig = (event) => {
-    const cfg = event?.metadata?.registration || {};
-    const tickets = (Array.isArray(cfg.tickets) ? cfg.tickets : [])
-        .map((t, i) => ({
-            key: clean(t?.key, 80) || `ticket-${i + 1}`,
-            label: clean(t?.label, 200) || `Entrada ${i + 1}`,
-            description: clean(t?.description, 400),
-            amount: Math.max(0, Number(t?.amount) || 0),
-            capacity: Number(t?.capacity) > 0 ? Math.floor(Number(t.capacity)) : null,
-        }))
-        .filter(t => t.label);
+/**
+ * Estado de una categoría de cara al público: si está abierta, cuánto cupo
+ * queda y cuántos asientos ocupa cada inscripción (titular + acompañantes).
+ */
+const decorateCategory = async (eventId, category, edition) => {
+    const window = categoryWindow(category);
+    const usage = category.capacity ? await categoryUsage(eventId, category.key) : { seats: 0, registrations: 0 };
+    const remaining = category.capacity ? Math.max(0, category.capacity - usage.seats) : null;
+    const charge = resolveCharge({ category, companionsCount: 0, fx: edition?.fx });
+
     return {
-        enabled: cfg.enabled === true,
-        currency: (clean(cfg.currency, 10) || 'USD').toUpperCase(),
-        closesAt: clean(cfg.closesAt, 30),
-        requireClub: cfg.requireClub !== false,
-        sendReceipt: cfg.sendReceipt !== false,
-        adminEmails: Array.isArray(cfg.adminEmails) ? cfg.adminEmails.filter(isEmail) : [],
-        successMessage: clean(cfg.successMessage, 600),
-        maxPerRegistration: Number(cfg.maxPerRegistration) > 0 ? Math.floor(Number(cfg.maxPerRegistration)) : 10,
-        tickets,
+        key: category.key,
+        name: category.name,
+        audience: category.audience,
+        description: category.description,
+        currency: category.currency,
+        price: category.price,
+        benefits: category.benefits,
+        requireClub: category.requireClub,
+        companions: category.companions,
+        opensAt: category.opensAt,
+        closesAt: category.closesAt,
+        capacity: category.capacity,
+        remaining,
+        soldOut: remaining !== null && remaining <= 0,
+        open: window.open && !(remaining !== null && remaining <= 0),
+        closedReason: window.reason,
+        // Lo que realmente cobrará la pasarela, para poder avisarlo antes de
+        // que la persona llene el formulario.
+        charge: {
+            currency: charge.chargeCurrency,
+            amount: charge.chargeAmount,
+            converted: charge.converted,
+            fxRate: charge.fxRate,
+            fxMissing: charge.fxMissing === true,
+        },
+        form: buildFormSchema(category),
     };
 };
 
-/** ¿Ya cerró el registro? `closesAt` se interpreta al final del día indicado. */
-const isClosed = (cfg) => {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(cfg.closesAt || '');
-    if (!match) return false;
-    const limit = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 23, 59, 59);
-    return Date.now() > limit.getTime();
-};
-
-/** Entradas ya comprometidas de un tipo (pagadas, confirmadas o en pago). */
-const soldForTicket = async (eventId, ticketKey) => {
-    const { rows } = await db.query(
-        `SELECT COALESCE(SUM(quantity), 0)::int AS total
-         FROM "EventRegistration"
-         WHERE "eventId" = $1 AND "ticketKey" = $2 AND status = ANY($3)`,
-        [eventId, ticketKey, [STATUS.PAID, STATUS.FREE, STATUS.PENDING]]
-    );
-    return rows[0]?.total || 0;
-};
-
-/** Vista pública de una inscripción: sin datos internos ni de Stripe. */
-const toPublicRegistration = (row) => row && ({
-    id: row.id,
-    publicRef: row.publicRef,
-    status: row.status,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    email: row.email,
-    ticketLabel: row.ticketLabel,
-    quantity: row.quantity,
-    unitAmount: Number(row.unitAmount),
-    totalAmount: Number(row.totalAmount),
-    currency: row.currency,
-    paidAt: row.paidAt,
-});
-
-// ── Público ──────────────────────────────────────────────────────────
+// ── Público: configuración ───────────────────────────────────────────
 
 // GET /api/event-registrations/config/:clubId/:eventRef
-// Entradas disponibles y estado del registro para pintar el formulario.
 export const getPublicRegistrationConfig = async (req, res) => {
     try {
-        await ensureTable();
+        await ensureEventRegistrationSchema();
         const event = await loadEvent(req.params.eventRef, req.params.clubId);
         if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
 
-        const cfg = readRegistrationConfig(event);
-        const closed = isClosed(cfg);
+        const edition = await ensureEdition(event);
+        const categories = await listCategories(event.id, { onlyActive: true });
+        const decorated = await Promise.all(categories.map(c => decorateCategory(event.id, c, edition)));
 
-        // Se informa el cupo restante de cada entrada para que el formulario
-        // pueda mostrar "agotada" antes de que la persona llene sus datos.
-        const tickets = await Promise.all(cfg.tickets.map(async (t) => {
-            if (!t.capacity) return { ...t, remaining: null, soldOut: false };
-            const sold = await soldForTicket(event.id, t.key);
-            const remaining = Math.max(0, t.capacity - sold);
-            return { ...t, remaining, soldOut: remaining <= 0 };
-        }));
+        const today = new Date().toISOString().slice(0, 10);
+        const editionClosed = Boolean(edition.closesAt && today > edition.closesAt)
+            || Boolean(edition.opensAt && today < edition.opensAt);
 
         res.json({
             event: {
@@ -208,16 +128,22 @@ export const getPublicRegistrationConfig = async (req, res) => {
                 slug: event.slug,
                 title: event.title,
                 startDate: event.startDate,
+                endDate: event.endDate,
                 location: event.location,
             },
-            enabled: cfg.enabled,
-            closed,
-            currency: cfg.currency,
-            closesAt: cfg.closesAt,
-            requireClub: cfg.requireClub,
-            maxPerRegistration: cfg.maxPerRegistration,
-            successMessage: cfg.successMessage,
-            tickets,
+            edition: {
+                editionNumber: edition.editionNumber,
+                editionLabel: edition.editionLabel,
+                venue: edition.venue,
+                city: edition.city,
+                country: edition.country,
+                opensAt: edition.opensAt,
+                closesAt: edition.closesAt,
+            },
+            enabled: edition.registrationOpen && decorated.length > 0,
+            closed: editionClosed,
+            successMessage: clean(edition.settings?.successMessage, 600),
+            categories: decorated,
         });
     } catch (error) {
         console.error('[event-registrations] getPublicRegistrationConfig:', error);
@@ -225,123 +151,354 @@ export const getPublicRegistrationConfig = async (req, res) => {
     }
 };
 
-// POST /api/event-registrations
-// Crea la inscripción. El importe NUNCA viene del cliente: se toma de la
-// configuración del evento.
-export const createRegistration = async (req, res) => {
-    try {
-        await ensureTable();
-        const { clubId, eventRef, ticketKey, quantity, firstName, lastName, email, phone, country, clubName, notes } = req.body || {};
+// ── Público: guardar la inscripción ──────────────────────────────────
 
-        const event = await loadEvent(clean(eventRef, 200), clean(clubId, 100) || null);
-        if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
+/** Lee del cuerpo los acompañantes, ya recortados a lo que permite la categoría. */
+const readCompanions = (body, category) => {
+    if (!category.companions.allowed) return [];
+    const raw = Array.isArray(body?.companions) ? body.companions : [];
+    return raw.slice(0, category.companions.max).map(c => {
+        const out = {};
+        for (const field of COMPANION_FIELDS) out[field.key] = clean(c?.[field.key], field.max || 200);
+        if (out.email) out.email = out.email.toLowerCase();
+        return out;
+    });
+};
 
-        const cfg = readRegistrationConfig(event);
-        if (!cfg.enabled) return res.status(400).json({ error: 'El registro de este evento no está abierto.' });
-        if (isClosed(cfg)) return res.status(400).json({ error: 'El registro de este evento ya cerró.' });
-        if (!cfg.tickets.length) return res.status(400).json({ error: 'El evento no tiene entradas configuradas.' });
+/**
+ * Crea o actualiza la inscripción.
+ *
+ * `mode: 'draft'` guarda sin validar (es el autoguardado del asistente).
+ * `mode: 'submit'` valida todo, congela el precio y deja la inscripción lista
+ * para el cobro.
+ */
+const saveRegistration = async (req, res, mode) => {
+    await ensureEventRegistrationSchema();
+    const body = req.body || {};
 
-        const ticket = cfg.tickets.find(t => t.key === clean(ticketKey, 80)) || (cfg.tickets.length === 1 ? cfg.tickets[0] : null);
-        if (!ticket) return res.status(400).json({ error: 'Elige el tipo de entrada.' });
+    const event = await loadEvent(clean(body.eventRef, 200), clean(body.clubId, 100) || null);
+    if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
 
-        const qty = Math.min(Math.max(1, Math.floor(Number(quantity) || 1)), cfg.maxPerRegistration);
+    const edition = await ensureEdition(event);
+    if (!edition.registrationOpen) {
+        return res.status(400).json({ error: 'El registro de este evento no está abierto.' });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (edition.opensAt && today < edition.opensAt) {
+        return res.status(400).json({ error: `El registro abre el ${edition.opensAt}.` });
+    }
+    if (edition.closesAt && today > edition.closesAt) {
+        return res.status(400).json({ error: 'El registro de este evento ya cerró.' });
+    }
 
-        if (!isEmail(email)) return res.status(400).json({ error: 'Escribe un correo electrónico válido.' });
-        if (!clean(firstName)) return res.status(400).json({ error: 'Escribe tu nombre.' });
-        if (!clean(lastName)) return res.status(400).json({ error: 'Escribe tus apellidos.' });
-        if (cfg.requireClub && !clean(clubName)) return res.status(400).json({ error: 'Indica el club u organización a la que perteneces.' });
+    const category = await findCategory(event.id, body.categoryKey);
+    if (!category || !category.active) {
+        return res.status(400).json({ error: 'Elige una categoría de participante válida.' });
+    }
+    const window = categoryWindow(category);
+    if (!window.open) {
+        return res.status(400).json({
+            error: window.reason === 'not_yet'
+                ? `Las inscripciones de "${category.name}" abren el ${window.opensAt}.`
+                : `Las inscripciones de "${category.name}" ya cerraron.`,
+        });
+    }
 
-        if (ticket.capacity) {
-            const sold = await soldForTicket(event.id, ticket.key);
-            const remaining = ticket.capacity - sold;
-            if (remaining <= 0) return res.status(409).json({ error: `Las entradas "${ticket.label}" están agotadas.` });
-            if (qty > remaining) {
-                return res.status(409).json({ error: `Sólo quedan ${remaining} entradas "${ticket.label}".` });
+    const answers = typeof body.answers === 'object' && body.answers ? body.answers : {};
+    const companions = readCompanions(body, category);
+
+    // ── Validación (sólo al enviar; el borrador se guarda como venga) ──
+    if (mode === 'submit') {
+        const { ok, errors } = validateAnswers(category, answers);
+        if (!ok) {
+            return res.status(400).json({ error: 'Revisa los campos marcados.', fieldErrors: errors });
+        }
+        for (let i = 0; i < companions.length; i++) {
+            const check = validateCompanion(companions[i], category.companions);
+            if (!check.ok) {
+                return res.status(400).json({
+                    error: `Faltan datos del acompañante ${i + 1}.`,
+                    companionErrors: { [i]: check.errors },
+                });
             }
         }
+    }
+    if (!isEmail(answers.email)) {
+        return res.status(400).json({ error: 'Escribe un correo electrónico válido.', fieldErrors: { email: 'Correo inválido.' } });
+    }
 
-        const total = Math.round(ticket.amount * qty * 100) / 100;
-        // Las entradas sin costo quedan confirmadas de una vez: no tiene
-        // sentido mandar a Stripe un cobro de cero.
-        const status = total > 0 ? STATUS.PENDING : STATUS.FREE;
+    const email = clean(answers.email, 200).toLowerCase();
 
+    // ── Evitar duplicados ────────────────────────────────────────────
+    // La misma persona en la misma categoría del mismo evento retoma su
+    // inscripción en vez de crear otra. Si ya la tiene confirmada, se le dice.
+    let existing = null;
+    if (clean(body.registrationId, 60)) {
+        existing = await findRegistration(clean(body.registrationId, 60));
+        // El id por sí solo no basta: hay que traer el token que se entregó al
+        // crear el borrador, para que nadie edite la inscripción de otro.
+        if (existing && existing.accessToken && existing.accessToken !== clean(body.accessToken, 48)) {
+            return res.status(403).json({ error: 'No pudimos verificar esta inscripción. Empieza de nuevo.' });
+        }
+        if (existing && existing.eventId !== event.id) existing = null;
+        // Una inscripción ya liquidada o cerrada NO se reescribe, ni siquiera
+        // con su propio token: reenviar el formulario la devolvería a "registro
+        // iniciado" y borraría la fecha de pago. Sin esta guarda, quien
+        // conserve la pestaña abierta puede degradar su propia inscripción
+        // pagada volviendo a pulsar enviar.
+        if (existing && (SETTLED_STATUSES.includes(existing.status) || !RESUMABLE.includes(existing.status))) {
+            return res.status(409).json({
+                error: SETTLED_STATUSES.includes(existing.status)
+                    ? 'Esta inscripción ya está confirmada. Escríbenos si necesitas cambiar algún dato.'
+                    : 'Esta inscripción ya no admite cambios. Escríbenos si necesitas ayuda.',
+                duplicate: true,
+            });
+        }
+    }
+    if (!existing) {
         const { rows } = await db.query(
-            `INSERT INTO "EventRegistration"
-                ("publicRef", "eventId", "clubId", "firstName", "lastName", email, phone, country,
-                 "clubName", "ticketKey", "ticketLabel", quantity, "unitAmount", "totalAmount",
-                 currency, status, notes, "paidAt", metadata)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-             RETURNING *`,
-            [
-                buildPublicRef(), event.id, event.clubId, clean(firstName, 120), clean(lastName, 120),
-                clean(email, 200).toLowerCase(), clean(phone, 60), clean(country, 120), clean(clubName, 200),
-                ticket.key, ticket.label, qty, ticket.amount, total, cfg.currency, status, clean(notes, 1000),
-                status === STATUS.FREE ? new Date() : null,
-                JSON.stringify({ eventTitle: event.title }),
-            ]
-        );
+            `SELECT * FROM "EventRegistration"
+             WHERE "eventId" = $1 AND lower(email) = $2 AND "categoryKey" = $3
+             ORDER BY "createdAt" DESC LIMIT 1`,
+            [event.id, email, category.key]);
+        const candidate = rows[0];
+        if (candidate && SETTLED_STATUSES.includes(candidate.status)) {
+            return res.status(409).json({
+                error: `Ya existe una inscripción confirmada para ${email} en la categoría "${category.name}". Escríbenos si necesitas cambiarla.`,
+                duplicate: true,
+            });
+        }
+        if (candidate && RESUMABLE.includes(candidate.status)) existing = candidate;
+    }
 
-        const registration = rows[0];
-        if (status === STATUS.FREE) await notifyRegistration(registration, event, cfg);
+    // ── Cupo ─────────────────────────────────────────────────────────
+    const seats = 1 + companions.length;
+    if (category.capacity) {
+        const usage = await categoryUsage(event.id, category.key);
+        // Si ya ocupaba cupo, sus propios asientos no cuentan contra él.
+        const own = existing && COMMITTED_STATUSES.includes(existing.status)
+            ? 1 + (existing.companionsCount || 0) : 0;
+        const remaining = category.capacity - usage.seats + own;
+        if (remaining <= 0) {
+            return res.status(409).json({ error: `La categoría "${category.name}" está agotada.`, soldOut: true });
+        }
+        if (mode === 'submit' && seats > remaining) {
+            return res.status(409).json({
+                error: `Sólo quedan ${remaining} cupos en "${category.name}" y estás inscribiendo ${seats}.`,
+            });
+        }
+    }
 
-        res.json(toPublicRegistration(registration));
+    // ── Precio: se calcula aquí y se congela ─────────────────────────
+    const charge = resolveCharge({ category, companionsCount: companions.length, fx: edition.fx });
+    const status = mode === 'draft'
+        ? STATUS.DRAFT
+        : charge.chargeAmount > 0 ? STATUS.STARTED : STATUS.FREE;
+
+    const pricing = {
+        categoryKey: category.key,
+        categoryName: category.name,
+        holderAmount: charge.holderAmount,
+        companionUnit: charge.companionUnit,
+        companionsAmount: charge.companionsAmount,
+        companionsCount: charge.companionsCount,
+        baseCurrency: charge.baseCurrency,
+        baseAmount: charge.baseAmount,
+        chargeCurrency: charge.chargeCurrency,
+        chargeAmount: charge.chargeAmount,
+        fxRate: charge.fxRate,
+        fxSource: charge.fxSource,
+        fxUpdatedAt: charge.fxUpdatedAt,
+        converted: charge.converted,
+        frozenAt: new Date().toISOString(),
+    };
+
+    const tags = deriveSystemTags({
+        categoryKey: category.key, audience: category.audience,
+        status, companionsCount: companions.length,
+    });
+    // Las etiquetas manuales que el equipo ya hubiera puesto se conservan.
+    const manualTags = (store.parseJson(existing?.tags, []) || []).filter(t => !SYSTEM_TAG_KEYS.includes(t));
+    const allTags = [...new Set([...tags, ...manualTags])];
+
+    const columns = {
+        eventId: event.id,
+        clubId: event.clubId || null,
+        categoryId: category.id,
+        categoryKey: category.key,
+        categoryLabel: category.name,
+        audience: category.audience,
+        firstName: clean(answers.firstName, 120),
+        lastName: clean(answers.lastName, 120),
+        email,
+        phone: clean(answers.phone, 60),
+        country: clean(answers.country, 120),
+        city: clean(answers.city, 120),
+        district: clean(answers.district, 40),
+        documentNumber: clean(answers.documentNumber, 60),
+        rotaryRole: clean(answers.rotaryRole, 60),
+        language: clean(answers.language, 20),
+        dietary: clean(answers.dietary, 40),
+        clubName: clean(answers.clubName, 200),
+        answers: JSON.stringify(answers),
+        tags: JSON.stringify(allTags),
+        baseCurrency: charge.baseCurrency,
+        baseAmount: charge.baseAmount,
+        chargeCurrency: charge.chargeCurrency,
+        chargeAmount: charge.chargeAmount,
+        fxRate: charge.fxRate,
+        pricing: JSON.stringify(pricing),
+        companionsCount: companions.length,
+        companionsAmount: charge.companionsAmount,
+        notes: clean(answers.accessibility, 1000),
+        status,
+        // Se mantienen las columnas de v4.606 para que la vista y el CSV
+        // anteriores sigan mostrando algo coherente.
+        ticketKey: category.key,
+        ticketLabel: category.name,
+        quantity: seats,
+        unitAmount: charge.holderAmount,
+        totalAmount: charge.baseAmount,
+        currency: charge.baseCurrency,
+        lastActivityAt: new Date(),
+        submittedAt: mode === 'submit' ? new Date() : (existing?.submittedAt || null),
+        paidAt: status === STATUS.FREE ? new Date() : (existing?.paidAt || null),
+    };
+
+    let row;
+    if (existing) {
+        const keys = Object.keys(columns);
+        const sets = keys.map((k, i) => `"${k}" = $${i + 1}`);
+        const values = keys.map(k => columns[k]);
+        values.push(existing.id);
+        const { rows } = await db.query(
+            `UPDATE "EventRegistration" SET ${sets.join(', ')}, "updatedAt" = NOW()
+             WHERE id = $${values.length} RETURNING *`, values);
+        row = rows[0];
+    } else {
+        const withIdentity = {
+            ...columns,
+            publicRef: buildPublicRef(),
+            accessToken: randomCodeSuffix(24),
+        };
+        const keys = Object.keys(withIdentity);
+        const { rows } = await db.query(
+            `INSERT INTO "EventRegistration" (${keys.map(k => `"${k}"`).join(', ')})
+             VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`,
+            keys.map(k => withIdentity[k]));
+        row = rows[0];
+    }
+
+    await replaceCompanions(row.id, event.id, companions, {
+        amount: charge.companionUnit,
+        currency: charge.baseCurrency,
+        categoryKey: category.key,
+    });
+
+    if (mode === 'submit') {
+        await recordHistory({
+            registrationId: row.id, eventId: event.id, type: 'submitted',
+            fromStatus: existing?.status || null, toStatus: status,
+            comment: `Formulario enviado — ${category.name}`,
+            payload: { seats, pricing },
+        });
+        if (status === STATUS.FREE) {
+            await assignRegistrationCode(row.id, edition.codePrefix);
+            const fresh = await findRegistration(row.id);
+            await notifyRegistration(fresh, event, edition);
+            row = fresh;
+        }
+    }
+
+    return res.json({
+        ...toPublicRegistration(row),
+        accessToken: row.accessToken,
+        companions: await listCompanions(row.id),
+    });
+};
+
+// POST /api/event-registrations/draft — autoguardado del asistente.
+export const saveDraft = async (req, res) => {
+    try {
+        return await saveRegistration(req, res, 'draft');
     } catch (error) {
-        console.error('[event-registrations] createRegistration:', error);
-        res.status(500).json({ error: 'No pudimos registrar tu inscripción. Inténtalo de nuevo.' });
+        console.error('[event-registrations] saveDraft:', error);
+        return res.status(500).json({ error: 'No pudimos guardar tu avance.' });
     }
 };
+
+// POST /api/event-registrations — envío del formulario completo.
+export const createRegistration = async (req, res) => {
+    try {
+        return await saveRegistration(req, res, 'submit');
+    } catch (error) {
+        console.error('[event-registrations] createRegistration:', error);
+        return res.status(500).json({ error: 'No pudimos registrar tu inscripción. Inténtalo de nuevo.' });
+    }
+};
+
+// ── Público: pago ────────────────────────────────────────────────────
 
 // POST /api/event-registrations/:id/checkout
 export const createCheckout = async (req, res) => {
     try {
-        await ensureTable();
-        const { rows } = await db.query('SELECT * FROM "EventRegistration" WHERE id = $1 LIMIT 1', [req.params.id]);
-        const registration = rows[0];
+        await ensureEventRegistrationSchema();
+        const registration = await findRegistration(req.params.id);
         if (!registration) return res.status(404).json({ error: 'Inscripción no encontrada' });
-        if (registration.status === STATUS.PAID) {
+        if (registration.accessToken && registration.accessToken !== clean(req.body?.accessToken, 48)) {
+            return res.status(403).json({ error: 'No pudimos verificar esta inscripción.' });
+        }
+        if (SETTLED_STATUSES.includes(registration.status)) {
             return res.status(400).json({ error: 'Esta inscripción ya tiene el pago confirmado.' });
+        }
+        if (registration.status === STATUS.DRAFT) {
+            return res.status(400).json({ error: 'Completa el formulario antes de pagar.' });
         }
 
         const event = await loadEvent(registration.eventId, registration.clubId);
         if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
 
-        // El importe se recalcula desde la configuración: nunca se confía en
-        // lo que haya quedado guardado ni en lo que mande el cliente.
-        const cfg = readRegistrationConfig(event);
-        const ticket = cfg.tickets.find(t => t.key === registration.ticketKey);
-        if (!ticket) return res.status(400).json({ error: 'El tipo de entrada ya no está disponible.' });
-
-        const total = Math.round(ticket.amount * registration.quantity * 100) / 100;
-        if (total <= 0) return res.status(400).json({ error: 'Esta entrada no tiene costo: no requiere pago.' });
+        // El importe sale de la foto congelada en la inscripción, que la
+        // escribió el servidor al enviar el formulario. No se recalcula contra
+        // la configuración viva —cambiar el precio de la categoría no debe
+        // mover lo que ya se le prometió a quien está pagando— ni se acepta
+        // nada del navegador.
+        const pricing = store.parseJson(registration.pricing, {});
+        const amount = Number(pricing.chargeAmount ?? registration.chargeAmount ?? 0);
+        const currency = String(pricing.chargeCurrency || registration.chargeCurrency || 'USD');
+        if (!(amount > 0)) {
+            return res.status(400).json({ error: 'Esta inscripción no tiene un importe por cobrar.' });
+        }
 
         const origin = resolveOrigin(req, req.body?.returnUrl);
         const path = `/eventos/${event.slug || event.id}/registro`;
-        const stripe = getStripe();
+        const label = `${registration.categoryLabel || 'Inscripción'} — ${event.title}`.slice(0, 250);
+        const detail = registration.companionsCount > 0
+            ? `Titular + ${registration.companionsCount} acompañante(s)`
+            : `Inscripción de ${registration.firstName} ${registration.lastName}`;
 
-        const session = await stripe.checkout.sessions.create({
+        const session = await getStripe().checkout.sessions.create({
             mode: 'payment',
             payment_method_types: ['card'],
             customer_email: registration.email,
             line_items: [{
                 price_data: {
-                    currency: cfg.currency.toLowerCase(),
-                    product_data: {
-                        name: `${ticket.label} — ${event.title}`.slice(0, 250),
-                        description: ticket.description || `Registro de ${registration.firstName} ${registration.lastName}`.slice(0, 250),
-                    },
-                    unit_amount: toStripeAmount(ticket.amount, cfg.currency),
+                    currency: currency.toLowerCase(),
+                    product_data: { name: label, description: detail.slice(0, 250) },
+                    unit_amount: toStripeAmount(amount, currency),
                 },
-                quantity: registration.quantity,
+                quantity: 1,
             }],
-            success_url: `${origin}${path}?registro=${registration.id}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}${path}?registro=${registration.id}&pago=cancelado`,
-            // La misma metadata viaja al PaymentIntent, para que los eventos de
-            // pago fallido o reembolso lleguen ligados a la inscripción.
+            success_url: `${origin}${path}?registro=${registration.id}&t=${registration.accessToken || ''}&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}${path}?registro=${registration.id}&t=${registration.accessToken || ''}&pago=cancelado`,
+            // La misma metadata viaja al PaymentIntent para que los eventos de
+            // pago fallido y de reembolso lleguen ligados a la inscripción.
             payment_intent_data: {
                 metadata: {
                     type: 'event_registration',
                     registrationId: registration.id,
                     publicRef: registration.publicRef || '',
+                    eventId: event.id,
                 },
             },
             metadata: {
@@ -349,13 +506,28 @@ export const createCheckout = async (req, res) => {
                 registrationId: registration.id,
                 publicRef: registration.publicRef || '',
                 eventId: event.id,
+                categoryKey: registration.categoryKey || '',
+                // Deja rastro del cambio en el propio Stripe: si el cobro se
+                // hizo en dólares por un precio publicado en pesos, la
+                // conciliación no depende sólo de nuestra base.
+                baseCurrency: pricing.baseCurrency || '',
+                baseAmount: String(pricing.baseAmount ?? ''),
+                fxRate: pricing.fxRate ? String(pricing.fxRate) : '',
             },
         });
 
         await db.query(
-            `UPDATE "EventRegistration" SET "stripeSessionId" = $1, "totalAmount" = $2, "unitAmount" = $3, "updatedAt" = NOW() WHERE id = $4`,
-            [session.id, total, ticket.amount, registration.id]
-        );
+            `UPDATE "EventRegistration"
+             SET "stripeSessionId" = $1, status = $2, "lastActivityAt" = NOW(), "updatedAt" = NOW()
+             WHERE id = $3`,
+            [session.id, STATUS.PENDING, registration.id]);
+
+        await recordHistory({
+            registrationId: registration.id, eventId: event.id, type: 'checkout_created',
+            fromStatus: registration.status, toStatus: STATUS.PENDING,
+            comment: `Cobro por ${formatMoney(amount, currency)}`,
+            payload: { sessionId: session.id, amount, currency, fxRate: pricing.fxRate || null },
+        });
 
         res.json({ url: session.url, sessionId: session.id });
     } catch (error) {
@@ -364,13 +536,21 @@ export const createCheckout = async (req, res) => {
     }
 };
 
-// GET /api/event-registrations/:id
+// GET /api/event-registrations/:id?t=<accessToken>
 export const getRegistration = async (req, res) => {
     try {
-        await ensureTable();
-        const { rows } = await db.query('SELECT * FROM "EventRegistration" WHERE id = $1 LIMIT 1', [req.params.id]);
-        if (!rows[0]) return res.status(404).json({ error: 'Inscripción no encontrada' });
-        res.json(toPublicRegistration(rows[0]));
+        await ensureEventRegistrationSchema();
+        const registration = await findRegistration(req.params.id);
+        if (!registration) return res.status(404).json({ error: 'Inscripción no encontrada' });
+        // Las filas anteriores a v4.648 no tienen token: se siguen sirviendo
+        // como antes para no romper los enlaces ya enviados por correo.
+        if (registration.accessToken && registration.accessToken !== clean(req.query?.t, 48)) {
+            return res.status(403).json({ error: 'No pudimos verificar esta inscripción.' });
+        }
+        res.json({
+            ...toPublicRegistration(registration),
+            companions: await listCompanions(registration.id),
+        });
     } catch (error) {
         console.error('[event-registrations] getRegistration:', error);
         res.status(500).json({ error: 'No se pudo cargar la inscripción' });
@@ -378,44 +558,88 @@ export const getRegistration = async (req, res) => {
 };
 
 // ── Correos ──────────────────────────────────────────────────────────
-const money = (amount, currency) =>
-    `${Number(amount || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency}`;
 
-/** Comprobante al asistente y aviso al equipo. Nunca tumba el flujo. */
-const notifyRegistration = async (registration, event, cfg) => {
-    const summary = `
-        <p>Hola ${registration.firstName},</p>
-        <p>Tu registro para <strong>${event.title}</strong> quedó confirmado.</p>
-        <ul>
-            <li><strong>Referencia:</strong> ${registration.publicRef}</li>
-            <li><strong>Entrada:</strong> ${registration.ticketLabel} × ${registration.quantity}</li>
-            ${Number(registration.totalAmount) > 0 ? `<li><strong>Total:</strong> ${money(registration.totalAmount, registration.currency)}</li>` : ''}
-            ${event.location ? `<li><strong>Lugar:</strong> ${event.location}</li>` : ''}
-        </ul>
-        ${cfg.successMessage ? `<p>${cfg.successMessage}</p>` : ''}
-        <p>¡Nos vemos allí!</p>
-    `;
+const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-    if (cfg.sendReceipt) {
-        try {
-            await EmailService.sendPlatformEmail({
-                to: registration.email,
-                from: PLATFORM_SENDER,
-                subject: `Registro confirmado — ${event.title}`,
-                html: summary,
-            });
-        } catch (error) {
-            console.error('[event-registrations] comprobante:', error?.message);
+/** Cuerpo del comprobante. Se usa para el asistente y para el aviso al equipo. */
+const buildReceiptHtml = (registration, event, edition, companions) => {
+    const pricing = store.parseJson(registration.pricing, {});
+    const lines = [
+        ['Código de inscripción', registration.registrationCode || registration.publicRef],
+        ['Categoría', registration.categoryLabel],
+        ['Participante', `${registration.firstName} ${registration.lastName}`],
+        ['Correo', registration.email],
+        edition?.venue || event.location ? ['Sede', edition?.venue || event.location] : null,
+        event.startDate ? ['Fecha', new Date(event.startDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })] : null,
+        companions.length ? ['Acompañantes', String(companions.length)] : null,
+    ].filter(Boolean);
+
+    if (Number(pricing.baseAmount) > 0) {
+        lines.push(['Valor', formatMoney(pricing.baseAmount, pricing.baseCurrency)]);
+        // Si se cobró en otra moneda, el comprobante lo dice: el participante
+        // ve en su extracto un valor distinto al publicado.
+        if (pricing.converted && pricing.chargeCurrency !== pricing.baseCurrency) {
+            lines.push(['Cobrado', `${formatMoney(pricing.chargeAmount, pricing.chargeCurrency)} (tasa ${Number(pricing.fxRate).toLocaleString('es-CO', { maximumFractionDigits: 6 })})`]);
         }
     }
 
-    if (cfg.adminEmails.length) {
+    const rows = lines.map(([label, value]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#64748b;font-size:13px">${escapeHtml(label)}</td>
+             <td style="padding:6px 0;font-weight:600;color:#0f172a;font-size:13px">${escapeHtml(value)}</td></tr>`).join('');
+
+    const companionList = companions.length
+        ? `<p style="margin:16px 0 4px;font-size:13px;color:#64748b">Acompañantes registrados:</p>
+           <ul style="margin:0;padding-left:18px;color:#0f172a;font-size:13px">
+             ${companions.map(c => `<li>${escapeHtml(`${c.firstName} ${c.lastName}`)}</li>`).join('')}
+           </ul>`
+        : '';
+
+    return `
+        <p>Hola ${escapeHtml(registration.firstName)},</p>
+        <p>Tu inscripción a <strong>${escapeHtml(event.title)}</strong> quedó confirmada.</p>
+        <table style="border-collapse:collapse;margin:12px 0">${rows}</table>
+        ${companionList}
+        ${edition?.settings?.successMessage ? `<p>${escapeHtml(edition.settings.successMessage)}</p>` : ''}
+        <p style="font-size:13px;color:#64748b">Presenta tu código de inscripción el día del evento para recoger tu escarapela.</p>
+        <p>¡Nos vemos en ${escapeHtml(edition?.city || event.location || 'el evento')}!</p>
+    `;
+};
+
+/** Comprobante al asistente y aviso al equipo. Nunca tumba el flujo. */
+export const notifyRegistration = async (registration, event, edition) => {
+    const companions = await listCompanions(registration.id);
+    const html = buildReceiptHtml(registration, event, edition, companions);
+    const settings = edition?.settings || {};
+    const subject = `Inscripción confirmada — ${event.title}`;
+
+    if (settings.sendReceipt !== false) {
         try {
             await EmailService.sendPlatformEmail({
-                to: cfg.adminEmails.join(','),
-                from: PLATFORM_SENDER,
-                subject: `Nuevo registro — ${event.title} (${registration.publicRef})`,
-                html: `<p>${registration.firstName} ${registration.lastName} (${registration.email}) se registró.</p>${summary}`,
+                to: registration.email, from: PLATFORM_SENDER, subject, html,
+            });
+            await recordMessage({
+                registrationId: registration.id, eventId: event.id, channel: 'email',
+                template: 'confirmation', recipient: registration.email, subject, body: html,
+            });
+        } catch (error) {
+            console.error('[event-registrations] comprobante:', error?.message);
+            await recordMessage({
+                registrationId: registration.id, eventId: event.id, channel: 'email',
+                template: 'confirmation', recipient: registration.email, subject,
+                status: 'failed', error: error?.message,
+            });
+        }
+    }
+
+    const adminEmails = (Array.isArray(settings.adminEmails) ? settings.adminEmails : []).filter(isEmail);
+    if (adminEmails.length) {
+        try {
+            await EmailService.sendPlatformEmail({
+                to: adminEmails.join(','), from: PLATFORM_SENDER,
+                subject: `Nueva inscripción — ${event.title} (${registration.registrationCode || registration.publicRef})`,
+                html: `<p>${escapeHtml(`${registration.firstName} ${registration.lastName}`)} (${escapeHtml(registration.email)}) se inscribió en <strong>${escapeHtml(registration.categoryLabel || '')}</strong>.</p>${html}`,
             });
         } catch (error) {
             console.error('[event-registrations] aviso al equipo:', error?.message);
@@ -424,133 +648,157 @@ const notifyRegistration = async (registration, event, cfg) => {
 };
 
 // ── Webhook de Stripe ────────────────────────────────────────────────
+//
+// La fuente de verdad del pago. El retorno del navegador sólo consulta estado.
 
 /**
  * Confirma la inscripción a partir de una Checkout Session pagada.
- * Idempotente: si ya está en 'paid', no vuelve a enviar nada.
+ *
+ * Idempotente por partida doble: el UPDATE es condicional (sólo cambia filas
+ * que aún no están liquidadas) y el evento de Stripe se registra con id único.
+ * Si Stripe reenvía el mismo evento, no se vuelve a notificar ni a cobrar cupo.
  */
-export const confirmPaidSession = async (session) => {
+export const confirmPaidSession = async (session, stripeEvent = null) => {
     const registrationId = session?.metadata?.registrationId;
     if (!registrationId) return null;
 
-    await ensureTable();
-    const { rows } = await db.query('SELECT * FROM "EventRegistration" WHERE id = $1 LIMIT 1', [registrationId]);
-    const registration = rows[0];
-    if (!registration || registration.status === STATUS.PAID) return registration || null;
+    await ensureEventRegistrationSchema();
+    const registration = await findRegistration(registrationId);
+    if (!registration) return null;
 
-    const { rows: updatedRows } = await db.query(
+    const paymentIntentId = typeof session.payment_intent === 'string'
+        ? session.payment_intent : session.payment_intent?.id || null;
+    const customerId = typeof session.customer === 'string'
+        ? session.customer : session.customer?.id || null;
+
+    const pricing = store.parseJson(registration.pricing, {});
+    // `amount_total` viene en la unidad mínima de la moneda; las de cero
+    // decimales (COP no lo es, pero CLP o JPY sí) no se dividen.
+    const amount = session.amount_total != null
+        ? session.amount_total / (ZERO_DECIMAL.has(String(session.currency || '').toLowerCase()) ? 1 : 100)
+        : Number(pricing.chargeAmount ?? registration.chargeAmount ?? 0);
+
+    const fresh = await recordPayment({
+        registrationId, eventId: registration.eventId,
+        stripeEventId: stripeEvent?.id || null,
+        checkoutSessionId: session.id || null,
+        paymentIntentId, customerId,
+        status: 'succeeded',
+        baseCurrency: pricing.baseCurrency || registration.baseCurrency,
+        baseAmount: pricing.baseAmount ?? registration.baseAmount,
+        currency: (session.currency || pricing.chargeCurrency || 'USD').toUpperCase(),
+        amount,
+        fxRate: pricing.fxRate ?? null,
+        paymentMethod: session.payment_method_types?.[0] || 'card',
+        payload: { sessionId: session.id, mode: session.mode, status: session.payment_status },
+    });
+    if (!fresh) return registration; // evento repetido de Stripe
+
+    // Sólo avanza si todavía no estaba liquidada: dos webhocks simultáneos no
+    // pueden confirmar la misma inscripción dos veces.
+    const { rows } = await db.query(
         `UPDATE "EventRegistration"
-         SET status = $1, "paidAt" = NOW(), "stripeSessionId" = COALESCE($2, "stripeSessionId"),
-             "stripePaymentIntentId" = COALESCE($3, "stripePaymentIntentId"), "updatedAt" = NOW()
-         WHERE id = $4 RETURNING *`,
-        [STATUS.PAID, session.id || null, session.payment_intent || null, registrationId]
-    );
-    const updated = updatedRows[0];
+         SET status = $1, "paidAt" = COALESCE("paidAt", NOW()),
+             "stripeSessionId" = COALESCE($2, "stripeSessionId"),
+             "stripePaymentIntentId" = COALESCE($3, "stripePaymentIntentId"),
+             "stripeCustomerId" = COALESCE($4, "stripeCustomerId"),
+             "paymentMethod" = COALESCE($5, "paymentMethod"),
+             "lastActivityAt" = NOW(), "updatedAt" = NOW()
+         WHERE id = $6 AND status <> ALL($7) RETURNING *`,
+        [
+            STATUS.PAID, session.id || null, paymentIntentId, customerId,
+            session.payment_method_types?.[0] || null, registrationId, SETTLED_STATUSES,
+        ]);
+    if (!rows[0]) return registration;
 
-    const event = await loadEvent(updated.eventId, updated.clubId);
-    if (event) await notifyRegistration(updated, event, readRegistrationConfig(event));
+    const event = await loadEvent(rows[0].eventId, rows[0].clubId);
+    if (!event) return rows[0];
+    const edition = await ensureEdition(event);
+
+    await assignRegistrationCode(rows[0].id, edition.codePrefix);
+    const updated = await findRegistration(rows[0].id);
+
+    await recordHistory({
+        registrationId: updated.id, eventId: updated.eventId, type: 'payment_confirmed',
+        fromStatus: registration.status, toStatus: STATUS.PAID,
+        comment: `Pago confirmado por Stripe — ${formatMoney(amount, session.currency?.toUpperCase() || pricing.chargeCurrency)}`,
+        payload: { sessionId: session.id, paymentIntentId },
+    });
+
+    await notifyRegistration(updated, event, edition);
     return updated;
 };
 
-/** Marca la inscripción según el evento de Stripe que llegue. */
-export const applyStripeStatus = async (object, kind) => {
-    const registrationId = object?.metadata?.registrationId;
+/** Aplica a la inscripción el desenlace que informe Stripe. */
+export const applyStripeStatus = async (object, kind, stripeEvent = null) => {
     const status = kind === 'failed' ? STATUS.FAILED
         : kind === 'expired' ? STATUS.EXPIRED
             : kind === 'refunded' ? STATUS.REFUNDED
                 : null;
     if (!status) return null;
 
-    await ensureTable();
-    // charge.refunded no siempre trae metadata: se busca por el PaymentIntent.
-    const where = registrationId ? 'id = $2' : '"stripePaymentIntentId" = $2';
-    const key = registrationId || object?.payment_intent || object?.id;
-    if (!key) return null;
+    await ensureEventRegistrationSchema();
+
+    // `charge.refunded` no siempre trae metadata: se resuelve por PaymentIntent.
+    const registrationId = object?.metadata?.registrationId || null;
+    const intentId = object?.payment_intent || (kind === 'failed' ? object?.id : null);
+
+    const { rows: found } = registrationId
+        ? await db.query('SELECT * FROM "EventRegistration" WHERE id = $1 LIMIT 1', [registrationId])
+        : intentId
+            ? await db.query('SELECT * FROM "EventRegistration" WHERE "stripePaymentIntentId" = $1 LIMIT 1', [intentId])
+            : { rows: [] };
+    const registration = found[0];
+    if (!registration) return null;
+
+    const refundedAmount = kind === 'refunded' && object?.amount_refunded != null
+        ? object.amount_refunded / 100 : null;
+
+    const fresh = await recordPayment({
+        registrationId: registration.id, eventId: registration.eventId,
+        stripeEventId: stripeEvent?.id || null,
+        paymentIntentId: intentId || registration.stripePaymentIntentId,
+        chargeId: kind === 'refunded' ? object?.id : null,
+        status: kind,
+        currency: (object?.currency || registration.chargeCurrency || 'USD').toUpperCase(),
+        amount: refundedAmount ?? Number(registration.chargeAmount || 0),
+        refundedAmount,
+        failureMessage: object?.last_payment_error?.message || object?.failure_message || null,
+        payload: { kind, objectId: object?.id },
+    });
+    if (!fresh) return registration;
 
     const { rows } = await db.query(
-        `UPDATE "EventRegistration" SET status = $1, "updatedAt" = NOW() WHERE ${where} RETURNING *`,
-        [status, key]
-    );
+        `UPDATE "EventRegistration"
+         SET status = $1,
+             "stripeChargeId" = COALESCE($2, "stripeChargeId"),
+             "refundedAt" = CASE WHEN $3::text = 'refunded' THEN NOW() ELSE "refundedAt" END,
+             "refundedAmount" = COALESCE($4, "refundedAmount"),
+             "lastActivityAt" = NOW(), "updatedAt" = NOW()
+         WHERE id = $5 RETURNING *`,
+        [status, kind === 'refunded' ? object?.id || null : null, kind, refundedAmount, registration.id]);
+
+    await recordHistory({
+        registrationId: registration.id, eventId: registration.eventId, type: `payment_${kind}`,
+        fromStatus: registration.status, toStatus: status,
+        comment: kind === 'refunded' ? 'Stripe reembolsó el pago.'
+            : kind === 'failed' ? 'Stripe rechazó el cobro.'
+                : 'La sesión de pago expiró.',
+        payload: { objectId: object?.id },
+    });
+
     return rows[0] || null;
-};
-
-// ── Administración ───────────────────────────────────────────────────
-
-/** El evento debe pertenecer al sitio de quien consulta (o ser administrator). */
-const assertEventAccess = async (req, eventRef) => {
-    const event = await loadEvent(eventRef, req.user?.role === 'administrator' ? null : req.user?.clubId);
-    if (!event) return null;
-    if (req.user?.role !== 'administrator' && event.clubId !== req.user?.clubId) return null;
-    return event;
-};
-
-// GET /api/event-registrations/admin?eventRef=...
-export const listRegistrations = async (req, res) => {
-    try {
-        await ensureTable();
-        const event = await assertEventAccess(req, clean(req.query.eventRef, 200));
-        if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
-
-        const { rows } = await db.query(
-            `SELECT * FROM "EventRegistration" WHERE "eventId" = $1 ORDER BY "createdAt" DESC`,
-            [event.id]
-        );
-
-        const paid = rows.filter(r => r.status === STATUS.PAID || r.status === STATUS.FREE);
-        res.json({
-            event: { id: event.id, slug: event.slug, title: event.title },
-            registrations: rows,
-            totals: {
-                count: rows.length,
-                confirmed: paid.length,
-                attendees: paid.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0),
-                pending: rows.filter(r => r.status === STATUS.PENDING).length,
-                revenue: paid.reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0),
-                currency: rows[0]?.currency || readRegistrationConfig(event).currency,
-            },
-        });
-    } catch (error) {
-        console.error('[event-registrations] listRegistrations:', error);
-        res.status(500).json({ error: 'No se pudieron cargar las inscripciones' });
-    }
-};
-
-// GET /api/event-registrations/admin/export.csv?eventRef=...
-export const exportRegistrationsCsv = async (req, res) => {
-    try {
-        await ensureTable();
-        const event = await assertEventAccess(req, clean(req.query.eventRef, 200));
-        if (!event) return res.status(404).json({ error: 'Evento no encontrado' });
-
-        const { rows } = await db.query(
-            `SELECT * FROM "EventRegistration" WHERE "eventId" = $1 ORDER BY "createdAt" DESC`,
-            [event.id]
-        );
-
-        const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const header = ['Referencia', 'Nombre', 'Apellidos', 'Correo', 'Teléfono', 'País', 'Club', 'Entrada', 'Cantidad', 'Total', 'Moneda', 'Estado', 'Pagado el', 'Creado el'];
-        const lines = rows.map(r => [
-            r.publicRef, r.firstName, r.lastName, r.email, r.phone, r.country, r.clubName,
-            r.ticketLabel, r.quantity, r.totalAmount, r.currency, r.status,
-            r.paidAt ? new Date(r.paidAt).toISOString() : '', new Date(r.createdAt).toISOString(),
-        ].map(escape).join(','));
-
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="inscripciones-${event.slug || event.id}.csv"`);
-        res.send('﻿' + [header.map(escape).join(','), ...lines].join('\n'));
-    } catch (error) {
-        console.error('[event-registrations] exportRegistrationsCsv:', error);
-        res.status(500).json({ error: 'No se pudo exportar' });
-    }
 };
 
 export default {
     getPublicRegistrationConfig,
+    saveDraft,
     createRegistration,
     createCheckout,
     getRegistration,
-    listRegistrations,
-    exportRegistrationsCsv,
     confirmPaidSession,
     applyStripeStatus,
+    notifyRegistration,
+    STATUS,
+    STATUSES,
 };

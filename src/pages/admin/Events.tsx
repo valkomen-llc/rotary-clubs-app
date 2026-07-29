@@ -1307,13 +1307,16 @@ const EventsManagement = () => {
                                                     </div>
                                                 )}
 
-                                                {/* ── Tab: Registro (entradas y pago con Stripe) ── */}
+                                                {/* ── Tab: Registro ──
+                                                    Desde v4.648 esta pestaña administra su propia configuración
+                                                    (edición, categorías, inscripciones y acreditación) contra
+                                                    /api/event-registrations/admin, así que ya no depende del
+                                                    botón "Guardar cambios" del evento ni de `metadata`. */}
                                                 {getTab(event.id) === 'registro' && (
                                                     <EventRegistrationTab
                                                         eventId={event.id}
                                                         eventSlug={event.slug}
-                                                        config={event.metadata?.registration || {}}
-                                                        onChange={next => updateEventField(event.id, 'metadata', { ...event.metadata, registration: next })}
+                                                        eventTitle={event.title}
                                                     />
                                                 )}
 

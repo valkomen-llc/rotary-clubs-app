@@ -191,6 +191,11 @@ async function routeProjectFairEvent(event, kind) {
 // o reembolsado). Sólo actúa sobre los eventos de Stripe que traen la
 // inscripción en su metadata; `charge.refunded` se resuelve por PaymentIntent
 // dentro del propio controlador.
+//
+// v4.648 — Se le pasa el `event` completo, no sólo el objeto: el controlador
+// guarda `event.id` en `EventRegistrationPayment` con índice único, y de ahí
+// sale la idempotencia. Si Stripe reenvía el mismo evento, el segundo INSERT
+// no entra y el estado no se vuelve a aplicar.
 async function routeEventRegistration(event, kind) {
     const object = event?.data?.object || {};
     const isRegistration = object?.metadata?.type === 'event_registration' || !!object?.metadata?.registrationId;
@@ -198,7 +203,7 @@ async function routeEventRegistration(event, kind) {
 
     try {
         const mod = await import('./eventRegistrationController.js');
-        await mod.applyStripeStatus(object, kind);
+        await mod.applyStripeStatus(object, kind, event);
     } catch (error) {
         console.error(`[Stripe Webhook] ERROR procesando registro de evento (${kind}):`, error?.message);
     }
@@ -294,13 +299,15 @@ async function handleSuccessfulCheckoutSession(session, event = null) {
         }
     }
 
-    // 2.c v4.606 — Registro de asistentes a un evento. Confirma la inscripción
-    //     y envía el comprobante. Idempotente: si la inscripción ya está
-    //     pagada, no vuelve a notificar.
+    // 2.c v4.606 — Registro de asistentes a un evento. Confirma la inscripción,
+    //     le asigna su código y envía el comprobante. Idempotente por partida
+    //     doble: el evento de Stripe se guarda con id único y el UPDATE sólo
+    //     toca filas que aún no están liquidadas, así que un reenvío de Stripe
+    //     no vuelve a notificar ni a ocupar cupo (v4.648).
     if (session.metadata && session.metadata.type === 'event_registration') {
         try {
             const mod = await import('./eventRegistrationController.js');
-            await mod.confirmPaidSession(session);
+            await mod.confirmPaidSession(session, event);
         } catch (error) {
             console.error('[Stripe Webhook] ERROR confirmando registro de evento:', error);
         }

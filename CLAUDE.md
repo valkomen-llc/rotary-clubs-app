@@ -165,6 +165,79 @@ render con ffmpeg que esta infraestructura no tiene. Hoy el outro queda
 **adjunto** al proyecto como clip independiente. Si algún día se agrega un
 worker de render, ese es el punto donde engancharlo.
 
+## Inscripciones a eventos / Feria de Proyectos — v4.648
+
+El módulo de **Eventos** maneja la inscripción completa de cada edición de la
+feria. La XII (Valledupar 2027) es la primera; el módulo está hecho para que la
+XIII se levante **sin tocar código**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/eventRegistrationSpec.js` | Fuente de verdad: categorías, campos, estados, etiquetas, monedas y cálculo del cobro |
+| `server/lib/ensureEventRegistrationSchema.js` | Crea las tablas en runtime (`CREATE TABLE IF NOT EXISTS` + `ADD COLUMN IF NOT EXISTS`) |
+| `server/lib/eventRegistrationStore.js` | Acceso a datos común al flujo público y al panel |
+| `server/controllers/eventRegistrationController.js` | Flujo público: configuración, borrador, envío, checkout y webhooks |
+| `server/controllers/eventRegistrationAdminController.js` | Panel: edición, categorías, tablero, fichas, acreditación y exportación |
+| `src/pages/RegistroEvento.tsx` | Asistente público por pasos |
+| `src/components/admin/events/EventRegistrationTab.tsx` | Contenedor de las cuatro pantallas del panel |
+| `src/lib/qrcode.ts` | Generador de QR propio, sin dependencias (modelo 2, byte, nivel M, v1-10) |
+
+**Reglas durables:**
+
+- **Todo cuelga de `eventId`.** Categoría, inscripción, acompañante, pago,
+  comunicación e historial llevan el id del evento. Ninguna consulta del módulo
+  devuelve datos de una edición distinta a la que se le pide. Es lo que permite
+  que la XII y la XIII convivan sin mezclarse.
+- **El precio se congela al enviar el formulario** (`pricing` en la
+  inscripción). El checkout lee esa foto guardada, **no** la configuración viva.
+  Cambiar el precio o la moneda de una categoría no puede mover lo que ya se le
+  prometió a alguien. Y el importe nunca viene del navegador.
+- **La confirmación del pago la da el webhook**, no el retorno del navegador.
+  `/api/payments/webhook` → `confirmPaidSession`. El regreso desde Stripe sólo
+  consulta estado.
+- **La idempotencia del webhook es doble**: `EventRegistrationPayment.stripeEventId`
+  tiene índice único (parcial) y el UPDATE es condicional
+  (`WHERE status <> ALL(SETTLED)`). Un reenvío de Stripe no vuelve a notificar
+  ni a ocupar cupo. Ojo: el índice único es **parcial**, así que el
+  `ON CONFLICT` tiene que repetir su predicado (`WHERE "stripeEventId" IS NOT
+  NULL`) o la sentencia falla entera — fue un error real, corregido en v4.648.
+- **Multimoneda**: `currency` es lo que se publica, `settlementCurrency` lo que
+  cobra la pasarela. Si difieren, se convierte con `fx` de la edición y se
+  guardan **los tres datos**: valor original, valor convertido y tasa. Sin tasa
+  configurada NO se inventa una: se cobra en la moneda publicada y el panel
+  avisa. La tasa se guarda en `NUMERIC(24,12)` — con menos decimales una tasa
+  COP→USD (~0,000244) pierde precisión.
+- **El formulario de cada categoría lo arma el servidor** (`buildFormSchema`) y
+  viaja al navegador dentro de `category.form`. Agregar una categoría o un campo
+  desde el panel no exige desplegar el frontend. El servidor valida siempre.
+- **Las etiquetas de sistema** (`internacional`, `nacional`, `cadres`,
+  `pago_confirmado`, `pendiente`, `con_acompanantes`) las deduce el módulo de la
+  propia inscripción y no se editan a mano; el panel sólo cambia las manuales.
+- **El estado no se escribe sin historial.** Todo cambio de estado, etiqueta,
+  nota o acreditación deja fila en `EventRegistrationHistory` con usuario, fecha
+  y comentario.
+- **Una categoría con inscripciones no se borra**, se desactiva. Lo impide el
+  servidor, no sólo la pantalla. Y `key` no se edita después de crearla: es lo
+  que ata las inscripciones a su categoría.
+- **Marcar "reembolsado" en el panel no mueve dinero.** El reembolso se hace en
+  Stripe y llega por webhook; el cambio manual sólo refleja el estado
+  administrativo.
+- **Las siete tablas viven fuera de Prisma** (`EventRegistration`,
+  `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
+  `EventRegistrationPayment`, `EventRegistrationHistory`,
+  `EventRegistrationMessage`), como manda la sección de base de datos de este
+  archivo. `EventRegistration` ya existía desde v4.606 con datos de producción:
+  se **amplía** con `ADD COLUMN IF NOT EXISTS`, jamás se recrea. Las columnas
+  viejas (`ticketKey`, `ticketLabel`, `quantity`) se siguen alimentando.
+- **El QR es propio.** No agregar una librería de QR: `src/lib/qrcode.ts` cubre
+  hasta 213 bytes, que es de sobra para un código de inscripción. Lleva el
+  **código**, no una URL: en la sede puede no haber internet.
+
+**Nueva edición**: crear el `CalendarEvent`, abrir la pestaña Registro y usar
+"clonar" desde la edición anterior. El número de edición y la ciudad se deducen
+del título (`XIII …`) y de `location`. La edición clonada nace con el registro
+**cerrado**, a propósito.
+
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en

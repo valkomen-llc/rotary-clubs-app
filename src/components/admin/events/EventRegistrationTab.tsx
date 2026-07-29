@@ -1,309 +1,330 @@
 // ════════════════════════════════════════════════════════════════════
-// Pestaña "Registro" de un evento — v4.606.0
+// Pestaña "Registro" de un evento — v4.648.0
 //
-// Dos partes: la configuración de las entradas (se guarda dentro de
-// `metadata.registration` del evento, con el botón "Guardar cambios" del
-// editor) y la lista de inscripciones recibidas, con totales y exportación.
+// Contenedor de las cuatro pantallas del módulo de inscripciones:
+//
+//   Edición            — número, sede, ventana de registro y tasa de cambio
+//   Categorías         — Rotario Internacional / Rotario Nacional / CADRES
+//   Inscripciones      — tablero, tabla, filtros y fichas
+//   Acreditación       — búsqueda, check-in y escarapelas del día del evento
+//
+// A diferencia de v4.606, esta pestaña YA NO se guarda con el botón "Guardar
+// cambios" del evento: la configuración vive en sus propias tablas
+// (`EventEdition`, `EventRegistrationCategory`) y cada pantalla guarda lo suyo.
+// Así la configuración de una edición no depende de que alguien recuerde
+// guardar el evento entero.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import {
+    AlertCircle, BadgeCheck, Calendar, Coins, ExternalLink, LayoutGrid, Loader2,
+    Save, Settings2, Users,
+} from 'lucide-react';
+import EventCategoriesManager, { type AdminCategory } from './EventCategoriesManager';
+import EventRegistrationsManager from './EventRegistrationsManager';
+import EventAccreditation from './EventAccreditation';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
+const authHeaders = () => ({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
+});
 
-export interface EventTicket {
-    key: string;
-    label: string;
-    description?: string;
-    amount: number;
-    capacity?: number | null;
+type Pane = 'edicion' | 'categorias' | 'inscripciones' | 'acreditacion';
+
+const PANES: { key: Pane; label: string; icon: any }[] = [
+    { key: 'edicion', label: 'Edición', icon: Settings2 },
+    { key: 'categorias', label: 'Categorías de Registro', icon: LayoutGrid },
+    { key: 'inscripciones', label: 'Inscripciones', icon: Users },
+    { key: 'acreditacion', label: 'Acreditación', icon: BadgeCheck },
+];
+
+interface Edition {
+    editionNumber: number | null;
+    editionLabel: string;
+    venue: string; city: string; region: string; country: string;
+    timezone: string; codePrefix: string;
+    registrationOpen: boolean;
+    opensAt: string | null; closesAt: string | null;
+    fx: { usdToCop?: number; source?: string; updatedAt?: string };
+    settings: { successMessage?: string; sendReceipt?: boolean; adminEmails?: string[]; termsUrl?: string };
 }
 
-export interface EventRegistrationConfig {
-    enabled?: boolean;
-    currency?: string;
-    closesAt?: string;
-    requireClub?: boolean;
-    sendReceipt?: boolean;
-    adminEmails?: string[];
-    successMessage?: string;
-    maxPerRegistration?: number;
-    tickets?: EventTicket[];
-}
-
-interface Registration {
-    id: string; publicRef: string; status: string;
-    firstName: string; lastName: string; email: string; phone: string;
-    country: string; clubName: string;
-    ticketLabel: string; quantity: number; totalAmount: string | number;
-    currency: string; paidAt: string | null; createdAt: string;
-}
-
-interface Totals {
-    count: number; confirmed: number; attendees: number;
-    pending: number; revenue: number; currency: string;
-}
-
-const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
-    paid: { label: 'Pagado', cls: 'bg-emerald-100 text-emerald-700' },
-    confirmed: { label: 'Confirmado', cls: 'bg-emerald-100 text-emerald-700' },
-    pending_payment: { label: 'Pago pendiente', cls: 'bg-amber-100 text-amber-700' },
-    payment_failed: { label: 'Pago fallido', cls: 'bg-red-100 text-red-700' },
-    expired: { label: 'Expirado', cls: 'bg-gray-100 text-gray-600' },
-    refunded: { label: 'Reembolsado', cls: 'bg-indigo-100 text-indigo-700' },
-};
-
-const inputCls = 'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none';
-
-const money = (amount: number, currency: string) =>
-    `${Number(amount || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 })} ${currency}`;
-
-/** Clave estable a partir del nombre de la entrada, para no perder el historial. */
-const ticketKey = (label: string, index: number) =>
-    String(label || '')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-        .slice(0, 60) || `entrada-${index + 1}`;
+const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const labelCls = 'mb-1 block text-xs font-semibold text-gray-600';
 
 interface Props {
     eventId: string;
-    /** Dirección amigable del evento, si tiene: se usa para el enlace público. */
     eventSlug?: string | null;
-    config: EventRegistrationConfig;
-    onChange: (next: EventRegistrationConfig) => void;
+    eventTitle?: string;
 }
 
-const EventRegistrationTab = ({ eventId, eventSlug, config, onChange }: Props) => {
-    const [registrations, setRegistrations] = useState<Registration[]>([]);
-    const [totals, setTotals] = useState<Totals | null>(null);
-    const [loading, setLoading] = useState(false);
+const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
+    const [pane, setPane] = useState<Pane>('edicion');
+    const [edition, setEdition] = useState<Edition | null>(null);
+    const [categories, setCategories] = useState<AdminCategory[]>([]);
+    const [catalog, setCatalog] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const [saved, setSaved] = useState(false);
 
-    const tickets = config.tickets || [];
     const publicUrl = `${window.location.origin}/eventos/${eventSlug || eventId}/registro`;
-
-    const patch = (partial: Partial<EventRegistrationConfig>) => onChange({ ...config, ...partial });
-    const patchTicket = (index: number, partial: Partial<EventTicket>) =>
-        patch({ tickets: tickets.map((t, i) => (i === index ? { ...t, ...partial } : t)) });
 
     const load = useCallback(() => {
         setLoading(true);
-        fetch(`${API}/event-registrations/admin/list?eventRef=${encodeURIComponent(eventId)}`, { headers: authHeaders() })
+        fetch(`${API}/event-registrations/admin/edition?eventRef=${encodeURIComponent(eventId)}`, { headers: authHeaders() })
             .then(r => r.json())
             .then(data => {
-                if (data?.error) return;
-                setRegistrations(data.registrations || []);
-                setTotals(data.totals || null);
+                if (data?.error) throw new Error(data.error);
+                setEdition(data.edition);
+                setCategories(data.categories || []);
+                setCatalog(data.catalog || null);
             })
-            .catch(() => { /* la configuración sigue siendo editable */ })
+            .catch(err => setError(err?.message || 'No se pudo cargar la configuración del registro.'))
             .finally(() => setLoading(false));
     }, [eventId]);
 
     useEffect(() => { load(); }, [load]);
 
-    const exportCsv = async () => {
+    const patch = (partial: Partial<Edition>) =>
+        setEdition(prev => (prev ? { ...prev, ...partial } : prev));
+
+    const saveEdition = async () => {
+        if (!edition) return;
+        setSaving(true);
+        setError('');
+        setSaved(false);
         try {
-            const res = await fetch(`${API}/event-registrations/admin/export.csv?eventRef=${encodeURIComponent(eventId)}`, { headers: authHeaders() });
-            if (!res.ok) throw new Error();
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `inscripciones-${eventSlug || eventId}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch {
-            alert('No pudimos exportar las inscripciones.');
+            const res = await fetch(`${API}/event-registrations/admin/edition`, {
+                method: 'PUT', headers: authHeaders(),
+                body: JSON.stringify({ eventRef: eventId, ...edition }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'No se pudo guardar.');
+            setEdition(data.edition);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2500);
+        } catch (err: any) {
+            setError(err?.message || 'No se pudo guardar la edición.');
+        } finally {
+            setSaving(false);
         }
     };
 
+    if (loading) {
+        return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>;
+    }
+
+    const activeCategories = categories.filter(c => c.active).length;
+    const hasFxRate = Number(edition?.fx?.usdToCop) > 0;
+    const converting = categories.some(c => c.active && c.settlementCurrency !== c.currency);
+
     return (
-        <div className="space-y-6">
-            <p className="text-sm text-gray-500">
-                Permite que el público se inscriba y pague su entrada con Stripe desde{' '}
-                <a href={publicUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-600 hover:underline">{publicUrl}</a>.
-                Los cambios de esta pestaña se guardan con el botón <b>Guardar cambios</b> del evento.
-            </p>
-
-            {/* ── Ajustes generales ─────────────────────────────────── */}
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input type="checkbox" className="h-4 w-4"
-                    checked={config.enabled === true}
-                    onChange={e => patch({ enabled: e.target.checked })} />
-                Registro abierto para este evento
-            </label>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
-                    <input type="text" className={inputCls} value={config.currency || ''}
-                        onChange={e => patch({ currency: e.target.value.toUpperCase().slice(0, 10) })}
-                        placeholder="USD" />
-                    <p className="mt-1 text-xs text-gray-400">Código de tres letras: USD, COP, EUR…</p>
+        <div className="space-y-5">
+            {/* ── Encabezado ──────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-blue-900">
+                        {edition?.editionNumber ? `Edición ${edition.editionNumber}` : 'Edición'}
+                        {edition?.city ? ` · ${edition.city}` : ''}
+                    </p>
+                    <p className="truncate text-xs text-blue-700/70">
+                        {activeCategories} categoría(s) activa(s) ·{' '}
+                        {edition?.registrationOpen ? 'registro abierto' : 'registro cerrado'}
+                    </p>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cierre de inscripciones</label>
-                    <input type="date" className={inputCls} value={(config.closesAt || '').slice(0, 10)}
-                        onChange={e => patch({ closesAt: e.target.value })} />
-                    <p className="mt-1 text-xs text-gray-400">Vacío deja el registro abierto.</p>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Máximo de entradas por inscripción</label>
-                    <input type="number" min={1} className={inputCls} value={config.maxPerRegistration ?? 10}
-                        onChange={e => patch({ maxPerRegistration: Math.max(1, Number(e.target.value) || 1) })} />
-                </div>
+                <a href={publicUrl} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50">
+                    <ExternalLink className="h-3.5 w-3.5" /> Ver formulario público
+                </a>
             </div>
 
-            {/* ── Entradas ──────────────────────────────────────────── */}
-            <div>
-                <h4 className="text-sm font-bold text-gray-800 mb-3">Tipos de entrada</h4>
-                <div className="space-y-3">
-                    {tickets.map((t, i) => (
-                        <div key={i} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 space-y-3">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Nombre</label>
-                                    <input type="text" className={inputCls} value={t.label || ''}
-                                        onChange={e => patchTicket(i, { label: e.target.value, key: t.key || ticketKey(e.target.value, i) })}
-                                        onBlur={() => !t.key && patchTicket(i, { key: ticketKey(t.label, i) })}
-                                        placeholder="Ej: Ticket general" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Precio ({config.currency || 'USD'})</label>
-                                    <input type="number" min={0} step="0.01" className={inputCls} value={t.amount ?? 0}
-                                        onChange={e => patchTicket(i, { amount: Math.max(0, Number(e.target.value) || 0) })} />
-                                    <p className="mt-1 text-xs text-gray-400">0 = entrada sin costo, se confirma sin pasar por el pago.</p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Cupo (opcional)</label>
-                                    <input type="number" min={0} className={inputCls} value={t.capacity ?? ''}
-                                        onChange={e => patchTicket(i, { capacity: e.target.value ? Math.max(0, Number(e.target.value)) : null })}
-                                        placeholder="Sin límite" />
-                                </div>
+            {/* ── Sub-pestañas ────────────────────────────────────── */}
+            <div className="flex flex-wrap gap-1 border-b border-gray-200">
+                {PANES.map(p => {
+                    const Icon = p.icon;
+                    const active = pane === p.key;
+                    return (
+                        <button key={p.key} type="button" onClick={() => setPane(p.key)}
+                            className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${active
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                            <Icon className="h-4 w-4" /> {p.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {error && (
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+                </div>
+            )}
+
+            {/* ── Edición ─────────────────────────────────────────── */}
+            {pane === 'edicion' && edition && (
+                <div className="space-y-5">
+                    <p className="text-sm text-gray-500">
+                        Estos datos identifican esta versión de la feria y no se mezclan con las siguientes.
+                        Toda inscripción, categoría, pago y reporte queda atado a esta edición.
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div>
+                            <label className={labelCls}>Número de la edición</label>
+                            <input type="number" min={1} className={inputCls} value={edition.editionNumber ?? ''}
+                                onChange={e => patch({ editionNumber: e.target.value ? Number(e.target.value) : null })} />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className={labelCls}>Nombre de la edición</label>
+                            <input type="text" className={inputCls} value={edition.editionLabel}
+                                onChange={e => patch({ editionLabel: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Sede</label>
+                            <input type="text" className={inputCls} value={edition.venue}
+                                onChange={e => patch({ venue: e.target.value })} placeholder="Sonesta Hotel Valledupar" />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Ciudad</label>
+                            <input type="text" className={inputCls} value={edition.city}
+                                onChange={e => patch({ city: e.target.value })} placeholder="Valledupar" />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Departamento / región</label>
+                            <input type="text" className={inputCls} value={edition.region}
+                                onChange={e => patch({ region: e.target.value })} placeholder="Cesar" />
+                        </div>
+                        <div>
+                            <label className={labelCls}>País</label>
+                            <input type="text" className={inputCls} value={edition.country}
+                                onChange={e => patch({ country: e.target.value })} placeholder="Colombia" />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Prefijo del código de inscripción</label>
+                            <input type="text" className={`${inputCls} font-mono`} value={edition.codePrefix}
+                                onChange={e => patch({ codePrefix: e.target.value.toUpperCase() })} maxLength={10} />
+                            <p className="mt-1 text-xs text-gray-400">
+                                Los códigos quedan como <span className="font-mono">{edition.codePrefix || 'RPF12'}-4K9Z</span>.
+                            </p>
+                        </div>
+                        <div>
+                            <label className={labelCls}>Zona horaria</label>
+                            <input type="text" className={inputCls} value={edition.timezone}
+                                onChange={e => patch({ timezone: e.target.value })} />
+                        </div>
+                    </div>
+
+                    {/* Ventana de registro */}
+                    <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                            <input type="checkbox" className="h-4 w-4" checked={edition.registrationOpen}
+                                onChange={e => patch({ registrationOpen: e.target.checked })} />
+                            <Calendar className="h-4 w-4 text-blue-600" /> Registro abierto para esta edición
+                        </label>
+                        <p className="mt-1 pl-6 text-xs text-gray-400">
+                            Interruptor general. Cada categoría puede además tener su propia ventana de fechas.
+                        </p>
+                        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label className={labelCls}>Abre el</label>
+                                <input type="date" className={inputCls} value={edition.opensAt || ''}
+                                    onChange={e => patch({ opensAt: e.target.value || null })} />
                             </div>
-                            <div className="flex items-end gap-3">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Descripción (opcional)</label>
-                                    <input type="text" className={inputCls} value={t.description || ''}
-                                        onChange={e => patchTicket(i, { description: e.target.value })}
-                                        placeholder="Qué incluye esta entrada" />
-                                </div>
-                                <button type="button"
-                                    onClick={() => patch({ tickets: tickets.filter((_, ix) => ix !== i) })}
-                                    className="rounded-lg p-2.5 text-red-500 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                            <div>
+                                <label className={labelCls}>Cierra el</label>
+                                <input type="date" className={inputCls} value={edition.closesAt || ''}
+                                    onChange={e => patch({ closesAt: e.target.value || null })} />
                             </div>
                         </div>
-                    ))}
-                </div>
-                <button type="button"
-                    onClick={() => patch({ tickets: [...tickets, { key: '', label: '', amount: 0, capacity: null }] })}
-                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline">
-                    <Plus className="w-4 h-4" /> Agregar tipo de entrada
-                </button>
-            </div>
+                    </div>
 
-            {/* ── Datos y avisos ────────────────────────────────────── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Correos que reciben aviso de cada inscripción</label>
-                    <input type="text" className={inputCls} value={(config.adminEmails || []).join(', ')}
-                        onChange={e => patch({ adminEmails: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
-                        placeholder="Separados por coma" />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Mensaje de confirmación</label>
-                    <input type="text" className={inputCls} value={config.successMessage || ''}
-                        onChange={e => patch({ successMessage: e.target.value })}
-                        placeholder="Se muestra y se envía al confirmar el registro" />
-                </div>
-            </div>
-            <div className="flex flex-wrap gap-6">
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input type="checkbox" className="h-4 w-4" checked={config.requireClub !== false}
-                        onChange={e => patch({ requireClub: e.target.checked })} />
-                    Exigir el club u organización
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input type="checkbox" className="h-4 w-4" checked={config.sendReceipt !== false}
-                        onChange={e => patch({ sendReceipt: e.target.checked })} />
-                    Enviar comprobante por correo al asistente
-                </label>
-            </div>
-
-            {/* ── Inscripciones recibidas ───────────────────────────── */}
-            <div className="border-t border-gray-100 pt-6">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h4 className="flex items-center gap-2 text-sm font-bold text-gray-800">
-                        <Users className="w-4 h-4 text-blue-600" /> Inscripciones recibidas
-                    </h4>
-                    <div className="flex items-center gap-3">
-                        <button type="button" onClick={load}
-                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline">
-                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Actualizar
-                        </button>
-                        {registrations.length > 0 && (
-                            <button type="button" onClick={exportCsv}
-                                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline">
-                                <Download className="w-4 h-4" /> Exportar CSV
-                            </button>
+                    {/* Tasa de cambio */}
+                    <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                            <Coins className="h-4 w-4 text-amber-500" /> Tasa de cambio de la edición
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                            Se usa cuando una categoría publica su precio en una moneda y la pasarela cobra en otra.
+                            Cada inscripción guarda la tasa con la que se le cobró, así que cambiarla aquí
+                            <strong> no altera las inscripciones ya creadas</strong>.
+                        </p>
+                        <div className="mt-3 max-w-xs">
+                            <label className={labelCls}>Pesos colombianos por dólar (COP/USD)</label>
+                            <input type="number" min={0} step="1" className={inputCls}
+                                value={edition.fx?.usdToCop ?? ''}
+                                onChange={e => patch({ fx: { ...edition.fx, usdToCop: e.target.value ? Number(e.target.value) : undefined } })}
+                                placeholder="4100" />
+                            {edition.fx?.updatedAt && (
+                                <p className="mt-1 text-xs text-gray-400">
+                                    Actualizada el {new Date(edition.fx.updatedAt).toLocaleString('es-CO')}
+                                </p>
+                            )}
+                        </div>
+                        {converting && !hasFxRate && (
+                            <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                Hay categorías configuradas para cobrar en otra moneda, pero no hay tasa. Mientras
+                                falte, esas inscripciones se cobrarán en su moneda publicada, sin convertir.
+                            </p>
                         )}
                     </div>
-                </div>
 
-                {totals && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                        {[
-                            { label: 'Inscripciones', value: totals.count },
-                            { label: 'Confirmadas', value: totals.confirmed },
-                            { label: 'Asistentes', value: totals.attendees },
-                            { label: 'Recaudado', value: money(totals.revenue, totals.currency) },
-                        ].map(card => (
-                            <div key={card.label} className="rounded-xl border border-gray-100 bg-white px-4 py-3">
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{card.label}</p>
-                                <p className="text-lg font-bold text-gray-900">{card.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {loading && !registrations.length ? (
-                    <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
-                ) : registrations.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-gray-400">Todavía no hay inscripciones para este evento.</p>
-                ) : (
-                    <div className="overflow-x-auto rounded-xl border border-gray-100">
-                        <table className="w-full text-sm">
-                            <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wider text-gray-500">
-                                <tr>
-                                    <th className="px-4 py-3">Referencia</th>
-                                    <th className="px-4 py-3">Asistente</th>
-                                    <th className="px-4 py-3">Entrada</th>
-                                    <th className="px-4 py-3">Total</th>
-                                    <th className="px-4 py-3">Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {registrations.map(r => {
-                                    const badge = STATUS_LABELS[r.status] || { label: r.status, cls: 'bg-gray-100 text-gray-600' };
-                                    return (
-                                        <tr key={r.id} className="hover:bg-gray-50/60">
-                                            <td className="px-4 py-3 font-mono text-xs font-bold text-gray-700">{r.publicRef}</td>
-                                            <td className="px-4 py-3">
-                                                <p className="font-semibold text-gray-900">{r.firstName} {r.lastName}</p>
-                                                <p className="text-xs text-gray-500">{r.email}{r.clubName ? ` · ${r.clubName}` : ''}</p>
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-700">{r.ticketLabel} × {r.quantity}</td>
-                                            <td className="px-4 py-3 font-semibold text-gray-900">{money(Number(r.totalAmount), r.currency)}</td>
-                                            <td className="px-4 py-3">
-                                                <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${badge.cls}`}>{badge.label}</span>
-                                            </td>
-                                        </tr>
-                                    );
+                    {/* Avisos */}
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label className={labelCls}>Correos que reciben aviso de cada inscripción</label>
+                            <input type="text" className={inputCls}
+                                value={(edition.settings?.adminEmails || []).join(', ')}
+                                onChange={e => patch({
+                                    settings: {
+                                        ...edition.settings,
+                                        adminEmails: e.target.value.split(',').map(x => x.trim()).filter(Boolean),
+                                    },
                                 })}
-                            </tbody>
-                        </table>
+                                placeholder="Separados por coma" />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Mensaje de confirmación</label>
+                            <input type="text" className={inputCls} value={edition.settings?.successMessage || ''}
+                                onChange={e => patch({ settings: { ...edition.settings, successMessage: e.target.value } })}
+                                placeholder="Se muestra y se envía al confirmar la inscripción" />
+                        </div>
                     </div>
-                )}
-            </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" className="h-4 w-4" checked={edition.settings?.sendReceipt !== false}
+                            onChange={e => patch({ settings: { ...edition.settings, sendReceipt: e.target.checked } })} />
+                        Enviar comprobante por correo al participante
+                    </label>
+
+                    <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
+                        <button type="button" onClick={saveEdition} disabled={saving}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
+                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                            Guardar edición
+                        </button>
+                        {saved && <span className="text-sm font-semibold text-emerald-600">Guardado.</span>}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Categorías ──────────────────────────────────────── */}
+            {pane === 'categorias' && (
+                <EventCategoriesManager eventId={eventId} categories={categories} catalog={catalog}
+                    hasFxRate={hasFxRate} onReload={load} />
+            )}
+
+            {/* ── Inscripciones ───────────────────────────────────── */}
+            {pane === 'inscripciones' && (
+                <EventRegistrationsManager eventId={eventId} eventTitle={eventTitle}
+                    categories={categories.map(c => ({ key: c.key, name: c.name }))}
+                    statuses={catalog?.statuses || []} />
+            )}
+
+            {/* ── Acreditación ────────────────────────────────────── */}
+            {pane === 'acreditacion' && (
+                <EventAccreditation eventId={eventId} eventTitle={eventTitle} venue={edition?.venue} />
+            )}
         </div>
     );
 };
