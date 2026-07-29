@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.627.0",
-  "cache_bust": "2026-07-28 (Acceso unificado: el formulario del icono del encabezado es ahora el unico ingreso del sitio y resuelve solo si las credenciales son de un Administrador del Sitio o de un Gestor de Proyectos; el servidor devuelve la ruta de destino. /mi-proyecto deja de tener su propio formulario. Seguridad: authMiddleware ahora exige la audiencia del token —hasta v4.626 el token del panel del club pasaba y alcanzaba /api/project-fair/admin/*, que devuelve las postulaciones y pagos de todos los clubes— y esas 28 rutas exigen ademas rol administrativo del sitio. 20 pruebas en verde.)",
+  "version": "4.628.0",
+  "cache_bust": "2026-07-28 (Calendario de Capacitaciones y Soporte PÚBLICO: nueva herramienta pública sin login en /agendar-capacitacion (como el generador de pendones). El usuario busca su club/distrito/organización con un buscador global, el sistema valida automáticamente la suscripción vigente y, si el sitio está activo, reserva su capacitación (tipo, fecha/hora en su zona horaria, datos de contacto). Si el sitio está vencido/suspendido, lo dirige al checkout de Stripe (activación por webhook, no por retorno del navegador). Cada reserva envía confirmación por correo con .ics + botones Google/Outlook y un ENLACE MÁGICO privado (/mi-capacitacion/:token) para ver, cancelar o reprogramar sin contraseña. Nuevos endpoints públicos en /api/public/training/*. Aditivo: se agrega solo el campo publicToken+source a TrainingAppointment; sin operaciones destructivas de BD.)",
   "type": "module",
-  "//": "UI V4.609.0 | 2026-07-28 (Fechas del proceso, teléfono con país y sin subtítulo repetido)",
+  "//": "UI V4.628.0 | 2026-07-28 (Calendario de Capacitaciones público sin login — buscador de sitio, validación de suscripción + Stripe y gestión por enlace mágico)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",
