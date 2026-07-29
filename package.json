@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.639.0",
-  "cache_bust": "2026-07-29 (Enlace provisional de reunión + ciclo de notificaciones. Admin > Disponibilidad: nueva sección 'Enlace provisional de reunión' (URL https + interruptor + texto de ayuda) mientras se completa Zoom/Meet automático. Alcance con prioridad facilitador → tipo de cita → global; el enlace automático (cuando exista) tiene prioridad sobre el provisional, sin tocar el flujo. La confirmación muestra botón 'Ingresar a la reunión' + 'Copiar enlace' + código de confirmación (solo tras confirmar). Correos: confirmación inmediata (resumen, tz del usuario, duración, enlace, instrucciones, código) y recordatorio 1h antes con CTA; el recordatorio se programa al confirmar, se reprograma al cambiar fecha y se elimina al cancelar; reservas con <1h de anticipación solo reciben confirmación (regla documentada). Auditoría por cita: confirmación enviada/error, recordatorio programado/enviado/reintentos, con reintentos automáticos ante fallas temporales y acción 'Reenviar confirmación' en el admin. Fechas en UTC, mostradas en la tz elegida. Aditivo (columnas nuevas creadas en runtime por ensureTrainingSchema); validado con Postgres.)",
+  "version": "4.640.0",
+  "cache_bust": "2026-07-29 (Ajustes visuales de la agenda pública /agendar-capacitacion y /mi-capacitacion: (1) el fondo ahora es el mismo del login del Panel (bg-rotary-concrete + degradado azul→blanco); (2) el logo del encabezado crece ~20px (h-9→h-14); (3) el título 'Agenda de Capacitaciones y Soporte' queda sin negrilla y se elimina el subtítulo 'Reserva tu sesión sin iniciar sesión'; (4) en la barra superior se quitan Endpolio.org y My Rotary y se deja un solo enlace 'Iniciar sesión' que lleva a https://app.clubplatform.org/. Solo frontend.)",
   "type": "module",
-  "//": "UI V4.639.0 | 2026-07-29 (Enlace provisional de reunión con alcance/prioridad + confirmación con botón/copiar/código + recordatorio 1h y auditoría de correos)",
+  "//": "UI V4.640.0 | 2026-07-29 (Agenda pública: fondo del login, logo +20px, título sin negrilla, barra superior con solo Iniciar sesión)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

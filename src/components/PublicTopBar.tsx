@@ -28,13 +28,9 @@ const PublicTopBar: React.FC = () => {
         <div className="bg-[#28354b] text-white relative z-[60]" data-no-translate>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-end gap-6 sm:gap-8 py-4 text-sm">
-                    <a href="https://www.endpolio.org" target="_blank" rel="noopener noreferrer"
-                        className="hidden sm:flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
-                        Endpolio.org <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                    <a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer"
-                        className="hidden sm:flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
-                        My Rotary <ExternalLink className="w-3.5 h-3.5" />
+                    <a href="https://app.clubplatform.org/"
+                        className="flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors">
+                        Iniciar sesión <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
                     <div className="relative" ref={ref}>
