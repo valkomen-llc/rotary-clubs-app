@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — validación automática de calidad
-// v4.645.0
+// v4.646.0
 //
 // Se ejecuta ANTES de dar un outro por listo, sobre el archivo real que
 // devolvió el proveedor (el mismo buffer que después se sube a S3).
@@ -330,7 +330,7 @@ export const inspectSourceImage = async (buffer, { format = '9:16' } = {}) => {
     const spec = OUTRO_FORMATS[format] || OUTRO_FORMATS['9:16'];
     const report = {
         width: null, height: null, format: null,
-        upscaleFactor: null, sharpness: null,
+        upscaleFactor: null, sharpness: null, aspectRatio: null,
         warnings: [], ok: true
     };
 
@@ -349,6 +349,23 @@ export const inspectSourceImage = async (buffer, { format = '9:16' } = {}) => {
             if (factor > QUALITY_THRESHOLDS.maxSourceUpscale) {
                 report.warnings.push(
                     `La imagen (${report.width}×${report.height}) hay que ampliarla ${report.upscaleFactor}× para llegar a ${spec.master.width}×${spec.master.height}: los textos y el logo pueden perder filo. Recomendado subirla con al menos ${spec.master.width}px de ancho.`
+                );
+                report.ok = false;
+            }
+
+            // El modelo image-to-video hereda la proporción de esta imagen: no
+            // recibe la relación de aspecto como parámetro. Si la imagen no
+            // viene en el formato pedido, el archivo tampoco va a venir en él, y
+            // recortarlo después está prohibido. Vale más avisarlo acá, antes de
+            // gastar los créditos, que descubrirlo en la validación del archivo.
+            const sourceRatio = report.width / report.height;
+            const targetRatio = spec.master.width / spec.master.height;
+            report.aspectRatio = Number(sourceRatio.toFixed(3));
+            // 3% de tolerancia: absorbe redondeos de exportación sin dejar pasar
+            // una vertical donde se pidió una horizontal.
+            if (Math.abs(sourceRatio - targetRatio) / targetRatio > 0.03) {
+                report.warnings.push(
+                    `La imagen es ${report.width}×${report.height} y el formato elegido es ${format} (${spec.master.width}×${spec.master.height}). El cierre conserva la proporción de la imagen, así que va a salir en la de ella: para obtener ${format}, subí la imagen ya en esa proporción.`
                 );
                 report.ok = false;
             }

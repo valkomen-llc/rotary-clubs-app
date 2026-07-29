@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — pantalla del módulo
-// v4.645.0
+// v4.646.0
 //
 // Cierres de ~5 segundos a partir de una imagen fija: se elige la imagen, se
 // escribe lo que debe decir la voz, se ajusta estilo y formato, se genera y se

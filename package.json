@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.645.0",
-  "cache_bust": "2026-07-29 (Content Studio: nuevo Generador de Outros IA. Cierres de ~5 segundos a partir de una imagen fija, con voz en off opcional, 8 estilos, formatos 9:16/1:1/4:5/16:9, validacion automatica de calidad del archivo y guardado en la Biblioteca. Los outros listos se pueden enganchar al final de un video desde el Creador de Video.)",
+  "version": "4.646.0",
+  "cache_bust": "2026-07-29b (Generador de Outros IA: corregido el error KIE createTask - This field is required. La peticion a Kling 2.6 ahora lleva los campos que el modelo exige y ninguno mas, la voz en off usa el audio nativo de Kling y se avisa antes de gastar creditos si la imagen no viene en el formato elegido.)",
   "type": "module",
-  "//": "UI V4.645.0 | 2026-07-29 (Generador de Outros IA: cierres de 5s desde una imagen, voz en off opcional via KIE.AI, validacion de calidad y clip de cierre en el Creador de Video)",
+  "//": "UI V4.646.0 | 2026-07-29 (Fix Generador de Outros IA: payload correcto para kling-2.6/image-to-video, voz en off por audio nativo de Kling, aviso de proporcion de la imagen)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

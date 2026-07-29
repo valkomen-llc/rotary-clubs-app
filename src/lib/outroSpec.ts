@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — espejo en el navegador
-// v4.645.0
+// v4.646.0
 //
 // Los CATÁLOGOS (estilos, voces, motores, formatos) NO se duplican aquí: se
 // piden a `GET /api/content-studio/outros/options`, para que el servidor sea la
@@ -36,6 +36,7 @@ export interface SourceReport {
     height: number | null;
     upscaleFactor: number | null;
     sharpness: number | null;
+    aspectRatio: number | null;
     warnings: string[];
     ok: boolean;
 }
@@ -94,6 +95,7 @@ export interface OutroOptions {
     engines: {
         id: string; label: string; nativeAudio: boolean; durations: number[];
         aspectRatios: string[]; resolutions: string[]; creditEstimate: number;
+        creditEstimateAudio: number;
         note: string; available: boolean; isDefault: boolean;
     }[];
     voice: {

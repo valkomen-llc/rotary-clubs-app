@@ -66,7 +66,7 @@ Prompts largos con listas negras son contraproducentes — el modelo se obsesion
 - `OPENAI_API_KEY` — gpt-image-1 directo + GPT-4o para copy.
 - `HIGGSFIELD_API_KEY` — pendiente, se usará cuando implementemos ese engine.
 
-## Generador de Outros IA — v4.645
+## Generador de Outros IA — v4.646
 
 Cierres audiovisuales de ~5 s a partir de una imagen fija. Pestaña propia en
 Content Studio (`src/components/admin/content-studio/OutroGenerator.tsx`),
@@ -104,13 +104,32 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
 - **Los ids de los modelos de KIE son configurables por entorno**
   (`KIE_OUTRO_MODEL_SILENT`, `KIE_OUTRO_MODEL_AUDIO`). KIE renombra modelos; si
   el default deja de existir, se corrige el entorno sin desplegar. El error de
-  KIE se propaga textual a la UI justamente para que se vea cuál falló.
+  KIE se propaga textual a la UI justamente para que se vea cuál falló, y
+  desde v4.646 lleva además la lista de campos enviados, porque KIE contesta
+  `This field is required` **sin decir cuál**.
+- **El `input` de `/jobs/createTask` se arma por modelo, no por acumulación**
+  (`buildVideoInput` en `kieService.js`). KIE valida el `input` contra el
+  esquema del modelo: los campos que no declara sobran y los obligatorios no
+  pueden faltar. Mandar alias «por si acaso» fue justamente lo que rompió el
+  módulo en v4.645 —el payload llevaba `aspect_ratio`, `image_size`,
+  `resolution`, `enable_audio` y `generate_audio`, y le faltaba `sound`—.
+  Para `kling-*/image-to-video` el input es exactamente
+  `{ prompt, image_urls, duration, sound }`.
+- **La relación de aspecto la hereda de la imagen de origen.** Los modelos
+  image-to-video de Kling no reciben `aspect_ratio`: el video sale en la
+  proporción de la imagen. Por eso el formato elegido se contrasta contra la
+  imagen **antes** de gastar créditos (`inspectSourceImage`) y contra el
+  archivo entregado **después** (`validateOutroFile`). Nunca se corrige
+  recortando.
 - **La voz en off sólo existe con un motor de audio nativo.** No se puede
   generar el video por un lado y la locución por otro: mezclarlos exige ffmpeg
-  y la API corre en Vercel sin ffmpeg. Por eso activar la voz cambia el motor
-  (y con él la duración del clip), y por eso los parámetros de voz —idioma,
-  acento, género, velocidad, tono, volumen— van descritos **en el prompt**, que
-  es lo que entiende un modelo de audio nativo.
+  y la API corre en Vercel sin ffmpeg. Desde v4.646 ese motor es **el mismo
+  Kling 2.6**, con `sound: true` — genera voz, ambiente y efectos dentro del
+  archivo. Hasta v4.645 la voz apuntaba a `veo3_fast`, que **no** es un modelo
+  de `/jobs/createTask` sino del endpoint dedicado `/veo/generate`: esa ruta
+  nunca pudo funcionar. Los parámetros de voz —idioma, acento, género,
+  velocidad, tono, volumen— van descritos **en el prompt**, que es lo que
+  entiende un modelo de audio nativo.
 - **Qué valida `outroQuality.js` y qué no.** Sobre el archivo: resolución,
   duración, desfase de audio, presencia de pista de audio, códec, tasa de bits,
   fps y que no venga truncado — todo leyendo el contenedor MP4, sin decodificar.

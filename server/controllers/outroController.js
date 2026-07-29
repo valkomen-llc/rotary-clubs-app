@@ -44,9 +44,9 @@ import { probeMp4, validateOutroFile, inspectSourceImage } from '../lib/outroQua
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 
-export const OUTRO_MODULE_VERSION = '4.645.0';
+export const OUTRO_MODULE_VERSION = '4.646.0';
 
-console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outros IA: cierres de ~5s desde una imagen, voz en off opcional vía KIE.AI, validación de calidad y guardado en la Biblioteca`);
+console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outros IA: cierres de ~5s desde una imagen, voz en off por audio nativo de Kling 2.6, validación de calidad y guardado en la Biblioteca`);
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 
@@ -207,7 +207,9 @@ export const getOutroOptions = async (req, res) => {
             engines: Object.values(OUTRO_ENGINES).map(e => ({
                 id: e.id, label: e.label, nativeAudio: e.nativeAudio,
                 durations: e.durations, aspectRatios: e.aspectRatios, resolutions: e.resolutions,
-                creditEstimate: e.creditEstimate, note: e.note,
+                creditEstimate: e.creditEstimate,
+                creditEstimateAudio: e.creditEstimateAudio || e.creditEstimate,
+                note: e.note,
                 available: isEngineAvailable(e.id),
                 isDefault: e.id === DEFAULT_ENGINE
             })),
@@ -269,7 +271,7 @@ export const preflightOutro = async (req, res) => {
             notes: plan.notes,
             sourceReport,
             speech: fit,
-            creditEstimate: plan.engine.creditEstimate
+            creditEstimate: plan.creditEstimate
         });
     } catch (e) {
         console.error('[OUTRO] preflight:', e);
@@ -323,6 +325,16 @@ ${text}`;
 
 // ─── Creación ──────────────────────────────────────────────────────────────
 
+// Créditos que cuesta UN intento de esta fila. El audio nativo se cobra aparte,
+// así que un outro con locución suma más por reintento que uno silencioso.
+const attemptCredits = (row) => {
+    const engine = OUTRO_ENGINES[row.engine] || OUTRO_ENGINES[DEFAULT_ENGINE];
+    if (!engine) return 0;
+    return (row.config?.voiceEnabled && row.speechUsed)
+        ? (engine.creditEstimateAudio || engine.creditEstimate)
+        : engine.creditEstimate;
+};
+
 // Lanza la tarea en KIE y deja la fila en `generating`. No espera el resultado.
 const dispatchGeneration = async (row) => {
     const engine = OUTRO_ENGINES[row.engine] || OUTRO_ENGINES[DEFAULT_ENGINE];
@@ -337,8 +349,13 @@ const dispatchGeneration = async (row) => {
         withAudio
     });
 
+    // El modelo se fijó al crear la fila (`engineModel`): puede diferir del
+    // silencioso si el outro lleva voz o si el entorno lo redefinió. Recalcularlo
+    // acá haría que un reintento se fuera a un modelo distinto del que se cobró.
+    const model = row.engineModel || engine.model;
+
     const taskId = await createKieVideoTask({
-        model: engine.model,
+        model,
         prompt,
         imageUrl: row.sourceImageUrl,
         aspectRatio: row.format,
@@ -357,7 +374,7 @@ const dispatchGeneration = async (row) => {
         `UPDATE "OutroProject"
          SET "kieJobId" = $2, prompt = $3, "engineModel" = $4, status = 'generating', "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
-        [row.id, taskId, prompt, engine.model]
+        [row.id, taskId, prompt, model]
     );
     return rows[0];
 };
@@ -451,7 +468,7 @@ export const createOutro = async (req, res) => {
                 organizationName || null, imageUrl, imageMediaId, JSON.stringify(sourceReport),
                 cleanStyle, plan.format, speechText || null, speechUsed,
                 JSON.stringify(cleanVoice), JSON.stringify(config),
-                plan.engineId, plan.engine.model, plan.engine.creditEstimate, OUTRO_MODULE_VERSION
+                plan.engineId, plan.model, plan.creditEstimate, OUTRO_MODULE_VERSION
             ]
         );
 
@@ -551,7 +568,7 @@ const relaunch = async (row, { auto = false, reason = null } = {}) => {
          SET attempts = attempts + 1, status = 'pending',
              "statusDetail" = $2, "creditsEstimated" = "creditsEstimated" + $3, "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
-        [row.id, auto ? `Reintento automático tras: ${reason}` : null, OUTRO_ENGINES[row.engine]?.creditEstimate || 0]
+        [row.id, auto ? `Reintento automático tras: ${reason}` : null, attemptCredits(row)]
     );
     return dispatchGeneration(rows[0]);
 };
@@ -757,7 +774,7 @@ export const duplicateOutro = async (req, res) => {
                 cleanStyle, plan.format,
                 overrides.speechText ?? source.speechText, speechUsed,
                 JSON.stringify(cleanVoice), JSON.stringify(config),
-                plan.engineId, plan.engine.model, plan.engine.creditEstimate, source.id, OUTRO_MODULE_VERSION
+                plan.engineId, plan.model, plan.creditEstimate, source.id, OUTRO_MODULE_VERSION
             ]
         );
 
