@@ -10,7 +10,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 const MODALITIES = ['videollamada', 'telefonica', 'presencial'];
 const EMOJI_CHOICES = ['🚀', '🌐', '🤖', '📱', '❤️', '🛒', '📅', '👥', '📊', '🎓', '🛠', '💡', '🔧', '⭐', '📈', '🎯'];
 
-const emptyCat = { name: '', description: '', emoji: '🚀', color: '#4f46e5' };
+const emptyCat = { name: '', description: '', emoji: '🚀', color: '#4f46e5', openToAll: false };
 const emptyType = { name: '', description: '', categoryId: '', durationMin: 45, modality: 'videollamada', prerequisites: '', price: '', color: '#2563eb', responsibleId: '', provisionalMeetingUrl: '' };
 
 const AppointmentTypesManager: React.FC = () => {
@@ -183,6 +183,7 @@ const AppointmentTypesManager: React.FC = () => {
                                     <div className="font-black text-gray-900 truncate">{cat.name}</div>
                                     {cat.description && <div className="text-xs text-gray-400 truncate">{cat.description}</div>}
                                 </div>
+                                {cat.openToAll && <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-sky-100 text-sky-600 shrink-0" title="Reservable desde cualquier sitio, sin exigir suscripción activa">Todos los sitios</span>}
                                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">{svcs.length} servicio{svcs.length === 1 ? '' : 's'}</span>
                                 <button onClick={() => setEditingCat({ ...cat })} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
                                 <button onClick={() => delCat(cat.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
@@ -234,6 +235,18 @@ const AppointmentTypesManager: React.FC = () => {
                                 <label className="text-xs font-semibold text-gray-500">Color</label>
                                 <input type="color" value={editingCat.color} onChange={e => setEditingCat((s: any) => ({ ...s, color: e.target.value }))} className="w-14 h-9 rounded-lg border border-gray-200" />
                             </div>
+                            {/* Acceso abierto: los servicios de esta categoría se pueden reservar
+                                desde cualquier sitio, aunque no tenga suscripción activa ni dominio. */}
+                            <button type="button" onClick={() => setEditingCat((s: any) => ({ ...s, openToAll: !s.openToAll }))}
+                                className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition ${editingCat.openToAll ? 'border-sky-300 bg-sky-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                                <div className={`mt-0.5 w-10 h-6 rounded-full flex-shrink-0 flex items-center px-0.5 transition ${editingCat.openToAll ? 'bg-sky-500 justify-end' : 'bg-gray-300 justify-start'}`}>
+                                    <span className="w-5 h-5 rounded-full bg-white shadow" />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-bold text-gray-800">Disponible para todos los sitios</div>
+                                    <div className="text-xs text-gray-500">Se puede reservar aunque el sitio no tenga suscripción activa ni dominio conectado. El resto de categorías sigue exigiendo un sitio activo.</div>
+                                </div>
+                            </button>
                         </div>
                         <div className="flex justify-end gap-2 mt-5">
                             <button onClick={() => setEditingCat(null)} className="px-4 py-2 rounded-xl text-gray-500 font-semibold">Cancelar</button>

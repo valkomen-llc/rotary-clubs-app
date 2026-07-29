@@ -17,7 +17,7 @@ import { resolveMeetingUrl, confirmationCode } from '../lib/meetingLink.js';
 import { buildICS, googleCalendarUrl, outlookCalendarUrl } from '../lib/ics.js';
 import { sendConfirmation, sendCancellation } from '../services/trainingNotificationService.js';
 
-console.log('[trainingPublicController] Agenda pública de Capacitaciones v4.628.0 cargada');
+console.log('[trainingPublicController] Agenda pública de Capacitaciones v4.644.0 cargada (Onboarding abierto a todos los sitios)');
 
 const ACTIVATION_PRICE = { club: 29900, district: 89900 };
 
@@ -220,18 +220,22 @@ export async function createPublicAppointment(req, res) {
     const { entity, type } = await resolveByType(siteId, siteType);
     if (!entity) return res.status(404).json({ error: 'Sitio no encontrado.' });
 
-    // Validación de sitio activo — sitio inactivo NO reserva gratis.
+    // Tipo de cita con su categoría: define si el servicio es de acceso abierto.
+    const apptType = typeId
+      ? await prisma.trainingAppointmentType.findUnique({ where: { id: typeId }, include: { category: true } })
+      : null;
+    if (typeId && !apptType) return res.status(400).json({ error: 'Tipo de cita inválido.' });
+
+    // Validación de sitio activo — sitio inactivo NO reserva gratis, SALVO que
+    // la categoría esté marcada como abierta a todos (ej. Onboarding).
     const status = evaluateSiteStatus(entity);
-    if (!status.active) {
+    if (!status.active && !apptType?.category?.openToAll) {
       return res.status(402).json({
         error: 'inactive_site',
         reason: status.reason,
         message: 'La capacitación está disponible únicamente para sitios activos. Activa o renueva tu servicio para continuar.',
       });
     }
-
-    const apptType = typeId ? await prisma.trainingAppointmentType.findUnique({ where: { id: typeId } }) : null;
-    if (typeId && !apptType) return res.status(400).json({ error: 'Tipo de cita inválido.' });
 
     const check = await isSlotBookable({ startAt, durationMin: apptType?.durationMin });
     if (!check.ok) {

@@ -227,7 +227,7 @@ export async function listCategories(req, res) {
 
 export async function createCategory(req, res) {
   try {
-    const { name, description, emoji, color, sortOrder } = req.body;
+    const { name, description, emoji, color, sortOrder, openToAll } = req.body;
     if (!name) return res.status(400).json({ error: 'Nombre requerido' });
     const count = await prisma.trainingCategory.count();
     const category = await prisma.trainingCategory.create({
@@ -236,6 +236,7 @@ export async function createCategory(req, res) {
         description: description || null,
         emoji: emoji || null,
         color: color || '#4f46e5',
+        openToAll: !!openToAll,
         sortOrder: sortOrder != null ? Number(sortOrder) : count,
       },
     });
@@ -249,6 +250,7 @@ export async function updateCategory(req, res) {
   try {
     const data = {};
     for (const k of ['name', 'description', 'emoji', 'color', 'active']) if (k in req.body) data[k] = req.body[k];
+    if ('openToAll' in req.body) data.openToAll = !!req.body.openToAll;
     if ('sortOrder' in req.body) data.sortOrder = Number(req.body.sortOrder) || 0;
     const category = await prisma.trainingCategory.update({ where: { id: req.params.id }, data });
     res.json({ category });
@@ -489,20 +491,23 @@ export async function createAppointment(req, res) {
     if (!clubId && !districtId) return res.status(400).json({ error: 'Sitio no especificado' });
     if (!startAt) return res.status(400).json({ error: 'Fecha/hora requerida' });
 
-    // 1. Validar sitio activo. Sitio inactivo NO reserva gratis.
+    // 1. Tipo de cita (con su categoría, para saber si es de acceso abierto).
+    const type = typeId
+      ? await prisma.trainingAppointmentType.findUnique({ where: { id: typeId }, include: { category: true } })
+      : null;
+    if (typeId && !type) return res.status(400).json({ error: 'Tipo de cita inválido' });
+    const durationMin = type?.durationMin;
+
+    // 2. Validar sitio activo. Sitio inactivo NO reserva gratis, SALVO que la
+    // categoría esté marcada como abierta a todos (ej. Onboarding).
     const status = await getSiteStatus({ clubId, districtId });
-    if (!status.active) {
+    if (!status.active && !type?.category?.openToAll) {
       return res.status(402).json({
         error: 'inactive_site',
         reason: status.reason,
         message: 'La capacitación está disponible únicamente para sitios activos. Activa o renueva tu servicio para continuar.',
       });
     }
-
-    // 2. Tipo de cita.
-    const type = typeId ? await prisma.trainingAppointmentType.findUnique({ where: { id: typeId } }) : null;
-    if (typeId && !type) return res.status(400).json({ error: 'Tipo de cita inválido' });
-    const durationMin = type?.durationMin;
 
     // 3. Slot válido y libre (anti doble-reserva, idempotente por conflicto).
     const check = await isSlotBookable({ startAt, durationMin });

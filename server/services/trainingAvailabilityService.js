@@ -13,6 +13,21 @@ export async function getTrainingConfig() {
   if (!cfg) {
     cfg = await prisma.trainingConfig.create({ data: { key: CONFIG_KEY } });
   }
+  // Backfill único: la categoría "Onboarding e Implementación del Ecosistema"
+  // queda disponible para TODOS los sitios (openToAll), sin exigir suscripción
+  // activa ni dominio conectado. Se hace una sola vez; después el superadmin
+  // controla el interruptor por categoría desde el panel.
+  if (!cfg.onboardingOpenedInit) {
+    try {
+      await prisma.trainingCategory.updateMany({
+        where: { name: { contains: 'onboarding', mode: 'insensitive' } },
+        data: { openToAll: true },
+      });
+    } catch (e) {
+      console.warn('[trainingConfig] backfill Onboarding openToAll:', e.message);
+    }
+    cfg = await prisma.trainingConfig.update({ where: { key: CONFIG_KEY }, data: { onboardingOpenedInit: true } });
+  }
   return cfg;
 }
 
