@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.631.0 | 2026-07-29 (Catálogo de Capacitaciones por categorías — admin con expandir/color/DnD y reserva pública categoría→servicios)
+// UI V4.632.0 | 2026-07-29 (Fix: crea en runtime las tablas del módulo de Capacitaciones que faltaban en producción — resuelve 'Error al guardar')
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.632.0',
+        title: 'Arreglado: "Error al guardar" en Capacitaciones ✅🛠️',
+        description: 'Corregimos el error que aparecía al guardar una categoría, un servicio, la disponibilidad o una reserva en el módulo Capacitaciones y Soporte. La causa: el módulo guardaba en tablas de base de datos que todavía no existían en producción, porque —por una regla de seguridad que adoptamos tras un incidente anterior— los despliegues ya no crean ni modifican tablas automáticamente. La solución crea esas tablas de forma segura la primera vez que se usa el módulo (sin borrar ni tocar ningún dato existente, con el mismo mecanismo que ya usan otros módulos como el Generador de Pendones y la Feria de Proyectos). Probado contra una base de datos real. Ahora guardar categorías, servicios, horarios y reservas funciona con normalidad.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'fix', 'base de datos', 'error al guardar', 'estabilidad', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.631.0',
         title: 'Capacitaciones ahora es un catálogo organizado por categorías 📚🗂️',
