@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.632.0",
-  "cache_bust": "2026-07-29 (FIX Capacitaciones 'Error al guardar': el módulo escribía en tablas (TrainingConfig, TrainingCategory, TrainingAppointmentType, TrainingAppointment, etc.) que NO existían en producción, porque —tras el incidente del 2026-07-13— el build ya no corre 'prisma db push'. Se agrega server/lib/ensureTrainingSchema.js que crea esas tablas en runtime con CREATE TABLE IF NOT EXISTS + ALTER ADD COLUMN IF NOT EXISTS (mismo patrón que BannerTemplate y ProjectFair*, no destructivo), invocado como middleware en las rutas /api/training/* y /api/public/training/*. Validado con Postgres local: DDL idempotente + operaciones Prisma OK (crear categoría, tipo con categoría, config, cita con source/publicToken). Ahora Guardar categoría/servicio/disponibilidad/reserva persiste correctamente.)",
+  "version": "4.633.0",
+  "cache_bust": "2026-07-29 (Agenda pública — paso 'Tu sitio': ahora muestra por defecto un listado de los primeros 10 sitios ACTIVOS en orden alfabético, sin necesidad de escribir. Al escribir 2+ letras, busca por nombre/subdominio (incluye inactivos para dirigirlos al pago). Backend: /api/public/training/sites sin query devuelve activos (status!=inactive, subscriptionStatus!=expired, expiración futura/nula), top 10 alfabético; resultados de búsqueda también ordenados alfabéticamente. Solo lectura, sin cambios de datos.)",
   "type": "module",
-  "//": "UI V4.632.0 | 2026-07-29 (Fix: crea en runtime las tablas del módulo de Capacitaciones que faltaban en producción — resuelve 'Error al guardar')",
+  "//": "UI V4.633.0 | 2026-07-29 (Agenda pública: el paso 'Tu sitio' lista por defecto los 10 sitios activos en orden alfabético)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

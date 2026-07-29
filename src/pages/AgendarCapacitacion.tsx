@@ -37,6 +37,7 @@ const AgendarCapacitacion: React.FC = () => {
     // Sitio
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<Site[]>([]);
+    const [defaultSites, setDefaultSites] = useState<Site[]>([]);
     const [searching, setSearching] = useState(false);
     const [site, setSite] = useState<Site | null>(null);
     const [checkingStatus, setCheckingStatus] = useState(false);
@@ -88,6 +89,11 @@ const AgendarCapacitacion: React.FC = () => {
             })();
         }
     }, [params]);
+
+    // Lista por defecto: primeros 10 sitios activos (alfabético) sin escribir nada.
+    useEffect(() => {
+        fetch(`${API}/public/training/sites`).then(r => r.json()).then(d => setDefaultSites(d.sites || [])).catch(() => {});
+    }, []);
 
     // Búsqueda de sitio (debounced).
     useEffect(() => {
@@ -206,24 +212,37 @@ const AgendarCapacitacion: React.FC = () => {
                             {step === 1 && (
                                 <div>
                                     <h3 className="text-lg font-black text-gray-900 mb-1">Encuentra tu sitio</h3>
-                                    <p className="text-gray-500 text-sm mb-4">Escribe el nombre de tu club, distrito u organización.</p>
+                                    <p className="text-gray-500 text-sm mb-4">Elige tu club de la lista o busca por nombre.</p>
                                     <div className="relative">
                                         <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3.5" />
                                         <input autoFocus value={query} onChange={e => { setQuery(e.target.value); setSite(null); setSiteActive(null); }}
-                                            placeholder="Ej. Club Rotario de..." className="w-full pl-9 pr-3 py-3 rounded-2xl border border-gray-200 text-sm" />
+                                            placeholder="Buscar club, distrito u organización…" className="w-full pl-9 pr-3 py-3 rounded-2xl border border-gray-200 text-sm" />
                                         {searching && <Loader2 className="w-4 h-4 animate-spin text-gray-300 absolute right-3 top-3.5" />}
                                     </div>
-                                    {results.length > 0 && !site && (
-                                        <div className="mt-2 border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-50">
-                                            {results.map(s => (
-                                                <button key={`${s.type}-${s.id}`} onClick={() => selectSite(s)} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-3">
-                                                    <Building2 className="w-4 h-4 text-gray-400" />
-                                                    <span className="flex-1 text-sm font-semibold text-gray-800">{s.name}</span>
-                                                    <span className="text-[10px] uppercase font-bold text-gray-400">{s.type === 'district' ? 'Distrito' : 'Sitio'}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                                    {(() => {
+                                        const searching2 = query.trim().length >= 2;
+                                        const list = searching2 ? results : defaultSites;
+                                        if (site) return null;
+                                        return (
+                                            <div className="mt-3">
+                                                {!searching2 && defaultSites.length > 0 && <div className="text-[11px] font-black text-gray-400 uppercase tracking-wide mb-2">Sitios activos</div>}
+                                                {list.length > 0 ? (
+                                                    <div className="border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-50">
+                                                        {list.map(s => (
+                                                            <button key={`${s.type}-${s.id}`} onClick={() => selectSite(s)} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-3">
+                                                                <Building2 className="w-4 h-4 text-gray-400" />
+                                                                <span className="flex-1 text-sm font-semibold text-gray-800">{s.name}</span>
+                                                                {!s.active && <span className="text-[10px] font-bold text-amber-600">Inactivo</span>}
+                                                                <span className="text-[10px] uppercase font-bold text-gray-400">{s.type === 'district' ? 'Distrito' : 'Sitio'}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : searching2 && !searching ? (
+                                                    <p className="text-sm text-gray-400 py-3">Sin resultados para "{query}".</p>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {checkingStatus && <div className="mt-4 flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" />Validando suscripción…</div>}
 

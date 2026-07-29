@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.632.0 | 2026-07-29 (Fix: crea en runtime las tablas del módulo de Capacitaciones que faltaban en producción — resuelve 'Error al guardar')
+// UI V4.633.0 | 2026-07-29 (Agenda pública: el paso 'Tu sitio' lista por defecto los 10 sitios activos en orden alfabético)
 // Cache bust: 2026-07-29
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.633.0',
+        title: 'Agendar capacitación: ahora ves los sitios activos de una vez 🔎🏫',
+        description: 'En la herramienta pública para agendar (paso "Tu sitio"), ya no hace falta escribir para ver opciones: al llegar aparece automáticamente un listado de los primeros 10 sitios activos en orden alfabético, listo para seleccionar. Si tu club no está entre esos 10, solo empiezas a escribir su nombre y la búsqueda lo encuentra (y también muestra sitios inactivos para que puedan activarse). Los resultados salen ordenados alfabéticamente. Es un ajuste de comodidad; no cambia datos ni el resto del flujo.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'agenda', 'publico', 'sitios', 'buscador', 'ux', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.632.0',
         title: 'Arreglado: "Error al guardar" en Capacitaciones ✅🛠️',
