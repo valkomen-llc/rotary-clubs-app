@@ -247,3 +247,151 @@ export const fetchKieImageBuffer = async (kieImageUrl) => {
     if (!resp.ok) throw new Error(`No se pudo descargar la imagen generada por KIE (${resp.status})`);
     return Buffer.from(await resp.arrayBuffer());
 };
+
+// ----- Generic video generation (v4.645 — Generador de Outros IA) -----
+//
+// `triggerVideoGeneration` above is hard-wired to Kling with a fixed prompt shape,
+// kept as-is so the Creador de Video keeps working. Outros need to pick the model at
+// call time (silent Kling vs. native-audio Veo), so they use these three functions:
+// create → check → fetch, with no polling loop inside the request (KIE video jobs run
+// 1-3 minutes, well past the 120s ceiling of the serverless function).
+
+// Submit an image-to-video task. Returns the task id immediately.
+//
+// As with images, KIE.ai's gateway normalises parameter names per model, so we send
+// both `image_url` and `image_urls`, and both `aspect_ratio` and `image_size`.
+// Unknown fields are silently ignored by the gateway.
+export const createKieVideoTask = async ({
+    model,
+    prompt,
+    imageUrl,
+    aspectRatio = '9:16',
+    duration = 5,
+    resolution = '1080p',
+    enableAudio = false,
+    callBackUrl = null,
+    metadata = {}
+}) => {
+    const apiKey = process.env.KIE_API_KEY;
+    if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    const body = {
+        model,
+        ...(callBackUrl ? { callBackUrl } : {}),
+        input: {
+            prompt,
+            image_url: imageUrl,
+            image_urls: [imageUrl],
+            aspect_ratio: aspectRatio,
+            image_size: aspectRatio,
+            duration: String(duration),
+            resolution,
+            // Native-audio models (Veo) gate speech behind a flag; silent models
+            // ignore it.
+            enable_audio: enableAudio,
+            generate_audio: enableAudio
+        },
+        metadata
+    };
+
+    const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+    if (!response.ok || (data.code && data.code !== 200)) {
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        console.error('[KIE video] createTask error response:', rawBody);
+        const reason = data.msg || data.message || `HTTP ${response.status} ${rawBody}`;
+        // El id del modelo se puede corregir por entorno sin desplegar código; el
+        // mensaje lo dice para que quien vea el error en la UI sepa qué hacer.
+        throw new Error(`KIE createTask (${model}): ${reason}`);
+    }
+
+    const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
+    if (!taskId) {
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        throw new Error(`KIE createTask devolvió sin task_id: ${rawBody}`);
+    }
+    console.log(`[OUTRO] KIE video task creada: ${taskId} (${model}, ${aspectRatio}, ${duration}s, audio=${enableAudio})`);
+    return taskId;
+};
+
+// One-shot status check of a video task. Same `/jobs/recordInfo` surface the image
+// flow uses (the legacy `/jobs/getTaskDetail` 404s on the current API version), but
+// returning instead of looping: the caller decides when to ask again.
+//
+// Returns { state: 'queued'|'running'|'success'|'failed', videoUrl, failMsg, raw }.
+export const getKieVideoTask = async (taskId) => {
+    const apiKey = process.env.KIE_API_KEY;
+    if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    const response = await fetch(
+        `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+        { headers: { 'Authorization': `Bearer ${apiKey}` } }
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        throw new Error(`KIE recordInfo falló: HTTP ${response.status} ${rawBody}`);
+    }
+    if (data.code && data.code !== 200) {
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        throw new Error(`KIE recordInfo: ${data.msg || data.message || rawBody}`);
+    }
+
+    const rawState = data.data?.state || data.state || data.data?.status || data.status || '';
+    const state = String(rawState).toLowerCase();
+
+    if (state === 'success' || state === 'completed') {
+        let resultObj = {};
+        const rj = data.data?.resultJson ?? data.data?.result;
+        if (typeof rj === 'string' && rj.length > 0) {
+            try { resultObj = JSON.parse(rj); } catch { resultObj = {}; }
+        } else if (rj && typeof rj === 'object') {
+            resultObj = rj;
+        }
+        const output = data.data?.output || data.output || {};
+        const candidate = Object.keys(resultObj).length ? resultObj : output;
+
+        const urls = candidate.resultUrls
+            || candidate.video_urls
+            || candidate.videoUrls
+            || candidate.videos
+            || candidate.result_urls
+            || (candidate.video_url ? [candidate.video_url] : null)
+            || (candidate.videoUrl ? [candidate.videoUrl] : null)
+            || (candidate.result_url ? [candidate.result_url] : null)
+            || (candidate.resultUrl ? [candidate.resultUrl] : null);
+        const videoUrl = Array.isArray(urls) ? urls[0] : urls;
+
+        if (!videoUrl) {
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            return { state: 'failed', videoUrl: null, failMsg: `KIE terminó sin URL de video: ${rawBody}`, raw: data };
+        }
+        return { state: 'success', videoUrl, failMsg: null, raw: data };
+    }
+
+    if (state === 'fail' || state === 'failed' || state === 'error') {
+        const reason = data.data?.failMsg || data.data?.fail_msg
+            || data.data?.error?.message || data.data?.message
+            || data.message || JSON.stringify(data).slice(0, 400);
+        return { state: 'failed', videoUrl: null, failMsg: reason, raw: data };
+    }
+
+    return { state: state === 'queuing' || state === 'queued' ? 'queued' : 'running', videoUrl: null, failMsg: null, raw: data };
+};
+
+// Download the produced video into a Buffer. The KIE-hosted URL is ephemeral, so the
+// file has to be pulled and re-uploaded to our own bucket as soon as it is ready.
+export const fetchKieVideoBuffer = async (kieVideoUrl) => {
+    const resp = await fetch(kieVideoUrl);
+    if (!resp.ok) throw new Error(`No se pudo descargar el video generado por KIE (${resp.status})`);
+    return Buffer.from(await resp.arrayBuffer());
+};

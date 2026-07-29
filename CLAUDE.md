@@ -66,6 +66,71 @@ Prompts largos con listas negras son contraproducentes — el modelo se obsesion
 - `OPENAI_API_KEY` — gpt-image-1 directo + GPT-4o para copy.
 - `HIGGSFIELD_API_KEY` — pendiente, se usará cuando implementemos ese engine.
 
+## Generador de Outros IA — v4.645
+
+Cierres audiovisuales de ~5 s a partir de una imagen fija. Pestaña propia en
+Content Studio (`src/components/admin/content-studio/OutroGenerator.tsx`),
+controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/outroSpec.js` | Fuente de verdad: formatos, motores, estilos, voces, presupuesto de locución y construcción del prompt |
+| `server/lib/outroQuality.js` | Parser de contenedor MP4 + validación + inspección de la imagen de origen |
+| `server/lib/ensureOutroSchema.js` | Crea `OutroProject` en runtime (`CREATE TABLE IF NOT EXISTS`) |
+| `src/lib/outroSpec.ts` | Espejo mínimo en el navegador: sólo el presupuesto de palabras |
+
+**Reglas durables:**
+
+- **No se postprocesa el archivo.** Misma regla que el Generador de
+  Publicaciones y por el mismo motivo: lo que devuelve el modelo se sube a S3
+  tal cual. Nada de recortar para llegar a un formato, recomprimir ni pegar
+  nada encima. Las mediciones de calidad son **lectura**; jamás modifican el
+  archivo. Si un motor no genera en el formato pedido, se cambia el formato y
+  se avisa (`resolveEngine` devuelve `notes`), no se recorta el resultado.
+- **El outro nunca vuelve a pasar por la IA.** En el Creador de Video viaja en
+  `config.outro`, aparte de `images`. Si se lo mandan al motor, pierde la
+  duración, la resolución y la voz que lo hacían servible.
+- **El flujo es asíncrono a propósito.** Un job de video en KIE tarda 1-3
+  minutos y la función corta a los 120 s (`vercel.json`). `POST /outros`
+  responde apenas crea la tarea; `GET /outros/:id/sync` es el que, cuando KIE
+  termina, descarga el archivo, lo mide y lo sube a nuestro bucket. El webhook
+  (`/api/content-studio/webhook`, compartido con el Creador de Video) es la
+  segunda vía. Ese `sync` toma la fila con un UPDATE condicional: dos sondeos
+  simultáneos no pueden subir el archivo dos veces.
+- **La URL de KIE es efímera**: por eso se copia a S3 (`clubs/{id}/outros/`) en
+  cuanto está lista, aunque el usuario todavía no la haya aprobado. Guardar en
+  la **Biblioteca** es otra cosa: crea la fila en `Media` y es una acción
+  explícita del usuario.
+- **Los ids de los modelos de KIE son configurables por entorno**
+  (`KIE_OUTRO_MODEL_SILENT`, `KIE_OUTRO_MODEL_AUDIO`). KIE renombra modelos; si
+  el default deja de existir, se corrige el entorno sin desplegar. El error de
+  KIE se propaga textual a la UI justamente para que se vea cuál falló.
+- **La voz en off sólo existe con un motor de audio nativo.** No se puede
+  generar el video por un lado y la locución por otro: mezclarlos exige ffmpeg
+  y la API corre en Vercel sin ffmpeg. Por eso activar la voz cambia el motor
+  (y con él la duración del clip), y por eso los parámetros de voz —idioma,
+  acento, género, velocidad, tono, volumen— van descritos **en el prompt**, que
+  es lo que entiende un modelo de audio nativo.
+- **Qué valida `outroQuality.js` y qué no.** Sobre el archivo: resolución,
+  duración, desfase de audio, presencia de pista de audio, códec, tasa de bits,
+  fps y que no venga truncado — todo leyendo el contenedor MP4, sin decodificar.
+  Sobre la **imagen de origen** (con sharp, antes de gastar créditos):
+  resolución respecto del maestro y nitidez. **No** se mide nitidez fotograma a
+  fotograma ni se hace OCR sobre el video: eso exige decodificarlo. Por eso la
+  legibilidad se controla en la entrada, que es donde además se puede corregir.
+  No afirmar en la UI que se mide algo que no se mide.
+- **Prompts cortos y en positivo**, igual que en el Generador de Publicaciones.
+  `buildOutroPrompt` describe lo que sí se quiere («la pieza se conserva exacta;
+  se añade movimiento y luz»). Nada de listas de prohibiciones.
+- El medidor de créditos es **propio** (`creditsEstimated` por motor), no el
+  saldo real de KIE. Sirve para ver el gasto del mes y frenar con
+  `OUTRO_MONTHLY_CREDIT_LIMIT`. No presentarlo como el saldo del proveedor.
+
+**Pendiente conocido:** unir el outro y el video en un solo MP4 exige un paso de
+render con ffmpeg que esta infraestructura no tiene. Hoy el outro queda
+**adjunto** al proyecto como clip independiente. Si algún día se agrega un
+worker de render, ese es el punto donde engancharlo.
+
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en
@@ -163,8 +228,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 14 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `EventRegistration`, `FAQ` y las once `ProjectFair*`.
+Las 15 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `EventRegistration`, `FAQ`, `OutroProject` y las once
+`ProjectFair*`.
 
 ## Acceso e identidades (v4.627)
 
