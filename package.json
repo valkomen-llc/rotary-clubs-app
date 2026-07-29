@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.640.0",
-  "cache_bust": "2026-07-29 (Ajustes visuales de la agenda pública /agendar-capacitacion y /mi-capacitacion: (1) el fondo ahora es el mismo del login del Panel (bg-rotary-concrete + degradado azul→blanco); (2) el logo del encabezado crece ~20px (h-9→h-14); (3) el título 'Agenda de Capacitaciones y Soporte' queda sin negrilla y se elimina el subtítulo 'Reserva tu sesión sin iniciar sesión'; (4) en la barra superior se quitan Endpolio.org y My Rotary y se deja un solo enlace 'Iniciar sesión' que lleva a https://app.clubplatform.org/. Solo frontend.)",
+  "version": "4.641.0",
+  "cache_bust": "2026-07-29 (Agenda pública, ajustes de contraste: (1) la franja del encabezado (logo + Agenda de Capacitaciones y Soporte) vuelve a tener fondo blanco; (2) en el indicador de pasos, los círculos inactivos y la línea conectora se perdían sobre la textura del fondo: ahora los círculos inactivos son blancos con borde slate y sombra, y la línea usa slate-300, para que se vean claramente. Solo frontend.)",
   "type": "module",
-  "//": "UI V4.640.0 | 2026-07-29 (Agenda pública: fondo del login, logo +20px, título sin negrilla, barra superior con solo Iniciar sesión)",
+  "//": "UI V4.641.0 | 2026-07-29 (Agenda pública: header en blanco + stepper con contraste (círculos/línea visibles sobre la textura))",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs",

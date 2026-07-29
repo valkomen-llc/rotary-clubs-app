@@ -82,7 +82,7 @@ const MiCapacitacion: React.FC = () => {
     return (
         <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white">
             <PublicTopBar />
-            <header>
+            <header className="bg-white border-b border-gray-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-3">
                     <img src={PLATFORM_LOGO} alt="Club Platform" className="h-14 w-auto" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
                     <div className="border-l border-gray-200 pl-3 font-medium text-gray-900 flex items-center gap-2 text-lg"><CalendarClock className="w-5 h-5 text-indigo-600" />Mi capacitación</div>
