@@ -533,6 +533,18 @@ comparten un solo criterio para decidir cómo se abren: `ctaTarget` en
   distingue el registro nacional del internacional.
 - **Los enlaces del menú con bandera `external` NO pasan por aquí**: ahí el
   administrador eligió a propósito, y su decisión manda.
+- **El botón del encabezado que apunta al registro de un evento sigue al
+  IDIOMA ACTIVO** (v4.660), igual que los de la ficha. Antes llevaba el texto y
+  la categoría que se escribieron una vez, así que en Español mostraba
+  "International Registration" y aterrizaba en el formulario internacional —
+  contradiciendo la regla de v4.652. `withLanguageAwareRegistration` en
+  `Navbar.tsx` lo resuelve con `useEventCta`, el mismo hook de la ficha.
+- **El texto y el enlace configurados se respetan POR SEPARADO**
+  (`labelSetForLang` / `urlSetForLang`). Quien escriba sólo "Texto en Español"
+  debe seguir yendo al formulario que le toca por idioma; si un solo indicador
+  cubriera ambos, rellenar un campo congelaría el otro en el idioma contrario.
+  Ese era el fallo. Los campos están en Configuración → Identidad → "Botones
+  del menú principal".
 
 ## Acceso e identidades (v4.655)
 

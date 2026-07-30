@@ -12,6 +12,9 @@ import { hasEditableHome } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, ctaTarget, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 // Tercera identidad del sitio: quien consulta su inscripción a un evento.
 import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
+// El mismo resolvedor que usa la ficha del evento: el idioma activo decide
+// qué registro se ofrece (regla durable del módulo, v4.652).
+import { useEventCta } from '../components/EventRegistrationCta';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { onOpenLoginModal } from '../lib/loginModal';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
@@ -74,11 +77,54 @@ const Navbar = () => {
       isCustomLabel: hasCustom,
       url: resolveCtaUrl(customUrl) || def.url,
       cls: def.cls,
+      // ¿El administrador escribió texto / enlace para el idioma activo? Se
+      // miran POR SEPARADO: quien pone sólo el texto en Español debe seguir
+      // yendo al formulario que le toca por idioma, no al que quedó escrito.
+      labelSetForLang: isEs ? !!esLabel : !!intlLabel,
+      urlSetForLang: isEs ? !!esUrl : !!intlUrl,
       // Todas las variantes de texto: el filtro de audiencia reconoce el botón
       // de postulación por enlace O por texto (si el enlace fue personalizado).
       labels: [intlLabel, esLabel, def.label],
     };
   });
+
+  // ── El botón de inscripción sigue al idioma (v4.660) ──────────────
+  //
+  // Un botón del encabezado configurado hacia el registro de un evento
+  // —"/eventos/valledupar2027/registro?categoria=…"— llevaba el texto y la
+  // categoría que el administrador escribió UNA vez, así que un visitante con
+  // el sitio en Español veía "International Registration" y aterrizaba en el
+  // formulario internacional. Contradecía la regla del módulo: manda el idioma
+  // activo, no lo que se dejó escrito.
+  //
+  // Ahora, cuando el botón apunta al registro de un evento, su texto y su
+  // destino los resuelve el servidor con el idioma activo, igual que en la
+  // ficha. Si el administrador SÍ configuró el texto o el enlace para este
+  // idioma, su decisión manda y no se toca nada.
+  const eventRegistrationRef = (() => {
+    for (const cta of headerCtas) {
+      const m = /\/eventos\/([^/?#]+)\/registro/.exec(cta.url || '');
+      if (m) return decodeURIComponent(m[1]);
+    }
+    return undefined;
+  })();
+  const { cta: headerEventCta } = useEventCta(
+    eventRegistrationRef ? (club as any)?.id : undefined, eventRegistrationRef, lang);
+
+  const withLanguageAwareRegistration = (cta: typeof headerCtas[number]) => {
+    const primary = headerEventCta?.primary;
+    if (!primary || !eventRegistrationRef) return cta;
+    if (!/\/eventos\/[^/?#]+\/registro/.test(cta.url || '')) return cta;
+    return {
+      ...cta,
+      // El texto escrito para ESTE idioma manda; si no hay, el del servidor,
+      // que ya viene en el idioma activo (y por eso no se vuelve a traducir).
+      label: cta.labelSetForLang ? cta.label : primary.label,
+      isCustomLabel: cta.labelSetForLang ? cta.isCustomLabel : true,
+      // Igual con el destino: sólo se respeta el escrito si es para este idioma.
+      url: cta.urlSetForLang ? cta.url : `/eventos/${eventRegistrationRef}${primary.href}`,
+    };
+  };
 
   // v4.596 — Audiencia del botón que lleva al formulario de postulación:
   // visible en Español; oculto si el visitante ELIGIÓ otro idioma (su
@@ -587,7 +633,7 @@ const Navbar = () => {
           {/* Right Side Icons */}
           <div className="flex items-center space-x-4">
             {/* CTAs del header (configurables por sitio): default Contribuye + Únete a un club */}
-            {visibleHeaderCtas.map((cta, i) => {
+            {visibleHeaderCtas.map(withLanguageAwareRegistration).map((cta, i) => {
               const cls = `hidden lg:inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
               const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
               // Un enlace al PROPIO sitio se navega en la misma pestaña,
@@ -761,7 +807,7 @@ const Navbar = () => {
 
               {/* CTAs del header en móvil (configurables por sitio) */}
               <div className="flex flex-col gap-2 pt-2">
-                {visibleHeaderCtas.map((cta, i) => {
+                {visibleHeaderCtas.map(withLanguageAwareRegistration).map((cta, i) => {
                   const cls = `inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
                   const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
                   const close = () => setMobileMenuOpen(false);

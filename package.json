@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.659.0",
-  "cache_bust": "2026-07-30i (Optimizacion de carga: la tipografia deja de bloquear el pintado, cada pagina descarga solo lo suyo, se eliminan peticiones repetidas y el arranque en frio del servidor deja de ejecutar 62 sentencias.)",
+  "version": "4.660.0",
+  "cache_bust": "2026-07-30j (El boton de inscripcion del encabezado sigue al idioma activo: en Espanol lleva al registro nacional y ya no muestra el texto en ingles.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

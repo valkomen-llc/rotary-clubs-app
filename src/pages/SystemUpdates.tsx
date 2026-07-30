@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.659.0 | 2026-07-30 (Optimización de carga: tipografía no bloqueante, cada página descarga sólo lo suyo, sin peticiones repetidas)
-// Cache bust: 2026-07-30i
+// UI V4.660.0 | 2026-07-30 (El botón de inscripción del encabezado sigue al idioma activo del sitio)
+// Cache bust: 2026-07-30j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.660.0',
+        title: 'El botón de inscripción del encabezado sigue al idioma 🇨🇴',
+        description: 'Con el sitio en Español, el botón de inscripción del encabezado seguía diciendo "International Registration" y llevaba al formulario internacional. La ficha del evento ya hacía lo correcto desde hace varias versiones —el idioma activo decide qué registro se ofrece—, pero el botón del encabezado no: mostraba el texto y el enlace que se escribieron una sola vez, sin importar en qué idioma estuviera viendo el sitio la persona. A partir de ahora, cuando un botón del encabezado apunta al registro de un evento, su texto y su destino los resuelve el mismo criterio que la ficha: en Español (Colombia) lleva al registro nacional y en cualquier otro idioma al internacional, y se actualiza al instante al cambiar de idioma en el selector, sin recargar la página. Lo que el administrador haya escrito para un idioma concreto sigue mandando, y ahora el texto y el enlace se respetan por separado: si se escribe únicamente el texto en Español, el botón mostrará ese texto y aun así llevará al formulario que corresponde por idioma, sin tener que acordarse de configurar también el enlace. Ese detalle era justamente la trampa anterior: al rellenar sólo uno de los dos campos, el otro se quedaba con el valor del otro idioma.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'i18n', 'idiomas', 'navegacion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.659.0',
         title: 'El sitio abre mucho más rápido ⚡',
