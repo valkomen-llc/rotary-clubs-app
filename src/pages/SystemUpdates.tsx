@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.658.0 | 2026-07-30 (La ficha de un evento y su formulario muestran siempre la dirección con el slug)
-// Cache bust: 2026-07-30h
+// UI V4.659.0 | 2026-07-30 (Optimización de carga: tipografía no bloqueante, cada página descarga sólo lo suyo, sin peticiones repetidas)
+// Cache bust: 2026-07-30i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.659.0',
+        title: 'El sitio abre mucho más rápido ⚡',
+        description: 'El sitio se quedaba "pensando" antes de mostrar nada, a veces varios segundos. Se midió el recorrido completo de una visita y aparecieron cinco causas, todas corregidas. La principal: la tipografía se pedía a un servidor externo de forma bloqueante, de modo que el navegador no dibujaba absolutamente nada hasta que ese servidor respondía; si iba lento o estaba bloqueado —redes corporativas, algunos países, móvil con mala señal— la pantalla se quedaba en blanco todo ese tiempo. Ahora la letra se carga en paralelo: el texto aparece de inmediato y la tipografía se aplica al llegar, sin frenar nada. En una prueba con el servidor de tipografías inaccesible, el primer contenido pasó de tardar más de trece segundos a aparecer en menos de tres décimas. La segunda: por un error de empaquetado, el archivo con React —que necesita cualquier página— había quedado dentro del paquete del editor de texto del panel, y una utilidad de tres líneas dentro del paquete de gráficas. Resultado: toda visita pública descargaba 683 kB de librerías que sólo usa el panel de administración. Ya no. La tercera: las páginas se descargaban todas juntas, así que quien sólo miraba la portada bajaba también la tienda, el checkout y la galería del distrito; ahora cada página trae sólo lo suyo, entre 5 y 30 kB, y se descarga al entrar en ella. Entre las tres, lo que se descarga al abrir el sitio pasó de 1.895 kB a 624 kB. La cuarta: siete secciones de la portada pedían por separado las mismas dos listas de imágenes, hasta diez peticiones para dos respuestas, y el pie de página se pedía dos veces por página; ahora la petición se comparte y se guarda un momento, de modo que moverse por el sitio ya no vuelve a pedir lo mismo. La portada pasó de catorce llamadas al servidor a seis. Y la quinta, del lado del servidor: al despertar tras un rato sin visitas, la primera petición ejecutaba 62 comprobaciones de estructura de la base de datos, una detrás de otra, antes de responder nada; ahora comprueba con dos consultas si ya está todo en su sitio —que es lo normal— y sólo hace el trabajo completo cuando de verdad falta algo. Se verificó que las 38 páginas públicas siguen abriendo correctamente, y de paso se corrigió un fallo de la pantalla de pago de la tienda que estaba oculto desde antes.',
+        date: new Date().toISOString(),
+        tags: ['rendimiento', 'velocidad', 'sitio-publico', 'navegacion', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.658.0',
         title: 'La dirección del evento ya muestra siempre su enlace corto 🔗',

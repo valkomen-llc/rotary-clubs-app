@@ -31,36 +31,36 @@ import LatirSpecialSection from './sections/LatirSpecialSection';
 import ServiciosSection from './sections/ServiciosSection';
 import DistritosSection from './sections/DistritosSection';
 import SubvencionesSection from './sections/SubvencionesSection';
-import QuienesSomos from './pages/QuienesSomos';
-import NuestraHistoria from './pages/NuestraHistoria';
-import NuestrosSocios from './pages/NuestrosSocios';
-import NuestraJuntaDirectiva from './pages/NuestraJuntaDirectiva';
-import CategoryDirectory from './pages/CategoryDirectory';
-import IntercambioJovenes from './pages/IntercambioJovenes';
-import Blog from './pages/Blog';
-import BlogPost from './pages/BlogPost';
-import Proyectos from './pages/Proyectos';
-import ProyectoDetalle from './pages/ProyectoDetalle';
-import Contacto from './pages/Contacto';
-import EstadosFinancieros from './pages/EstadosFinancieros';
-import Descargas from './pages/Descargas';
-import NuestrasCausas from './pages/NuestrasCausas';
-import ManerasDeContribuir from './pages/ManerasDeContribuir';
-import DonacionExito from './pages/DonacionExito';
-import DonacionCancelada from './pages/DonacionCancelada';
-import Rotaract from './pages/Rotaract';
-import Interact from './pages/Interact';
-import Rotex from './pages/Rotex';
-import FundacionRotaria from './pages/FundacionRotaria';
-import Involucrate from './pages/Involucrate';
-import Eventos from './pages/Eventos';
-import EventoDetalle from './pages/EventoDetalle';
-import Aportes from './pages/Aportes';
-import Checkout from './pages/Checkout';
-import OrderSuccess from './pages/OrderSuccess';
-import Shop from './pages/Shop';
-import ProductDetail from './pages/ProductDetail';
-import DistrictMultimediaGallery from './pages/DistrictMultimediaGallery';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ClubProvider, useClub } from './contexts/ClubContext';
@@ -73,6 +73,49 @@ import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
 // Only downloaded when the user navigates to /admin/*
 // ═══════════════════════════════════════════════════════════════
+
+// ── Páginas públicas, cargadas al entrar (v4.659) ───────────────────
+// Antes las 36 se importaban de golpe, así que el archivo inicial pesaba
+// 823 kB: quien sólo miraba la portada descargaba también el catálogo de la
+// tienda, el checkout y la galería del distrito. Van dentro del <Suspense>
+// que ya envuelve a <Routes>, igual que las del panel.
+const QuienesSomos = React.lazy(() => import('./pages/QuienesSomos'));
+const NuestraHistoria = React.lazy(() => import('./pages/NuestraHistoria'));
+const NuestrosSocios = React.lazy(() => import('./pages/NuestrosSocios'));
+const NuestraJuntaDirectiva = React.lazy(() => import('./pages/NuestraJuntaDirectiva'));
+const CategoryDirectory = React.lazy(() => import('./pages/CategoryDirectory'));
+const IntercambioJovenes = React.lazy(() => import('./pages/IntercambioJovenes'));
+const Blog = React.lazy(() => import('./pages/Blog'));
+const BlogPost = React.lazy(() => import('./pages/BlogPost'));
+const Proyectos = React.lazy(() => import('./pages/Proyectos'));
+const ProyectoDetalle = React.lazy(() => import('./pages/ProyectoDetalle'));
+const Contacto = React.lazy(() => import('./pages/Contacto'));
+const EstadosFinancieros = React.lazy(() => import('./pages/EstadosFinancieros'));
+const Descargas = React.lazy(() => import('./pages/Descargas'));
+const NuestrasCausas = React.lazy(() => import('./pages/NuestrasCausas'));
+const ManerasDeContribuir = React.lazy(() => import('./pages/ManerasDeContribuir'));
+const DonacionExito = React.lazy(() => import('./pages/DonacionExito'));
+const DonacionCancelada = React.lazy(() => import('./pages/DonacionCancelada'));
+const Rotaract = React.lazy(() => import('./pages/Rotaract'));
+const Interact = React.lazy(() => import('./pages/Interact'));
+const Rotex = React.lazy(() => import('./pages/Rotex'));
+const FundacionRotaria = React.lazy(() => import('./pages/FundacionRotaria'));
+const Involucrate = React.lazy(() => import('./pages/Involucrate'));
+const Eventos = React.lazy(() => import('./pages/Eventos'));
+const EventoDetalle = React.lazy(() => import('./pages/EventoDetalle'));
+const Aportes = React.lazy(() => import('./pages/Aportes'));
+const Checkout = React.lazy(() => import('./pages/Checkout'));
+const OrderSuccess = React.lazy(() => import('./pages/OrderSuccess'));
+const Shop = React.lazy(() => import('./pages/Shop'));
+const ProductDetail = React.lazy(() => import('./pages/ProductDetail'));
+const DistrictMultimediaGallery = React.lazy(() => import('./pages/DistrictMultimediaGallery'));
+const ClubPreview = React.lazy(() => import('./pages/ClubPreview'));
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const RegistroPage = React.lazy(() => import('./pages/RegistroPage'));
+const VerifyEmail = React.lazy(() => import('./pages/VerifyEmail'));
+const AppLogin = React.lazy(() => import('./pages/AppLogin'));
+const ComingSoon = React.lazy(() => import('./pages/ComingSoon'));
+
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
 const MiProyecto = React.lazy(() => import('./pages/MiProyecto'));
@@ -139,15 +182,15 @@ const CapacitacionesAdmin = React.lazy(() => import('./pages/admin/Capacitacione
 const AgendarCapacitacion = React.lazy(() => import('./pages/AgendarCapacitacion'));
 const MiCapacitacion = React.lazy(() => import('./pages/MiCapacitacion'));
 const SharedReport = React.lazy(() => import('./pages/SharedReport'));
-import ClubPreview from './pages/ClubPreview';
+
 import ChatBot from './components/ChatBot';
-import LandingPage from './pages/LandingPage';
-import RegistroPage from './pages/RegistroPage';
+
+
 import ExpirationBanner from './components/ExpirationBanner';
 import DevelopmentBanner from './components/DevelopmentBanner';
-import VerifyEmail from './pages/VerifyEmail';
-import AppLogin from './pages/AppLogin';
-import ComingSoon from './pages/ComingSoon';
+
+
+
 
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -430,13 +473,19 @@ function App() {
               <ScrollToTop />
               <AnalyticsTracker />
               <SEOTracker />
+              {/*
+                Espera entre páginas. Desde v4.659 también la ven las páginas
+                PÚBLICAS, no sólo el panel: el fondo oscuro a pantalla completa
+                daba un fogonazo negro en un sitio claro cada vez que alguien
+                cambiaba de página. Se deja claro y sin texto —a esta altura la
+                espera es de milisegundos, y un rótulo que aparece y desaparece
+                molesta más que el propio retraso—. Aparece con un retardo, así
+                que en una conexión normal no llega a verse.
+              */}
               <Suspense fallback={
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#0B1120' }}>
-                  <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-                    <div style={{ width: 40, height: 40, border: '3px solid #1e293b', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                    <p style={{ fontSize: 14 }}>Cargando módulo...</p>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', background: '#fff' }}>
+                  <div style={{ width: 34, height: 34, border: '3px solid #e2e8f0', borderTopColor: '#17458F', borderRadius: '50%', animation: 'spin 0.8s linear infinite', opacity: 0, animationName: 'spin, fadeInLoader', animationDuration: '0.8s, 0.2s', animationDelay: '0s, 0.25s', animationFillMode: 'none, forwards' }} />
+                  <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes fadeInLoader { to { opacity: 1; } }`}</style>
                 </div>
               }>
               <Routes>

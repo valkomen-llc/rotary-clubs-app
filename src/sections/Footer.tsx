@@ -5,6 +5,25 @@ import { Button } from '@/components/ui/button';
 import { useClub } from '../contexts/ClubContext';
 import { hasCustomTheme } from '../lib/entityTypes';
 
+// ── Skin del pie de página, compartido (v4.659) ──────────────────────
+//
+// El `type` del club llega vacío en el primer render y con su valor real en
+// cuanto responde `/clubs/by-domain`, así que el efecto se disparaba dos veces
+// por página. Y al navegar volvía a pedirse, aunque el skin no cambia durante
+// la visita. Se guarda por tipo y se comparte la petición en vuelo.
+
+const footerSkins = new Map<string, Promise<any>>();
+
+const loadFooterSkin = (type: string): Promise<any> => {
+    const cached = footerSkins.get(type);
+    if (cached) return cached;
+    const promise = fetch(`${import.meta.env.VITE_API_URL || '/api'}/public/footer-skin?type=${type}`)
+        .then(res => res.json())
+        .catch(() => null);
+    footerSkins.set(type, promise);
+    return promise;
+};
+
 const Footer = () => {
     const { club } = useClub();
     const currentHostname = window.location.hostname;
@@ -18,13 +37,11 @@ const Footer = () => {
     const [config, setConfig] = useState<any>(null);
 
     useEffect(() => {
-        // Fetch global skin config for this type
-        fetch(`${import.meta.env.VITE_API_URL || '/api'}/public/footer-skin?type=${type}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data && !data.error) setConfig(data);
-            })
-            .catch(() => { /* fallback to defaults */ });
+        let vivo = true;
+        loadFooterSkin(type).then(data => {
+            if (vivo && data && !data.error) setConfig(data);
+        });
+        return () => { vivo = false; };
     }, [type]);
 
     // PREDEFINED DEFAULTS (Old skins acting as fallbacks)
