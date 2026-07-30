@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.657.0 | 2026-07-30 (Los botones que llevan a otra página del mismo sitio ya no abren pestaña nueva)
-// Cache bust: 2026-07-30g
+// UI V4.658.0 | 2026-07-30 (La ficha de un evento y su formulario muestran siempre la dirección con el slug)
+// Cache bust: 2026-07-30h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.658.0',
+        title: 'La dirección del evento ya muestra siempre su enlace corto 🔗',
+        description: 'Al entrar a la ficha del evento, la barra de direcciones mostraba un identificador largo —"/eventos/205348ec-83fd-475d-931c-9cdc3fdf8f62"— en lugar del enlace corto configurado en la pestaña Información, "/eventos/valledupar2027". El evento se abre igual de las dos maneras, porque el sistema acepta tanto el identificador interno como el enlace corto, pero lo que veía y podía copiar el visitante era el identificador. Pasaba porque la redirección de la sección de Eventos se había guardado apuntando al identificador, que es lo único que existía cuando se configuró: el enlace corto se definió después. A partir de ahora, cuando un evento tiene enlace corto, esa es su dirección y punto: si se llega por el identificador —desde la redirección, desde un enlace guardado hace tiempo, desde un botón configurado a mano o desde una dirección compartida por WhatsApp—, la barra de direcciones se corrige sola al enlace corto, sin recargar y sin ensuciar el historial, de modo que el botón "atrás" del navegador sigue funcionando como se espera. Lo mismo ocurre con el formulario de inscripción, que conserva además la categoría con la que se entró. La dirección corta es también la que se le entrega a los buscadores, así que el evento se indexa por su enlace bonito y no por el identificador. En el panel, la redirección de la sección de Eventos pasa a guardarse por identificador interno, que es lo único que no cambia: así, si algún día se renombra el enlace corto del evento, la redirección sigue funcionando y automáticamente empieza a publicar la dirección nueva. El desplegable reconoce lo que ya estuviera guardado, en cualquiera de las dos formas, y el aviso de abajo muestra la dirección pública real a la que va a llevar.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'navegacion', 'seo', 'sitio-publico', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.657.0',
         title: 'Los botones del sitio ya no abren pestañas nuevas 🔗',

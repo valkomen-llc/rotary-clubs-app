@@ -759,6 +759,16 @@ const EventsManagement = () => {
             .catch(() => { /* la pantalla sigue usable sin este dato */ });
     }, [siteClubId]);
 
+    // El valor guardado puede venir como slug (así se guardaba hasta v4.657) o
+    // como id (desde v4.658). Se resuelve contra la lista de eventos para que el
+    // desplegable muestre la selección correcta en los dos casos, y para poder
+    // enseñar la dirección PÚBLICA —la del slug— en el aviso.
+    const redirectEvent = publicRedirect
+        ? events.find((e: any) => e.id === publicRedirect || e.slug === publicRedirect)
+        : undefined;
+    const redirectValue = redirectEvent ? redirectEvent.id : publicRedirect;
+    const redirectPublicRef = redirectEvent ? (redirectEvent.slug || redirectEvent.id) : publicRedirect;
+
     const savePublicRedirect = async (target: string) => {
         setSavingRedirect(true);
         setRedirectSaved(false);
@@ -923,14 +933,19 @@ const EventsManagement = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <select
-                                value={publicRedirect}
+                                value={redirectValue}
                                 disabled={savingRedirect}
                                 onChange={e => savePublicRedirect(e.target.value)}
                                 className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm max-w-xs disabled:opacity-50"
                             >
                                 <option value="">Mostrar el calendario de eventos</option>
+                                {/* El valor guardado es el ID, no el slug: es lo
+                                    único que no cambia. La dirección bonita la
+                                    resuelve la página pública con el slug del
+                                    momento, así que renombrar el slug no rompe
+                                    la redirección. */}
                                 {events.map(ev => (
-                                    <option key={ev.id} value={ev.slug || ev.id}>
+                                    <option key={ev.id} value={ev.id}>
                                         Ir directo a: {ev.title}
                                     </option>
                                 ))}
@@ -942,7 +957,7 @@ const EventsManagement = () => {
                     {publicRedirect && (
                         <p className="mt-3 text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                             El calendario queda oculto: <span className="font-mono">/eventos</span> redirige a{' '}
-                            <span className="font-mono font-bold">/eventos/{publicRedirect}</span>. Los demás eventos
+                            <span className="font-mono font-bold">/eventos/{redirectPublicRef}</span>. Los demás eventos
                             siguen accesibles por su propio enlace.
                         </p>
                     )}

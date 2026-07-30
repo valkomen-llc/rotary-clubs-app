@@ -273,6 +273,25 @@ Cada uno abre `/eventos/:ref/registro?categoria=<clave>`.
   las categorías por inactivas y desaparecen todos los botones (error real,
   corregido antes de publicar v4.650).
 
+### Dirección pública de un evento (v4.658)
+
+Un evento se abre igual con su **id interno** que con su **slug**: el endpoint
+acepta los dos (`id = $1 OR slug = $1`). Eso es cómodo, pero deja que el
+visitante acabe mirando un identificador en la barra de direcciones.
+
+- **El slug manda cuando existe.** `EventoDetalle` y `RegistroEvento`
+  reemplazan la dirección por la del slug (`navigate(..., { replace: true })`)
+  en cuanto saben cuál es. Conservan query y ancla —`?categoria=` es lo que
+  distingue un registro de otro— y usan `replace` para que el "atrás" no rebote.
+  La condición es `slug && ref !== slug`, así que no puede entrar en bucle.
+- **Lo que se GUARDA es el id; lo que se PUBLICA es el slug.** El destino de la
+  redirección de `/eventos` se guarda por id (lo único que no cambia) y la
+  página pública lo resuelve al slug del momento. Así, renombrar el slug no
+  rompe la redirección. El desplegable del panel acepta las dos formas, porque
+  hasta v4.657 se guardaba el slug.
+- `useSEO` recibe la dirección canónica, no la que se usó para entrar: el
+  evento se indexa por su slug.
+
 **Nueva edición**: crear el `CalendarEvent`, abrir la pestaña Registro y usar
 "clonar" desde la edición anterior. El número de edición y la ciudad se deducen
 del título (`XIII …`) y de `location`. La edición clonada nace con el registro

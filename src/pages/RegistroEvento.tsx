@@ -329,6 +329,18 @@ const RegistroEvento = () => {
             .finally(() => setLoading(false));
     }, [clubId, eventRef, lockedCategory, lang]);
 
+    // ── Dirección canónica (v4.658) ──────────────────────────────────
+    //
+    // El formulario se abre igual con el id interno del evento que con su
+    // slug. Cuando el evento tiene slug, esa es su dirección: se reemplaza la
+    // del navegador, conservando `?categoria=` —que es lo que decide de qué
+    // registro se trata— y sin dejar la del id en el historial.
+    useEffect(() => {
+        const slug = config?.event?.slug;
+        if (!slug || !eventRef || eventRef === slug) return;
+        navigate(`/eventos/${slug}/registro${window.location.search}`, { replace: true });
+    }, [config?.event?.slug, eventRef, navigate]);
+
     // ── Regreso desde Stripe ─────────────────────────────────────────
     useEffect(() => {
         if (!returningId) return;
