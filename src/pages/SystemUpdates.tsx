@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.655.0 | 2026-07-30 (El Registro Internacional se iguala a Postular Proyecto, deja de pedir Idioma, crea la clave de acceso y estrena el rol Asistente al Evento)
-// Cache bust: 2026-07-30e
+// UI V4.656.0 | 2026-07-30 (País y Departamento del formulario de inscripción son campos de texto llanos, sin lista desplegable)
+// Cache bust: 2026-07-30f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.656.0',
+        title: 'El campo País del formulario de inscripción se simplifica 🌍',
+        description: 'Al hacer clic en "País", el navegador desplegaba encima del formulario una lista con veintisiete nombres de países. Era una lista de sugerencias, no un selector: se podía escribir cualquier país, aunque no estuviera en ella. Pero al verla ocupando media pantalla parecía lo contrario —un desplegable obligatorio con un catálogo corto e incompleto—, y obligaba a leerla o cerrarla antes de poder escribir. Ahora "País" es sencillamente un campo de texto: se hace clic y se escribe. Lo mismo con "Departamento" en el registro nacional, que tenía el mismo comportamiento con la lista de departamentos de Colombia y aparecía un paso más adelante. No cambia nada de lo que el formulario acepta: antes y ahora se puede escribir cualquier país y cualquier departamento, porque esas listas nunca restringieron la respuesta, sólo la sugerían. El texto guía del campo pasa de "Escribe o elige tu país" a "Escribe tu país", que es lo que de verdad hace.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'formularios', 'usabilidad', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.655.0',
         title: 'Cada inscrito tiene ahora su propio panel 🎟️',

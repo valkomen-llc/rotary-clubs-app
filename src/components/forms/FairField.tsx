@@ -22,8 +22,8 @@ const BLUE = '#17458F';
 export const PASSWORD_MIN = 8;
 
 /**
- * Clases del control. Se exporta porque hay controles compuestos (el país con
- * datalist, los acompañantes) que necesitan el mismo borde y el mismo foco sin
+ * Clases del control. Se exporta porque hay controles compuestos (la selección
+ * múltiple, los acompañantes) que necesitan el mismo borde y el mismo foco sin
  * pasar por `Field`.
  */
 export const controlCls = (invalid: boolean) =>
@@ -48,8 +48,6 @@ interface FieldProps {
     options?: FieldOption[];
     rows?: number;
     maxLength?: number;
-    /** Sugerencias de un `<datalist>`; el campo sigue admitiendo texto libre. */
-    suggestions?: string[];
     /** Muestra el ojo para revelar el contenido. Sólo tiene sentido en type="password". */
     revealable?: boolean;
     children?: ReactNode;
@@ -58,12 +56,11 @@ interface FieldProps {
 export const Field = ({
     label, name, value, onChange, onBlur, error, touched, required = true,
     type = 'text', placeholder, icon: Icon, hint, as = 'input', options, rows = 6, maxLength,
-    suggestions, revealable = false, children,
+    revealable = false, children,
 }: FieldProps) => {
     const [revealed, setRevealed] = useState(false);
     const invalid = Boolean(touched && error);
     const base = controlCls(invalid);
-    const listId = suggestions?.length ? `list-${name}` : undefined;
     // El ojo se dibuja encima del control: sin el relleno extra tapa el texto.
     const showReveal = revealable && type === 'password';
 
@@ -91,7 +88,7 @@ export const Field = ({
                     <input
                         id={name} name={name} type={showReveal && revealed ? 'text' : type}
                         value={value ?? ''} onChange={onChange} onBlur={onBlur}
-                        placeholder={placeholder} maxLength={maxLength} list={listId}
+                        placeholder={placeholder} maxLength={maxLength}
                         inputMode={type === 'number' ? 'decimal' : undefined}
                         className={showReveal ? `${base} pr-11` : base}
                         autoComplete={type === 'password' ? 'new-password' : 'off'}
@@ -105,11 +102,6 @@ export const Field = ({
                         >
                             {revealed ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
-                    )}
-                    {listId && (
-                        <datalist id={listId}>
-                            {suggestions!.map(s => <option key={s} value={s} />)}
-                        </datalist>
                     )}
                 </div>
             )}

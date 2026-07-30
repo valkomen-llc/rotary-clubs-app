@@ -240,19 +240,3 @@ export const validateCredentials = (
     return errors;
 };
 
-/** Países más frecuentes en la feria, arriba; el campo acepta cualquiera. */
-export const COUNTRY_SUGGESTIONS = [
-    'Colombia', 'Estados Unidos', 'México', 'Brasil', 'Argentina', 'Chile', 'Perú',
-    'Ecuador', 'Panamá', 'Costa Rica', 'Guatemala', 'República Dominicana', 'España',
-    'Canadá', 'Uruguay', 'Paraguay', 'Bolivia', 'Venezuela', 'Honduras', 'El Salvador',
-    'Nicaragua', 'Puerto Rico', 'Portugal', 'Italia', 'Francia', 'Alemania', 'Reino Unido',
-];
-
-/** Departamentos de Colombia, para el campo del registro nacional. */
-export const COLOMBIA_DEPARTMENTS = [
-    'Amazonas', 'Antioquia', 'Arauca', 'Atlántico', 'Bogotá D.C.', 'Bolívar', 'Boyacá',
-    'Caldas', 'Caquetá', 'Casanare', 'Cauca', 'Cesar', 'Chocó', 'Córdoba', 'Cundinamarca',
-    'Guainía', 'Guaviare', 'Huila', 'La Guajira', 'Magdalena', 'Meta', 'Nariño',
-    'Norte de Santander', 'Putumayo', 'Quindío', 'Risaralda', 'San Andrés y Providencia',
-    'Santander', 'Sucre', 'Tolima', 'Valle del Cauca', 'Vaupés', 'Vichada',
-];

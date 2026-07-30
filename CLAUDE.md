@@ -334,6 +334,13 @@ está escrito aparte a propósito.
   evento importan `Field`, `PhoneField` y `StepProgress` del mismo módulo. No
   duplicar estos controles: el formulario del evento es dinámico (los campos los
   define el servidor) y `DynamicField` sólo TRADUCE cada campo a esas piezas.
+- **País y Departamento son campos de TEXTO LLANO** (v4.656, pedido del
+  cliente). Tenían un `<datalist>` de sugerencias y el navegador lo desplegaba
+  encima del formulario al hacer clic: parecía un selector obligatorio con un
+  catálogo corto, cuando en realidad admitían cualquier valor. No reintroducir
+  la lista. Si algún día hay que restringir de verdad los valores, es un
+  `select` con validación en el servidor —no un `datalist`, que sugiere sin
+  restringir y confunde las dos cosas.
 
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
