@@ -4,7 +4,7 @@ import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
-import { resolveCtaUrl } from '../lib/ctaLinks';
+import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
@@ -41,7 +41,9 @@ const FoundationSection = () => {
   const content = (canEditContent && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
   const buttonUrl = resolveCtaUrl(content.buttonUrl) || '';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '🎁')) : '';
-  const isExternal = /^https?:\/\//i.test(buttonUrl);
+  // Externo = otro dominio, no "empieza por http": un enlace al propio
+  // sitio se abre en la misma pestaña (ver `ctaTarget`).
+  const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);
 
   const btnClass = `inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`;
   const btnInner = (
@@ -79,9 +81,9 @@ const FoundationSection = () => {
           </p>
           {canEditContent && buttonUrl ? (
             isExternal ? (
-              <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
+              <a href={buttonHref} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
             ) : (
-              <Link to={buttonUrl} className={btnClass} style={cta.style}>{btnInner}</Link>
+              <Link to={buttonHref} className={btnClass} style={cta.style}>{btnInner}</Link>
             )
           ) : (
             <button className={btnClass} style={cta.style}>{btnInner}</button>
