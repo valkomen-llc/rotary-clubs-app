@@ -714,6 +714,12 @@ const EventsManagement = () => {
     /** Permite distinguir "sin fecha" de "fecha a medio escribir" (validity.badInput). */
     const startDateRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<Record<string, EventTab>>({});
+    // v4.653 — A qué lleva /eventos en el sitio público: al calendario (vacío)
+    // o directo a la ficha de un evento. Se guarda como sección de CMS
+    // (page 'eventos', section 'redirect'), que es lo que ya lee esa página.
+    const [publicRedirect, setPublicRedirect] = useState('');
+    const [savingRedirect, setSavingRedirect] = useState(false);
+    const [redirectSaved, setRedirectSaved] = useState(false);
 
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
@@ -732,6 +738,49 @@ const EventsManagement = () => {
     };
 
     useEffect(() => { fetchEvents(); }, []);
+
+    // El sitio al que pertenecen estos eventos. Se toma del propio evento
+    // porque un usuario con rol `administrator` no lleva `clubId`, y guardar
+    // sin club dejaría la redirección como GLOBAL: se filtraría a los demás
+    // sitios de la plataforma.
+    const siteClubId = (events[0] as any)?.clubId || (user as any)?.clubId || '';
+
+    // Destino actual de la sección pública de Eventos.
+    useEffect(() => {
+        if (!siteClubId) return;
+        fetch(`${API}/clubs/${siteClubId}/sections?page=eventos&clubId=${siteClubId}`)
+            .then(r => r.json())
+            .then((rows: any[]) => {
+                const row = (rows || []).find(x => x.section === 'redirect');
+                if (!row) return;
+                const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+                setPublicRedirect(String(content?.target || ''));
+            })
+            .catch(() => { /* la pantalla sigue usable sin este dato */ });
+    }, [siteClubId]);
+
+    const savePublicRedirect = async (target: string) => {
+        setSavingRedirect(true);
+        setRedirectSaved(false);
+        try {
+            const res = await fetch(`${API}/admin/sections/batch-upsert`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    clubId: siteClubId,
+                    sections: [{ page: 'eventos', section: 'redirect', content: { target } }],
+                }),
+            });
+            if (!res.ok) throw new Error();
+            setPublicRedirect(target);
+            setRedirectSaved(true);
+            setTimeout(() => setRedirectSaved(false), 2500);
+        } catch {
+            alert('No pudimos guardar el destino de la sección de Eventos.');
+        } finally {
+            setSavingRedirect(false);
+        }
+    };
 
     const getTab = (id: string) => activeTab[id] || 'info';
     const setTab = (id: string, tab: EventTab) =>
@@ -859,6 +908,44 @@ const EventsManagement = () => {
                     >
                         <Plus className="w-5 h-5" /> Nuevo Evento
                     </button>
+                </div>
+
+                {/* ── Sección pública de Eventos ──────────────────────
+                    Un sitio con un solo evento no necesita calendario: puede
+                    llevar directo a la ficha. */}
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <h3 className="font-bold text-gray-900 text-sm">Sección pública de Eventos</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                                A dónde llega quien entra a <span className="font-mono">/eventos</span> desde el menú o un enlace.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={publicRedirect}
+                                disabled={savingRedirect}
+                                onChange={e => savePublicRedirect(e.target.value)}
+                                className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm max-w-xs disabled:opacity-50"
+                            >
+                                <option value="">Mostrar el calendario de eventos</option>
+                                {events.map(ev => (
+                                    <option key={ev.id} value={ev.slug || ev.id}>
+                                        Ir directo a: {ev.title}
+                                    </option>
+                                ))}
+                            </select>
+                            {savingRedirect && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
+                            {redirectSaved && <span className="text-sm font-semibold text-emerald-600">Guardado.</span>}
+                        </div>
+                    </div>
+                    {publicRedirect && (
+                        <p className="mt-3 text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                            El calendario queda oculto: <span className="font-mono">/eventos</span> redirige a{' '}
+                            <span className="font-mono font-bold">/eventos/{publicRedirect}</span>. Los demás eventos
+                            siguen accesibles por su propio enlace.
+                        </p>
+                    )}
                 </div>
 
                 {/* Create form */}

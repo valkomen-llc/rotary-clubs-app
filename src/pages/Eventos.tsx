@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
@@ -19,7 +19,16 @@ const defaultImage = 'https://images.unsplash.com/photo-1517457373958-b7bdd45872
 
 const Eventos = () => {
     const { club } = useClub();
-    const { sections } = useCMSContent('eventos', club.id);
+    const { sections, isLoading: cmsLoading } = useCMSContent('eventos', club.id);
+
+    // v4.653 — Sitios con un solo evento (la Feria) no quieren un calendario:
+    // quieren que /eventos lleve directo a la ficha. El destino lo elige el
+    // administrador en Eventos → "Sección pública"; vacío = se muestra el
+    // calendario de siempre.
+    //
+    // Se espera a que cargue el CMS antes de decidir: redirigir con la
+    // configuración a medio leer mandaría al calendario por un instante.
+    const redirectTo = String(sections?.redirect?.target || '').trim();
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
@@ -63,6 +72,12 @@ const Eventos = () => {
 
         if (club?.id) fetchEvents();
     }, [club?.id]);
+
+    // `replace` para que el botón "atrás" del navegador no rebote entre el
+    // calendario y la ficha.
+    if (!cmsLoading && redirectTo) {
+        return <Navigate to={`/eventos/${redirectTo}`} replace />;
+    }
 
     const filteredEvents = activeFilter === 'Todos'
         ? events
