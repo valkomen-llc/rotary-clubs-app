@@ -24,9 +24,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.662.0 | 2026-07-30 (El idioma base también se traduce: sitios con contenido en inglés)
-// Cache bust: 2026-07-30j
+// UI V4.663.0 | 2026-07-30 (Creador de Reels IA: 3 fotos → 3 escenas con narrativa, música y montaje)
+// Cache bust: 2026-07-30m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.663.0',
+        title: 'Creador de Reels IA: tres fotos, un Reel listo para publicar 🎬',
+        description: 'El Creador de Video se rehízo entero. Ahora se eligen TRES fotos de la Biblioteca y cada una se convierte en una escena de video con movimiento cinematográfico propio. Antes de generar nada, la IA mira las tres fotografías, decide en qué orden cuentan mejor la historia, cuánto dura cada escena y con qué se encadenan, y elige un estilo musical acorde a lo que ve —cocina, deporte, naturaleza, institucional—. La música se compone sola y el montaje final se entrega en 1080×1920, con 2K y 4K disponibles. Lo que había antes no llegaba a funcionar: las tres imágenes se mandaban juntas a una sola llamada de un modelo que recibe UNA imagen, así que nunca hubo tres clips; el botón de consultar el estado apuntaba a una dirección que el proveedor había retirado, y los selectores de transición y animación no llegaban al servidor. Cada escena se puede regenerar por separado desde la previsualización, sin rehacer el resto del Reel.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'video', 'reels', 'ia', 'redes-sociales'],
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'Cada foto es una escena independiente con su propio movimiento de cámara y su propia duración.' },
+            { type: 'added', text: 'La IA analiza las tres fotos y arma la narrativa: orden, ritmo, transiciones y energía de la pieza.' },
+            { type: 'added', text: 'Banda sonora generada automáticamente según el contenido, reemplazable desde la previsualización.' },
+            { type: 'added', text: 'Previsualización completa antes de descargar, con regeneración de una sola escena.' },
+            { type: 'added', text: 'Control de preservación visual: una escena que deforma la marca o el texto se regenera sola.' },
+            { type: 'added', text: 'Exportación en Full HD, 2K y 4K con control de tasa de bits.' },
+            { type: 'fixed', text: 'El módulo anterior mandaba las tres imágenes a una sola llamada: nunca generó tres clips.' },
+            { type: 'fixed', text: 'La consulta de estado apuntaba a un endpoint retirado por el proveedor y siempre fallaba.' },
+            { type: 'fixed', text: 'Las transiciones y el estilo de animación elegidos ahora sí llegan al motor.' },
+            { type: 'improved', text: 'Motores de video, proveedor de montaje y fuente musical son intercambiables desde el entorno, sin desplegar.' }
+        ],
+        details: [
+            'Cada Reel queda guardado con todos sus metadatos: fotos usadas, motor de IA, duración, resolución, música, fecha, tiempo de proceso y versión del render.',
+            'La duración real se informa siempre: con clips de 5 segundos y dos fundidos, la pieza dura 14 s y no 15. Alargarla obligaría a generar clips del doble de largo para descartar la mitad.',
+            'La comprobación de fidelidad se declara con honestidad: cuando el proveedor no entrega un fotograma del clip, la ficha dice que no se pudo comprobar en vez de darla por buena.'
+        ]
+    },
     {
         version: '4.662.0',
         title: 'Corrección: elegir «Español» ya traduce el sitio 🇪🇸',

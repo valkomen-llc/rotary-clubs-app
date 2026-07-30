@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.662.0",
-  "cache_bust": "2026-07-30l (El idioma base tambien se traduce: un sitio con los contenidos cargados en ingles ahora se ve en espanol al elegir Espanol.)",
+  "version": "4.663.0",
+  "cache_bust": "2026-07-30m (Creador de Reels IA: tres fotos se convierten en tres escenas image-to-video con narrativa, musica y montaje automatico.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
