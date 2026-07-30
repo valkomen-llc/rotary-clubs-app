@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — capa de montaje (render alojado)
-// v4.663.0
+// v4.664.0
 //
 // POR QUÉ EXISTE ESTA CAPA
 //
@@ -9,11 +9,25 @@
 // ffmpeg y con un tope de 120 s por petición (`vercel.json`). Es exactamente el
 // "Pendiente conocido" que ya estaba anotado para el Generador de Outros.
 //
-// La salida es delegarlo a un servicio de render que recibe una descripción del
-// montaje en JSON y devuelve el MP4. Se declaran tres porque ninguno es
-// insustituible y el precio y la disponibilidad cambian: el proveedor se elige
-// por entorno (`REEL_RENDER_PROVIDER`) sin desplegar, igual que el proveedor de
-// traducción y el motor de imagen.
+// Desde v4.664 hay DOS caminos y el primero no se puede quedar sin configurar:
+//
+//   · `ffmpeg` (local, por defecto) — el binario viaja con la aplicación
+//     (`ffmpeg-static`). Monta dentro de la propia función. Medido sobre el caso
+//     real: ~12 s para 14 s en 1080×1920 con dos fundidos y música, holgado
+//     dentro de los 120 s. Es el principal porque un proveedor externo sin
+//     credencial deja el módulo sin montar nada — que es exactamente lo que
+//     pasó al estrenarlo.
+//   · alojados (`shotstack`, `creatomate`, `json2video`) — reciben el montaje
+//     en JSON y devuelven el MP4. Siguen valiendo para piezas más largas o
+//     resoluciones donde el techo de la función se quede corto.
+//
+// El principal y el de respaldo se eligen por entorno (`REEL_RENDER_PROVIDER` y
+// `REEL_RENDER_FALLBACK`) sin desplegar. Si el principal falla, se intenta el
+// siguiente ANTES de darle un error al usuario.
+//
+// `mode` distingue los dos: `local` monta y devuelve el archivo en el acto;
+// `remote` crea un trabajo y hay que sondearlo. El controlador se ramifica por
+// ese campo y no por el nombre del proveedor.
 //
 // QUÉ NO ES: esto NO es postprocesar el output del modelo. La regla durable
 // —heredada del Generador de Publicaciones y del de Outros— prohíbe retocar el
@@ -39,10 +53,19 @@ import { TRANSITIONS, MUSIC_FADE_SEC, MUSIC_VOLUME_DEFAULT } from './reelSpec.js
 // `envKey` es la credencial que lo habilita. Un proveedor sin su clave en el
 // entorno no se ofrece: es el mismo criterio del panel de traducción.
 export const RENDER_PROVIDERS = {
+    ffmpeg: {
+        id: 'ffmpeg',
+        label: 'FFmpeg (en el servidor)',
+        mode: 'local',
+        envKey: null,
+        capabilities: { maxHeight: 3840, poster: true, transitions: true, soundtrack: true, callback: false },
+        note: 'Monta dentro de la aplicación. No necesita credencial ni servicio externo.'
+    },
     shotstack: {
         id: 'shotstack',
         label: 'Shotstack',
         envKey: 'SHOTSTACK_API_KEY',
+        mode: 'remote',
         capabilities: { maxHeight: 3840, poster: true, transitions: true, soundtrack: true, callback: true },
         note: 'Transiciones nativas y pista de audio con fundidos. Entorno de pruebas gratuito (`stage`).'
     },
@@ -50,6 +73,7 @@ export const RENDER_PROVIDERS = {
         id: 'creatomate',
         label: 'Creatomate',
         envKey: 'CREATOMATE_API_KEY',
+        mode: 'remote',
         capabilities: { maxHeight: 3840, poster: true, transitions: true, soundtrack: true, callback: true },
         note: 'Composición por elementos con animaciones de entrada y salida.'
     },
@@ -57,28 +81,57 @@ export const RENDER_PROVIDERS = {
         id: 'json2video',
         label: 'JSON2Video',
         envKey: 'JSON2VIDEO_API_KEY',
+        mode: 'remote',
         capabilities: { maxHeight: 2160, poster: false, transitions: true, soundtrack: true, callback: true },
         note: 'Escenas con transición declarada. No entrega fotograma de portada.'
     }
 };
 
-export const isRenderProviderAvailable = (id) =>
-    Boolean(RENDER_PROVIDERS[id] && process.env[RENDER_PROVIDERS[id].envKey]);
+// El proveedor local no tiene credencial: su disponibilidad es que el binario
+// exista. Se comprueba una vez y se cachea — `isFfmpegAvailable` importa el
+// paquete, y hacerlo en cada llamada al catálogo sería gratis pero ruidoso.
+let _ffmpegReady = null;
+export const refreshFfmpegAvailability = async () => {
+    const { isFfmpegAvailable } = await import('./reelFfmpeg.js');
+    _ffmpegReady = await isFfmpegAvailable();
+    return _ffmpegReady;
+};
+
+export const isRenderProviderAvailable = (id) => {
+    const p = RENDER_PROVIDERS[id];
+    if (!p) return false;
+    // `_ffmpegReady === null` significa "todavía no se comprobó". Se da por
+    // disponible: el binario viaja con la aplicación, así que lo normal es que
+    // esté, y si no lo estuviera el fallo aparece al montar y la cadena de
+    // respaldo lo cubre. Optimista a propósito — lo contrario escondería el
+    // proveedor principal en el primer arranque en frío.
+    if (p.mode === 'local') return _ffmpegReady !== false;
+    return Boolean(process.env[p.envKey]);
+};
 
 export const availableRenderProviders = () =>
     Object.keys(RENDER_PROVIDERS).filter(isRenderProviderAvailable);
 
-// El proveedor activo: el que diga el entorno si está configurado; si no, el
-// primero que tenga credencial. Devuelve null cuando no hay ninguno — el
-// controlador lo trata como "los clips se entregan sueltos", que es un
-// resultado válido y no un error.
+// El proveedor activo: el que diga el entorno si está configurado; si no,
+// FFmpeg; si tampoco, el primero con credencial.
 export const activeRenderProvider = () => {
     const wanted = process.env.REEL_RENDER_PROVIDER;
     if (wanted && isRenderProviderAvailable(wanted)) return wanted;
     if (wanted && !isRenderProviderAvailable(wanted)) {
-        console.warn(`[REEL] REEL_RENDER_PROVIDER=${wanted} no tiene su credencial (${RENDER_PROVIDERS[wanted]?.envKey || '?'}) configurada.`);
+        console.warn(`[REEL] REEL_RENDER_PROVIDER=${wanted} no está disponible (${RENDER_PROVIDERS[wanted]?.envKey || 'binario ausente'}).`);
     }
+    if (isRenderProviderAvailable('ffmpeg')) return 'ffmpeg';
     return availableRenderProviders()[0] || null;
+};
+
+// La CADENA: principal, respaldo declarado y cualquier otro disponible como
+// último recurso, sin repetir. Es lo que hace que un fallo del principal no
+// llegue al usuario si hay con qué montar.
+export const renderChain = () => {
+    const primary = activeRenderProvider();
+    const fallback = process.env.REEL_RENDER_FALLBACK;
+    return [primary, fallback, ...availableRenderProviders()]
+        .filter((id, i, arr) => id && arr.indexOf(id) === i && isRenderProviderAvailable(id));
 };
 
 // ─── Descripción neutral del montaje ───────────────────────────────────────
@@ -431,7 +484,83 @@ const json2video = {
     }
 };
 
-const ADAPTERS = { shotstack, creatomate, json2video };
+// ─── FFmpeg local ──────────────────────────────────────────────────────────
+//
+// No crea un trabajo: monta y devuelve el archivo. Por eso `submit` responde
+// con `output` en vez de `jobId`, y `poll` nunca se llama para este proveedor.
+//
+// Los clips se descargan acá porque FFmpeg necesita archivos locales. Es la
+// diferencia con los alojados, que reciben URLs y descargan ellos.
+const ffmpegLocal = {
+    async submit(spec) {
+        const { composeReel, normaliseClip, needsNormalisation } = await import('./reelFfmpeg.js');
+        const { probeMp4 } = await import('./outroQuality.js');
+
+        const fetchBuffer = async (url, what) => {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`No se pudo descargar ${what} (${resp.status})`);
+            return Buffer.from(await resp.arrayBuffer());
+        };
+
+        // En paralelo: son descargas independientes y en serie sumarían.
+        const buffers = await Promise.all(
+            spec.clips.map((c, i) => fetchBuffer(c.src, `el clip ${i + 1}`))
+        );
+
+        // Conformado: sólo se recodifica el clip que NO coincide con el destino.
+        // Recodificar por costumbre degrada la imagen y gasta segundos que el
+        // techo de la función no regala.
+        const notes = [];
+        const clips = [];
+        for (const [i, buffer] of buffers.entries()) {
+            const probe = probeMp4(buffer);
+            const check = needsNormalisation(probe, { width: spec.width, height: spec.height, fps: spec.fps });
+            let finalBuffer = buffer;
+            if (check.needed) {
+                notes.push(`Escena ${i + 1} conformada al montaje (${check.reasons.join(', ')}).`);
+                finalBuffer = await normaliseClip(buffer, { width: spec.width, height: spec.height, fps: spec.fps });
+            }
+            clips.push({ ...spec.clips[i], buffer: finalBuffer });
+        }
+
+        let musicBuffer = null;
+        if (spec.soundtrack?.src) {
+            try {
+                musicBuffer = await fetchBuffer(spec.soundtrack.src, 'la banda sonora');
+            } catch (e) {
+                // Sin música el Reel sigue siendo válido: se anota y se monta.
+                notes.push(`La banda sonora no se pudo descargar: ${e.message} El Reel se montó sin música.`);
+            }
+        }
+
+        const result = await composeReel({
+            clips,
+            musicBuffer,
+            width: spec.width,
+            height: spec.height,
+            fps: spec.fps,
+            musicVolume: spec.soundtrack?.volume ?? 0.85,
+            fadeSec: spec.soundtrack?.fadeIn ?? 1
+        });
+
+        return {
+            output: {
+                buffer: result.buffer,
+                posterBuffer: result.posterBuffer,
+                expectedDurationSec: result.expectedDurationSec,
+                hasMusic: Boolean(musicBuffer),
+                notes
+            }
+        };
+    },
+
+    // Nunca se sondea un montaje local: cuando `submit` vuelve, ya está hecho.
+    async poll() {
+        return { state: 'success', url: null, posterUrl: null, failMsg: null, raw: null };
+    }
+};
+
+const ADAPTERS = { ffmpeg: ffmpegLocal, shotstack, creatomate, json2video };
 
 // ─── API pública ───────────────────────────────────────────────────────────
 
@@ -444,23 +573,52 @@ const describeError = (resp, data) =>
     data?.message || data?.error || data?.msg || `HTTP ${resp.status} ${snippet(data)}`;
 
 export const submitRender = async (spec, providerId = null) => {
-    const id = providerId || activeRenderProvider();
-    if (!id) {
+    // Con proveedor explícito se usa ese y sólo ese —lo pidió el usuario desde
+    // el panel, y silenciarlo con un respaldo sería desobedecerlo—. Sin él, la
+    // cadena completa.
+    const chain = providerId
+        ? (isRenderProviderAvailable(providerId) ? [providerId] : [])
+        : renderChain();
+
+    if (!chain.length) {
         const err = new Error(
-            'No hay proveedor de montaje configurado. Definí REEL_RENDER_PROVIDER y su credencial ' +
-            `(${Object.values(RENDER_PROVIDERS).map(p => p.envKey).join(', ')}).`
+            providerId
+                ? `El proveedor de montaje "${providerId}" no está disponible.`
+                : 'No hay proveedor de montaje disponible. FFmpeg no se pudo cargar y no hay credencial de ningún servicio alojado.'
         );
         err.code = 'NO_RENDER_PROVIDER';
         throw err;
     }
-    if (!isRenderProviderAvailable(id)) {
-        const err = new Error(`El proveedor de montaje "${id}" no tiene su credencial configurada (${RENDER_PROVIDERS[id]?.envKey}).`);
-        err.code = 'NO_RENDER_PROVIDER';
-        throw err;
+
+    const failures = [];
+    for (const id of chain) {
+        try {
+            const res = await ADAPTERS[id].submit(spec);
+            const mode = RENDER_PROVIDERS[id].mode;
+            if (failures.length) {
+                console.warn(`[REEL] montaje: ${failures.join(' | ')} — resuelto con ${id}`);
+            }
+            console.log(`[REEL] montaje en ${id} (${mode}): ${spec.width}×${spec.height}, ${spec.totalSec}s, ${spec.clips.length} clips, música=${Boolean(spec.soundtrack)}`);
+            return {
+                provider: id,
+                mode,
+                jobId: res.jobId || null,
+                output: res.output || null,
+                // Qué se intentó antes. Va al historial técnico del proyecto:
+                // que el principal fallara y lo salvara el respaldo es
+                // justamente lo que hay que poder ver después.
+                attempted: failures
+            };
+        } catch (e) {
+            failures.push(`${id}: ${e.message}`);
+            console.error(`[REEL] montaje con ${id} falló:`, e.message);
+        }
     }
-    const { jobId } = await ADAPTERS[id].submit(spec);
-    console.log(`[REEL] montaje enviado a ${id}: ${jobId} (${spec.width}×${spec.height}, ${spec.totalSec}s, ${spec.clips.length} clips, música=${Boolean(spec.soundtrack)})`);
-    return { jobId, provider: id };
+
+    const err = new Error(`Ningún proveedor de montaje pudo completar el Reel — ${failures.join(' | ')}`);
+    err.code = 'RENDER_FAILED';
+    err.attempted = failures;
+    throw err;
 };
 
 export const pollRender = async (jobId, providerId) => {

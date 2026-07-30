@@ -30,6 +30,10 @@ import db from './db.js';
 let _ready = false;
 
 const EXPECTED_TABLES = ['ReelProject', 'ReelScene'];
+// Columnas añadidas después de la creación inicial. La comprobación rápida
+// mira que existan: sin esto, una base creada con la versión anterior se daría
+// por al día y la columna nueva nunca aparecería.
+const EXPECTED_COLUMNS = [['ReelScene', 'frames']];
 
 export async function ensureReelSchema() {
     if (_ready) return;
@@ -40,8 +44,17 @@ export async function ensureReelSchema() {
             [EXPECTED_TABLES]
         );
         if (rows.length === EXPECTED_TABLES.length) {
-            _ready = true;
-            return;
+            const { rows: cols } = await db.query(
+                `SELECT table_name, column_name FROM information_schema.columns
+                 WHERE table_schema = 'public' AND (table_name, column_name) IN (${
+                    EXPECTED_COLUMNS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ')
+                 })`,
+                EXPECTED_COLUMNS.flat()
+            );
+            if (cols.length === EXPECTED_COLUMNS.length) {
+                _ready = true;
+                return;
+            }
         }
     } catch { /* si el catálogo no responde, se ejecutan las sentencias igual */ }
 
@@ -175,11 +188,18 @@ export async function ensureReelSchema() {
             "sizeBytes" BIGINT,
             quality JSONB,
             fidelity JSONB,
+            -- Fotogramas extraídos del clip (v4.664): su URL, el segundo del
+            -- que salieron y su comparación estructural. Es el historial
+            -- técnico de la comprobación de fidelidad — poder mirar DESPUÉS
+            -- qué se comparó es lo que hace revisable un veredicto automático.
+            frames JSONB NOT NULL DEFAULT '[]'::jsonb,
 
             "creditsEstimated" INTEGER NOT NULL DEFAULT 0,
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS frames JSONB NOT NULL DEFAULT '[]'::jsonb;
 
         CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);
         CREATE INDEX IF NOT EXISTS "ReelScene_kieJobId_idx"  ON "ReelScene"("kieJobId");

@@ -24,9 +24,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.663.1 | 2026-07-30 (Fix: el análisis de las fotos del Reel no llegaba a leerse)
-// Cache bust: 2026-07-30n
+// UI V4.664.0 | 2026-07-30 (Montaje automático con FFmpeg + fidelidad sobre fotogramas extraídos)
+// Cache bust: 2026-07-30o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.664.0',
+        title: 'El Reel ya se monta solo 🎬',
+        description: 'Las tres escenas se unen automáticamente en un único MP4 vertical en cuanto están listas, sin descargar ni pegar nada a mano. El montaje ocurre dentro de la propia plataforma con FFmpeg: no hace falta contratar ni configurar ningún servicio externo. Respeta el orden de la línea de tiempo, las duraciones y las transiciones elegidas, mezcla la música con entrada y salida suaves y volumen nivelado, y exporta en H.264 con audio AAC, 1080×1920, 30 fps estables y bitrate alto para redes. Si un clip llega con otra resolución, otro framerate u otro códec, se conforma automáticamente antes de unirlo en vez de bloquear el proceso. Además se puede configurar un proveedor de respaldo: si el montaje principal falla, se intenta con el siguiente antes de mostrar un error.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'video', 'ffmpeg', 'ia'],
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'Montaje automático de las tres escenas en un solo MP4, sin configurar nada.' },
+            { type: 'added', text: 'Miniatura, duración, tamaño y metadatos del montaje generados automáticamente.' },
+            { type: 'added', text: 'Conformado automático de clips con resolución, framerate o códec distintos.' },
+            { type: 'added', text: 'Proveedor de montaje principal y de respaldo, configurables sin desplegar.' },
+            { type: 'fixed', text: 'La fidelidad ya no depende de que el proveedor entregue fotogramas: se extraen del clip.' },
+            { type: 'fixed', text: '«Requiere revisión» dejó de aparecer por falta de fotogramas; ahora sólo señala anomalías reales.' },
+            { type: 'improved', text: 'Se comprueban tres fotogramas por escena (inicio, medio y fin), no uno.' },
+            { type: 'improved', text: 'Los fotogramas comparados quedan guardados y se pueden abrir para revisar el veredicto.' },
+            { type: 'improved', text: 'Estados con nombre propio: Generando, Validando fidelidad, Fidelidad verificada, Montando Reel, Reel listo.' }
+        ],
+        details: [
+            'La fidelidad combina dos señales: una comparación estructural determinista (huella perceptual y color) y una lectura del modelo de visión sobre una composición lado a lado con la foto original. Si el modelo no responde, la estructural sigue dando veredicto y la ficha dice que se hizo sin él.',
+            'El texto de carteles y envases lo transcribe y compara el modelo de visión; no hay un motor de OCR dedicado, y así se nombra en la interfaz.',
+            'La nota de cada escena es la peor de sus tres fotogramas: la deriva de un modelo generativo es progresiva y el final es donde un logotipo se rompe.'
+        ]
+    },
     {
         version: '4.663.1',
         title: 'Corrección: el Reel ya analiza las fotos de verdad 🔍',

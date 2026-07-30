@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — preservación visual y validación de calidad
-// v4.663.0
+// v4.664.0
 //
 // QUÉ SE MIDE Y QUÉ NO. Es importante ser explícito porque el veredicto se le
 // muestra al usuario, y la regla del sitio es no afirmar en la UI que se mide
@@ -17,19 +17,27 @@
 //     · presencia y desfase de la pista de audio
 //     · códec, tasa de bits, integridad (moov/mdat, truncamiento)
 //
-//   Sobre la FIDELIDAD del clip a su fotografía, con un modelo de visión:
+//   Sobre la FIDELIDAD del clip a su fotografía (v4.664, tres fotogramas por
+//   clip extraídos con FFmpeg — inicio, medio y fin):
+//     · distancia perceptual y de color, calculada con sharp: determinista,
+//       sin modelo, y es la que detecta un cambio de encuadre o de paleta
 //     · deformación del motivo, deriva de identidad, alteración de logotipos,
-//       texto ilegible y cambio de colores corporativos.
-//     Esto SÓLO puede correr cuando el proveedor entrega un fotograma del clip
-//     (`posterUrl`). No todos lo hacen. Cuando no hay fotograma, la
-//     comprobación devuelve `state: 'unavailable'` y se dice tal cual en la
-//     ficha — no se da por aprobada.
+//       texto ilegible y cambio de colores corporativos, con un modelo de
+//       visión sobre una composición lado a lado (original | fotograma)
 //
-//   NO se mide, y no se afirma que sí: análisis fotograma a fotograma del video
-//   ni OCR sobre el video renderizado. Eso exige decodificarlo, y la API corre
-//   en Vercel sin ffmpeg. Es la misma limitación que ya documenta el Generador
-//   de Outros, y por eso la legibilidad se controla en la ENTRADA, que es
-//   además donde se puede corregir.
+//     Ya NO depende de que el proveedor entregue portada: si no la manda, los
+//     fotogramas se sacan del propio clip. `unavailable` queda reservado para
+//     cuando FFmpeg no está y el proveedor tampoco dio nada — el caso real de
+//     no haber podido mirar.
+//
+//   Se miran TRES fotogramas y no uno porque la deriva de un modelo generativo
+//   es progresiva: el primero casi siempre es fiel y el último es donde el
+//   logotipo se rompe. La nota de la escena es la PEOR de las tres.
+//
+//   Sobre el texto: lo lee el modelo de visión, que transcribe y compara las
+//   dos mitades. NO hay un motor de OCR dedicado (Tesseract) — añadirlo son
+//   decenas de MB en una función que ya empaqueta FFmpeg. Es una lectura por
+//   modelo, y así se nombra; no se presenta como OCR clásico.
 // ════════════════════════════════════════════════════════════════════
 
 import { REEL_FORMATS, DEFAULT_FORMAT, resolveTier } from './reelSpec.js';
@@ -56,7 +64,11 @@ export const REEL_THRESHOLDS = {
     maxSourceUpscale: 1.6,
     minSharpness: 8,
     // Nota de fidelidad por debajo de la cual la escena se regenera sola.
-    minFidelityScore: 7
+    minFidelityScore: 7,
+    // Similitud estructural mínima (0-1) entre la foto y sus fotogramas. Es la
+    // red de seguridad determinista: aunque el modelo de visión apruebe, por
+    // debajo de esto el encuadre cambió tanto que ya no es la misma toma.
+    minStructuralScore: 0.5
 };
 
 // ─── Inspección de las imágenes de origen ──────────────────────────────────
@@ -178,7 +190,22 @@ export const validateSceneFile = (probe, { expectedDurationSec }) => {
 
 // ─── Validación del montaje final ──────────────────────────────────────────
 
-export const validateReelFile = (probe, { format, qualityTier, expectedDurationSec, expectAudio = true }) => {
+// `encoder` distingue quién codificó el archivo, y no es un detalle: cambia qué
+// significa una tasa de bits baja.
+//
+//   'remote' — lo codificó un proveedor con ajustes que no controlamos. Una
+//     tasa baja puede ser compresión agresiva sobre contenido complejo, que sí
+//     se ve. Se reprueba.
+//   'local'  — lo codificamos nosotros con un objetivo de 10 Mbps y un preset
+//     conocido. Si sale por debajo es porque el contenido es simple (un plano
+//     fijo, un fondo liso), no porque la calidad sea mala: x264 no infla un
+//     archivo que no lo necesita. Reprobar ahí sería castigar una escena
+//     tranquila. Se avisa y se sigue.
+//
+// Sin esta distinción, un Reel perfecto de contenido sencillo acababa en
+// «Requiere revisión» — exactamente el falso positivo que el módulo tiene que
+// evitar.
+export const validateReelFile = (probe, { format, qualityTier, expectedDurationSec, expectAudio = true, encoder = 'remote' }) => {
     const tier = resolveTier(format, qualityTier);
     const failures = [];
     const warnings = [];
@@ -200,7 +227,11 @@ export const validateReelFile = (probe, { format, qualityTier, expectedDurationS
     }
 
     if (probe.bitrateKbps != null && probe.bitrateKbps < REEL_THRESHOLDS.minBitrateKbps) {
-        failures.push(`Tasa de bits baja (${probe.bitrateKbps} kbps): la compresión sería visible al publicar. Mínimo ${REEL_THRESHOLDS.minBitrateKbps} kbps.`);
+        if (encoder === 'local') {
+            warnings.push(`Tasa de bits de ${probe.bitrateKbps} kbps: el montaje se codificó con objetivo alto, así que el archivo salió liviano porque el contenido es sencillo, no por pérdida de calidad.`);
+        } else {
+            failures.push(`Tasa de bits baja (${probe.bitrateKbps} kbps): la compresión sería visible al publicar. Mínimo ${REEL_THRESHOLDS.minBitrateKbps} kbps.`);
+        }
     }
     if (probe.videoCodec && !REEL_THRESHOLDS.acceptedVideoCodecs.includes(probe.videoCodec)) {
         warnings.push(`Códec de video inesperado (${probe.videoCodec}); se esperaba H.264/H.265.`);
@@ -228,18 +259,107 @@ export const validateReelFile = (probe, { format, qualityTier, expectedDurationS
         measured: probe
     };
 };
-
 // ─── Fidelidad de la escena a su fotografía ────────────────────────────────
 //
-// Compara un fotograma del clip contra la foto original con un modelo de
-// visión. Es la comprobación que pide el módulo —que no haya deformaciones,
-// deriva de identidad ni logotipos alterados— y la única forma de hacerla sin
-// decodificar el video.
+// Dos señales independientes, a propósito:
 //
-// SÓLO corre si hay fotograma. Cuando el proveedor no lo entrega, devuelve
-// `unavailable` con el motivo, y así aparece en la ficha. Dar por buena una
-// escena que no se pudo mirar sería peor que decir que no se miró.
-const FIDELITY_SYSTEM = `Eres un control de calidad de vídeo publicitario. Recibes UN fotograma extraído de un clip generado por IA a partir de una fotografía. Tu tarea es decir si el clip conserva la fotografía o la reinterpretó.
+//   1. ESTRUCTURAL (sharp, determinista, sin modelo). Compara la foto original
+//      con cada fotograma por dos vías: una huella perceptual —la imagen
+//      reducida a 16×16 en gris, cuyo signo respecto de la media es robusto
+//      frente a compresión y cambios de luz— y la distancia entre histogramas
+//      de color. Es lo que detecta un reencuadre o un viraje de paleta sin
+//      pedirle nada a nadie, y es la que sigue funcionando si el proveedor de
+//      visión está caído.
+//
+//   2. SEMÁNTICA (modelo de visión). Mira una composición lado a lado —original
+//      a la izquierda, fotograma a la derecha— y responde sobre deformación,
+//      identidad, marca y texto. Va lado a lado porque `generateCopy` acepta
+//      UNA imagen: pegar las dos en una es lo que permite comparar de verdad en
+//      lugar de describir por separado y confiar en la memoria del modelo.
+//
+// Un fallo de la segunda NO anula la primera: si el modelo no responde, la
+// escena se juzga con la estructural sola y la ficha lo dice.
+
+// Huella perceptual de 256 bits (16×16). Devuelve un array de booleanos: cada
+// posición dice si ese píxel está por encima de la media de la imagen.
+const perceptualHash = async (sharp, buffer) => {
+    const { data, info } = await sharp(buffer, { failOn: 'none' })
+        .greyscale()
+        .resize(16, 16, { fit: 'fill' })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    const pixels = Array.from(data.slice(0, info.width * info.height));
+    const mean = pixels.reduce((a, b) => a + b, 0) / pixels.length;
+    return pixels.map(p => p > mean);
+};
+
+// Similitud 0-1 entre dos huellas: la proporción de bits que coinciden,
+// reescalada porque dos imágenes sin relación ya coinciden ~50% por azar.
+const hashSimilarity = (a, b) => {
+    if (!a || !b || a.length !== b.length) return null;
+    const same = a.reduce((n, bit, i) => n + (bit === b[i] ? 1 : 0), 0);
+    const raw = same / a.length;
+    return Number(Math.max(0, (raw - 0.5) * 2).toFixed(3));
+};
+
+// Distancia entre histogramas de color, normalizada. 1 = paletas idénticas.
+const colourSimilarity = async (sharp, a, b) => {
+    const stats = async (buf) => {
+        const s = await sharp(buf, { failOn: 'none' }).resize(64, 64, { fit: 'fill' }).stats();
+        return s.channels.slice(0, 3).map(c => ({ mean: c.mean, stdev: c.stdev }));
+    };
+    const [sa, sb] = await Promise.all([stats(a), stats(b)]);
+    // Diferencia media de canal, sobre el rango 0-255.
+    const diff = sa.reduce((sum, ch, i) =>
+        sum + Math.abs(ch.mean - sb[i].mean) + Math.abs(ch.stdev - sb[i].stdev), 0) / (sa.length * 2);
+    return Number(Math.max(0, 1 - diff / 128).toFixed(3));
+};
+
+// Composición lado a lado para que el modelo compare de verdad. Ambas mitades
+// a la misma altura y con una franja separadora, para que no se confundan.
+export const buildComparisonImage = async (originalBuffer, frameBuffer, { height = 640 } = {}) => {
+    const sharp = (await import('sharp')).default;
+    const fit = (buf) => sharp(buf, { failOn: 'none' })
+        .resize({ height, fit: 'contain', background: { r: 12, g: 12, b: 12 } })
+        .toBuffer({ resolveWithObject: true });
+
+    const [a, b] = await Promise.all([fit(originalBuffer), fit(frameBuffer)]);
+    const gap = 8;
+    const width = a.info.width + gap + b.info.width;
+
+    return sharp({
+        create: { width, height, channels: 3, background: { r: 12, g: 12, b: 12 } }
+    })
+        .composite([
+            { input: a.data, left: 0, top: 0 },
+            { input: b.data, left: a.info.width + gap, top: 0 }
+        ])
+        .jpeg({ quality: 88 })
+        .toBuffer();
+};
+
+// Compara la foto original con UN fotograma, sólo con sharp. Nunca lanza.
+export const structuralCompare = async (originalBuffer, frameBuffer) => {
+    try {
+        const sharp = (await import('sharp')).default;
+        const [ha, hb] = await Promise.all([
+            perceptualHash(sharp, originalBuffer),
+            perceptualHash(sharp, frameBuffer)
+        ]);
+        const structure = hashSimilarity(ha, hb);
+        const colour = await colourSimilarity(sharp, originalBuffer, frameBuffer);
+        // La estructura pesa más que el color: un clip puede virar ligeramente
+        // de temperatura sin que nadie lo note, pero un reencuadre sí se ve.
+        const score = structure != null && colour != null
+            ? Number((structure * 0.65 + colour * 0.35).toFixed(3))
+            : null;
+        return { structure, colour, score, ok: true };
+    } catch (e) {
+        return { structure: null, colour: null, score: null, ok: false, error: e.message };
+    }
+};
+
+const FIDELITY_SYSTEM = `Eres un control de calidad de vídeo publicitario. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA la fotografía ORIGINAL, a la DERECHA un FOTOGRAMA del vídeo que una IA generó a partir de ella. Dices si el vídeo conservó la fotografía o la reinterpretó.
 
 Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin bloques de código:
 
@@ -251,12 +371,15 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "textIllegible": boolean,
   "colorShift": boolean,
   "anatomyErrors": boolean,
+  "textLeft": "todo el texto que leas en la mitad izquierda, o cadena vacía",
+  "textRight": "todo el texto que leas en la mitad derecha, o cadena vacía",
   "issues": ["descripción breve en español de cada problema real"]
 }
 
-- "score" 10 = indistinguible de la fotografía; 7 = diferencias mínimas aceptables; por debajo de 7 = hay que regenerar.
+- "score" 10 = la mitad derecha es indistinguible de la izquierda salvo por el movimiento natural; 7 = diferencias mínimas aceptables; por debajo de 7 = hay que regenerar.
+- Se ESPERA movimiento: un cambio de postura, una mano que se mueve o una hoja que se agita NO son defectos. Sí lo son un rostro que cambia de persona, un logotipo redibujado o un texto que ya no dice lo mismo.
+- "textLeft" y "textRight": transcribe literalmente lo que se lea en cada mitad. Si no hay texto, cadena vacía. Es lo que permite detectar que un cartel cambió de contenido.
 - "brandAltered" es true si un logotipo, una marca o un texto institucional cambió de forma, tipografía o color.
-- "anatomyErrors" cubre manos, dedos, ojos y extremidades mal resueltos.
 - "issues" vacío si no hay ningún problema. No inventes problemas para justificar la nota.`;
 
 // `generateCopy` devuelve { content, raw, provider, model }, no una cadena.
@@ -273,103 +396,200 @@ const parseJsonObject = (result) => {
     try { return JSON.parse(cleaned.slice(s, e + 1)); } catch { return null; }
 };
 
-export const checkSceneFidelity = async ({ sourceImageUrl, frameUrl, analysis = null }) => {
-    if (!frameUrl) {
+// Normaliza un texto para compararlo: sin acentos, sin signos, sin dobles
+// espacios. Dos transcripciones del mismo cartel nunca vienen idénticas.
+const normaliseText = (t) => String(t || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Compara las dos transcripciones por palabras. Devuelve null cuando no hay
+// texto en el original: no se puede juzgar la legibilidad de lo que no existe.
+const compareText = (left, right) => {
+    const a = normaliseText(left);
+    const b = normaliseText(right);
+    if (!a) return null;
+    const wa = new Set(a.split(' ').filter(w => w.length > 2));
+    if (!wa.size) return null;
+    const wb = new Set(b.split(' ').filter(w => w.length > 2));
+    const kept = [...wa].filter(w => wb.has(w)).length;
+    return { ratio: Number((kept / wa.size).toFixed(2)), original: a.slice(0, 200), rendered: b.slice(0, 200) };
+};
+
+// Evalúa UN fotograma. Devuelve la parte estructural aunque el modelo falle.
+const checkFrame = async ({ originalBuffer, frame, analysis }) => {
+    const structural = await structuralCompare(originalBuffer, frame.buffer);
+
+    let semantic = null;
+    try {
+        const comparison = await buildComparisonImage(originalBuffer, frame.buffer);
+        const url = await frame.publish?.(comparison);
+        if (!url) throw new Error('no se pudo publicar la comparación');
+
+        const focus = [];
+        if (analysis?.hasBrand) focus.push('Hay logotipos o marca institucional: revisá su forma, su tipografía y sus colores con especial cuidado.');
+        if (analysis?.hasText) focus.push('Hay texto legible: transcribí las dos mitades y comprobá que diga lo mismo.');
+        if (analysis?.hasPeople) focus.push('Hay personas: revisá rostros, manos y proporciones.');
+
+        const result = await generateCopy({
+            system: FIDELITY_SYSTEM,
+            userText: [
+                `Fotograma tomado en el segundo ${frame.at} del clip (${frame.position}).`,
+                analysis?.summary ? `La fotografía original muestra: ${analysis.summary}` : '',
+                focus.join(' '),
+                'Devolvé únicamente el JSON.'
+            ].filter(Boolean).join('\n'),
+            imageUrl: url,
+            temperature: 0.1,
+            maxTokens: 700,
+            jsonMode: true
+        });
+        const raw = parseJsonObject(result);
+        if (raw) {
+            const score = Number(raw.score);
+            semantic = {
+                score: Number.isFinite(score) ? Math.min(10, Math.max(0, score)) : null,
+                deformation: raw.deformation === true,
+                identityDrift: raw.identityDrift === true,
+                brandAltered: raw.brandAltered === true,
+                textIllegible: raw.textIllegible === true,
+                colorShift: raw.colorShift === true,
+                anatomyErrors: raw.anatomyErrors === true,
+                text: compareText(raw.textLeft, raw.textRight),
+                issues: Array.isArray(raw.issues)
+                    ? raw.issues.filter(i => typeof i === 'string').slice(0, 4).map(i => i.slice(0, 200))
+                    : [],
+                comparisonUrl: url
+            };
+        }
+    } catch (e) {
+        console.warn(`[REEL] fidelidad semántica del fotograma ${frame.at}s:`, e.message);
+    }
+
+    return { at: frame.at, position: frame.position, frameUrl: frame.url || null, structural, semantic };
+};
+
+// Comprueba la fidelidad de una escena sobre TODOS sus fotogramas.
+//
+// `frames` trae, por fotograma: buffer, `at`, `position`, la `url` ya publicada
+// del fotograma suelto y un `publish(buffer)` para subir la comparación.
+//
+// La nota de la escena es la PEOR de los fotogramas, no la media: una escena
+// que empieza bien y termina con el logotipo roto no es medio buena.
+export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis = null, legacyFrameUrl = null }) => {
+    if (!originalBuffer || !frames.length) {
         return {
             state: 'unavailable',
             score: null,
             issues: [],
-            reason: 'El proveedor no entregó un fotograma del clip, así que la fidelidad no se pudo comprobar automáticamente.'
+            frames: [],
+            reason: legacyFrameUrl
+                ? 'No se pudo descargar la fotografía original para compararla.'
+                : 'No se pudieron extraer fotogramas del clip (FFmpeg no disponible y el proveedor no entregó portada).'
         };
     }
 
-    // Qué mirar con más cuidado, según lo que el director detectó en la foto.
-    const focus = [];
-    if (analysis?.hasBrand) focus.push('Hay logotipos o marca institucional: revisá su forma, su tipografía y sus colores con especial cuidado.');
-    if (analysis?.hasText) focus.push('Hay texto legible: revisá que siga leyéndose y diga lo mismo.');
-    if (analysis?.hasPeople) focus.push('Hay personas: revisá rostros, manos y proporciones.');
+    const results = await Promise.all(frames.map(frame => checkFrame({ originalBuffer, frame, analysis })));
 
-    try {
-        const result = await generateCopy({
-            system: FIDELITY_SYSTEM,
-            userText: [
-                `Fotografía original: ${sourceImageUrl}`,
-                analysis?.summary ? `La fotografía muestra: ${analysis.summary}` : '',
-                focus.join(' '),
-                'Evaluá el fotograma adjunto contra esa descripción y devolvé únicamente el JSON.'
-            ].filter(Boolean).join('\n'),
-            imageUrl: frameUrl,
-            temperature: 0.1,
-            maxTokens: 500,
-            jsonMode: true
-        });
+    const semantics = results.map(r => r.semantic).filter(Boolean);
+    const structurals = results.map(r => r.structural).filter(s => s?.score != null);
 
-        const raw = parseJsonObject(result);
-        if (!raw) {
-            return { state: 'unavailable', score: null, issues: [], reason: 'El control de fidelidad no devolvió una respuesta legible.' };
-        }
+    // Un problema en CUALQUIER fotograma es un problema de la escena.
+    const flags = {
+        deformation: semantics.some(s => s.deformation),
+        identityDrift: semantics.some(s => s.identityDrift),
+        brandAltered: semantics.some(s => s.brandAltered),
+        textIllegible: semantics.some(s => s.textIllegible),
+        colorShift: semantics.some(s => s.colorShift),
+        anatomyErrors: semantics.some(s => s.anatomyErrors)
+    };
 
-        const score = Number(raw.score);
-        const issues = Array.isArray(raw.issues)
-            ? raw.issues.filter(i => typeof i === 'string').slice(0, 6).map(i => i.slice(0, 200))
-            : [];
+    const semanticScore = semantics.length ? Math.min(...semantics.map(s => s.score ?? 10)) : null;
+    const structuralScore = structurals.length ? Math.min(...structurals.map(s => s.score)) : null;
 
-        const flags = {
-            deformation: raw.deformation === true,
-            identityDrift: raw.identityDrift === true,
-            brandAltered: raw.brandAltered === true,
-            textIllegible: raw.textIllegible === true,
-            colorShift: raw.colorShift === true,
-            anatomyErrors: raw.anatomyErrors === true
-        };
+    // Texto: si el original tenía texto y en el vídeo se conserva menos de la
+    // mitad de las palabras, se considera ilegible aunque el modelo no lo haya
+    // marcado. Es una comprobación aparte y comparable, no una opinión.
+    const textChecks = semantics.map(s => s.text).filter(Boolean);
+    const worstText = textChecks.length ? Math.min(...textChecks.map(t => t.ratio)) : null;
+    if (worstText != null && worstText < 0.5) flags.textIllegible = true;
 
-        const scored = Number.isFinite(score) ? Math.min(10, Math.max(0, score)) : null;
+    const issues = [...new Set(semantics.flatMap(s => s.issues))].slice(0, 6);
 
-        // Una alteración de marca o un texto ilegible descalifican por sí solos,
-        // por buena que sea la nota: es exactamente lo que el módulo promete
-        // conservar. El resto se decide por la nota.
-        const disqualifying = flags.brandAltered || flags.textIllegible;
-        const passes = !disqualifying && scored != null && scored >= REEL_THRESHOLDS.minFidelityScore;
+    // Sin modelo, la estructural decide sola: 0.55 de similitud combinada es el
+    // punto por debajo del cual el encuadre ya cambió de forma visible.
+    const score = semanticScore != null
+        ? semanticScore
+        : (structuralScore != null ? Number((structuralScore * 10).toFixed(1)) : null);
 
+    const disqualifying = flags.brandAltered || flags.textIllegible;
+    const passes = !disqualifying
+        && score != null
+        && score >= REEL_THRESHOLDS.minFidelityScore
+        && (structuralScore == null || structuralScore >= REEL_THRESHOLDS.minStructuralScore);
+
+    // `unavailable` sólo si NADA se pudo medir. Con la estructural sola ya hay
+    // veredicto — se dice que fue sin el modelo, pero no se finge no haber
+    // mirado.
+    if (score == null) {
         return {
-            state: passes ? 'ok' : 'failed',
-            score: scored,
-            ...flags,
-            issues,
-            frameUrl,
-            checkedAt: new Date().toISOString(),
-            reason: passes
-                ? null
-                : (disqualifying
-                    ? 'El clip alteró la marca o el texto de la fotografía.'
-                    : `La fidelidad quedó en ${scored}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`)
+            state: 'unavailable', score: null, issues: [],
+            frames: results.map(({ at, position, frameUrl, structural }) => ({ at, position, frameUrl, structural })),
+            reason: 'No se pudo comparar el clip con la fotografía original.'
         };
-    } catch (e) {
-        // Un fallo del proveedor de visión no puede tumbar el Reel: se informa
-        // y la escena sigue su curso con la fidelidad sin comprobar.
-        console.error('[REEL] control de fidelidad falló:', e.message);
-        return { state: 'unavailable', score: null, issues: [], reason: `No se pudo comprobar la fidelidad: ${e.message}` };
     }
+
+    return {
+        state: passes ? 'ok' : 'failed',
+        score: Number(score.toFixed(1)),
+        semanticScore,
+        structuralScore,
+        method: semantics.length ? 'estructural + visión' : 'sólo estructural',
+        framesChecked: results.length,
+        ...flags,
+        text: worstText != null ? { keptRatio: worstText, samples: textChecks.slice(0, 2) } : null,
+        issues,
+        frames: results.map(({ at, position, frameUrl, structural, semantic }) => ({
+            at, position, frameUrl,
+            structural,
+            score: semantic?.score ?? null,
+            comparisonUrl: semantic?.comparisonUrl || null
+        })),
+        checkedAt: new Date().toISOString(),
+        reason: passes
+            ? null
+            : (disqualifying
+                ? 'El clip alteró la marca o el texto de la fotografía.'
+                : `La fidelidad quedó en ${Number(score.toFixed(1))}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`)
+    };
 };
 
-// Resumen legible del estado de fidelidad de todas las escenas, para la ficha.
 export const summarizeFidelity = (scenes = []) => {
     const checked = scenes.filter(s => s.fidelity?.state === 'ok' || s.fidelity?.state === 'failed');
     const failed = scenes.filter(s => s.fidelity?.state === 'failed');
     const unavailable = scenes.filter(s => !s.fidelity || s.fidelity.state === 'unavailable');
+    const framesChecked = scenes.reduce((n, s) => n + (s.fidelity?.framesChecked || 0), 0);
+    const withoutModel = checked.filter(s => s.fidelity?.method === 'sólo estructural');
+
     return {
         checked: checked.length,
         failed: failed.length,
         unavailable: unavailable.length,
         total: scenes.length,
+        framesChecked,
         averageScore: checked.length
-            ? Number((checked.reduce((s, x) => s + (x.fidelity.score || 0), 0) / checked.length).toFixed(1))
+            ? Number((checked.reduce((n, s) => n + (s.fidelity.score || 0), 0) / checked.length).toFixed(1))
             : null,
-        // El texto que se muestra. Dice qué se comprobó y qué no, sin redondear.
+        // El texto dice qué se comprobó y CÓMO. Que la comprobación corriera sin
+        // el modelo de visión es información del usuario, no un detalle interno:
+        // la señal estructural detecta un reencuadre pero no que un logotipo se
+        // haya redibujado conservando su sitio.
         label: checked.length === 0
-            ? 'Fidelidad no comprobada: el proveedor no entregó fotogramas de los clips.'
+            ? (unavailable.length
+                ? 'Fidelidad no comprobada: no se pudieron extraer fotogramas de los clips.'
+                : 'Fidelidad pendiente de comprobar.')
             : failed.length
-                ? `${failed.length} de ${checked.length} escenas comprobadas no conservan la fotografía.`
-                : `${checked.length} de ${scenes.length} escenas comprobadas conservan la fotografía${unavailable.length ? `; ${unavailable.length} sin comprobar` : ''}.`
+                ? `${failed.length} de ${checked.length} escenas no conservan la fotografía original.`
+                : `Fidelidad verificada en ${checked.length} de ${scenes.length} escenas (${framesChecked} fotogramas)` +
+                  (withoutModel.length ? `; ${withoutModel.length} sólo con comparación estructural.` : '.')
     };
 };

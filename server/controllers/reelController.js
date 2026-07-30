@@ -50,17 +50,26 @@ import {
 } from '../lib/reelQuality.js';
 import {
     RENDER_PROVIDERS, activeRenderProvider, availableRenderProviders,
+    renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
+import { extractFrames, isFfmpegAvailable } from '../lib/reelFfmpeg.js';
 import {
     MUSIC_PROVIDERS, DEFAULT_MUSIC_PROVIDER, isMusicProviderAvailable,
     startSoundtrack, pollSoundtrack, fetchAudioBuffer
 } from '../lib/reelMusic.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 
-export const REEL_MODULE_VERSION = '4.663.0';
+export const REEL_MODULE_VERSION = '4.664.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, música generativa y montaje en ${activeRenderProvider() || 'ningún proveedor configurado'}`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+
+// La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
+// bloquear la carga del módulo: hasta que responda, el registro lo da por
+// disponible (es un binario que viaja con la aplicación).
+refreshFfmpegAvailability()
+    .then(ok => console.log(`[reelController] FFmpeg ${ok ? 'disponible' : 'NO disponible — el montaje usará un proveedor alojado'}`))
+    .catch(() => { });
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 
@@ -178,6 +187,7 @@ const sceneToDto = (row) => ({
     sizeBytes: row.sizeBytes != null ? Number(row.sizeBytes) : null,
     quality: row.quality,
     fidelity: row.fidelity,
+    frames: row.frames || [],
     creditsEstimated: row.creditsEstimated
 });
 
@@ -684,13 +694,14 @@ const ingestScene = async (scene, providerUrl, posterUrl = null) => {
         'video/mp4'
     );
 
-    // Fidelidad: sólo si el proveedor dio un fotograma. Si no, queda
-    // `unavailable` y así se muestra — no se da por aprobada.
-    const fidelity = await checkSceneFidelity({
-        sourceImageUrl: scene.sourceImageUrl,
-        frameUrl: posterUrl,
-        analysis: scene.analysis
-    });
+    // ── Fidelidad ──
+    //
+    // Los fotogramas se sacan del PROPIO clip con FFmpeg. Hasta v4.663 esto
+    // dependía de que el proveedor entregara una portada, y Kling no la manda:
+    // el resultado era «fidelidad no comprobada» en todas las escenas, siempre.
+    // Depender de un dato opcional de un tercero para una comprobación propia
+    // era el error.
+    const fidelity = await runSceneFidelity(scene, buffer, probe, posterUrl);
 
     // Una escena que no conserva la fotografía no sirve, por buena que sea su
     // codificación. Es el sistema de preservación visual del módulo.
@@ -704,18 +715,104 @@ const ingestScene = async (scene, providerUrl, posterUrl = null) => {
         `UPDATE "ReelScene"
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = $6,
              "generatedDurationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
-             "sizeBytes" = $11, quality = $12, fidelity = $13, "updatedAt" = NOW()
+             "sizeBytes" = $11, quality = $12, fidelity = $13, frames = $14, "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
         [
             scene.id, verdict, detail.length ? detail.join(' · ') : null,
-            upload.url, upload.key, posterUrl,
+            upload.url, upload.key,
+            fidelity.frames?.[0]?.frameUrl || posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
-            probe.sizeBytes, JSON.stringify(quality), JSON.stringify(fidelity)
+            probe.sizeBytes, JSON.stringify(quality), JSON.stringify(fidelity),
+            JSON.stringify(fidelity.frames || [])
         ]
     );
 
-    console.log(`[REEL] escena ${scene.projectId}/${scene.position} → ${verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, fidelidad=${fidelity.score ?? 'n/d'})`);
+    console.log(`[REEL] escena ${scene.projectId}/${scene.position} → ${verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, fidelidad=${fidelity.score ?? 'n/d'} por ${fidelity.method || 'sin comprobar'})`);
     return rows[0];
+};
+
+// Extrae los fotogramas, los publica y corre la comprobación de fidelidad.
+// Aparte de `ingestScene` porque es la parte que puede fallar entera sin que
+// eso invalide el clip: un fallo acá deja la escena sin comprobar, no rota.
+const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) => {
+    try {
+        const durationSec = probe.durationSec || Number(scene.durationSec) || 5;
+
+        let frames = [];
+        if (await isFfmpegAvailable()) {
+            const raw = await extractFrames(videoBuffer, { durationSec, count: 3 });
+            // Cada fotograma se sube: el modelo de visión los pide por URL, y
+            // además quedan en el historial técnico de la escena.
+            frames = await Promise.all(raw.map(async (f, i) => {
+                const up = await uploadBuffer(
+                    f.buffer,
+                    `clubs/${scene.clubId || 'global'}/reels/frames/${scene.id}/${i}-${f.position}-${Date.now()}.jpg`,
+                    'image/jpeg'
+                );
+                return {
+                    ...f,
+                    url: up.url,
+                    // La comparación lado a lado se publica bajo demanda, sólo
+                    // si se va a usar: son tres imágenes más por escena.
+                    publish: async (composite) => {
+                        const c = await uploadBuffer(
+                            composite,
+                            `clubs/${scene.clubId || 'global'}/reels/frames/${scene.id}/${i}-cmp-${Date.now()}.jpg`,
+                            'image/jpeg'
+                        );
+                        return c.url;
+                    }
+                };
+            }));
+        } else if (providerPosterUrl) {
+            // Sin FFmpeg se usa la portada del proveedor, si la hubo.
+            const resp = await fetch(providerPosterUrl);
+            if (resp.ok) {
+                frames = [{
+                    at: 0, position: 'inicio', url: providerPosterUrl,
+                    buffer: Buffer.from(await resp.arrayBuffer()),
+                    publish: async (composite) => {
+                        const c = await uploadBuffer(
+                            composite,
+                            `clubs/${scene.clubId || 'global'}/reels/frames/${scene.id}/cmp-${Date.now()}.jpg`,
+                            'image/jpeg'
+                        );
+                        return c.url;
+                    }
+                }];
+            }
+        }
+
+        if (!frames.length) {
+            return {
+                state: 'unavailable', score: null, issues: [], frames: [],
+                reason: 'No se pudieron extraer fotogramas del clip para comprobar la fidelidad.'
+            };
+        }
+
+        // La foto original, para comparar contra ella.
+        const srcResp = await fetch(scene.sourceImageUrl);
+        if (!srcResp.ok) {
+            return {
+                state: 'unavailable', score: null, issues: [],
+                frames: frames.map(({ at, position, url }) => ({ at, position, frameUrl: url })),
+                reason: `No se pudo descargar la fotografía original (${srcResp.status}).`
+            };
+        }
+        const originalBuffer = Buffer.from(await srcResp.arrayBuffer());
+
+        return await checkSceneFidelity({
+            originalBuffer,
+            frames,
+            analysis: scene.analysis
+        });
+    } catch (e) {
+        console.error(`[REEL] fidelidad de la escena ${scene.id}:`, e.message);
+        return {
+            state: 'unavailable', score: null, issues: [], frames: [],
+            reason: `No se pudo comprobar la fidelidad: ${e.message}`
+        };
+    }
 };
 
 // Relanza una escena conservando su dirección.
@@ -805,21 +902,6 @@ const submitAssembly = async (project, scenes) => {
         return rows[0];
     }
 
-    const provider = activeRenderProvider();
-    if (!provider) {
-        // No es un error del usuario ni del proveedor: es una pieza de
-        // infraestructura que no está. Las escenas existen y son descargables.
-        const { rows } = await db.query(
-            `UPDATE "ReelProject"
-             SET status = 'needs_review',
-                 "statusDetail" = 'Las tres escenas están listas, pero no hay proveedor de montaje configurado para unirlas. Se pueden descargar por separado.',
-                 "updatedAt" = NOW()
-             WHERE id = $1 RETURNING *`,
-            [project.id]
-        );
-        return rows[0];
-    }
-
     const spec = buildEditSpec({
         scenes: usable.map(s => ({
             videoUrl: s.videoUrl,
@@ -831,24 +913,104 @@ const submitAssembly = async (project, scenes) => {
         callbackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/reel-webhook`
     });
 
+    await db.query(
+        `UPDATE "ReelProject" SET status = 'assembling', "statusDetail" = NULL, "renderSpec" = $2, "updatedAt" = NOW() WHERE id = $1`,
+        [project.id, JSON.stringify(spec)]
+    );
+
+    let submitted;
     try {
-        const { jobId, provider: used } = await submitRender(spec, provider);
-        const { rows } = await db.query(
-            `UPDATE "ReelProject"
-             SET status = 'assembling', "renderProvider" = $2, "renderJobId" = $3,
-                 "renderSpec" = $4, "statusDetail" = NULL, "updatedAt" = NOW()
-             WHERE id = $1 RETURNING *`,
-            [project.id, used, jobId, JSON.stringify(spec)]
-        );
-        return rows[0];
+        submitted = await submitRender(spec, project.config?.renderProvider || null);
     } catch (e) {
         console.error(`[REEL] ${project.id} montaje no se pudo lanzar:`, e.message);
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id, `No se pudo lanzar el montaje: ${e.message}`]
+            [project.id, e.code === 'NO_RENDER_PROVIDER'
+                ? `${e.message} Las tres escenas están listas y se pueden descargar por separado.`
+                : `No se pudo montar el Reel: ${e.message}`]
         );
         return rows[0];
     }
+
+    // Que un proveedor fallara y lo salvara el siguiente es justo lo que hay
+    // que poder ver después: va al historial del proyecto.
+    for (const note of submitted.attempted || []) {
+        await appendNote(project.id, `Montaje: falló ${note}; se usó ${submitted.provider}.`);
+    }
+
+    // ── Montaje local: ya está hecho cuando `submitRender` vuelve ──
+    if (submitted.mode === 'local') {
+        for (const note of submitted.output.notes || []) await appendNote(project.id, note);
+        await db.query(
+            'UPDATE "ReelProject" SET "renderProvider" = $2, "updatedAt" = NOW() WHERE id = $1',
+            [project.id, submitted.provider]
+        );
+        const { rows: fresh } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [project.id]);
+        return ingestLocalReel(fresh[0], submitted.output);
+    }
+
+    // ── Montaje alojado: crea el trabajo y se sondea ──
+    const { rows } = await db.query(
+        `UPDATE "ReelProject"
+         SET status = 'assembling', "renderProvider" = $2, "renderJobId" = $3, "statusDetail" = NULL, "updatedAt" = NOW()
+         WHERE id = $1 RETURNING *`,
+        [project.id, submitted.provider, submitted.jobId]
+    );
+    return rows[0];
+};
+
+// Guarda el resultado de un montaje LOCAL. Mismo destino que `ingestReel` pero
+// sin descarga: el buffer ya está en memoria.
+const ingestLocalReel = async (project, output) => {
+    const probe = probeMp4(output.buffer);
+    const quality = validateReelFile(probe, {
+        format: project.format,
+        qualityTier: project.qualityTier,
+        expectedDurationSec: output.expectedDurationSec || project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
+        expectAudio: Boolean(output.hasMusic),
+        // Lo codificamos nosotros, con objetivo de bitrate conocido.
+        encoder: 'local'
+    });
+
+    const upload = await uploadBuffer(
+        output.buffer,
+        `clubs/${project.clubId || 'global'}/reels/${Date.now()}-${slugify(project.title)}.mp4`,
+        'video/mp4'
+    );
+
+    let posterUrl = null;
+    if (output.posterBuffer) {
+        try {
+            const p = await uploadBuffer(
+                output.posterBuffer,
+                `clubs/${project.clubId || 'global'}/reels/posters/${project.id}-${Date.now()}.jpg`,
+                'image/jpeg'
+            );
+            posterUrl = p.url;
+        } catch (e) {
+            console.warn(`[REEL] ${project.id} miniatura no se pudo subir: ${e.message}`);
+        }
+    }
+
+    const { rows } = await db.query(
+        `UPDATE "ReelProject"
+         SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = COALESCE($6, "posterUrl"),
+             "durationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
+             "sizeBytes" = $11, "hasAudio" = $12, quality = $13,
+             "processingMs" = EXTRACT(EPOCH FROM (NOW() - "createdAt"))::int * 1000,
+             "updatedAt" = NOW()
+         WHERE id = $1 RETURNING *`,
+        [
+            project.id, quality.verdict,
+            quality.failures.length ? quality.failures.join(' · ') : null,
+            upload.url, upload.key, posterUrl,
+            probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
+            probe.sizeBytes, probe.hasAudio, JSON.stringify(quality)
+        ]
+    );
+
+    console.log(`[REEL] ${project.id} montado localmente → ${quality.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
+    return rows[0];
 };
 
 // Baja el montaje terminado, lo mide y lo sube a nuestro bucket.

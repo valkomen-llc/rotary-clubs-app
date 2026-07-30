@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — pantalla
-// v4.663.0
+// v4.664.0
 //
 // Tres pantallas en una, según dónde esté el Reel:
 //
@@ -692,12 +692,12 @@ const ReelHeader: React.FC<{ reel: Reel; onStartOver: () => void }> = ({ reel, o
 // Barra de progreso por etapa. Las etapas son las del servidor, así que el
 // número y el texto son los mismos en los dos lados.
 const STAGES: { id: string; label: string }[] = [
-    { id: 'analyzing', label: 'Análisis' },
+    { id: 'analyzing', label: 'Analizando fotos' },
     { id: 'directing', label: 'Narrativa' },
-    { id: 'generating', label: 'Escenas' },
-    { id: 'scoring', label: 'Música' },
-    { id: 'assembling', label: 'Montaje' },
-    { id: 'validating', label: 'Calidad' }
+    { id: 'generating', label: 'Generando escenas' },
+    { id: 'scoring', label: 'Mezclando música' },
+    { id: 'assembling', label: 'Montando Reel' },
+    { id: 'validating', label: 'Exportando' }
 ];
 
 const ProgressPanel: React.FC<{ reel: Reel }> = ({ reel }) => {
@@ -863,6 +863,11 @@ const PreviewPanel: React.FC<{
                 <div className="flex items-center gap-3 mb-3">
                     <ShieldCheck className={`w-5 h-5 ${reel.status === 'ready' ? 'text-emerald-600' : 'text-amber-600'}`} />
                     <h3 className="font-black text-gray-900">{reel.statusLabel}</h3>
+                    {reel.fidelitySummary.framesChecked ? (
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                            {reel.fidelitySummary.framesChecked} fotogramas comprobados
+                        </span>
+                    ) : null}
                 </div>
                 {/* Se dice exactamente qué se comprobó y qué no. Dar por buena
                     una escena que nadie pudo mirar sería peor que decirlo. */}
@@ -996,19 +1001,48 @@ const SceneRow: React.FC<{
                         <p className="text-[11px] font-medium text-gray-500 mt-0.5 truncate">{scene.analysis.summary}</p>
                     )}
 
-                    {/* Fidelidad. Tres estados, no dos: `unavailable` se dice. */}
+                    {/* Fidelidad. Tres estados y se nombra CÓMO se comprobó: la
+                        señal estructural sola no ve un logotipo redibujado en su
+                        mismo sitio, y eso el usuario tiene que poder saberlo. */}
                     {scene.fidelity && (
-                        <p className={`text-[10px] font-bold mt-1.5 flex items-start gap-1 ${
-                            scene.fidelity.state === 'ok' ? 'text-emerald-600'
-                                : scene.fidelity.state === 'failed' ? 'text-amber-700' : 'text-gray-400'
-                        }`}>
-                            <ShieldCheck className="w-3 h-3 flex-shrink-0 mt-px" />
-                            {scene.fidelity.state === 'ok'
-                                ? `Conserva la fotografía (${scene.fidelity.score}/10)`
-                                : scene.fidelity.state === 'failed'
-                                    ? (scene.fidelity.issues[0] || scene.fidelity.reason)
-                                    : 'Fidelidad no comprobada'}
-                        </p>
+                        <div className="mt-1.5">
+                            <p className={`text-[10px] font-bold flex items-start gap-1 ${
+                                scene.fidelity.state === 'ok' ? 'text-emerald-600'
+                                    : scene.fidelity.state === 'failed' ? 'text-amber-700' : 'text-gray-400'
+                            }`}>
+                                <ShieldCheck className="w-3 h-3 flex-shrink-0 mt-px" />
+                                {scene.fidelity.state === 'ok'
+                                    ? `Fidelidad verificada · ${scene.fidelity.score}/10 · ${scene.fidelity.framesChecked ?? 0} fotogramas`
+                                    : scene.fidelity.state === 'failed'
+                                        ? (scene.fidelity.issues[0] || scene.fidelity.reason)
+                                        : (scene.fidelity.reason || 'Fidelidad no comprobada')}
+                            </p>
+                            {scene.fidelity.method === 'sólo estructural' && (
+                                <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
+                                    Comparación estructural únicamente: no se pudo consultar el modelo de visión.
+                                </p>
+                            )}
+                            {/* Los fotogramas comparados, para poder revisar el
+                                veredicto en vez de tener que creerlo. */}
+                            {Boolean(scene.fidelity.frames?.length) && (
+                                <div className="flex gap-1 mt-1.5 pl-4">
+                                    {scene.fidelity.frames!.map((f, i) => (
+                                        <a
+                                            key={i}
+                                            href={f.comparisonUrl || f.frameUrl || undefined}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            title={`${f.position} · ${f.at}s${f.score != null ? ` · ${f.score}/10` : ''}`}
+                                            className="w-8 h-8 rounded overflow-hidden border border-gray-200 hover:border-indigo-400 transition-all flex-shrink-0"
+                                        >
+                                            {f.frameUrl
+                                                ? <img src={f.frameUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                : <span className="block w-full h-full bg-gray-100" />}
+                                        </a>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     )}
                     {scene.statusDetail && scene.status !== 'ready' && (
                         <p className="text-[10px] font-bold text-amber-700 mt-1">{scene.statusDetail}</p>
