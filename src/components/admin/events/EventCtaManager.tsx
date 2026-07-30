@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Botones de inscripción de la ficha pública — v4.650.0
+// Botones de inscripción de la ficha pública — v4.652.0
 //
 // Configura, por evento, la botonera que ve el visitante: qué botones existen,
 // con qué texto, en qué orden, a qué categoría llevan y qué se muestra cuando
@@ -13,9 +13,10 @@
 //   cada botón, con un acceso a la pestaña de categorías para cambiarlos.
 //   Duplicarlos aquí abriría la puerta a que el botón anuncie un precio y el
 //   formulario cobre otro.
-// - **Un botón "principal" por audiencia.** El de audiencia internacional se le
-//   muestra a quien entra desde fuera de Colombia; el nacional, a quien entra
-//   desde Colombia. Los "secundarios" (CADRES) se ven siempre, debajo.
+// - **Un botón "principal" por audiencia, y lo decide el IDIOMA ACTIVO del
+//   sitio** (v4.652): en Español (es-CO) se muestra el nacional; en cualquier
+//   otro idioma, el internacional. Nunca los dos. Los "secundarios" (CADRES) se
+//   ven siempre, debajo, en ambos casos.
 // - **El texto que se pone aquí es el que se ve.** No se traduce solo.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useState } from 'react';
@@ -47,6 +48,9 @@ export interface CtaConfig {
     enabled: boolean;
     buttons: CtaButtonConfig[];
     defaultByLanguage: Record<string, string>;
+    /** Idiomas del sitio que abren el registro nacional. Es lo que decide. */
+    nationalLocales: string[];
+    /** Respaldo, sólo cuando no hay idioma activo que consultar. */
     nationalCountries: string[];
 }
 
@@ -64,8 +68,8 @@ interface Props {
 }
 
 const AUDIENCE_LABELS: Record<string, string> = {
-    international: 'Visitante de fuera de Colombia',
-    national: 'Visitante desde Colombia',
+    international: 'Sitio en English / Français / otro idioma',
+    national: 'Sitio en Español (es-CO)',
 };
 
 const REASONS: Record<string, string> = {
@@ -113,8 +117,8 @@ const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, o
             <div>
                 <h3 className="text-base font-bold text-gray-900">Botones de inscripción</h3>
                 <p className="mt-0.5 text-sm text-gray-500">
-                    Lo que ve el visitante en la ficha del evento. El botón principal cambia según de dónde
-                    entre; los secundarios se muestran siempre debajo.
+                    Lo que ve el visitante en la ficha del evento. El botón principal depende del idioma en
+                    que esté viendo el sitio; los secundarios se muestran siempre debajo.
                 </p>
             </div>
 
@@ -204,24 +208,45 @@ const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, o
                     <Globe2 className="h-4 w-4 text-blue-600" /> Cómo se elige el botón principal
                 </p>
                 <ol className="mt-2 space-y-1 pl-5 text-xs leading-relaxed text-gray-500" style={{ listStyle: 'decimal' }}>
-                    <li>Si el sitio puede determinar el país del visitante, manda el país.</li>
-                    <li>Si no, manda el idioma: <b>es-CO</b> ve el registro nacional; cualquier otro, el internacional.</li>
-                    <li>Si abajo fijas un botón para un idioma, ese gana sobre todo lo anterior.</li>
+                    <li>
+                        <b>Manda el idioma en que el visitante está viendo el sitio.</b> En Español (es-CO)
+                        ve el registro nacional; en English, Français, Deutsch, Italiano, Português o
+                        cualquier otro, el internacional. Sólo uno de los dos, nunca ambos.
+                    </li>
+                    <li>Si cambia de idioma, los botones se actualizan al instante, sin recargar.</li>
+                    <li>Si abajo fijas un botón para un idioma concreto, ese gana.</li>
+                    <li>El país sólo se usa de respaldo, cuando no hay idioma activo que consultar.</li>
                 </ol>
 
-                <div className="mt-4">
-                    <label className={labelCls}>Países que cuentan como nacionales</label>
-                    <input type="text" className={`${inputCls} max-w-xs font-mono uppercase`}
-                        value={(cta.nationalCountries || []).join(', ')}
-                        onChange={e => patch({
-                            nationalCountries: e.target.value.split(',')
-                                .map(c => c.trim().toUpperCase().slice(0, 2)).filter(Boolean),
-                        })}
-                        placeholder="CO" />
-                    <p className="mt-1 text-xs text-gray-400">
-                        Códigos de dos letras, separados por coma. Quien entre desde estos países verá el
-                        registro nacional.
-                    </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                        <label className={labelCls}>Idiomas que abren el registro nacional</label>
+                        <input type="text" className={`${inputCls} font-mono`}
+                            value={(cta.nationalLocales || []).join(', ')}
+                            onChange={e => patch({
+                                nationalLocales: e.target.value.split(',')
+                                    .map(l => l.trim().slice(0, 10)).filter(Boolean),
+                            })}
+                            placeholder="es, es-CO" />
+                        <p className="mt-1 text-xs text-gray-400">
+                            Es lo que decide el botón. Cualquier idioma que no esté aquí abre el registro
+                            internacional.
+                        </p>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Países nacionales (sólo respaldo)</label>
+                        <input type="text" className={`${inputCls} font-mono uppercase`}
+                            value={(cta.nationalCountries || []).join(', ')}
+                            onChange={e => patch({
+                                nationalCountries: e.target.value.split(',')
+                                    .map(c => c.trim().toUpperCase().slice(0, 2)).filter(Boolean),
+                            })}
+                            placeholder="CO" />
+                        <p className="mt-1 text-xs text-gray-400">
+                            Códigos de dos letras. Sólo intervienen si algo consulta la ficha sin decir en qué
+                            idioma está el sitio.
+                        </p>
+                    </div>
                 </div>
 
                 <div className="mt-4">

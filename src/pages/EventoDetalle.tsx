@@ -7,6 +7,7 @@ import RegistrationPanel from '../components/RegistrationPanel';
 import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/EventRegistrationCta';
 import MediaGallery from '../components/MediaGallery';
 import { useClub } from '../contexts/ClubContext';
+import { useLang } from '../contexts/LanguageContext';
 import { useSEO } from '../hooks/useSEO';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -73,9 +74,14 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
 
     // v4.650 — Cuando el evento tiene categorías de inscripción configuradas,
     // el botón único se reemplaza por la botonera segmentada: el registro
-    // principal según de dónde mire el visitante, y CADRES debajo.
+    // principal y CADRES debajo.
+    //
+    // v4.652 — Cuál es el principal lo decide el IDIOMA ACTIVO del sitio, no el
+    // país: `lang` entra en el hook y al cambiarlo se vuelven a pedir los
+    // botones, así que la ficha se actualiza sola sin recargar.
     const eventRef = event?.slug || event?.id;
-    const { cta } = useEventCta((club as any)?.id, eventRef);
+    const { lang } = useLang();
+    const { cta } = useEventCta((club as any)?.id, eventRef, lang);
     const actions = hasVisibleCta(cta)
         ? <EventRegistrationCta cta={cta!} eventRef={eventRef} />
         : undefined;

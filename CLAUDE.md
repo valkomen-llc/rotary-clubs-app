@@ -251,9 +251,19 @@ Cada uno abre `/eventos/:ref/registro?categoria=<clave>`.
 - **La segmentación es del servidor, no de la pantalla.** Con `?categoria=`, el
   endpoint público devuelve **sólo** esa categoría: los precios y los campos de
   las otras no llegan siquiera al navegador. No "mostrar una y ocultar dos".
-- **La detección es una sugerencia.** País (`x-vercel-ip-country`) y, si no hay,
-  idioma (`es-CO` = nacional). El otro camino siempre queda a un clic en la
-  ficha; no se le cierra la puerta a nadie por geolocalización.
+- **Manda el IDIOMA ACTIVO del sitio, no el país** (v4.652). `es`/`es-CO` abre el
+  registro nacional; cualquier otro idioma, el internacional. Nunca los dos. El
+  navegador lo manda en `?locale=` tomándolo de `useLang()`, y ese parámetro está
+  en las dependencias del efecto, así que cambiar de idioma repinta los botones
+  sin recargar. `lang` está en las dependencias **a propósito**: quitarlo deja la
+  ficha mostrando el registro del idioma anterior.
+  El país (`x-vercel-ip-country`) quedó relegado a respaldo, y sólo actúa cuando
+  no llega idioma alguno. Hasta v4.651 mandaba el país, y por eso un visitante
+  con el sitio en inglés desde Colombia veía el botón nacional.
+- **Los idiomas nacionales se comparan EXACTO** (`DEFAULT_NATIONAL_LOCALES`, y
+  `cta.nationalLocales` por evento). `es-MX` o `es-ES` no son `es-CO`: son
+  visitantes de fuera. En este sitio el selector ofrece un solo español y es el
+  colombiano, por eso `es` cuenta como nacional.
 - **El precio y el formulario los define la categoría, no el botón.** Si se
   duplicaran en el botón, podría anunciar un valor y el formulario cobrar otro.
 - **Categoría cerrada**: con mensaje configurado el botón se ve apagado y

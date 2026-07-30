@@ -43,7 +43,7 @@ import store, {
     assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
 
-console.log('[eventRegistrationController] v4.650.0 cargado — inscripciones por categoría con botones segmentados en la ficha del evento (nacional / internacional + CADRES), formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe.');
+console.log('[eventRegistrationController] v4.652.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -113,27 +113,32 @@ const decorateCategory = async (eventId, category, edition) => {
 // ── Público: configuración ───────────────────────────────────────────
 
 /**
- * De dónde viene quien está mirando la ficha.
+ * Con qué contexto se está mirando la ficha.
  *
- * El país lo entrega la red de Vercel en `x-vercel-ip-country`; se aceptan
- * también las cabeceras equivalentes de otros proveedores por si algún día se
- * cambia de infraestructura. Si no hay país, decide el `Accept-Language`.
- * El navegador puede además mandar su propio idioma en `?lang=`, que es lo que
- * el visitante realmente eligió en el selector del sitio.
+ * `?locale=` es el idioma ACTIVO del sitio, el que el visitante tiene puesto en
+ * el selector. Es lo único que decide qué registro se le ofrece.
+ *
+ * Lo demás son respaldos para cuando ese dato no llega —una consulta a la API
+ * sin decir en qué idioma está el sitio—: el `Accept-Language` del navegador y,
+ * por último, el país que entrega la red (`x-vercel-ip-country`, con los
+ * equivalentes de otros proveedores por si se cambia de infraestructura).
+ *
+ * El país NO decide cuando hay idioma activo. Hasta v4.651 mandaba, y por eso
+ * un visitante con el sitio en inglés desde Colombia veía el botón nacional.
  */
 const readVisitorOrigin = (req) => {
     const headers = req.headers || {};
+    // `lang` se sigue aceptando por compatibilidad con la versión anterior.
+    const locale = clean(req.query?.locale || req.query?.lang, 10);
     const countryCode = clean(
         headers['x-vercel-ip-country'] || headers['cf-ipcountry'] || headers['x-geo-country'] || '', 2);
 
     const languages = [];
-    const explicit = clean(req.query?.lang, 10);
-    if (explicit) languages.push(explicit);
     for (const part of String(headers['accept-language'] || '').split(',')) {
         const tag = part.split(';')[0].trim();
         if (tag && tag !== '*') languages.push(tag);
     }
-    return { countryCode, languages };
+    return { locale, countryCode, languages };
 };
 
 // GET /api/event-registrations/config/:clubId/:eventRef
@@ -162,14 +167,17 @@ export const getPublicRegistrationConfig = async (req, res) => {
         const allDecorated = requested
             ? await Promise.all(all.map(c => decorateCategory(event.id, c, edition)))
             : decorated;
-        const { countryCode, languages } = readVisitorOrigin(req);
+        const { locale, countryCode, languages } = readVisitorOrigin(req);
         const ctaConfig = edition.settings?.cta || {};
-        const hint = resolveAudienceHint({ countryCode, languages, config: normalizeCtaConfig(ctaConfig, allDecorated) });
+        const hint = resolveAudienceHint({
+            locale, countryCode, languages,
+            config: normalizeCtaConfig(ctaConfig, allDecorated),
+        });
         const cta = resolveCtaButtons({
             categories: allDecorated,
             config: ctaConfig,
             audience: hint.audience,
-            language: languages[0] || '',
+            language: locale || languages[0] || '',
         });
 
         const today = new Date().toISOString().slice(0, 10);
@@ -177,7 +185,12 @@ export const getPublicRegistrationConfig = async (req, res) => {
             || Boolean(edition.opensAt && today < edition.opensAt);
 
         res.json({
-            visitor: { audience: hint.audience, source: hint.source, countryCode: hint.countryCode || null },
+            visitor: {
+                audience: hint.audience,
+                source: hint.source,
+                locale: hint.locale || null,
+                countryCode: hint.countryCode || null,
+            },
             cta,
             /** La categoría que quedó fijada por el botón, si se entró por uno. */
             lockedCategory: requested || null,
