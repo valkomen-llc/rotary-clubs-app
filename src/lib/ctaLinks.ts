@@ -41,6 +41,68 @@ export const PROJECT_FAIR_REGISTER_PATH = '/registro-feria';
 
 const norm = (s?: string) => (s == null ? '' : String(s).trim().toLowerCase());
 
+// ── ¿El enlace de un botón sale del sitio? (v4.657) ──────────────────
+//
+// Los botones configurables (encabezado, portada, panel de inscripción) los
+// llena el administrador desde el panel, y lo natural al copiar un enlace es
+// pegar la dirección COMPLETA: "https://misitio.org/eventos/x/registro". Hasta
+// v4.656 cada pantalla decidía por su cuenta con `/^https?:\/\//`, es decir
+// "empieza por http, luego es externo", y le ponía `target="_blank"`. Resultado:
+// un botón que lleva a otra página del MISMO sitio abría una pestaña nueva.
+//
+// Lo que decide si un enlace es externo no es que sea absoluto, sino que
+// apunte a OTRO dominio. Eso es lo que mira `ctaTarget`, y por eso vive aquí y
+// no repetido en cada sección: la regla es una sola.
+//
+// El `www.` no cuenta como otro dominio: es el mismo sitio escrito de dos
+// maneras, y navegar dentro de la pestaña actual es lo correcto igual.
+
+const bareHost = (host: string) => host.replace(/^www\./i, '').toLowerCase();
+
+/**
+ * Ruta interna equivalente a este enlace, o `null` si apunta fuera del sitio.
+ * Conserva la query y el ancla: `?categoria=…` es justamente lo que distingue
+ * al registro nacional del internacional.
+ */
+export const internalPathOf = (url?: string): string | null => {
+    const value = String(url ?? '').trim();
+    if (!value) return null;
+
+    const looksAbsolute = value.startsWith('//') || /^https?:\/\//i.test(value);
+    if (!looksAbsolute) {
+        // `mailto:`, `tel:`, `whatsapp:`… no son navegación dentro del sitio.
+        if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
+        // Ruta relativa: ya era interna. Se devuelve TAL CUAL, sin anteponerle
+        // una barra, para no cambiar cómo resuelve React Router lo que ya había.
+        return value;
+    }
+
+    if (typeof window === 'undefined') return null;
+    try {
+        const parsed = new URL(value, window.location.href);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        if (bareHost(parsed.host) !== bareHost(window.location.host)) return null;
+        return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+    } catch {
+        return null;
+    }
+};
+
+export interface CtaTarget {
+    /** `true` → `<a target="_blank">`. `false` → `<Link to={to}>`, misma pestaña. */
+    external: boolean;
+    /** Ruta lista para `<Link>` si es interno; la URL tal cual si es externo. */
+    to: string;
+}
+
+/** Cómo debe abrirse el enlace de un botón. Un solo criterio para todo el sitio. */
+export const ctaTarget = (url?: string): CtaTarget => {
+    const value = String(url ?? '').trim();
+    if (!value) return { external: false, to: value };
+    const internal = internalPathOf(value);
+    return internal === null ? { external: true, to: value } : { external: false, to: internal };
+};
+
 export interface CtaDefault { label: string; url: string }
 
 /** Botones por defecto de la cabecera para el tipo de sitio indicado. */

@@ -447,6 +447,29 @@ Las 17 tablas que la aplicación crea sola y que estas barreras protegen:
 `EventRegistrationPayment`, `EventRegistrationHistory` y
 `EventRegistrationMessage`.)
 
+## Botones configurables (CTA) — v4.657
+
+Los botones que el administrador llena desde el panel —los dos del encabezado,
+los de las secciones de la portada y el del panel de inscripción de un evento—
+comparten un solo criterio para decidir cómo se abren: `ctaTarget` en
+`src/lib/ctaLinks.ts`.
+
+- **Externo = OTRO DOMINIO, no "empieza por http".** Hasta v4.656 cada pantalla
+  repetía `/^https?:\/\//` y le ponía `target="_blank"` a todo enlace absoluto.
+  Como lo natural al configurar un botón es pegar la dirección completa
+  copiada del navegador, un botón que llevaba a otra página del MISMO sitio
+  abría pestaña nueva. `ctaTarget` compara el dominio contra
+  `window.location.host` (ignorando `www.`) y devuelve `{ external, to }`:
+  interno → `<Link to={to}>` (misma pestaña, sin recargar); externo → `<a
+  target="_blank">`.
+- **No volver a escribir la comprobación a mano.** Al agregar un botón
+  configurable nuevo, usar `ctaTarget`. Estaba duplicada en siete lugares y por
+  eso el fallo apareció en todos a la vez.
+- `ctaTarget` conserva query y ancla: `?categoria=…` es justamente lo que
+  distingue el registro nacional del internacional.
+- **Los enlaces del menú con bandera `external` NO pasan por aquí**: ahí el
+  administrador eligió a propósito, y su decisión manda.
+
 ## Acceso e identidades (v4.655)
 
 El sitio tiene **un solo formulario de ingreso**: el del ícono del encabezado

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.656.0 | 2026-07-30 (País y Departamento del formulario de inscripción son campos de texto llanos, sin lista desplegable)
-// Cache bust: 2026-07-30f
+// UI V4.657.0 | 2026-07-30 (Los botones que llevan a otra página del mismo sitio ya no abren pestaña nueva)
+// Cache bust: 2026-07-30g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.657.0',
+        title: 'Los botones del sitio ya no abren pestañas nuevas 🔗',
+        description: 'El botón de registro del encabezado abría el formulario en una pestaña nueva, dejando la anterior atrás. Pasaba con cualquier botón configurado desde el panel al que se le hubiera puesto la dirección completa del sitio —"https://misitio.org/eventos/..."— en lugar de la ruta corta, que es lo normal cuando uno copia un enlace del navegador para pegarlo. El sistema daba por hecho que toda dirección que empieza por "http" lleva a otro sitio y, en consecuencia, la abría aparte. Ahora lo que decide es a dónde apunta el enlace, no cómo está escrito: si lleva a otra página de este mismo sitio, se abre en la misma pestaña y la navegación es instantánea, sin recargar la página, conservando el historial para que el botón "atrás" del navegador haga lo esperado. Si lleva a otro sitio —my.rotary.org, endpolio.org, una pasarela de pagos— se sigue abriendo en una pestaña nueva, como debe ser, y lo mismo con los enlaces de correo o de teléfono. Da igual si la dirección se escribió con "www." o sin él: se reconoce como el mismo sitio. El arreglo alcanza a todos los botones configurables a la vez —los dos del encabezado, en computador y en celular, los de las secciones "Somos gente de acción", "Involúcrate", "La Fundación Rotaria" y "Nuestras Áreas de Interés" de la portada, y el del panel de inscripción de la ficha de un evento—, porque la regla dejó de estar copiada en siete lugares distintos y ahora vive en uno solo. Los enlaces del menú que el administrador marcó a mano como externos no se tocan: ahí la decisión sigue siendo suya.',
+        date: new Date().toISOString(),
+        tags: ['navegacion', 'botones', 'sitio-publico', 'usabilidad', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.656.0',
         title: 'El campo País del formulario de inscripción se simplifica 🌍',

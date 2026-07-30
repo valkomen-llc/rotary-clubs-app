@@ -15,7 +15,7 @@ import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
-import { resolveCtaUrl } from '../lib/ctaLinks';
+import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
 import { renderRichText } from '../lib/richText';
 
 const ICON_EMOJI: Record<string, string> = {
@@ -481,7 +481,8 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const areasText = causesContent.text || DEFAULT_AREAS_TEXT;
   const ctaText = causesContent.buttonText || 'Nuestras Áreas de Interés';
   const ctaUrl = resolveCtaUrl(causesContent.buttonUrl) || '/nuestras-causas';
-  const ctaExternal = /^https?:\/\//i.test(ctaUrl);
+  // Externo = otro dominio, no "empieza por http" (ver `ctaTarget`).
+  const { external: ctaExternal, to: ctaHref } = ctaTarget(ctaUrl);
   const ctaEmoji = isEventSite && causesContent.icon
     ? (ICON_EMOJI[causesContent.icon] || (causesContent.icon.length <= 4 ? causesContent.icon : ''))
     : '';
@@ -716,9 +717,9 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         {/* CTA Button */}
         <div className="areas-rotary__cta">
           {ctaExternal ? (
-            <a href={ctaUrl} target="_blank" rel="noopener noreferrer" className="areas-rotary__button" style={ctaStyle}>{ctaInner}</a>
+            <a href={ctaHref} target="_blank" rel="noopener noreferrer" className="areas-rotary__button" style={ctaStyle}>{ctaInner}</a>
           ) : (
-            <Link to={ctaUrl} className="areas-rotary__button" style={ctaStyle}>{ctaInner}</Link>
+            <Link to={ctaHref} className="areas-rotary__button" style={ctaStyle}>{ctaInner}</Link>
           )}
         </div>
 

@@ -9,7 +9,7 @@ import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
-import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, ctaTarget, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 // Tercera identidad del sitio: quien consulta su inscripción a un evento.
 import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
@@ -590,9 +590,12 @@ const Navbar = () => {
             {visibleHeaderCtas.map((cta, i) => {
               const cls = `hidden lg:inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
               const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
-              return /^https?:\/\//i.test(cta.url)
-                ? <a key={i} href={cta.url} target="_blank" rel="noopener noreferrer" className={cls}>{content}</a>
-                : <Link key={i} to={cta.url} className={cls}>{content}</Link>;
+              // Un enlace al PROPIO sitio se navega en la misma pestaña,
+              // aunque esté configurado con la dirección completa.
+              const target = ctaTarget(cta.url);
+              return target.external
+                ? <a key={i} href={target.to} target="_blank" rel="noopener noreferrer" className={cls}>{content}</a>
+                : <Link key={i} to={target.to} className={cls}>{content}</Link>;
             })}
 
             <button
@@ -762,9 +765,10 @@ const Navbar = () => {
                   const cls = `inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
                   const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
                   const close = () => setMobileMenuOpen(false);
-                  return /^https?:\/\//i.test(cta.url)
-                    ? <a key={i} href={cta.url} target="_blank" rel="noopener noreferrer" onClick={close} className={cls}>{content}</a>
-                    : <Link key={i} to={cta.url} onClick={close} className={cls}>{content}</Link>;
+                  const target = ctaTarget(cta.url);
+                  return target.external
+                    ? <a key={i} href={target.to} target="_blank" rel="noopener noreferrer" onClick={close} className={cls}>{content}</a>
+                    : <Link key={i} to={target.to} onClick={close} className={cls}>{content}</Link>;
                 })}
               </div>
 

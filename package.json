@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.656.0",
-  "cache_bust": "2026-07-30f (Pais y Departamento del formulario de inscripcion son campos de texto llanos: se quito la lista de sugerencias que el navegador desplegaba encima del formulario.)",
+  "version": "4.657.0",
+  "cache_bust": "2026-07-30g (Los botones configurables que llevan a otra pagina del mismo sitio ya no abren pestana nueva, aunque esten escritos con la direccion completa.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

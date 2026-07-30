@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
-import { resolveCtaUrl } from '../lib/ctaLinks';
+import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
 import { renderRichText, hasBoldMarkup } from '../lib/richText';
 
 // Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
@@ -27,7 +27,9 @@ const ActionSection = () => {
   const content = (canEditContent && (club as any)?.actionContent) ? (club as any).actionContent : {};
   const buttonUrl = resolveCtaUrl(content.buttonUrl) || '/involucrate';
   const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
-  const isExternal = /^https?:\/\//i.test(buttonUrl);
+  // Externo = otro dominio, no "empieza por http": un enlace al propio
+  // sitio se abre en la misma pestaña (ver `ctaTarget`).
+  const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);
 
   // Peso del título: interruptor "título en negrilla" (default true, como hasta ahora). Si se
   // apaga, o si el texto marca partes con **, el peso base es normal para permitir el contraste.
@@ -69,11 +71,11 @@ const ActionSection = () => {
           {content.text ? renderRichText(content.text, { bold: content.textBold }) : <T>Nuestra red mundial de 1,4 millones de vecinos, amigos y líderes voluntarios ofrecen sus conocimientos y recursos para resolver problemas y abordar las necesidades de las comunidades.</T>}
         </p>
         {isExternal ? (
-          <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>
+          <a href={buttonHref} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>
             {btnInner}
           </a>
         ) : (
-          <Link to={buttonUrl} className={btnClass} style={cta.style}>
+          <Link to={buttonHref} className={btnClass} style={cta.style}>
             {btnInner}
           </Link>
         )}

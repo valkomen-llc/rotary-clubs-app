@@ -14,6 +14,9 @@
 // ════════════════════════════════════════════════════════════════════
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+// Un enlace al propio sitio abre en la misma pestaña, aunque venga escrito con
+// la dirección completa. El criterio es único para todo el sitio.
+import { ctaTarget } from '../lib/ctaLinks';
 
 /** Clases de color del panel. Por defecto, las de la Conferencia LATIR. */
 export interface RegistrationPanelTheme {
@@ -86,8 +89,6 @@ function calculateTimeLeft(targetDate?: string): TimeLeft {
     };
 }
 
-/** ¿El enlace sale del sitio? Los externos abren en pestaña nueva. */
-const isExternal = (url: string) => /^(https?:)?\/\//i.test(url) || /^mailto:|^tel:/i.test(url);
 
 const RegistrationPanel = ({
     headerLogo,
@@ -162,12 +163,12 @@ const RegistrationPanel = ({
             {actions ? (
                 <div className="w-full mb-5">{actions}</div>
             ) : link && (
-                isExternal(link) ? (
+                ctaTarget(link).external ? (
                     <a href={link} target="_blank" rel="noopener noreferrer" className={buttonClasses}>
                         {buttonLabel}
                     </a>
                 ) : (
-                    <Link to={link} className={buttonClasses}>
+                    <Link to={ctaTarget(link).to} className={buttonClasses}>
                         {buttonLabel}
                     </Link>
                 )
