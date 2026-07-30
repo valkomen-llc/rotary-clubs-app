@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 // Contextos de usuario y configuración
+// v4.659 — `useClub` se usaba sin importarlo. Con todas las páginas en un solo
+// archivo el identificador se resolvía por accidente contra otro módulo del
+// mismo bundle; al separar cada página en su propio archivo, la pantalla
+// empezó a fallar con "useClub is not defined". El fallo estaba desde antes.
+import { useClub } from '../contexts/ClubContext';
 import { ChevronLeft, CreditCard, ShieldCheck, Mail, MapPin, CheckCircle2 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';

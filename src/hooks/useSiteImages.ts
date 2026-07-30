@@ -100,6 +100,58 @@ const DEFAULTS = {
     missionControl: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775761106234-Mision_Control_-_Rotary_Valkomen.png', alt: 'Mission Control' }
 };
 // Helper: detect if a URL is a default (not a real custom upload)
+// ── Carga compartida (v4.659) ────────────────────────────────────────
+//
+// `useSiteImages` lo llaman 17 componentes, y siete de ellos están en la
+// portada. Cada uno disparaba SU PROPIO par de peticiones con `_t=Date.now()`,
+// así que una sola visita a la portada pedía las mismas dos respuestas hasta
+// diez veces —y el parámetro anti-caché impedía incluso que el navegador las
+// reutilizara—.
+//
+// Ahora la petición se comparte: el primero que llega la lanza y los demás se
+// enganchan a la misma promesa. Se guarda un rato para que moverse entre
+// páginas del sitio no vuelva a pedirlas; las imágenes de un sitio no cambian
+// a mitad de una visita. Tras guardar desde el panel, `invalidateSiteImages()`
+// tira la copia.
+
+type SiteImagesPayload = [any, any];
+
+const CACHE_TTL_MS = 60_000;
+const inFlight = new Map<string, Promise<SiteImagesPayload>>();
+const cached = new Map<string, { at: number; value: SiteImagesPayload }>();
+
+/** Descarta lo guardado. Llamar después de guardar imágenes desde el panel. */
+export const invalidateSiteImages = (clubId?: string) => {
+    if (clubId) { cached.delete(clubId); inFlight.delete(clubId); }
+    else { cached.clear(); inFlight.clear(); }
+};
+
+const loadSiteImages = (clubId: string): Promise<SiteImagesPayload> => {
+    const fresh = cached.get(clubId);
+    if (fresh && Date.now() - fresh.at < CACHE_TTL_MS) return Promise.resolve(fresh.value);
+
+    const running = inFlight.get(clubId);
+    if (running) return running;
+
+    const API = import.meta.env.VITE_API_URL || '/api';
+    const get = (id: string) => fetch(`${API}/clubs/${id}/site-images`)
+        .then(r => (r.ok ? r.json() : {}))
+        .catch(() => ({}));
+
+    const promise = Promise.all([
+        get('_global'),
+        clubId === '_global' ? Promise.resolve({}) : get(clubId),
+    ] as [Promise<any>, Promise<any>])
+        .then(value => {
+            cached.set(clubId, { at: Date.now(), value });
+            return value;
+        })
+        .finally(() => { inFlight.delete(clubId); });
+
+    inFlight.set(clubId, promise);
+    return promise;
+};
+
 const isDefault = (url: string) => !url || url.includes('images.unsplash.com') || url.includes('/defaults/');
 
 
@@ -153,15 +205,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
     useEffect(() => {
         if (!clubId) return;
 
-        const API = import.meta.env.VITE_API_URL || '/api';
-        const timestamp = Date.now();
-        
-        const fetchGlobal = fetch(`${API}/clubs/_global/site-images?_t=${timestamp}`).then(r => r.ok ? r.json() : {});
-        const fetchClub = clubId === '_global' 
-            ? Promise.resolve({}) 
-            : fetch(`${API}/clubs/${clubId}/site-images?_t=${timestamp}`).then(r => r.ok ? r.json() : {});
-
-        Promise.all([fetchGlobal, fetchClub])
+        loadSiteImages(clubId)
             .then(([globalData, clubData]) => {
                 const final: any = { ...DEFAULTS };
 

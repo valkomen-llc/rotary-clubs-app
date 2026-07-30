@@ -29,8 +29,66 @@ const addColumn = (table, column, definition) =>
 const index = (name, sql) =>
     db.query(`CREATE INDEX IF NOT EXISTS "${name}" ${sql};`).catch(() => { });
 
+// ── Comprobación previa (v4.659) ─────────────────────────────────────
+//
+// Todo lo de abajo es idempotente, pero no es GRATIS: son 62 sentencias que se
+// mandan una por una. En la máquina de desarrollo eso son ~400 ms; contra una
+// base gestionada, con 15-40 ms de ida y vuelta por sentencia, es entre uno y
+// dos segundos y medio **en cada arranque en frío de la función**, antes de
+// responder nada. Se pagaba en la primera visita después de un rato sin
+// tráfico, que es justo cuando el usuario nota que el sitio "se queda
+// pensando".
+//
+// Con dos consultas al catálogo se sabe si ya está todo aplicado, que es el
+// caso normal en producción. Si falta cualquier cosa, se ejecuta el bloque
+// completo como siempre.
+//
+// La lista de abajo NO es un número de versión que haya que acordarse de
+// subir: enumera los objetos reales que crea este archivo. Al agregar una
+// tabla o una columna nueva, agregarla también aquí — si se olvida, la
+// comprobación la da por presente y el DDL no corre.
+
+const OWNED_TABLES = [
+    'EventEdition', 'EventRegistration', 'EventRegistrationCategory',
+    'EventRegistrationCompanion', 'EventRegistrationPayment',
+    'EventRegistrationHistory', 'EventRegistrationMessage',
+    'EventAttendeeAccount', 'EventAttendeeLogin',
+];
+
+// La última columna añadida a `EventRegistration` en cada versión. Basta con
+// comprobar las que se agregaron después de la creación de la tabla.
+const OWNED_REGISTRATION_COLUMNS = [
+    'registrationCode', 'accessToken', 'categoryId', 'categoryKey', 'audience',
+    'answers', 'pricing', 'tags', 'companionsCount', 'submittedAt', 'accountId',
+];
+
+/** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
+const alreadyApplied = async () => {
+    try {
+        const tables = await db.query(
+            `SELECT table_name FROM information_schema.tables
+              WHERE table_schema = 'public' AND table_name = ANY($1)`, [OWNED_TABLES]);
+        if (tables.rows.length !== OWNED_TABLES.length) return false;
+
+        const columns = await db.query(
+            `SELECT column_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'EventRegistration'
+                AND column_name = ANY($1)`, [OWNED_REGISTRATION_COLUMNS]);
+        return columns.rows.length === OWNED_REGISTRATION_COLUMNS.length;
+    } catch (error) {
+        // Ante la duda, se ejecuta el DDL: es idempotente y no destructivo.
+        console.warn('[eventRegistrationSchema] no pude comprobar el catálogo:', error?.message);
+        return false;
+    }
+};
+
 export const ensureEventRegistrationSchema = async () => {
     if (_ready) return;
+
+    if (await alreadyApplied()) {
+        _ready = true;
+        return;
+    }
 
     // ── Edición del evento ───────────────────────────────────────────
     // Una fila por `CalendarEvent` que se comporte como edición de la feria.

@@ -48,7 +48,7 @@ import {
     attachOrphanRegistrations, sendVerificationEmail, ATTENDEE_PATH,
 } from './eventAttendeeController.js';
 
-console.log('[eventRegistrationController] v4.656.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción.');
+console.log('[eventRegistrationController] v4.659.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
