@@ -466,7 +466,7 @@ Las 17 tablas que la aplicación crea sola y que estas barreras protegen:
 `EventRegistrationPayment`, `EventRegistrationHistory` y
 `EventRegistrationMessage`.)
 
-## Traducción del sitio público — v4.661
+## Traducción del sitio público — v4.662
 
 El selector de la barra superior es la **única** fuente del idioma activo, y
 gobierna todo lo que el visitante ve. El sitio NO tiene un catálogo cerrado de
@@ -487,11 +487,36 @@ se reaplica al instante en las visitas siguientes.
 | `src/pages/admin/Translations.tsx` | Panel de gestión |
 
 Pruebas: `npm run test:i18n` (motor DOM, 32 casos) y
-`npm run test:i18n:providers` (contrato de los proveedores, 16 casos). Piden
+`npm run test:i18n:providers` (contrato de los proveedores, 21 casos). Piden
 `jsdom` y `esbuild`, que se instalan aparte (`npm i --no-save jsdom esbuild`).
 
 **Reglas durables:**
 
+- **El idioma base NO es una excepción: también se traduce hacia él.** Es el
+  fallo que se corrigió en v4.662 y el error conceptual más caro del módulo.
+  `BASE_LANG = 'es'` significa «el idioma que se ofrece por defecto», **no**
+  «todo el contenido está escrito en español». En
+  `rotaryprojectfaircolombia.org` el administrador carga los contenidos en
+  INGLÉS —la feria se dirige a rotarios de todo el mundo—, así que al elegir
+  «Español» el módulo daba el texto por bueno y no traducía nada: la ficha
+  quedaba con el menú en español (viene del código) y los contenidos en inglés.
+  No reintroducir ningún atajo del tipo `if (lang === BASE_LANG) return`.
+- **El idioma de ORIGEN se detecta, no se asume.** A DeepL, Google y Azure no se
+  les manda `source_lang`; a los modelos se les dice que la lista puede mezclar
+  idiomas. Es lo que permite resolver una página mezclada, que es el caso real.
+  Por eso la clave de caché es el hash del texto **a secas**: el origen no forma
+  parte de la identidad de un texto.
+- **Un texto que ya está en el idioma pedido vuelve INTACTO.** La instrucción se
+  lo exige al modelo carácter por carácter («no lo reescribas, no lo mejores»).
+  Sin esa frase, un modelo al que se le pide traducir al español un texto que ya
+  está en español lo pule y lo acorta, y el sitio va cambiando de redacción solo,
+  a espaldas de quien lo escribió. Coste: la primera visita en el idioma base
+  paga una pasada por el proveedor; queda en caché y no se repite.
+- **El navegador distingue «vino igual» de «falló».** El endpoint devuelve
+  `failedAt` con las posiciones que no se pudieron traducir. Todo lo demás se
+  guarda en caché, incluido lo que vuelve idéntico. Sin esa distinción, un texto
+  que ya estaba en el idioma pedido se tomaría por un fallo y se volvería a
+  pedir en cada visita, para siempre.
 - **Traducir es para el LENGUAJE; los DATOS se formatean o no se tocan.** Son
   tres cosas distintas y confundirlas es el error caro:
   - *Lenguaje* (títulos, botones, descripciones, ayudas): pasa por el traductor.

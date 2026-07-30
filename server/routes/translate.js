@@ -21,7 +21,7 @@ import store from '../lib/translationStore.js';
 const router = express.Router();
 
 console.log(
-    '[translate] v4.661.0 — traducción integral del sitio público. '
+    '[translate] v4.662.0 — el idioma base también es destino (origen autodetectado). '
     + `Idiomas: ${LOCALES.map(l => l.code).join(', ')}. `
     + `Proveedores con credencial: ${availableProviders().join(', ') || 'NINGUNO'}.`,
 );
@@ -41,7 +41,11 @@ console.log(
 //      El visitante nunca ve una llave ni un hueco.
 async function resolveBulk({ texts, targetLang, page }) {
     if (!Array.isArray(texts) || !texts.length) return { translations: [] };
-    if (!targetLang || targetLang === BASE_LANG || !isSupportedLang(targetLang)) {
+    // El idioma base NO es una excepción: el contenido puede estar escrito en
+    // cualquier idioma, así que también hay que traducir HACIA el español. Lo
+    // que decide si algo cambia es el proveedor, que detecta el idioma de cada
+    // texto y devuelve intacto lo que ya esté en el pedido.
+    if (!targetLang || !isSupportedLang(targetLang)) {
         return { translations: texts || [] };
     }
 
@@ -91,7 +95,10 @@ async function resolveBulk({ texts, targetLang, page }) {
             targetLang, result: 'error', textCount: pending.length, page,
             error: 'Ningún proveedor de traducción tiene credenciales configuradas.',
         });
-        return { translations: out, degraded: true, reason: 'sin-proveedor' };
+        return {
+            translations: out, degraded: true, reason: 'sin-proveedor',
+            failedAt: pending.flatMap(p => p.at).sort((a, b) => a - b),
+        };
     }
 
     let remaining = pending;
@@ -143,9 +150,18 @@ async function resolveBulk({ texts, targetLang, page }) {
         remaining.forEach(p => p.at.forEach(i => { out[i] = p.text; }));
     }
 
+    // `failedAt` son las posiciones que NO se pudieron traducir y que llevan el
+    // texto original como último recurso. El navegador las necesita para no
+    // guardarlas en caché: sin esa distinción, un texto que vuelve igual porque
+    // YA estaba en el idioma pedido se confundiría con un fallo y se volvería a
+    // pedir en cada visita, para siempre.
+    const failedAt = remaining.flatMap(p => p.at).sort((a, b) => a - b);
+
     return {
         translations: out,
-        ...(remaining.length ? { degraded: true, failed: remaining.length, reason: lastError } : {}),
+        ...(failedAt.length
+            ? { degraded: true, failed: failedAt.length, failedAt, reason: lastError }
+            : {}),
     };
 }
 
@@ -163,9 +179,7 @@ router.post('/bulk', async (req, res) => {
 // Un solo texto. Mismo camino que el lote — una sola implementación.
 router.post('/', async (req, res) => {
     const { text, targetLang } = req.body || {};
-    if (!text || !targetLang || targetLang === BASE_LANG) {
-        return res.json({ translated: text });
-    }
+    if (!text || !targetLang) return res.json({ translated: text });
     try {
         const r = await resolveBulk({ texts: [text], targetLang });
         res.json({

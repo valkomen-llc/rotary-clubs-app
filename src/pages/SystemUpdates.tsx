@@ -24,24 +24,38 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.661.0 | 2026-07-30 (Traducción integral del sitio público: atributos, locale y panel de gestión)
+// UI V4.662.0 | 2026-07-30 (El idioma base también se traduce: sitios con contenido en inglés)
 // Cache bust: 2026-07-30j
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.662.0',
+        title: 'Corrección: elegir «Español» ya traduce el sitio 🇪🇸',
+        description: 'En los sitios cuyo contenido está cargado en inglés —como la Feria de Proyectos de Colombia, dirigida a rotarios de todo el mundo— elegir «Español» no cambiaba nada: los títulos, las descripciones y el botón de registro del encabezado seguían en inglés. La causa: el sistema daba por hecho que TODO el contenido estaba escrito en español, así que al pedir español se saltaba la traducción por completo. Ahora el español es un idioma de destino más y el idioma de cada texto se detecta por separado, de modo que una página que mezcla idiomas —el menú en español y los contenidos en inglés— se resuelve entera. Un texto que ya está en el idioma elegido se conserva palabra por palabra: el traductor no reescribe ni «mejora» lo que redactó el administrador.',
+        date: new Date().toISOString(),
+        tags: ['traduccion', 'idiomas', 'sitio-publico', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Elegir «Español» ya traduce los contenidos cargados en inglés.' },
+            { type: 'fixed', text: 'El botón «International Registration» del encabezado aparece en el idioma activo.' },
+            { type: 'improved', text: 'El idioma de origen se detecta por texto: una página con idiomas mezclados se resuelve completa.' },
+            { type: 'improved', text: 'Lo que ya está en el idioma elegido se conserva intacto, sin reescrituras.' },
+        ],
+    },
+    {
         version: '4.661.0',
-        date: '2026-07-30',
         title: 'El sitio entero cambia de idioma, no sólo sus textos 🌍',
-        description: 'El selector de la barra superior ahora gobierna TODO lo que se ve: también los textos dentro de los campos, las descripciones de las imágenes, los mensajes de ayuda y el título de la pestaña. Y las fechas y los precios pasan a escribirse como se escriben en cada país.',
-        items: [
-            { type: 'fix', text: 'Campos de formulario: los textos de ayuda dentro de las casillas («Buscar un club», «Correo electrónico») se quedaban siempre en español. Ahora se traducen, igual que las descripciones de las imágenes y las etiquetas de los botones con icono.' },
-            { type: 'fix', text: 'Fechas y precios: una persona con el sitio en japonés veía «12 de abril de 2027». Ahora cada idioma los escribe a su manera, incluidos los separadores de miles y la moneda.' },
-            { type: 'fix', text: 'Se corrigió un fallo por el que dos textos largos que empezaban igual compartían traducción: el segundo mostraba, de forma permanente, el texto del primero.' },
-            { type: 'fix', text: 'Cuando una parte de la página se repintaba sola (un aviso, un resultado de búsqueda), a veces volvía al español. Ahora se traduce también eso.' },
-            { type: 'feature', text: 'Nueva pantalla «Traducciones» en el panel: qué idioma tiene qué cobertura, qué falta, qué falló y cuánto se está usando.' },
-            { type: 'feature', text: 'Cualquier traducción se puede corregir a mano y APROBAR. Una vez aprobada, el traductor automático no la vuelve a tocar nunca.' },
-            { type: 'feature', text: 'El motor de traducción se elige desde el panel (Gemini, OpenAI, DeepL, Google o Azure) y se le puede poner un respaldo, sin tocar el código. Si uno falla, entra el siguiente.' },
-            { type: 'improvement', text: 'Los datos ya no se traducen: correos, teléfonos, códigos de inscripción, importes y direcciones web se quedan como están.' },
-            { type: 'improvement', text: 'El idioma elegido se recuerda en todo el sitio y entre visitas, y queda anunciado correctamente para los lectores de pantalla y los buscadores.' },
+        description: 'El selector de la barra superior ahora gobierna todo lo que se ve: también los textos de ayuda dentro de las casillas de los formularios, las descripciones de las imágenes, las etiquetas de los botones con icono y el título de la pestaña. Las fechas y los precios pasan a escribirse como se escriben en cada país. Se corrigió además un fallo por el que dos textos largos que empezaban igual compartían traducción, de modo que el segundo mostraba de forma permanente el texto del primero; y otro por el que una parte de la página que se repintaba sola volvía al español. Se añadió una pantalla de gestión en el panel: qué idioma tiene qué cobertura, qué falta, qué falló y cuánto se usa. Cualquier traducción se puede corregir a mano y aprobar, y una vez aprobada el traductor automático no la vuelve a tocar. El motor se elige desde el panel —Gemini, OpenAI, DeepL, Google o Azure— con un respaldo que entra si el primero falla, sin tocar el código. Los datos dejan de traducirse: correos, teléfonos, códigos de inscripción, importes y direcciones web se quedan como están.',
+        date: new Date().toISOString(),
+        tags: ['traduccion', 'idiomas', 'sitio-publico', 'accesibilidad'],
+        type: 'feature',
+        changes: [
+            { type: 'fixed', text: 'Los textos de ayuda dentro de los campos, las descripciones de imágenes y las etiquetas de accesibilidad se quedaban siempre en español.' },
+            { type: 'fixed', text: 'Fechas y precios seguían en formato colombiano aunque el sitio estuviera en otro idioma.' },
+            { type: 'fixed', text: 'Dos textos largos con el mismo comienzo compartían traducción.' },
+            { type: 'added', text: 'Pantalla «Traducciones» en el panel, con cobertura, pendientes, errores y uso.' },
+            { type: 'added', text: 'Corrección manual con aprobación: lo aprobado no lo sobrescribe el automático.' },
+            { type: 'added', text: 'Motor de traducción configurable desde el panel, con respaldo en cadena.' },
+            { type: 'improved', text: 'Los datos ya no se traducen: correos, teléfonos, códigos, importes y direcciones web.' },
         ],
     },
     {

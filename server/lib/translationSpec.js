@@ -25,13 +25,24 @@ export const LOCALES = [
     { code: 'ko', locale: 'ko-KR', name: '한국어', english: 'Korean', flag: 'kr' },
 ];
 
-// El idioma en el que está escrito el contenido original del sitio. Todo lo que
-// el administrador carga se asume en este idioma; es el origen de cada traducción
-// y el último recurso del fallback.
+// Idioma de referencia del sitio: el que se ofrece por defecto y el último
+// recurso del fallback cuando no hay traducción posible.
+//
+// OJO — NO significa "todo el contenido está escrito en este idioma".
+// Hasta v4.661 se asumía eso, y era falso: en rotaryprojectfaircolombia.org el
+// administrador carga el contenido en INGLÉS (la feria se dirige a rotarios de
+// todo el mundo), así que al elegir «Español» el módulo daba el texto por
+// bueno y no traducía nada. La página quedaba mezclada: el menú en español
+// —viene del código— y los contenidos en inglés.
+//
+// Desde v4.662 el idioma de origen se DETECTA por texto y el idioma base es un
+// destino más. Un texto que ya está en el idioma pedido vuelve intacto.
 export const BASE_LANG = 'es';
 
 export const LANG_CODES = LOCALES.map(l => l.code);
-export const TARGET_LANGS = LANG_CODES.filter(c => c !== BASE_LANG);
+// TODOS los idiomas son destino, incluido el base: el contenido puede estar
+// escrito en cualquiera de ellos.
+export const TARGET_LANGS = LANG_CODES;
 
 export const isSupportedLang = code => LANG_CODES.includes(code);
 export const localeOf = code => LOCALES.find(l => l.code === code)?.locale || 'es-CO';
@@ -196,6 +207,14 @@ export function llmInstruction(targetLang) {
     return [
         `Traduce al ${englishNameOf(targetLang)} (${localeOf(targetLang)}).`,
         'Es el sitio web público de un distrito de Rotary International.',
+        'El texto de entrada puede venir en CUALQUIER idioma, y una misma lista puede',
+        'mezclar varios: deduce el idioma de cada elemento por separado.',
+        // Esto es lo que protege el trabajo del administrador. Sin decirlo, un
+        // modelo al que se le pide "traduce al español" un texto que YA está en
+        // español lo reescribe —lo pule, lo acorta, le cambia el tono— y el
+        // sitio va cambiando solo de redacción a espaldas de quien lo escribió.
+        `Si un elemento YA está en ${englishNameOf(targetLang)}, devuélvelo EXACTAMENTE igual,`,
+        'carácter por carácter: no lo reescribas, no lo mejores, no cambies su puntuación.',
         `Conserva literales estos nombres: ${PROTECTED_TERMS.slice(0, 12).join(', ')}.`,
         'Conserva las etiquetas HTML, los saltos de línea, las cifras, los correos y las direcciones web tal como están.',
         'Devuelve una traducción natural, del mismo registro institucional y de largo parecido.',

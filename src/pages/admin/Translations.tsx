@@ -215,7 +215,10 @@ const Translations: React.FC = () => {
     const coverage = useMemo(() => {
         if (!overview) return [];
         const byLang = new Map(overview.byLanguage.map(r => [r.lang, r]));
-        return LOCALES.filter(l => l.code !== 'es').map(l => ({
+        // Se listan TODOS los idiomas, incluido el español: desde v4.662 el
+        // idioma base también es destino (hay sitios con el contenido cargado
+        // en inglés), así que tiene sus propias filas que revisar y corregir.
+        return LOCALES.map(l => ({
             ...l,
             row: byLang.get(l.code),
             pending: overview.pendingByLanguage?.[l.code] ?? 0,
@@ -440,7 +443,7 @@ const Translations: React.FC = () => {
                     <select value={lang} onChange={e => { setLang(e.target.value); setPage(0); }}
                         className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium">
                         <option value="">Todos los idiomas</option>
-                        {LOCALES.filter(l => l.code !== 'es').map(l => (
+                        {LOCALES.map(l => (
                             <option key={l.code} value={l.code}>{l.name}</option>
                         ))}
                     </select>

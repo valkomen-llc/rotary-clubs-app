@@ -141,5 +141,49 @@ await check('un lote vacío no llama a nadie', async () => {
     assert.deepEqual(translations, []);
 });
 
+console.log('\n── Idioma base como DESTINO (fallo de rotaryprojectfaircolombia.org) ──');
+
+// El sitio tenía los contenidos cargados en INGLÉS y el visitante elegía
+// «Español». Hasta v4.661 el módulo daba por hecho que todo estaba escrito en
+// español y devolvía el texto tal cual, así que la página se quedaba en inglés.
+const EN = ['Where Global Partnerships Begin', 'International Registration'];
+
+await check('se puede traducir HACIA el español (antes se devolvía sin tocar)', async () => {
+    stub(gemini(JSON.stringify(['Donde nacen las alianzas globales', 'Registro Internacional'])));
+    const { translations } = await translateBatch(EN, 'es', { provider: 'gemini' });
+    assert.deepEqual(translations, ['Donde nacen las alianzas globales', 'Registro Internacional']);
+});
+
+await check('el español es un destino declarado en el spec', async () => {
+    const { TARGET_LANGS, BASE_LANG } = await import('../server/lib/translationSpec.js');
+    assert.ok(TARGET_LANGS.includes(BASE_LANG), 'el idioma base debe poder ser destino');
+});
+
+await check('un texto YA en el idioma pedido vuelve intacto y NO se reescribe', async () => {
+    const ya = ['Quiénes Somos', 'Postular Proyecto'];
+    stub(gemini(JSON.stringify(ya)));            // el modelo lo devuelve igual
+    const { translations } = await translateBatch(ya, 'es', { provider: 'gemini' });
+    assert.deepEqual(translations, ya);
+});
+
+await check('la instrucción al modelo le prohíbe reescribir lo que ya está en ese idioma', async () => {
+    const { llmInstruction } = await import('../server/lib/translationSpec.js');
+    const ins = llmInstruction('es');
+    assert.match(ins, /EXACTAMENTE igual/i, 'debe exigir devolverlo idéntico');
+    assert.match(ins, /no lo reescribas/i, 'debe prohibir reescribirlo');
+});
+
+await check('a los traductores no se les manda idioma de origen (lo detectan)', async () => {
+    let enviado = null;
+    globalThis.fetch = async (_url, opts) => {
+        enviado = JSON.parse(opts.body);
+        return { ok: true, status: 200,
+                 text: async () => JSON.stringify({ translations: EN.map(() => ({ text: 'x' })) }) };
+    };
+    await translateBatch(EN, 'es', { provider: 'deepl' });
+    assert.ok(!('source_lang' in enviado),
+        'DeepL no debe recibir source_lang: con una página mezclada acertaría sólo con una parte');
+});
+
 console.log(`\n${fail ? '✗' : '✓'} ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail ? 1 : 0);

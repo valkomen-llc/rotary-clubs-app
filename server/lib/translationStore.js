@@ -21,9 +21,14 @@ import {
 // Que la clave SEA el contenido es lo que da la invalidación: si el original
 // cambia, cambia el hash, no hay fila y se retraduce. No hace falta un proceso
 // que vaya invalidando nada.
-export function hashOf(text, sourceLang = BASE_LANG) {
+// v4.662 — la clave es SÓLO el texto. Antes llevaba delante el idioma de
+// origen, pero ese idioma se ASUMÍA ('es') en vez de conocerse, así que un
+// contenido escrito en inglés se archivaba como si fuera español. Ahora el
+// origen lo detecta el proveedor y no forma parte de la identidad de un texto:
+// lo que identifica una fila es QUÉ dice y A QUÉ idioma se tradujo.
+export function hashOf(text) {
     const norm = String(text).normalize('NFC').trim().replace(/\s+/g, ' ');
-    return createHash('sha256').update(`${sourceLang}\u0000${norm}`).digest('hex');
+    return createHash('sha256').update(norm).digest('hex');
 }
 
 // ── Caché en memoria (L1) ──────────────────────────────────────────────────
