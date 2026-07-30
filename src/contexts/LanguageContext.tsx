@@ -96,7 +96,16 @@ async function fetchMissing(texts: string[], lang: string): Promise<Record<strin
     const toFetch = texts.filter(t => !getCached(lang, t) && !bad.has(t));
     if (!toFetch.length) return {};
 
-    const result: Record<string, string> = {};
+    // Dos acumuladores, y la diferencia importa:
+    //   · `persist` — TODO lo que el servidor resolvió, incluido lo que vuelve
+    //     idéntico porque ya estaba en el idioma pedido. Es lo que se guarda.
+    //   · `changed` — sólo lo que de verdad cambia, que es lo único que hay que
+    //     repintar.
+    // Si se guardara sólo `changed`, lo idéntico no llegaría a localStorage y
+    // se volvería a pedir al servidor en CADA recarga: justo el gasto que la
+    // caché existe para evitar.
+    const persist: Record<string, string> = {};
+    const changed: Record<string, string> = {};
     for (let i = 0; i < toFetch.length; i += CHUNK) {
         const chunk = toFetch.slice(i, i + CHUNK);
         try {
@@ -123,25 +132,27 @@ async function fetchMissing(texts: string[], lang: string): Promise<Record<strin
                     return;
                 }
                 memCache[lang][orig] = tr;
-                if (tr !== orig) result[orig] = tr;   // sólo lo que cambia se repinta
+                persist[orig] = tr;
+                if (tr !== orig) changed[orig] = tr;
             });
         } catch {
             chunk.forEach(t => bad.add(t));
         }
     }
 
-    if (Object.keys(result).length) {
-        saveLS(lang, result);
+    if (Object.keys(persist).length) saveLS(lang, persist);
+
+    if (Object.keys(changed).length) {
         fetch(`${API_URL}/translate/log-domain`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 lang, domain: location.hostname, page: location.pathname,
-                count: Object.keys(result).length,
+                count: Object.keys(changed).length,
             }),
         }).catch(() => { });
     }
-    return result;
+    return changed;
 }
 
 // ─── Persistencia de la elección ────────────────────────────────────────────
