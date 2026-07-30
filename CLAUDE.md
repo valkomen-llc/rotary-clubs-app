@@ -162,8 +162,113 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
 
 **Pendiente conocido:** unir el outro y el video en un solo MP4 exige un paso de
 render con ffmpeg que esta infraestructura no tiene. Hoy el outro queda
-**adjunto** al proyecto como clip independiente. Si algún día se agrega un
-worker de render, ese es el punto donde engancharlo.
+**adjunto** al proyecto como clip independiente. Desde v4.663 el Creador de
+Reels resuelve el montaje con un proveedor de render alojado; enganchar el outro
+a ese mismo montaje es el paso que falta.
+
+## Creador de Reels IA — v4.663
+
+Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
+movimiento cinematográfico, transiciones, banda sonora y montaje automático.
+Reemplaza al Creador de Video anterior, que **no llegaba a funcionar**: mandaba
+las tres imágenes juntas a UNA llamada de `kling-2.6/image-to-video` —que recibe
+UNA imagen—, así que nunca hubo tres clips; `syncProjectStatus` pegaba contra
+`/jobs/getTaskDetail`, retirado por KIE; y `transition`/`animation` se guardaban
+en `config` sin que el servidor los leyera.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/reelSpec.js` | Fuente de verdad: formatos y resoluciones, motores, estilos, transiciones, música, reparto de la duración y prompts |
+| `server/lib/reelDirector.js` | Mira las tres fotos y decide orden, ritmo, estilo por escena y música |
+| `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: Shotstack, Creatomate, JSON2Video |
+| `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
+| `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
+| `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
+| `server/controllers/reelController.js` | Flujo completo y máquina de estados |
+| `src/components/admin/content-studio/VideoCreator.tsx` | Preparación, progreso y previsualización |
+| `src/lib/reelSpec.ts` | Espejo mínimo: tipos y cálculo de la línea de tiempo |
+
+**Reglas durables:**
+
+- **Una tarea de video POR ESCENA.** Es la corrección de fondo del módulo
+  anterior. Los modelos image-to-video reciben UNA imagen; mandarles un array
+  de tres no produce tres clips. Nunca volver a agrupar.
+- **El montaje NO es postprocesar.** La regla heredada del Generador de
+  Publicaciones y del de Outros prohíbe retocar el archivo que devuelve un
+  modelo —composite, máscara, blur, recorte— porque se ve pegado. Lo que hace la
+  capa de render es **edición declarada**: qué clip va cuándo, cómo se encadenan
+  y qué suena debajo. El CONTENIDO de cada clip viaja intacto. Ningún adaptador
+  aplica filtros, escalas forzadas ni corrección de color.
+- **Hace falta un proveedor de montaje y esta infraestructura no puede
+  sustituirlo.** Vercel serverless no tiene ffmpeg y corta a los 120 s. Sin
+  `REEL_RENDER_PROVIDER` + su credencial, las tres escenas se generan y quedan
+  descargables por separado, y el proyecto termina en `needs_review` diciéndolo.
+  Eso es un resultado válido, no un error: no inventar un montaje que no existe.
+- **El techo de duración por escena lo fija el MOTOR, no el gusto.** Pedirle
+  5,33 s a un motor que entrega 5 o 10 obliga a generar un clip de 10 para usar
+  la mitad: el doble de créditos y de espera. `distributeDurations` acota al
+  mayor valor que el motor entrega dentro de `[4, 6]`. Con Kling eso da tres
+  clips de 5 s y una pieza de **14 s**, no 15 — y el módulo lo anota en `notes`
+  para que el número esté a la vista. "Duración aproximada" no es licencia para
+  callar la real.
+- **Los clips se generan MUDOS cuando hay banda sonora.** Dos pistas compitiendo
+  suena peor que una bien puesta. El audio nativo del motor sólo se pide si no
+  va a haber música del montaje.
+- **La fidelidad tiene TRES estados, no dos.** `ok`, `failed` y `unavailable`.
+  El control compara un fotograma del clip contra la foto original con un modelo
+  de visión, y **sólo puede correr si el proveedor entregó ese fotograma**. Sin
+  él, la ficha dice "fidelidad no comprobada". Dar por buena una escena que
+  nadie miró sería peor que decirlo. No se mide fotograma a fotograma ni se hace
+  OCR sobre el video: eso exige decodificarlo, y no hay ffmpeg. Misma limitación
+  y mismo criterio que en `outroQuality.js`.
+- **Una escena que altera la marca o deja el texto ilegible se regenera sola**,
+  por buena que sea su nota. Es exactamente lo que el módulo promete conservar.
+  El resto se decide por la nota (`minFidelityScore`).
+- **Regenerar UNA escena no toca las otras dos.** Por eso las escenas viven en
+  su propia tabla y no dentro de un JSON del proyecto: con todo en una fila, dos
+  regeneraciones simultáneas se pisarían. `ReelScene` copia `clubId` y `format`
+  del proyecto a propósito, para que la operación se resuelva con su propia fila.
+- **Cambiar la duración de una escena NO regenera el clip** — es una decisión de
+  montaje y sólo se relanza el render. Cambiar el estilo SÍ regenera: el
+  movimiento está dentro del clip. Nunca se puede pedir más metraje del que el
+  clip tiene; para eso hay que regenerar, y el servidor lo dice con el máximo.
+- **Los prompts son cortos y en positivo**, igual que en el resto del sitio.
+  "Que no deforme el logo" se escribe como "el logotipo se mantiene exactamente
+  como está". El prompt sólo crece cuando el análisis detecta marca, texto,
+  personas o naturaleza, y crece nombrando lo que se conserva.
+- **El análisis fallido degrada, no bloquea.** Si el proveedor de visión no
+  responde, `fallbackDirection` arma la pieza con criterio propio —abre la toma
+  más abierta, cierra la que lleva la marca— y el Reel se genera igual.
+- **Un orden inválido del director se descarta ENTERO.** Si el modelo repite o
+  se saltea un índice, se usa el criterio propio: un orden a medias deja una
+  foto fuera y otra repetida.
+- **La preferencia explícita del usuario manda sobre el modelo.** Si eligió
+  estilo, transición o música, el director no los cambia. Con las tres fijadas
+  no se llama al modelo: no decidiría nada que el criterio propio no resuelva.
+- **`ReelProject` y `ReelScene` viven fuera de Prisma**, como manda la sección de
+  base de datos de este archivo. `VideoProject` **no se toca**: sigue en Prisma
+  con sus filas y sus `ScheduledPost` colgando, y las rutas `/projects` se
+  conservan.
+- El medidor de créditos es **propio** (`REEL_MONTHLY_CREDIT_LIMIT`), no el saldo
+  real de KIE. No presentarlo como el saldo del proveedor.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `REEL_RENDER_PROVIDER` | `shotstack` \| `creatomate` \| `json2video` |
+| `SHOTSTACK_API_KEY` / `CREATOMATE_API_KEY` / `JSON2VIDEO_API_KEY` | Credencial del montaje |
+| `SHOTSTACK_ENV` | `stage` para el entorno de pruebas gratuito |
+| `REEL_DEFAULT_ENGINE` | Motor principal (default: `kling26`) |
+| `REEL_MODEL_KLING26` y compañía | Corregir el id de un modelo sin desplegar |
+| `REEL_ENGINE_VEO3_ENABLED`, `REEL_ENGINE_MINIMAX_ENABLED` | Habilitar motores tras verificar su id |
+| `REEL_MUSIC_PROVIDER`, `REEL_MUSIC_MODEL` | Fuente y modelo de la banda sonora |
+| `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
+
+**Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
+se concatena al montaje —el sitio natural para engancharlo es `buildEditSpec`—;
+y los motores `runway_gen4` y `luma_ray2` están declarados con `available:false`
+porque necesitan su propio adaptador (hoy sólo existe el de KIE).
 
 ## Inscripciones a eventos / Feria de Proyectos — v4.648
 
@@ -458,9 +563,10 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 17 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 19 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `EventRegistration`, `EventAttendeeAccount`,
-`EventAttendeeLogin`, `FAQ`, `OutroProject` y las once `ProjectFair*`.
+`EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene` y las
+once `ProjectFair*`.
 (Más las seis del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory` y

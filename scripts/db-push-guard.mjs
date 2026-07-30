@@ -7,13 +7,14 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 23 tablas en tiempo de ejecución que no están en el
+// La aplicación crea 25 tablas en tiempo de ejecución que no están en el
 // schema (las once ProjectFair*, BannerTemplate, FAQ, OutroProject, las seis
 // del módulo de inscripciones a eventos: EventRegistration, EventEdition,
 // EventRegistrationCategory, EventRegistrationCompanion,
 // EventRegistrationPayment, EventRegistrationHistory y
-// EventRegistrationMessage, y las dos del módulo de traducción: Translation y
-// TranslationEvent). Sin esta barrera, un `db push` las borra sin preguntar.
+// EventRegistrationMessage, las dos del módulo de traducción: Translation y
+// TranslationEvent, y las dos del Creador de Reels: ReelProject y ReelScene).
+// Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // Perder "Translation" no destruye contenido del cliente —se regenera sola
 // llamando al proveedor—, pero sí borra las traducciones CORREGIDAS A MANO y

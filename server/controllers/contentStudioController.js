@@ -750,6 +750,12 @@ export const handleKieWebhook = async (req, res) => {
         const handled = await handleOutroWebhook(taskId, payload);
         if (handled) return res.json({ success: true, kind: 'outro' });
 
+        // Escenas del Creador de Reels (v4.663). Van al final porque son las
+        // más nuevas y las otras dos búsquedas ya descartaron lo suyo.
+        const { handleReelSceneWebhook } = await import('./reelController.js');
+        const isReelScene = await handleReelSceneWebhook(taskId, payload);
+        if (isReelScene) return res.json({ success: true, kind: 'reel-scene' });
+
         // 200 a propósito: si el task no es nuestro, un 404 haría que KIE
         // reintentara el webhook indefinidamente.
         console.warn(`[STUDIO] Webhook de KIE con task_id desconocido: ${taskId}`);

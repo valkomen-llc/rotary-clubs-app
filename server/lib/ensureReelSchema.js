@@ -1,0 +1,190 @@
+// Crea en runtime, de forma perezosa e idempotente, las tablas del módulo
+// "Creador de Reels IA".
+//
+// POR QUÉ: tras el incidente del 2026-07-13 el build ya NO ejecuta
+// `prisma db push` (regla durable, ver CLAUDE.md). Por eso las tablas nuevas no
+// se crean solas en producción. Mismo patrón que BannerTemplate, OutroProject,
+// las ProjectFair* y las del registro de eventos: CREATE TABLE IF NOT EXISTS +
+// ALTER ... ADD COLUMN IF NOT EXISTS. Nunca DROP, nunca TRUNCATE.
+//
+// POR QUÉ FUERA DE PRISMA, teniendo ya un `VideoProject` en el schema: meter
+// las escenas en Prisma obligaría a un `npm run db:push` a propósito en cada
+// despliegue que las tocara, que es justo el comando que el guard frena. Una
+// tabla creada en runtime no depende de que nadie corra nada.
+//
+// `VideoProject` NO se toca: sigue en Prisma con sus filas y sus
+// `ScheduledPost` colgando. `ReelProject` es el módulo nuevo y convive con él,
+// igual que conviven `ProjectFairMasterForm` y `ProjectFairProjectForm`.
+//
+// Al no estar en schema.prisma, estas dos tablas quedan protegidas por
+// scripts/db-push-guard.mjs: un `npm run db:push` avisa antes de borrarlas.
+//
+// La comprobación previa existe por el mismo motivo que en
+// ensureEventRegistrationSchema (v4.659): las sentencias son idempotentes pero
+// no gratis, y pagarlas en cada arranque en frío se nota en la primera visita.
+// La lista de objetos NO es un número de versión: enumera lo que crea este
+// archivo, y hay que ampliarla al agregar una tabla o una columna, o la
+// comprobación la dará por presente.
+import db from './db.js';
+
+let _ready = false;
+
+const EXPECTED_TABLES = ['ReelProject', 'ReelScene'];
+
+export async function ensureReelSchema() {
+    if (_ready) return;
+
+    try {
+        const { rows } = await db.query(
+            `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY($1)`,
+            [EXPECTED_TABLES]
+        );
+        if (rows.length === EXPECTED_TABLES.length) {
+            _ready = true;
+            return;
+        }
+    } catch { /* si el catálogo no responde, se ejecutan las sentencias igual */ }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ReelProject" (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            "clubId" TEXT,
+            "userId" TEXT,
+            "userEmail" TEXT,
+            "organizationName" TEXT,
+
+            -- Lo que eligió el usuario
+            format TEXT NOT NULL DEFAULT '9:16',
+            "qualityTier" TEXT NOT NULL DEFAULT 'fullhd',
+            "motionStyle" TEXT NOT NULL DEFAULT 'auto',
+            transition TEXT NOT NULL DEFAULT 'auto',
+            "musicStyle" TEXT NOT NULL DEFAULT 'auto',
+            config JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+            -- Motor de video
+            engine TEXT NOT NULL DEFAULT 'kling26',
+            "engineModel" TEXT,
+
+            -- Dirección: análisis de las tres fotos y decisiones de montaje
+            analysis JSONB,
+            direction JSONB,
+
+            -- Banda sonora
+            "musicProvider" TEXT,
+            "musicTaskId" TEXT,
+            "musicUrl" TEXT,
+            "musicS3Key" TEXT,
+            "musicPrompt" TEXT,
+            "musicMediaId" TEXT,
+
+            -- Montaje
+            "renderProvider" TEXT,
+            "renderJobId" TEXT,
+            "renderRaw" JSONB,
+            "renderSpec" JSONB,
+
+            -- Ciclo de vida
+            status TEXT NOT NULL DEFAULT 'draft',
+            "statusDetail" TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+            -- Resultado
+            "videoUrl" TEXT,
+            "s3Key" TEXT,
+            "posterUrl" TEXT,
+            "providerUrl" TEXT,
+            "durationSec" DOUBLE PRECISION,
+            width INTEGER,
+            height INTEGER,
+            "bitrateKbps" INTEGER,
+            "sizeBytes" BIGINT,
+            "hasAudio" BOOLEAN,
+            quality JSONB,
+
+            -- Trazabilidad
+            "creditsEstimated" INTEGER NOT NULL DEFAULT 0,
+            "processingMs" INTEGER,
+            "mediaId" TEXT,
+            "parentId" TEXT,
+            version TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS "ReelProject_clubId_idx"     ON "ReelProject"("clubId");
+        CREATE INDEX IF NOT EXISTS "ReelProject_status_idx"     ON "ReelProject"(status);
+        CREATE INDEX IF NOT EXISTS "ReelProject_renderJob_idx"  ON "ReelProject"("renderJobId");
+        CREATE INDEX IF NOT EXISTS "ReelProject_musicTask_idx"  ON "ReelProject"("musicTaskId");
+        CREATE INDEX IF NOT EXISTS "ReelProject_createdAt_idx"  ON "ReelProject"("createdAt" DESC);
+
+        -- Una fila por escena. Vive aparte del proyecto a propósito: regenerar
+        -- UNA escena sin tocar las otras dos es un requisito del módulo, y con
+        -- las escenas dentro de un JSON del proyecto dos regeneraciones
+        -- simultáneas se pisarían la una a la otra.
+        CREATE TABLE IF NOT EXISTS "ReelScene" (
+            id TEXT PRIMARY KEY,
+            "projectId" TEXT NOT NULL REFERENCES "ReelProject"(id) ON DELETE CASCADE,
+
+            -- Copiados del proyecto a propósito. Regenerar UNA escena sin tocar
+            -- las otras es un requisito del módulo, y con estos dos campos acá
+            -- la operación se resuelve con la fila de la escena: no hace falta
+            -- volver a leer el proyecto para saber a qué bucket va el archivo
+            -- ni en qué formato se pidió.
+            "clubId" TEXT,
+            format TEXT NOT NULL DEFAULT '9:16',
+
+            -- Posición en el montaje final y de qué foto salió
+            position INTEGER NOT NULL,
+            "sourceIndex" INTEGER NOT NULL,
+            "sourceImageUrl" TEXT NOT NULL,
+            "sourceMediaId" TEXT,
+            "sourceReport" JSONB,
+
+            -- Dirección de esta escena
+            style TEXT,
+            "transitionOut" TEXT,
+            prompt TEXT,
+            analysis JSONB,
+            note TEXT,
+
+            -- Duración pedida por el montaje y la que sabe entregar el motor
+            "durationSec" DOUBLE PRECISION NOT NULL DEFAULT 5,
+            "generatedDurationSec" DOUBLE PRECISION,
+
+            -- Motor
+            engine TEXT,
+            "engineModel" TEXT,
+            "kieJobId" TEXT,
+            "kieRaw" JSONB,
+
+            -- Ciclo de vida
+            status TEXT NOT NULL DEFAULT 'pending',
+            "statusDetail" TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+
+            -- Resultado
+            "videoUrl" TEXT,
+            "s3Key" TEXT,
+            "providerUrl" TEXT,
+            "posterUrl" TEXT,
+            width INTEGER,
+            height INTEGER,
+            "bitrateKbps" INTEGER,
+            "sizeBytes" BIGINT,
+            quality JSONB,
+            fidelity JSONB,
+
+            "creditsEstimated" INTEGER NOT NULL DEFAULT 0,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);
+        CREATE INDEX IF NOT EXISTS "ReelScene_kieJobId_idx"  ON "ReelScene"("kieJobId");
+        CREATE INDEX IF NOT EXISTS "ReelScene_status_idx"    ON "ReelScene"(status);
+    `);
+
+    _ready = true;
+}

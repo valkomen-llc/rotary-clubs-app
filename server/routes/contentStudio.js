@@ -27,6 +27,21 @@ import {
     saveOutroToLibrary,
     deleteOutro
 } from '../controllers/outroController.js';
+import {
+    getReelOptions,
+    preflightReel,
+    createReel,
+    listReels,
+    getReel,
+    syncReel,
+    regenerateScene,
+    updateScene,
+    changeMusic,
+    renderReel,
+    saveReelToLibrary,
+    deleteReel,
+    handleRenderWebhook
+} from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
@@ -41,6 +56,11 @@ router.get('/oauth/:platform/authorize', getOAuthUrl);
 
 // Webhook (Public for KIE.ai)
 router.post('/webhook', handleKieWebhook);
+
+// Webhook del proveedor de montaje del Creador de Reels (v4.663). Ruta propia
+// porque el cuerpo lo manda un servicio distinto de KIE y no comparte la forma
+// del payload: mezclarlos obligaría a adivinar de quién es cada aviso.
+router.post('/reel-webhook', handleRenderWebhook);
 
 // Content Generation
 router.post('/generate-post', authMiddleware, generatePost);
@@ -66,11 +86,30 @@ router.get('/copy-providers', authMiddleware, (req, res) => {
     res.json({ providers, default: DEFAULT_COPY_PROVIDER });
 });
 
-// Projects
+// Projects (Creador de Video anterior — se conserva por los proyectos ya
+// guardados y por ScheduledPost, que apunta a VideoProject. El módulo nuevo es
+// /reels; ver la sección "Creador de Reels IA" en CLAUDE.md).
 router.post('/projects', authMiddleware, createVideoProject);
 router.get('/projects', authMiddleware, getVideoProjects);
 router.get('/projects/:id/sync', authMiddleware, syncProjectStatus);
 router.delete('/projects/:id', authMiddleware, deleteVideoProject);
+
+// ── Creador de Reels IA (v4.663) ──
+// Tres fotos → tres escenas image-to-video → montaje con música.
+// El orden importa: las rutas fijas van antes que /reels/:id para que
+// "options" no se lea como un id.
+router.get('/reels/options', authMiddleware, getReelOptions);
+router.post('/reels/preflight', authMiddleware, preflightReel);
+router.post('/reels', authMiddleware, createReel);
+router.get('/reels', authMiddleware, listReels);
+router.get('/reels/:id', authMiddleware, getReel);
+router.get('/reels/:id/sync', authMiddleware, syncReel);
+router.post('/reels/:id/render', authMiddleware, renderReel);
+router.post('/reels/:id/music', authMiddleware, changeMusic);
+router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
+router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
+router.patch('/reels/:id/scenes/:sceneId', authMiddleware, updateScene);
+router.delete('/reels/:id', authMiddleware, deleteReel);
 
 // ── Generador de Outros IA (v4.645) ──
 // Cierres de ~5s desde una imagen fija. El orden importa: las rutas fijas van

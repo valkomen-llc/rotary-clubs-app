@@ -1,23 +1,39 @@
-import React, { useCallback, useEffect, useState } from 'react';
+// ════════════════════════════════════════════════════════════════════
+// Creador de Reels IA — pantalla
+// v4.663.0
+//
+// Tres pantallas en una, según dónde esté el Reel:
+//
+//   1. PREPARACIÓN — elegir tres fotos, ordenarlas, y opcionalmente el estilo.
+//      Todo lo demás lo decide la IA. Es el pedido: "el usuario únicamente
+//      deberá seleccionar las tres imágenes".
+//   2. PROCESO — barra de progreso por etapa (análisis, escenas, música,
+//      montaje, validación), con el estado de cada escena.
+//   3. PREVISUALIZACIÓN — el Reel completo antes de descargarlo, y desde ahí
+//      cambiar la música, la duración de una escena, regenerar un solo clip o
+//      sustituir su foto, sin rehacer todo.
+//
+// Los CATÁLOGOS vienen del servidor (`/reels/options`): no se duplican acá para
+// que no puedan quedar desfasados. Lo único que la pantalla calcula sola es la
+// duración de la línea de tiempo mientras se arrastra.
+// ════════════════════════════════════════════════════════════════════
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Plus,
-    Trash2,
-    GripVertical,
-    Settings2,
-    Type,
-    Music,
-    Sparkles,
-    Play,
-    Loader2,
-    Clapperboard,
-    X,
-    CheckCircle2,
-    Volume2
+    Plus, Trash2, GripVertical, Settings2, Music, Sparkles, Loader2,
+    Clapperboard, X, CheckCircle2, Volume2, AlertTriangle, RefreshCw,
+    Download, Image as ImageIcon, Wand2, ShieldCheck, Film, Clock, VolumeX,
+    Info, ChevronRight, Save
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
+import {
+    SCENE_COUNT, MIN_SCENE_SEC, MAX_SCENE_SEC,
+    isTerminal, timelineDuration, formatSeconds, formatBytes,
+    type Reel, type ReelScene, type ReelOptions
+} from '../../../lib/reelSpec';
 
 interface MediaItem {
     id: string;
@@ -26,9 +42,9 @@ interface MediaItem {
     type: 'image' | 'video' | 'document';
 }
 
-// Clip de cierre que se engancha al final del video. Viaja en `config.outro` y
-// NO se manda al motor de imágenes: el outro ya está renderizado y se adjunta
-// tal cual, conservando su duración, su resolución y su voz.
+// Clip de cierre que se engancha al final. Viaja en `config.outro` y NO se
+// manda al motor de imágenes: el outro ya está renderizado y se adjunta tal
+// cual, conservando su duración, su resolución y su voz.
 interface AttachedOutro {
     id: string;
     title: string;
@@ -39,152 +55,395 @@ interface AttachedOutro {
     posterUrl: string;
 }
 
+const API = import.meta.env.VITE_API_URL || '/api';
+const authHeaders = (): Record<string, string> => ({
+    'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`,
+    'Content-Type': 'application/json'
+});
+
+const AUTO = 'auto';
+
 const VideoCreator: React.FC = () => {
+    const [options, setOptions] = useState<ReelOptions | null>(null);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
 
+    // El Reel en curso o terminado. Mientras es null, se ve la preparación.
+    const [reel, setReel] = useState<Reel | null>(null);
+    const [busyScene, setBusyScene] = useState<string | null>(null);
+    const [savingLibrary, setSavingLibrary] = useState(false);
+
+    const [preflight, setPreflight] = useState<{ warnings: string[]; creditEstimate: number } | null>(null);
+    const [checking, setChecking] = useState(false);
+
+    const [config, setConfig] = useState({
+        format: '9:16',
+        qualityTier: 'fullhd',
+        motionStyle: AUTO,
+        transition: AUTO,
+        musicStyle: AUTO,
+        engine: '',
+        withMusic: true
+    });
+
+    // Outro adjunto (v4.645). Se conserva: es una pieza aparte que ya funciona.
     const [outro, setOutro] = useState<AttachedOutro | null>(null);
     const [availableOutros, setAvailableOutros] = useState<Outro[]>([]);
     const [showOutroPicker, setShowOutroPicker] = useState(false);
     const [loadingOutros, setLoadingOutros] = useState(false);
 
-    // Config states
-    const [config, setConfig] = useState({
-        format: '9:16',
-        duration: 15,
-        transition: 'fade',
-        animation: 'ken_burns',
-        caption: '',
-        music: 'default'
-    });
+    // Sustitución de la foto de una escena desde la previsualización.
+    const [swappingScene, setSwappingScene] = useState<ReelScene | null>(null);
 
-    // Sólo los outros que pasaron la validación de calidad pueden colgarse al
-    // final de un video.
+    // ── Catálogos ──
+    useEffect(() => {
+        (async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/reels/options`, { headers: authHeaders() });
+                if (!r.ok) return;
+                const data: ReelOptions = await r.json();
+                setOptions(data);
+                setConfig(c => ({
+                    ...c,
+                    format: data.defaultFormat,
+                    qualityTier: data.defaultQualityTier,
+                    engine: data.defaultEngine
+                }));
+            } catch { /* la pantalla funciona con los defaults locales */ }
+        })();
+    }, []);
+
+    const overlaps = useMemo(() => {
+        const map: Record<string, number> = {};
+        options?.transitions.forEach(t => { map[t.id] = t.overlap; });
+        return map;
+    }, [options]);
+
     const fetchOutros = useCallback(async () => {
         setLoadingOutros(true);
         try {
-            const token = localStorage.getItem('rotary_token');
-            const response = await fetch(
-                `${import.meta.env.VITE_API_URL || '/api'}/content-studio/outros?readyOnly=true`,
-                { headers: { 'Authorization': `Bearer ${token}` } }
-            );
-            if (response.ok) {
-                const data = await response.json();
-                setAvailableOutros(data.outros || []);
-            }
+            const r = await fetch(`${API}/content-studio/outros?readyOnly=true`, { headers: authHeaders() });
+            if (r.ok) setAvailableOutros((await r.json()).outros || []);
         } catch { /* el selector queda vacío y se puede reintentar */ } finally {
             setLoadingOutros(false);
         }
     }, []);
-
     useEffect(() => { fetchOutros(); }, [fetchOutros]);
 
-    const handleGenerate = async () => {
-        if (selectedMedia.length === 0) {
-            toast.error('Selecciona al menos una imagen');
+    // ── Comprobación previa ──
+    // Mira las tres fotos ANTES de gastar créditos. Devuelve avisos, no
+    // bloqueos: quien sube una foto un poco blanda puede querer generar igual.
+    useEffect(() => {
+        if (selectedMedia.length !== SCENE_COUNT) { setPreflight(null); return; }
+        let cancelled = false;
+        setChecking(true);
+        (async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/reels/preflight`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({
+                        images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
+                        format: config.format,
+                        qualityTier: config.qualityTier,
+                        engine: config.engine || undefined
+                    })
+                });
+                if (!r.ok || cancelled) return;
+                const data = await r.json();
+                if (!cancelled) setPreflight({ warnings: data.warnings || [], creditEstimate: data.creditEstimate || 0 });
+            } catch { /* sin comprobación previa se puede generar igual */ } finally {
+                if (!cancelled) setChecking(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedMedia, config.format, config.qualityTier, config.engine]);
+
+    // ── Sondeo ──
+    // El flujo es asíncrono a propósito: cada clip tarda 1-3 minutos y la
+    // función de la API corta a los 120 s. El webhook es la segunda vía; esto
+    // es la primera y la que mueve la barra.
+    const pollRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!reel || isTerminal(reel.status)) {
+            if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
             return;
         }
+        const id = window.setInterval(async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/reels/${reel.id}/sync`, { headers: authHeaders() });
+                if (r.ok) setReel(await r.json());
+            } catch { /* un fallo de red no pierde el Reel: se reintenta solo */ }
+        }, 6000);
+        pollRef.current = id;
+        return () => window.clearInterval(id);
+    }, [reel?.id, reel?.status]);
 
-        setIsGenerating(true);
-        const toastId = toast.loading('Enviando proyecto al motor de IA...');
+    // ── Acciones ──
 
+    const handleGenerate = async () => {
+        if (selectedMedia.length !== SCENE_COUNT) {
+            toast.error(`Elegí exactamente ${SCENE_COUNT} imágenes`);
+            return;
+        }
+        setIsCreating(true);
+        const toastId = toast.loading('Analizando las fotos y armando la narrativa...');
         try {
-            const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/projects`, {
+            const r = await fetch(`${API}/content-studio/reels`, {
                 method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: authHeaders(),
                 body: JSON.stringify({
-                    // El outro NO va en `images`: no debe volver a pasar por la IA.
-                    // Viaja aparte, en la configuración, como clip ya renderizado.
                     images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
-                    config: { ...config, outro }
+                    ...config,
+                    engine: config.engine || undefined,
+                    // El outro viaja aparte, no entra en `images`: no debe
+                    // volver a pasar por la IA.
+                    outro
                 })
             });
-
-            if (response.ok) {
-                toast.success('Proyecto iniciado. El video aparecerá en tu biblioteca pronto.', { id: toastId });
-            } else {
-                const errData = await response.json();
-                toast.error(errData.error || 'Error al iniciar el proyecto', { id: toastId });
+            const data = await r.json();
+            if (!r.ok) {
+                toast.error(data.error || 'No se pudo iniciar el Reel', { id: toastId });
+                return;
             }
-        } catch (error) {
+            setReel(data);
+            toast.success('Reel en producción. Podés seguir el avance acá.', { id: toastId });
+        } catch {
             toast.error('Error de conexión', { id: toastId });
         } finally {
-            setIsGenerating(false);
+            setIsCreating(false);
         }
     };
 
+    const patchScene = async (scene: ReelScene, body: Record<string, unknown>) => {
+        if (!reel) return;
+        setBusyScene(scene.id);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/scenes/${scene.id}`, {
+                method: 'PATCH', headers: authHeaders(), body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo actualizar la escena'); return; }
+            setReel(data);
+            toast.success('Montaje actualizado');
+        } catch { toast.error('Error de conexión'); } finally { setBusyScene(null); }
+    };
+
+    const regenerateScene = async (scene: ReelScene, body: Record<string, unknown> = {}) => {
+        if (!reel) return;
+        setBusyScene(scene.id);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/scenes/${scene.id}/regenerate`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo regenerar la escena'); return; }
+            setReel(data);
+            toast.success('Escena en regeneración. Las otras dos se conservan.');
+        } catch { toast.error('Error de conexión'); } finally { setBusyScene(null); }
+    };
+
+    const changeMusic = async (body: Record<string, unknown>) => {
+        if (!reel) return;
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/music`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo cambiar la música'); return; }
+            setReel(data);
+            toast.success('Música actualizada. Se está rehaciendo el montaje.');
+        } catch { toast.error('Error de conexión'); }
+    };
+
+    const reRender = async () => {
+        if (!reel) return;
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/render`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify({ qualityTier: config.qualityTier })
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo relanzar el montaje'); return; }
+            setReel(data);
+            toast.success('Montaje relanzado');
+        } catch { toast.error('Error de conexión'); }
+    };
+
+    const saveToLibrary = async () => {
+        if (!reel) return;
+        setSavingLibrary(true);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/library`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ force: reel.status !== 'ready' })
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo guardar en la Biblioteca'); return; }
+            setReel(data.reel);
+            toast.success(data.alreadySaved ? 'Ya estaba en la Biblioteca' : 'Guardado en la Biblioteca');
+        } catch { toast.error('Error de conexión'); } finally { setSavingLibrary(false); }
+    };
+
+    const startOver = () => { setReel(null); setSelectedMedia([]); setPreflight(null); };
+
+    // ── Render ──
+
+    const estimatedDuration = useMemo(() => {
+        if (!reel) return null;
+        return timelineDuration(
+            reel.scenes.map(s => ({ durationSec: s.durationSec, transitionOut: s.transitionOut })),
+            overlaps
+        );
+    }, [reel, overlaps]);
+
+    if (reel) {
+        return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                <ReelHeader reel={reel} onStartOver={startOver} />
+
+                {!isTerminal(reel.status)
+                    ? <ProgressPanel reel={reel} />
+                    : <PreviewPanel
+                        reel={reel}
+                        options={options}
+                        busyScene={busyScene}
+                        savingLibrary={savingLibrary}
+                        estimatedDuration={estimatedDuration}
+                        onPatchScene={patchScene}
+                        onRegenerateScene={regenerateScene}
+                        onSwapImage={setSwappingScene}
+                        onChangeMusic={changeMusic}
+                        onReRender={reRender}
+                        onSaveLibrary={saveToLibrary}
+                    />}
+
+                {/* Sustituir la foto de una escena: se abre la Biblioteca con
+                    una sola selección y al elegir se regenera SÓLO esa escena. */}
+                <MediaPicker
+                    isOpen={Boolean(swappingScene)}
+                    maxSelection={1}
+                    initialSelection={swappingScene?.sourceMediaId ? [swappingScene.sourceMediaId] : []}
+                    onClose={() => setSwappingScene(null)}
+                    onSelect={(items) => {
+                        const pick = items[0];
+                        const scene = swappingScene;
+                        setSwappingScene(null);
+                        if (pick && scene) {
+                            regenerateScene(scene, { sourceImageUrl: pick.url, sourceMediaId: pick.id });
+                        }
+                    }}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Left: Configuration & Preview Area */}
             <div className="lg:col-span-8 flex flex-col gap-6">
-                
-                {/* Image Selection Area */}
+
+                {/* Selección de imágenes */}
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-start mb-6">
                         <div>
-                            <h3 className="text-lg font-black text-gray-900">Imágenes del Video</h3>
-                            <p className="text-sm text-gray-500 font-medium">Ordena tus clips arrastrando las tarjetas</p>
+                            <h3 className="text-lg font-black text-gray-900">Las tres fotos del Reel</h3>
+                            <p className="text-sm text-gray-500 font-medium">
+                                Elegilas de la Biblioteca y ordenalas arrastrando. La IA hace el resto.
+                            </p>
                         </div>
-                        <button 
+                        <button
                             onClick={() => setShowPicker(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50"
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50 flex-shrink-0"
                         >
                             <Plus className="w-4 h-4" />
-                            Agregar Fotos
+                            {selectedMedia.length ? 'Cambiar fotos' : 'Elegir fotos'}
                         </button>
                     </div>
 
                     {selectedMedia.length === 0 ? (
-                        <div 
+                        <div
                             onClick={() => setShowPicker(true)}
                             className="aspect-[16/5] border-2 border-dashed border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-200 hover:bg-indigo-50/10 transition-all"
                         >
                             <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center">
-                                <Plus className="w-6 h-6 text-gray-300" />
+                                <ImageIcon className="w-6 h-6 text-gray-300" />
                             </div>
-                            <p className="text-sm text-gray-400 font-bold">No hay imágenes seleccionadas</p>
+                            <p className="text-sm text-gray-400 font-bold">Todavía no elegiste ninguna foto</p>
+                            <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">
+                                Hacen falta {SCENE_COUNT}
+                            </p>
                         </div>
                     ) : (
-                        <Reorder.Group 
-                            axis="y" 
-                            values={selectedMedia} 
-                            onReorder={setSelectedMedia}
-                            className="space-y-3"
-                        >
-                            {selectedMedia.map((item) => (
-                                <Reorder.Item 
-                                    key={item.id} 
-                                    value={item}
-                                    className="flex items-center gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100 group"
-                                >
-                                    <div className="cursor-grab active:cursor-grabbing text-gray-300">
-                                        <GripVertical className="w-5 h-5" />
-                                    </div>
-                                    <div className="w-16 h-16 rounded-xl overflow-hidden shadow-sm">
-                                        <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-gray-800 truncate">{item.filename}</p>
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">Clip de 3.0s</p>
-                                    </div>
-                                    <button 
-                                        onClick={() => setSelectedMedia(prev => prev.filter(m => m.id !== item.id))}
-                                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        <>
+                            <Reorder.Group axis="y" values={selectedMedia} onReorder={setSelectedMedia} className="space-y-3">
+                                {selectedMedia.map((item, i) => (
+                                    <Reorder.Item
+                                        key={item.id}
+                                        value={item}
+                                        className="flex items-center gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100 group"
                                     >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </Reorder.Item>
+                                        <div className="cursor-grab active:cursor-grabbing text-gray-300">
+                                            <GripVertical className="w-5 h-5" />
+                                        </div>
+                                        <div className="w-16 h-16 rounded-xl overflow-hidden shadow-sm flex-shrink-0">
+                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-gray-800 truncate">{item.filename}</p>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                                                Escena {i + 1} · la IA decide su duración
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setSelectedMedia(prev => prev.filter(m => m.id !== item.id))}
+                                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </Reorder.Item>
+                                ))}
+                            </Reorder.Group>
+
+                            {selectedMedia.length !== SCENE_COUNT && (
+                                <p className="mt-4 text-xs font-bold text-amber-600 flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                                    {selectedMedia.length < SCENE_COUNT
+                                        ? `Faltan ${SCENE_COUNT - selectedMedia.length} foto(s).`
+                                        : `Sobran ${selectedMedia.length - SCENE_COUNT} foto(s).`}
+                                </p>
+                            )}
+
+                            {/* El orden de arrastre es una propuesta: si el
+                                estilo queda en automático, el director puede
+                                reordenar. Decirlo evita la sorpresa. */}
+                            {selectedMedia.length === SCENE_COUNT && (
+                                <p className="mt-4 text-[11px] font-bold text-gray-400 flex items-start gap-2">
+                                    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                                    La IA analiza las tres fotos y puede reordenarlas para que la pieza abra, desarrolle y cierre. Podrás ver el orden final antes de descargar.
+                                </p>
+                            )}
+                        </>
+                    )}
+
+                    {/* Avisos de la comprobación previa */}
+                    {checking && (
+                        <p className="mt-4 text-xs font-bold text-gray-400 flex items-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Revisando la calidad de las fotos...
+                        </p>
+                    )}
+                    {preflight && preflight.warnings.length > 0 && (
+                        <div className="mt-4 bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1.5">
+                            <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5" /> Antes de gastar créditos
+                            </p>
+                            {preflight.warnings.map((w, i) => (
+                                <p key={i} className="text-xs font-medium text-amber-800 leading-relaxed">{w}</p>
                             ))}
-                        </Reorder.Group>
+                        </div>
                     )}
                 </div>
 
-                {/* Clip de cierre (Outro) — v4.645 */}
+                {/* Clip de cierre (Outro) */}
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                     <div className="flex justify-between items-start mb-6">
                         <div>
@@ -236,230 +495,659 @@ const VideoCreator: React.FC = () => {
                     )}
                 </div>
 
-                {/* Additional Settings */}
+                {/* Ajustes opcionales */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Transitions & Animation */}
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
-                        <div className="flex items-center gap-3 mb-6">
+                        <div className="flex items-center gap-3 mb-2">
                             <Settings2 className="w-5 h-5 text-indigo-600" />
-                            <h3 className="font-black text-gray-900">Efectos & IA</h3>
+                            <h3 className="font-black text-gray-900">Movimiento</h3>
                         </div>
+                        <p className="text-[11px] text-gray-400 font-bold mb-6">Opcional. En automático lo elige la IA por escena.</p>
                         <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Transición</label>
-                                <select 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
-                                    value={config.transition}
-                                    onChange={(e) => setConfig({...config, transition: e.target.value})}
-                                >
-                                    <option value="fade">Disolvencia (Fade)</option>
-                                    <option value="zoom">Zoom Suave</option>
-                                    <option value="slide_left">Deslizar Izquierda</option>
-                                    <option value="slide_right">Deslizar Derecha</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Animación IA</label>
-                                <select 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
-                                    value={config.animation}
-                                    onChange={(e) => setConfig({...config, animation: e.target.value})}
-                                >
-                                    <option value="ken_burns">Efecto Ken Burns (Pan/Zoom)</option>
-                                    <option value="motion_ia">Motion Pro AI</option>
-                                    <option value="static">Estático (Sin Movimiento)</option>
-                                </select>
-                            </div>
+                            <Select
+                                label="Estilo de animación"
+                                value={config.motionStyle}
+                                onChange={v => setConfig({ ...config, motionStyle: v })}
+                                options={[
+                                    { id: AUTO, label: 'Automático (recomendado)' },
+                                    ...(options?.motionStyles.map(s => ({ id: s.id, label: s.label })) || [])
+                                ]}
+                                hint={options?.motionStyles.find(s => s.id === config.motionStyle)?.description}
+                            />
+                            <Select
+                                label="Transición entre escenas"
+                                value={config.transition}
+                                onChange={v => setConfig({ ...config, transition: v })}
+                                options={[
+                                    { id: AUTO, label: 'Automática (recomendado)' },
+                                    ...(options?.transitions.map(t => ({ id: t.id, label: t.label })) || [])
+                                ]}
+                                hint={options?.transitions.find(t => t.id === config.transition)?.description}
+                            />
                         </div>
                     </div>
 
-                    {/* Audio & Caption */}
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
-                        <div className="flex items-center gap-3 mb-6">
+                        <div className="flex items-center gap-3 mb-2">
                             <Music className="w-5 h-5 text-indigo-600" />
-                            <h3 className="font-black text-gray-900">Audio & Texto</h3>
+                            <h3 className="font-black text-gray-900">Música y salida</h3>
                         </div>
+                        <p className="text-[11px] text-gray-400 font-bold mb-6">La banda sonora se genera según lo que detecte en las fotos.</p>
                         <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Música de Fondo</label>
-                                <div className="flex gap-2">
-                                    <button className="flex-1 py-3 px-4 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-black text-indigo-700">Explorar Librería</button>
-                                    <button className="flex-1 py-3 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-black text-gray-500">Mute</button>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Caption Sugerido</label>
-                                <textarea 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans resize-none h-20"
-                                    placeholder="Añade un caption para redes sociales..."
-                                    value={config.caption}
-                                    onChange={(e) => setConfig({...config, caption: e.target.value})}
-                                />
-                            </div>
+                            <Select
+                                label="Estilo musical"
+                                value={config.withMusic ? config.musicStyle : 'mute'}
+                                onChange={v => v === 'mute'
+                                    ? setConfig({ ...config, withMusic: false })
+                                    : setConfig({ ...config, withMusic: true, musicStyle: v })}
+                                options={[
+                                    { id: AUTO, label: 'Automático (recomendado)' },
+                                    ...(options?.musicStyles.map(m => ({ id: m.id, label: m.label })) || []),
+                                    { id: 'mute', label: 'Sin música' }
+                                ]}
+                            />
+                            <Select
+                                label="Calidad de exportación"
+                                value={config.qualityTier}
+                                onChange={v => setConfig({ ...config, qualityTier: v })}
+                                options={(options?.formats.find(f => f.id === config.format)?.tiers || [])
+                                    .map(t => ({ id: t.id, label: t.label }))}
+                            />
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Right: Real-time Export Column */}
-            <div className="lg:col-span-4 sticky top-10 flex flex-col gap-6">
-                <div className="bg-gray-900 rounded-[32px] p-6 shadow-2xl relative overflow-hidden group">
+            {/* Columna de exportación */}
+            <div className="lg:col-span-4 lg:sticky lg:top-10 flex flex-col gap-6">
+                <div className="bg-gray-900 rounded-[32px] p-6 shadow-2xl relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-tr from-indigo-950/40 via-transparent to-purple-950/20" />
-                    
-                    {/* Mock Phone View */}
+
                     <div className="relative aspect-[9/16] bg-black rounded-[24px] border border-gray-800 overflow-hidden flex flex-col items-center justify-center">
-                        {isGenerating ? (
-                            <div className="flex flex-col items-center gap-4">
-                                <Sparkles className="w-12 h-12 text-indigo-400 animate-pulse" />
-                                <div className="space-y-1 text-center">
-                                    <p className="text-white font-black text-sm uppercase tracking-wider">Generando con IA</p>
-                                    <p className="text-blue-400/60 text-[10px] font-bold">OpenAI Processing Engine</p>
-                                </div>
-                            </div>
-                        ) : selectedMedia.length > 0 ? (
-                            <div className="relative w-full h-full">
-                                <img src={selectedMedia[0].url} className="w-full h-full object-cover opacity-60 blur-sm" />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <Play className="w-16 h-16 text-white/40 group-hover:scale-110 group-hover:text-white/80 transition-all" />
-                                </div>
-                                <div className="absolute bottom-10 left-6 right-6">
-                                    <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
-                                        <div className="h-full w-1/3 bg-indigo-500 rounded-full" />
+                        {selectedMedia.length > 0 ? (
+                            <div className="relative w-full h-full grid grid-rows-3">
+                                {selectedMedia.slice(0, SCENE_COUNT).map((m, i) => (
+                                    <div key={m.id} className="relative overflow-hidden">
+                                        <img src={m.url} alt="" className="w-full h-full object-cover opacity-60" />
+                                        <span className="absolute top-2 left-2 text-[9px] font-black text-white/70 bg-black/50 px-2 py-0.5 rounded-full">
+                                            ESCENA {i + 1}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between mt-2">
-                                        <span className="text-[10px] font-black text-white/40">00:05</span>
-                                        <span className="text-[10px] font-black text-white/40">00:15</span>
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-3">
-                                <Type className="w-10 h-10 text-gray-700" />
-                                <p className="text-gray-600 text-[10px] font-black uppercase tracking-widest">Vista Previa</p>
+                                <Film className="w-10 h-10 text-gray-700" />
+                                <p className="text-gray-600 text-[10px] font-black uppercase tracking-widest">Vista previa</p>
                             </div>
                         )}
                     </div>
 
                     <div className="mt-6 space-y-4 relative z-10">
-                        <div className="flex justify-between items-center text-white/60 mb-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest">Metadata Export</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest">9:16 Vertical</span>
+                        <div className="flex justify-between items-center text-white/60">
+                            <span className="text-[10px] font-black uppercase tracking-widest">
+                                {options?.formats.find(f => f.id === config.format)?.tiers.find(t => t.id === config.qualityTier)?.label || 'Full HD'}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest">~15 s · {config.format}</span>
                         </div>
-                        <button 
+
+                        <button
                             onClick={handleGenerate}
-                            disabled={selectedMedia.length === 0 || isGenerating}
+                            disabled={selectedMedia.length !== SCENE_COUNT || isCreating}
                             className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black text-lg hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-3"
                         >
-                            {isGenerating ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    Procesando...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5 text-indigo-600" />
-                                    Renderizar Video
-                                </>
-                            )}
+                            {isCreating
+                                ? <><Loader2 className="w-5 h-5 animate-spin" />Analizando...</>
+                                : <><Sparkles className="w-5 h-5 text-indigo-600" />Renderizar Video</>}
                         </button>
-                        <p className="text-[9px] text-white/30 text-center font-bold tracking-tight px-4 leading-relaxed">
-                            Al hacer clic, tus imágenes serán procesadas por la infraestructura de OpenAI para generar el video vertical de 15 segundos.
-                        </p>
+
+                        {preflight && (
+                            <p className="text-[9px] text-white/40 text-center font-bold tracking-tight px-2">
+                                Consumo estimado: {preflight.creditEstimate} créditos
+                                {options?.usage.limit ? ` · quedan ${options.usage.remaining} este mes` : ''}
+                            </p>
+                        )}
+
+                        {/* El montaje es lo único que puede faltar del todo. Se
+                            dice de frente acá, no al final del proceso. */}
+                        {options && !options.render.available && (
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3">
+                                <p className="text-[10px] font-bold text-amber-300 leading-relaxed">
+                                    {options.render.unavailableReason}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             <MediaPicker
                 isOpen={showPicker}
+                maxSelection={SCENE_COUNT}
                 initialSelection={selectedMedia.map(m => m.id)}
                 onClose={() => setShowPicker(false)}
                 onSelect={setSelectedMedia}
             />
 
-            {/* Selector de clip de cierre */}
             {showOutroPicker && (
-                <div
-                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200"
-                    onClick={() => setShowOutroPicker(false)}
-                >
-                    <div
-                        className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <div>
-                                <h3 className="text-xl font-black text-gray-900">Elegí el clip de cierre</h3>
-                                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-0.5">
-                                    Sólo aparecen los outros que pasaron la validación de calidad
-                                </p>
-                            </div>
-                            <button onClick={() => setShowOutroPicker(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
-                                <X className="w-5 h-5 text-gray-400" />
-                            </button>
-                        </div>
+                <OutroPicker
+                    outros={availableOutros}
+                    loading={loadingOutros}
+                    selectedId={outro?.id || null}
+                    onClose={() => setShowOutroPicker(false)}
+                    onPick={(o) => {
+                        setOutro({
+                            id: o.id, title: o.title, url: o.videoUrl!,
+                            durationSec: o.durationSec, format: o.format,
+                            hasAudio: o.hasAudio, posterUrl: o.sourceImageUrl
+                        });
+                        setShowOutroPicker(false);
+                    }}
+                />
+            )}
+        </div>
+    );
+};
 
-                        <div className="flex-1 overflow-y-auto p-6">
-                            {loadingOutros ? (
-                                <div className="flex flex-col items-center justify-center py-16">
-                                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
-                                    <p className="text-gray-400 font-bold text-sm">Cargando outros...</p>
-                                </div>
-                            ) : availableOutros.length === 0 ? (
-                                <div className="text-center py-16">
-                                    <Clapperboard className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                                    <p className="text-gray-400 font-bold">Todavía no hay outros listos</p>
-                                    <p className="text-[11px] text-gray-300 mt-1 font-bold">
-                                        Creá uno en la pestaña "Generador de Outros IA"
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                    {availableOutros.map(o => {
-                                        const selected = outro?.id === o.id;
-                                        return (
-                                            <button
-                                                key={o.id}
-                                                onClick={() => {
-                                                    setOutro({
-                                                        id: o.id,
-                                                        title: o.title,
-                                                        url: o.videoUrl!,
-                                                        durationSec: o.durationSec,
-                                                        format: o.format,
-                                                        hasAudio: o.hasAudio,
-                                                        posterUrl: o.sourceImageUrl
-                                                    });
-                                                    setShowOutroPicker(false);
-                                                }}
-                                                className={`group relative rounded-2xl overflow-hidden border-2 text-left transition-all ${
-                                                    selected ? 'border-indigo-600 ring-4 ring-indigo-600/10' : 'border-gray-100 hover:border-indigo-200'
-                                                }`}
-                                            >
-                                                <div className="aspect-[9/16] max-h-48 bg-black">
-                                                    <img src={o.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" loading="lazy" />
-                                                </div>
-                                                {selected && (
-                                                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
-                                                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                                                    </div>
-                                                )}
-                                                <div className="p-3 bg-white">
-                                                    <p className="text-xs font-black text-gray-800 line-clamp-2 leading-tight">{o.title}</p>
-                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
-                                                        {o.durationSec ?? 5}s · {o.format} · {o.hasAudio ? 'con voz' : 'sin voz'}
-                                                    </p>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
+// ─── Piezas ────────────────────────────────────────────────────────────────
+
+const Select: React.FC<{
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    options: { id: string; label: string }[];
+    hint?: string;
+}> = ({ label, value, onChange, options, hint }) => (
+    <div className="space-y-2">
+        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">{label}</label>
+        <select
+            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+        >
+            {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+        {hint && <p className="text-[11px] text-gray-400 font-medium leading-relaxed">{hint}</p>}
+    </div>
+);
+
+const ReelHeader: React.FC<{ reel: Reel; onStartOver: () => void }> = ({ reel, onStartOver }) => (
+    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+            <h3 className="text-lg font-black text-gray-900 truncate">{reel.title}</h3>
+            <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                {reel.engineLabel} · {reel.qualityLabel}
+                {reel.renderProviderLabel ? ` · montaje en ${reel.renderProviderLabel}` : ''}
+            </p>
+        </div>
+        <button
+            onClick={onStartOver}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-50 text-gray-600 rounded-xl font-black text-xs hover:bg-gray-100 transition-all border border-gray-100 flex-shrink-0"
+        >
+            <Plus className="w-4 h-4" /> Nuevo Reel
+        </button>
+    </div>
+);
+
+// Barra de progreso por etapa. Las etapas son las del servidor, así que el
+// número y el texto son los mismos en los dos lados.
+const STAGES: { id: string; label: string }[] = [
+    { id: 'analyzing', label: 'Análisis' },
+    { id: 'directing', label: 'Narrativa' },
+    { id: 'generating', label: 'Escenas' },
+    { id: 'scoring', label: 'Música' },
+    { id: 'assembling', label: 'Montaje' },
+    { id: 'validating', label: 'Calidad' }
+];
+
+const ProgressPanel: React.FC<{ reel: Reel }> = ({ reel }) => {
+    const currentIndex = STAGES.findIndex(s => s.id === reel.status);
+    return (
+        <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+                <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                <div>
+                    <h3 className="font-black text-gray-900">{reel.statusLabel}</h3>
+                    <p className="text-[11px] font-bold text-gray-400">
+                        Podés cerrar esta pestaña: el Reel sigue generándose y lo encontrás en la lista.
+                    </p>
+                </div>
+            </div>
+
+            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
+                <div
+                    className="h-full bg-indigo-600 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.round(reel.progress * 100)}%` }}
+                />
+            </div>
+            <p className="text-right text-[10px] font-black text-gray-400 uppercase tracking-widest mb-8">
+                {Math.round(reel.progress * 100)}%
+            </p>
+
+            <div className="flex flex-wrap gap-2 mb-8">
+                {STAGES.map((s, i) => {
+                    const done = currentIndex > i;
+                    const active = currentIndex === i;
+                    return (
+                        <div
+                            key={s.id}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                                done ? 'bg-emerald-50 text-emerald-600'
+                                    : active ? 'bg-indigo-600 text-white'
+                                        : 'bg-gray-50 text-gray-300'
+                            }`}
+                        >
+                            {done ? <CheckCircle2 className="w-3 h-3" /> : active ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            {s.label}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {reel.scenes.map(scene => (
+                    <div key={scene.id} className="bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden">
+                        <div className="aspect-video bg-black relative">
+                            <img src={scene.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-50" />
+                            <span className="absolute top-2 left-2 text-[9px] font-black text-white/80 bg-black/60 px-2 py-0.5 rounded-full">
+                                ESCENA {scene.position + 1}
+                            </span>
+                        </div>
+                        <div className="p-3">
+                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                {scene.status === 'ready'
+                                    ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                    : scene.status === 'error' || scene.status === 'needs_review'
+                                        ? <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                        : <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
+                                {scene.statusLabel}
+                            </p>
+                            <p className="text-[10px] font-bold text-gray-400 mt-1">
+                                {scene.durationSec}s · {scene.styleLabel}
+                            </p>
                         </div>
                     </div>
+                ))}
+            </div>
+
+            {reel.notes.length > 0 && <NoteList notes={reel.notes} />}
+        </div>
+    );
+};
+
+const NoteList: React.FC<{ notes: string[] }> = ({ notes }) => (
+    <div className="mt-6 bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-1.5">
+        <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-1.5">
+            <Info className="w-3.5 h-3.5" /> Ajustes aplicados
+        </p>
+        {notes.map((n, i) => (
+            <p key={i} className="text-xs font-medium text-blue-800 leading-relaxed">{n}</p>
+        ))}
+    </div>
+);
+
+const PreviewPanel: React.FC<{
+    reel: Reel;
+    options: ReelOptions | null;
+    busyScene: string | null;
+    savingLibrary: boolean;
+    estimatedDuration: number | null;
+    onPatchScene: (s: ReelScene, body: Record<string, unknown>) => void;
+    onRegenerateScene: (s: ReelScene, body?: Record<string, unknown>) => void;
+    onSwapImage: (s: ReelScene) => void;
+    onChangeMusic: (body: Record<string, unknown>) => void;
+    onReRender: () => void;
+    onSaveLibrary: () => void;
+}> = ({
+    reel, options, busyScene, savingLibrary, estimatedDuration,
+    onPatchScene, onRegenerateScene, onSwapImage, onChangeMusic, onReRender, onSaveLibrary
+}) => (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Reproductor */}
+        <div className="lg:col-span-5">
+            <div className="bg-gray-900 rounded-[32px] p-6 shadow-2xl">
+                <div className="aspect-[9/16] bg-black rounded-[24px] overflow-hidden border border-gray-800">
+                    {reel.videoUrl ? (
+                        <video src={reel.videoUrl} poster={reel.posterUrl || undefined} controls playsInline className="w-full h-full object-contain" />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                            <AlertTriangle className="w-10 h-10 text-amber-500" />
+                            <p className="text-white/70 text-xs font-bold leading-relaxed">
+                                {reel.statusDetail || 'El montaje no se completó.'}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-2 text-white/50">
+                    <Metric label="Duración" value={formatSeconds(reel.durationSec)} />
+                    <Metric label="Resolución" value={reel.width ? `${reel.width}×${reel.height}` : '—'} />
+                    <Metric label="Tasa de bits" value={reel.bitrateKbps ? `${(reel.bitrateKbps / 1000).toFixed(1)} Mbps` : '—'} />
+                    <Metric label="Peso" value={formatBytes(reel.sizeBytes)} />
+                </div>
+
+                <div className="mt-5 space-y-2">
+                    {reel.videoUrl && (
+                        <a
+                            href={reel.videoUrl}
+                            download
+                            className="w-full bg-white text-gray-900 py-3.5 rounded-2xl font-black text-sm hover:bg-indigo-50 hover:text-indigo-600 transition-all flex items-center justify-center gap-2"
+                        >
+                            <Download className="w-4 h-4" /> Descargar Reel
+                        </a>
+                    )}
+                    <button
+                        onClick={onSaveLibrary}
+                        disabled={!reel.videoUrl || savingLibrary || Boolean(reel.mediaId)}
+                        className="w-full bg-white/10 text-white py-3 rounded-2xl font-black text-xs hover:bg-white/20 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                        {savingLibrary ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        {reel.mediaId ? 'Ya está en la Biblioteca' : 'Guardar en la Biblioteca'}
+                    </button>
+                    <button
+                        onClick={onReRender}
+                        className="w-full bg-white/5 text-white/70 py-3 rounded-2xl font-black text-xs hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" /> Rehacer el montaje
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {/* Línea de tiempo y controles */}
+        <div className="lg:col-span-7 space-y-6">
+            {/* Informe de calidad y fidelidad */}
+            <div className={`rounded-3xl border p-6 ${
+                reel.status === 'ready' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-amber-50/50 border-amber-100'
+            }`}>
+                <div className="flex items-center gap-3 mb-3">
+                    <ShieldCheck className={`w-5 h-5 ${reel.status === 'ready' ? 'text-emerald-600' : 'text-amber-600'}`} />
+                    <h3 className="font-black text-gray-900">{reel.statusLabel}</h3>
+                </div>
+                {/* Se dice exactamente qué se comprobó y qué no. Dar por buena
+                    una escena que nadie pudo mirar sería peor que decirlo. */}
+                <p className="text-xs font-medium text-gray-600 leading-relaxed">{reel.fidelitySummary.label}</p>
+                {reel.quality?.failures?.map((f, i) => (
+                    <p key={i} className="text-xs font-medium text-amber-800 mt-1.5 leading-relaxed">· {f}</p>
+                ))}
+                {reel.quality?.warnings?.map((w, i) => (
+                    <p key={i} className="text-xs font-medium text-gray-500 mt-1.5 leading-relaxed">· {w}</p>
+                ))}
+                {reel.direction?.rationale && (
+                    <p className="text-[11px] font-medium text-gray-400 mt-3 leading-relaxed italic">{reel.direction.rationale}</p>
+                )}
+            </div>
+
+            {/* Música */}
+            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <Music className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-black text-gray-900">Banda sonora</h3>
+                    {reel.musicStyleLabel && (
+                        <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            {reel.musicStyleLabel}
+                        </span>
+                    )}
+                </div>
+                {reel.musicUrl
+                    ? <audio src={reel.musicUrl} controls className="w-full h-10 mb-4" />
+                    : <p className="text-xs font-bold text-gray-400 mb-4">El Reel se montó sin música.</p>}
+
+                <div className="flex flex-wrap gap-2">
+                    {options?.musicStyles.map(m => (
+                        <button
+                            key={m.id}
+                            onClick={() => onChangeMusic({ style: m.id })}
+                            className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-100 transition-all"
+                        >
+                            {m.label}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => onChangeMusic({ mute: true })}
+                        className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 border border-gray-100 transition-all flex items-center gap-1"
+                    >
+                        <VolumeX className="w-3 h-3" /> Sin música
+                    </button>
+                </div>
+            </div>
+
+            {/* Escenas */}
+            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-3">
+                        <Film className="w-5 h-5 text-indigo-600" />
+                        <h3 className="font-black text-gray-900">Línea de tiempo</h3>
+                    </div>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {estimatedDuration ?? reel.durationSec}s
+                    </span>
+                </div>
+                <p className="text-[11px] font-bold text-gray-400 mb-5">
+                    Cambiar la duración rehace sólo el montaje. Regenerar vuelve a pasar esa foto por la IA.
+                </p>
+
+                <div className="space-y-3">
+                    {reel.scenes.map(scene => (
+                        <SceneRow
+                            key={scene.id}
+                            scene={scene}
+                            options={options}
+                            busy={busyScene === scene.id}
+                            onPatch={onPatchScene}
+                            onRegenerate={onRegenerateScene}
+                            onSwapImage={onSwapImage}
+                        />
+                    ))}
+                </div>
+            </div>
+
+            {reel.notes.length > 0 && <NoteList notes={reel.notes} />}
+        </div>
+    </div>
+);
+
+const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+    <div>
+        <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{label}</p>
+        <p className="text-sm font-black text-white/90">{value}</p>
+    </div>
+);
+
+const SceneRow: React.FC<{
+    scene: ReelScene;
+    options: ReelOptions | null;
+    busy: boolean;
+    onPatch: (s: ReelScene, body: Record<string, unknown>) => void;
+    onRegenerate: (s: ReelScene, body?: Record<string, unknown>) => void;
+    onSwapImage: (s: ReelScene) => void;
+}> = ({ scene, options, busy, onPatch, onRegenerate, onSwapImage }) => {
+    const [duration, setDuration] = useState(scene.durationSec ?? 5);
+    useEffect(() => { setDuration(scene.durationSec ?? 5); }, [scene.durationSec]);
+
+    // No se puede usar más metraje del que el clip tiene: alargar más allá de
+    // lo generado exige regenerar, y eso es otro botón.
+    const maxUsable = Math.min(MAX_SCENE_SEC, scene.generatedDurationSec ?? MAX_SCENE_SEC);
+    const fidelityFailed = scene.fidelity?.state === 'failed';
+
+    return (
+        <div className={`rounded-2xl border p-3 ${fidelityFailed ? 'bg-amber-50/40 border-amber-200' : 'bg-gray-50 border-gray-100'}`}>
+            <div className="flex items-start gap-3">
+                <div className="w-20 h-20 rounded-xl overflow-hidden bg-black flex-shrink-0 relative">
+                    {scene.videoUrl
+                        ? <video src={scene.videoUrl} muted loop playsInline
+                            onMouseEnter={e => e.currentTarget.play()}
+                            onMouseLeave={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                            poster={scene.posterUrl || scene.sourceImageUrl}
+                            className="w-full h-full object-cover" />
+                        : <img src={scene.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" />}
+                    <span className="absolute top-1 left-1 text-[8px] font-black text-white/80 bg-black/60 px-1.5 py-0.5 rounded-full">
+                        {scene.position + 1}
+                    </span>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-black text-gray-800">{scene.styleLabel}</p>
+                        <ChevronRight className="w-3 h-3 text-gray-300" />
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{scene.transitionLabel}</p>
+                    </div>
+                    {scene.analysis?.summary && (
+                        <p className="text-[11px] font-medium text-gray-500 mt-0.5 truncate">{scene.analysis.summary}</p>
+                    )}
+
+                    {/* Fidelidad. Tres estados, no dos: `unavailable` se dice. */}
+                    {scene.fidelity && (
+                        <p className={`text-[10px] font-bold mt-1.5 flex items-start gap-1 ${
+                            scene.fidelity.state === 'ok' ? 'text-emerald-600'
+                                : scene.fidelity.state === 'failed' ? 'text-amber-700' : 'text-gray-400'
+                        }`}>
+                            <ShieldCheck className="w-3 h-3 flex-shrink-0 mt-px" />
+                            {scene.fidelity.state === 'ok'
+                                ? `Conserva la fotografía (${scene.fidelity.score}/10)`
+                                : scene.fidelity.state === 'failed'
+                                    ? (scene.fidelity.issues[0] || scene.fidelity.reason)
+                                    : 'Fidelidad no comprobada'}
+                        </p>
+                    )}
+                    {scene.statusDetail && scene.status !== 'ready' && (
+                        <p className="text-[10px] font-bold text-amber-700 mt-1">{scene.statusDetail}</p>
+                    )}
+
+                    {/* Duración: decisión de montaje, no regenera el clip. */}
+                    <div className="flex items-center gap-2 mt-2">
+                        <input
+                            type="range"
+                            min={MIN_SCENE_SEC}
+                            max={maxUsable}
+                            step={0.5}
+                            value={duration}
+                            onChange={e => setDuration(Number(e.target.value))}
+                            onMouseUp={() => duration !== scene.durationSec && onPatch(scene, { durationSec: duration })}
+                            onTouchEnd={() => duration !== scene.durationSec && onPatch(scene, { durationSec: duration })}
+                            className="flex-1 accent-indigo-600"
+                            disabled={busy || !scene.videoUrl}
+                        />
+                        <span className="text-[10px] font-black text-gray-500 w-10 text-right">{duration}s</span>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                    <button
+                        onClick={() => onRegenerate(scene)}
+                        disabled={busy}
+                        title="Regenerar sólo esta escena"
+                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-40"
+                    >
+                        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                    </button>
+                    <button
+                        onClick={() => onSwapImage(scene)}
+                        disabled={busy}
+                        title="Sustituir la fotografía de esta escena"
+                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-40"
+                    >
+                        <ImageIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+
+            {/* Cambiar el estilo regenera: el movimiento está dentro del clip. */}
+            {options && (
+                <div className="flex flex-wrap gap-1.5 mt-3 sm:pl-[92px]">
+                    {options.motionStyles.map(s => (
+                        <button
+                            key={s.id}
+                            onClick={() => onRegenerate(scene, { style: s.id })}
+                            disabled={busy}
+                            title={s.description}
+                            className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-40 ${
+                                scene.style === s.id
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-white text-gray-400 hover:text-indigo-600 border border-gray-100'
+                            }`}
+                        >
+                            {s.label}
+                        </button>
+                    ))}
                 </div>
             )}
         </div>
     );
 };
+
+const OutroPicker: React.FC<{
+    outros: Outro[];
+    loading: boolean;
+    selectedId: string | null;
+    onClose: () => void;
+    onPick: (o: Outro) => void;
+}> = ({ outros, loading, selectedId, onClose, onPick }) => (
+    <div
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200"
+        onClick={onClose}
+    >
+        <div
+            className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+        >
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                    <h3 className="text-xl font-black text-gray-900">Elegí el clip de cierre</h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-0.5">
+                        Sólo aparecen los outros que pasaron la validación de calidad
+                    </p>
+                </div>
+                <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                    <X className="w-5 h-5 text-gray-400" />
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-16">
+                        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
+                        <p className="text-gray-400 font-bold text-sm">Cargando outros...</p>
+                    </div>
+                ) : outros.length === 0 ? (
+                    <div className="text-center py-16">
+                        <Clapperboard className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                        <p className="text-gray-400 font-bold">Todavía no hay outros listos</p>
+                        <p className="text-[11px] text-gray-300 mt-1 font-bold">
+                            Creá uno en la pestaña "Generador de Outros IA"
+                        </p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {outros.map(o => (
+                            <button
+                                key={o.id}
+                                onClick={() => onPick(o)}
+                                className={`group relative rounded-2xl overflow-hidden border-2 text-left transition-all ${
+                                    selectedId === o.id ? 'border-indigo-600 ring-4 ring-indigo-600/10' : 'border-gray-100 hover:border-indigo-200'
+                                }`}
+                            >
+                                <div className="aspect-[9/16] max-h-48 bg-black">
+                                    <img src={o.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" loading="lazy" />
+                                </div>
+                                {selectedId === o.id && (
+                                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                    </div>
+                                )}
+                                <div className="p-3 bg-white">
+                                    <p className="text-xs font-black text-gray-800 line-clamp-2 leading-tight">{o.title}</p>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
+                                        {o.durationSec ?? 5}s · {o.format} · {o.hasAudio ? 'con voz' : 'sin voz'}
+                                    </p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    </div>
+);
 
 export default VideoCreator;
