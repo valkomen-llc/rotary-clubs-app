@@ -43,7 +43,7 @@ import store, {
     assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
 
-console.log('[eventRegistrationController] v4.652.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe.');
+console.log('[eventRegistrationController] v4.654.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario público comparte cabecera y fondo con Postular Proyecto.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';

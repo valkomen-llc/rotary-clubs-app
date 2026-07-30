@@ -36,6 +36,7 @@ import {
     type FormField, type FormStep, type PublicCategory, type Companion,
 } from '../lib/eventRegistrationSpec';
 import { localeOf } from '../components/EventRegistrationCta';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const BLUE = '#17458F';
@@ -449,7 +450,7 @@ const RegistroEvento = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50">
+            <div className="min-h-screen bg-rotary-concrete">
                 <Navbar />
                 <div className="flex min-h-[60vh] items-center justify-center">
                     <div className="text-center text-slate-500">
@@ -466,10 +467,10 @@ const RegistroEvento = () => {
     const awaitingPayment = registration && !confirmed;
 
     return (
-        <div className="min-h-screen bg-slate-100">
+        <div className="min-h-screen bg-rotary-concrete">
             <Navbar />
 
-            <header style={{ background: BLUE }} className="px-4 py-8 text-white sm:px-6 sm:py-10">
+            <header style={PAGE_HEADER_BACKGROUND} className="px-4 py-8 text-white sm:px-6 sm:py-10">
                 <div className="mx-auto max-w-4xl text-center sm:text-left">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
                         Inscripción{config?.edition?.editionNumber ? ` · Edición ${config.edition.editionNumber}` : ''}

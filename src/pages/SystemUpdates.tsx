@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.653.0 | 2026-07-30 (La sección pública de Eventos puede llevar directo a un evento en vez de mostrar el calendario; se elige desde el panel)
-// Cache bust: 2026-07-30c
+// UI V4.654.0 | 2026-07-30 (El formulario de inscripción a un evento usa la misma cabecera y el mismo fondo que Postular Proyecto)
+// Cache bust: 2026-07-30d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.654.0',
+        title: 'El formulario de inscripción luce como el de Postular Proyecto 🎨',
+        description: 'El formulario de inscripción a un evento se veía distinto del formulario de postulación de proyectos, aunque forman parte del mismo sitio y del mismo trámite para el visitante: la cabecera era un rectángulo de azul plano y el fondo de la página un gris liso, mientras que Postular Proyecto usa la cabecera azul oscuro con la textura geométrica de Rotary y el fondo de concreto claro que se ve en el resto de las páginas internas. A partir de esta versión las dos pantallas se ven iguales. La cabecera del formulario de inscripción —la que muestra el número de edición, el nombre del evento, la fecha y la sede— pasa a usar exactamente la misma textura y el mismo azul de Rotary, y el fondo sobre el que se apoyan las tarjetas del asistente pasa a ser el mismo concreto claro, de modo que las tarjetas blancas de los pasos, los acompañantes y el resumen de pago se recortan igual que en la postulación. El cambio alcanza también a la pantalla de carga, a la de inscripción confirmada, a la de pago pendiente y a la de inscripciones cerradas, para que no haya un instante en que el fondo salte de un tono a otro. No se toca ningún texto, ningún precio, ningún campo ni el funcionamiento del formulario: es únicamente la presentación. Los dos fondos se toman del mismo lugar del que ya los tomaban Contacto, Postular Proyecto, Registro y Mi Proyecto, así que no se agrega una copia nueva que pueda quedar desfasada más adelante. Se verificó en un navegador real que las dos pantallas resuelven la cabecera y el fondo a la misma imagen y al mismo color.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'diseno', 'sitio-publico', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.653.0',
         title: 'La sección de Eventos puede llevar directo al evento 🔗',
