@@ -73,10 +73,22 @@ const Eventos = () => {
         if (club?.id) fetchEvents();
     }, [club?.id]);
 
+    // v4.658 — El destino guardado puede ser el id interno del evento (así se
+    // guardó antes de que el evento tuviera slug) o su slug. Se resuelve contra
+    // la lista real y se manda SIEMPRE a la dirección pública del evento —su
+    // slug cuando lo tiene—, para que el visitante no acabe mirando un
+    // identificador en la barra de direcciones. Si la lista todavía no cargó,
+    // se usa el valor guardado tal cual: la ficha se encarga de canonizar.
+    const redirectTarget = (() => {
+        if (!redirectTo) return '';
+        const match = events.find((e: any) => e.slug === redirectTo || e.id === redirectTo);
+        return match ? (match.slug || match.id) : redirectTo;
+    })();
+
     // `replace` para que el botón "atrás" del navegador no rebote entre el
     // calendario y la ficha.
-    if (!cmsLoading && redirectTo) {
-        return <Navigate to={`/eventos/${redirectTo}`} replace />;
+    if (!cmsLoading && redirectTarget) {
+        return <Navigate to={`/eventos/${redirectTarget}`} replace />;
     }
 
     const filteredEvents = activeFilter === 'Todos'

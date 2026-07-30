@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
@@ -108,6 +108,8 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
 
 const EventoDetalle = () => {
     const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+    const location = useLocation();
     const { club } = useClub();
     const [event, setEvent] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -132,10 +134,28 @@ const EventoDetalle = () => {
         load();
     }, [club?.id, id]);
 
+    // ── Dirección canónica del evento (v4.658) ───────────────────────
+    //
+    // La ficha se abre igual con el id interno que con el slug, porque el
+    // endpoint acepta los dos. Pero un enlace guardado antes de que el evento
+    // tuviera slug —o escrito con el id a mano— deja al visitante mirando
+    // "/eventos/205348ec-83fd-475d-931c-9cdc3fdf8f62" en la barra de
+    // direcciones. Cuando el evento TIENE slug, esa es su dirección: se
+    // reemplaza la del navegador por ella.
+    //
+    // Va con `replace` para no dejar la dirección con el id en el historial, y
+    // conserva la query y el ancla. Sólo actúa cuando hay slug y es distinto
+    // del parámetro actual, así que no puede entrar en bucle.
+    const canonicalRef = event?.slug || id;
+    useEffect(() => {
+        if (!event?.slug || !id || id === event.slug) return;
+        navigate(`/eventos/${event.slug}${location.search}${location.hash}`, { replace: true });
+    }, [event?.slug, id, location.search, location.hash, navigate]);
+
     useSEO({
         title: event?.title || 'Evento',
         description: event?.description?.slice(0, 150) || '',
-        path: `/eventos/${id}`,
+        path: `/eventos/${canonicalRef}`,
     });
 
     const formatDate = (dateStr: string) => {

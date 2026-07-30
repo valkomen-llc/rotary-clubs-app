@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.657.0",
-  "cache_bust": "2026-07-30g (Los botones configurables que llevan a otra pagina del mismo sitio ya no abren pestana nueva, aunque esten escritos con la direccion completa.)",
+  "version": "4.658.0",
+  "cache_bust": "2026-07-30h (La ficha de un evento y su formulario muestran siempre la direccion con el slug, aunque se llegue por el identificador interno.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
