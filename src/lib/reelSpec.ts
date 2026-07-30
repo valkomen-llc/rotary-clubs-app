@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — espejo en el navegador
-// v4.663.0
+// v4.664.0
 //
 // Los CATÁLOGOS (motores, estilos, transiciones, música, formatos) NO se
 // duplican aquí: se piden a `GET /api/content-studio/reels/options`, para que
@@ -35,15 +35,35 @@ export interface QualityReport {
     measured?: Record<string, unknown>;
 }
 
+// Un fotograma extraído del clip y su comparación con la fotografía original.
+// Se guarda para que el veredicto automático sea revisable: poder mirar QUÉ se
+// comparó es lo que separa una comprobación de una afirmación.
+export interface FrameCheck {
+    at: number;
+    position: 'inicio' | 'medio' | 'fin' | string;
+    frameUrl: string | null;
+    comparisonUrl?: string | null;
+    score?: number | null;
+    structural?: { structure: number | null; colour: number | null; score: number | null } | null;
+}
+
 // El control de fidelidad tiene TRES estados, no dos. `unavailable` significa
-// que no se pudo mirar —el proveedor no entregó fotograma— y se muestra tal
-// cual: dar por buena una escena que nadie comprobó sería peor que decirlo.
+// que no se pudo mirar. Desde v4.664 es un caso raro: los fotogramas se sacan
+// del propio clip con FFmpeg, así que ya no depende de que el proveedor mande
+// una portada.
 export interface FidelityReport {
     state: 'ok' | 'failed' | 'unavailable';
     score: number | null;
+    semanticScore?: number | null;
+    structuralScore?: number | null;
+    // 'estructural + visión' | 'sólo estructural' — se muestra, porque la
+    // estructural sola no detecta un logotipo redibujado en su mismo sitio.
+    method?: string | null;
+    framesChecked?: number;
     issues: string[];
     reason?: string | null;
-    frameUrl?: string | null;
+    frames?: FrameCheck[];
+    text?: { keptRatio: number; samples: { ratio: number; original: string; rendered: string }[] } | null;
     deformation?: boolean;
     identityDrift?: boolean;
     brandAltered?: boolean;
@@ -95,6 +115,7 @@ export interface ReelScene {
     sizeBytes: number | null;
     quality: QualityReport | null;
     fidelity: FidelityReport | null;
+    frames?: FrameCheck[];
     creditsEstimated: number;
 }
 
@@ -103,6 +124,7 @@ export interface FidelitySummary {
     failed: number;
     unavailable: number;
     total: number;
+    framesChecked?: number;
     averageScore: number | null;
     label: string;
 }

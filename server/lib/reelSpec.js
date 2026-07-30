@@ -427,23 +427,26 @@ export const REEL_STATUSES = {
     directing:   { label: 'Construyendo narrativa', terminal: false, weight: 0.05, order: 2 },
     generating:  { label: 'Generando escenas',     terminal: false, weight: 0.52, order: 3 },
     scoring:     { label: 'Componiendo música',    terminal: false, weight: 0.10, order: 4 },
-    assembling:  { label: 'Ensamblando el montaje', terminal: false, weight: 0.18, order: 5 },
-    validating:  { label: 'Validando calidad',     terminal: false, weight: 0.07, order: 6 },
-    ready:       { label: 'Listo',                 terminal: true,  weight: 0,    order: 7 },
+    assembling:  { label: 'Montando el Reel',      terminal: false, weight: 0.18, order: 5 },
+    validating:  { label: 'Exportando',            terminal: false, weight: 0.07, order: 6 },
+    ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 7 },
     needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 7 },
-    error:       { label: 'Error',                 terminal: true,  weight: 0,    order: 7 }
+    error:       { label: 'Error de montaje',      terminal: true,  weight: 0,    order: 7 }
 };
 
 // Estados de una escena individual. Una escena puede regenerarse sola sin
 // tocar las otras dos — es el pedido explícito de la previsualización.
+// Los estados que ve el usuario nombran lo que está pasando de verdad, no una
+// etapa genérica: «Validando fidelidad» y «Clip listo» son cosas distintas y
+// confundirlas es lo que hacía parecer que el módulo estaba parado.
 export const SCENE_STATUSES = {
-    pending:    { label: 'Pendiente',    terminal: false },
-    generating: { label: 'Generando',    terminal: false },
-    rendering:  { label: 'Renderizando', terminal: false },
-    validating: { label: 'Validando',    terminal: false },
-    ready:      { label: 'Lista',        terminal: true },
-    needs_review:{ label: 'Requiere revisión', terminal: true },
-    error:      { label: 'Error',        terminal: true }
+    pending:    { label: 'Pendiente',            terminal: false },
+    generating: { label: 'Generando',            terminal: false },
+    rendering:  { label: 'Renderizando',         terminal: false },
+    validating: { label: 'Validando fidelidad',  terminal: false },
+    ready:      { label: 'Fidelidad verificada', terminal: true },
+    needs_review:{ label: 'Requiere revisión',   terminal: true },
+    error:      { label: 'Error',                terminal: true }
 };
 
 export const MAX_AUTO_RETRIES = 2;

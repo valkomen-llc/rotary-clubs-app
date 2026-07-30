@@ -161,12 +161,12 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
   `OUTRO_MONTHLY_CREDIT_LIMIT`. No presentarlo como el saldo del proveedor.
 
 **Pendiente conocido:** unir el outro y el video en un solo MP4 exige un paso de
-render con ffmpeg que esta infraestructura no tiene. Hoy el outro queda
-**adjunto** al proyecto como clip independiente. Desde v4.663 el Creador de
-Reels resuelve el montaje con un proveedor de render alojado; enganchar el outro
-a ese mismo montaje es el paso que falta.
+render. Desde v4.664 la plataforma **sí** tiene FFmpeg (`ffmpeg-static`, ver el
+Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
+del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
+clip independiente.
 
-## Creador de Reels IA — v4.663
+## Creador de Reels IA — v4.664
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -180,7 +180,8 @@ en `config` sin que el servidor los leyera.
 |---|---|
 | `server/lib/reelSpec.js` | Fuente de verdad: formatos y resoluciones, motores, estilos, transiciones, música, reparto de la duración y prompts |
 | `server/lib/reelDirector.js` | Mira las tres fotos y decide orden, ritmo, estilo por escena y música |
-| `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: Shotstack, Creatomate, JSON2Video |
+| `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: FFmpeg local + Shotstack, Creatomate, JSON2Video |
+| `server/lib/reelFfmpeg.js` | Compositor local: extracción de fotogramas, conformado y montaje |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
 | `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
@@ -199,11 +200,29 @@ en `config` sin que el servidor los leyera.
   capa de render es **edición declarada**: qué clip va cuándo, cómo se encadenan
   y qué suena debajo. El CONTENIDO de cada clip viaja intacto. Ningún adaptador
   aplica filtros, escalas forzadas ni corrección de color.
-- **Hace falta un proveedor de montaje y esta infraestructura no puede
-  sustituirlo.** Vercel serverless no tiene ffmpeg y corta a los 120 s. Sin
-  `REEL_RENDER_PROVIDER` + su credencial, las tres escenas se generan y quedan
-  descargables por separado, y el proyecto termina en `needs_review` diciéndolo.
-  Eso es un resultado válido, no un error: no inventar un montaje que no existe.
+- **El montaje por defecto es FFmpeg y viaja con la aplicación** (v4.664,
+  `ffmpeg-static`). Un proveedor externo sin credencial deja el módulo sin
+  montar nada, que es exactamente lo que pasó al estrenarlo. Medido sobre el
+  caso real: ~12 s para 14 s en 1080×1920 con dos fundidos y música, holgado
+  dentro de los 120 s de `vercel.json`. **No instalar `ffprobe-static`**: pesa
+  336 MB porque trae los binarios de las tres plataformas y solo eso revienta el
+  límite de 250 MB de la función. Todo lo que hay que leer de un MP4 ya lo saca
+  `probeMp4`, parseando el contenedor.
+- **Los proveedores alojados siguen valiendo** y ahora hay CADENA: principal
+  (`REEL_RENDER_PROVIDER`), respaldo (`REEL_RENDER_FALLBACK`) y cualquier otro
+  disponible. Si el principal falla se intenta el siguiente ANTES de darle un
+  error al usuario, y lo que se intentó queda en `notes`. Con un proveedor
+  pedido explícitamente NO hay respaldo: el usuario eligió y silenciarlo sería
+  desobedecerlo.
+- **`mode` distingue local de alojado**, no el nombre del proveedor. `local`
+  monta y devuelve el archivo en el acto (`output`); `remote` crea un trabajo y
+  se sondea (`jobId`). El controlador se ramifica por ese campo.
+- **Una tasa de bits baja NO es un fallo si codificamos nosotros**
+  (`encoder: 'local'` en `validateReelFile`). Con objetivo de 10 Mbps y preset
+  conocido, un archivo liviano significa contenido sencillo —un plano fijo, un
+  fondo liso—, no pérdida de calidad: x264 no infla lo que no lo necesita.
+  Reprobar ahí mandaba un Reel perfecto a «Requiere revisión». De un proveedor
+  externo, cuyos ajustes no controlamos, sí se reprueba.
 - **El techo de duración por escena lo fija el MOTOR, no el gusto.** Pedirle
   5,33 s a un motor que entrega 5 o 10 obliga a generar un clip de 10 para usar
   la mitad: el doble de créditos y de espera. `distributeDurations` acota al
@@ -214,13 +233,30 @@ en `config` sin que el servidor los leyera.
 - **Los clips se generan MUDOS cuando hay banda sonora.** Dos pistas compitiendo
   suena peor que una bien puesta. El audio nativo del motor sólo se pide si no
   va a haber música del montaje.
-- **La fidelidad tiene TRES estados, no dos.** `ok`, `failed` y `unavailable`.
-  El control compara un fotograma del clip contra la foto original con un modelo
-  de visión, y **sólo puede correr si el proveedor entregó ese fotograma**. Sin
-  él, la ficha dice "fidelidad no comprobada". Dar por buena una escena que
-  nadie miró sería peor que decirlo. No se mide fotograma a fotograma ni se hace
-  OCR sobre el video: eso exige decodificarlo, y no hay ffmpeg. Misma limitación
-  y mismo criterio que en `outroQuality.js`.
+- **Los fotogramas se extraen del PROPIO clip** (v4.664). Hasta v4.663 la
+  comprobación dependía de que el proveedor entregara una portada, y Kling no la
+  manda: el resultado era «fidelidad no comprobada» en todas las escenas,
+  siempre. Depender de un dato opcional de un tercero para una comprobación
+  propia era el error. Se sacan **tres** por escena —inicio, medio y fin— porque
+  la deriva de un modelo generativo es progresiva: el primero casi siempre es
+  fiel y el último es donde el logotipo se rompe. La nota de la escena es la
+  **peor** de las tres, no la media.
+- **La fidelidad son DOS señales independientes.** Una estructural y
+  determinista (huella perceptual 16×16 + distancia de color, con sharp), y una
+  semántica (modelo de visión sobre una composición **lado a lado** con la foto
+  original — va lado a lado porque `generateCopy` acepta UNA imagen, y pegar las
+  dos es lo que permite comparar en vez de describir por separado). Si el modelo
+  no responde, la estructural sigue dando veredicto y la ficha dice que se hizo
+  sin él: la estructural detecta un reencuadre pero **no** un logotipo
+  redibujado en su mismo sitio, así que la diferencia es del usuario, no un
+  detalle interno.
+- **La fidelidad tiene TRES estados**: `ok`, `failed` y `unavailable`. Desde
+  v4.664 `unavailable` es raro y significa lo que dice — no se pudo mirar nada.
+- **El texto lo lee el modelo de visión, no un OCR dedicado.** Transcribe las
+  dos mitades y se comparan por palabras (`compareText`); por debajo del 50 % de
+  palabras conservadas se marca ilegible aunque el modelo no lo señale. No
+  añadir Tesseract: son decenas de MB en una función que ya empaqueta FFmpeg.
+  No llamarlo OCR clásico en la UI.
 - **Una escena que altera la marca o deja el texto ilegible se regenera sola**,
   por buena que sea su nota. Es exactamente lo que el módulo promete conservar.
   El resto se decide por la nota (`minFidelityScore`).
@@ -256,7 +292,9 @@ en `config` sin que el servidor los leyera.
 
 | Variable | Para qué |
 |---|---|
-| `REEL_RENDER_PROVIDER` | `shotstack` \| `creatomate` \| `json2video` |
+| `REEL_RENDER_PROVIDER` | `ffmpeg` (default) \| `shotstack` \| `creatomate` \| `json2video` |
+| `REEL_RENDER_FALLBACK` | Proveedor de respaldo si el principal falla |
+| `FFMPEG_PATH` | Apuntar a un ffmpeg del sistema en vez del empaquetado |
 | `SHOTSTACK_API_KEY` / `CREATOMATE_API_KEY` / `JSON2VIDEO_API_KEY` | Credencial del montaje |
 | `SHOTSTACK_ENV` | `stage` para el entorno de pruebas gratuito |
 | `REEL_DEFAULT_ENGINE` | Motor principal (default: `kling26`) |
@@ -266,9 +304,10 @@ en `config` sin que el servidor los leyera.
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
-se concatena al montaje —el sitio natural para engancharlo es `buildEditSpec`—;
-y los motores `runway_gen4` y `luma_ray2` están declarados con `available:false`
-porque necesitan su propio adaptador (hoy sólo existe el de KIE).
+se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
+clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
+están declarados con `available:false` porque necesitan su propio adaptador (hoy
+sólo existe el de KIE).
 
 ## Inscripciones a eventos / Feria de Proyectos — v4.648
 
