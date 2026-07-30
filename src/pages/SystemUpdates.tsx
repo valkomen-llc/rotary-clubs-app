@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.651.0 | 2026-07-30 (Pestaña Botones: vista previa de lo que ve el público con el motivo exacto si algo no aparece; corregida una categoría sin cupo calculado que se daba por agotada)
-// Cache bust: 2026-07-30a
+// UI V4.652.0 | 2026-07-30 (El botón de inscripción lo decide el idioma activo del sitio, no el país: es-CO → sólo Nacional, cualquier otro idioma → sólo Internacional, CADRES siempre; cambio inmediato sin recargar)
+// Cache bust: 2026-07-30b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.652.0',
+        title: 'El idioma del sitio decide el registro que se ofrece 🌐',
+        description: 'Corrige un comportamiento que generaba confusión en la ficha del evento: el botón de inscripción se elegía por el país desde el que se conectaba el visitante, de modo que alguien que estuviera navegando el sitio en inglés desde Colombia veía el botón de registro nacional con el valor en pesos, y al revés. A partir de ahora manda el idioma en que la persona está viendo el sitio, y sólo eso. Si el idioma activo es Español (Colombia), aparece únicamente "Registro Nacional" con el valor en pesos colombianos de la categoría Rotario Nacional. Si el idioma activo es English, Français, Deutsch, Italiano, Português o cualquier otro, aparece únicamente "International Registration" con el valor en dólares de la categoría Rotario Internacional. Nunca los dos a la vez, y nunca uno con el precio del otro. La exclusión es real, no cosmética: el botón que no corresponde no se esconde con estilos ni queda escondido en la página, sencillamente no llega al navegador. Es el servidor el que resuelve cuál toca y envía ese y nada más, de manera que ni el precio ni el nombre ni el enlace del otro registro existen en la página que recibe el visitante. El botón "CADRE Registration" es la excepción y se mantiene siempre visible debajo del principal, tanto para quien navega en español como para quien navega en cualquier otro idioma, con su propio precio y su propia moneda tal como estén configurados. El cambio de idioma se refleja al instante: al elegir otro idioma en el selector del encabezado, los botones, sus textos, sus precios y sus enlaces se actualizan solos, sin recargar la página. Se comprobó en un navegador real que al pasar de español a inglés el botón nacional desaparece de la página y aparece el internacional, y que al volver a español ocurre lo contrario, sin que la página se recargue en ningún momento. La ubicación geográfica deja de decidir y queda como lo que el cliente pidió que fuera: una sugerencia para escoger el idioma inicial. Sólo se consulta cuando no hay ningún idioma activo que mirar, por ejemplo si algo externo consulta la ficha sin decir en qué idioma está. En el panel, la pestaña Botones explica ahora esta regla y permite definir qué idiomas abren el registro nacional; los códigos de país quedan marcados como respaldo. La comparación de idiomas es exacta a propósito: es-MX o es-ES son visitantes de fuera y ven la experiencia internacional, porque el español de este sitio es el de Colombia.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'i18n', 'idiomas', 'segmentacion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.651.0',
         title: 'Vista previa de los botones de inscripción 👁️',

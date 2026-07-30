@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.651.0",
-  "cache_bust": "2026-07-30a (Pestana Botones: vista previa de lo que ve el publico, con el motivo exacto cuando un boton no aparece. Corrige que una categoria sin cupo calculado se diera por agotada y escondiera su boton. La ficha publica explica en consola por que no muestra botones.)",
+  "version": "4.652.0",
+  "cache_bust": "2026-07-30b (Los botones de inscripcion los decide el IDIOMA activo del sitio, no el pais: en Espanol (es-CO) solo aparece Registro Nacional en pesos; en cualquier otro idioma solo Registro Internacional en dolares. El que no corresponde no llega al navegador. CADRES siempre visible. El cambio de idioma actualiza los botones al instante, sin recargar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

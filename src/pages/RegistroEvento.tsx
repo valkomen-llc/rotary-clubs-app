@@ -30,10 +30,12 @@ import {
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
+import { useLang } from '../contexts/LanguageContext';
 import {
     money, validateStep, isFieldVisible, COUNTRY_SUGGESTIONS, COLOMBIA_DEPARTMENTS,
     type FormField, type FormStep, type PublicCategory, type Companion,
 } from '../lib/eventRegistrationSpec';
+import { localeOf } from '../components/EventRegistrationCta';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const BLUE = '#17458F';
@@ -192,6 +194,7 @@ const RegistroEvento = () => {
     const { club } = useClub();
     const [params] = useSearchParams();
     const navigate = useNavigate();
+    const { lang } = useLang();
 
     const [config, setConfig] = useState<RegistrationConfig | null>(null);
     const [loading, setLoading] = useState(true);
@@ -231,9 +234,9 @@ const RegistroEvento = () => {
         setLoading(true);
         const query = new URLSearchParams();
         if (lockedCategory) query.set('categoria', lockedCategory);
-        // El idioma que el visitante tiene puesto: el servidor lo usa para
-        // decidir la audiencia cuando no puede determinar el país.
-        if (typeof navigator !== 'undefined' && navigator.language) query.set('lang', navigator.language);
+        // El idioma activo del sitio, el mismo que decide los botones de la
+        // ficha. Aquí importa cuando se entra al asistente sin categoría fijada.
+        query.set('locale', localeOf(lang));
 
         fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`)
             .then(r => r.json())
@@ -246,7 +249,7 @@ const RegistroEvento = () => {
             })
             .catch(err => setError(err?.message || 'No pudimos cargar el registro de este evento.'))
             .finally(() => setLoading(false));
-    }, [clubId, eventRef, lockedCategory]);
+    }, [clubId, eventRef, lockedCategory, lang]);
 
     // ── Regreso desde Stripe ─────────────────────────────────────────
     useEffect(() => {

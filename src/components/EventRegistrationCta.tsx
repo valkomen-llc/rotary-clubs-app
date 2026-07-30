@@ -1,21 +1,25 @@
 // ════════════════════════════════════════════════════════════════════
-// Botones de inscripción de la ficha del evento — v4.650.0
+// Botones de inscripción de la ficha del evento — v4.652.0
 //
 // Dos botones, no un formulario con tres opciones:
 //
-//   · El **principal** cambia según quien mire: "Registro Nacional" para quien
-//     entra desde Colombia o con el sitio en español de Colombia, y "Registro
-//     Internacional" para el resto.
-//   · Debajo, **Registro CADRES**, visible siempre para ambos.
+//   · El **principal** lo decide el IDIOMA ACTIVO del sitio: con el sitio en
+//     Español (Colombia) es "Registro Nacional", en pesos; en cualquier otro
+//     idioma es "Registro Internacional", en dólares. Nunca los dos.
+//   · Debajo, **Registro CADRES**, visible siempre en ambos casos.
+//
+// El botón que no corresponde **no llega al navegador**: el servidor resuelve
+// cuál toca y devuelve sólo ese. No se oculta con CSS ni queda en el DOM.
 //
 // Cada botón abre el formulario de SU categoría, ya elegida y bloqueada
 // (`/registro?categoria=…`). El servidor, al recibir esa clave, devuelve
 // únicamente esa categoría: quien entra por el registro internacional no
 // recibe ni ve precios, campos ni mensajes del nacional, y al revés.
 //
-// La detección la hace el servidor (país por cabecera de red, y si no se puede,
-// idioma). Es sólo una sugerencia: los dos caminos siguen a un clic de
-// distancia desde esta misma ficha.
+// La geolocalización ya NO decide (v4.652). Manda el idioma que el visitante
+// tiene puesto: si está en Colombia y cambia a inglés, ve el internacional; si
+// está fuera y cambia a español, ve el nacional. El cambio es inmediato, sin
+// recargar.
 //
 // Qué botones existen, con qué texto, en qué orden y a qué categoría apuntan lo
 // decide el administrador en la pestaña Registro del evento.
@@ -49,21 +53,40 @@ export interface EventCta {
 }
 
 /**
+ * Idioma activo del sitio, en forma de locale completo.
+ *
+ * El selector del sitio ofrece un solo español, y es el de Colombia (su bandera
+ * lo dice), así que `es` se manda como `es-CO`. Los demás van tal cual.
+ */
+export const localeOf = (lang: string): string => (lang === 'es' ? 'es-CO' : lang || 'es-CO');
+
+/**
  * Trae los botones del evento. Devuelve `null` mientras carga o si el evento
  * no tiene inscripciones abiertas, para que la ficha siga mostrando lo que
  * tenía configurado el administrador.
+ *
+ * **Se vuelve a consultar cada vez que cambia el idioma activo.** Es lo que
+ * hace que los botones, sus textos, sus precios y sus enlaces se actualicen al
+ * vuelo al cambiar de idioma, sin recargar la página: `lang` está en las
+ * dependencias del efecto.
  */
-export const useEventCta = (clubId?: string, eventRef?: string) => {
+export const useEventCta = (clubId?: string, eventRef?: string, lang?: string) => {
     const [cta, setCta] = useState<EventCta | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!clubId || !eventRef) return;
         let cancelled = false;
+        // Al cambiar de idioma se descarta lo anterior antes de pedir lo nuevo:
+        // así no queda ni un fotograma con el botón del idioma que se acaba de
+        // abandonar.
+        setCta(null);
+        setLoading(true);
         const query = new URLSearchParams();
-        // El idioma del visitante: el servidor lo usa cuando no puede
-        // determinar el país desde la red.
-        if (typeof navigator !== 'undefined' && navigator.language) query.set('lang', navigator.language);
+        // El idioma ACTIVO del sitio decide qué registro se ofrece. No se manda
+        // el del navegador: lo que vale es lo que el visitante tiene puesto en
+        // el selector, aunque su navegador o su país digan otra cosa.
+        query.set('locale', localeOf(String(lang || '')));
 
         fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`)
             .then(r => r.json())
@@ -88,7 +111,7 @@ export const useEventCta = (clubId?: string, eventRef?: string) => {
             .finally(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [clubId, eventRef]);
+    }, [clubId, eventRef, lang]);
 
     return { cta, loading };
 };

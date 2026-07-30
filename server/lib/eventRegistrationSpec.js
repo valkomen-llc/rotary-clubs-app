@@ -559,6 +559,24 @@ export const categoryWindow = (category, now = new Date()) => {
 export const DEFAULT_NATIONAL_COUNTRIES = ['CO'];
 
 /**
+ * Idiomas del sitio que corresponden a la experiencia nacional.
+ *
+ * En este sitio el español ES el español de Colombia —el selector muestra una
+ * sola opción «Español» con la bandera colombiana—, así que `es` y `es-CO` son
+ * lo mismo. La comparación es EXACTA a propósito: `es-MX` o `es-ES` son
+ * visitantes de fuera y deben ver la experiencia internacional.
+ */
+export const DEFAULT_NATIONAL_LOCALES = ['es', 'es-CO'];
+
+/** ¿Este idioma activo corresponde a la experiencia nacional? */
+export const isNationalLocale = (locale, nationalLocales = DEFAULT_NATIONAL_LOCALES) => {
+    const value = String(locale || '').trim().toLowerCase();
+    if (!value) return false;
+    return (nationalLocales.length ? nationalLocales : DEFAULT_NATIONAL_LOCALES)
+        .some(l => String(l).trim().toLowerCase() === value);
+};
+
+/**
  * Botones por defecto, deducidos de las categorías que tenga el evento.
  *
  * Se arman por `audience`, NO por el nombre ni por la clave: el administrador
@@ -630,6 +648,12 @@ export const normalizeCtaConfig = (raw = {}, categories = []) => {
             ? raw.nationalCountries
             : DEFAULT_NATIONAL_COUNTRIES)
             .map(c => String(c || '').toUpperCase().slice(0, 2)).filter(Boolean),
+        // Idiomas del sitio que abren la experiencia nacional. Es lo que decide
+        // el botón principal; los países ya sólo sirven de respaldo.
+        nationalLocales: (Array.isArray(raw.nationalLocales) && raw.nationalLocales.length
+            ? raw.nationalLocales
+            : DEFAULT_NATIONAL_LOCALES)
+            .map(l => String(l || '').trim().slice(0, 10)).filter(Boolean),
     };
 };
 
@@ -637,31 +661,53 @@ export const normalizeCtaConfig = (raw = {}, categories = []) => {
  * Decide si a quien mira la ficha se le ofrece el registro nacional o el
  * internacional.
  *
- * El país manda cuando se conoce —lo entrega la red de Vercel en la cabecera
- * `x-vercel-ip-country`—. Si no se conoce, decide el idioma, tal como pidió el
- * cliente. Y es sólo una SUGERENCIA: el botón de la otra categoría sigue
- * disponible desde la ficha, no se le cierra la puerta a nadie.
+ * **Manda el idioma activo del sitio, siempre.** Si el visitante está viendo el
+ * sitio en Español (Colombia) ve el registro nacional; en cualquier otro idioma
+ * —English, Français, Deutsch, Italiano, Português…— ve el internacional. Y sólo
+ * uno de los dos: nunca los dos a la vez.
+ *
+ * La geolocalización quedó relegada a lo que pidió el cliente: una **sugerencia
+ * inicial** para escoger el idioma. En cuanto hay idioma activo —y el navegador
+ * siempre lo manda— el país deja de intervenir. Hasta v4.651 era al revés, y por
+ * eso un visitante con el sitio en inglés desde Colombia veía el botón nacional.
+ *
+ * El orden es: idioma activo del sitio → idioma del navegador → país → default.
+ * Los tres últimos sólo actúan cuando no llega el primero (por ejemplo, si algo
+ * consulta la API sin decir en qué idioma está el sitio).
  */
-export const resolveAudienceHint = ({ countryCode, languages = [], config = {} } = {}) => {
-    const national = config.nationalCountries?.length ? config.nationalCountries : DEFAULT_NATIONAL_COUNTRIES;
-    const country = String(countryCode || '').toUpperCase().slice(0, 2);
+export const resolveAudienceHint = ({ locale, countryCode, languages = [], config = {} } = {}) => {
+    const nationalLocales = config.nationalLocales?.length ? config.nationalLocales : DEFAULT_NATIONAL_LOCALES;
 
+    // 1. Idioma activo del sitio: decisión final, sin excepciones.
+    const active = String(locale || '').trim();
+    if (active) {
+        return {
+            audience: isNationalLocale(active, nationalLocales) ? 'national' : 'international',
+            source: 'locale',
+            locale: active,
+        };
+    }
+
+    // 2. Idioma del navegador, si el sitio no dijo el suyo.
+    for (const tag of languages.map(l => String(l || '').trim()).filter(Boolean)) {
+        return {
+            audience: isNationalLocale(tag, nationalLocales) ? 'national' : 'international',
+            source: 'browser_language',
+            locale: tag,
+        };
+    }
+
+    // 3. País, como último recurso antes del default.
+    const nationalCountries = config.nationalCountries?.length ? config.nationalCountries : DEFAULT_NATIONAL_COUNTRIES;
+    const country = String(countryCode || '').toUpperCase().slice(0, 2);
     if (country) {
         return {
-            audience: national.includes(country) ? 'national' : 'international',
+            audience: nationalCountries.includes(country) ? 'national' : 'international',
             source: 'country',
             countryCode: country,
         };
     }
 
-    // Sin país: manda el idioma. "es-CO" es nacional; cualquier otro español
-    // (es-MX, es-ES) es de fuera, igual que un idioma distinto del español.
-    const tags = languages.map(l => String(l || '').toLowerCase()).filter(Boolean);
-    for (const tag of tags) {
-        if (tag === 'es-co') return { audience: 'national', source: 'language', language: tag };
-        if (tag.startsWith('es')) return { audience: 'international', source: 'language', language: tag };
-        if (/^[a-z]{2}/.test(tag)) return { audience: 'international', source: 'language', language: tag };
-    }
     return { audience: 'international', source: 'fallback' };
 };
 
@@ -868,7 +914,8 @@ export default {
     buildFormSchema, flattenFields, isFieldVisible, validateAnswers,
     COMPANION_FIELDS, validateCompanion,
     CATEGORY_BLUEPRINTS, normalizeCategory, categoryWindow, tariffVersionOf,
-    DEFAULT_NATIONAL_COUNTRIES, defaultCtaButtons, normalizeCtaConfig,
+    DEFAULT_NATIONAL_COUNTRIES, DEFAULT_NATIONAL_LOCALES, isNationalLocale,
+    defaultCtaButtons, normalizeCtaConfig,
     resolveAudienceHint, resolveCtaButtons,
     resolveRate, resolveCharge,
     parseRomanEdition, parseLocation, buildCodePrefix, randomCodeSuffix, buildRegistrationCode,
