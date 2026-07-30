@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.652.0 | 2026-07-30 (El botón de inscripción lo decide el idioma activo del sitio, no el país: es-CO → sólo Nacional, cualquier otro idioma → sólo Internacional, CADRES siempre; cambio inmediato sin recargar)
-// Cache bust: 2026-07-30b
+// UI V4.653.0 | 2026-07-30 (La sección pública de Eventos puede llevar directo a un evento en vez de mostrar el calendario; se elige desde el panel)
+// Cache bust: 2026-07-30c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.653.0',
+        title: 'La sección de Eventos puede llevar directo al evento 🔗',
+        description: 'Un sitio dedicado a un solo evento no necesita un calendario: quien entra a la sección de Eventos ve una lista con una sola tarjeta y tiene que dar un clic de más para llegar a donde quería. A partir de esta versión se puede hacer que esa sección lleve directamente a la ficha del evento. La opción está en el panel, en Eventos, arriba del listado: un desplegable llamado "Sección pública de Eventos" donde se elige entre mostrar el calendario, que es como funcionaba hasta ahora y sigue siendo lo predeterminado, o ir directo a cualquiera de los eventos publicados. Al elegir un evento se guarda solo, sin botón aparte, y la pantalla confirma a qué dirección quedó apuntando. Con la opción activa, cualquier persona que entre a la dirección de eventos —desde el menú, desde un enlace compartido o escribiéndola— llega directamente a la ficha del evento elegido, con toda su información, su cuenta regresiva y sus botones de inscripción. El calendario deja de mostrarse, pero no se pierde nada: los demás eventos siguen siendo accesibles por su propia dirección, y basta con volver el desplegable a "Mostrar el calendario" para tenerlo de vuelta tal como estaba. La redirección conserva el historial de navegación limpio, de modo que el botón "atrás" del navegador lleva a la página anterior y no rebota entre el calendario y la ficha. Un detalle importante para las plataformas con varios sitios: la configuración se guarda atada al sitio que la define y nunca de forma global, así que activar la redirección en un sitio no afecta a ninguno de los demás.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'sitio-publico', 'navegacion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.652.0',
         title: 'El idioma del sitio decide el registro que se ofrece 🌐',
