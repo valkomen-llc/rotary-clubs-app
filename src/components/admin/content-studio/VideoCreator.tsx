@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — pantalla
-// v4.664.0
+// v4.665.0
 //
 // Tres pantallas en una, según dónde esté el Reel:
 //
@@ -431,6 +431,12 @@ const VideoCreator: React.FC = () => {
                             <Loader2 className="w-3.5 h-3.5 animate-spin" /> Revisando la calidad de las fotos...
                         </p>
                     )}
+                    {options?.expansion?.available && selectedMedia.length === SCENE_COUNT && (
+                        <p className="mt-4 text-[11px] font-bold text-indigo-500 flex items-start gap-2">
+                            <Wand2 className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                            Las fotos que no estén en {config.format} se adaptan con IA generando el lienzo que falta, sin recortar.
+                        </p>
+                    )}
                     {preflight && preflight.warnings.length > 0 && (
                         <div className="mt-4 bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1.5">
                             <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-1.5">
@@ -694,6 +700,7 @@ const ReelHeader: React.FC<{ reel: Reel; onStartOver: () => void }> = ({ reel, o
 const STAGES: { id: string; label: string }[] = [
     { id: 'analyzing', label: 'Analizando fotos' },
     { id: 'directing', label: 'Narrativa' },
+    { id: 'expanding', label: 'Adaptando al formato' },
     { id: 'generating', label: 'Generando escenas' },
     { id: 'scoring', label: 'Mezclando música' },
     { id: 'assembling', label: 'Montando Reel' },
@@ -765,6 +772,16 @@ const ProgressPanel: React.FC<{ reel: Reel }> = ({ reel }) => {
                             <p className="text-[10px] font-bold text-gray-400 mt-1">
                                 {scene.durationSec}s · {scene.styleLabel}
                             </p>
+                            {scene.status === 'expanding' && (
+                                <p className="text-[10px] font-bold text-indigo-500 mt-1 flex items-center gap-1">
+                                    <Wand2 className="w-3 h-3" /> Adaptando imagen al formato Reel...
+                                </p>
+                            )}
+                            {scene.expandedImageUrl && scene.status !== 'expanding' && (
+                                <p className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" /> Imagen adaptada mediante IA
+                                </p>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -985,7 +1002,7 @@ const SceneRow: React.FC<{
                             onMouseLeave={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                             poster={scene.posterUrl || scene.sourceImageUrl}
                             className="w-full h-full object-cover" />
-                        : <img src={scene.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" />}
+                        : <img src={scene.animationSourceUrl || scene.sourceImageUrl} alt="" className="w-full h-full object-cover opacity-60" />}
                     <span className="absolute top-1 left-1 text-[8px] font-black text-white/80 bg-black/60 px-1.5 py-0.5 rounded-full">
                         {scene.position + 1}
                     </span>
@@ -999,6 +1016,22 @@ const SceneRow: React.FC<{
                     </div>
                     {scene.analysis?.summary && (
                         <p className="text-[11px] font-medium text-gray-500 mt-0.5 truncate">{scene.analysis.summary}</p>
+                    )}
+
+                    {/* Adaptación del lienzo. Sólo se dice algo cuando pasó
+                        algo: una foto que ya venía vertical no genera ruido. */}
+                    {scene.expandedImageUrl && (
+                        <p className="text-[10px] font-bold text-indigo-600 mt-1 flex items-start gap-1">
+                            <Wand2 className="w-3 h-3 flex-shrink-0 mt-px" />
+                            Imagen adaptada mediante IA
+                            {scene.expansionReport?.verification?.preservation != null &&
+                                ` · ${Math.round(scene.expansionReport.verification.preservation * 100)} % del original conservado`}
+                            {scene.expansionReport?.generatedFraction != null &&
+                                ` · ${Math.round(scene.expansionReport.generatedFraction * 100)} % de lienzo nuevo`}
+                        </p>
+                    )}
+                    {scene.expansionReport?.failed && scene.expansionReport.reason && (
+                        <p className="text-[10px] font-bold text-amber-700 mt-1">{scene.expansionReport.reason}</p>
                     )}
 
                     {/* Fidelidad. Tres estados y se nombra CÓMO se comprobó: la

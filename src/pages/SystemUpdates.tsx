@@ -24,9 +24,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.664.0 | 2026-07-30 (Montaje automático con FFmpeg + fidelidad sobre fotogramas extraídos)
-// Cache bust: 2026-07-30o
+// UI V4.665.0 | 2026-07-30 (Expansión Inteligente: fotos horizontales adaptadas al formato del Reel)
+// Cache bust: 2026-07-30p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.665.0',
+        title: 'Expansión Inteligente: las fotos horizontales ya sirven para Reels 🖼️',
+        description: 'Hasta ahora, elegir una fotografía apaisada para un Reel significaba perder los bordes: los motores de video heredan la proporción de la imagen, así que el montaje tenía que recortar los lados —justo donde suelen estar las personas de los extremos—. Ahora, antes de animar, la IA amplía el lienzo generando lo que falta arriba y abajo, con la misma filosofía que ya usa el Generador de Publicaciones. La foto original no se recorta ni se deforma: se continúa. Antes de ampliar, el sistema mira la fotografía para saber cómo seguirla —si hay cielo continúa el cielo, si hay césped continúa el césped, si es un salón continúa techo y paredes— y nombra los elementos que no puede tocar: rostros, logotipos, textos, productos. Una foto que ya está en formato vertical no se toca en absoluto.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'imagenes'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Las fotos horizontales y cuadradas se adaptan al formato del Reel generando el lienzo que falta.' },
+            { type: 'added', text: 'Antes de ampliar se analiza la escena para continuarla con coherencia: cielo, suelo, paredes, vegetación.' },
+            { type: 'added', text: 'Nueva etapa «Adaptando al formato» en la barra de progreso, con aviso por escena.' },
+            { type: 'added', text: 'La conservación del original se mide y, si no llega al umbral, la adaptación se rehace sola.' },
+            { type: 'improved', text: 'Una foto que ya está en el formato del Reel no se toca ni gasta créditos.' },
+            { type: 'improved', text: 'Se conservan la foto original y la adaptada por separado, para poder comparar y volver atrás.' }
+        ],
+        details: [
+            'La medición de conservación se hace SOBRE LA REGIÓN donde vive la foto original dentro del lienzo nuevo. Comparar las imágenes enteras daría siempre una nota baja, porque el lienzo añadido es contenido nuevo y debe serlo.',
+            'No se usa máscara ni se pega la foto original encima del resultado: las dos técnicas se probaron antes en la plataforma y se descartaron —la máscara duplicaba el contenido en mosaico y el pegado se veía como un montaje—. Por eso el módulo no promete conservación: la mide y la muestra en porcentaje.',
+            'Una fotografía demasiado panorámica se rechaza con una explicación en vez de intentar una ampliación que ningún modelo sostiene.'
+        ]
+    },
     {
         version: '4.664.0',
         title: 'El Reel ya se monta solo 🎬',

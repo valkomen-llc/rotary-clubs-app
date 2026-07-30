@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.664
+## Creador de Reels IA — v4.665
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -182,6 +182,7 @@ en `config` sin que el servidor los leyera.
 | `server/lib/reelDirector.js` | Mira las tres fotos y decide orden, ritmo, estilo por escena y música |
 | `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: FFmpeg local + Shotstack, Creatomate, JSON2Video |
 | `server/lib/reelFfmpeg.js` | Compositor local: extracción de fotogramas, conformado y montaje |
+| `server/lib/canvasExpansion.js` | AI Canvas Expansion: adapta el lienzo de una foto al formato antes de animarla |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
 | `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
@@ -191,6 +192,32 @@ en `config` sin que el servidor los leyera.
 
 **Reglas durables:**
 
+- **El lienzo se adapta ANTES de animar, y sólo si hace falta** (v4.665,
+  `canvasExpansion.js`). Los motores image-to-video heredan la proporción de la
+  imagen: una foto apaisada da un clip apaisado que el montaje tenía que
+  recortar, perdiendo los bordes. `planExpansion` compara proporciones y una
+  foto que ya está en formato **no se toca** — es lo más importante que hace ese
+  paso: no gastar créditos ni arriesgar deriva sin motivo.
+- **La expansión NO usa máscara ni composite.** Es la misma técnica de
+  `buildSimplePrompt` en el Generador de Publicaciones: regeneración completa
+  con `aspectRatio` y los elementos a conservar NOMBRADOS en el prompt. Las dos
+  alternativas están descartadas por experiencia propia y siguen descartadas:
+  la máscara grande duplicaba en mosaico (v4.317-v4.320) y el composite del
+  original lo rechazó el cliente dos veces (v4.323-v4.324, «se ve overlay»).
+- **Por eso no se PROMETE preservación: se MIDE.** Sin composite no hay 100 %
+  garantizado. `verifyExpansion` recorta del lienzo nuevo la región donde vive
+  la foto original y la compara con `structuralCompare`; por debajo de
+  `EXPANSION_MIN_PRESERVATION` la adaptación se rehace sola. **La comparación
+  tiene que ser sobre esa región y sólo sobre ella**: comparar las imágenes
+  enteras daría una nota baja siempre, porque el lienzo añadido es contenido
+  nuevo y debe serlo. La UI muestra el porcentaje, no una promesa.
+- **La foto original nunca se pisa.** `sourceImageUrl` sigue apuntando a ella y
+  la adaptada vive en `expandedImageUrl`; `animationSourceOf` es el ÚNICO sitio
+  donde se decide cuál se anima. Cambiar la foto de una escena descarta su
+  adaptación, porque la anterior ya no describe nada.
+- **Una foto demasiado panorámica se rechaza con motivo** (`maxGrowth`), no se
+  intenta. Por encima de ~3× de crecimiento ningún modelo sostiene la
+  coherencia, y entregar un lienzo inventado es peor que pedir otra foto.
 - **Una tarea de video POR ESCENA.** Es la corrección de fondo del módulo
   anterior. Los modelos image-to-video reciben UNA imagen; mandarles un array
   de tres no produce tres clips. Nunca volver a agrupar.
@@ -302,6 +329,10 @@ en `config` sin que el servidor los leyera.
 | `REEL_ENGINE_VEO3_ENABLED`, `REEL_ENGINE_MINIMAX_ENABLED` | Habilitar motores tras verificar su id |
 | `REEL_MUSIC_PROVIDER`, `REEL_MUSIC_MODEL` | Fuente y modelo de la banda sonora |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
+| `EXPANSION_PROVIDER`, `EXPANSION_MODEL_*` | Motor de la Expansión Inteligente y sus ids |
+| `EXPANSION_MIN_PRESERVATION` | Conservación mínima del original (0-1, default 0.82) |
+| `EXPANSION_CREATIVITY`, `EXPANSION_MAX_GROWTH`, `EXPANSION_TOLERANCE` | Cuánto puede inventar, cuánto crecer y cuándo no tocar la foto |
+| `EXPANSION_MAX_RETRIES`, `EXPANSION_AUTO_REGENERATE` | Reintentos cuando la medición no llega al umbral |
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su

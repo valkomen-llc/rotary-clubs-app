@@ -279,6 +279,70 @@ export const pollKieImageTask = async (taskId, { maxWaitMs = 100_000, intervalMs
     throw new Error(`KIE task timeout después de ${maxWaitMs}ms (último state: ${lastState})`);
 };
 
+
+// Consulta puntual del estado de una tarea de IMAGEN, sin bucle. Es el gemelo
+// de `getKieVideoTask`, y existe por el mismo motivo (v4.665): el Creador de
+// Reels expande el lienzo de las fotos apaisadas ANTES de animarlas, y un job
+// de imagen tarda 30-60 s. Esperarlo dentro del request con `pollKieImageTask`
+// se comería el presupuesto de la función tres veces seguidas — una por foto.
+// Acá el que llama decide cuándo volver a preguntar.
+//
+// Devuelve { state: 'queued'|'running'|'success'|'failed', imageUrl, failMsg, raw }.
+export const getKieImageTask = async (taskId) => {
+    const apiKey = process.env.KIE_API_KEY;
+    if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    const response = await fetch(
+        `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+        { headers: { 'Authorization': `Bearer ${apiKey}` } }
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(`KIE recordInfo (imagen) falló: HTTP ${response.status} ${JSON.stringify(data).slice(0, 400)}`);
+    }
+    if (data.code && data.code !== 200) {
+        throw new Error(`KIE recordInfo (imagen): ${data.msg || data.message || JSON.stringify(data).slice(0, 400)}`);
+    }
+
+    const state = String(data.data?.state || data.state || data.data?.status || data.status || '').toLowerCase();
+
+    if (state === 'success' || state === 'completed') {
+        let resultObj = {};
+        const rj = data.data?.resultJson ?? data.data?.result;
+        if (typeof rj === 'string' && rj.length > 0) {
+            try { resultObj = JSON.parse(rj); } catch { resultObj = {}; }
+        } else if (rj && typeof rj === 'object') {
+            resultObj = rj;
+        }
+        const output = data.data?.output || data.output || {};
+        const candidate = Object.keys(resultObj).length ? resultObj : output;
+
+        const urls = candidate.resultUrls
+            || candidate.image_urls || candidate.imageUrls || candidate.images
+            || candidate.result_urls
+            || (candidate.image_url ? [candidate.image_url] : null)
+            || (candidate.imageUrl ? [candidate.imageUrl] : null)
+            || (candidate.result_url ? [candidate.result_url] : null)
+            || (candidate.resultUrl ? [candidate.resultUrl] : null);
+        const imageUrl = Array.isArray(urls) ? urls[0] : urls;
+
+        if (!imageUrl) {
+            return { state: 'failed', imageUrl: null, failMsg: `KIE terminó sin URL de imagen: ${JSON.stringify(data).slice(0, 400)}`, raw: data };
+        }
+        return { state: 'success', imageUrl, failMsg: null, raw: data };
+    }
+
+    if (state === 'fail' || state === 'failed' || state === 'error') {
+        const reason = data.data?.failMsg || data.data?.fail_msg
+            || data.data?.error?.message || data.data?.message
+            || data.message || JSON.stringify(data).slice(0, 400);
+        return { state: 'failed', imageUrl: null, failMsg: reason, raw: data };
+    }
+
+    return { state: state === 'queuing' || state === 'queued' ? 'queued' : 'running', imageUrl: null, failMsg: null, raw: data };
+};
+
 // Download the final image produced by KIE into a Buffer so we can re-upload it to our
 // own S3 bucket (the KIE-hosted URL is ephemeral and not under our control).
 export const fetchKieImageBuffer = async (kieImageUrl) => {
