@@ -33,7 +33,7 @@ const EXPECTED_TABLES = ['ReelProject', 'ReelScene'];
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
-const EXPECTED_COLUMNS = [['ReelScene', 'frames']];
+const EXPECTED_COLUMNS = [['ReelScene', 'frames'], ['ReelScene', 'expandedImageUrl']];
 
 export async function ensureReelSchema() {
     if (_ready) return;
@@ -155,6 +155,18 @@ export async function ensureReelSchema() {
             "sourceMediaId" TEXT,
             "sourceReport" JSONB,
 
+            -- Adaptación del lienzo al formato del Reel (v4.665). La foto
+            -- ORIGINAL nunca se pisa: sourceImageUrl sigue apuntando a ella y
+            -- la adaptada vive aparte. Es lo que permite comparar las dos,
+            -- rehacer la adaptación y volver atrás.
+            "expandedImageUrl" TEXT,
+            "expandedS3Key" TEXT,
+            "expansionTaskId" TEXT,
+            "expansionProvider" TEXT,
+            "expansionPrompt" TEXT,
+            "expansionReport" JSONB,
+            "expansionAttempts" INTEGER NOT NULL DEFAULT 0,
+
             -- Dirección de esta escena
             style TEXT,
             "transitionOut" TEXT,
@@ -200,6 +212,15 @@ export async function ensureReelSchema() {
         );
 
         ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS frames JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expandedImageUrl" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expandedS3Key" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionTaskId" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionProvider" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionPrompt" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionReport" JSONB;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionAttempts" INTEGER NOT NULL DEFAULT 0;
+
+        CREATE INDEX IF NOT EXISTS "ReelScene_expansionTask_idx" ON "ReelScene"("expansionTaskId");
 
         CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);
         CREATE INDEX IF NOT EXISTS "ReelScene_kieJobId_idx"  ON "ReelScene"("kieJobId");

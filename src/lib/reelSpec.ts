@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — espejo en el navegador
-// v4.664.0
+// v4.665.0
 //
 // Los CATÁLOGOS (motores, estilos, transiciones, música, formatos) NO se
 // duplican aquí: se piden a `GET /api/content-studio/reels/options`, para que
@@ -19,12 +19,12 @@ export const MIN_SCENE_SEC = 4;
 export const MAX_SCENE_SEC = 6;
 
 export type ReelStatus =
-    | 'draft' | 'analyzing' | 'directing' | 'generating'
+    | 'draft' | 'analyzing' | 'directing' | 'expanding' | 'generating'
     | 'scoring' | 'assembling' | 'validating'
     | 'ready' | 'needs_review' | 'error';
 
 export type SceneStatus =
-    | 'pending' | 'generating' | 'rendering' | 'validating'
+    | 'pending' | 'expanding' | 'generating' | 'rendering' | 'validating'
     | 'ready' | 'needs_review' | 'error';
 
 export interface QualityReport {
@@ -85,6 +85,25 @@ export interface SceneAnalysis {
     riskNotes: string[];
 }
 
+// Adaptación del lienzo al formato del Reel. `action:'skip'` significa que la
+// foto ya estaba en formato y no se tocó, que es el buen caso.
+export interface ExpansionReport {
+    action?: 'skip' | 'expand';
+    ok?: boolean;
+    failed?: boolean;
+    reason?: string;
+    orientation?: string;
+    grows?: 'vertical' | 'horizontal';
+    growth?: number;
+    generatedFraction?: number;
+    sourceWidth?: number;
+    sourceHeight?: number;
+    state?: string;
+    analysis?: { photoType?: string; warnings?: string[]; protect?: string[] };
+    verification?: { preservation: number | null; structure: number | null; colour: number | null; width: number | null; height: number | null };
+    judgement?: { verdict: 'ok' | 'failed' | 'unverified'; reason: string };
+}
+
 export interface ReelScene {
     id: string;
     projectId: string;
@@ -92,6 +111,11 @@ export interface ReelScene {
     sourceIndex: number;
     sourceImageUrl: string;
     sourceMediaId: string | null;
+    expandedImageUrl?: string | null;
+    animationSourceUrl?: string | null;
+    expansionProvider?: string | null;
+    expansionReport?: ExpansionReport | null;
+    expansionAttempts?: number;
     style: string | null;
     styleLabel: string | null;
     transitionOut: string | null;
@@ -208,6 +232,15 @@ export interface ReelOptions {
         available: boolean;
         candidates: { id: string; label: string; available: boolean; envKey: string; note?: string }[];
         unavailableReason: string | null;
+    };
+    expansion: {
+        available: boolean;
+        provider: string;
+        providerLabel: string | null;
+        providers: { id: string; label: string; available: boolean; isDefault: boolean; preservation: number; note?: string }[];
+        photoTypes: { id: string; label: string }[];
+        settings: Record<string, number | string | boolean>;
+        note: string;
     };
     timing: { sceneCount: number; targetTotalSec: number; minSceneSec: number; maxSceneSec: number };
     usage: { spent: number; generations: number; limit: number | null; remaining: number | null; exceeded: boolean };

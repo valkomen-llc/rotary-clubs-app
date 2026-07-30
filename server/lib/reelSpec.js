@@ -423,15 +423,19 @@ export const MUSIC_FADE_SEC = 1.0;
 // de verdad: generar los tres clips es la mayor parte del tiempo.
 export const REEL_STATUSES = {
     draft:       { label: 'Borrador',              terminal: false, weight: 0,    order: 0 },
-    analyzing:   { label: 'Analizando imágenes',   terminal: false, weight: 0.08, order: 1 },
-    directing:   { label: 'Construyendo narrativa', terminal: false, weight: 0.05, order: 2 },
-    generating:  { label: 'Generando escenas',     terminal: false, weight: 0.52, order: 3 },
-    scoring:     { label: 'Componiendo música',    terminal: false, weight: 0.10, order: 4 },
-    assembling:  { label: 'Montando el Reel',      terminal: false, weight: 0.18, order: 5 },
-    validating:  { label: 'Exportando',            terminal: false, weight: 0.07, order: 6 },
-    ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 7 },
-    needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 7 },
-    error:       { label: 'Error de montaje',      terminal: true,  weight: 0,    order: 7 }
+    analyzing:   { label: 'Analizando imágenes',   terminal: false, weight: 0.06, order: 1 },
+    directing:   { label: 'Construyendo narrativa', terminal: false, weight: 0.04, order: 2 },
+    // Adaptación del lienzo al formato del Reel. Sólo actúa sobre las fotos que
+    // no vienen ya en la proporción pedida; con las tres verticales, la etapa
+    // se atraviesa sin gastar nada.
+    expanding:   { label: 'Adaptando imágenes',    terminal: false, weight: 0.14, order: 3 },
+    generating:  { label: 'Generando escenas',     terminal: false, weight: 0.42, order: 4 },
+    scoring:     { label: 'Componiendo música',    terminal: false, weight: 0.09, order: 5 },
+    assembling:  { label: 'Montando el Reel',      terminal: false, weight: 0.18, order: 6 },
+    validating:  { label: 'Exportando',            terminal: false, weight: 0.07, order: 7 },
+    ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 8 },
+    needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 8 },
+    error:       { label: 'Error de montaje',      terminal: true,  weight: 0,    order: 8 }
 };
 
 // Estados de una escena individual. Una escena puede regenerarse sola sin
@@ -441,6 +445,7 @@ export const REEL_STATUSES = {
 // confundirlas es lo que hacía parecer que el módulo estaba parado.
 export const SCENE_STATUSES = {
     pending:    { label: 'Pendiente',            terminal: false },
+    expanding:  { label: 'Adaptando al formato', terminal: false },
     generating: { label: 'Generando',            terminal: false },
     rendering:  { label: 'Renderizando',         terminal: false },
     validating: { label: 'Validando fidelidad',  terminal: false },
@@ -680,9 +685,9 @@ export const computeProgress = (status, { scenesReady = 0, scenesTotal = SCENE_C
     for (const st of Object.values(REEL_STATUSES)) {
         if (st.order < order) progress += st.weight;
     }
-    // Dentro de "generando escenas", el avance es cuántas terminaron.
-    if (status === 'generating' && scenesTotal > 0) {
-        progress += REEL_STATUSES.generating.weight * (scenesReady / scenesTotal);
+    // Dentro de las etapas por escena, el avance es cuántas terminaron.
+    if ((status === 'generating' || status === 'expanding') && scenesTotal > 0) {
+        progress += REEL_STATUSES[status].weight * (scenesReady / scenesTotal);
     }
     return Number(Math.min(0.99, progress).toFixed(3));
 };

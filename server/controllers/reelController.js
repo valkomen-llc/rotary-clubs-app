@@ -55,12 +55,19 @@ import {
 } from '../lib/reelRenderProviders.js';
 import { extractFrames, isFfmpegAvailable } from '../lib/reelFfmpeg.js';
 import {
+    EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
+    EXPANSION_SETTINGS, PHOTO_TYPES,
+    planExpansion, analyzeForExpansion, buildExpansionPrompt,
+    startExpansion, pollExpansion, fetchExpandedImage,
+    verifyExpansion, judgeExpansion
+} from '../lib/canvasExpansion.js';
+import {
     MUSIC_PROVIDERS, DEFAULT_MUSIC_PROVIDER, isMusicProviderAvailable,
     startSoundtrack, pollSoundtrack, fetchAudioBuffer
 } from '../lib/reelMusic.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 
-export const REEL_MODULE_VERSION = '4.664.0';
+export const REEL_MODULE_VERSION = '4.665.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -164,6 +171,13 @@ const sceneToDto = (row) => ({
     sourceImageUrl: row.sourceImageUrl,
     sourceMediaId: row.sourceMediaId,
     sourceReport: row.sourceReport,
+    // La imagen que realmente se anima. Se expone junto a la original para que
+    // la pantalla pueda mostrar las dos y el usuario vea qué se generó.
+    expandedImageUrl: row.expandedImageUrl,
+    animationSourceUrl: row.expandedImageUrl || row.sourceImageUrl,
+    expansionProvider: row.expansionProvider,
+    expansionReport: row.expansionReport,
+    expansionAttempts: row.expansionAttempts,
     style: row.style,
     styleLabel: MOTION_STYLES[row.style]?.label || row.style,
     transitionOut: row.transitionOut,
@@ -344,6 +358,29 @@ export const getReelOptions = async (req, res) => {
                     : 'Sin proveedor de montaje configurado, las escenas se generan y quedan descargables por separado, pero no se unen en un solo Reel.'
             },
 
+            // Expansión Inteligente: qué proveedor hay y con qué ajustes. Se
+            // expone entero para que el panel pueda mostrarlo sin adivinar.
+            expansion: (() => {
+                const settings = EXPANSION_SETTINGS();
+                return {
+                    available: isExpansionProviderAvailable(settings.provider),
+                    provider: settings.provider,
+                    providerLabel: EXPANSION_PROVIDERS[settings.provider]?.label || null,
+                    providers: Object.values(EXPANSION_PROVIDERS).map(p => ({
+                        id: p.id, label: p.label, note: p.note,
+                        preservation: p.preservation,
+                        available: isExpansionProviderAvailable(p.id),
+                        isDefault: p.id === DEFAULT_EXPANSION_PROVIDER
+                    })),
+                    photoTypes: Object.entries(PHOTO_TYPES).map(([id, t]) => ({ id, label: t.label })),
+                    settings,
+                    // Se nombra lo que hace y lo que NO: sin composite del
+                    // original no hay 100% garantizado, hay un porcentaje
+                    // medido. Prometer lo primero sería mentir.
+                    note: 'Las fotos que no están en el formato del Reel se adaptan generando el lienzo que falta, sin recortar. La conservación del original se mide sobre su propia región y se rehace la adaptación si no llega al umbral.'
+                };
+            })(),
+
             timing: {
                 sceneCount: SCENE_COUNT,
                 targetTotalSec: TARGET_TOTAL_SEC,
@@ -407,13 +444,176 @@ export const preflightReel = async (req, res) => {
 
 // ─── Creación ──────────────────────────────────────────────────────────────
 
+// ─── Adaptación del lienzo (AI Canvas Expansion) ───────────────────────────
+//
+// Corre ANTES de animar. Los motores image-to-video heredan la proporción de la
+// imagen: una foto apaisada da un clip apaisado que el montaje tenía que
+// recortar. Expandir el lienzo es lo único que evita esa pérdida.
+//
+// La foto ORIGINAL nunca se pisa. `sourceImageUrl` sigue apuntando a ella y la
+// adaptada vive en `expandedImageUrl`: así se pueden comparar las dos, rehacer
+// la adaptación y volver atrás.
+
+// Qué imagen se le manda al motor de video: la adaptada si existe, la original
+// si no. Una sola función para que no se decida distinto en dos sitios.
+const animationSourceOf = (scene) => scene.expandedImageUrl || scene.sourceImageUrl;
+
+// Decide y lanza la adaptación de UNA escena. Devuelve la fila actualizada.
+const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings }) => {
+    // 1. ¿Hace falta? Una foto que ya está en el formato no se toca — es lo más
+    //    importante que hace este paso: no gastar créditos ni arriesgar deriva.
+    let meta = null;
+    try {
+        const resp = await fetch(scene.sourceImageUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const sharp = (await import('sharp')).default;
+        meta = await sharp(buffer, { failOn: 'none' }).metadata();
+    } catch (e) {
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending',
+                 "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, JSON.stringify({ action: 'skip', ok: false, reason: `No se pudo leer la fotografía: ${e.message}` })]
+        );
+        return rows[0];
+    }
+
+    const plan = planExpansion({
+        width: meta.width, height: meta.height,
+        targetWidth, targetHeight, settings
+    });
+
+    if (plan.action === 'skip') {
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending',
+                 "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, JSON.stringify({ ...plan, sourceWidth: meta.width, sourceHeight: meta.height })]
+        );
+        return rows[0];
+    }
+
+    // 2. Mirar la foto para saber CÓMO continuarla. Sin esto el modelo rellena
+    //    con lo que le parece y se nota dónde termina el original.
+    const analysis = await analyzeForExpansion(scene.sourceImageUrl);
+    const prompt = buildExpansionPrompt({
+        analysis, plan,
+        targetLabel: `${targetWidth}x${targetHeight}`
+    });
+
+    try {
+        const { provider, taskId } = await startExpansion({
+            imageUrl: scene.sourceImageUrl,
+            prompt, targetWidth, targetHeight,
+            provider: settings.provider
+        });
+        const { rows } = await db.query(
+            `UPDATE "ReelScene"
+             SET status = 'expanding', "expansionTaskId" = $2, "expansionProvider" = $3,
+                 "expansionPrompt" = $4, "expansionReport" = $5,
+                 "expansionAttempts" = "expansionAttempts" + 1, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [
+                scene.id, taskId, provider, prompt,
+                JSON.stringify({ ...plan, analysis, sourceWidth: meta.width, sourceHeight: meta.height, state: 'running' })
+            ]
+        );
+        console.log(`[EXPANSION] escena ${scene.id}: ${meta.width}x${meta.height} → ${targetWidth}x${targetHeight} (${plan.orientation}, ${Math.round(plan.generatedFraction * 100)}% nuevo) con ${provider}`);
+        return rows[0];
+    } catch (e) {
+        // Sin adaptación se anima la original: el Reel sale, con el encuadre
+        // recortado por el montaje. Degradar es mejor que no entregar nada.
+        console.error(`[EXPANSION] escena ${scene.id} no se pudo lanzar:`, e.message);
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending',
+                 "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, JSON.stringify({ ...plan, analysis, ok: false, failed: true, reason: `No se pudo adaptar la imagen: ${e.message} Se anima la original.` })]
+        );
+        return rows[0];
+    }
+};
+
+// Hace avanzar la adaptación de UNA escena: consulta, descarga, verifica y
+// decide si vale o hay que rehacerla.
+const advanceSceneExpansion = async (scene, settings) => {
+    if (scene.status !== 'expanding' || !scene.expansionTaskId) return scene;
+
+    const task = await pollExpansion(scene.expansionTaskId);
+    if (task.state === 'queued' || task.state === 'running') return scene;
+
+    const report = scene.expansionReport || {};
+
+    if (task.state === 'failed') {
+        console.warn(`[EXPANSION] escena ${scene.id} falló: ${task.failMsg}`);
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending',
+                 "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, JSON.stringify({ ...report, ok: false, failed: true, reason: `La adaptación falló: ${task.failMsg} Se anima la fotografía original.` })]
+        );
+        return rows[0];
+    }
+
+    // Llegó. Se descarga, se mide cuánto se conservó y se decide.
+    try {
+        const expandedBuffer = await fetchExpandedImage(task.imageUrl);
+        const originalResp = await fetch(scene.sourceImageUrl);
+        const originalBuffer = Buffer.from(await originalResp.arrayBuffer());
+
+        const verification = await verifyExpansion(originalBuffer, expandedBuffer, report);
+        const judgement = judgeExpansion(verification, settings);
+
+        // Por debajo del umbral se rehace, mientras queden intentos. Es el
+        // único uso legítimo de un reintento: no se reintenta "por si acaso",
+        // se reintenta porque una medición dijo que no alcanzó.
+        if (judgement.verdict === 'failed' && settings.autoRegenerate && scene.expansionAttempts < settings.maxRetries + 1) {
+            console.warn(`[EXPANSION] escena ${scene.id}: ${judgement.reason} Reintento ${scene.expansionAttempts}/${settings.maxRetries}.`);
+            await db.query(
+                `UPDATE "ReelScene" SET "expansionTaskId" = NULL, "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1`,
+                [scene.id, JSON.stringify({ ...report, verification, judgement, retrying: true })]
+            );
+            const { rows: fresh } = await db.query('SELECT * FROM "ReelScene" WHERE id = $1', [scene.id]);
+            return startSceneExpansion(fresh[0], {
+                targetWidth: verification.width || 1080,
+                targetHeight: verification.height || 1920,
+                settings
+            });
+        }
+
+        const upload = await uploadBuffer(
+            expandedBuffer,
+            `clubs/${scene.clubId || 'global'}/reels/expanded/${scene.id}-${Date.now()}.png`,
+            'image/png'
+        );
+
+        const { rows } = await db.query(
+            `UPDATE "ReelScene"
+             SET status = 'pending', "expandedImageUrl" = $2, "expandedS3Key" = $3,
+                 "expansionReport" = $4, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [scene.id, upload.url, upload.key, JSON.stringify({ ...report, state: 'done', verification, judgement })]
+        );
+
+        console.log(`[EXPANSION] escena ${scene.id} adaptada → ${judgement.verdict} (${judgement.reason})`);
+        return rows[0];
+    } catch (e) {
+        console.error(`[EXPANSION] escena ${scene.id} no se pudo guardar:`, e.message);
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending',
+                 "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, JSON.stringify({ ...report, ok: false, failed: true, reason: `No se pudo guardar la imagen adaptada: ${e.message} Se anima la original.` })]
+        );
+        return rows[0];
+    }
+};
+
 // Lanza la tarea de video de UNA escena. Se usa al crear y al regenerar.
 const dispatchScene = async (scene, { engineId, model }) => {
     const engine = VIDEO_ENGINES[engineId];
     const taskId = await createKieVideoTask({
         model,
         prompt: scene.prompt,
-        imageUrl: scene.sourceImageUrl,
+        // La adaptada si existe; la original si la adaptación no hizo falta o
+        // no salió. `animationSourceOf` es el único sitio donde se decide.
+        imageUrl: animationSourceOf(scene),
         // La relación de aspecto la hereda de la imagen en los modelos
         // image-to-video: se manda por compatibilidad con los que sí la leen,
         // pero lo que vale es la proporción de la foto. Por eso se contrasta
@@ -540,7 +740,7 @@ export const createReel = async (req, res) => {
                 format, "qualityTier", "motionStyle", transition, "musicStyle", config,
                 engine, "engineModel", analysis, direction,
                 status, notes, "creditsEstimated", version, "createdAt", "updatedAt"
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'generating',$17,0,$18,NOW(),NOW())`,
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'expanding',$17,0,$18,NOW(),NOW())`,
             [
                 projectId, resolvedTitle, req.user?.clubId || null, req.user?.id || null,
                 req.user?.email || null, organizationName,
@@ -590,27 +790,45 @@ export const createReel = async (req, res) => {
             sceneRows.push(rows[0]);
         }
 
-        // Las tres tareas en paralelo: son independientes y así el request no
-        // acumula tres viajes a KIE en serie.
+        // ── Adaptación del lienzo antes de animar ──
+        //
+        // Se lanza acá, no en el sondeo, porque decidir si hace falta es barato
+        // (leer el tamaño de la foto) y así el usuario ve la etapa desde el
+        // primer momento. Las que ya están en formato pasan directo a `pending`
+        // sin gastar un crédito.
+        const settings = EXPANSION_SETTINGS();
+        const tier = resolveTier(safeFormat, engineChoice.qualityTier);
+        const expanded = await Promise.allSettled(
+            sceneRows.map(scene => startSceneExpansion(scene, {
+                targetWidth: tier.width, targetHeight: tier.height, settings
+            }))
+        );
+        const afterExpansion = expanded.map((r, i) => r.status === 'fulfilled' ? r.value : sceneRows[i]);
+        const needExpansion = afterExpansion.filter(sc => sc.status === 'expanding');
+
+        // Las que no necesitan adaptación arrancan el video ya; las demás lo
+        // harán cuando su lienzo esté listo.
+        const readyToAnimate = afterExpansion.filter(sc => sc.status === 'pending');
         const dispatched = await Promise.allSettled(
-            sceneRows.map(scene => dispatchScene(scene, { engineId: engineChoice.engineId, model: engineChoice.model }))
+            readyToAnimate.map(scene => dispatchScene(scene, { engineId: engineChoice.engineId, model: engineChoice.model }))
         );
         const failures = dispatched
             .map((r, i) => ({ r, i }))
             .filter(({ r }) => r.status === 'rejected');
 
         for (const { r, i } of failures) {
-            console.error(`[REEL] escena ${i} no se pudo lanzar:`, r.reason?.message);
+            console.error(`[REEL] escena ${readyToAnimate[i].position} no se pudo lanzar:`, r.reason?.message);
             await db.query(
                 `UPDATE "ReelScene" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`,
-                [sceneRows[i].id, r.reason?.message || 'No se pudo crear la tarea en el proveedor']
+                [readyToAnimate[i].id, r.reason?.message || 'No se pudo crear la tarea en el proveedor']
             );
         }
 
-        // Si NINGUNA escena se pudo lanzar, el proyecto nace muerto y conviene
-        // decirlo con el error del proveedor tal cual — es lo único que permite
-        // corregir un id de modelo mal configurado sin desplegar.
-        if (failures.length === sceneRows.length) {
+        // Si NINGUNA escena se pudo lanzar —ni animar ni adaptar—, el proyecto
+        // nace muerto y conviene decirlo con el error del proveedor tal cual:
+        // es lo único que permite corregir un id de modelo mal configurado sin
+        // desplegar.
+        if (!needExpansion.length && failures.length === readyToAnimate.length && readyToAnimate.length > 0) {
             const reason = failures[0].r.reason?.message || 'Error desconocido';
             await db.query(
                 `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`,
@@ -645,13 +863,19 @@ export const createReel = async (req, res) => {
             }
         }
 
+        // Sin ninguna adaptación en curso, la etapa se atraviesa sin pararse.
         await db.query(
             `UPDATE "ReelProject"
              SET "creditsEstimated" = (SELECT COALESCE(SUM("creditsEstimated"),0)::int FROM "ReelScene" WHERE "projectId" = $1),
-                 "processingMs" = $2, "updatedAt" = NOW()
+                 "processingMs" = $2, status = $3, "updatedAt" = NOW()
              WHERE id = $1`,
-            [projectId, Date.now() - startedAt]
+            [projectId, Date.now() - startedAt, needExpansion.length ? 'expanding' : 'generating']
         );
+
+        for (const sc of afterExpansion) {
+            const r = sc.expansionReport;
+            if (r?.failed && r?.reason) await appendNote(projectId, `Escena ${sc.position + 1}: ${r.reason}`);
+        }
 
         const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
         console.log(`[REEL] ${projectId} creado — ${sceneRows.length - failures.length}/${SCENE_COUNT} escenas lanzadas, ${timing.finalDurationSec}s, ${engineChoice.engine.label}`);
@@ -829,6 +1053,8 @@ const relaunchScene = async (scene, { auto = false, reason = null } = {}) => {
 // Hace avanzar UNA escena consultando al proveedor.
 const advanceScene = async (scene) => {
     if (SCENE_STATUSES[scene.status]?.terminal) return scene;
+    // La adaptación del lienzo la resuelve `advanceSceneExpansion`, antes.
+    if (scene.status === 'expanding') return scene;
     if (!scene.kieJobId) return scene;
 
     const task = await getKieVideoTask(scene.kieJobId);
@@ -1153,6 +1379,48 @@ const advance = async (project) => {
         return project; // sigue renderizando
     }
 
+    // ── Adaptación del lienzo ──
+    //
+    // Va antes que las escenas de video porque es su entrada: no se puede
+    // animar una foto cuyo lienzo todavía se está generando.
+    const allScenes = await fetchScenes(project.id);
+    const expanding = allScenes.filter(s => s.status === 'expanding');
+    if (expanding.length) {
+        const settings = EXPANSION_SETTINGS();
+        const results = await Promise.allSettled(expanding.map(s => advanceSceneExpansion(s, settings)));
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') console.error(`[EXPANSION] escena ${expanding[i].id}:`, r.reason?.message);
+        });
+
+        const after = await fetchScenes(project.id);
+        // Las que ya tienen su lienzo listo arrancan el video en el acto: no
+        // tienen por qué esperar a las otras dos.
+        const ready = after.filter(s => s.status === 'pending' && !s.kieJobId);
+        for (const sc of ready) {
+            const r = sc.expansionReport;
+            if (r?.judgement?.verdict) {
+                await appendNote(project.id, `Escena ${sc.position + 1}: ${r.judgement.reason}`);
+            } else if (r?.failed && r?.reason) {
+                await appendNote(project.id, `Escena ${sc.position + 1}: ${r.reason}`);
+            }
+        }
+        await Promise.allSettled(ready.map(sc =>
+            dispatchScene(sc, { engineId: sc.engine || project.engine, model: sc.engineModel || project.engineModel })
+        ));
+
+        const stillExpanding = (await fetchScenes(project.id)).some(s => s.status === 'expanding');
+        if (stillExpanding) {
+            if (project.status !== 'expanding') {
+                const { rows } = await db.query(
+                    `UPDATE "ReelProject" SET status = 'expanding', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                    [project.id]
+                );
+                return rows[0];
+            }
+            return project;
+        }
+    }
+
     // ── Escenas ──
     const scenes = await fetchScenes(project.id);
     const pending = scenes.filter(s => !SCENE_STATUSES[s.status]?.terminal);
@@ -1400,14 +1668,37 @@ export const regenerateScene = async (req, res) => {
                  analysis = $5, prompt = $6, "durationSec" = $7, "generatedDurationSec" = $8,
                  status = 'pending', "statusDetail" = NULL, attempts = 0,
                  quality = NULL, fidelity = NULL, "videoUrl" = NULL, "posterUrl" = NULL,
+                 -- Con otra foto, la adaptación anterior ya no describe nada:
+                 -- se descarta para que se rehaga desde la imagen nueva.
+                 "expandedImageUrl" = CASE WHEN $9 THEN NULL ELSE "expandedImageUrl" END,
+                 "expansionTaskId" = NULL,
+                 "expansionReport" = CASE WHEN $9 THEN NULL ELSE "expansionReport" END,
+                 "expansionAttempts" = CASE WHEN $9 THEN 0 ELSE "expansionAttempts" END,
                  "updatedAt" = NOW()
              WHERE id = $1 RETURNING *`,
             [
                 scene.id, nextStyle, nextImage, sourceMediaId || null,
                 analysis ? JSON.stringify(analysis) : null, prompt,
-                nextDuration, generated
+                nextDuration, generated,
+                nextImage !== scene.sourceImageUrl
             ]
         );
+
+        // Con foto nueva hay que volver a adaptar el lienzo antes de animar.
+        if (nextImage !== scene.sourceImageUrl) {
+            const tier = resolveTier(project.format, project.qualityTier);
+            const expandedScene = await startSceneExpansion(updated[0], {
+                targetWidth: tier.width, targetHeight: tier.height, settings: EXPANSION_SETTINGS()
+            });
+            if (expandedScene.status === 'expanding') {
+                const { rows: proj } = await db.query(
+                    `UPDATE "ReelProject" SET status = 'expanding', "renderJobId" = NULL, "statusDetail" = NULL, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                    [project.id]
+                );
+                return respondProject(res, proj[0]);
+            }
+            updated[0] = expandedScene;
+        }
 
         await dispatchScene(updated[0], {
             engineId: engineChoice.engineId, model: engineChoice.model
