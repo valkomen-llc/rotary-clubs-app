@@ -23,6 +23,8 @@
 // nunca da acceso al panel administrativo de la plataforma.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLang } from '../contexts/LanguageContext';
+import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowRight, CheckCircle2, ChevronRight, Clock, ExternalLink,
     FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, PenLine,
@@ -58,15 +60,18 @@ interface PortalData {
     reason: string | null;
 }
 
-const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
 const fmtDate = (v?: string | null) => {
     if (!v) return '';
     const d = new Date(`${v}T12:00:00`);
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString(activeLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
 // ════════════════════════════════════════════════════════════════════
 const MiProyecto = () => {
+    // Suscripción al idioma: los formateadores de arriba leen el locale
+    // activo, y sin esto la página no se repintaría al cambiarlo.
+    useLang();
     const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
     const [data, setData] = useState<PortalData | null>(null);
     const [loading, setLoading] = useState(true);

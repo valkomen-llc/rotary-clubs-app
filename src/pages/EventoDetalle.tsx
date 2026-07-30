@@ -107,6 +107,7 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
 };
 
 const EventoDetalle = () => {
+    const { locale } = useLang();
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
@@ -160,14 +161,14 @@ const EventoDetalle = () => {
 
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
-        return new Date(dateStr).toLocaleDateString('es-ES', {
+        return new Date(dateStr).toLocaleDateString(locale, {
             weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
         });
     };
 
     const formatTime = (dateStr: string) => {
         if (!dateStr) return '';
-        return new Date(dateStr).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        return new Date(dateStr).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     };
 
     const coverImage = event ? (event.image || typeImages[event.type] || defaultImage) : defaultImage;

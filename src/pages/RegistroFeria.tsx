@@ -13,6 +13,8 @@
 // valor de inscripción), así que la página funciona sin configurar nada.
 // ════════════════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react';
+import { useLang } from '../contexts/LanguageContext';
+import { activeLocale } from '../lib/locale';
 import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Clock, Loader2, MapPin } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
@@ -78,11 +80,14 @@ const parseDeadline = (value?: string | null): Date | null => {
 };
 
 const formatDay = (date: Date) =>
-    date.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+    date.toLocaleDateString(activeLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 
-const formatCop = (amount: number) => `$${Number(amount || 0).toLocaleString('es-CO')} COP`;
+const formatCop = (amount: number) => `$${Number(amount || 0).toLocaleString(activeLocale())} COP`;
 
 const RegistroFeria = () => {
+    // Suscripción al idioma: los formateadores de arriba leen el locale
+    // activo, y sin esto la página no se repintaría al cambiarlo.
+    useLang();
     const [config, setConfig] = useState<FairConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');

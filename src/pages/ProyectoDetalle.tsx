@@ -1,4 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useLang } from '../contexts/LanguageContext';
 import {
   ArrowLeft, Heart, Users, MapPin, Calendar, Target,
   CheckCircle2, Facebook, Twitter, Linkedin, X, Loader2,
@@ -35,6 +36,7 @@ const textToHtml = (text: string) => {
 };
 
 const ProyectoDetalle = () => {
+    const { locale } = useLang();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { club } = useClub();
@@ -243,7 +245,7 @@ const ProyectoDetalle = () => {
 
   // Fecha legible
   const fecha = proyecto?.fechaEstimada
-    ? new Date(proyecto.fechaEstimada).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })
+    ? new Date(proyecto.fechaEstimada).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
     : null;
 
   // Contenido HTML de la descripción

@@ -52,7 +52,8 @@ import {
     Brain,
     FileBarChart2,
     GraduationCap,
-    CalendarClock
+    CalendarClock,
+    Languages
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -558,6 +559,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push(
                 { icon: Bot, label: 'Agentes IA', path: '/admin/agentes', category: 'System' },
                 { icon: Layers, label: 'Integraciones', path: '/admin/integraciones', category: 'System' },
+                { icon: Languages, label: 'Traducciones', path: '/admin/traducciones', category: 'System' },
                 { icon: Bell, label: 'Notificaciones', path: '/admin/notificaciones', category: 'System' },
                 { icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' }
             );

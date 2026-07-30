@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.660.0 | 2026-07-30 (El botón de inscripción del encabezado sigue al idioma activo del sitio)
+// UI V4.661.0 | 2026-07-30 (Traducción integral del sitio público: atributos, locale y panel de gestión)
 // Cache bust: 2026-07-30j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.661.0',
+        date: '2026-07-30',
+        title: 'El sitio entero cambia de idioma, no sólo sus textos 🌍',
+        description: 'El selector de la barra superior ahora gobierna TODO lo que se ve: también los textos dentro de los campos, las descripciones de las imágenes, los mensajes de ayuda y el título de la pestaña. Y las fechas y los precios pasan a escribirse como se escriben en cada país.',
+        items: [
+            { type: 'fix', text: 'Campos de formulario: los textos de ayuda dentro de las casillas («Buscar un club», «Correo electrónico») se quedaban siempre en español. Ahora se traducen, igual que las descripciones de las imágenes y las etiquetas de los botones con icono.' },
+            { type: 'fix', text: 'Fechas y precios: una persona con el sitio en japonés veía «12 de abril de 2027». Ahora cada idioma los escribe a su manera, incluidos los separadores de miles y la moneda.' },
+            { type: 'fix', text: 'Se corrigió un fallo por el que dos textos largos que empezaban igual compartían traducción: el segundo mostraba, de forma permanente, el texto del primero.' },
+            { type: 'fix', text: 'Cuando una parte de la página se repintaba sola (un aviso, un resultado de búsqueda), a veces volvía al español. Ahora se traduce también eso.' },
+            { type: 'feature', text: 'Nueva pantalla «Traducciones» en el panel: qué idioma tiene qué cobertura, qué falta, qué falló y cuánto se está usando.' },
+            { type: 'feature', text: 'Cualquier traducción se puede corregir a mano y APROBAR. Una vez aprobada, el traductor automático no la vuelve a tocar nunca.' },
+            { type: 'feature', text: 'El motor de traducción se elige desde el panel (Gemini, OpenAI, DeepL, Google o Azure) y se le puede poner un respaldo, sin tocar el código. Si uno falla, entra el siguiente.' },
+            { type: 'improvement', text: 'Los datos ya no se traducen: correos, teléfonos, códigos de inscripción, importes y direcciones web se quedan como están.' },
+            { type: 'improvement', text: 'El idioma elegido se recuerda en todo el sitio y entre visitas, y queda anunciado correctamente para los lectores de pantalla y los buscadores.' },
+        ],
+    },
     {
         version: '4.660.0',
         title: 'El botón de inscripción del encabezado sigue al idioma 🇨🇴',

@@ -23,6 +23,8 @@
 // único del encabezado con `openLoginModal()`.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLang } from '../contexts/LanguageContext';
+import { activeLocale } from '../lib/locale';
 import {
     AlertCircle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, CreditCard,
     ExternalLink, FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Mail, MapPin,
@@ -111,12 +113,12 @@ interface PortalData {
 const fmtDateTime = (iso?: string | null) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return isNaN(d.getTime()) ? String(iso) : d.toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
+    return isNaN(d.getTime()) ? String(iso) : d.toLocaleString(activeLocale(), { dateStyle: 'long', timeStyle: 'short' });
 };
 const fmtDate = (iso?: string | null) => {
     if (!iso) return '—';
     const d = new Date(iso);
-    return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+    return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString(activeLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
 /** Píldora del estado. El color y el rótulo salen del espejo del módulo. */
@@ -138,6 +140,9 @@ const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
 
 // ════════════════════════════════════════════════════════════════════
 const MiInscripcion = () => {
+    // Suscripción al idioma: los formateadores de arriba leen el locale
+    // activo, y sin esto la página no se repintaría al cambiarlo.
+    useLang();
     const [token, setToken] = useState<string | null>(() => localStorage.getItem(ATTENDEE_TOKEN_KEY));
     const [data, setData] = useState<PortalData | null>(null);
     const [loading, setLoading] = useState(true);
