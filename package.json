@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.655.0",
-  "cache_bust": "2026-07-30e (El Registro Internacional usa los mismos campos que Postular Proyecto, ya no pide Idioma y crea la clave de acceso. Nuevo rol Asistente al Evento con panel propio en /mi-inscripcion.)",
+  "version": "4.656.0",
+  "cache_bust": "2026-07-30f (Pais y Departamento del formulario de inscripcion son campos de texto llanos: se quito la lista de sugerencias que el navegador desplegaba encima del formulario.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

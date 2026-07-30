@@ -209,7 +209,7 @@ export const CORE_PERSONAL_FIELDS = [
         { value: 'otro', label: 'Otro' },
     ] },
     { key: 'documentNumber', label: 'Número de documento o pasaporte', type: 'text', required: true, max: 60, placeholder: 'Sin puntos ni espacios' },
-    { key: 'country', label: 'País', type: 'country', required: true, max: 120, column: 'country', placeholder: 'Escribe o elige tu país' },
+    { key: 'country', label: 'País', type: 'country', required: true, max: 120, column: 'country', placeholder: 'Escribe tu país' },
     { key: 'city', label: 'Ciudad', type: 'text', required: true, max: 120, placeholder: 'Ciudad de residencia' },
 ];
 

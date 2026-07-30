@@ -34,7 +34,7 @@ import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import {
-    money, validateStep, isFieldVisible, validateCredentials, COUNTRY_SUGGESTIONS, COLOMBIA_DEPARTMENTS,
+    money, validateStep, isFieldVisible, validateCredentials,
     type FormField, type FormStep, type PublicCategory, type Companion,
 } from '../lib/eventRegistrationSpec';
 import { localeOf } from '../components/EventRegistrationCta';
@@ -210,6 +210,13 @@ const DynamicField = ({ field, value, error, onChange }: {
 
     const handle = (e: any) => onChange(e.target.value);
 
+    // v4.656 — País y Departamento son campos de texto llanos. Antes traían una
+    // lista de sugerencias (`<datalist>`), y el navegador la desplegaba encima
+    // del formulario en cuanto se hacía clic: parecía un selector obligatorio
+    // con una lista corta, cuando en realidad se podía escribir cualquier país.
+    // Un campo de texto es más simple y no promete una lista cerrada que no
+    // existe. El servidor nunca validó contra esa lista, así que no cambia nada
+    // de lo que se acepta.
     return (
         <div className={isWide(field) ? 'sm:col-span-2' : undefined}>
             {field.type === 'textarea' ? (
@@ -218,10 +225,7 @@ const DynamicField = ({ field, value, error, onChange }: {
                 <Field {...common} as="select" options={field.options || []} onChange={handle} />
             ) : field.type === 'country' ? (
                 <Field {...common} onChange={handle}
-                    placeholder={field.placeholder || 'Escribe o elige tu país'}
-                    suggestions={COUNTRY_SUGGESTIONS} />
-            ) : field.key === 'department' ? (
-                <Field {...common} onChange={handle} suggestions={COLOMBIA_DEPARTMENTS} />
+                    placeholder={field.placeholder || 'Escribe tu país'} />
             ) : (
                 <Field {...common} onChange={handle}
                     type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'} />
