@@ -182,7 +182,7 @@ const DEEPL_TARGET = {
     it: 'IT', ja: 'JA', ko: 'KO', es: 'ES',
 };
 
-async function translateDeepL(texts, targetLang, sourceLang = 'es') {
+async function translateDeepL(texts, targetLang) {
     const key = process.env.DEEPL_API_KEY;
     if (!key) throw new Error('Falta DEEPL_API_KEY.');
     const target = DEEPL_TARGET[targetLang];
@@ -191,12 +191,14 @@ async function translateDeepL(texts, targetLang, sourceLang = 'es') {
     // Las claves gratuitas terminan en ":fx" y usan otro dominio.
     const host = key.trim().endsWith(':fx') ? 'api-free.deepl.com' : 'api.deepl.com';
 
+    // Sin `source_lang`: DeepL detecta el idioma de cada texto. Es lo que hace
+    // que funcione una página mezclada (menú en español, contenidos en inglés)
+    // y lo que permite traducir AL español un contenido escrito en inglés.
     const data = await postJson(
         `https://${host}/v2/translate`,
         {
             text: texts,
             target_lang: target,
-            source_lang: (sourceLang || 'es').toUpperCase(),
             preserve_formatting: true,
             tag_handling: 'html',
         },
@@ -208,13 +210,14 @@ async function translateDeepL(texts, targetLang, sourceLang = 'es') {
 }
 
 // ── Google Cloud Translation (v2) ──────────────────────────────────────────
-async function translateGoogle(texts, targetLang, sourceLang = 'es') {
+async function translateGoogle(texts, targetLang) {
     const key = process.env.GOOGLE_TRANSLATE_API_KEY;
     if (!key) throw new Error('Falta GOOGLE_TRANSLATE_API_KEY.');
 
     const data = await postJson(
         `https://translation.googleapis.com/language/translate/v2?key=${key}`,
-        { q: texts, target: targetLang, source: sourceLang || 'es', format: 'text' },
+        // Sin `source`: Google detecta el idioma de cada texto.
+        { q: texts, target: targetLang, format: 'text' },
     );
 
     const arr = (data?.data?.translations || []).map(t => unescapeHtml(t?.translatedText || ''));
@@ -222,7 +225,7 @@ async function translateGoogle(texts, targetLang, sourceLang = 'es') {
 }
 
 // ── Azure AI Translator ────────────────────────────────────────────────────
-async function translateAzure(texts, targetLang, sourceLang = 'es') {
+async function translateAzure(texts, targetLang) {
     const key = process.env.AZURE_TRANSLATOR_KEY;
     const region = process.env.AZURE_TRANSLATOR_REGION;
     if (!key) throw new Error('Falta AZURE_TRANSLATOR_KEY.');
@@ -232,7 +235,8 @@ async function translateAzure(texts, targetLang, sourceLang = 'es') {
         || 'https://api.cognitive.microsofttranslator.com';
 
     const data = await postJson(
-        `${endpoint}/translate?api-version=3.0&from=${sourceLang || 'es'}&to=${targetLang}&textType=html`,
+        // Sin `from`: Azure detecta el idioma de cada texto.
+        `${endpoint}/translate?api-version=3.0&to=${targetLang}&textType=html`,
         texts.map(t => ({ Text: t })),
         { 'Ocp-Apim-Subscription-Key': key, 'Ocp-Apim-Subscription-Region': region },
     );
@@ -255,13 +259,16 @@ const ADAPTERS = {
  * Devuelve { translations, provider, durationMs }. Lanza si el proveedor falla
  * o rompe el contrato de alineamiento — el llamador decide el fallback.
  */
-export async function translateBatch(texts, targetLang, { provider, sourceLang = 'es' } = {}) {
+export async function translateBatch(texts, targetLang, { provider } = {}) {
     const fn = ADAPTERS[provider];
     if (!fn) throw new Error(`Proveedor desconocido: "${provider}".`);
     if (!texts.length) return { translations: [], provider, durationMs: 0 };
 
+    // El idioma de ORIGEN no se pasa: lo detecta el proveedor, texto por texto.
+    // Es lo que permite que una misma página mezcle idiomas y que el idioma
+    // base del sitio sea también un destino.
     const started = Date.now();
-    const translations = await fn(texts, targetLang, sourceLang);
+    const translations = await fn(texts, targetLang);
     return { translations, provider, durationMs: Date.now() - started };
 }
 

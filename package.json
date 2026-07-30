@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.661.0",
-  "cache_bust": "2026-07-30k (Traduccion integral del sitio publico: placeholders, alt, aria-label y titulos incluidos; fechas y precios en el locale activo; proveedor configurable y panel de gestion.)",
+  "version": "4.662.0",
+  "cache_bust": "2026-07-30l (El idioma base tambien se traduce: un sitio con los contenidos cargados en ingles ahora se ve en espanol al elegir Espanol.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

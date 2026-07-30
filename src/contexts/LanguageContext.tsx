@@ -3,9 +3,12 @@ import React, {
     useState, useEffect, useLayoutEffect,
     useCallback, useRef, useMemo,
 } from 'react';
+// `restoreAll` ya no se usa aquí: desde v4.662 no hay un idioma "original" al
+// que volver — todos, incluido el español, son destino. Sigue exportado y
+// probado en domTranslator para poder deshacer una traducción en pruebas.
 import {
     ATTRS, looksLikeData, applyAll as domApplyAll,
-    restoreAll as domRestoreAll, collectMissing as domCollectMissing,
+    collectMissing as domCollectMissing,
 } from '../lib/domTranslator';
 import {
     LOCALES, BASE_LANG, localeOf, isSupportedLang,
@@ -105,17 +108,22 @@ async function fetchMissing(texts: string[], lang: string): Promise<Record<strin
             if (!r.ok) { chunk.forEach(t => bad.add(t)); continue; }
             const data = await r.json();
             const arr: string[] = Array.isArray(data.translations) ? data.translations : [];
+            // Posiciones que el servidor NO pudo traducir. Todo lo demás es
+            // válido, INCLUIDO lo que vuelve idéntico: eso significa que el
+            // texto ya estaba en el idioma pedido, y guardarlo es lo que evita
+            // volver a preguntarlo en cada visita.
+            const failedAt = new Set<number>(
+                Array.isArray(data.failedAt) ? data.failedAt : [],
+            );
             memCache[lang] ||= {};
             chunk.forEach((orig, idx) => {
                 const tr = arr[idx];
-                if (typeof tr === 'string' && tr && tr !== orig) {
-                    memCache[lang][orig] = tr;
-                    result[orig] = tr;
-                } else {
-                    // El servidor devolvió el original: o no era traducible o el
-                    // proveedor falló. En ambos casos, no insistir.
+                if (typeof tr !== 'string' || !tr || failedAt.has(idx)) {
                     bad.add(orig);
+                    return;
                 }
+                memCache[lang][orig] = tr;
+                if (tr !== orig) result[orig] = tr;   // sólo lo que cambia se repinta
             });
         } catch {
             chunk.forEach(t => bad.add(t));
@@ -187,7 +195,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             || localStorage.getItem('site_default_language')
             || BASE_LANG;
         const safe = isSupportedLang(stored) ? stored : BASE_LANG;
-        if (safe !== BASE_LANG) primeCache(safe);
+        primeCache(safe);
         return safe;
     });
 
@@ -207,7 +215,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (!isSupportedLang(l)) return;
         localStorage.setItem('site_language', l);
         writeCookie(l);
-        if (l !== BASE_LANG) primeCache(l);
+        primeCache(l);
         setLangState(l);
         setLanguageChosen(true);
     }, []);
@@ -220,12 +228,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (!code || !isSupportedLang(code)) return;
         localStorage.setItem('site_default_language', code);
         if (localStorage.getItem('site_language') || readCookie()) return;
-        if (code !== BASE_LANG) primeCache(code);
+        primeCache(code);
         setLangState(prev => (prev === code ? prev : code));
     }, []);
 
     const translate = useCallback(async (text: string) => {
-        if (!text || lang === BASE_LANG) return text;
+        if (!text) return text;
         const cached = getCached(lang, text);
         if (cached) return cached;
         const r = await fetchMissing([text], lang);
@@ -233,7 +241,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [lang]);
 
     const translateSync = useCallback((text: string) => {
-        if (!text || lang === BASE_LANG) return text;
+        if (!text) return text;
         return getCached(lang, text) ?? text;
     }, [lang]);
 
@@ -245,8 +253,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (!root) return;
         rootRef.current = root;
         syncDocumentLang(lang);
-        if (lang === BASE_LANG) domRestoreAll(root);
-        else domApplyAll(root, memCache[lang] ?? {});
+        domApplyAll(root, memCache[lang] ?? {});
     }, [lang]);
 
     // ── Traducir lo que falte, y reaccionar a lo que aparezca después ───────
@@ -260,7 +267,6 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         observerRef.current?.disconnect();
         observerRef.current = null;
-        if (lang === BASE_LANG) { setIsTranslating(false); return; }
 
         let alive = true;
 
@@ -376,7 +382,7 @@ export const useTranslated = (text: string): string => {
     const [result, setResult] = useState<string>(() => translateSync(text));
 
     useEffect(() => {
-        if (!text || lang === BASE_LANG) { setResult(text); return; }
+        if (!text) { setResult(text); return; }
         const cached = translateSync(text);
         if (cached !== text) { setResult(cached); return; }
         let cancelled = false;
