@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.663.0 | 2026-07-30 (Creador de Reels IA: 3 fotos → 3 escenas con narrativa, música y montaje)
-// Cache bust: 2026-07-30m
+// UI V4.663.1 | 2026-07-30 (Fix: el análisis de las fotos del Reel no llegaba a leerse)
+// Cache bust: 2026-07-30n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.663.1',
+        title: 'Corrección: el Reel ya analiza las fotos de verdad 🔍',
+        description: 'En el estreno del Creador de Reels, el análisis de las tres fotografías fallaba siempre y la pieza se armaba con el criterio por defecto: la ficha mostraba «No se pudo analizar la imagen» en las tres escenas. La causa era interna: el servicio de IA devuelve un objeto con la respuesta dentro y el módulo lo leía como si fuera texto plano, así que nunca llegaba a interpretarlo. Ahora el orden de las escenas, su duración, el estilo de cada una y la música vuelven a decidirse mirando las fotos, y los prompts recuperan el refuerzo que conserva logotipos, textos y rostros. Además, si el análisis vuelve a fallar en las tres, el Reel lo dice arriba del todo en vez de degradarse en silencio.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'El análisis de las fotos se leía mal y caía siempre al criterio por defecto.' },
+            { type: 'fixed', text: 'La comprobación de fidelidad quedaba permanentemente sin realizar por la misma causa.' },
+            { type: 'improved', text: 'Si fallan los tres análisis, el Reel lo avisa en vez de degradarse en silencio.' }
+        ]
+    },
     {
         version: '4.663.0',
         title: 'Creador de Reels IA: tres fotos, un Reel listo para publicar 🎬',

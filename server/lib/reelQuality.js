@@ -259,9 +259,13 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - "anatomyErrors" cubre manos, dedos, ojos y extremidades mal resueltos.
 - "issues" vacío si no hay ningún problema. No inventes problemas para justificar la nota.`;
 
-const parseJsonObject = (text) => {
+// `generateCopy` devuelve { content, raw, provider, model }, no una cadena.
+// Ver la nota en `reelDirector.js`: tratarlo como texto deja la comprobación de
+// fidelidad permanentemente en `unavailable`.
+const parseJsonObject = (result) => {
+    const text = result == null ? '' : (typeof result === 'string' ? result : (result.content || ''));
     if (!text) return null;
-    const cleaned = String(text).replace(/```json\s*|```/g, '').trim();
+    const cleaned = text.replace(/```json\s*|```/g, '').trim();
     try { return JSON.parse(cleaned); } catch { /* sigue */ }
     const s = cleaned.indexOf('{');
     const e = cleaned.lastIndexOf('}');
@@ -286,7 +290,7 @@ export const checkSceneFidelity = async ({ sourceImageUrl, frameUrl, analysis = 
     if (analysis?.hasPeople) focus.push('Hay personas: revisá rostros, manos y proporciones.');
 
     try {
-        const text = await generateCopy({
+        const result = await generateCopy({
             system: FIDELITY_SYSTEM,
             userText: [
                 `Fotografía original: ${sourceImageUrl}`,
@@ -300,7 +304,7 @@ export const checkSceneFidelity = async ({ sourceImageUrl, frameUrl, analysis = 
             jsonMode: true
         });
 
-        const raw = parseJsonObject(text);
+        const raw = parseJsonObject(result);
         if (!raw) {
             return { state: 'unavailable', score: null, issues: [], reason: 'El control de fidelidad no devolvió una respuesta legible.' };
         }

@@ -500,6 +500,17 @@ export const createReel = async (req, res) => {
         });
 
         const notes = [...engineChoice.notes, ...warnings];
+
+        // Que fallen LAS TRES no es mala suerte con una foto: es el módulo de
+        // visión caído o mal configurado. El fallback deja el Reel en pie —y
+        // está bien que lo haga—, pero degradado sin decirlo se confunde con
+        // funcionar. En v4.663.0 eso escondió un fallo propio durante todo un
+        // despliegue. Se dice arriba del todo, no sólo foto por foto.
+        if (analyses.every(a => a.failed)) {
+            notes.push(
+                'No se pudo analizar ninguna de las tres fotos: el Reel se armó con el criterio por defecto (abre la toma más abierta, cierra la que lleva la marca) y los prompts van sin refuerzo de marca ni de personas. Revisar las credenciales del proveedor de copy.'
+            );
+        }
         // La duración real se dice de frente. Con un motor que entrega clips de
         // 5 s exactos, tres escenas y dos fundidos dan 14 s, no 15: alargarlo
         // costaría generar clips de 10 s para tirar la mitad. Es la "duración

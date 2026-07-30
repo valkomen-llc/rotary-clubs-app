@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.663.0",
-  "cache_bust": "2026-07-30m (Creador de Reels IA: tres fotos se convierten en tres escenas image-to-video con narrativa, musica y montaje automatico.)",
+  "version": "4.663.1",
+  "cache_bust": "2026-07-30n (Fix: el analisis de las fotos leia mal la respuesta del proveedor y caia siempre al criterio por defecto.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
