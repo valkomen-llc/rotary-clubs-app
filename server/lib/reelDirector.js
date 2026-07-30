@@ -65,11 +65,24 @@ Reglas:
 
 const STYLE_IDS = Object.keys(MOTION_STYLES);
 
+// `generateCopy` devuelve { content, raw, provider, model }, NO una cadena.
+// Tratarlo como texto da `"[object Object]"`, que no parsea nunca: el análisis
+// caía siempre al criterio por defecto y el módulo lo tapaba con su fallback
+// —"No se pudo analizar la imagen" en las tres escenas—. Era un fallo real
+// escondido por una degradación que funcionaba. Se lee `.content` acá, en un
+// solo sitio, para que no vuelva a repetirse por copia.
+const contentOf = (result) => {
+    if (result == null) return '';
+    if (typeof result === 'string') return result;
+    return typeof result.content === 'string' ? result.content : '';
+};
+
 // Extrae el primer objeto JSON de una respuesta. Los modelos a veces envuelven
 // el JSON en ```json aunque se les pida lo contrario.
-const parseJsonObject = (text) => {
+const parseJsonObject = (result) => {
+    const text = contentOf(result);
     if (!text) return null;
-    const cleaned = String(text).replace(/```json\s*|```/g, '').trim();
+    const cleaned = text.replace(/```json\s*|```/g, '').trim();
     try { return JSON.parse(cleaned); } catch { /* sigue */ }
     const start = cleaned.indexOf('{');
     const end = cleaned.lastIndexOf('}');
@@ -129,7 +142,7 @@ export const analyzeImages = async (images, { provider = null } = {}) => {
     const results = await Promise.all(
         images.map(async (img, index) => {
             try {
-                const text = await generateCopy({
+                const result = await generateCopy({
                     ...(provider ? { provider } : {}),
                     system: ANALYSIS_SYSTEM,
                     userText: 'Analiza esta fotografía y devuelve únicamente el JSON.',
@@ -138,7 +151,7 @@ export const analyzeImages = async (images, { provider = null } = {}) => {
                     maxTokens: 700,
                     jsonMode: true
                 });
-                const parsed = parseJsonObject(text);
+                const parsed = parseJsonObject(result);
                 if (!parsed) return neutralAnalysis(index, 'la respuesta no vino en JSON');
                 return sanitizeAnalysis(parsed, index);
             } catch (e) {
@@ -327,7 +340,7 @@ export const buildDirection = async (analyses, {
     }
 
     try {
-        const text = await generateCopy({
+        const result = await generateCopy({
             ...(provider ? { provider } : {}),
             system: DIRECTION_SYSTEM,
             userText: buildDirectionPrompt(analyses, prefs),
@@ -335,7 +348,7 @@ export const buildDirection = async (analyses, {
             maxTokens: 900,
             jsonMode: true
         });
-        const parsed = parseJsonObject(text);
+        const parsed = parseJsonObject(result);
         if (!parsed) {
             console.warn('[REEL] el director no devolvió JSON; se usó el criterio por defecto');
             return fallbackDirection(analyses, prefs);
