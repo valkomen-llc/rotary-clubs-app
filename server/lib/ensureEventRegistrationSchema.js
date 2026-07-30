@@ -164,6 +164,10 @@ export const ensureEventRegistrationSchema = async () => {
         ['checkedInBy', 'TEXT'],
         ['submittedAt', 'TIMESTAMPTZ'],
         ['lastActivityAt', 'TIMESTAMPTZ'],
+        // v4.655 — Cuenta del asistente. Es lo que ata la inscripción a quien
+        // la consulta: con `accountId` + `eventId` + `categoryKey` + `id`, una
+        // sola fila lleva el vínculo completo que pide el panel del asistente.
+        ['accountId', 'TEXT'],
     ];
     for (const [column, definition] of columns) {
         await addColumn('EventRegistration', column, definition);
@@ -175,6 +179,9 @@ export const ensureEventRegistrationSchema = async () => {
     await index('EventRegistration_email_idx', 'ON "EventRegistration" (email)');
     await index('EventRegistration_category_idx', 'ON "EventRegistration" ("eventId", "categoryKey")');
     await index('EventRegistration_intent_idx', 'ON "EventRegistration" ("stripePaymentIntentId")');
+    // El panel del asistente filtra SIEMPRE por esta columna: es el índice que
+    // sostiene el aislamiento de datos, no una optimización cualquiera.
+    await index('EventRegistration_account_idx', 'ON "EventRegistration" ("accountId")');
     // El código de inscripción se dicta por teléfono en la acreditación: tiene
     // que ser único de verdad, no sólo por convención.
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventRegistration_code_uniq"
@@ -284,6 +291,58 @@ export const ensureEventRegistrationSchema = async () => {
         );
     `);
     await index('EventRegistrationMessage_reg_idx', 'ON "EventRegistrationMessage" ("registrationId", "createdAt")');
+
+    // ── Cuenta del asistente al evento ───────────────────────────────
+    //
+    // v4.655 — Identidad propia del inscrito, con la misma arquitectura que
+    // `ProjectFairAccount` (el Gestor de Proyectos) y por el mismo motivo: NO
+    // vive en la tabla `User` de la plataforma, así que un asistente jamás
+    // alcanza `/admin/*` ni aunque escriba la URL. Su token lleva la audiencia
+    // `event-attendee-portal`, que ni `authMiddleware` ni `portalAuth` aceptan.
+    //
+    // La cuenta es UNA por correo, no una por inscripción: quien vuelva en la
+    // XIII edición entra con la misma clave y ve su historial separado por
+    // evento. Por eso la unicidad es sobre el correo y el vínculo con cada
+    // inscripción vive en `EventRegistration.accountId`.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "EventAttendeeAccount" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            email VARCHAR(200) NOT NULL,
+            "passwordHash" TEXT NOT NULL,
+            "firstName" VARCHAR(120),
+            "lastName" VARCHAR(120),
+            phone VARCHAR(60),
+            role VARCHAR(40) NOT NULL DEFAULT 'event_attendee',
+            "emailVerifiedAt" TIMESTAMPTZ,
+            "verificationToken" TEXT,
+            "lastLoginAt" TIMESTAMPTZ,
+            "resetToken" TEXT,
+            "resetExpiry" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventAttendeeAccount_email_key"
+                    ON "EventAttendeeAccount" (lower(email));`).catch(() => { });
+
+    // Auditoría de ingresos. Guarda también los intentos fallidos: sin ellos no
+    // se puede distinguir "la persona olvidó la clave" de "alguien está
+    // probando". El correo se guarda aparte del id porque un intento fallido
+    // puede no corresponder a ninguna cuenta.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "EventAttendeeLogin" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "accountId" TEXT,
+            email VARCHAR(200),
+            outcome VARCHAR(30) NOT NULL,
+            ip VARCHAR(60),
+            "userAgent" VARCHAR(300),
+            detail TEXT,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await index('EventAttendeeLogin_account_idx', 'ON "EventAttendeeLogin" ("accountId", "createdAt")');
+    await index('EventAttendeeLogin_email_idx', 'ON "EventAttendeeLogin" (lower(email), "createdAt")');
 
     _ready = true;
 };

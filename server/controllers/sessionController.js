@@ -1,16 +1,17 @@
 // ════════════════════════════════════════════════════════════════════
 // Acceso unificado — POST /api/auth/session
-// v4.627.0
+// v4.655.0
 //
 // El sitio tiene un solo formulario de ingreso: el del ícono del encabezado.
-// Detrás hay dos identidades distintas, y quien ingresa no tiene por qué
+// Detrás hay tres identidades distintas, y quien ingresa no tiene por qué
 // saberlo:
 //
-//   • `User`               → administra el sitio        → /admin/dashboard
-//   • `ProjectFairAccount` → gestiona su proyecto       → /mi-proyecto
+//   • `User`                 → administra el sitio      → /admin/dashboard
+//   • `ProjectFairAccount`   → gestiona su proyecto     → /mi-proyecto
+//   • `EventAttendeeAccount` → consulta su inscripción  → /mi-inscripcion
 //
 // Este endpoint recibe correo y contraseña una sola vez, averigua a cuál de
-// las dos pertenecen, emite el token que corresponda y devuelve la RUTA DE
+// las tres pertenecen, emite el token que corresponda y devuelve la RUTA DE
 // DESTINO ya calculada. El navegador obedece esa ruta en lugar de decidirla
 // por su cuenta, así que cliente y servidor no pueden discrepar sobre a dónde
 // va cada rol.
@@ -20,10 +21,11 @@
 // ════════════════════════════════════════════════════════════════════
 import { authenticatePlatform, platformRedirect } from './authController.js';
 import { authenticatePortal, describePortalSession } from './projectFairPortalController.js';
+import { authenticateAttendee, describeAttendeeSession } from './eventAttendeeController.js';
 import { ADMIN_ROLES } from '../middleware/auth.js';
 
 // Mensaje único para credenciales que no coinciden: no se revela si el correo
-// existe, ni en cuál de las dos identidades.
+// existe, ni en cuál de las tres identidades.
 const BAD_CREDENTIALS = 'Correo o contraseña incorrectos.';
 
 export const resolveSession = async (req, res) => {
@@ -77,6 +79,32 @@ export const resolveSession = async (req, res) => {
                 token: portal.token,
                 email: portal.account.email,
                 clubName: portal.account.clubName,
+                ...session,
+            });
+        }
+
+        // 3) Identidad del asistente a un evento (las credenciales que creó al
+        //    inscribirse). Va al final porque es la más numerosa pero la que
+        //    menos veces entra: se consulta el estado de una inscripción unas
+        //    pocas veces, no a diario.
+        const attendee = await authenticateAttendee(email, password, req).catch(err => {
+            console.error('[session] authenticateAttendee:', err?.message);
+            return { ok: false };
+        });
+
+        if (attendee.needsPassword) {
+            return res.status(409).json({
+                error: 'Tu inscripción está registrada pero aún no tiene contraseña. Te enviamos un enlace para crearla.',
+                needsPassword: true,
+                realm: 'attendee',
+            });
+        }
+
+        if (attendee.ok) {
+            const session = await describeAttendeeSession(attendee.account);
+            return res.json({
+                token: attendee.token,
+                email: attendee.account.email,
                 ...session,
             });
         }

@@ -76,6 +76,7 @@ import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
 const MiProyecto = React.lazy(() => import('./pages/MiProyecto'));
+const MiInscripcion = React.lazy(() => import('./pages/MiInscripcion'));
 const RegistroFeria = React.lazy(() => import('./pages/RegistroFeria'));
 const RegistroEvento = React.lazy(() => import('./pages/RegistroEvento'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
@@ -493,6 +494,10 @@ function App() {
                 <Route path="/postular-proyecto" element={<FeriaProyectos />} />
                 {/* v4.608 — Panel del club: formulación del proyecto tras el pago. */}
                 <Route path="/mi-proyecto" element={<MiProyecto />} />
+                {/* Panel del Asistente al Evento (v4.655): consulta su propia
+                    inscripción. Identidad y permisos propios, ver
+                    server/controllers/eventAttendeeController.js */}
+                <Route path="/mi-inscripcion" element={<MiInscripcion />} />
                 <Route path="/feria-proyectos" element={<ProjectFormRedirect />} />
                 <Route path="/inscribir-proyecto" element={<ProjectFormRedirect />} />
 

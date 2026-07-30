@@ -24,6 +24,8 @@ export interface FormField {
     required?: boolean;
     max?: number;
     help?: string;
+    /** Texto guía dentro del control. Lo define el servidor con el campo. */
+    placeholder?: string;
     options?: FieldOption[];
     showIf?: { key: string; in?: string[]; notIn?: string[]; equals?: unknown };
 }
@@ -213,6 +215,28 @@ export const validateStep = (
         && String(answers.departureDate) < String(answers.arrivalDate)) {
         errors.departureDate = 'La salida no puede ser anterior a la llegada.';
     }
+    return errors;
+};
+
+// ── Credenciales del asistente ───────────────────────────────────────
+// Espejo de `validateCredentials` del servidor (eventRegistrationSpec.js).
+// El servidor la corre siempre; aquí sólo evita el viaje de red.
+
+export const PASSWORD_MIN = 8;
+
+export const validateCredentials = (
+    { password, passwordConfirm }: { password?: string; passwordConfirm?: string },
+): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const pass = String(password ?? '');
+    const confirm = String(passwordConfirm ?? '');
+
+    if (!pass) errors.password = 'Crea una contraseña para consultar tu inscripción.';
+    else if (pass.length < PASSWORD_MIN) errors.password = `Usa al menos ${PASSWORD_MIN} caracteres.`;
+
+    if (!confirm) errors.passwordConfirm = 'Repite la contraseña.';
+    else if (confirm !== pass) errors.passwordConfirm = 'Las contraseñas no coinciden.';
+
     return errors;
 };
 

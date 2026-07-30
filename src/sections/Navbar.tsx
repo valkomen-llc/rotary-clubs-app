@@ -10,6 +10,8 @@ import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+// Tercera identidad del sitio: quien consulta su inscripción a un evento.
+import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { onOpenLoginModal } from '../lib/loginModal';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
@@ -227,9 +229,10 @@ const Navbar = () => {
 
   /**
    * ACCESO UNIFICADO (v4.627). Un solo envío a /auth/session: el servidor
-   * averigua si esas credenciales son de un administrador del sitio o de un
-   * Gestor de Proyectos, emite el token que corresponda y devuelve la ruta de
-   * destino ya calculada. Aquí no se decide a dónde va cada rol.
+   * averigua si esas credenciales son de un administrador del sitio, de un
+   * Gestor de Proyectos o de un Asistente al Evento, emite el token que
+   * corresponda y devuelve la ruta de destino ya calculada. Aquí no se decide
+   * a dónde va cada rol.
    */
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,13 +241,22 @@ const Navbar = () => {
 
     try {
       if (loginMode === 'forgot') {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/project-fair/portal/forgot`, {
+        // El correo puede pertenecer al panel del club o al del asistente a un
+        // evento, y quien lo escribe no tiene por qué saber cuál es el suyo. Se
+        // pregunta a los dos: cada uno responde el mismo mensaje genérico y
+        // sólo envía el enlace si de verdad tiene esa cuenta.
+        const api = import.meta.env.VITE_API_URL || '/api';
+        const ask = (path: string) => fetch(`${api}${path}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
-        });
-        const body = await res.json();
-        setLoginOk(body?.message || 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
+        }).then(r => r.json()).catch(() => null);
+
+        const [fair] = await Promise.all([
+          ask('/project-fair/portal/forgot'),
+          ask('/event-registrations/portal/forgot'),
+        ]);
+        setLoginOk(fair?.message || 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
         return;
       }
 
@@ -271,6 +283,15 @@ const Navbar = () => {
         // Gestor de Proyectos: identidad del módulo, token en su propia llave.
         localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
         setJustLinked(true);
+        closeLoginModal();
+        navigate(target);
+        return;
+      }
+
+      if (data.realm === 'attendee') {
+        // Asistente al Evento: su propia identidad y su propia llave. No se
+        // toca la sesión de la plataforma ni la del panel del club.
+        localStorage.setItem(ATTENDEE_TOKEN_KEY, data.token);
         closeLoginModal();
         navigate(target);
         return;

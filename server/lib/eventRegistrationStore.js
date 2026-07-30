@@ -258,6 +258,8 @@ export const mapRegistration = (row) => row && ({
     registrationCode: row.registrationCode,
     eventId: row.eventId,
     clubId: row.clubId,
+    // Cuenta de Asistente al Evento a la que pertenece (v4.655).
+    accountId: row.accountId || null,
     status: row.status,
     categoryId: row.categoryId,
     categoryKey: row.categoryKey,

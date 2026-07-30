@@ -278,6 +278,63 @@ Cada uno abre `/eventos/:ref/registro?categoria=<clave>`.
 del título (`XIII …`) y de `location`. La edición clonada nace con el registro
 **cerrado**, a propósito.
 
+### Rol "Asistente al Evento" y su panel (v4.655)
+
+Al enviar el formulario, la inscripción **crea la cuenta** con la que esa
+persona consultará su registro. Es el mismo patrón del Gestor de Proyectos, y
+está escrito aparte a propósito.
+
+| Archivo | Qué es |
+|---|---|
+| `server/controllers/eventAttendeeController.js` | Identidad, permisos, panel y auditoría del asistente |
+| `src/pages/MiInscripcion.tsx` | El panel (`/mi-inscripcion`) |
+| `src/components/forms/FairField.tsx` | Campos compartidos con Postular Proyecto |
+
+- **Una cuenta por CORREO, no por inscripción.** Es la diferencia con
+  `ProjectFairAccount`, que es 1:1 con la postulación. Quien vuelva en la XIII
+  entra con la misma clave y ve su historial separado por evento. Por eso la
+  unicidad es sobre `lower(email)` y el vínculo con cada inscripción vive en
+  `EventRegistration.accountId`. Con esa columna más `eventId` y `categoryKey`,
+  una sola fila lleva la relación completa usuario ↔ evento ↔ categoría ↔
+  inscripción.
+- **Si el correo ya tiene cuenta, NO se crea otra.** Se vincula la inscripción
+  nueva, y para hacerlo se exige la contraseña vigente. Sin eso, cualquiera que
+  conociera un correo podría sobrescribir su clave inscribiéndose de nuevo. El
+  409 explica cómo salir (entrar o recuperar la contraseña); no es un callejón.
+- **La cuenta se resuelve ANTES de escribir la inscripción.** Un choque de
+  contraseña no puede dejar una inscripción a medio crear.
+- **La contraseña nunca entra en `answers`.** Viaja aparte en el envío final —no
+  en el autoguardado ni en el borrador de `localStorage`— y sólo se persiste su
+  hash (bcrypt).
+- **Permisos propios** (`ATTENDEE_PERMISSIONS`), no los del Gestor de Proyectos:
+  leer su inscripción y su perfil. Reutilizar los de proyectos le habría dado
+  acceso a formularios y documentos que no le corresponden.
+- **El aislamiento va en el `WHERE`.** Toda consulta del panel filtra por
+  `"accountId" = <cuenta del token>`. Ningún endpoint recibe un id y lo devuelve
+  comprobando la pertenencia después. La ficha tampoco expone notas internas,
+  identificadores de Stripe ni etiquetas de segmentación.
+- **Una inscripción pagada no puede quedar sin cuenta.** Si el formulario se
+  envió antes de v4.655, `confirmPaidSession` la crea con hash inutilizable
+  (`'!'`) y la persona la estrena por "olvidé mi contraseña": el pago ya
+  demostró que ese correo es suyo. Mismo mecanismo que `ProjectFairAccount`.
+- **El estado del panel lo mueve el módulo, no la pantalla**: el webhook de
+  Stripe y el panel administrativo. El asistente sólo lee.
+- La verificación de correo existe pero está **apagada** por defecto
+  (`EVENT_ATTENDEE_EMAIL_VERIFICATION=true` la enciende): encenderla obliga a
+  confirmar el correo y sólo tiene sentido con el envío de correo sano.
+- **El campo `language` ("Idioma") se retiró del formulario** en v4.655: el
+  idioma de navegación lo decide el selector del encabezado y ya gobierna qué
+  registro se ofrece (`resolveAudienceHint`); preguntarlo otra vez duplicaba un
+  dato que el sitio ya conoce y podía contradecirlo. `preferredLanguage`
+  ("Idioma preferido durante el evento") **se conserva**: es otra cosa —sirve
+  para traducción y salas—. La columna `language` no se toca: las inscripciones
+  viejas conservan su valor.
+- **Los dos formularios públicos comparten componentes de verdad**
+  (`src/components/forms/FairField.tsx`). Postular Proyecto y el registro a un
+  evento importan `Field`, `PhoneField` y `StepProgress` del mismo módulo. No
+  duplicar estos controles: el formulario del evento es dinámico (los campos los
+  define el servidor) y `DynamicField` sólo TRADUCE cada campo a esas piezas.
+
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en
@@ -375,29 +432,34 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 15 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `EventRegistration`, `FAQ`, `OutroProject` y las once
-`ProjectFair*`.
+Las 17 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `EventRegistration`, `EventAttendeeAccount`,
+`EventAttendeeLogin`, `FAQ`, `OutroProject` y las once `ProjectFair*`.
+(Más las seis del registro de eventos que enumera su propia sección:
+`EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
+`EventRegistrationPayment`, `EventRegistrationHistory` y
+`EventRegistrationMessage`.)
 
-## Acceso e identidades (v4.627)
+## Acceso e identidades (v4.655)
 
 El sitio tiene **un solo formulario de ingreso**: el del ícono del encabezado
 (`src/sections/Navbar.tsx`). Ninguna pantalla dibuja el suyo. Cuando otra
 pantalla necesita sesión, llama a `openLoginModal()` (`src/lib/loginModal.ts`).
 
-Detrás hay **dos identidades**, y quien ingresa no tiene por qué saber cuál le
+Detrás hay **tres identidades**, y quien ingresa no tiene por qué saber cuál le
 toca:
 
 | Identidad | Tabla | Audiencia del token | Llave en el navegador | Destino |
 |---|---|---|---|---|
 | Administrador del sitio | `User` | `rotary-platform` | `rotary_token` | `/admin/dashboard` |
 | Gestor de Proyectos | `ProjectFairAccount` | `project-fair-portal` | `feria_portal_token` | `/mi-proyecto` |
+| Asistente al Evento | `EventAttendeeAccount` | `event-attendee-portal` | `evento_asistente_token` | `/mi-inscripcion` |
 
 `POST /api/auth/session` (`server/controllers/sessionController.js`) recibe el
-correo y la contraseña una sola vez, prueba primero la plataforma y después el
-panel del club, y **devuelve la ruta de destino ya calculada**. El navegador la
-obedece; no recalcula a dónde va cada rol. Al agregar un rol o un destino,
-cambiarlo ahí, no en el `Navbar`.
+correo y la contraseña una sola vez, prueba la plataforma, después el panel del
+club y por último el panel del asistente, y **devuelve la ruta de destino ya
+calculada**. El navegador la obedece; no recalcula a dónde va cada rol. Al
+agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
 
 **Reglas durables:**
 
@@ -405,7 +467,7 @@ cambiarlo ahí, no en el `Navbar`.
   protege también en el servidor. `authMiddleware` exige la audiencia
   `rotary-platform`; `requireSiteAdmin` exige rol administrativo. Ambos en
   `server/middleware/auth.js`.
-- **Las dos identidades comparten `JWT_SECRET`.** Por eso la audiencia es
+- **Las tres identidades comparten `JWT_SECRET`.** Por eso la audiencia es
   obligatoria: hasta v4.626 `authMiddleware` sólo verificaba la firma, así que
   el token del panel de un club pasaba y alcanzaba `/api/project-fair/admin/*`
   —que devuelve las postulaciones y los pagos de **todos** los clubes—.

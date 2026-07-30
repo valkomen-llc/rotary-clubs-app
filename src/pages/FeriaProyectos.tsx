@@ -12,11 +12,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
-    ChevronDown, CreditCard, ExternalLink, Loader2, Mail, MapPin, Phone, RefreshCw,
+    CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
 } from 'lucide-react';
-import { COUNTRIES, DEFAULT_COUNTRY, composePhone, findCountry, flagEmoji, parsePhone } from '../lib/countryPhones';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
+// Los campos son los del módulo compartido: el formulario de inscripción a
+// un evento usa estos mismos componentes, no una copia parecida.
+import { Field, PhoneField, SummaryRow, PASSWORD_MIN } from '../components/forms/FairField';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -87,7 +89,6 @@ const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
     3: [],
 };
 
-const PASSWORD_MIN = 8;
 
 const fmtCop = (n: number | null | undefined) =>
     `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
@@ -148,126 +149,6 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
         default: return null;
     }
 };
-
-// ── Piezas de UI ─────────────────────────────────────────────────────
-const Field = ({
-    label, name, value, onChange, onBlur, error, touched, required = true,
-    type = 'text', placeholder, icon: Icon, hint, as = 'input', options, rows = 6, maxLength,
-}: any) => {
-    const invalid = touched && error;
-    const base = `w-full rounded-xl border px-4 py-3 text-[15px] text-slate-900 bg-white transition
-        placeholder:text-slate-400 focus:outline-none focus:ring-2
-        ${invalid ? 'border-red-400 focus:ring-red-200' : 'border-slate-300 focus:border-[#17458F] focus:ring-[#17458F]/20'}`;
-    return (
-        <div>
-            <label htmlFor={name} className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                {Icon && <Icon size={15} className="text-slate-400" />}
-                {label} {required && <span className="text-red-500">*</span>}
-            </label>
-            {as === 'textarea' ? (
-                <textarea
-                    id={name} name={name} value={value} onChange={onChange} onBlur={onBlur}
-                    rows={rows} maxLength={maxLength} placeholder={placeholder}
-                    className={`${base} resize-y leading-relaxed`}
-                />
-            ) : as === 'select' ? (
-                <select id={name} name={name} value={value} onChange={onChange} onBlur={onBlur} className={`${base} cursor-pointer`}>
-                    <option value="">- Seleccione -</option>
-                    {(options || []).map((o: Option) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                </select>
-            ) : (
-                <input
-                    id={name} name={name} type={type} value={value} onChange={onChange} onBlur={onBlur}
-                    placeholder={placeholder} inputMode={type === 'number' ? 'decimal' : undefined}
-                    className={base} autoComplete="off"
-                />
-            )}
-            {invalid ? (
-                <p className="mt-1.5 flex items-center gap-1 text-[13px] font-medium text-red-600">
-                    <AlertCircle size={13} /> {error}
-                </p>
-            ) : hint ? (
-                <p className="mt-1.5 text-[13px] text-slate-500">{hint}</p>
-            ) : null}
-        </div>
-    );
-};
-
-// Teléfono con selector de país: el indicativo se elige de una lista con
-// banderas y el valor se guarda unificado ("+57 3001234567"). Colombia queda
-// por defecto por ser el país anfitrión.
-//
-// El selector cerrado muestra sólo bandera e indicativo (🇨🇴 +57) para que el
-// grueso del ancho quede libre para escribir el número. Como un <select>
-// nativo siempre pinta el texto completo de la opción elegida, se usa el
-// patrón de select transparente encima del texto visible: la lista desplegada
-// conserva el nombre del país —necesario para encontrarlo entre 56— y en
-// móvil se abre el selector nativo del sistema.
-const PhoneField = ({ value, onChange, onBlur, error, touched }: {
-    value: string; onChange: (v: string) => void; onBlur: () => void;
-    error?: string | null; touched?: boolean;
-}) => {
-    const parsed = parsePhone(value);
-    const [iso, setIso] = useState(parsed.iso || DEFAULT_COUNTRY);
-    const national = parsed.national;
-    const invalid = touched && error;
-
-    const update = (nextIso: string, nextNational: string) => {
-        setIso(nextIso);
-        onChange(composePhone(nextIso, nextNational));
-    };
-
-    return (
-        <div>
-            <label htmlFor="phone" className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                <Phone size={15} className="text-slate-400" />
-                Número de contacto o WhatsApp <span className="text-red-500">*</span>
-            </label>
-            <div className={`flex overflow-hidden rounded-xl border bg-white transition focus-within:ring-2 ${
-                invalid ? 'border-red-400 focus-within:ring-red-200' : 'border-slate-300 focus-within:border-[#17458F] focus-within:ring-[#17458F]/20'}`}>
-                <div className="relative shrink-0 border-r border-slate-200 bg-slate-50">
-                    <div aria-hidden className="flex items-center gap-1.5 py-3 pl-3 pr-2 text-[15px] font-semibold text-slate-700">
-                        <span className="text-lg leading-none">{flagEmoji(iso)}</span>
-                        {findCountry(iso).dial}
-                        <ChevronDown size={14} className="text-slate-400" />
-                    </div>
-                    <select
-                        aria-label="País del número de contacto"
-                        value={iso}
-                        onChange={e => update(e.target.value, national)}
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus:outline-none"
-                    >
-                        {COUNTRIES.map(c => (
-                            <option key={c.iso} value={c.iso}>{flagEmoji(c.iso)} {c.name} ({c.dial})</option>
-                        ))}
-                    </select>
-                </div>
-                <input
-                    id="phone" name="phone" type="tel" inputMode="tel"
-                    value={national}
-                    onChange={e => update(iso, e.target.value)}
-                    onBlur={onBlur}
-                    placeholder="300 000 0000"
-                    className="w-full bg-transparent px-3 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                />
-            </div>
-            {invalid && (
-                <p className="mt-1.5 flex items-center gap-1 text-[13px] font-medium text-red-600">
-                    <AlertCircle size={13} /> {error}
-                </p>
-            )}
-        </div>
-    );
-};
-
-const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex flex-col gap-0.5 border-b border-slate-100 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <span className="text-[13px] font-medium uppercase tracking-wide text-slate-500">{label}</span>
-        <span className="text-[15px] font-semibold text-slate-900 sm:max-w-[62%] sm:text-right">{value || '—'}</span>
-    </div>
-);
 
 // ── Página ───────────────────────────────────────────────────────────
 const FeriaProyectos = () => {
