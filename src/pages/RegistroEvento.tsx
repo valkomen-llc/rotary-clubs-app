@@ -24,21 +24,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-    AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, Clock,
-    CreditCard, Loader2, Lock, MapPin, Plus, ShieldCheck, Trash2, Users,
+    Accessibility, AlertCircle, ArrowLeft, ArrowRight, Briefcase, Building2, CalendarDays,
+    Check, CheckCircle2, Clock, CreditCard, FileText, Globe, Hotel, IdCard, KeyRound,
+    LayoutDashboard, Loader2, Lock, Mail, MapPin, Plane, Plus, ShieldCheck, Target,
+    Trash2, User, Users, Utensils,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import {
-    money, validateStep, isFieldVisible, COUNTRY_SUGGESTIONS, COLOMBIA_DEPARTMENTS,
+    money, validateStep, isFieldVisible, validateCredentials, COUNTRY_SUGGESTIONS, COLOMBIA_DEPARTMENTS,
     type FormField, type FormStep, type PublicCategory, type Companion,
 } from '../lib/eventRegistrationSpec';
 import { localeOf } from '../components/EventRegistrationCta';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
+// Mismos componentes que usa Postular Proyecto — no una copia parecida.
+import { Field, PhoneField, StepProgress, controlCls } from '../components/forms/FairField';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
+/** Panel del Asistente al Evento. La misma ruta que devuelve el servidor. */
+const ATTENDEE_PATH = '/mi-inscripcion';
 const BLUE = '#17458F';
 const GOLD = '#F7A81B';
 
@@ -70,6 +76,8 @@ interface Registration {
     companionsCount: number;
     accessToken?: string;
     pricing?: Record<string, any>;
+    /** Cuenta de Asistente al Evento a la que quedó vinculada la inscripción. */
+    account?: { email: string; portalPath: string } | null;
 }
 
 type Answers = Record<string, any>;
@@ -83,11 +91,33 @@ const storageKey = (eventRef: string, categoryKey: string) =>
     `rotary_event_reg_${eventRef}_${categoryKey}`;
 
 // ── Campo dinámico ───────────────────────────────────────────────────
+//
+// El formulario de un evento lo define el servidor (una lista de campos por
+// categoría), mientras que el de Postular Proyecto está escrito a mano. Para
+// que se vean idénticos, este componente NO dibuja controles propios: traduce
+// cada campo dinámico a las mismas piezas compartidas (`Field`, `PhoneField`)
+// que usa Postular Proyecto. Lo único propio son los controles que allá no
+// existen —selección múltiple y casilla de aceptación—, y usan el mismo borde
+// (`controlCls`) y el mismo mensaje de error.
 
-const inputCls = (invalid: boolean) =>
-    `w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${invalid
-        ? 'border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-red-100'
-        : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'}`;
+/** Ícono de cada campo, para que el rótulo se vea igual que en Postular. */
+const FIELD_ICONS: Record<string, any> = {
+    firstName: User, lastName: User, email: Mail,
+    documentType: IdCard, documentNumber: IdCard,
+    country: Globe, city: MapPin, department: MapPin,
+    clubName: Building2, district: MapPin, rotaryRole: Briefcase,
+    residenceCountry: Globe, arrivalDate: Plane, departureDate: Plane,
+    lodging: Hotel, lodgingDetail: Hotel,
+    needsVisa: FileText, preferredLanguage: Globe,
+    emergencyName: User, emergencyRelation: Users,
+    dietary: Utensils, dietaryDetail: Utensils, accessibility: Accessibility,
+    technicalExperience: Target, specialties: Target, availability: CalendarDays,
+    supportedClubs: Building2,
+};
+
+/** Un campo ocupa el ancho completo cuando su control no cabe en media fila. */
+const isWide = (field: FormField) =>
+    field.type === 'textarea' || field.type === 'multiselect' || field.type === 'checkbox';
 
 const DynamicField = ({ field, value, error, onChange }: {
     field: FormField;
@@ -96,94 +126,106 @@ const DynamicField = ({ field, value, error, onChange }: {
     onChange: (value: any) => void;
 }) => {
     const invalid = Boolean(error);
-    const listId = field.type === 'country' ? `list-${field.key}` : undefined;
-
-    const control = () => {
-        switch (field.type) {
-            case 'textarea':
-                return (
-                    <textarea rows={3} value={value ?? ''} maxLength={field.max}
-                        onChange={e => onChange(e.target.value)} className={inputCls(invalid)} />
-                );
-            case 'select':
-                return (
-                    <select value={value ?? ''} onChange={e => onChange(e.target.value)} className={inputCls(invalid)}>
-                        <option value="">Selecciona…</option>
-                        {(field.options || []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                );
-            case 'multiselect':
-                return (
-                    <div className="flex flex-wrap gap-2">
-                        {(field.options || []).map(o => {
-                            const selected = Array.isArray(value) && value.includes(o.value);
-                            return (
-                                <button key={o.value} type="button"
-                                    onClick={() => {
-                                        const current: string[] = Array.isArray(value) ? value : [];
-                                        onChange(selected ? current.filter(v => v !== o.value) : [...current, o.value]);
-                                    }}
-                                    className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${selected
-                                        ? 'border-transparent text-white'
-                                        : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}
-                                    style={selected ? { background: BLUE } : undefined}>
-                                    {selected && <Check size={12} className="mr-1 inline" />}{o.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                );
-            case 'checkbox':
-                return (
-                    <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-700">
-                        <input type="checkbox" checked={value === true}
-                            onChange={e => onChange(e.target.checked)}
-                            className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{field.label}{field.required && <span className="text-red-500"> *</span>}</span>
-                    </label>
-                );
-            case 'country':
-                return (
-                    <>
-                        <input type="text" value={value ?? ''} list={listId} maxLength={field.max}
-                            onChange={e => onChange(e.target.value)} className={inputCls(invalid)}
-                            placeholder="Escribe o elige tu país" />
-                        <datalist id={listId}>
-                            {COUNTRY_SUGGESTIONS.map(c => <option key={c} value={c} />)}
-                        </datalist>
-                    </>
-                );
-            case 'number':
-                return (
-                    <input type="number" value={value ?? ''} onChange={e => onChange(e.target.value)}
-                        className={inputCls(invalid)} />
-                );
-            default:
-                return (
-                    <input
-                        type={field.type === 'email' ? 'email' : field.type === 'tel' ? 'tel' : field.type === 'date' ? 'date' : 'text'}
-                        value={value ?? ''} maxLength={field.max}
-                        list={field.key === 'department' ? 'list-departments' : undefined}
-                        onChange={e => onChange(e.target.value)} className={inputCls(invalid)} />
-                );
-        }
+    const common = {
+        label: field.label,
+        name: field.key,
+        value,
+        error,
+        // Los errores del asistente llegan sólo cuando se intenta avanzar, así
+        // que un campo con error siempre está "tocado".
+        touched: invalid,
+        required: Boolean(field.required),
+        icon: FIELD_ICONS[field.key],
+        hint: field.help,
+        placeholder: field.placeholder,
+        maxLength: field.max,
     };
 
-    return (
-        <div className={field.type === 'textarea' || field.type === 'multiselect' || field.type === 'checkbox' ? 'sm:col-span-2' : ''}>
-            {field.type !== 'checkbox' && (
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                    {field.label}{field.required && <span className="text-red-500"> *</span>}
+    // Aceptación de términos: una casilla no lleva rótulo arriba.
+    if (field.type === 'checkbox') {
+        return (
+            <div className="sm:col-span-2">
+                <label className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-4 text-[15px] transition ${
+                    invalid ? 'border-red-400 bg-red-50/40 text-red-800' : 'border-slate-300 bg-white text-slate-700'}`}>
+                    <input type="checkbox" checked={value === true}
+                        onChange={e => onChange(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{field.label}{field.required && <span className="text-red-500"> *</span>}</span>
                 </label>
+                {invalid && (
+                    <p className="mt-1.5 flex items-center gap-1 text-[13px] font-medium text-red-600">
+                        <AlertCircle size={13} /> {error}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // Teléfono: el mismo selector de país con banderas de Postular Proyecto.
+    if (field.type === 'tel') {
+        return (
+            <PhoneField
+                label={field.label} name={field.key} required={Boolean(field.required)}
+                value={value ?? ''} onChange={onChange}
+                error={error} touched={invalid} hint={field.help}
+            />
+        );
+    }
+
+    if (field.type === 'multiselect') {
+        return (
+            <div className="sm:col-span-2">
+                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                    {FIELD_ICONS[field.key] && (() => { const I = FIELD_ICONS[field.key]; return <I size={15} className="text-slate-400" />; })()}
+                    {field.label} {field.required && <span className="text-red-500">*</span>}
+                </label>
+                <div className={`flex flex-wrap gap-2 rounded-xl border p-3 ${invalid ? 'border-red-400' : 'border-slate-300'} bg-white`}>
+                    {(field.options || []).map(o => {
+                        const selected = Array.isArray(value) && value.includes(o.value);
+                        return (
+                            <button key={o.value} type="button"
+                                onClick={() => {
+                                    const current: string[] = Array.isArray(value) ? value : [];
+                                    onChange(selected ? current.filter(v => v !== o.value) : [...current, o.value]);
+                                }}
+                                className={`rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition ${selected
+                                    ? 'border-transparent text-white'
+                                    : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}
+                                style={selected ? { background: BLUE } : undefined}>
+                                {selected && <Check size={12} className="mr-1 inline" />}{o.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                {invalid ? (
+                    <p className="mt-1.5 flex items-center gap-1 text-[13px] font-medium text-red-600">
+                        <AlertCircle size={13} /> {error}
+                    </p>
+                ) : field.help ? (
+                    <p className="mt-1.5 text-[13px] text-slate-500">{field.help}</p>
+                ) : null}
+            </div>
+        );
+    }
+
+    const handle = (e: any) => onChange(e.target.value);
+
+    return (
+        <div className={isWide(field) ? 'sm:col-span-2' : undefined}>
+            {field.type === 'textarea' ? (
+                <Field {...common} as="textarea" rows={3} onChange={handle} />
+            ) : field.type === 'select' ? (
+                <Field {...common} as="select" options={field.options || []} onChange={handle} />
+            ) : field.type === 'country' ? (
+                <Field {...common} onChange={handle}
+                    placeholder={field.placeholder || 'Escribe o elige tu país'}
+                    suggestions={COUNTRY_SUGGESTIONS} />
+            ) : field.key === 'department' ? (
+                <Field {...common} onChange={handle} suggestions={COLOMBIA_DEPARTMENTS} />
+            ) : (
+                <Field {...common} onChange={handle}
+                    type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'} />
             )}
-            {control()}
-            {field.key === 'department' && (
-                <datalist id="list-departments">
-                    {COLOMBIA_DEPARTMENTS.map(d => <option key={d} value={d} />)}
-                </datalist>
-            )}
-            {field.help && !error && <p className="mt-1 text-xs text-slate-400">{field.help}</p>}
-            {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
         </div>
     );
 };
@@ -213,6 +255,37 @@ const RegistroEvento = () => {
 
     const [registration, setRegistration] = useState<Registration | null>(null);
     const draftRef = useRef<{ id: string; accessToken: string } | null>(null);
+
+    /**
+     * Credenciales de la cuenta de Asistente al Evento. Viven APARTE de
+     * `answers` a propósito: así no entran en el autoguardado del servidor ni
+     * en el borrador de `localStorage`, y el navegador nunca guarda una
+     * contraseña en claro. Sólo viajan en el envío final, y el servidor guarda
+     * el hash.
+     */
+    const [credentials, setCredentials] = useState({ password: '', passwordConfirm: '' });
+    const [credentialsTouched, setCredentialsTouched] = useState<Record<string, boolean>>({});
+    /** Lo que respondió el servidor (p. ej. "esa no es la clave de tu cuenta"). */
+    const [serverCredentialErrors, setServerCredentialErrors] = useState<Record<string, string>>({});
+
+    // La regla es la misma que corre el servidor; el mensaje del servidor manda
+    // cuando lo hay, porque sabe cosas que el navegador no —si el correo ya
+    // tiene cuenta, por ejemplo—.
+    const credentialErrors = useMemo(
+        () => ({ ...validateCredentials(credentials), ...serverCredentialErrors }),
+        [credentials, serverCredentialErrors]);
+
+    const setCredential = (key: 'password' | 'passwordConfirm', value: string) => {
+        setCredentials(prev => ({ ...prev, [key]: value }));
+        setServerCredentialErrors(prev => {
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
+    const touchCredential = (key: string) => setCredentialsTouched(prev => ({ ...prev, [key]: true }));
+    const touchAllCredentials = () => setCredentialsTouched({ password: true, passwordConfirm: true });
 
     const clubId = (club as any)?.id as string | undefined;
     const returningId = params.get('registro');
@@ -359,6 +432,15 @@ const RegistroEvento = () => {
                 return;
             }
         }
+        // No se avanza con las contraseñas incompletas o distintas: es el punto
+        // donde todavía se ve el bloque y se puede corregir sin retroceder.
+        if (currentStep.key === 'personal' && !registration && Object.keys(credentialErrors).length) {
+            touchAllCredentials();
+            setError(credentialErrors.passwordConfirm === 'Las contraseñas no coinciden.'
+                ? 'Las contraseñas no coinciden.'
+                : 'Crea la contraseña con la que consultarás tu inscripción.');
+            return;
+        }
         if (currentStep.key === 'companions' && category) {
             for (let i = 0; i < companions.length; i++) {
                 const c = companions[i];
@@ -389,6 +471,18 @@ const RegistroEvento = () => {
     const handleSubmit = async () => {
         if (!category || !eventRef) return;
         setError('');
+
+        // Última comprobación antes de gastar un viaje de red: si las
+        // contraseñas fallan se vuelve al paso donde se corrigen, en vez de
+        // dejar el aviso al pie del resumen.
+        if (Object.keys(credentialErrors).length) {
+            touchAllCredentials();
+            setError('Revisa la contraseña con la que consultarás tu inscripción.');
+            const personalStep = steps.findIndex(s => s.key === 'personal');
+            if (personalStep >= 0) goTo(personalStep);
+            return;
+        }
+
         setSubmitting(true);
         try {
             const res = await fetch(`${API}/event-registrations`, {
@@ -398,20 +492,35 @@ const RegistroEvento = () => {
                     clubId, eventRef, categoryKey: category.key, answers, companions,
                     registrationId: draftRef.current?.id,
                     accessToken: draftRef.current?.accessToken,
+                    // Van fuera de `answers`: el servidor guarda el hash, no el valor.
+                    password: credentials.password,
+                    passwordConfirm: credentials.passwordConfirm,
+                    returnUrl: window.location.origin,
                 }),
             });
             const data = await res.json();
             if (!res.ok) {
+                const credErrors: Record<string, string> = {};
                 if (data?.fieldErrors) {
-                    setFieldErrors(data.fieldErrors);
+                    const { password, passwordConfirm, ...rest } = data.fieldErrors;
+                    if (password) credErrors.password = password;
+                    if (passwordConfirm) credErrors.passwordConfirm = passwordConfirm;
+                    setFieldErrors(rest);
                     // Llevar a la persona al primer paso que tenga un error.
-                    const firstBad = steps.findIndex(s => s.fields.some(f => data.fieldErrors[f.key]));
+                    const firstBad = steps.findIndex(s => s.fields.some(f => rest[f.key]));
                     if (firstBad >= 0) goTo(firstBad);
+                }
+                if (Object.keys(credErrors).length || data?.accountExists) {
+                    setServerCredentialErrors(credErrors);
+                    touchAllCredentials();
+                    const personalStep = steps.findIndex(s => s.key === 'personal');
+                    if (personalStep >= 0) goTo(personalStep);
                 }
                 throw new Error(data?.error || 'No pudimos registrar tu inscripción.');
             }
 
             localStorage.removeItem(storageKey(eventRef, category.key));
+            setCredentials({ password: '', passwordConfirm: '' });
             setRegistration(data);
             if (Number(data.chargeAmount) > 0) await startPayment(data.id, data.accessToken);
         } catch (err: any) {
@@ -540,6 +649,25 @@ const RegistroEvento = () => {
                         <p className="mt-5 text-xs text-slate-400">
                             Presenta este código el día del evento para recoger tu escarapela.
                         </p>
+
+                        {/* Acceso al panel del asistente: la cuenta se creó con
+                            la inscripción, así que ya puede entrar con el mismo
+                            correo y la contraseña que acaba de elegir. */}
+                        <div className="mx-auto mt-7 max-w-md rounded-xl border border-slate-200 bg-slate-50 p-5 text-left">
+                            <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                <LayoutDashboard size={16} className="text-slate-400" /> Tu panel de asistente
+                            </p>
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
+                                Con <strong>{registration!.email}</strong> y la contraseña que creaste puedes
+                                consultar cuando quieras el estado de tu inscripción, tu código y tu comprobante.
+                            </p>
+                            <Link to={ATTENDEE_PATH}
+                                className="mt-3 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
+                                style={{ background: BLUE }}>
+                                Ir a mi inscripción <ArrowRight size={15} />
+                            </Link>
+                        </div>
+
                         <div className="mt-7">{backToEvent}</div>
                     </section>
                 ) : awaitingPayment ? (
@@ -685,9 +813,9 @@ const RegistroEvento = () => {
 
                         {/* Campos del paso */}
                         {currentStep && currentStep.fields.length > 0 && (
-                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-7">
-                                <h2 className="mb-5 text-lg font-bold text-slate-900">{currentStep.label}</h2>
-                                <div className="grid gap-4 sm:grid-cols-2">
+                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
+                                <StepProgress step={stepIndex + 1} total={steps.length} title={currentStep.label} />
+                                <div className="grid gap-5 sm:grid-cols-2">
                                     {currentStep.fields
                                         .filter(f => isFieldVisible(f, answers))
                                         .map(f => (
@@ -695,13 +823,55 @@ const RegistroEvento = () => {
                                                 value={answers[f.key]} error={fieldErrors[f.key]}
                                                 onChange={v => setAnswer(f.key, v)} />
                                         ))}
+
+                                    {/* ── Clave de acceso ──────────────────
+                                        Mismo bloque, mismo texto y misma
+                                        jerarquía que en Postular Proyecto: la
+                                        cuenta se crea con la inscripción, no
+                                        después del pago. La contraseña NO entra
+                                        en `answers`, así que nunca se guarda con
+                                        las respuestas ni en el borrador local. */}
+                                    {currentStep.key === 'personal' && !registration && (
+                                        <div className="sm:col-span-2">
+                                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                                <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                    <KeyRound size={15} className="text-slate-400" /> Crea tu clave de acceso
+                                                </p>
+                                                <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
+                                                    Con este correo y tu contraseña entrarás a tu panel de asistente para
+                                                    consultar el estado de tu inscripción al evento, tu código y tu
+                                                    comprobante. Podrás volver cuantas veces necesites.
+                                                </p>
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <Field
+                                                        label="Contraseña" name="password" type="password" revealable
+                                                        value={credentials.password}
+                                                        onChange={(e: any) => setCredential('password', e.target.value)}
+                                                        onBlur={() => touchCredential('password')}
+                                                        error={credentialErrors.password}
+                                                        touched={credentialsTouched.password}
+                                                        placeholder="Mínimo 8 caracteres"
+                                                    />
+                                                    <Field
+                                                        label="Repite la contraseña" name="passwordConfirm" type="password" revealable
+                                                        value={credentials.passwordConfirm}
+                                                        onChange={(e: any) => setCredential('passwordConfirm', e.target.value)}
+                                                        onBlur={() => touchCredential('passwordConfirm')}
+                                                        error={credentialErrors.passwordConfirm}
+                                                        touched={credentialsTouched.passwordConfirm}
+                                                        placeholder="Escríbela de nuevo"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
                         )}
 
                         {/* Acompañantes */}
                         {currentStep?.key === 'companions' && (
-                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-7">
+                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
                                 <h2 className="text-lg font-bold text-slate-900">Acompañantes</h2>
                                 <p className="mt-1 text-sm text-slate-500">
                                     Puedes registrar hasta {category.companions.max}.
@@ -721,7 +891,7 @@ const RegistroEvento = () => {
                                                     <Trash2 size={15} />
                                                 </button>
                                             </div>
-                                            <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="grid gap-4 sm:grid-cols-2">
                                                 {([
                                                     ['firstName', 'Nombres', true],
                                                     ['lastName', 'Apellidos', true],
@@ -731,24 +901,24 @@ const RegistroEvento = () => {
                                                     ['phone', 'Teléfono', false],
                                                 ] as [keyof Companion, string, boolean][]).map(([key, label, required]) => (
                                                     <div key={key}>
-                                                        <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                                                             {label}{required && <span className="text-red-500"> *</span>}
                                                         </label>
                                                         <input type={key === 'email' ? 'email' : 'text'}
                                                             value={(c[key] as string) || ''}
                                                             onChange={e => setCompanions(list =>
                                                                 list.map((item, ix) => ix === i ? { ...item, [key]: e.target.value } : item))}
-                                                            className={inputCls(false)} />
+                                                            className={controlCls(false)} />
                                                     </div>
                                                 ))}
                                                 <div className="sm:col-span-2">
-                                                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                                                         Necesidades alimentarias u observaciones
                                                     </label>
                                                     <input type="text" value={c.notes || ''}
                                                         onChange={e => setCompanions(list =>
                                                             list.map((item, ix) => ix === i ? { ...item, notes: e.target.value } : item))}
-                                                        className={inputCls(false)} />
+                                                        className={controlCls(false)} />
                                                 </div>
                                             </div>
                                         </div>
@@ -771,7 +941,7 @@ const RegistroEvento = () => {
 
                         {/* Resumen */}
                         {currentStep?.key === 'summary' && totals && (
-                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-7">
+                            <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
                                 <h2 className="text-lg font-bold text-slate-900">Resumen de tu inscripción</h2>
 
                                 <dl className="mt-5 divide-y divide-slate-100">

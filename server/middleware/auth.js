@@ -2,14 +2,15 @@
 // Autenticación y autorización de la plataforma
 // v4.627.0
 //
-// La plataforma tiene DOS identidades distintas que se firman con el mismo
+// La plataforma tiene TRES identidades distintas que se firman con el mismo
 // secreto:
 //
-//   • `User`               → panel administrativo del sitio  (aud: rotary-platform)
-//   • `ProjectFairAccount` → panel del club en la feria      (aud: project-fair-portal)
+//   • `User`                 → panel administrativo del sitio (aud: rotary-platform)
+//   • `ProjectFairAccount`   → panel del club en la feria      (aud: project-fair-portal)
+//   • `EventAttendeeAccount` → panel del asistente al evento   (aud: event-attendee-portal)
 //
 // Hasta v4.626 `authMiddleware` verificaba la firma pero NO la audiencia. Como
-// ambos tokens usan el mismo JWT_SECRET, el token del panel del club pasaba
+// todos los tokens usan el mismo JWT_SECRET, el token del panel del club pasaba
 // este middleware sin problema y alcanzaba rutas administrativas —entre ellas
 // las de /api/project-fair/admin, que devuelven las postulaciones y los pagos
 // de TODOS los clubes—. Aquí se cierra: un token que declara otra audiencia se

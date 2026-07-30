@@ -187,11 +187,20 @@ const DIETARY = [
     { value: 'otra', label: 'Otra' },
 ];
 
-/** Campos comunes a toda inscripción, sin importar la categoría. */
+/**
+ * Campos comunes a toda inscripción, sin importar la categoría.
+ *
+ * v4.655 — El campo `language` ("Idioma") se retiró: el idioma de navegación lo
+ * decide el selector del encabezado y ya gobierna qué registro se ofrece
+ * (`resolveAudienceHint`). Volver a preguntarlo dentro del formulario duplicaba
+ * un dato que el sitio ya conoce y que además podía contradecirlo. Las
+ * inscripciones anteriores conservan su valor en `answers` y en la columna
+ * `language`; simplemente ya no se pide ni se valida.
+ */
 export const CORE_PERSONAL_FIELDS = [
-    { key: 'firstName', label: 'Nombres', type: 'text', required: true, max: 120, column: 'firstName' },
-    { key: 'lastName', label: 'Apellidos', type: 'text', required: true, max: 120, column: 'lastName' },
-    { key: 'email', label: 'Correo electrónico', type: 'email', required: true, max: 200, column: 'email' },
+    { key: 'firstName', label: 'Nombres', type: 'text', required: true, max: 120, column: 'firstName', placeholder: 'Introduce tus nombres' },
+    { key: 'lastName', label: 'Apellidos', type: 'text', required: true, max: 120, column: 'lastName', placeholder: 'Escribe tus apellidos' },
+    { key: 'email', label: 'Correo electrónico', type: 'email', required: true, max: 200, column: 'email', placeholder: 'nombre@correo.com' },
     { key: 'phone', label: 'Teléfono o WhatsApp', type: 'tel', required: true, max: 60, column: 'phone', help: 'Incluye el indicativo del país.' },
     { key: 'documentType', label: 'Tipo de documento', type: 'select', required: true, options: [
         { value: 'cedula', label: 'Cédula de ciudadanía' },
@@ -199,16 +208,15 @@ export const CORE_PERSONAL_FIELDS = [
         { value: 'pasaporte', label: 'Pasaporte' },
         { value: 'otro', label: 'Otro' },
     ] },
-    { key: 'documentNumber', label: 'Número de documento o pasaporte', type: 'text', required: true, max: 60 },
-    { key: 'country', label: 'País', type: 'country', required: true, max: 120, column: 'country' },
-    { key: 'city', label: 'Ciudad', type: 'text', required: true, max: 120 },
-    { key: 'language', label: 'Idioma', type: 'select', required: true, options: LANGUAGES },
+    { key: 'documentNumber', label: 'Número de documento o pasaporte', type: 'text', required: true, max: 60, placeholder: 'Sin puntos ni espacios' },
+    { key: 'country', label: 'País', type: 'country', required: true, max: 120, column: 'country', placeholder: 'Escribe o elige tu país' },
+    { key: 'city', label: 'Ciudad', type: 'text', required: true, max: 120, placeholder: 'Ciudad de residencia' },
 ];
 
 /** Datos rotarios: comunes, con el club obligatorio según la categoría. */
 export const CORE_ROTARY_FIELDS = [
-    { key: 'clubName', label: 'Club rotario', type: 'text', required: true, max: 200, column: 'clubName' },
-    { key: 'district', label: 'Distrito', type: 'text', required: true, max: 40, help: 'Por ejemplo: 4281' },
+    { key: 'clubName', label: 'Club rotario', type: 'text', required: true, max: 200, column: 'clubName', placeholder: 'Nombre del club al que perteneces' },
+    { key: 'district', label: 'Distrito', type: 'text', required: true, max: 40, help: 'Por ejemplo: 4281', placeholder: '4281' },
     { key: 'rotaryRole', label: 'Cargo dentro de Rotary', type: 'select', required: true, options: ROTARY_ROLES },
 ];
 
@@ -222,6 +230,35 @@ export const CORE_NEEDS_FIELDS = [
 export const TERMS_FIELD = {
     key: 'acceptTerms', label: 'Acepto los términos y el tratamiento de mis datos personales',
     type: 'checkbox', required: true,
+};
+
+// ── Credenciales del asistente ───────────────────────────────────────
+//
+// v4.655 — La inscripción crea la cuenta con la que el asistente entrará
+// después a consultar su registro, igual que hace Postular Proyecto con el
+// Gestor de Proyectos. La contraseña se pide junto al correo, mientras la
+// persona lo está escribiendo, y NUNCA se guarda en `answers`: viaja aparte y
+// el servidor sólo persiste su hash.
+
+export const PASSWORD_MIN = 8;
+
+/**
+ * Valida el par de contraseñas. Es la misma regla en el navegador y en el
+ * servidor; el servidor la corre siempre, aunque el navegador ya la haya
+ * corrido. Devuelve `{ ok, errors: { password?, passwordConfirm? } }`.
+ */
+export const validateCredentials = ({ password, passwordConfirm } = {}) => {
+    const errors = {};
+    const pass = String(password ?? '');
+    const confirm = String(passwordConfirm ?? '');
+
+    if (!pass) errors.password = 'Crea una contraseña para consultar tu inscripción.';
+    else if (pass.length < PASSWORD_MIN) errors.password = `Usa al menos ${PASSWORD_MIN} caracteres.`;
+
+    if (!confirm) errors.passwordConfirm = 'Repite la contraseña.';
+    else if (confirm !== pass) errors.passwordConfirm = 'Las contraseñas no coinciden.';
+
+    return { ok: Object.keys(errors).length === 0, errors };
 };
 
 /** Campos que sólo ve la audiencia internacional. */
@@ -238,9 +275,9 @@ export const INTERNATIONAL_FIELDS = [
     { key: 'lodgingDetail', label: 'Nombre del hospedaje', type: 'text', required: false, max: 200, showIf: { key: 'lodging', notIn: ['por_definir'] } },
     { key: 'preferredLanguage', label: 'Idioma preferido durante el evento', type: 'select', required: true, options: LANGUAGES },
     { key: 'needsVisa', label: '¿Necesitas carta de invitación para visa?', type: 'select', required: true, options: YES_NO },
-    { key: 'emergencyName', label: 'Contacto de emergencia — nombre', type: 'text', required: true, max: 160 },
+    { key: 'emergencyName', label: 'Contacto de emergencia — nombre', type: 'text', required: true, max: 160, placeholder: 'Nombre completo' },
     { key: 'emergencyPhone', label: 'Contacto de emergencia — teléfono', type: 'tel', required: true, max: 60 },
-    { key: 'emergencyRelation', label: 'Contacto de emergencia — parentesco', type: 'text', required: false, max: 80 },
+    { key: 'emergencyRelation', label: 'Contacto de emergencia — parentesco', type: 'text', required: false, max: 80, placeholder: 'Cónyuge, hijo, amigo…' },
 ];
 
 /** Campos que sólo ve la audiencia nacional. */

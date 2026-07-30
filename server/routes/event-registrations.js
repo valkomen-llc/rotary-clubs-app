@@ -13,6 +13,7 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import registrations from '../controllers/eventRegistrationController.js';
 import admin from '../controllers/eventRegistrationAdminController.js';
+import attendee, { attendeeAuth, requireAttendeePermission, ATTENDEE_PERMISSIONS } from '../controllers/eventAttendeeController.js';
 
 const router = express.Router();
 const json = express.json({ limit: '512kb' });
@@ -45,6 +46,23 @@ router.patch('/admin/registrations/:id/tags', authMiddleware, json, admin.update
 router.patch('/admin/registrations/:id/notes', authMiddleware, json, admin.updateNotes);
 router.post('/admin/registrations/:id/checkin', authMiddleware, json, admin.checkIn);
 router.post('/admin/registrations/:id/message', authMiddleware, json, admin.sendMessage);
+
+// ── Panel del Asistente al Evento ────────────────────────────────────
+//
+// Identidad propia (`EventAttendeeAccount`), audiencia propia y permisos
+// propios: `attendeeAuth` rechaza el token de la plataforma y el del panel del
+// club, y `requireAttendeePermission` exige el permiso concreto. Van ANTES de
+// `/:id` para que ninguna ruta pública de un solo segmento se las coma.
+router.post('/portal/login', json, attendee.login);
+router.post('/portal/forgot', json, attendee.forgotPassword);
+router.post('/portal/reset', json, attendee.resetPassword);
+router.post('/portal/verify', json, attendee.verifyEmail);
+router.get('/portal/me', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getPortalData);
+router.get('/portal/registrations/:id', attendeeAuth,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getOwnRegistration);
+router.patch('/portal/profile', attendeeAuth, json,
+    requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE), attendee.updateProfile);
 
 // ── Público ──────────────────────────────────────────────────────────
 router.get('/config/:clubId/:eventRef', registrations.getPublicRegistrationConfig);

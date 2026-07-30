@@ -35,6 +35,7 @@ import {
     categoryWindow, resolveCharge, deriveSystemTags, SYSTEM_TAG_KEYS,
     COMPANION_FIELDS, randomCodeSuffix, tariffVersionOf,
     resolveAudienceHint, resolveCtaButtons, normalizeCtaConfig,
+    validateCredentials, PASSWORD_MIN,
 } from '../lib/eventRegistrationSpec.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -42,8 +43,12 @@ import store, {
     toPublicRegistration, recordHistory, recordMessage, recordPayment,
     assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
+import {
+    ensureAttendeeAccount, ensurePendingAccountFor, linkRegistrationToAccount,
+    attachOrphanRegistrations, sendVerificationEmail, ATTENDEE_PATH,
+} from './eventAttendeeController.js';
 
-console.log('[eventRegistrationController] v4.654.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario público comparte cabecera y fondo con Postular Proyecto.');
+console.log('[eventRegistrationController] v4.655.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma y crea la cuenta de Asistente al Evento con la que se consulta la inscripción.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -284,6 +289,19 @@ const saveRegistration = async (req, res, mode) => {
         if (!ok) {
             return res.status(400).json({ error: 'Revisa los campos marcados.', fieldErrors: errors });
         }
+        // Las credenciales viajan APARTE de `answers` y nunca se guardan con
+        // ellas: sólo su hash, en `EventAttendeeAccount`. Se validan aquí,
+        // antes de tocar la base, para no dejar una inscripción a medio crear
+        // porque las contraseñas no coincidían.
+        const credentials = validateCredentials({
+            password: body.password, passwordConfirm: body.passwordConfirm,
+        });
+        if (!credentials.ok) {
+            return res.status(400).json({
+                error: 'Revisa la contraseña con la que consultarás tu inscripción.',
+                fieldErrors: credentials.errors,
+            });
+        }
         for (let i = 0; i < companions.length; i++) {
             const check = validateCompanion(companions[i], category.companions);
             if (!check.ok) {
@@ -340,6 +358,46 @@ const saveRegistration = async (req, res, mode) => {
             });
         }
         if (candidate && RESUMABLE.includes(candidate.status)) existing = candidate;
+    }
+
+    // ── Cuenta del asistente ─────────────────────────────────────────
+    //
+    // Se resuelve ANTES de escribir nada: si el correo ya tiene cuenta y la
+    // contraseña no coincide, la inscripción no llega a crearse a medias. No se
+    // crea una segunda cuenta con el mismo correo jamás — se vincula a la que
+    // ya existe, que es lo que permite que quien vuelva en la edición siguiente
+    // conserve una sola clave y vea su historial completo.
+    let account = null;
+    if (mode === 'submit') {
+        const resolved = await ensureAttendeeAccount({
+            email,
+            password: body.password,
+            firstName: answers.firstName,
+            lastName: answers.lastName,
+            phone: answers.phone,
+        });
+        if (resolved.conflict === 'password') {
+            return res.status(409).json({
+                error: `Ya tienes una cuenta con ${email}. Escribe la contraseña que usas para entrar y vinculamos esta inscripción a esa cuenta, o restablécela desde "Olvidé mi contraseña".`,
+                fieldErrors: { password: 'Esta no es la contraseña de tu cuenta.' },
+                accountExists: true,
+            });
+        }
+        if (resolved.conflict === 'needs_password') {
+            return res.status(409).json({
+                error: `Ya existe una cuenta con ${email} que todavía no tiene contraseña. Créala desde "Olvidé mi contraseña" y vuelve a enviar el formulario.`,
+                needsPassword: true,
+                accountExists: true,
+            });
+        }
+        if (!resolved.account) {
+            return res.status(400).json({
+                error: 'No pudimos crear tu cuenta de acceso. Revisa el correo y la contraseña.',
+                fieldErrors: resolved.conflict === 'weak'
+                    ? { password: `Usa al menos ${PASSWORD_MIN} caracteres.` } : {},
+            });
+        }
+        account = resolved.account;
     }
 
     // ── Cupo ─────────────────────────────────────────────────────────
@@ -411,7 +469,10 @@ const saveRegistration = async (req, res, mode) => {
         district: clean(answers.district, 40),
         documentNumber: clean(answers.documentNumber, 60),
         rotaryRole: clean(answers.rotaryRole, 60),
-        language: clean(answers.language, 20),
+        // v4.655 — El formulario ya no pide el idioma. La columna se conserva
+        // con lo que hubiera guardado una inscripción anterior en vez de
+        // vaciarse al reenviar el formulario.
+        language: clean(answers.language, 20) || existing?.language || null,
         dietary: clean(answers.dietary, 40),
         clubName: clean(answers.clubName, 200),
         answers: JSON.stringify(answers),
@@ -435,6 +496,10 @@ const saveRegistration = async (req, res, mode) => {
         totalAmount: charge.baseAmount,
         currency: charge.baseCurrency,
         lastActivityAt: new Date(),
+        // Vínculo con la cuenta del asistente: junto a `eventId` y
+        // `categoryKey` completa la relación usuario ↔ evento ↔ categoría ↔
+        // inscripción que consulta el panel.
+        accountId: account?.id || existing?.accountId || null,
         submittedAt: mode === 'submit' ? new Date() : (existing?.submittedAt || null),
         paidAt: status === STATUS.FREE ? new Date() : (existing?.paidAt || null),
     };
@@ -476,6 +541,16 @@ const saveRegistration = async (req, res, mode) => {
             comment: `Formulario enviado — ${category.name}`,
             payload: { seats, pricing },
         });
+        if (account) {
+            await linkRegistrationToAccount(row.id, account.id);
+            await recordHistory({
+                registrationId: row.id, eventId: event.id, type: 'account_linked',
+                comment: 'La inscripción quedó vinculada a la cuenta de Asistente al Evento.',
+                payload: { accountId: account.id, email: account.email },
+            });
+            // Sólo hace algo si la verificación de correo está habilitada.
+            await sendVerificationEmail(account, resolveOrigin(req, body.returnUrl));
+        }
         if (status === STATUS.FREE) {
             await assignRegistrationCode(row.id, edition.codePrefix);
             const fresh = await findRegistration(row.id);
@@ -488,6 +563,9 @@ const saveRegistration = async (req, res, mode) => {
         ...toPublicRegistration(row),
         accessToken: row.accessToken,
         companions: await listCompanions(row.id),
+        // Con qué cuenta y en qué ruta va a consultar su inscripción. La
+        // calcula el servidor para que el navegador no invente el destino.
+        account: account ? { email: account.email, portalPath: ATTENDEE_PATH } : null,
     });
 };
 
@@ -790,6 +868,20 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
     const edition = await ensureEdition(event);
 
     await assignRegistrationCode(rows[0].id, edition.codePrefix);
+
+    // Una inscripción pagada NO puede quedar sin cuenta: sería alguien que pagó
+    // y no tiene por dónde consultar su registro. Si el formulario se envió
+    // antes de v4.655, o la cuenta no se pudo crear entonces, se crea ahora sin
+    // contraseña utilizable y la estrena por "olvidé mi contraseña" — el pago ya
+    // demostró que ese correo es suyo.
+    if (!rows[0].accountId) {
+        const account = await ensurePendingAccountFor(rows[0]);
+        if (account) {
+            await linkRegistrationToAccount(rows[0].id, account.id);
+            await attachOrphanRegistrations(account);
+        }
+    }
+
     const updated = await findRegistration(rows[0].id);
 
     await recordHistory({
