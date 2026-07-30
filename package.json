@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.653.0",
-  "cache_bust": "2026-07-30c (La seccion publica de Eventos puede redirigir a un evento concreto en vez de mostrar el calendario. Se elige desde Eventos en el panel; vacio deja el calendario. La redireccion se guarda por sitio, no global.)",
+  "version": "4.654.0",
+  "cache_bust": "2026-07-30d (El formulario de inscripcion a un evento usa la misma cabecera y el mismo fondo que Postular Proyecto: cabecera azul con la textura geometrica de Rotary y fondo de concreto.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
