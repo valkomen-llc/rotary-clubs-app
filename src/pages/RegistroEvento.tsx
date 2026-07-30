@@ -241,7 +241,7 @@ const RegistroEvento = () => {
     const { club } = useClub();
     const [params] = useSearchParams();
     const navigate = useNavigate();
-    const { lang } = useLang();
+    const { lang, locale } = useLang();
 
     const [config, setConfig] = useState<RegistrationConfig | null>(null);
     const [loading, setLoading] = useState(true);
@@ -605,7 +605,7 @@ const RegistroEvento = () => {
                         {config?.event?.startDate && (
                             <span className="flex items-center gap-1.5">
                                 <CalendarDays size={14} />
-                                {new Date(config.event.startDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                {new Date(config.event.startDate).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
                             </span>
                         )}
                         {(config?.edition?.venue || config?.event?.location) && (
@@ -703,7 +703,7 @@ const RegistroEvento = () => {
                             {registration!.chargeCurrency !== registration!.baseCurrency && (
                                 <p className="mt-1 text-xs text-slate-500">
                                     Valor publicado: {money(registration!.baseAmount, registration!.baseCurrency)}
-                                    {registration!.fxRate ? ` · tasa ${registration!.fxRate.toLocaleString('es-CO', { maximumFractionDigits: 6 })}` : ''}
+                                    {registration!.fxRate ? ` · tasa ${registration!.fxRate.toLocaleString(locale, { maximumFractionDigits: 6 })}` : ''}
                                 </p>
                             )}
                         </div>

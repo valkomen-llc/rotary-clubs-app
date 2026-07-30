@@ -1,22 +1,42 @@
 import React, {
     createContext, useContext,
     useState, useEffect, useLayoutEffect,
-    useCallback, useRef,
+    useCallback, useRef, useMemo,
 } from 'react';
+import {
+    ATTRS, looksLikeData, applyAll as domApplyAll,
+    restoreAll as domRestoreAll, collectMissing as domCollectMissing,
+} from '../lib/domTranslator';
+import {
+    LOCALES, BASE_LANG, localeOf, isSupportedLang,
+    formatDate, formatDateShort, formatDateTime, formatTime, formatDateRange,
+    formatNumber, formatMoney, formatRelative, formatList,
+} from '../lib/locale';
 
-export const SUPPORTED_LANGUAGES = [
-    { code: 'es', name: 'Español', flag: 'co' },
-    { code: 'en', name: 'English', flag: 'us' },
-    { code: 'fr', name: 'Français', flag: 'fr' },
-    { code: 'pt', name: 'Português', flag: 'br' },
-    { code: 'de', name: 'Deutsch', flag: 'de' },
-    { code: 'it', name: 'Italiano', flag: 'it' },
-    { code: 'ja', name: '日本語', flag: 'jp' },
-    { code: 'ko', name: '한국어', flag: 'kr' },
-];
+// ════════════════════════════════════════════════════════════════════════════
+// Idioma activo del sitio público — v4.661
+//
+// El sitio NO tiene un catálogo cerrado de cadenas: casi todo lo visible es
+// contenido que el administrador carga en español (eventos, noticias, proyectos,
+// páginas). Por eso la traducción se hace sobre el DOM ya pintado: se recogen
+// los textos que hay, se traducen una vez, se guardan y se reaplican al
+// instante en las visitas siguientes.
+//
+// Qué cubre esta capa, y qué NO:
+//   ✔ nodos de texto
+//   ✔ atributos visibles: placeholder, title, alt, aria-label, value de botón
+//   ✔ el título de la pestaña
+//   ✔ contenido inyectado después (modales, avisos, respuestas del servidor)
+//   ✔ re-render de React sobre un texto ya traducido (characterData)
+//   ✘ fechas, cifras y monedas — esas NO se traducen, se FORMATEAN con el
+//     locale activo: ver src/lib/locale.ts y el hook useLocale() de abajo.
+// ════════════════════════════════════════════════════════════════════════════
 
-// Devuelve la lista de idiomas con el idioma por defecto del sitio SIEMPRE de primero,
-// conservando el orden del resto. Usado por el selector de idiomas del navbar.
+// Se reexporta con el nombre viejo: lo consumen el Navbar y PublicTopBar.
+export const SUPPORTED_LANGUAGES = LOCALES.map(({ code, name, flag }) => ({ code, name, flag }));
+export { LOCALES, BASE_LANG, localeOf };
+
+/** Lista de idiomas con el idioma por defecto del sitio SIEMPRE de primero. */
 export function orderLanguages(defaultCode?: string) {
     const idx = defaultCode ? SUPPORTED_LANGUAGES.findIndex(l => l.code === defaultCode) : -1;
     if (idx <= 0) return SUPPORTED_LANGUAGES;
@@ -25,10 +45,10 @@ export function orderLanguages(defaultCode?: string) {
     return [preferred, ...copy];
 }
 
-// ─── Cache ────────────────────────────────────────────────────────────────────
-// L0  localStorage  — survives page reloads, applied before first paint
-// L1  memCache      — in-memory, fastest lookup
-// L2  Gemini API    — only for brand-new untranslated strings
+// ─── Caché ──────────────────────────────────────────────────────────────────
+// L0 localStorage — sobrevive a la recarga y se aplica antes del primer pintado
+// L1 memoria      — la consulta más rápida
+// L2 servidor     — sólo para lo que nadie ha traducido todavía
 
 const memCache: Record<string, Record<string, string>> = {};
 
@@ -36,13 +56,22 @@ function loadLS(lang: string): Record<string, string> {
     try { return JSON.parse(localStorage.getItem(`_t_${lang}`) || '{}'); }
     catch { return {}; }
 }
+
 function saveLS(lang: string, entries: Record<string, string>) {
     try {
         const merged = { ...loadLS(lang), ...entries };
         localStorage.setItem(`_t_${lang}`, JSON.stringify(merged));
-    } catch { /* storage full — ignore */ }
+    } catch {
+        // Cuota llena: se descarta la caché de ese idioma y se reintenta. Perder
+        // la caché sólo cuesta una llamada de red; dejarla rota cuesta que no se
+        // guarde nada nunca más.
+        try {
+            localStorage.removeItem(`_t_${lang}`);
+            localStorage.setItem(`_t_${lang}`, JSON.stringify(entries));
+        } catch { /* sin espacio: se sigue con la caché en memoria */ }
+    }
 }
-/** Hydrate L1 from L0 once per language */
+
 function primeCache(lang: string) {
     if (!memCache[lang]) memCache[lang] = loadLS(lang);
 }
@@ -50,92 +79,18 @@ function getCached(lang: string, text: string): string | undefined {
     return memCache[lang]?.[text];
 }
 
-// ─── DOM ──────────────────────────────────────────────────────────────────────
-const ORIG_ATTR = 'data-ot';
-const MIN_LEN = 2;
-const SKIP = [
-    'script', 'style', 'noscript', '[data-no-translate]',
-    'input', 'textarea', 'select', 'code', 'pre', 'svg',
-].join(',');
-
-function getNodes(root: Element): Text[] {
-    const skip = new Set<Node>(Array.from(root.querySelectorAll(SKIP)));
-    const out: Text[] = [];
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-            let p = node.parentElement;
-            while (p && p !== root) {
-                if (skip.has(p)) return NodeFilter.FILTER_REJECT;
-                p = p.parentElement;
-            }
-            const t = (node.textContent || '').trim();
-            if (t.length < MIN_LEN) return NodeFilter.FILTER_SKIP;
-            if (/^\d+(\.\d+)?$/.test(t)) return NodeFilter.FILTER_SKIP;
-            if (/^https?:\/\//.test(t)) return NodeFilter.FILTER_SKIP;
-            return NodeFilter.FILTER_ACCEPT;
-        },
-    });
-    let n: Node | null;
-    while ((n = w.nextNode())) out.push(n as Text);
-    return out;
-}
-
-// Original de cada NODO de texto. Antes se guardaba el original en el elemento PADRE
-// (data-ot) y se usaba esa única clave para TODOS sus nodos de texto: un elemento con
-// varios nodos (ej. el copyright del footer: año + nombre del sitio + "Todos los
-// derechos reservados." + "Powered by") terminaba con todos sus nodos sobrescritos por
-// la MISMA traducción (la del primer nodo) → texto duplicado/corrupto al traducir.
-const nodeOriginals = new WeakMap<Text, string>();
-function keyFor(node: Text): string {
-    let orig = nodeOriginals.get(node);
-    if (orig === undefined) {
-        orig = (node.textContent || '').trim();
-        nodeOriginals.set(node, orig);
-    }
-    return orig;
-}
-
-/** Apply everything in memCache[lang] to the DOM synchronously */
-function applyAll(root: Element, lang: string) {
-    const cache = memCache[lang] ?? {};
-    const nodes = getNodes(root);
-    for (const node of nodes) {
-        const tr = cache[keyFor(node)];
-        if (tr) {
-            const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
-            const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
-            node.textContent = lead + tr + trail;
-        }
-    }
-    return nodes;
-}
-
-/** Restore original Spanish text */
-function restoreAll(root: Element) {
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let n: Node | null;
-    while ((n = w.nextNode())) {
-        const node = n as Text;
-        const orig = nodeOriginals.get(node);
-        if (orig !== undefined) {
-            const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
-            const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
-            node.textContent = lead + orig + trail;
-        }
-    }
-    // Limpieza de atributos del esquema anterior (original por elemento).
-    root.querySelectorAll(`[${ORIG_ATTR}]`).forEach(el => el.removeAttribute(ORIG_ATTR));
-}
-
-// ─── API ──────────────────────────────────────────────────────────────────────
+// ─── Servidor ───────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const CHUNK = 40;
+const CHUNK = 60;
 
-async function fetchMissing(
-    texts: string[],
-    lang: string,
-): Promise<Record<string, string>> {
-    const toFetch = texts.filter(t => !getCached(lang, t));
+// Textos que ya se pidieron y fallaron: no se vuelven a pedir en esta sesión.
+// Sin esto, un proveedor caído convierte cada repintado en una tanda de
+// peticiones que van a fallar igual.
+const failed: Record<string, Set<string>> = {};
+
+async function fetchMissing(texts: string[], lang: string): Promise<Record<string, string>> {
+    const bad = (failed[lang] ||= new Set());
+    const toFetch = texts.filter(t => !getCached(lang, t) && !bad.has(t));
     if (!toFetch.length) return {};
 
     const result: Record<string, string> = {};
@@ -145,30 +100,35 @@ async function fetchMissing(
             const r = await fetch(`${API_URL}/translate/bulk`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ texts: chunk, targetLang: lang }),
+                body: JSON.stringify({ texts: chunk, targetLang: lang, page: location.pathname }),
             });
-            if (!r.ok) continue;
+            if (!r.ok) { chunk.forEach(t => bad.add(t)); continue; }
             const data = await r.json();
-            const arr: string[] = Array.isArray(data.translations)
-                ? data.translations : [];
-            if (!memCache[lang]) memCache[lang] = {};
+            const arr: string[] = Array.isArray(data.translations) ? data.translations : [];
+            memCache[lang] ||= {};
             chunk.forEach((orig, idx) => {
-                const tr = arr[idx] || orig;
-                memCache[lang][orig] = tr;
-                result[orig] = tr;
+                const tr = arr[idx];
+                if (typeof tr === 'string' && tr && tr !== orig) {
+                    memCache[lang][orig] = tr;
+                    result[orig] = tr;
+                } else {
+                    // El servidor devolvió el original: o no era traducible o el
+                    // proveedor falló. En ambos casos, no insistir.
+                    bad.add(orig);
+                }
             });
-        } catch { /* network error */ }
+        } catch {
+            chunk.forEach(t => bad.add(t));
+        }
     }
+
     if (Object.keys(result).length) {
         saveLS(lang, result);
-        // Fire-and-forget: log this domain/page to usage panel
         fetch(`${API_URL}/translate/log-domain`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                lang,
-                domain: window.location.hostname,
-                page: window.location.pathname,
+                lang, domain: location.hostname, page: location.pathname,
                 count: Object.keys(result).length,
             }),
         }).catch(() => { });
@@ -176,10 +136,38 @@ async function fetchMissing(
     return result;
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+// ─── Persistencia de la elección ────────────────────────────────────────────
+// localStorage para esta pantalla; cookie para que el servidor sepa el idioma
+// desde la primera petición (y para que sobreviva a un dominio con varias
+// pestañas). Un año: la elección de idioma no caduca en una sesión.
+const COOKIE = 'site_language';
+
+function writeCookie(lang: string) {
+    try {
+        document.cookie = `${COOKIE}=${encodeURIComponent(lang)}; path=/; max-age=31536000; SameSite=Lax`;
+    } catch { /* sin cookies: manda localStorage */ }
+}
+
+function readCookie(): string | null {
+    try {
+        const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]*)`));
+        return m ? decodeURIComponent(m[1]) : null;
+    } catch { return null; }
+}
+
+/** Marca el idioma en <html lang>. Lo usan el lector de pantalla, el corrector
+ *  del navegador, la partición silábica del CSS y los buscadores. */
+function syncDocumentLang(lang: string) {
+    try {
+        document.documentElement.setAttribute('lang', localeOf(lang));
+        document.documentElement.setAttribute('data-lang', lang);
+    } catch { /* ignorar */ }
+}
+
+// ─── Contexto ───────────────────────────────────────────────────────────────
 interface LangCtx {
     lang: string;
-    /** true si el visitante eligió el idioma a mano (manda sobre cualquier default). */
+    locale: string;
     languageChosen: boolean;
     setLang: (l: string) => void;
     applyDefaultLanguage: (code?: string) => void;
@@ -191,185 +179,204 @@ const LangContext = createContext<LangCtx | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [lang, setLangState] = useState<string>(() => {
-        // Prioridad: elección explícita del visitante > idioma por defecto del sitio > 'es'.
-        // `site_default_language` lo cachea applyDefaultLanguage cuando carga el sitio, para
-        // que en visitas siguientes el idioma correcto se aplique antes del primer paint (sin parpadeo).
-        const stored = localStorage.getItem('site_language') || localStorage.getItem('site_default_language') || 'es';
-        if (stored !== 'es') primeCache(stored); // hydrate L1 from L0 synchronously
-        return stored;
+        // Prioridad: elección del visitante > cookie > idioma por defecto del
+        // sitio > español. La cookie entra antes que el default para que la
+        // elección sobreviva a un borrado parcial del almacenamiento.
+        const stored = localStorage.getItem('site_language')
+            || readCookie()
+            || localStorage.getItem('site_default_language')
+            || BASE_LANG;
+        const safe = isSupportedLang(stored) ? stored : BASE_LANG;
+        if (safe !== BASE_LANG) primeCache(safe);
+        return safe;
     });
 
-    // ¿El visitante eligió el idioma explícitamente? Se usa para dar prioridad a
-    // su elección sobre las reglas automáticas (por ejemplo, la visibilidad del
-    // botón de postulación según el país).
-    const [languageChosen, setLanguageChosen] = useState<boolean>(() => !!localStorage.getItem('site_language'));
+    const [languageChosen, setLanguageChosen] = useState<boolean>(
+        () => !!localStorage.getItem('site_language') || !!readCookie(),
+    );
+    const [isTranslating, setIsTranslating] = useState(false);
 
     const rootRef = useRef<Element | null>(null);
     const observerRef = useRef<MutationObserver | null>(null);
-    const bgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const fetching = useRef(false);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const busy = useRef(false);
+    const langRef = useRef(lang);
+    langRef.current = lang;
 
     const setLang = useCallback((l: string) => {
-        // Elección EXPLÍCITA del visitante: se guarda y manda sobre el idioma por defecto del sitio.
+        if (!isSupportedLang(l)) return;
         localStorage.setItem('site_language', l);
-        if (l !== 'es') primeCache(l);
+        writeCookie(l);
+        if (l !== BASE_LANG) primeCache(l);
         setLangState(l);
         setLanguageChosen(true);
     }, []);
 
-    // Aplica el idioma por defecto configurado por el sitio (identidad). Se cachea para las
-    // próximas visitas, pero NO se guarda como elección del visitante: si el admin cambia el
-    // default, los visitantes que nunca eligieron idioma verán el nuevo. Si el visitante ya
-    // eligió un idioma (`site_language`), esa elección manda y esto no hace nada.
+    // Idioma por defecto del sitio (identidad). Se cachea para la próxima visita
+    // pero NO cuenta como elección del visitante: si el administrador lo cambia,
+    // quien nunca eligió verá el nuevo. Si el visitante ya eligió, esto no hace
+    // nada.
     const applyDefaultLanguage = useCallback((code?: string) => {
-        if (!code) return;
+        if (!code || !isSupportedLang(code)) return;
         localStorage.setItem('site_default_language', code);
-        if (localStorage.getItem('site_language')) return; // el visitante ya eligió; respetarlo
-        if (code !== 'es') primeCache(code);
+        if (localStorage.getItem('site_language') || readCookie()) return;
+        if (code !== BASE_LANG) primeCache(code);
         setLangState(prev => (prev === code ? prev : code));
     }, []);
 
     const translate = useCallback(async (text: string) => {
-        if (!text || lang === 'es') return text;
-        if (getCached(lang, text)) return getCached(lang, text)!;
+        if (!text || lang === BASE_LANG) return text;
+        const cached = getCached(lang, text);
+        if (cached) return cached;
         const r = await fetchMissing([text], lang);
         return r[text] ?? text;
     }, [lang]);
 
     const translateSync = useCallback((text: string) => {
-        if (!text || lang === 'es') return text;
+        if (!text || lang === BASE_LANG) return text;
         return getCached(lang, text) ?? text;
     }, [lang]);
 
-    // ── INSTANT: apply cached translations BEFORE browser paints ─────────────
-    // useLayoutEffect fires synchronously after DOM mutations, before paint.
+    // ── Antes del pintado: volcar lo que ya está en caché ───────────────────
+    // useLayoutEffect corre tras las mutaciones del DOM y ANTES de que el
+    // navegador pinte, así que lo ya traducido nunca se ve primero en español.
     useLayoutEffect(() => {
         const root = document.getElementById('root');
         if (!root) return;
         rootRef.current = root;
-
-        if (lang === 'es') {
-            restoreAll(root);
-            return;
-        }
-        // Apply everything already in L0/L1 cache — zero network, zero delay
-        applyAll(root, lang);
+        syncDocumentLang(lang);
+        if (lang === BASE_LANG) domRestoreAll(root);
+        else domApplyAll(root, memCache[lang] ?? {});
     }, [lang]);
 
-    // ── BACKGROUND: silently fetch whatever wasn't cached yet ─────────────────
-    useEffect(() => {
-        const root = rootRef.current;
-        if (!root || lang === 'es' || fetching.current) return;
-
-        const run = async () => {
-            fetching.current = true;
-            observerRef.current?.disconnect();
-            try {
-                const nodes = getNodes(root);
-                const missing = [
-                    ...new Set(
-                        nodes
-                            .map(n => keyFor(n))
-                            .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
-                    ),
-                ];
-                if (!missing.length) return;
-
-                const fresh = await fetchMissing(missing, lang);
-                if (!Object.keys(fresh).length) return;
-
-                // Apply newly translated strings
-                const freshNodes = getNodes(root);
-                for (const node of freshNodes) {
-                    const tr = fresh[keyFor(node)];
-                    if (tr) {
-                        const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
-                        const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
-                        node.textContent = lead + tr + trail;
-                    }
-                }
-            } finally {
-                fetching.current = false;
-                // reconnect observer after DOM writes
-                if (observerRef.current && lang !== 'es') {
-                    observerRef.current.observe(root, {
-                        childList: true, subtree: true, characterData: false,
-                    });
-                }
-            }
-        };
-
-        run();
-    }, [lang]);
-
-    // ── MutationObserver: re-apply when new content is injected ───────────────
+    // ── Traducir lo que falte, y reaccionar a lo que aparezca después ───────
+    // Un solo efecto para el barrido inicial y para el observador: así hay un
+    // único sitio donde se conecta y se desconecta, que es lo que evita que
+    // nuestras propias escrituras se lean como cambios del usuario.
     useEffect(() => {
         const root = document.getElementById('root');
         if (!root) return;
         rootRef.current = root;
 
-        if (observerRef.current) { observerRef.current.disconnect(); observerRef.current = null; }
-        if (lang === 'es') return;
+        observerRef.current?.disconnect();
+        observerRef.current = null;
+        if (lang === BASE_LANG) { setIsTranslating(false); return; }
+
+        let alive = true;
 
         const observer = new MutationObserver(() => {
-            if (fetching.current) return;
-            if (bgTimer.current) clearTimeout(bgTimer.current);
-            bgTimer.current = setTimeout(() => {
-                const r = rootRef.current;
-                if (!r) return;
-                // First apply cache instantly, then fetch missing
-                applyAll(r, lang);
-                if (!fetching.current) {
-                    fetching.current = true;
-                    observer.disconnect();
-                    const nodes = getNodes(r);
-                    const missing = [
-                        ...new Set(
-                            nodes
-                                .map(n => keyFor(n))
-                                .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
-                        ),
-                    ];
-                    if (missing.length) {
-                        fetchMissing(missing, lang).then(fresh => {
-                            if (Object.keys(fresh).length) applyAll(r, lang);
-                        }).finally(() => {
-                            fetching.current = false;
-                            observer.observe(r, { childList: true, subtree: true, characterData: false });
-                        });
-                    } else {
-                        fetching.current = false;
-                        observer.observe(r, { childList: true, subtree: true, characterData: false });
-                    }
-                }
-            }, 200);
+            if (busy.current) return;               // son nuestras propias escrituras
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(sweep, 150);
         });
 
-        observer.observe(root, { childList: true, subtree: true, characterData: false });
+        async function sweep() {
+            const r = rootRef.current;
+            if (!r || !alive || busy.current || langRef.current !== lang) return;
+
+            busy.current = true;
+            observer.disconnect();
+            try {
+                // Primero lo que ya está en caché: instantáneo y sin red.
+                domApplyAll(r, memCache[lang] ?? {});
+
+                const missing = domCollectMissing(r, memCache[lang] ?? {});
+                if (missing.length) {
+                    setIsTranslating(true);
+                    const fresh = await fetchMissing(missing, lang);
+                    if (alive && Object.keys(fresh).length) domApplyAll(r, memCache[lang] ?? {});
+                }
+
+                // El título de la pestaña también es texto visible.
+                const title = document.title?.trim();
+                if (title && !looksLikeData(title)) {
+                    const tr = getCached(lang, title);
+                    if (tr) document.title = tr;
+                }
+            } finally {
+                busy.current = false;
+                if (alive) setIsTranslating(false);
+                if (alive && langRef.current === lang) {
+                    observer.observe(r, {
+                        childList: true, subtree: true,
+                        characterData: true,        // React repinta texto EN SITIO
+                        attributes: true,
+                        attributeFilter: [...ATTRS, 'value'],
+                    });
+                }
+            }
+        }
+
+        sweep();
         observerRef.current = observer;
-        return () => { observer.disconnect(); observerRef.current = null; };
+
+        return () => {
+            alive = false;
+            if (timerRef.current) clearTimeout(timerRef.current);
+            observer.disconnect();
+            observerRef.current = null;
+        };
     }, [lang]);
 
+    const value = useMemo<LangCtx>(() => ({
+        lang,
+        locale: localeOf(lang),
+        languageChosen,
+        setLang,
+        applyDefaultLanguage,
+        translate,
+        translateSync,
+        isTranslating,
+    }), [lang, languageChosen, setLang, applyDefaultLanguage, translate, translateSync, isTranslating]);
+
     return (
-        <LangContext.Provider value={{ lang, languageChosen, setLang, applyDefaultLanguage, translate, translateSync, isTranslating: false }}>
+        <LangContext.Provider value={value}>
             {children}
+            <TranslationProgress active={isTranslating} />
         </LangContext.Provider>
     );
 };
 
+// ─── Indicador de traducción en curso ───────────────────────────────────────
+// Una barra fina arriba mientras se resuelve algo que nunca se había traducido.
+// No tapa la página a propósito: el contenido en español se lee mientras llega
+// su traducción, que es preferible a una pantalla en blanco esperando a un
+// servicio de terceros. Lo ya traducido no pasa por aquí — se aplica antes del
+// pintado y no parpadea.
+const TranslationProgress: React.FC<{ active: boolean }> = ({ active }) => (
+    <div
+        aria-hidden={!active}
+        data-no-translate
+        style={{
+            position: 'fixed', top: 0, left: 0, right: 0, height: 2, zIndex: 9999,
+            pointerEvents: 'none', opacity: active ? 1 : 0,
+            transition: 'opacity .25s ease',
+        }}
+    >
+        <div style={{
+            height: '100%', width: '40%', borderRadius: 2,
+            background: 'linear-gradient(90deg,transparent,#f7a81b,#17458f,transparent)',
+            animation: active ? 'rc-tr-slide 1.1s ease-in-out infinite' : 'none',
+        }} />
+        <style>{`@keyframes rc-tr-slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}`}</style>
+    </div>
+);
+
+// ─── Hooks ──────────────────────────────────────────────────────────────────
 export const useLang = () => {
     const ctx = useContext(LangContext);
-    if (!ctx) throw new Error('useLang must be used within LanguageProvider');
+    if (!ctx) throw new Error('useLang debe usarse dentro de LanguageProvider');
     return ctx;
 };
 
-// ─── <T> component hook (single-string) ──────────────────────────────────────
+/** Traduce una cadena suelta (la que no está en el DOM: un aria-label calculado,
+ *  el asunto de un correo, el texto de un `alert`). */
 export const useTranslated = (text: string): string => {
     const { lang, translate, translateSync } = useLang();
     const [result, setResult] = useState<string>(() => translateSync(text));
 
     useEffect(() => {
-        if (!text || lang === 'es') { setResult(text); return; }
+        if (!text || lang === BASE_LANG) { setResult(text); return; }
         const cached = translateSync(text);
         if (cached !== text) { setResult(cached); return; }
         let cancelled = false;
@@ -378,4 +385,32 @@ export const useTranslated = (text: string): string => {
     }, [text, lang, translate, translateSync]);
 
     return result;
+};
+
+/**
+ * Formateadores atados al idioma activo.
+ *
+ * Fechas, horas, cifras y monedas NO se traducen: se formatean. Este hook es la
+ * forma correcta de mostrarlas — evita el 'es-CO' fijo que dejaba las fechas en
+ * español aunque el resto de la página estuviera en japonés.
+ *
+ *   const { date, money } = useLocale();
+ *   <p>{date(evento.startsAt)} — {money(cat.price, cat.currency)}</p>
+ */
+export const useLocale = () => {
+    const { lang, locale } = useLang();
+    return useMemo(() => ({
+        lang,
+        locale,
+        date: (v: unknown, o?: Intl.DateTimeFormatOptions) => formatDate(v, lang, o),
+        dateShort: (v: unknown) => formatDateShort(v, lang),
+        dateTime: (v: unknown) => formatDateTime(v, lang),
+        time: (v: unknown) => formatTime(v, lang),
+        dateRange: (a: unknown, b: unknown) => formatDateRange(a, b, lang),
+        number: (v: unknown, o?: Intl.NumberFormatOptions) => formatNumber(v, lang, o),
+        money: (v: unknown, currency?: string, o?: Intl.NumberFormatOptions) =>
+            formatMoney(v, currency, lang, o),
+        relative: (v: unknown) => formatRelative(v, lang),
+        list: (items: string[]) => formatList(items, lang),
+    }), [lang, locale]);
 };

@@ -10,6 +10,8 @@
 // /admin/feria-proyectos. Esta página no tiene valores de negocio quemados.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLang } from '../contexts/LanguageContext';
+import { activeLocale } from '../lib/locale';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
@@ -91,22 +93,22 @@ const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
 
 
 const fmtCop = (n: number | null | undefined) =>
-    `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
+    `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
 const fmtUsd = (n: number | null | undefined) =>
     n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtRate = (n: number | null | undefined) =>
-    n ? Number(n).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+    n ? Number(n).toLocaleString(activeLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 const fmtDateTime = (iso: string | null | undefined) => {
     if (!iso) return '—';
     const d = new Date(iso);
     if (isNaN(d.getTime())) return String(iso);
-    return d.toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
+    return d.toLocaleString(activeLocale(), { dateStyle: 'long', timeStyle: 'short' });
 };
 const fmtDate = (value: string | null | undefined) => {
     if (!value) return '';
     const d = new Date(`${value}T12:00:00`);
     if (isNaN(d.getTime())) return String(value);
-    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(activeLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
 // Tiempo de exposición de cada proyecto: rango ("De 5 a 6 minutos") cuando el
@@ -152,6 +154,9 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
 
 // ── Página ───────────────────────────────────────────────────────────
 const FeriaProyectos = () => {
+    // Suscripción al idioma: los formateadores de arriba leen el locale
+    // activo, y sin esto la página no se repintaría al cambiarlo.
+    useLang();
     const [config, setConfig] = useState<FairConfig | null>(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
     const [stage, setStage] = useState<'form' | 'payment' | 'confirmed'>('form');

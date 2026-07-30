@@ -148,6 +148,7 @@ const MediaLibrary = React.lazy(() => import('./pages/admin/MediaLibrary'));
 const ContentCalendar = React.lazy(() => import('./pages/admin/ContentCalendar'));
 const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
 const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
+const Translations = React.lazy(() => import('./pages/admin/Translations'));
 const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
 const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
 const EmailManagement = React.lazy(() => import('./pages/admin/EmailManagement'));
@@ -578,6 +579,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ClubSettings />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/traducciones"
+                  element={
+                    <PrivateRoute>
+                      <Translations />
                     </PrivateRoute>
                   }
                 />

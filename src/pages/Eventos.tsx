@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLang } from '../contexts/LanguageContext';
 import { Link, Navigate } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -40,6 +41,7 @@ const Eventos = () => {
         path: '/eventos',
     });
 
+    const { locale } = useLang();
     const [events, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('Todos');
@@ -97,7 +99,7 @@ const Eventos = () => {
 
     const formatDate = (dateStr: string) => {
         try {
-            return new Date(dateStr).toLocaleDateString('es-CO', {
+            return new Date(dateStr).toLocaleDateString(locale, {
                 day: 'numeric', month: 'short', year: 'numeric'
             });
         } catch { return dateStr; }
@@ -105,7 +107,7 @@ const Eventos = () => {
 
     const formatTime = (dateStr: string) => {
         try {
-            return new Date(dateStr).toLocaleTimeString('es-CO', {
+            return new Date(dateStr).toLocaleTimeString(locale, {
                 hour: '2-digit', minute: '2-digit'
             });
         } catch { return ''; }

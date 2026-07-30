@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLang } from '../contexts/LanguageContext';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { 
@@ -666,6 +667,7 @@ const articulosData: Record<number, {
 };
 
 const BlogPost = () => {
+    const { locale } = useLang();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { club } = useClub();
@@ -759,7 +761,7 @@ const BlogPost = () => {
               titulo: data.title,
               contenido: data.content,
               imagen: data.image,
-              fecha: new Date(data.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+              fecha: new Date(data.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }),
               autor: 'Rotary Club',
               tiempoLectura: '5 min'
             };
@@ -1147,7 +1149,7 @@ const BlogPost = () => {
                              <div>
                                <h4 className="font-bold text-gray-900 text-sm">{comment.firstName} {comment.lastName}</h4>
                                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
-                                 {new Date(comment.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                 {new Date(comment.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
                                </p>
                              </div>
                            </div>
