@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import VideoCreator from '../../components/admin/content-studio/VideoCreator';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
+import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
@@ -97,9 +98,14 @@ const ContentStudio: React.FC = () => {
                     </TabsContent>
 
                     <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
-                        {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas)
-                            es ahora el contenido principal de la tab. La videoteca histórica
-                            queda accesible al final para no romper el flujo de los videos AI. */}
+                        {/* v4.669: los Reels van PRIMERO. Hasta ahora la pestaña sólo
+                            pintaba las publicaciones sociales y, colapsada al fondo, la
+                            videoteca del Creador de Video anterior (VideoProject), así que
+                            ningún Reel aparecía en ninguna parte pese a estar guardado. */}
+                        <ReelLibrary />
+                        {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas).
+                            La videoteca histórica queda accesible al final para no romper el
+                            flujo de los videos AI. */}
                         <PublicationLibrary />
                         <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
                             <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">

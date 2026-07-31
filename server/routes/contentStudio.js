@@ -48,7 +48,11 @@ import {
     toggleCopyFavorite,
     exportReel,
     getReelNarration,
-    regenerateNarration
+    regenerateNarration,
+    listReelLibrary,
+    updateReelInfo,
+    duplicateReel,
+    getReelUsage
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
@@ -107,6 +111,7 @@ router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 // El orden importa: las rutas fijas van antes que /reels/:id para que
 // "options" no se lea como un id.
 router.get('/reels/options', authMiddleware, getReelOptions);
+router.get('/reels/library', authMiddleware, listReelLibrary);
 router.post('/reels/preflight', authMiddleware, preflightReel);
 router.post('/reels', authMiddleware, createReel);
 router.get('/reels', authMiddleware, listReels);
@@ -115,6 +120,10 @@ router.get('/reels/:id/sync', authMiddleware, syncReel);
 router.post('/reels/:id/render', authMiddleware, renderReel);
 router.post('/reels/:id/music', authMiddleware, changeMusic);
 router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
+router.patch('/reels/:id', authMiddleware, updateReelInfo);
+router.post('/reels/:id/duplicate', authMiddleware, duplicateReel);
+// Auditoría del consumo por proveedor (v4.669).
+router.get('/reels/:id/usage', authMiddleware, getReelUsage);
 
 // Copies de publicación (v4.666). El orden importa: las rutas fijas van antes
 // que las paramétricas de escena para que no se confundan.

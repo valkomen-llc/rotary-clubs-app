@@ -29,11 +29,15 @@ import db from './db.js';
 
 let _ready = false;
 
-const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy', 'ReelNarration'];
+const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy', 'ReelNarration', 'ReelUsage'];
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
-const EXPECTED_COLUMNS = [['ReelScene', 'frames'], ['ReelScene', 'expandedImageUrl']];
+const EXPECTED_COLUMNS = [
+    ['ReelScene', 'frames'], ['ReelScene', 'expandedImageUrl'],
+    ['ReelProject', 'tags'], ['ReelProject', 'savedToLibraryAt'],
+    ['ReelProject', 'sideTracksAt']
+];
 
 export async function ensureReelSchema() {
     if (_ready) return;
@@ -334,6 +338,51 @@ export async function ensureReelSchema() {
             ON "ReelCopy"("projectId", platform, locale) WHERE "isCurrent";
         CREATE INDEX IF NOT EXISTS "ReelScene_kieJobId_idx"  ON "ReelScene"("kieJobId");
         CREATE INDEX IF NOT EXISTS "ReelScene_status_idx"    ON "ReelScene"(status);
+
+        -- Registro de consumo por proveedor (v4.669). Una fila por llamada a un
+        -- servicio externo. Es lo que alimenta el panel de auditoría: sin él,
+        -- «qué proveedor gastó qué» sólo se puede contestar leyendo el código.
+        --
+        -- Las columnas scope y expectedProvider son la parte que hace visible
+        -- la separación de responsabilidades: se guarda quién DEBÍA atender la
+        -- operación y quién la atendió de verdad.
+        CREATE TABLE IF NOT EXISTS "ReelUsage" (
+            id TEXT PRIMARY KEY,
+            "projectId" TEXT NOT NULL REFERENCES "ReelProject"(id) ON DELETE CASCADE,
+            "clubId" TEXT,
+            "sceneId" TEXT,
+
+            operation TEXT NOT NULL,
+            scope TEXT,
+            provider TEXT,
+            "expectedProvider" TEXT,
+            model TEXT,
+
+            -- Unidades naturales del proveedor: caracteres de voz, segundos de
+            -- música, tokens del modelo, créditos de video. La columna credits
+            -- es NUESTRA estimación, no el saldo del proveedor.
+            units DOUBLE PRECISION NOT NULL DEFAULT 0,
+            unit TEXT,
+            credits INTEGER NOT NULL DEFAULT 0,
+
+            ms INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ok',
+            detail TEXT,
+            target TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS "ReelUsage_project_idx" ON "ReelUsage"("projectId", "createdAt");
+        CREATE INDEX IF NOT EXISTS "ReelUsage_month_idx"   ON "ReelUsage"("createdAt" DESC);
+
+        -- Biblioteca: etiquetas editables y marca de cuándo entró.
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "savedToLibraryAt" TIMESTAMP(3);
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS description TEXT;
+
+        -- Reserva de las tareas paralelas (música, copies, locución). Es lo que
+        -- impide que dos sondeos simultáneos lancen la misma dos veces.
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "sideTracksAt" TIMESTAMP(3);
     `);
 
     _ready = true;

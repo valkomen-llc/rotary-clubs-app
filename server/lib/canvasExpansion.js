@@ -301,7 +301,11 @@ export const analyzeForExpansion = async (imageUrl) => {
             warnings: Array.isArray(raw.warnings)
                 ? raw.warnings.filter(w => typeof w === 'string').slice(0, 4).map(w => w.slice(0, 200))
                 : [],
-            failed: false
+            failed: false,
+            // Lo que gastó esta llamada, para el registro de consumo. Va acá
+            // porque es el único punto que ve la respuesta cruda del proveedor:
+            // más arriba ya está descartada.
+            usage: { provider: result.provider, model: result.model, raw: result.raw }
         };
     } catch (e) {
         console.error('[EXPANSION] análisis falló:', e.message);

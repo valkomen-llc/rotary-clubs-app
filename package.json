@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.668.0",
-  "cache_bust": "2026-07-30s (Musica generativa con ElevenLabs Music y Stable Audio de respaldo: licencia limpia para publicar en redes.)",
+  "version": "4.669.0",
+  "cache_bust": "2026-07-31a (Biblioteca de Reels, auditoria de consumo por proveedor y generacion mas rapida.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -269,6 +269,8 @@ export const generateReelCopy = async ({
         copy: sanitizeCopy(raw, { locale }),
         provider: result?.provider || null,
         model: result?.model || null,
+        // Respuesta cruda: lleva el consumo real de tokens que audita el panel.
+        rawResponse: result?.raw || null,
         prompt: userText
     };
 };
@@ -304,6 +306,7 @@ DEVOLVÉ SÓLO la plataforma "${platform}". El resto del JSON puede ir vacío.${
         platform: sanitized.platforms[platform],
         provider: result?.provider || null,
         model: result?.model || null,
+        rawResponse: result?.raw || null,
         prompt: userText
     };
 };

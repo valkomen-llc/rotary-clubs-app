@@ -138,9 +138,10 @@ const neutralAnalysis = (index, reason = null) => ({
 // Analiza las tres imágenes EN PARALELO. Es lo que mantiene el paso dentro del
 // presupuesto de la función: tres llamadas de visión en serie rondarían los 30 s
 // y el tope de Vercel es 120 s para todo el request.
-export const analyzeImages = async (images, { provider = null } = {}) => {
+export const analyzeImages = async (images, { provider = null, usage = null } = {}) => {
     const results = await Promise.all(
         images.map(async (img, index) => {
+            const startedAt = Date.now();
             try {
                 const result = await generateCopy({
                     ...(provider ? { provider } : {}),
@@ -151,11 +152,23 @@ export const analyzeImages = async (images, { provider = null } = {}) => {
                     maxTokens: 700,
                     jsonMode: true
                 });
+                // El consumo se ACUMULA en el array que pasa quien llama, en vez
+                // de escribirse acá: cuando el director corre, el proyecto
+                // todavía no existe en la base y no habría a qué asociarlo.
+                if (usage) usage.push({
+                    operation: 'director.analyze', target: `Foto ${index + 1}`,
+                    model: result?.model || null, raw: result?.raw || null,
+                    ms: Date.now() - startedAt, status: 'ok'
+                });
                 const parsed = parseJsonObject(result);
                 if (!parsed) return neutralAnalysis(index, 'la respuesta no vino en JSON');
                 return sanitizeAnalysis(parsed, index);
             } catch (e) {
                 console.error(`[REEL] análisis de la imagen ${index} falló:`, e.message);
+                if (usage) usage.push({
+                    operation: 'director.analyze', target: `Foto ${index + 1}`,
+                    ms: Date.now() - startedAt, status: 'error', detail: e.message
+                });
                 return neutralAnalysis(index, e.message);
             }
         })
@@ -360,7 +373,11 @@ export const buildDirection = async (analyses, {
             console.warn('[REEL] el director no devolvió JSON; se usó el criterio por defecto');
             return fallbackDirection(analyses, prefs);
         }
-        return sanitizeDirection(parsed, analyses, prefs);
+        return {
+            ...sanitizeDirection(parsed, analyses, prefs),
+            model: result?.model || null,
+            rawResponse: result?.raw || null
+        };
     } catch (e) {
         console.error('[REEL] dirección falló:', e.message);
         return fallbackDirection(analyses, prefs);
@@ -372,11 +389,23 @@ export const directReel = async (images, prefs = {}) => {
     if (!Array.isArray(images) || images.length !== SCENE_COUNT) {
         throw new Error(`El Reel se arma con exactamente ${SCENE_COUNT} imágenes.`);
     }
-    const analyses = await analyzeImages(images, prefs);
+    // Recolector del consumo de esta fase. Se devuelve para que el controlador
+    // lo registre en cuanto el proyecto tenga fila.
+    const usage = [];
+    const analyses = await analyzeImages(images, { ...prefs, usage });
+    const planStartedAt = Date.now();
     const direction = await buildDirection(analyses, prefs);
+    usage.push({
+        operation: 'director.plan', target: 'Dirección del montaje',
+        model: direction.model || null, raw: direction.rawResponse || null,
+        ms: Date.now() - planStartedAt,
+        status: direction.fromModel ? 'ok' : 'error',
+        detail: direction.fromModel ? null : 'El modelo no dirigió; se usó el criterio propio.'
+    });
     return {
         analyses,
         direction,
+        usage,
         // Los avisos del análisis se juntan acá para mostrarlos una sola vez en
         // la UI, junto a los del formato y la resolución.
         warnings: analyses.flatMap((a, i) => a.riskNotes.map(n => `Foto ${i + 1}: ${n}`))

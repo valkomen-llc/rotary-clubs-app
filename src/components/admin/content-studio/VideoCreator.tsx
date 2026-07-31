@@ -187,6 +187,12 @@ const VideoCreator: React.FC = () => {
     // El flujo es asíncrono a propósito: cada clip tarda 1-3 minutos y la
     // función de la API corta a los 120 s. El webhook es la segunda vía; esto
     // es la primera y la que mueve la barra.
+    //
+    // El intervalo bajó de 6 s a 3 s en v4.669. No acelera la generación, pero
+    // sí lo que se TARDA EN VER que terminó: el Reel pasa por cuatro cambios de
+    // etapa y con 6 s cada uno se descubría, de media, tres segundos tarde —
+    // hasta 24 s de espera que no la causaba ningún proveedor.
+    const POLL_MS = 3000;
     const pollRef = useRef<number | null>(null);
     useEffect(() => {
         if (!reel || isTerminal(reel.status)) {
@@ -198,7 +204,7 @@ const VideoCreator: React.FC = () => {
                 const r = await fetch(`${API}/content-studio/reels/${reel.id}/sync`, { headers: authHeaders() });
                 if (r.ok) setReel(await r.json());
             } catch { /* un fallo de red no pierde el Reel: se reintenta solo */ }
-        }, 6000);
+        }, POLL_MS);
         pollRef.current = id;
         return () => window.clearInterval(id);
     }, [reel?.id, reel?.status]);

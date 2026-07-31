@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.668.0 | 2026-07-31 (Música generativa con licencia limpia: ElevenLabs + Stable Audio)
-// Cache bust: 2026-07-30s
+// UI V4.669.0 | 2026-07-31 (Biblioteca de Reels, auditoría de consumo y generación más rápida)
+// Cache bust: 2026-07-31a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.669.0',
+        title: 'Los Reels ya aparecen en la Biblioteca, con auditoría de consumo y menos espera 🎬',
+        description: 'Tres cosas. La primera: los Reels generados no se veían por ninguna parte. Sí se guardaban —su archivo entraba en la Biblioteca multimedia desde el estreno—, pero la pestaña «Biblioteca» sólo mostraba las publicaciones sociales y, colapsada al fondo, la videoteca del Creador de Video anterior. Ahora hay una sección propia de Reels, la primera de la pestaña, con la ficha completa de cada pieza: motor, resolución, duración, peso, relación de aspecto, créditos, quién la creó, las tres fotos originales, las escenas, la banda sonora, la locución y los textos por plataforma. Desde ahí se ve, se descarga, se edita su información, se duplica para volver a generar con otros ajustes y se exportan sus textos. Además entran también los Reels marcados «Requiere revisión»: la Biblioteca es el inventario de lo que se generó, no la lista de lo aprobado, y el estado se ve en cada tarjeta. La segunda: una pestaña de Consumo que muestra qué motor hizo qué en cada Reel —llamadas, tiempo, unidades y, si se configura la tarifa, costo aproximado—, con un aviso en rojo si alguno atendiera trabajo que no le corresponde. La tercera: crear un Reel ya no espera a la música, los textos y la voz. Las tres se generan en paralelo con los clips en vez de dentro de la petición inicial, y el estado se refresca cada tres segundos en lugar de cada seis.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'biblioteca', 'rendimiento', 'ia'],
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'Sección «Reels IA» en la Biblioteca del Estudio de Contenido, con la ficha completa de cada pieza.' },
+            { type: 'fixed', text: 'Los Reels generados no se mostraban en ninguna pantalla pese a estar guardados.' },
+            { type: 'changed', text: 'Un Reel marcado «Requiere revisión» también entra en la Biblioteca; el estado se ve en la tarjeta.' },
+            { type: 'added', text: 'Editar título, descripción y etiquetas de un Reel guardado.' },
+            { type: 'added', text: 'Duplicar un Reel: abre el creador con las mismas fotos y ajustes, sin gastar créditos hasta confirmar.' },
+            { type: 'added', text: 'Panel de auditoría por proveedor: llamadas, tiempo, unidades, créditos estimados y costo aproximado.' },
+            { type: 'improved', text: 'La música, los textos y la locución se generan en paralelo con los clips, no dentro de la petición de creación.' },
+            { type: 'improved', text: 'El progreso se consulta cada 3 segundos en lugar de cada 6.' }
+        ],
+        details: [
+            'El reparto de motores no cambió, pero ahora se puede comprobar: KIE anima las fotos y adapta el lienzo; ElevenLabs pone la voz y la música; el modelo de lenguaje escribe los textos; FFmpeg monta. Los clips de video se piden mudos, así que KIE no factura audio.',
+            'Los créditos que muestra el panel son la estimación propia de la plataforma, no el saldo de la cuenta del proveedor. El costo en dinero sólo aparece cuando hay tarifa configurada en el entorno: en vez de mostrar «$0» sin tarifa, dice que falta configurarla.',
+            'La aceleración no toca los tiempos de los proveedores: un clip sigue tardando lo que tarda. Lo que se recortó es la espera que no venía de ellos —hasta un minuto entre la petición inicial y el refresco del estado—.'
+        ]
+    },
     {
         version: '4.668.0',
         title: 'Música original en cada Reel, con licencia en regla 🎵',
