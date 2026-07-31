@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.670
+## Creador de Reels IA — v4.671
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -228,6 +228,33 @@ en `config` sin que el servidor los leyera.
 - **Una tarea de video POR ESCENA.** Es la corrección de fondo del módulo
   anterior. Los modelos image-to-video reciben UNA imagen; mandarles un array
   de tres no produce tres clips. Nunca volver a agrupar.
+- **El conformado de los clips vive DENTRO del grafo de filtros, no en una
+  pasada previa** (v4.671). `buildFilterGraph` escala, recorta, fija los fps y
+  el formato de píxel de cada entrada antes de encadenar los fundidos. Hasta
+  v4.670 había además un `normaliseClip` que recodificaba el clip entero para
+  dejarlo exactamente como el grafo iba a dejarlo de todos modos: doble encode,
+  doble pérdida de generación y el tiempo agotado que dejaba el Reel en
+  «Ningún proveedor de montaje pudo completar». **No reintroducirla.** No hay
+  riesgo de «concatenar archivos dispares»: nada se concatena en crudo — FFmpeg
+  decodifica cada entrada y la conforma en el grafo. Medido con tres clips a
+  1280×720@30, 1920×1080@24 y 720×1280@25 (uno con pista de audio): salen
+  unidos en 1080×1920@30, 14,00 s, en 11 s de una sola pasada.
+- **La fidelidad se mide contra la imagen que SE ANIMÓ** (`animationSourceOf`),
+  no contra `sourceImageUrl`. Es el mismo punto de decisión que usa el despacho,
+  y usar otro es un error caro: con el lienzo adaptado, el clip es 9:16 y la
+  foto original apaisada, así que la huella perceptual daba nota baja POR
+  CONSTRUCCIÓN. Una escena marcada `failed` se regenera sola **partiendo de la
+  misma imagen adaptada**, así que volvía a fallar igual: dos rondas de créditos
+  de video en un problema inexistente. Medir la adaptación contra el original es
+  otra cosa y la hace `verifyExpansion`, sobre la región donde vive la foto.
+- **`stdout` de FFmpeg se descarta en el descriptor** (`stdio: ['ignore',
+  'ignore', 'pipe']`), no se abre como tubería. Con `pipe` y sin nadie leyendo,
+  el búfer del sistema se llena y ffmpeg queda bloqueado escribiendo: no falla,
+  se cuelga, y sólo se ve un tiempo agotado sin causa.
+- **Un fallo de montaje guarda el diagnóstico técnico** —comando, código de
+  salida y cola de `stderr`— en `renderRaw`, y el panel administrativo lo
+  muestra. Al usuario se le sigue dando el mensaje llano. «No se pudo montar» a
+  secas obliga a reproducir el fallo a ciegas.
 - **El montaje NO es postprocesar.** La regla heredada del Generador de
   Publicaciones y del de Outros prohíbe retocar el archivo que devuelve un
   modelo —composite, máscara, blur, recorte— porque se ve pegado. Lo que hace la

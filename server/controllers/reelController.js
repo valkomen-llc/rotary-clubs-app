@@ -53,7 +53,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
-import { extractFrames, isFfmpegAvailable } from '../lib/reelFfmpeg.js';
+import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
     EXPANSION_SETTINGS, PHOTO_TYPES,
@@ -1213,13 +1213,31 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
             };
         }
 
-        // La foto original, para comparar contra ella.
-        const srcResp = await fetch(scene.sourceImageUrl);
+        // ── Se compara contra la imagen que SE ANIMÓ (v4.671) ──
+        //
+        // `animationSourceOf` es el único sitio donde se decide qué imagen va al
+        // motor de video, y la comprobación tiene que usar la misma. Hasta
+        // v4.670 comparaba siempre contra `sourceImageUrl`, la foto ORIGINAL, y
+        // eso rompía las escenas cuyo lienzo se había adaptado: el clip es 9:16
+        // y la foto original es apaisada, así que la huella perceptual daba una
+        // nota baja POR CONSTRUCCIÓN, no por deriva del modelo.
+        //
+        // El daño no era sólo una etiqueta equivocada. Una escena marcada
+        // `failed` se regenera sola, y la regeneración parte de la MISMA imagen
+        // adaptada: vuelve a fallar igual. Eran dos rondas de créditos de video
+        // gastados en un problema que no existía y que no se podía arreglar así.
+        //
+        // Lo que sí conserva sentido es medir la adaptación contra el original:
+        // de eso se encarga `verifyExpansion`, que recorta la región donde vive
+        // la foto y sólo compara ahí. Son dos comprobaciones distintas y cada
+        // una mira su par correcto.
+        const comparisonUrl = animationSourceOf(scene);
+        const srcResp = await fetch(comparisonUrl);
         if (!srcResp.ok) {
             return {
                 state: 'unavailable', score: null, issues: [],
                 frames: frames.map(({ at, position, url }) => ({ at, position, frameUrl: url })),
-                reason: `No se pudo descargar la fotografía original (${srcResp.status}).`
+                reason: `No se pudo descargar la imagen de origen (${srcResp.status}).`
             };
         }
         const originalBuffer = Buffer.from(await srcResp.arrayBuffer());
@@ -1389,6 +1407,16 @@ const submitAssembly = async (project, scenes) => {
             ms: Date.now() - renderStartedAt, status: 'error', detail: e.message,
             target: 'Montaje final'
         });
+        // El diagnóstico técnico se guarda en la fila, no sólo en el log: un
+        // «no se pudo montar» sin el comando, el código de salida y la cola de
+        // stderr obliga a reproducir el fallo a ciegas. Lo lee el panel de
+        // administración; al usuario se le sigue mostrando el mensaje llano.
+        if (e.diagnostics?.length) {
+            await db.query(
+                `UPDATE "ReelProject" SET "renderRaw" = $2, "updatedAt" = NOW() WHERE id = $1`,
+                [project.id, JSON.stringify({ failedAt: new Date().toISOString(), diagnostics: e.diagnostics })]
+            ).catch(() => { /* el diagnóstico no puede tumbar el manejo del error */ });
+        }
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
             [project.id, e.code === 'NO_RENDER_PROVIDER'
@@ -3385,7 +3413,15 @@ export const getReelUsage = async (req, res) => {
             operations: Object.entries(USAGE_OPERATIONS).map(([id, o]) => ({
                 id, label: o.label, provider: o.provider, scope: o.scope
             })),
-            processingMs: project.processingMs || null
+            processingMs: project.processingMs || null,
+            // Diagnóstico del montaje. Va acá porque toda esta pantalla es
+            // administrativa; al usuario del Reel se le muestra el mensaje
+            // llano y nada de esto.
+            render: {
+                environment: await checkFfmpegEnvironment(),
+                provider: project.renderProvider || null,
+                diagnostics: project.renderRaw?.diagnostics || []
+            }
         });
     } catch (e) {
         console.error('[REEL] auditoría:', e);

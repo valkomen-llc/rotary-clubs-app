@@ -23,7 +23,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     Activity, AlertTriangle, CheckCircle2, Clock, Coins, Cpu,
-    Loader2, Music, Video, FileText, Film, RefreshCw
+    Loader2, Music, Video, FileText, Film, RefreshCw, Wrench
 } from 'lucide-react';
 import type { ReelUsageReport, ReelUsageProvider } from '../../../lib/reelSpec';
 
@@ -270,6 +270,69 @@ const ReelUsagePanel: React.FC<{ reelId: string }> = ({ reelId }) => {
             >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Actualizar
             </button>
+
+            {/* Diagnóstico del montaje. Sólo se pinta cuando hay algo que
+                contar: un entorno roto o un fallo real. En condiciones normales
+                no aparece — un panel que siempre muestra un bloque técnico
+                enseña a ignorarlo. */}
+            {report.render && (!report.render.environment.ok || report.render.diagnostics.length > 0) && (
+                <details className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
+                    <summary className="cursor-pointer px-4 py-3 text-xs font-black text-gray-700 hover:bg-gray-100 flex items-center gap-2">
+                        <Wrench className="w-3.5 h-3.5" />
+                        Diagnóstico técnico del montaje
+                        {!report.render.environment.ok && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                                entorno con problemas
+                            </span>
+                        )}
+                    </summary>
+                    <div className="px-4 pb-4 pt-1 space-y-3">
+                        <div className="grid grid-cols-3 gap-2 text-[11px]">
+                            {[
+                                ['Binario', report.render.environment.binary],
+                                ['Ejecutable', report.render.environment.executable],
+                                ['Almacenamiento temporal', report.render.environment.tmpWritable]
+                            ].map(([k, v]) => (
+                                <div key={k as string} className="rounded-lg bg-white border border-gray-100 p-2">
+                                    <div className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{k}</div>
+                                    <div className={`font-bold ${v ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {v ? 'correcto' : 'falla'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {report.render.environment.error && (
+                            <p className="text-[11px] text-red-700">{report.render.environment.error}</p>
+                        )}
+                        {report.render.diagnostics.map((d, i) => (
+                            <div key={i} className="rounded-lg bg-white border border-gray-100 p-3 space-y-1.5">
+                                <div className="text-[11px] font-bold text-gray-800">
+                                    {d.provider}
+                                    {d.ffmpeg?.timedOut && <span className="ml-2 text-red-600">tiempo agotado</span>}
+                                    {d.ffmpeg?.exitCode != null && <span className="ml-2 text-gray-500">código {d.ffmpeg.exitCode}</span>}
+                                </div>
+                                <p className="text-[11px] text-gray-600">{d.message}</p>
+                                {d.ffmpeg && (
+                                    <>
+                                        <div className="text-[9px] font-bold uppercase tracking-wide text-gray-400 pt-1">Comando</div>
+                                        <pre className="text-[10px] text-gray-600 bg-gray-50 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">
+                                            ffmpeg {d.ffmpeg.args.join(' ')}
+                                        </pre>
+                                        {d.ffmpeg.stderrTail && (
+                                            <>
+                                                <div className="text-[9px] font-bold uppercase tracking-wide text-gray-400 pt-1">Salida de FFmpeg</div>
+                                                <pre className="text-[10px] text-gray-600 bg-gray-50 rounded p-2 overflow-x-auto max-h-48">
+                                                    {d.ffmpeg.stderrTail}
+                                                </pre>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </details>
+            )}
 
             <p className="text-[11px] text-gray-400 leading-relaxed">
                 Los tiempos y las unidades son medidas reales. Los créditos son la estimación
