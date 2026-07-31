@@ -423,19 +423,74 @@ export const MUSIC_FADE_SEC = 1.0;
 // de verdad: generar los tres clips es la mayor parte del tiempo.
 export const REEL_STATUSES = {
     draft:       { label: 'Borrador',              terminal: false, weight: 0,    order: 0 },
-    analyzing:   { label: 'Analizando imágenes',   terminal: false, weight: 0.06, order: 1 },
-    directing:   { label: 'Construyendo narrativa', terminal: false, weight: 0.04, order: 2 },
+    // El Reel existe en la Biblioteca desde este estado, antes de que se haya
+    // llamado a ningún proveedor. Es lo que permite que la tarjeta aparezca en
+    // el instante en que se pulsa «Renderizar», y no 20 s después.
+    queued:      { label: 'En cola',               terminal: false, weight: 0.02, order: 1 },
+    analyzing:   { label: 'Analizando imágenes',   terminal: false, weight: 0.06, order: 2 },
+    directing:   { label: 'Construyendo narrativa', terminal: false, weight: 0.04, order: 3 },
     // Adaptación del lienzo al formato del Reel. Sólo actúa sobre las fotos que
     // no vienen ya en la proporción pedida; con las tres verticales, la etapa
     // se atraviesa sin gastar nada.
-    expanding:   { label: 'Adaptando imágenes',    terminal: false, weight: 0.14, order: 3 },
-    generating:  { label: 'Generando escenas',     terminal: false, weight: 0.42, order: 4 },
-    scoring:     { label: 'Componiendo música',    terminal: false, weight: 0.09, order: 5 },
-    assembling:  { label: 'Montando el Reel',      terminal: false, weight: 0.18, order: 6 },
-    validating:  { label: 'Exportando',            terminal: false, weight: 0.07, order: 7 },
-    ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 8 },
-    needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 8 },
-    error:       { label: 'Error de montaje',      terminal: true,  weight: 0,    order: 8 }
+    expanding:   { label: 'Adaptando imágenes',    terminal: false, weight: 0.14, order: 4 },
+    generating:  { label: 'Animando las fotos',    terminal: false, weight: 0.40, order: 5 },
+    scoring:     { label: 'Componiendo la banda sonora', terminal: false, weight: 0.09, order: 6 },
+    assembling:  { label: 'Uniendo las escenas',   terminal: false, weight: 0.18, order: 7 },
+    validating:  { label: 'Codificando el video',  terminal: false, weight: 0.07, order: 8 },
+    ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 9 },
+    needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 9 },
+    error:       { label: 'No se pudo completar',  terminal: true,  weight: 0,    order: 9 },
+    // Cancelado por el usuario. Terminal, pero distinto de `error`: no hubo un
+    // fallo que reintentar, y la ficha conserva sus fotos y su configuración.
+    cancelled:   { label: 'Cancelado',             terminal: true,  weight: 0,    order: 9 }
+};
+
+// ─── Tiempo restante estimado ──────────────────────────────────────────────
+//
+// Segundos que suele tardar cada etapa, medidos sobre el caso real (tres fotos,
+// Kling 2.6, montaje local). Es una ESTIMACIÓN y así se nombra en la interfaz:
+// depende de la cola del proveedor, que no controlamos y que varía por hora.
+//
+// No se calcula a partir del histórico del club porque con tres o cuatro Reels
+// generados la media diría más del azar que del proceso. Cuando haya volumen
+// suficiente valdrá la pena; hoy sería precisión fingida.
+export const STAGE_ETA_SEC = {
+    queued: 20,
+    analyzing: 18,
+    directing: 8,
+    expanding: 55,
+    generating: 150,
+    scoring: 25,
+    assembling: 20,
+    validating: 10
+};
+
+/**
+ * Segundos que faltan, aproximadamente, para que el Reel esté listo.
+ *
+ * Sumar las etapas que quedan es lo único honesto que se puede hacer sin saber
+ * la cola del proveedor. Dentro de una etapa por escena se descuenta la parte
+ * ya cumplida, para que la cifra baje mientras los clips van llegando.
+ *
+ * Devuelve `null` en los estados terminales: ahí no queda nada que esperar y
+ * mostrar un «0 s» sería ruido.
+ */
+export const estimateRemainingSec = (status, { scenesReady = 0, scenesTotal = SCENE_COUNT } = {}) => {
+    const current = REEL_STATUSES[status];
+    if (!current || current.terminal) return null;
+
+    let remaining = 0;
+    for (const [id, st] of Object.entries(REEL_STATUSES)) {
+        if (st.terminal || st.order < current.order) continue;
+        const full = STAGE_ETA_SEC[id] || 0;
+        // La etapa en curso cuenta a prorrata de las escenas que ya terminaron.
+        if (id === status && (status === 'generating' || status === 'expanding') && scenesTotal > 0) {
+            remaining += full * Math.max(0, 1 - scenesReady / scenesTotal);
+        } else {
+            remaining += full;
+        }
+    }
+    return Math.round(remaining);
 };
 
 // Estados de una escena individual. Una escena puede regenerarse sola sin

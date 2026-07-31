@@ -32,7 +32,7 @@ import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
 import {
     SCENE_COUNT, MIN_SCENE_SEC, MAX_SCENE_SEC,
-    isTerminal, timelineDuration, formatSeconds, formatBytes,
+    isTerminal, timelineDuration, formatSeconds, formatBytes, formatEta,
     type Reel, type ReelScene, type ReelOptions, type ReelCopy
 } from '../../../lib/reelSpec';
 
@@ -372,6 +372,11 @@ const VideoCreator: React.FC = () => {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="lg:col-span-8 flex flex-col gap-6">
+
+                {/* Aviso de recuperación. Un Reel en curso no depende de que
+                    esta pantalla esté abierta, así que al volver hay que
+                    ENCONTRARLO — no volver a lanzarlo. */}
+                <ActiveReelsBanner />
 
                 {/* Selección de imágenes */}
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
@@ -799,6 +804,73 @@ const VideoCreator: React.FC = () => {
                     }}
                 />
             )}
+        </div>
+    );
+};
+
+// ─── Recuperación de Reels en curso ────────────────────────────────────────
+//
+// El render no depende de esta pantalla: corre en el servidor y lo empuja el
+// cron aunque el usuario cierre el navegador. Por eso, al volver al creador, lo
+// que corresponde no es relanzar nada sino AVISAR de lo que ya está en marcha.
+// Sin este aviso, la reacción natural de quien no ve su Reel es volver a
+// pedirlo — y pagar los créditos dos veces.
+const ActiveReelsBanner: React.FC = () => {
+    const [active, setActive] = useState<Reel[]>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/reels/active`, { headers: authHeaders() });
+                if (!r.ok) return;
+                const data = await r.json();
+                if (!cancelled) setActive(data.reels || []);
+            } catch { /* el aviso es informativo: si falla, no molesta */ }
+        };
+        load();
+        const id = window.setInterval(load, 10000);
+        return () => { cancelled = true; window.clearInterval(id); };
+    }, []);
+
+    if (!active.length) return null;
+
+    return (
+        <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+                <Loader2 className="w-5 h-5 text-sky-600 animate-spin flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-sky-900">
+                        {active.length === 1
+                            ? 'Hay un Reel generándose'
+                            : `Hay ${active.length} Reels generándose`}
+                    </p>
+                    <p className="text-xs text-sky-800/80 mt-0.5">
+                        Podés seguir trabajando, cambiar de módulo o cerrar el navegador: el proceso
+                        continúa en el servidor. Lo encontrás en la pestaña <strong>Biblioteca</strong>.
+                    </p>
+                    <div className="mt-2.5 space-y-2">
+                        {active.map(r => (
+                            <div key={r.id} className="bg-white/70 rounded-xl px-3 py-2">
+                                <div className="flex items-center justify-between gap-3 text-xs">
+                                    <span className="font-bold text-sky-900 truncate">{r.title}</span>
+                                    <span className="text-sky-700 shrink-0 tabular-nums">
+                                        {Math.round((r.progress || 0) * 100)}%
+                                        {formatEta(r.etaSec) && ` · aprox. ${formatEta(r.etaSec)}`}
+                                    </span>
+                                </div>
+                                <div className="mt-1 h-1.5 w-full rounded-full bg-sky-100 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-sky-500 transition-[width] duration-700 ease-out"
+                                        style={{ width: `${Math.max(3, Math.round((r.progress || 0) * 100))}%` }}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-sky-700/80 mt-1">{r.statusLabel}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

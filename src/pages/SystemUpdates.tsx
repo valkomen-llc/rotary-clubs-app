@@ -34,9 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.669.0 | 2026-07-31 (Biblioteca de Reels, auditoría de consumo y generación más rápida)
-// Cache bust: 2026-07-31a
+// UI V4.670.0 | 2026-07-31 (Generación de Reels en segundo plano)
+// Cache bust: 2026-07-31b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.670.0',
+        title: 'El Reel se genera solo, aunque cierres el navegador ⚙️',
+        description: 'La generación de un Reel ya no depende de que dejes la pantalla abierta. Al pulsar «Renderizar Video» el Reel aparece de inmediato en la Biblioteca con estado «En cola» —antes tardaba unos veinte segundos en existir, mientras la IA miraba las fotos— y a partir de ahí el proceso corre en el servidor: podés cambiar de módulo, cerrar la pestaña, cerrar sesión o apagar el computador, y al volver lo encontrás donde iba. Cada tarjeta muestra en qué etapa está, un porcentaje y el tiempo que falta aproximadamente, y se actualiza sola sin recargar la página. Cuando termina, cambia a «Reel listo» y quedan habilitados reproducir, descargar y compartir. Si algo falla, el Reel no desaparece: conserva las fotos, la configuración, los textos, la música y la locución, y el botón «Reintentar» relanza sólo lo que se rompió, sin volver a pagar lo que ya estaba bien. También podés cancelar una generación en curso. Se pueden tener varios Reels generándose a la vez, cada uno con su propia barra.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'rendimiento', 'ia'],
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'El Reel aparece en la Biblioteca desde el instante en que se pide, con estado «En cola».' },
+            { type: 'added', text: 'La generación continúa en el servidor aunque se cierre la pestaña o el navegador.' },
+            { type: 'added', text: 'Barra de progreso con porcentaje, etapa actual y tiempo restante aproximado, que se actualiza sola.' },
+            { type: 'added', text: 'Cancelar una generación en curso y reintentar una que falló, conservando lo ya generado.' },
+            { type: 'added', text: 'Aviso al volver al Creador de Video cuando hay Reels generándose, para no relanzarlos por error.' },
+            { type: 'added', text: 'Varios Reels pueden generarse en paralelo, cada uno con su propio estado.' },
+            { type: 'changed', text: 'Un fallo al analizar las fotos deja el Reel con el motivo escrito, en vez de no dejar nada.' }
+        ],
+        details: [
+            'El proceso lo empuja una tarea programada que corre cada minuto en el servidor, además del aviso del proveedor y del refresco de la pantalla. Las tres vías hacen lo mismo, y el sistema impide que dos se pisen.',
+            'Cancelar detiene el proceso de la plataforma, no el del proveedor: los clips que ya se estén generando no se pueden retirar y sus créditos ya se consumieron. La pantalla lo dice con esas palabras antes de confirmar.',
+            'El tiempo restante es una estimación por etapas, no una promesa: la cola del proveedor de video varía según la hora y no la controlamos. Por eso se muestra como «aprox.».'
+        ]
+    },
     {
         version: '4.669.0',
         title: 'Los Reels ya aparecen en la Biblioteca, con auditoría de consumo y menos espera 🎬',

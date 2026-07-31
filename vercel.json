@@ -1,7 +1,13 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/((?!api/).*)", "destination": "/api/index.js" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/api/index.js"
+    }
   ],
   "functions": {
     "api/index.js": {
@@ -28,6 +34,10 @@
     {
       "path": "/api/cron/training-reminders",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/reels-tick",
+      "schedule": "* * * * *"
     }
   ]
 }

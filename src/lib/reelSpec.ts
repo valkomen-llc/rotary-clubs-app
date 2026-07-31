@@ -19,9 +19,9 @@ export const MIN_SCENE_SEC = 4;
 export const MAX_SCENE_SEC = 6;
 
 export type ReelStatus =
-    | 'draft' | 'analyzing' | 'directing' | 'expanding' | 'generating'
+    | 'draft' | 'queued' | 'analyzing' | 'directing' | 'expanding' | 'generating'
     | 'scoring' | 'assembling' | 'validating'
-    | 'ready' | 'needs_review' | 'error';
+    | 'ready' | 'needs_review' | 'error' | 'cancelled';
 
 export type SceneStatus =
     | 'pending' | 'expanding' | 'generating' | 'rendering' | 'validating'
@@ -267,6 +267,10 @@ export interface Reel {
     statusLabel: string;
     statusDetail: string | null;
     progress: number;
+    // Segundos que faltan, aproximadamente. `null` en estados terminales.
+    etaSec?: number | null;
+    cancellable?: boolean;
+    retryable?: boolean;
     notes: string[];
     videoUrl: string | null;
     posterUrl: string | null;
@@ -417,7 +421,17 @@ export interface ReelOptions {
 // Un estado terminal es en el que el Reel deja de moverse solo: o está listo, o
 // hay algo que decidir. Es lo que corta el sondeo.
 export const isTerminal = (status: ReelStatus): boolean =>
-    status === 'ready' || status === 'needs_review' || status === 'error';
+    status === 'ready' || status === 'needs_review' || status === 'error' || status === 'cancelled';
+
+// Texto del tiempo restante. Devuelve null cuando no hay nada que esperar, para
+// que la tarjeta no pinte un hueco. Nunca promete: es «aprox.» en la interfaz.
+export const formatEta = (sec: number | null | undefined): string | null => {
+    if (sec == null || sec <= 0) return null;
+    if (sec < 60) return `${sec} s`;
+    const m = Math.floor(sec / 60);
+    const r = sec % 60;
+    return r < 5 ? `${m} min` : `${m} min ${r} s`;
+};
 
 export const isSceneTerminal = (status: SceneStatus): boolean =>
     status === 'ready' || status === 'needs_review' || status === 'error';

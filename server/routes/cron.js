@@ -415,4 +415,39 @@ router.get('/training-reminders', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/reels-tick ───────────────────────────────────────
+//
+// El "worker" del Creador de Reels. En Vercel no hay proceso persistente —la
+// función se congela al cerrar la respuesta—, así que un trabajador de cola
+// clásico no es posible sin montar infraestructura aparte. Lo que sí hay, y el
+// proyecto ya usa para publicaciones y correos, es este cron.
+//
+// Cada minuto hace avanzar la máquina de estados de todo Reel que no haya
+// terminado. Es lo que hace que la generación NO dependa de que el usuario
+// tenga la pantalla abierta: puede cerrar la pestaña, cambiar de módulo o
+// apagar el computador, y el Reel sigue.
+//
+// Las otras dos vías siguen existiendo porque son más rápidas cuando el usuario
+// está mirando: el webhook de KIE (reacciona en el acto) y el sondeo del
+// navegador. Las tres llaman al MISMO `advance`, y los UPDATE condicionales de
+// dentro impiden que dos hagan el mismo trabajo a la vez.
+router.get('/reels-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON reels-tick] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepActiveReels } = await import('../controllers/reelController.js');
+        const summary = await sweepActiveReels({ limit: 10, timeBudgetMs: 90000 });
+        if (summary.evaluated > 0) {
+            console.log(`[CRON reels-tick] evaluados=${summary.evaluated} avanzaron=${summary.advanced} fallaron=${summary.failed} pospuestos=${summary.skipped} en ${summary.elapsedMs}ms`);
+        }
+        res.json({ ok: true, ...summary });
+    } catch (e) {
+        console.error('[CRON reels-tick] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

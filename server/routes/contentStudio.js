@@ -52,7 +52,10 @@ import {
     listReelLibrary,
     updateReelInfo,
     duplicateReel,
-    getReelUsage
+    getReelUsage,
+    cancelReel,
+    retryReel,
+    getActiveReels
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
@@ -112,6 +115,8 @@ router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 // "options" no se lea como un id.
 router.get('/reels/options', authMiddleware, getReelOptions);
 router.get('/reels/library', authMiddleware, listReelLibrary);
+// Reels en curso: lo consume el aviso de recuperación del creador.
+router.get('/reels/active', authMiddleware, getActiveReels);
 router.post('/reels/preflight', authMiddleware, preflightReel);
 router.post('/reels', authMiddleware, createReel);
 router.get('/reels', authMiddleware, listReels);
@@ -124,6 +129,8 @@ router.patch('/reels/:id', authMiddleware, updateReelInfo);
 router.post('/reels/:id/duplicate', authMiddleware, duplicateReel);
 // Auditoría del consumo por proveedor (v4.669).
 router.get('/reels/:id/usage', authMiddleware, getReelUsage);
+router.post('/reels/:id/cancel', authMiddleware, cancelReel);
+router.post('/reels/:id/retry', authMiddleware, retryReel);
 
 // Copies de publicación (v4.666). El orden importa: las rutas fijas van antes
 // que las paramétricas de escena para que no se confundan.

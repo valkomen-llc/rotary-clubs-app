@@ -39,7 +39,7 @@ import {
     MOTION_STYLES, DEFAULT_MOTION_STYLE, AUTO_MOTION_STYLE,
     TRANSITIONS, DEFAULT_TRANSITION, AUTO_TRANSITION,
     MUSIC_STYLES, DEFAULT_MUSIC_STYLE, AUTO_MUSIC_STYLE,
-    REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC,
+    REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC, estimateRemainingSec,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildReelTitle, computeProgress
 } from '../lib/reelSpec.js';
@@ -270,6 +270,12 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         // El progreso se calcula con la misma función en los dos lados, para
         // que la barra no diga una cosa y la ficha otra.
         progress: computeProgress(row.status, { scenesReady, scenesTotal: sceneDtos.length || SCENE_COUNT }),
+        // Segundos que faltan, aproximadamente. `null` en los estados
+        // terminales. Es una estimación por etapas y así se nombra en la
+        // interfaz: la cola del proveedor no la controlamos.
+        etaSec: estimateRemainingSec(row.status, { scenesReady, scenesTotal: sceneDtos.length || SCENE_COUNT }),
+        cancellable: !REEL_STATUSES[row.status]?.terminal,
+        retryable: row.status === 'error' || row.status === 'cancelled',
         attempts: row.attempts,
         notes: row.notes || [],
         videoUrl: row.videoUrl,
@@ -813,17 +819,75 @@ export const createReel = async (req, res) => {
             return res.status(503).json({ error: e.message });
         }
 
-        // 1. Dirección: análisis de las tres fotos + narrativa. Es lo único
-        //    síncrono del flujo y cuesta ~15 s; entra de sobra en los 120.
-        // El contexto se resuelve ANTES de dirigir: el tipo de publicación y el
-        // área de enfoque cambian qué historia cuenta la pieza, no sólo cómo se
-        // escribe el copy.
         const context = resolveContext({ type: publicationType, interestArea });
+        const projectId = randomUUID();
 
-        const { analyses, direction: directionRaw, warnings, usage: directorUsage } = await directReel(images, {
-            motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
-            context
-        });
+        // ── El Reel existe ANTES de llamar a ningún proveedor (v4.670) ──
+        //
+        // La fila se inserta acá, en `queued`, y no después de dirigir. Dirigir
+        // cuesta ~20 s de visión y narrativa, y durante esos 20 s el Reel no
+        // existía en ninguna parte: quien abría la Biblioteca no veía nada y
+        // quien cerraba la pestaña perdía el rastro de lo que acababa de pedir.
+        //
+        // Con la fila creada primero, la tarjeta aparece en el instante en que
+        // se pulsa «Renderizar», el barrido del cron puede recogerlo aunque
+        // esta petición muera a mitad, y un fallo al dirigir deja un Reel con
+        // su motivo escrito en vez de no dejar nada.
+        await db.query(
+            `INSERT INTO "ReelProject" (
+                id, title, "clubId", "userId", "userEmail", "organizationName",
+                "publicationType", "interestArea",
+                format, "qualityTier", "motionStyle", transition, "musicStyle", config,
+                engine, "engineModel", status, notes, "creditsEstimated", version,
+                "createdAt", "updatedAt"
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'queued','[]'::jsonb,0,$17,NOW(),NOW())`,
+            [
+                projectId,
+                title || buildReelTitle({ organizationName, motionStyle: safeMotion, format: safeFormat }),
+                req.user?.clubId || null, req.user?.id || null, req.user?.email || null, organizationName,
+                context.type, context.interestArea,
+                safeFormat, engineChoice.qualityTier, safeMotion, safeTransition, safeMusic,
+                JSON.stringify({
+                    withMusic: Boolean(withMusic),
+                    requestedEngine: requestedEngine || null,
+                    sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
+                    copyLocale: req.body?.copyLocale || 'es',
+                    narration: {
+                        enabled: Boolean(narration?.enabled),
+                        language: NARRATION_LANGUAGES[narration?.language] ? narration.language : NARRATION_DEFAULT_LANGUAGE,
+                        style: NARRATION_STYLES[narration?.style] ? narration.style : NARRATION_DEFAULT_STYLE,
+                        gender: NARRATION_GENDERS[narration?.gender] ? narration.gender : 'female',
+                        speed: Number.isFinite(Number(narration?.speed)) ? Math.min(1.15, Math.max(0.85, Number(narration.speed))) : 1,
+                        provider: narration?.provider || null
+                    }
+                }),
+                engineChoice.engineId, engineChoice.model, REEL_MODULE_VERSION
+            ]
+        );
+
+        // 1. Dirección: análisis de las tres fotos + narrativa. El contexto se
+        //    resuelve ANTES de dirigir: el tipo de publicación y el área de
+        //    enfoque cambian qué historia cuenta la pieza, no sólo cómo se
+        //    escribe el copy.
+        await db.query(`UPDATE "ReelProject" SET status = 'analyzing', "updatedAt" = NOW() WHERE id = $1`, [projectId]);
+
+        let analyses, directionRaw, warnings, directorUsage;
+        try {
+            ({ analyses, direction: directionRaw, warnings, usage: directorUsage } = await directReel(images, {
+                motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
+                context
+            }));
+        } catch (e) {
+            // El Reel ya existe: se marca con el motivo en vez de desaparecer.
+            console.error('[REEL] dirección falló:', e.message);
+            await db.query(
+                `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`,
+                [projectId, `No se pudo analizar las fotografías: ${e.message}`]
+            );
+            const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
+            return respondProject(res, rows[0], 502);
+        }
+
         // `rawResponse` es la respuesta entera del proveedor: sirve para contar
         // tokens y no tiene por qué acabar guardada en la columna `direction`,
         // que se lee en cada listado.
@@ -840,7 +904,6 @@ export const createReel = async (req, res) => {
             engineDurations: engineChoice.durations
         });
 
-        const projectId = randomUUID();
         const resolvedTitle = title || buildReelTitle({
             organizationName,
             motionStyle: safeMotion === AUTO_MOTION_STYLE ? direction.scenes[0]?.style : safeMotion,
@@ -872,40 +935,19 @@ export const createReel = async (req, res) => {
             notes.push('Sin proveedor de montaje configurado: las escenas se generan por separado y el Reel no se une automáticamente.');
         }
 
+        // La fila ya existe desde `queued`: acá se COMPLETA con lo que sólo se
+        // sabe después de dirigir. `config` se fusiona en vez de reemplazarse
+        // para no perder lo que se guardó al crearla.
         await db.query(
-            `INSERT INTO "ReelProject" (
-                id, title, "clubId", "userId", "userEmail", "organizationName",
-                "publicationType", "interestArea",
-                format, "qualityTier", "motionStyle", transition, "musicStyle", config,
-                engine, "engineModel", analysis, direction,
-                status, notes, "creditsEstimated", version, "createdAt", "updatedAt"
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'expanding',$19,0,$20,NOW(),NOW())`,
+            `UPDATE "ReelProject"
+                SET title = $2, analysis = $3, direction = $4, notes = $5,
+                    config = config || $6::jsonb,
+                    status = 'directing', "updatedAt" = NOW()
+              WHERE id = $1`,
             [
-                projectId, resolvedTitle, req.user?.clubId || null, req.user?.id || null,
-                req.user?.email || null, organizationName,
-                context.type, context.interestArea,
-                safeFormat, engineChoice.qualityTier, safeMotion, safeTransition, safeMusic,
-                JSON.stringify({
-                    timing,
-                    withMusic: Boolean(withMusic),
-                    requestedEngine: requestedEngine || null,
-                    sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
-                    // La narración se declara al crear y se genera cuando el
-                    // montaje la necesita: sintetizar antes de saber la duración
-                    // real de la pieza sería sincronizar contra un número que
-                    // todavía puede cambiar.
-                    narration: {
-                        enabled: Boolean(narration?.enabled),
-                        language: NARRATION_LANGUAGES[narration?.language] ? narration.language : NARRATION_DEFAULT_LANGUAGE,
-                        style: NARRATION_STYLES[narration?.style] ? narration.style : NARRATION_DEFAULT_STYLE,
-                        gender: NARRATION_GENDERS[narration?.gender] ? narration.gender : 'female',
-                        speed: Number.isFinite(Number(narration?.speed)) ? Math.min(1.15, Math.max(0.85, Number(narration.speed))) : 1,
-                        provider: narration?.provider || null
-                    }
-                }),
-                engineChoice.engineId, engineChoice.model,
-                JSON.stringify(analyses), JSON.stringify(direction),
-                JSON.stringify(notes), REEL_MODULE_VERSION
+                projectId, resolvedTitle,
+                JSON.stringify(analyses), JSON.stringify(direction), JSON.stringify(notes),
+                JSON.stringify({ timing })
             ]
         );
 
@@ -2979,7 +3021,10 @@ export const listReelLibrary = async (req, res) => {
         await ensureReelSchema();
         const { search = '', status = '', format = '', limit = '60', offset = '0' } = req.query;
 
-        const where = ['"videoUrl" IS NOT NULL'];
+        // Sin filtro de archivo: el Reel entra en la Biblioteca desde que se
+        // pide, no desde que termina (v4.670). Un render en curso es
+        // exactamente lo que el usuario necesita poder ver al volver.
+        const where = ['1 = 1'];
         const params = [];
 
         // Aislamiento por club con el MISMO helper que el resto del módulo.
@@ -3132,6 +3177,191 @@ export const duplicateReel = async (req, res) => {
         });
     } catch (e) {
         console.error('[REEL] duplicar:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Cancelar un Reel en curso.
+//
+// No se puede retirar un trabajo que ya está corriendo en KIE —su API no lo
+// permite y sus créditos ya se consumieron—, así que lo que hace la
+// cancelación es DEJAR DE AVANZAR la máquina de estados: no se descargan los
+// clips que lleguen, no se lanza la música ni la locución que faltaran y el
+// montaje no se pide. Decirlo así en la interfaz es lo honesto; prometer que
+// se detiene el proveedor sería falso.
+//
+// Los clips que ya se hubieran ingerido se conservan, igual que las fotos y la
+// configuración: cancelar no es borrar, y desde `cancelled` se puede reintentar.
+export const cancelReel = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        if (REEL_STATUSES[project.status]?.terminal) {
+            return res.status(400).json({ error: `El Reel ya está en estado «${REEL_STATUSES[project.status].label}»: no hay nada que cancelar.` });
+        }
+
+        const { rows } = await db.query(
+            `UPDATE "ReelProject"
+                SET status = 'cancelled', "statusDetail" = $2, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id, `Cancelado por ${req.user?.email || 'el usuario'}.`]
+        );
+        // Las escenas que seguían en vuelo se marcan también: si llega su
+        // webhook, `advanceScene` no tiene por qué descargar nada.
+        await db.query(
+            `UPDATE "ReelScene" SET status = 'error', "statusDetail" = 'Cancelado con el Reel', "updatedAt" = NOW()
+              WHERE "projectId" = $1 AND status NOT IN ('ready', 'needs_review', 'error')`,
+            [project.id]
+        );
+        await appendNote(project.id, 'El usuario canceló la generación. Los clips que ya estaban descargados se conservan.');
+        console.log(`[REEL] ${project.id} cancelado por ${req.user?.email || 'usuario'}`);
+        await respondProject(res, rows[0]);
+    } catch (e) {
+        console.error('[REEL] cancelar:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Reintentar un Reel que falló o se canceló.
+//
+// Conserva TODO lo que ya costó dinero o tiempo: las fotos, la configuración,
+// los copies, la banda sonora y la locución. Sólo se relanzan las escenas que
+// no llegaron a buen puerto. Repetir el proceso entero por un fallo de montaje
+// sería gastar tres veces los créditos de video para nada.
+export const retryReel = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        if (project.status !== 'error' && project.status !== 'cancelled') {
+            return res.status(400).json({ error: 'Sólo se reintenta un Reel con error o cancelado.' });
+        }
+
+        const scenes = await fetchScenes(project.id);
+        const broken = scenes.filter(sc => sc.status === 'error' || !sc.videoUrl);
+
+        // Las escenas rotas vuelven a `pending` sin su tarea anterior; el
+        // barrido las despachará. Las que ya tienen clip no se tocan.
+        for (const sc of broken) {
+            await db.query(
+                `UPDATE "ReelScene"
+                    SET status = 'pending', "kieJobId" = NULL, "statusDetail" = NULL, "updatedAt" = NOW()
+                  WHERE id = $1`,
+                [sc.id]
+            );
+        }
+
+        // Sin escenas rotas el fallo estaba en el montaje: se limpia el trabajo
+        // de render para que se vuelva a pedir con los clips que ya existen.
+        const nextStatus = broken.length ? 'generating' : 'assembling';
+        const { rows } = await db.query(
+            `UPDATE "ReelProject"
+                SET status = $2, "statusDetail" = NULL, "renderJobId" = NULL,
+                    attempts = attempts + 1, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id, nextStatus]
+        );
+        await appendNote(project.id, broken.length
+            ? `Reintento: se relanzan ${broken.length} escena(s). Se conservan las que ya estaban listas, los textos, la música y la locución.`
+            : 'Reintento: se vuelve a montar con los clips que ya existen. No se regenera ninguna escena.');
+
+        // Se le da un empujón ya, sin esperar al barrido.
+        const advanced = await advance(rows[0]).catch(e => {
+            console.error(`[REEL] ${project.id} reintento:`, e.message);
+            return rows[0];
+        });
+        console.log(`[REEL] ${project.id} reintentado — ${broken.length} escena(s) relanzadas`);
+        await respondProject(res, advanced);
+    } catch (e) {
+        console.error('[REEL] reintentar:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+/**
+ * Barrido de los Reels en curso. Es el "worker" del módulo.
+ *
+ * En Vercel no hay proceso persistente: la función se congela al cerrar la
+ * respuesta, así que no se puede dejar un trabajador corriendo. Lo que sí hay
+ * —y el proyecto ya usa para publicaciones y correos— es Vercel Cron. Este
+ * barrido corre cada minuto y hace avanzar la máquina de estados de todo Reel
+ * que no haya terminado.
+ *
+ * Con esto la generación deja de depender de que alguien tenga la pantalla
+ * abierta. Las otras dos vías siguen existiendo y son más rápidas cuando el
+ * usuario está mirando: el webhook de KIE y el sondeo del navegador. Las tres
+ * llaman al MISMO `advance`, y los UPDATE condicionales de dentro son los que
+ * impiden que dos de ellas hagan el mismo trabajo a la vez.
+ *
+ * `timeBudgetMs` existe porque la función corta a los 120 s: se atienden los
+ * Reels que quepan y el resto espera al minuto siguiente. Un Reel que no se
+ * atiende no se pierde — sigue en la cola.
+ */
+export const sweepActiveReels = async ({ limit = 10, timeBudgetMs = 90000 } = {}) => {
+    await ensureReelSchema();
+    const startedAt = Date.now();
+    const summary = { evaluated: 0, advanced: 0, failed: 0, skipped: 0 };
+
+    const terminal = Object.entries(REEL_STATUSES).filter(([, st]) => st.terminal).map(([id]) => id);
+    const { rows } = await db.query(
+        `SELECT * FROM "ReelProject"
+          WHERE status <> ALL($1)
+            -- Un Reel sin tocar en 6 horas no es un render lento, es uno
+            -- perdido: se deja de barrer para no gastar el presupuesto del
+            -- barrido en él indefinidamente.
+            AND "updatedAt" > NOW() - INTERVAL '6 hours'
+          ORDER BY "updatedAt" ASC
+          LIMIT $2`,
+        [terminal, limit]
+    );
+
+    for (const project of rows) {
+        if (Date.now() - startedAt > timeBudgetMs) { summary.skipped += 1; continue; }
+        summary.evaluated += 1;
+        try {
+            const before = project.status;
+            const after = await advance(project);
+            if (after?.status !== before) summary.advanced += 1;
+        } catch (e) {
+            // Un Reel que falla no puede cortar el barrido de los demás.
+            summary.failed += 1;
+            console.error(`[REEL-SWEEP] ${project.id}:`, e.message);
+        }
+    }
+
+    return { ...summary, elapsedMs: Date.now() - startedAt };
+};
+
+// Reels en curso del usuario. Lo consume el aviso de recuperación del creador:
+// «Existe un Reel generándose».
+export const getActiveReels = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const terminal = Object.entries(REEL_STATUSES).filter(([, st]) => st.terminal).map(([id]) => id);
+        const scope = scopeClause(req.user, 2);
+        const where = ['status <> ALL($1)'];
+        const params = [terminal];
+        if (scope.sql) { where.push(scope.sql); params.push(...scope.params); }
+
+        const { rows } = await db.query(
+            `SELECT * FROM "ReelProject" WHERE ${where.join(' AND ')} ORDER BY "createdAt" DESC LIMIT 10`,
+            params
+        );
+        const scenesByProject = new Map();
+        if (rows.length) {
+            const { rows: sceneRows } = await db.query(
+                `SELECT * FROM "ReelScene" WHERE "projectId" = ANY($1) ORDER BY position ASC`,
+                [rows.map(r => r.id)]
+            );
+            for (const sc of sceneRows) {
+                if (!scenesByProject.has(sc.projectId)) scenesByProject.set(sc.projectId, []);
+                scenesByProject.get(sc.projectId).push(sc);
+            }
+        }
+        res.json({ reels: rows.map(r => projectToDto(r, scenesByProject.get(r.id) || [])) });
+    } catch (e) {
+        console.error('[REEL] activos:', e);
         res.status(500).json({ error: e.message });
     }
 };
