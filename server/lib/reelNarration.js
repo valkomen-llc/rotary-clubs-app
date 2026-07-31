@@ -277,7 +277,10 @@ export const generateScript = async ({
         estimatedSec: estimateDuration(script, { language, style, speed }),
         rationale: typeof raw.rationale === 'string' ? raw.rationale.slice(0, 200) : null,
         provider: result?.provider || null,
-        model: result?.model || null
+        model: result?.model || null,
+        // Respuesta cruda del proveedor: es lo único que lleva el consumo real
+        // de tokens, y el registro de auditoría lo necesita.
+        rawResponse: result?.raw || null
     };
 };
 
@@ -400,6 +403,10 @@ export const fitNarrationToDuration = async ({
         const drift = actualSec - target;
         attempts.push({
             attempt: i + 1, words: written.words,
+            // Los caracteres de CADA intento, porque el motor de voz cobra cada
+            // síntesis: contar sólo el guion final haría parecer la locución
+            // más barata de lo que fue.
+            chars: written.script.length,
             estimatedSec: written.estimatedSec,
             actualSec: Number(actualSec.toFixed(2)),
             driftSec: Number(drift.toFixed(2))
@@ -430,6 +437,10 @@ export const fitNarrationToDuration = async ({
         rationale: best.rationale,
         scriptProvider: best.provider,
         scriptModel: best.model,
+        scriptRaw: best.rawResponse || null,
+        // Suma de todos los intentos, que es lo que de verdad se le facturó al
+        // motor de voz.
+        charsSynthesized: attempts.reduce((s, a) => s + (a.chars || 0), 0),
         audioBuffer: best.voice.buffer,
         ttsProvider: best.voice.provider,
         voiceId: best.voice.voiceId,

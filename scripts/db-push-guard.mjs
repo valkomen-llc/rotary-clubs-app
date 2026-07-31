@@ -13,7 +13,8 @@
 // EventRegistrationCategory, EventRegistrationCompanion,
 // EventRegistrationPayment, EventRegistrationHistory y
 // EventRegistrationMessage, las dos del módulo de traducción: Translation y
-// TranslationEvent, y las dos del Creador de Reels: ReelProject y ReelScene).
+// TranslationEvent, y las cinco del Creador de Reels: ReelProject, ReelScene,
+// ReelCopy, ReelNarration y ReelUsage).
 // Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // Perder "Translation" no destruye contenido del cliente —se regenera sola

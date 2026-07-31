@@ -225,8 +225,12 @@ export interface FidelitySummary {
 export interface Reel {
     id: string;
     title: string;
+    description?: string | null;
+    tags?: string[];
     clubId: string | null;
     organizationName: string | null;
+    userId?: string | null;
+    userEmail?: string | null;
     format: string;
     formatLabel: string;
     qualityTier: string;
@@ -277,6 +281,7 @@ export interface Reel {
     creditsEstimated: number;
     processingMs: number | null;
     mediaId: string | null;
+    savedToLibraryAt?: string | null;
     createdAt: string;
     updatedAt: string;
     scenes: ReelScene[];
@@ -285,6 +290,61 @@ export interface Reel {
     publicationType?: string;
     interestArea?: string;
     context?: PublicationContext;
+}
+
+// ─── Auditoría de consumo (v4.669) ─────────────────────────────────────────
+//
+// Espejo del informe que arma `usageReport` en el servidor. `costKnown: false`
+// no significa «gastó cero»: significa que gastó unidades y no hay tarifa
+// configurada para convertirlas a dinero. La pantalla dice esa diferencia con
+// palabras en vez de pintar un «$0» que nadie sabría interpretar.
+export interface ReelUsageOperation {
+    operation: string;
+    label: string;
+    target: string | null;
+    model: string | null;
+    units: number;
+    unit: string | null;
+    credits: number;
+    ms: number;
+    status: 'ok' | 'error';
+    detail: string | null;
+    at: string;
+}
+
+export interface ReelUsageProvider {
+    id: string;
+    label: string;
+    role: string | null;
+    note: string | null;
+    unitLabel: string | null;
+    calls: number;
+    errors: number;
+    ms: number;
+    credits: number;
+    units: number;
+    costUsd: number | null;
+    costKnown: boolean;
+    operations: ReelUsageOperation[];
+    violations: { operation: string; label: string; scope: string; expected: string | null }[];
+}
+
+export interface ReelUsageReport {
+    available: boolean;
+    reason?: string;
+    providers: ReelUsageProvider[];
+    totals: {
+        calls: number;
+        errors: number;
+        ms: number;
+        credits: number;
+        costUsd: number | null;
+        costKnown: boolean;
+        violations: number;
+    } | null;
+    contract: { id: string; label: string; role: string; note: string; allows: string[] }[];
+    operations: { id: string; label: string; provider: string; scope: string }[];
+    processingMs: number | null;
 }
 
 export interface ReelOptions {

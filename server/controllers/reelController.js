@@ -85,7 +85,12 @@ import {
     copyToText, copyToCsv, copyToJson
 } from '../lib/reelCopy.js';
 
-export const REEL_MODULE_VERSION = '4.667.0';
+import {
+    recordUsage, usageReport, tokensOf,
+    USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
+} from '../lib/reelUsage.js';
+
+export const REEL_MODULE_VERSION = '4.669.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -229,8 +234,14 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
     return {
         id: row.id,
         title: row.title,
+        description: row.description || null,
+        tags: row.tags || [],
         clubId: row.clubId,
         organizationName: row.organizationName,
+        // Quién lo creó: la Biblioteca lo muestra en la ficha y es lo que
+        // permite saber a quién preguntarle por una pieza publicada.
+        userId: row.userId,
+        userEmail: row.userEmail,
         format: row.format,
         formatLabel: REEL_FORMATS[row.format]?.label || row.format,
         qualityTier: row.qualityTier,
@@ -274,6 +285,7 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         creditsEstimated: row.creditsEstimated,
         processingMs: row.processingMs,
         mediaId: row.mediaId,
+        savedToLibraryAt: row.savedToLibraryAt || null,
         parentId: row.parentId,
         version: row.version,
         createdAt: row.createdAt,
@@ -573,17 +585,36 @@ const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings 
 
     // 2. Mirar la foto para saber CÓMO continuarla. Sin esto el modelo rellena
     //    con lo que le parece y se nota dónde termina el original.
+    const analysedAt = Date.now();
     const analysis = await analyzeForExpansion(scene.sourceImageUrl);
+    await recordUsage({
+        projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
+        operation: 'expansion.judge', provider: 'llm',
+        model: analysis?.usage?.model || null,
+        units: tokensOf(analysis?.usage?.raw), unit: 'tokens',
+        ms: Date.now() - analysedAt, target: `Escena ${scene.position + 1}`,
+        status: analysis?.failed ? 'error' : 'ok'
+    });
     const prompt = buildExpansionPrompt({
         analysis, plan,
         targetLabel: `${targetWidth}x${targetHeight}`
     });
 
     try {
+        const startedExpansionAt = Date.now();
         const { provider, taskId } = await startExpansion({
             imageUrl: scene.sourceImageUrl,
             prompt, targetWidth, targetHeight,
             provider: settings.provider
+        });
+        await recordUsage({
+            projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
+            operation: 'scene.expand', provider: 'kie', model: provider,
+            units: CREDIT_ESTIMATES.expansion, unit: 'credits',
+            credits: CREDIT_ESTIMATES.expansion,
+            ms: Date.now() - startedExpansionAt,
+            target: `Escena ${scene.position + 1}`,
+            detail: `${meta.width}x${meta.height} → ${targetWidth}x${targetHeight}`
         });
         const { rows } = await db.query(
             `UPDATE "ReelScene"
@@ -687,6 +718,7 @@ const advanceSceneExpansion = async (scene, settings) => {
 // Lanza la tarea de video de UNA escena. Se usa al crear y al regenerar.
 const dispatchScene = async (scene, { engineId, model }) => {
     const engine = VIDEO_ENGINES[engineId];
+    const dispatchedAt = Date.now();
     const taskId = await createKieVideoTask({
         model,
         prompt: scene.prompt,
@@ -715,6 +747,19 @@ const dispatchScene = async (scene, { engineId, model }) => {
          WHERE id = $1 RETURNING *`,
         [scene.id, taskId, engineId, model, engine?.creditEstimate || 0]
     );
+
+    // El `ms` de acá es el de CREAR la tarea, no el de generar el clip: KIE es
+    // asíncrono. El tiempo de generación se anota al ingerirla, que es cuando
+    // se conoce de verdad.
+    await recordUsage({
+        projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
+        operation: 'scene.animate', provider: 'kie', model,
+        units: engine?.creditEstimate || 0, unit: 'credits',
+        credits: engine?.creditEstimate || 0,
+        ms: Date.now() - dispatchedAt,
+        target: `Escena ${scene.position + 1}`,
+        detail: `${engine?.label || engineId} · ${scene.generatedDurationSec || scene.durationSec}s · mudo`
+    });
     return rows[0];
 };
 
@@ -775,10 +820,14 @@ export const createReel = async (req, res) => {
         // escribe el copy.
         const context = resolveContext({ type: publicationType, interestArea });
 
-        const { analyses, direction, warnings } = await directReel(images, {
+        const { analyses, direction: directionRaw, warnings, usage: directorUsage } = await directReel(images, {
             motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
             context
         });
+        // `rawResponse` es la respuesta entera del proveedor: sirve para contar
+        // tokens y no tiene por qué acabar guardada en la columna `direction`,
+        // que se lee en cada listado.
+        const { rawResponse: _directionRaw, ...direction } = directionRaw;
 
         // 2. Reparto de la duración según los pesos que propuso el director,
         //    ajustado a lo que el motor sabe entregar.
@@ -859,6 +908,17 @@ export const createReel = async (req, res) => {
                 JSON.stringify(notes), REEL_MODULE_VERSION
             ]
         );
+
+        // El consumo del director se registra ACÁ y no dentro de `directReel`
+        // porque hasta esta línea el proyecto no tenía fila a la que colgarlo.
+        for (const u of directorUsage || []) {
+            await recordUsage({
+                projectId, clubId: req.user?.clubId || null,
+                operation: u.operation, provider: 'llm', model: u.model,
+                units: tokensOf(u.raw), unit: 'tokens',
+                ms: u.ms, status: u.status, detail: u.detail, target: u.target
+            });
+        }
 
         // 3. Una fila y una tarea POR ESCENA.
         const sceneRows = [];
@@ -941,33 +1001,24 @@ export const createReel = async (req, res) => {
             return respondProject(res, rows[0], 502);
         }
 
-        // 4. La música arranca en paralelo con las escenas: tarda menos y así
-        //    ya está lista cuando los clips terminan.
-        if (withMusic) {
-            try {
-                const { rows: forMusic } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
-                await resolveSoundtrack(forMusic[0], {
-                    style: direction.musicStyle,
-                    durationSec: timing.finalDurationSec
-                });
-            } catch (e) {
-                console.error('[REEL] música no se pudo lanzar:', e.message);
-                await appendNote(projectId, `No se pudo generar la banda sonora: ${e.message} El Reel se monta sin música.`);
-            }
-        }
-
-        // ── Copies, EN PARALELO con los clips ──
+        // 4. Música, copies y locución NO se hacen acá (v4.669).
         //
-        // Se hace acá y no al final a propósito: el análisis de las tres fotos
-        // ya está hecho, así que escribir los textos cuesta una llamada de
-        // texto. Los clips tardan 1-3 minutos; cuando el video esté listo, los
-        // copies llevarán rato esperando. Un fallo acá no tumba el Reel.
-        const { rows: forCopy } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
-        const copyScenes = await fetchScenes(projectId);
-        await produceCopy(forCopy[0], copyScenes, {
-            locale: req.body?.copyLocale || 'es',
-            createdBy: req.user?.id || null
-        });
+        //    Hasta v4.668 las tres se resolvían dentro de esta petición, y las
+        //    tres son lentas: la música de ElevenLabs es SÍNCRONA (20-40 s), el
+        //    copy es una llamada de texto (~10 s) y la locución son varias
+        //    síntesis seguidas. Sumaban ~40-60 s a un `POST /reels` que sólo
+        //    tenía que confirmar que el Reel arrancó, así que el usuario se
+        //    quedaba mirando "Analizando las fotos..." mientras los clips —lo
+        //    único de verdad largo— ya estaban corriendo en KIE.
+        //
+        //    Ahora se lanzan en el PRIMER sondeo (`advanceSideTracks`), que
+        //    ocurre unos segundos después y en su propia invocación. Siguen
+        //    yendo en paralelo con los clips, que es lo que importaba, y la
+        //    respuesta de creación baja a lo que tarda dirigir y despachar.
+        //
+        //    En Vercel no sirve dispararlas sin `await` y responder: la función
+        //    se congela al cerrar la respuesta y el trabajo quedaría a medias.
+        //    Por eso se difieren a un sondeo en vez de soltarse en segundo plano.
 
         // Sin ninguna adaptación en curso, la etapa se atraviesa sin pararse.
         await db.query(
@@ -1236,11 +1287,12 @@ const submitAssembly = async (project, scenes) => {
 
     // ── Narración ──
     //
-    // Se genera ACÁ y no al crear el Reel porque el Narrative Timing Engine
-    // necesita la duración REAL de la pieza, y esa no se conoce hasta que las
-    // tres escenas están y el montaje sabe cuánto se comen los fundidos.
-    // Sincronizar contra una duración estimada es sincronizar contra un número
-    // que todavía puede cambiar.
+    // Normalmente ya está: se genera en paralelo con los clips desde v4.669
+    // (`advanceSideTracks`). Esto es la red de seguridad para el Reel cuyo
+    // intento anterior falló o que se creó con una versión previa — y para el
+    // montaje relanzado a mano, que puede llegar acá sin haber pasado por un
+    // sondeo. Sincroniza contra `config.timing.finalDurationSec`, el mismo
+    // número en los dos caminos.
     let narration = await fetchNarration(project.id);
     if (!narration && project.config?.narration?.enabled) {
         narration = await produceNarration(project, usable);
@@ -1268,10 +1320,33 @@ const submitAssembly = async (project, scenes) => {
     );
 
     let submitted;
+    const renderStartedAt = Date.now();
     try {
         submitted = await submitRender(spec, project.config?.renderProvider || null);
+        // Con montaje local el trabajo YA está hecho cuando esto vuelve, así
+        // que el tiempo medido es el del render completo. Con un proveedor
+        // alojado es sólo el de crear el trabajo, y se dice en el detalle.
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'render.compose',
+            provider: submitted.mode === 'local' ? 'ffmpeg' : 'render',
+            model: submitted.provider,
+            units: submitted.mode === 'local' ? (Date.now() - renderStartedAt) / 1000 : 0,
+            unit: 'seconds',
+            ms: Date.now() - renderStartedAt,
+            target: 'Montaje final',
+            detail: submitted.mode === 'local'
+                ? `${usable.length} clips · ${project.config?.timing?.finalDurationSec || '?'}s`
+                : `Trabajo creado en ${submitted.provider}; el tiempo de render corre en el proveedor.`
+        });
     } catch (e) {
         console.error(`[REEL] ${project.id} montaje no se pudo lanzar:`, e.message);
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'render.compose', provider: 'ffmpeg',
+            ms: Date.now() - renderStartedAt, status: 'error', detail: e.message,
+            target: 'Montaje final'
+        });
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
             [project.id, e.code === 'NO_RENDER_PROVIDER'
@@ -1363,17 +1438,20 @@ const ingestLocalReel = async (project, output) => {
     return rows[0];
 };
 
-// Guarda el Reel en la Biblioteca en cuanto está listo, sin que nadie lo pida.
-// Es el requisito de "el usuario no debe realizar ninguna acción adicional".
+// Guarda el Reel en la Biblioteca en cuanto hay archivo, sin que nadie lo pida.
 //
-// Sólo con veredicto `ready`: un Reel que no pasó la validación no debería
-// aparecer en la Biblioteca como si estuviera aprobado. Para ése queda el
-// guardado manual con `force`.
+// Hasta v4.668 sólo entraba con veredicto `ready`, y como la validación marca
+// `review` por cosas menores —una tasa de bits baja en un plano fijo, un desvío
+// de dos décimas en la duración— había Reels perfectamente utilizables que no
+// aparecían nunca. El criterio era equivocado: la Biblioteca es el inventario
+// de lo que se generó, no la lista de lo aprobado. El estado viaja con la ficha
+// y se ve en la tarjeta; quien mire sabe cuál pasó la validación y cuál no.
 //
 // Nunca lanza: que la Biblioteca falle no puede convertir un Reel terminado en
 // un Reel con error.
 const autoSaveToLibrary = async (project) => {
-    if (!project?.videoUrl || project.status !== 'ready' || project.mediaId) return project;
+    if (!project?.videoUrl || project.mediaId) return project;
+    if (project.status !== 'ready' && project.status !== 'needs_review') return project;
     try {
         const media = await createLibraryEntry(project);
         console.log(`[REEL] ${project.id} guardado automáticamente en la Biblioteca (${media.id})`);
@@ -1486,6 +1564,66 @@ const advanceMusic = async (project) => {
 
 // El corazón del módulo: mueve el proyecto un paso. Idempotente — si ya terminó,
 // devuelve la fila sin llamar a nadie.
+// Lanza en paralelo lo que NO depende de que los clips estén listos: la banda
+// sonora, los copies y la locución. Se llama desde el primer sondeo.
+//
+// Por qué acá y no al crear el Reel: las tres son lentas y ninguna hace falta
+// para contestar «el Reel arrancó». Corriéndolas dentro del `POST` sumaban
+// ~40-60 s a la espera inicial mientras los clips —lo realmente largo— ya iban
+// avanzando por su cuenta. Acá siguen siendo paralelas a los clips, que es lo
+// que las hacía gratis en tiempo de reloj, pero ya no retrasan la respuesta.
+//
+// El UPDATE condicional es la reserva: dos sondeos simultáneos —el del
+// navegador y el del webhook— no pueden lanzar la música dos veces. La ventana
+// de 5 minutos deja que un intento que murió a medias se reintente.
+const advanceSideTracks = async (project) => {
+    const { rows: claimed } = await db.query(
+        `UPDATE "ReelProject" SET "sideTracksAt" = NOW()
+         WHERE id = $1 AND ("sideTracksAt" IS NULL OR "sideTracksAt" < NOW() - INTERVAL '5 minutes')
+         RETURNING id`,
+        [project.id]
+    );
+    if (!claimed.length) return;
+
+    const scenes = await fetchScenes(project.id);
+    const jobs = [];
+
+    if (project.config?.withMusic && !project.musicUrl && !project.musicTaskId) {
+        jobs.push((async () => {
+            try {
+                await resolveSoundtrack(project, {
+                    style: project.direction?.musicStyle || project.musicStyle,
+                    durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC
+                });
+            } catch (e) {
+                console.error(`[REEL] ${project.id} música no se pudo lanzar:`, e.message);
+                await appendNote(project.id, `No se pudo generar la banda sonora: ${e.message} El Reel se monta sin música.`);
+            }
+        })());
+    }
+
+    if (!(await fetchCopies(project.id)).length) {
+        jobs.push(produceCopy(project, scenes, {
+            locale: project.config?.copyLocale || 'es',
+            createdBy: project.userId || null
+        }));
+    }
+
+    // La locución también sale de acá, no del montaje. El Narrative Timing
+    // Engine se sincroniza contra `config.timing.finalDurationSec`, que se
+    // calcula al crear el Reel y no cambia porque una escena se regenere: la
+    // duración de cada escena está fijada desde el principio. Generarla al
+    // montar no la hacía más exacta, sólo la ponía en el camino crítico.
+    if (project.config?.narration?.enabled && !(await fetchNarration(project.id))) {
+        jobs.push(produceNarration(project, scenes));
+    }
+
+    if (jobs.length) {
+        await Promise.allSettled(jobs);
+        console.log(`[REEL] ${project.id}: ${jobs.length} tarea/s paralelas (música/copy/voz) resueltas`);
+    }
+};
+
 const advance = async (project) => {
     if (REEL_STATUSES[project.status]?.terminal) return project;
 
@@ -1524,6 +1662,12 @@ const advance = async (project) => {
         }
         return project; // sigue renderizando
     }
+
+    // ── Música, copies y locución, en paralelo con los clips ──
+    //
+    // Se intenta en cada sondeo, pero la reserva de dentro hace que sólo el
+    // primero trabaje. Va antes de las escenas para que arranque cuanto antes.
+    await advanceSideTracks(project);
 
     // ── Adaptación del lienzo ──
     //
@@ -2037,11 +2181,28 @@ export const renderReel = async (req, res) => {
 // cuando ya hay archivo, para que el resto del flujo no tenga que saber por
 // dónde vino.
 const resolveSoundtrack = async (project, { style, durationSec }) => {
+    const musicStartedAt = Date.now();
     const track = await startSoundtrack({
         style,
         durationSec,
         clubId: project.clubId,
         metadata: { reelProjectId: project.id }
+    });
+
+    // La música se registra contra el proveedor que REALMENTE la atendió, no
+    // contra el que se pidió: si el principal cayó y respondió el respaldo, el
+    // panel tiene que mostrar el respaldo.
+    await recordUsage({
+        projectId: project.id, clubId: project.clubId,
+        operation: 'music.generate',
+        provider: track.provider === 'stable_audio' ? 'stability'
+            : track.provider === 'kie_music' ? 'kie' : 'elevenlabs',
+        model: track.model || track.provider || null,
+        units: durationSec, unit: 'seconds',
+        ms: Date.now() - musicStartedAt,
+        status: track.state === 'failed' ? 'error' : 'ok',
+        detail: track.state === 'failed' ? track.failMsg : `${style} · ${durationSec}s`,
+        target: 'Banda sonora'
     });
 
     // Lo que se intentó y falló va al historial: que el principal cayera y lo
@@ -2147,6 +2308,7 @@ const produceNarration = async (project, scenes, opts = {}) => {
     const speed = Number(opts.speed ?? cfg.speed ?? 1);
     const ttsProvider = opts.ttsProvider || cfg.provider || null;
 
+    const narrationStartedAt = Date.now();
     try {
         const entity = await entityFor(project);
         const context = resolveContext({
@@ -2182,10 +2344,42 @@ const produceNarration = async (project, scenes, opts = {}) => {
                 `${describeTiming(fitted)} Se puede regenerar el guion o ajustar la velocidad desde la ficha.`);
         }
 
+        // Dos filas, porque son dos proveedores distintos: el guion lo escribe
+        // el modelo de lenguaje y la voz la sintetiza el motor de audio.
+        // Meterlas juntas escondería justamente el reparto que hay que auditar.
+        //
+        // Los caracteres son los de TODOS los intentos del Narrative Timing
+        // Engine, no los del texto final: el motor de voz cobra cada síntesis,
+        // y contar sólo la última haría parecer más barato de lo que fue.
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'script.generate', provider: 'llm',
+            model: fitted.scriptModel || null,
+            units: tokensOf(fitted.scriptRaw), unit: 'tokens',
+            target: 'Guion de la locución',
+            detail: `${fitted.words} palabras · ${(fitted.attempts || []).length} intento/s`
+        });
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'voice.synthesize',
+            provider: fitted.ttsProvider === 'openai' ? 'llm' : 'elevenlabs',
+            model: fitted.voiceId || fitted.ttsProvider || null,
+            units: fitted.charsSynthesized || 0, unit: 'characters',
+            ms: Date.now() - narrationStartedAt,
+            target: 'Locución',
+            detail: `${language} · ${fitted.actualSec}s de ${fitted.targetSec}s`
+        });
+
         console.log(`[REEL] ${project.id} narración lista: ${fitted.words} palabras, ${fitted.actualSec}s de ${fitted.targetSec}s (desvío ${fitted.driftSec}s, ${fitted.attempts.length} intento/s)`);
         return saved;
     } catch (e) {
         console.error(`[REEL] ${project.id} narración falló:`, e.message);
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'voice.synthesize', provider: 'elevenlabs',
+            ms: Date.now() - narrationStartedAt, status: 'error', detail: e.message,
+            target: 'Locución'
+        });
         await appendNote(project.id, `La narración no se pudo generar: ${e.message} El Reel se monta con la música sola.`);
         return null;
     }
@@ -2404,17 +2598,32 @@ const persistCopy = async (project, copy, meta) => {
 // copywriter no puede tumbar un Reel que se está renderizando bien. Se anota y
 // el usuario puede regenerarlos desde la ficha.
 const produceCopy = async (project, scenes, { locale = 'es', createdBy = null } = {}) => {
+    const copyStartedAt = Date.now();
     try {
         const entity = await entityFor(project);
-        const { copy, provider, model, prompt } = await generateReelCopy({
+        const { copy, provider, model, prompt, rawResponse } = await generateReelCopy({
             reel: project, scenes, ...entity, locale,
             context: resolveContext({ type: project.publicationType, interestArea: project.interestArea })
         });
         await persistCopy(project, copy, { source: 'ai', provider, model, prompt, createdBy });
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'copy.generate', provider: 'llm', model,
+            units: tokensOf(rawResponse), unit: 'tokens',
+            ms: Date.now() - copyStartedAt,
+            target: 'Copies por plataforma',
+            detail: `${Object.keys(copy?.platforms || {}).length} plataforma/s · ${locale}`
+        });
         console.log(`[REEL] ${project.id} copies generados (${locale}) por ${provider}/${model}`);
         return copy;
     } catch (e) {
         console.error(`[REEL] ${project.id} copies fallaron:`, e.message);
+        await recordUsage({
+            projectId: project.id, clubId: project.clubId,
+            operation: 'copy.generate', provider: 'llm',
+            ms: Date.now() - copyStartedAt, status: 'error', detail: e.message,
+            target: 'Copies por plataforma'
+        });
         await appendNote(project.id, `Los textos de publicación no se pudieron generar: ${e.message} Se pueden regenerar desde la ficha del Reel.`);
         return null;
     }
@@ -2748,9 +2957,210 @@ const createLibraryEntry = async (project) => {
         ]
     );
 
-    await db.query('UPDATE "ReelProject" SET "mediaId" = $2, "updatedAt" = NOW() WHERE id = $1',
-        [project.id, media[0].id]);
+    await db.query(
+        `UPDATE "ReelProject" SET "mediaId" = $2, "savedToLibraryAt" = NOW(), "updatedAt" = NOW() WHERE id = $1`,
+        [project.id, media[0].id]
+    );
     return media[0];
+};
+
+// ─── Biblioteca de Reels ───────────────────────────────────────────────────
+//
+// La fila de `Media` es el ARCHIVO: nombre, url, peso, bucket. Es lo que ya
+// consumen el resto de los módulos y por eso no cambia de forma.
+//
+// La FICHA —motor, escenas, copies, locución, prompts, créditos— vive en
+// `ReelProject` y sus tres tablas hijas, y es lo que lee esta vista. No se
+// duplica en `Media`: duplicarla obligaría a mantener dos verdades y a tocar el
+// modelo de Prisma, que es justo lo que la regla de base de datos evita.
+// `mediaId` es el puente entre las dos.
+export const listReelLibrary = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const { search = '', status = '', format = '', limit = '60', offset = '0' } = req.query;
+
+        const where = ['"videoUrl" IS NOT NULL'];
+        const params = [];
+
+        // Aislamiento por club con el MISMO helper que el resto del módulo.
+        // Escribirlo otra vez acá era la forma de que un día divergiera.
+        // `sql` viene vacío sólo para quien lo ve todo.
+        const scope = scopeClause(req.user, 1);
+        if (scope.sql) { where.push(scope.sql); params.push(...scope.params); }
+
+        if (search) {
+            params.push(`%${search}%`);
+            where.push(`(title ILIKE $${params.length} OR description ILIKE $${params.length})`);
+        }
+        if (status) { params.push(status); where.push(`status = $${params.length}`); }
+        if (format) { params.push(format); where.push(`format = $${params.length}`); }
+
+        const lim = Math.min(200, Math.max(1, parseInt(limit, 10) || 60));
+        const off = Math.max(0, parseInt(offset, 10) || 0);
+        params.push(lim, off);
+
+        const { rows } = await db.query(
+            `SELECT * FROM "ReelProject"
+              WHERE ${where.join(' AND ')}
+              ORDER BY COALESCE("savedToLibraryAt", "createdAt") DESC
+              LIMIT $${params.length - 1} OFFSET $${params.length}`,
+            params
+        );
+
+        const { rows: counted } = await db.query(
+            `SELECT COUNT(*)::int AS total FROM "ReelProject" WHERE ${where.join(' AND ')}`,
+            params.slice(0, -2)
+        );
+
+        // Una consulta por las escenas de TODOS los Reels de la página, no una
+        // por Reel: con 60 tarjetas la diferencia son 60 viajes a la base.
+        const ids = rows.map(r => r.id);
+        const scenesByProject = new Map();
+        const copiesByProject = new Map();
+        if (ids.length) {
+            const { rows: sceneRows } = await db.query(
+                `SELECT * FROM "ReelScene" WHERE "projectId" = ANY($1) ORDER BY position ASC`, [ids]
+            );
+            for (const sc of sceneRows) {
+                if (!scenesByProject.has(sc.projectId)) scenesByProject.set(sc.projectId, []);
+                scenesByProject.get(sc.projectId).push(sc);
+            }
+            const { rows: copyRows } = await db.query(
+                `SELECT * FROM "ReelCopy" WHERE "projectId" = ANY($1) AND "isCurrent"`, [ids]
+            );
+            for (const c of copyRows) {
+                if (!copiesByProject.has(c.projectId)) copiesByProject.set(c.projectId, []);
+                copiesByProject.get(c.projectId).push(c);
+            }
+        }
+
+        res.json({
+            total: counted[0]?.total || 0,
+            limit: lim,
+            offset: off,
+            reels: rows.map(r => ({
+                ...projectToDto(r, scenesByProject.get(r.id) || []),
+                copies: (copiesByProject.get(r.id) || []).map(copyRowToDto)
+            }))
+        });
+    } catch (e) {
+        console.error('[REEL] biblioteca:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Editar la ficha: título, descripción y etiquetas. No toca el archivo ni
+// ninguna decisión de generación — para eso están regenerar y duplicar.
+export const updateReelInfo = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const { title, description, tags } = req.body || {};
+        const sets = [];
+        const params = [project.id];
+
+        if (typeof title === 'string' && title.trim()) {
+            params.push(title.trim().slice(0, 200));
+            sets.push(`title = $${params.length}`);
+        }
+        if (typeof description === 'string') {
+            params.push(description.trim().slice(0, 2000) || null);
+            sets.push(`description = $${params.length}`);
+        }
+        if (Array.isArray(tags)) {
+            params.push(JSON.stringify(
+                tags.filter(t => typeof t === 'string' && t.trim())
+                    .map(t => t.trim().slice(0, 40)).slice(0, 20)
+            ));
+            sets.push(`tags = $${params.length}::jsonb`);
+        }
+        if (!sets.length) return res.status(400).json({ error: 'No hay nada que cambiar.' });
+
+        const { rows } = await db.query(
+            `UPDATE "ReelProject" SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            params
+        );
+        await respondProject(res, rows[0]);
+    } catch (e) {
+        console.error('[REEL] editar ficha:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Duplicar: copia la configuración y las fotos de origen a un Reel NUEVO, sin
+// copiar los clips.
+//
+// No se clonan los archivos a propósito: un duplicado existe para volver a
+// generar con otra música, otro estilo o otro motor. Copiar los clips daría un
+// gemelo idéntico e inútil, y copiar la ficha sin regenerar daría dos entradas
+// de Biblioteca apuntando al MISMO mp4 — que es peor, porque borrar una
+// rompería la otra.
+export const duplicateReel = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const images = project.config?.sourceImages || [];
+        if (images.length !== SCENE_COUNT) {
+            return res.status(400).json({
+                error: `El Reel original no conserva sus ${SCENE_COUNT} fotos de origen, así que no se puede duplicar. Se puede crear uno nuevo eligiéndolas otra vez.`
+            });
+        }
+
+        // Se responde con lo necesario para que la pantalla abra el creador ya
+        // relleno. Duplicar NO gasta créditos por sí solo: los gasta el usuario
+        // cuando confirma, que es donde puede cambiar de idea.
+        res.json({
+            prefill: {
+                images,
+                format: project.format,
+                qualityTier: project.qualityTier,
+                motionStyle: project.motionStyle,
+                transition: project.transition,
+                musicStyle: project.musicStyle,
+                engine: project.engine,
+                publicationType: project.publicationType,
+                interestArea: project.interestArea,
+                withMusic: Boolean(project.config?.withMusic),
+                narration: project.config?.narration || null,
+                title: `${project.title} (copia)`
+            },
+            from: { id: project.id, title: project.title }
+        });
+    } catch (e) {
+        console.error('[REEL] duplicar:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Panel de auditoría: qué proveedor hizo qué, cuánto tardó y cuánto costó.
+export const getReelUsage = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const report = await usageReport(project.id);
+        res.json({
+            ...report,
+            // El reparto declarado viaja con el informe para que el panel pueda
+            // contrastar lo que DEBE hacer cada motor con lo que hizo, sin
+            // tener esa tabla escrita a mano en el navegador.
+            contract: Object.values(USAGE_PROVIDERS).map(p => ({
+                id: p.id, label: p.label, role: p.role, note: p.note, allows: p.allows
+            })),
+            operations: Object.entries(USAGE_OPERATIONS).map(([id, o]) => ({
+                id, label: o.label, provider: o.provider, scope: o.scope
+            })),
+            processingMs: project.processingMs || null
+        });
+    } catch (e) {
+        console.error('[REEL] auditoría:', e);
+        res.status(500).json({ error: e.message });
+    }
 };
 
 export const saveReelToLibrary = async (req, res) => {
@@ -2759,9 +3169,12 @@ export const saveReelToLibrary = async (req, res) => {
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
         if (!project.videoUrl) return res.status(400).json({ error: 'El Reel todavía no tiene archivo montado.' });
-        if (project.status !== 'ready' && !req.body?.force) {
+        // Mismo criterio que el guardado automático (v4.669): entra lo que se
+        // generó, y el estado viaja con la ficha. Tenerlos distintos hacía que
+        // el botón rechazara un Reel que el sistema ya había guardado solo.
+        if (project.status !== 'ready' && project.status !== 'needs_review' && !req.body?.force) {
             return res.status(400).json({
-                error: 'El Reel no pasó la validación de calidad. Revisá el informe o regenerá las escenas señaladas antes de guardarlo.',
+                error: 'El Reel todavía no terminó de generarse.',
                 quality: project.quality
             });
         }

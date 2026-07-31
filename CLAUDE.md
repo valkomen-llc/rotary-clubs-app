@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.668
+## Creador de Reels IA — v4.669
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -189,9 +189,12 @@ en `config` sin que el servidor los leyera.
 | `server/lib/reelNarration.js` | Guion hablado, voces TTS y Narrative Timing Engine |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
 | `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
+| `server/lib/reelUsage.js` | Registro de consumo por proveedor, reparto declarado de responsabilidades y tarifas |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
 | `server/controllers/reelController.js` | Flujo completo y máquina de estados |
 | `src/components/admin/content-studio/VideoCreator.tsx` | Preparación, progreso y previsualización |
+| `src/components/admin/content-studio/ReelLibrary.tsx` | La Biblioteca de Reels: listado, ficha, edición y duplicado |
+| `src/components/admin/content-studio/ReelUsagePanel.tsx` | Panel de auditoría del consumo |
 | `src/lib/reelSpec.ts` | Espejo mínimo: tipos y cálculo de la línea de tiempo |
 
 **Reglas durables:**
@@ -392,6 +395,61 @@ en `config` sin que el servidor los leyera.
   cortado a mitad de palabra se lee como un error del sistema.
 - El medidor de créditos es **propio** (`REEL_MONTHLY_CREDIT_LIMIT`), no el saldo
   real de KIE. No presentarlo como el saldo del proveedor.
+- **El reparto de motores está DECLARADO, no sólo cumplido** (v4.669,
+  `USAGE_PROVIDERS[].allows` en `reelUsage.js`). Cada proveedor enumera los
+  scopes que le corresponden y cada operación declara el suyo; el panel compara
+  lo declarado con lo ocurrido y marca en rojo lo que se salga. Hasta v4.668 el
+  reparto era correcto pero sólo se podía comprobar leyendo el código, y la
+  pregunta «¿KIE está haciendo cosas que no le tocan?» no tenía respuesta en la
+  pantalla. **KIE anima y adapta imágenes** (`enableAudio: false` siempre: los
+  clips se piden mudos), **ElevenLabs pone voz y música**, **el modelo de
+  lenguaje escribe** (`copywritingService.js` — OpenAI/Anthropic/Gemini, nunca
+  KIE) y **FFmpeg monta**. `kie_music` sigue declarado pero fuera de la cadena
+  automática por licencia, como dice su propia regla.
+- **Se registra lo que se MIDE y se dice lo que se estima.** El tiempo y las
+  unidades naturales —caracteres sintetizados, segundos de música, tokens
+  leídos de la respuesta del proveedor— son medidas. Los créditos son la
+  estimación propia. **El costo en dinero sólo aparece con tarifa configurada**
+  (`REEL_RATE_*`): sin ella el panel dice «sin tarifa configurada», no «$0».
+  Un cero es una afirmación; un hueco es la verdad.
+- **Los caracteres de la locución son los de TODOS los intentos**, no los del
+  guion final. El Narrative Timing Engine sintetiza varias veces y el motor de
+  voz cobra cada síntesis: contar sólo la última haría parecer la voz más barata
+  de lo que fue.
+- **Música, copies y locución se lanzan en el PRIMER SONDEO, no al crear**
+  (v4.669, `advanceSideTracks`). Las tres son lentas —la música de ElevenLabs es
+  síncrona— y ninguna hace falta para contestar «el Reel arrancó»: dentro del
+  `POST` sumaban ~40-60 s a la espera inicial mientras los clips ya corrían por
+  su cuenta. Siguen yendo en paralelo con los clips, que es lo que las hacía
+  gratis en tiempo de reloj. **No convertirlas en fire-and-forget**: en Vercel
+  la función se congela al cerrar la respuesta y el trabajo quedaría a medias;
+  por eso se difieren a un sondeo y no se sueltan en segundo plano. El UPDATE
+  condicional sobre `sideTracksAt` es lo que impide que dos sondeos simultáneos
+  las lancen dos veces.
+- **La locución ya no se genera en el montaje.** El comentario que lo justificaba
+  decía que hacía falta la duración REAL de la pieza, pero `produceNarration`
+  siempre se sincronizó contra `config.timing.finalDurationSec`, que se calcula
+  al crear y no cambia porque una escena se regenere: la duración de cada escena
+  está fijada desde el principio. Generarla al final no la hacía más exacta,
+  sólo la ponía en el camino crítico. Queda como red de seguridad para el Reel
+  cuyo intento anterior falló y para el montaje relanzado a mano.
+- **La Biblioteca es el inventario de lo GENERADO, no la lista de lo aprobado**
+  (v4.669). Hasta v4.668 `autoSaveToLibrary` sólo guardaba con veredicto `ready`,
+  y como la validación marca `needs_review` por cosas menores —una tasa de bits
+  baja en un plano fijo, dos décimas de desvío en la duración— había Reels
+  perfectamente utilizables que no aparecían nunca. Ahora entra todo lo que
+  tiene archivo y **el estado viaja con la ficha**, visible en cada tarjeta.
+- **La fila de `Media` es el ARCHIVO; la ficha vive en `ReelProject`.** La
+  Biblioteca de Reels lee `ReelProject` y sus tablas hijas, no `Media`. Duplicar
+  los metadatos en `Media` obligaría a mantener dos verdades y a tocar el modelo
+  de Prisma, que es justo lo que evita la regla de base de datos. `mediaId` es
+  el puente, y es lo que consumen los demás módulos.
+- **Duplicar NO clona el archivo**: devuelve la configuración y las fotos para
+  abrir el creador ya relleno. Un duplicado existe para volver a generar con
+  otra música u otro motor; copiar los clips daría un gemelo inútil, y copiar la
+  ficha sin regenerar dejaría dos entradas de Biblioteca apuntando al MISMO mp4
+  —peor, porque borrar una rompería la otra—. No gasta créditos hasta que el
+  usuario confirma.
 
 **Variables de entorno:**
 
@@ -410,6 +468,8 @@ en `config` sin que el servidor los leyera.
 | `STABILITY_API_KEY`, `STABLE_AUDIO_MODEL` | Respaldo de música |
 | `REEL_MUSIC_MODEL` | Modelo de Suno vía KIE, si se activa a propósito |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
+| `REEL_CREDITS_EXPANSION` | Créditos estimados por adaptación de lienzo (4 por defecto) |
+| `REEL_RATE_KIE_CREDIT_USD` y compañía | Tarifas del panel de auditoría. Sin ellas no hay costo en dinero, a propósito |
 | `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
 | `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |
@@ -725,10 +785,10 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 19 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 22 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `EventRegistration`, `EventAttendeeAccount`,
-`EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene` y las
-once `ProjectFair*`.
+`EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
+`ReelCopy`, `ReelNarration`, `ReelUsage` y las once `ProjectFair*`.
 (Más las seis del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory` y
