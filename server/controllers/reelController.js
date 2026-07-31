@@ -67,12 +67,25 @@ import {
 } from '../lib/reelMusic.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import {
+    publicationTypes, interestAreas, resolveContext,
+    DEFAULT_TYPE, DEFAULT_AREA
+} from '../lib/publicationContext.js';
+import {
+    NARRATION_LANGUAGES, NARRATION_STYLES, NARRATION_GENDERS,
+    TTS_PROVIDERS, DEFAULT_LANGUAGE as NARRATION_DEFAULT_LANGUAGE,
+    DEFAULT_STYLE as NARRATION_DEFAULT_STYLE,
+    isTtsAvailable, activeTtsProvider, availableTtsProviders,
+    computeWordBudget, fitNarrationToDuration, describeTiming,
+    NARRATION_TOLERANCE_SEC
+} from '../lib/reelNarration.js';
+import { measureAudioDuration } from '../lib/reelFfmpeg.js';
+import {
     COPY_PLATFORMS, DEFAULT_PLATFORMS, CAMPAIGN_CATEGORIES, MARKETING_GOALS,
     generateReelCopy, regeneratePlatformCopy,
     copyToText, copyToCsv, copyToJson
 } from '../lib/reelCopy.js';
 
-export const REEL_MODULE_VERSION = '4.666.0';
+export const REEL_MODULE_VERSION = '4.667.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -210,7 +223,7 @@ const sceneToDto = (row) => ({
     creditsEstimated: row.creditsEstimated
 });
 
-const projectToDto = (row, scenes = [], copies = []) => {
+const projectToDto = (row, scenes = [], copies = [], narration = null) => {
     const sceneDtos = scenes.map(sceneToDto);
     const scenesReady = sceneDtos.filter(s => SCENE_STATUSES[s.status]?.terminal).length;
     return {
@@ -222,6 +235,9 @@ const projectToDto = (row, scenes = [], copies = []) => {
         formatLabel: REEL_FORMATS[row.format]?.label || row.format,
         qualityTier: row.qualityTier,
         qualityLabel: resolveTier(row.format, row.qualityTier).label,
+        publicationType: row.publicationType,
+        interestArea: row.interestArea,
+        context: resolveContext({ type: row.publicationType, interestArea: row.interestArea }),
         motionStyle: row.motionStyle,
         transition: row.transition,
         musicStyle: row.musicStyle,
@@ -263,13 +279,16 @@ const projectToDto = (row, scenes = [], copies = []) => {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         scenes: sceneDtos,
-        copies: copies.map(copyRowToDto)
+        copies: copies.map(copyRowToDto),
+        narration: narration ? narrationToDto(narration) : null
     };
 };
 
 const respondProject = async (res, row, status = 200) => {
-    const [scenes, copies] = await Promise.all([fetchScenes(row.id), fetchCopies(row.id)]);
-    res.status(status).json(projectToDto(row, scenes, copies));
+    const [scenes, copies, narration] = await Promise.all([
+        fetchScenes(row.id), fetchCopies(row.id), fetchNarration(row.id)
+    ]);
+    res.status(status).json(projectToDto(row, scenes, copies, narration));
 };
 
 // ─── Consumo de créditos ───────────────────────────────────────────────────
@@ -386,6 +405,42 @@ export const getReelOptions = async (req, res) => {
                     note: 'Las fotos que no están en el formato del Reel se adaptan generando el lienzo que falta, sin recortar. La conservación del original se mide sobre su propia región y se rehace la adaptación si no llega al umbral.'
                 };
             })(),
+
+            // Contexto estratégico, compartido con el Generador de Publicaciones.
+            context: {
+                types: publicationTypes(),
+                areas: interestAreas(),
+                defaultType: DEFAULT_TYPE,
+                defaultArea: DEFAULT_AREA
+            },
+
+            // Narración IA.
+            narration: {
+                available: Boolean(activeTtsProvider()),
+                provider: activeTtsProvider(),
+                providers: Object.values(TTS_PROVIDERS).map(p => ({
+                    id: p.id, label: p.label, note: p.note,
+                    accentControl: p.accentControl,
+                    available: isTtsAvailable(p.id),
+                    isDefault: p.id === activeTtsProvider()
+                })),
+                languages: Object.entries(NARRATION_LANGUAGES).map(([id, l]) => ({
+                    id, label: l.label, wordsPerSecond: l.wordsPerSecond,
+                    isDefault: id === NARRATION_DEFAULT_LANGUAGE
+                })),
+                styles: Object.entries(NARRATION_STYLES).map(([id, st]) => ({
+                    id, label: st.label, pace: st.pace, isDefault: id === NARRATION_DEFAULT_STYLE
+                })),
+                genders: Object.entries(NARRATION_GENDERS).map(([id, g]) => ({ id, label: g.label })),
+                defaultLanguage: NARRATION_DEFAULT_LANGUAGE,
+                defaultStyle: NARRATION_DEFAULT_STYLE,
+                toleranceSec: NARRATION_TOLERANCE_SEC,
+                // Se dice si el motor activo puede hacer el acento pedido. Es el
+                // dato honesto: OpenAI tiene voces buenas pero no elige acento.
+                accentControlled: TTS_PROVIDERS[activeTtsProvider()]?.accentControl ?? null,
+                unavailableReason: activeTtsProvider() ? null
+                    : 'Sin proveedor de voz configurado. El Reel se monta con música sola.'
+            },
 
             // Copies: qué plataformas se generan y con qué límites.
             copy: {
@@ -671,7 +726,11 @@ export const createReel = async (req, res) => {
             engine: requestedEngine = null,
             title = null,
             organizationName = null,
-            withMusic = true
+            withMusic = true,
+            // Contexto estratégico, el mismo del Generador de Publicaciones.
+            publicationType = DEFAULT_TYPE,
+            interestArea = DEFAULT_AREA,
+            narration = null
         } = req.body || {};
 
         if (!Array.isArray(images) || images.length !== SCENE_COUNT) {
@@ -704,8 +763,14 @@ export const createReel = async (req, res) => {
 
         // 1. Dirección: análisis de las tres fotos + narrativa. Es lo único
         //    síncrono del flujo y cuesta ~15 s; entra de sobra en los 120.
+        // El contexto se resuelve ANTES de dirigir: el tipo de publicación y el
+        // área de enfoque cambian qué historia cuenta la pieza, no sólo cómo se
+        // escribe el copy.
+        const context = resolveContext({ type: publicationType, interestArea });
+
         const { analyses, direction, warnings } = await directReel(images, {
-            motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic
+            motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
+            context
         });
 
         // 2. Reparto de la duración según los pesos que propuso el director,
@@ -754,19 +819,33 @@ export const createReel = async (req, res) => {
         await db.query(
             `INSERT INTO "ReelProject" (
                 id, title, "clubId", "userId", "userEmail", "organizationName",
+                "publicationType", "interestArea",
                 format, "qualityTier", "motionStyle", transition, "musicStyle", config,
                 engine, "engineModel", analysis, direction,
                 status, notes, "creditsEstimated", version, "createdAt", "updatedAt"
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'expanding',$17,0,$18,NOW(),NOW())`,
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'expanding',$19,0,$20,NOW(),NOW())`,
             [
                 projectId, resolvedTitle, req.user?.clubId || null, req.user?.id || null,
                 req.user?.email || null, organizationName,
+                context.type, context.interestArea,
                 safeFormat, engineChoice.qualityTier, safeMotion, safeTransition, safeMusic,
                 JSON.stringify({
                     timing,
                     withMusic: Boolean(withMusic),
                     requestedEngine: requestedEngine || null,
-                    sourceImages: images.map(i => ({ id: i.id || null, url: i.url }))
+                    sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
+                    // La narración se declara al crear y se genera cuando el
+                    // montaje la necesita: sintetizar antes de saber la duración
+                    // real de la pieza sería sincronizar contra un número que
+                    // todavía puede cambiar.
+                    narration: {
+                        enabled: Boolean(narration?.enabled),
+                        language: NARRATION_LANGUAGES[narration?.language] ? narration.language : NARRATION_DEFAULT_LANGUAGE,
+                        style: NARRATION_STYLES[narration?.style] ? narration.style : NARRATION_DEFAULT_STYLE,
+                        gender: NARRATION_GENDERS[narration?.gender] ? narration.gender : 'female',
+                        speed: Number.isFinite(Number(narration?.speed)) ? Math.min(1.15, Math.max(0.85, Number(narration.speed))) : 1,
+                        provider: narration?.provider || null
+                    }
                 }),
                 engineChoice.engineId, engineChoice.model,
                 JSON.stringify(analyses), JSON.stringify(direction),
@@ -1158,6 +1237,18 @@ const submitAssembly = async (project, scenes) => {
         return rows[0];
     }
 
+    // ── Narración ──
+    //
+    // Se genera ACÁ y no al crear el Reel porque el Narrative Timing Engine
+    // necesita la duración REAL de la pieza, y esa no se conoce hasta que las
+    // tres escenas están y el montaje sabe cuánto se comen los fundidos.
+    // Sincronizar contra una duración estimada es sincronizar contra un número
+    // que todavía puede cambiar.
+    let narration = await fetchNarration(project.id);
+    if (!narration && project.config?.narration?.enabled) {
+        narration = await produceNarration(project, usable);
+    }
+
     const spec = buildEditSpec({
         scenes: usable.map(s => ({
             videoUrl: s.videoUrl,
@@ -1166,6 +1257,11 @@ const submitAssembly = async (project, scenes) => {
         })),
         tier: resolveTier(project.format, project.qualityTier),
         soundtrackUrl: project.musicUrl || null,
+        voice: narration ? {
+            src: narration.audioUrl,
+            leadIn: narration.timing?.leadInSec ?? 0.35,
+            stretch: narration.timing?.stretch ?? 1
+        } : null,
         callbackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/reel-webhook`
     });
 
@@ -1933,6 +2029,234 @@ export const renderReel = async (req, res) => {
     }
 };
 
+// ─── Narración ─────────────────────────────────────────────────────────────
+//
+// El guion NO es el copy: uno se lee y el otro se escucha. Un texto con
+// hashtags narrado en voz alta suena absurdo, así que son dos generadores.
+//
+// La sincronía no se pide, se construye: el Narrative Timing Engine escribe,
+// sintetiza, MIDE el archivo real con FFmpeg y corrige el presupuesto de
+// palabras hasta que la locución entra en el hueco disponible.
+
+const insertNarrationVersion = async (project, fitted, meta) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: prev } = await client.query(
+            'SELECT COALESCE(MAX(version), 0) AS v FROM "ReelNarration" WHERE "projectId" = $1',
+            [project.id]
+        );
+        await client.query(
+            'UPDATE "ReelNarration" SET "isCurrent" = FALSE WHERE "projectId" = $1 AND "isCurrent"',
+            [project.id]
+        );
+        const { rows } = await client.query(
+            `INSERT INTO "ReelNarration" (
+                id, "projectId", "clubId", version, "isCurrent",
+                script, words, rationale, language, style, gender, speed,
+                "audioUrl", "audioS3Key", "ttsProvider", "voiceId",
+                timing, "actualSec", "targetSec", "driftSec", "withinTolerance",
+                source, "scriptProvider", "scriptModel", "createdBy", "createdAt"
+             ) VALUES ($1,$2,$3,$4,TRUE,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+             RETURNING *`,
+            [
+                randomUUID(), project.id, project.clubId, Number(prev[0].v) + 1,
+                fitted.script, fitted.words, fitted.rationale,
+                meta.language, meta.style, meta.gender, meta.speed,
+                meta.audioUrl, meta.audioS3Key, fitted.ttsProvider, fitted.voiceId,
+                JSON.stringify({
+                    attempts: fitted.attempts, budget: fitted.budget,
+                    leadInSec: fitted.leadInSec, stretch: fitted.stretch
+                }),
+                fitted.actualSec, fitted.targetSec, fitted.driftSec, fitted.withinTolerance,
+                meta.source || 'ai', fitted.scriptProvider, fitted.scriptModel,
+                meta.createdBy || null
+            ]
+        );
+        await client.query('COMMIT');
+        return rows[0];
+    } catch (e) {
+        await client.query('ROLLBACK').catch(() => { });
+        throw e;
+    } finally {
+        client.release();
+    }
+};
+
+// Genera guion + voz y la deja lista para el montaje. Nunca lanza hacia arriba:
+// un fallo de la narración no puede tumbar un Reel que se está renderizando
+// bien — se anota y el Reel sale con música sola.
+const produceNarration = async (project, scenes, opts = {}) => {
+    const cfg = project.config?.narration || {};
+    if (!cfg.enabled) return null;
+
+    const language = NARRATION_LANGUAGES[opts.language || cfg.language] ? (opts.language || cfg.language) : NARRATION_DEFAULT_LANGUAGE;
+    const style = NARRATION_STYLES[opts.style || cfg.style] ? (opts.style || cfg.style) : NARRATION_DEFAULT_STYLE;
+    const gender = NARRATION_GENDERS[opts.gender || cfg.gender] ? (opts.gender || cfg.gender) : 'female';
+    const speed = Number(opts.speed ?? cfg.speed ?? 1);
+    const ttsProvider = opts.ttsProvider || cfg.provider || null;
+
+    try {
+        const entity = await entityFor(project);
+        const context = resolveContext({
+            type: project.publicationType,
+            interestArea: project.interestArea
+        });
+
+        const fitted = await fitNarrationToDuration({
+            scenes,
+            durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
+            language, style, speed, gender, context,
+            clubName: entity.clubName, clubCity: entity.clubCity,
+            ttsProvider,
+            measureAudio: measureAudioDuration,
+            scriptOverride: opts.scriptOverride || null
+        });
+
+        const upload = await uploadBuffer(
+            fitted.audioBuffer,
+            `clubs/${project.clubId || 'global'}/reels/narration/${project.id}-${Date.now()}.mp3`,
+            'audio/mpeg'
+        );
+
+        const saved = await insertNarrationVersion(project, fitted, {
+            language, style, gender, speed,
+            audioUrl: upload.url, audioS3Key: upload.key,
+            source: opts.scriptOverride ? 'manual' : 'ai',
+            createdBy: opts.createdBy || null
+        });
+
+        if (!fitted.withinTolerance) {
+            await appendNote(project.id,
+                `${describeTiming(fitted)} Se puede regenerar el guion o ajustar la velocidad desde la ficha.`);
+        }
+
+        console.log(`[REEL] ${project.id} narración lista: ${fitted.words} palabras, ${fitted.actualSec}s de ${fitted.targetSec}s (desvío ${fitted.driftSec}s, ${fitted.attempts.length} intento/s)`);
+        return saved;
+    } catch (e) {
+        console.error(`[REEL] ${project.id} narración falló:`, e.message);
+        await appendNote(project.id, `La narración no se pudo generar: ${e.message} El Reel se monta con la música sola.`);
+        return null;
+    }
+};
+
+const fetchNarration = async (projectId, { includeHistory = false } = {}) => {
+    const { rows } = await db.query(
+        `SELECT * FROM "ReelNarration" WHERE "projectId" = $1 ${includeHistory ? '' : 'AND "isCurrent"'}
+         ORDER BY version DESC`,
+        [projectId]
+    );
+    return includeHistory ? rows : (rows[0] || null);
+};
+
+const narrationToDto = (row) => row && ({
+    id: row.id,
+    version: row.version,
+    isCurrent: row.isCurrent,
+    script: row.script,
+    words: row.words,
+    rationale: row.rationale,
+    language: row.language,
+    languageLabel: NARRATION_LANGUAGES[row.language]?.label || row.language,
+    style: row.style,
+    styleLabel: NARRATION_STYLES[row.style]?.label || row.style,
+    gender: row.gender,
+    speed: row.speed,
+    audioUrl: row.audioUrl,
+    ttsProvider: row.ttsProvider,
+    ttsProviderLabel: TTS_PROVIDERS[row.ttsProvider]?.label || row.ttsProvider,
+    // Se dice si el motor usado puede hacer el acento pedido. Prometer «acento
+    // colombiano» con un motor que no lo controla sería justo el tipo de
+    // afirmación que este módulo no hace.
+    accentControlled: TTS_PROVIDERS[row.ttsProvider]?.accentControl ?? null,
+    voiceId: row.voiceId,
+    actualSec: row.actualSec,
+    targetSec: row.targetSec,
+    driftSec: row.driftSec,
+    withinTolerance: row.withinTolerance,
+    timing: row.timing,
+    source: row.source,
+    createdAt: row.createdAt,
+    summary: describeTiming({
+        actualSec: row.actualSec, targetSec: row.targetSec, driftSec: row.driftSec,
+        withinTolerance: row.withinTolerance, attempts: row.timing?.attempts || []
+    })
+});
+
+export const getReelNarration = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const history = req.query.history === 'true';
+        const data = await fetchNarration(project.id, { includeHistory: history });
+        res.json({
+            narration: history ? data.map(narrationToDto) : narrationToDto(data),
+            budget: computeWordBudget({
+                durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC
+            })
+        });
+    } catch (e) {
+        console.error('[REEL] narration:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Regenera la voz: otro idioma, otro acento, otro estilo, otra velocidad — o un
+// guion escrito a mano. NO vuelve a renderizar el video: sólo relanza el
+// montaje, que es lo que permite probar voces sin gastar créditos de video.
+export const regenerateNarration = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        if (!activeTtsProvider() && !req.body?.ttsProvider) {
+            return res.status(503).json({
+                error: 'No hay proveedor de voz disponible. Configurar ELEVENLABS_API_KEY o OPENAI_API_KEY.'
+            });
+        }
+
+        // Si la narración estaba apagada, pedirla la enciende.
+        const { rows: enabled } = await db.query(
+            `UPDATE "ReelProject"
+             SET config = jsonb_set(config, '{narration,enabled}', 'true'::jsonb, true), "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [project.id]
+        );
+
+        const scenes = await fetchScenes(project.id);
+        const saved = await produceNarration(enabled[0], scenes, {
+            language: req.body?.language,
+            style: req.body?.style,
+            gender: req.body?.gender,
+            speed: req.body?.speed,
+            ttsProvider: req.body?.ttsProvider,
+            scriptOverride: typeof req.body?.script === 'string' && req.body.script.trim()
+                ? req.body.script.trim() : null,
+            createdBy: req.user?.id || null
+        });
+
+        if (!saved) return res.status(502).json({ error: 'No se pudo generar la narración. Revisá los avisos del Reel.' });
+
+        // El montaje anterior no lleva esta voz: se limpia el job para que el
+        // siguiente sondeo rehaga la mezcla. El VIDEO no se regenera.
+        const { rows: proj } = await db.query(
+            `UPDATE "ReelProject" SET "renderJobId" = NULL, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [project.id]
+        );
+
+        if (req.body?.remount !== false) {
+            const updated = await submitAssembly(proj[0], scenes);
+            return respondProject(res, updated);
+        }
+        await respondProject(res, proj[0]);
+    } catch (e) {
+        console.error('[REEL] regenerate narration:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
 // ─── Copies de publicación ─────────────────────────────────────────────────
 //
 // Se generan al crear el Reel, EN PARALELO con los clips: el análisis de las
@@ -2032,7 +2356,8 @@ const produceCopy = async (project, scenes, { locale = 'es', createdBy = null } 
     try {
         const entity = await entityFor(project);
         const { copy, provider, model, prompt } = await generateReelCopy({
-            reel: project, scenes, ...entity, locale
+            reel: project, scenes, ...entity, locale,
+            context: resolveContext({ type: project.publicationType, interestArea: project.interestArea })
         });
         await persistCopy(project, copy, { source: 'ai', provider, model, prompt, createdBy });
         console.log(`[REEL] ${project.id} copies generados (${locale}) por ${provider}/${model}`);
@@ -2146,7 +2471,8 @@ export const regenerateReelCopy = async (req, res) => {
             const current = await fetchCopies(project.id, { locale });
             const common = copiesToShape(current);
             const { platform: data, provider, model, prompt } = await regeneratePlatformCopy({
-                reel: project, scenes, platform, ...entity, locale, instruction
+                reel: project, scenes, platform, ...entity, locale, instruction,
+                context: resolveContext({ type: project.publicationType, interestArea: project.interestArea })
             });
             await insertCopyVersion(project.id, project.clubId, data, {
                 locale,

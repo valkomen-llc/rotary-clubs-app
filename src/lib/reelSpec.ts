@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — espejo en el navegador
-// v4.666.0
+// v4.667.0
 //
 // Los CATÁLOGOS (motores, estilos, transiciones, música, formatos) NO se
 // duplican aquí: se piden a `GET /api/content-studio/reels/options`, para que
@@ -172,6 +172,46 @@ export interface ReelCopy {
     createdAt: string;
 }
 
+// Narración: guion + voz, versionada igual que los copies.
+export interface ReelNarration {
+    id: string;
+    version: number;
+    isCurrent: boolean;
+    script: string;
+    words: number | null;
+    rationale: string | null;
+    language: string;
+    languageLabel: string;
+    style: string;
+    styleLabel: string;
+    gender: string;
+    speed: number;
+    audioUrl: string | null;
+    ttsProvider: string | null;
+    ttsProviderLabel: string | null;
+    // null = el proveedor no controla el acento. Se muestra, porque prometer
+    // «acento colombiano» con un motor que no lo elige sería falso.
+    accentControlled: boolean | null;
+    actualSec: number | null;
+    targetSec: number | null;
+    driftSec: number | null;
+    withinTolerance: boolean | null;
+    timing: { attempts?: { attempt: number; words: number; actualSec: number; driftSec: number }[]; budget?: Record<string, number>; leadInSec?: number; stretch?: number } | null;
+    source: string;
+    createdAt: string;
+    summary: string;
+}
+
+export interface PublicationContext {
+    type: string;
+    typeLabel: string;
+    tone: string;
+    focus: string;
+    interestArea: string;
+    areaLabel: string;
+    areaDescription: string;
+}
+
 export interface FidelitySummary {
     checked: number;
     failed: number;
@@ -241,6 +281,10 @@ export interface Reel {
     updatedAt: string;
     scenes: ReelScene[];
     copies?: ReelCopy[];
+    narration?: ReelNarration | null;
+    publicationType?: string;
+    interestArea?: string;
+    context?: PublicationContext;
 }
 
 export interface ReelOptions {
@@ -271,6 +315,25 @@ export interface ReelOptions {
         photoTypes: { id: string; label: string }[];
         settings: Record<string, number | string | boolean>;
         note: string;
+    };
+    context?: {
+        types: { id: string; label: string; tone: string; focus: string; isDefault: boolean }[];
+        areas: { id: string; label: string; description: string; isDefault: boolean }[];
+        defaultType: string;
+        defaultArea: string;
+    };
+    narration?: {
+        available: boolean;
+        provider: string | null;
+        providers: { id: string; label: string; available: boolean; accentControl: boolean; isDefault: boolean; note?: string }[];
+        languages: { id: string; label: string; wordsPerSecond: number; isDefault: boolean }[];
+        styles: { id: string; label: string; pace: number; isDefault: boolean }[];
+        genders: { id: string; label: string }[];
+        defaultLanguage: string;
+        defaultStyle: string;
+        toleranceSec: number;
+        accentControlled: boolean | null;
+        unavailableReason: string | null;
     };
     copy?: {
         platforms: { id: string; label: string; maxChars: number; sweetSpot: number; maxHashtags: number; priority: string }[];

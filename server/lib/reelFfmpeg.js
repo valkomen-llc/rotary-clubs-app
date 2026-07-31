@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — compositor local con FFmpeg
-// v4.664.0
+// v4.667.0
 //
 // POR QUÉ EXISTE, SI YA HABÍA UNA CAPA DE RENDER ALOJADO
 //
@@ -173,6 +173,39 @@ export const extractFrames = async (videoBuffer, { durationSec = 5, count = 3 } 
         return frames;
     });
 
+// ─── Medición de audio ─────────────────────────────────────────────────────
+//
+// Devuelve la duración REAL de un archivo de audio. Es la pieza sobre la que se
+// apoya el Narrative Timing Engine: estimar cuánto va a durar una locución sirve
+// para pedir el texto, pero la que manda es la del archivo que devolvió el
+// proveedor de voz.
+//
+// Se usa el propio ffmpeg (`-f null -`) en vez de ffprobe: ffprobe-static pesa
+// 336 MB y revienta el límite de la función. ffmpeg escribe la duración en
+// stderr, que es de donde se lee.
+export const measureAudioDuration = async (buffer) => withTempDir(async (dir) => {
+    const input = path.join(dir, 'audio.bin');
+    await writeFile(input, buffer);
+
+    // `-f null -` decodifica sin escribir nada. Es exacto porque recorre el
+    // archivo entero, a diferencia de la cabecera, que en un MP3 de tasa
+    // variable miente.
+    const { stderr } = await runFfmpeg(['-i', input, '-f', 'null', '-'],
+        { timeoutMs: 30_000, label: 'medir audio' });
+
+    // `time=00:00:13.44` de la última línea de progreso: es lo que realmente se
+    // decodificó. Se prefiere a `Duration:` porque esa viene de la cabecera.
+    const times = [...stderr.matchAll(/time=(\d+):(\d+):(\d+\.?\d*)/g)];
+    if (times.length) {
+        const [, h, m, sec] = times[times.length - 1];
+        return Number(h) * 3600 + Number(m) * 60 + Number(sec);
+    }
+    const dur = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+    if (dur) return Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]);
+
+    throw new Error('No se pudo determinar la duración del audio.');
+});
+
 // ─── Normalización ─────────────────────────────────────────────────────────
 //
 // Sólo se llama cuando el clip NO coincide con el destino. Un clip que ya viene
@@ -225,7 +258,11 @@ const xfadeName = (transitionId) => {
 
 // Construye el grafo de filtros. Se hace en una función aparte porque es la
 // parte que se puede razonar y probar sin ejecutar ffmpeg.
-export const buildFilterGraph = ({ clips, width, height, fps, hasMusic, totalSec, musicVolume = 0.85, fadeSec = 1 }) => {
+export const buildFilterGraph = ({
+    clips, width, height, fps, hasMusic, totalSec,
+    musicVolume = 0.85, fadeSec = 1,
+    hasVoice = false, voiceLeadIn = 0, voiceStretch = 1, voiceIndex = null
+}) => {
     const parts = [];
 
     // Cada entrada se conforma primero: escala, recorte, fps y formato de
@@ -263,12 +300,32 @@ export const buildFilterGraph = ({ clips, width, height, fps, hasMusic, totalSec
     // Con una sola escena no hay fundido y la salida sigue llamándose c0.
     if (clips.length === 1) parts.push(`[c0]null[vout]`);
 
+    // ── Audio ──
+    //
+    // Tres casos: sólo música, sólo voz, o las dos con DUCKING. El ducking no es
+    // bajarle el volumen a la música a ojo: es `sidechaincompress`, que la
+    // comprime EN FUNCIÓN de la voz, así que baja sólo mientras se habla y vuelve
+    // sola en los silencios. Bajarla de forma fija dejaría la pieza sorda en los
+    // tramos sin locución.
+    const AFORMAT = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
+    const fadeOutStart = Math.max(0, totalSec - fadeSec);
+    let audioLabel = null;
+
+    if (hasVoice) {
+        // La voz entra con un retraso: arrancar pegada al primer fotograma suena
+        // a error. `atempo` sólo comprime si el motor de tiempos lo pidió, y su
+        // techo (4 %) está por debajo del umbral audible.
+        const tempo = voiceStretch && voiceStretch > 1.001 ? `atempo=${voiceStretch},` : '';
+        const delayMs = Math.round((voiceLeadIn || 0) * 1000);
+        parts.push(
+            `[${voiceIndex}:a]${tempo}adelay=${delayMs}|${delayMs},` +
+            // La voz se normaliza a un objetivo más alto que la música: es la
+            // que tiene que entenderse.
+            `loudnorm=I=-14:TP=-1.5:LRA=7,${AFORMAT}[voice]`
+        );
+    }
+
     if (hasMusic) {
-        // La música se recorta a la duración de la pieza y se le ponen entrada y
-        // salida suaves: cortar una pista en seco es lo que suena a maqueta.
-        // `loudnorm` la deja a un volumen parejo — una pista generada puede
-        // venir mucho más fuerte o más floja que la siguiente.
-        const fadeOutStart = Math.max(0, totalSec - fadeSec);
         parts.push(
             `[${clips.length}:a]atrim=0:${totalSec},asetpts=PTS-STARTPTS,` +
             `afade=t=in:st=0:d=${fadeSec},afade=t=out:st=${fadeOutStart}:d=${fadeSec},` +
@@ -276,11 +333,41 @@ export const buildFilterGraph = ({ clips, width, height, fps, hasMusic, totalSec
             // Se fuerza la duración exacta: si la pista viene más corta que la
             // pieza, `apad` la completa con silencio en vez de dejar el final
             // sin audio, que es un salto audible.
-            `apad,atrim=0:${totalSec},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[aout]`
+            `apad,atrim=0:${totalSec},${AFORMAT}[music]`
         );
     }
 
-    return { filter: parts.join(';'), videoLabel: 'vout', audioLabel: hasMusic ? 'aout' : null, computedSec: Number(elapsed.toFixed(3)) };
+    if (hasVoice && hasMusic) {
+        // La voz alimenta la cadena lateral. `threshold` bajo y `ratio` alto
+        // hacen que la música ceda en cuanto hay voz; `release` largo evita que
+        // suba y baje entre palabras, que es lo que suena a bombeo.
+        parts.push(
+            `[voice]asplit=2[voice_out][voice_sc]`,
+            // `sidechaincompress` termina cuando se acaba la MÁS CORTA de sus
+            // dos entradas, que es la voz. Sin volver a fijar la duración, la
+            // pista mezclada dura lo que la locución y `-shortest` recorta el
+            // VIDEO a esa longitud: un Reel de 14 s salía de 12,85 s y perdía su
+            // último segundo. Por eso el `apad`+`atrim` del final no es
+            // decorativo — es lo que sostiene la duración de la pieza.
+            `[music][voice_sc]sidechaincompress=threshold=0.05:ratio=8:attack=15:release=350:makeup=1[ducked]`,
+            `[ducked][voice_out]amix=inputs=2:duration=longest:dropout_transition=0:weights=1 1,` +
+            // Un limitador al final: la suma de dos pistas normalizadas puede
+            // pasarse de 0 dBFS y saturar.
+            `alimiter=limit=0.95,` +
+            `apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[aout]`
+        );
+        audioLabel = 'aout';
+    } else if (hasVoice) {
+        // Sólo voz: se completa con silencio hasta el final del video, para que
+        // la pista de audio dure lo mismo que la imagen.
+        parts.push(`[voice]apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[aout]`);
+        audioLabel = 'aout';
+    } else if (hasMusic) {
+        parts.push(`[music]anull[aout]`);
+        audioLabel = 'aout';
+    }
+
+    return { filter: parts.join(';'), videoLabel: 'vout', audioLabel, computedSec: Number(elapsed.toFixed(3)) };
 };
 
 // Tasa de bits objetivo por resolución. Se fija en vez de dejar CRF libre
@@ -299,6 +386,9 @@ const targetBitrate = (width, height) => {
 export const composeReel = async ({
     clips,
     musicBuffer = null,
+    voiceBuffer = null,
+    voiceLeadIn = 0,
+    voiceStretch = 1,
     width = 1080,
     height = 1920,
     fps = 30,
@@ -314,9 +404,17 @@ export const composeReel = async ({
         await writeFile(file, clip.buffer);
         inputs.push('-i', file);
     }
+    // El ORDEN de las entradas define los índices del grafo: primero los clips,
+    // después la música y por último la voz. Cambiarlo rompe el filtro entero.
     if (musicBuffer) {
         const file = path.join(dir, 'music.audio');
         await writeFile(file, musicBuffer);
+        inputs.push('-i', file);
+    }
+    const voiceIndex = voiceBuffer ? clips.length + (musicBuffer ? 1 : 0) : null;
+    if (voiceBuffer) {
+        const file = path.join(dir, 'voice.audio');
+        await writeFile(file, voiceBuffer);
         inputs.push('-i', file);
     }
 
@@ -331,7 +429,8 @@ export const composeReel = async ({
         clips, width, height, fps,
         hasMusic: Boolean(musicBuffer),
         totalSec: Number(totalSec.toFixed(3)),
-        musicVolume, fadeSec
+        musicVolume, fadeSec,
+        hasVoice: Boolean(voiceBuffer), voiceLeadIn, voiceStretch, voiceIndex
     });
 
     const out = path.join(dir, 'reel.mp4');
@@ -380,7 +479,13 @@ export const composeReel = async ({
         console.warn('[REEL/ffmpeg] no se pudo generar la miniatura:', e.message);
     }
 
-    return { buffer, posterBuffer, expectedDurationSec: graph.computedSec, filter: graph.filter };
+    return {
+        buffer, posterBuffer,
+        expectedDurationSec: graph.computedSec,
+        filter: graph.filter,
+        hasVoice: Boolean(voiceBuffer),
+        hasMusic: Boolean(musicBuffer)
+    };
 });
 
 // Conforma un clip suelto al formato común. Se usa antes del montaje sólo

@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.666
+## Creador de Reels IA — v4.667
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -185,6 +185,8 @@ en `config` sin que el servidor los leyera.
 | `server/lib/canvasExpansion.js` | AI Canvas Expansion: adapta el lienzo de una foto al formato antes de animarla |
 | `server/lib/reelCopy.js` | Copies por plataforma, saneado, límites y exportación |
 | `server/lib/institutionalVoice.js` | Reglas editoriales compartidas con el Generador de Publicaciones |
+| `server/lib/publicationContext.js` | Tipo de Publicación y Enfoque Rotary, compartidos con el Generador de Publicaciones |
+| `server/lib/reelNarration.js` | Guion hablado, voces TTS y Narrative Timing Engine |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
 | `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
@@ -314,6 +316,41 @@ en `config` sin que el servidor los leyera.
   base de datos de este archivo. `VideoProject` **no se toca**: sigue en Prisma
   con sus filas y sus `ScheduledPost` colgando, y las rutas `/projects` se
   conservan.
+- **El contexto estratégico enriquece TODO, no sólo el copy.** `publicationType`
+  e `interestArea` viajan al director (qué historia cuenta el montaje), al copy
+  y al guion de la voz. Salen de `publicationContext.js`, que es la misma fuente
+  del Generador de Publicaciones: el mismo «Evento» tiene que significar lo
+  mismo en un post y en un Reel. Antes de v4.667 estaban duplicados en el
+  controlador y otra vez en `PostGenerator.tsx`.
+- **El guion de la voz NO es el copy.** Uno se lee y el otro se escucha: un
+  texto con hashtags, emojis o «link en la bio» narrado en voz alta suena
+  absurdo. Son dos generadores distintos a propósito.
+- **La sincronía no se pide, se CONSTRUYE.** Ningún proveedor de TTS acepta
+  «durá 14 segundos». El Narrative Timing Engine escribe con un presupuesto de
+  palabras, sintetiza, **mide el archivo real** con `measureAudioDuration`
+  (ffmpeg `-f null -`) y corrige el presupuesto con el ritmo REAL de esa voz
+  hasta entrar en tolerancia. Estimar y creerse la estimación es lo que hace que
+  la voz se pase tres segundos.
+- **No se acelera la voz para que quepa.** Sólo se admite un `atempo` de hasta
+  el 4 %, por debajo del umbral audible, y sólo si quedó larga. Si quedó corta
+  se completa con silencio: una pausa antes del último fotograma es invisible;
+  una palabra cortada, no.
+- **La pista de audio se fuerza a la duración de la pieza.**
+  `sidechaincompress` termina cuando se acaba la voz, y `-shortest` recortaba el
+  VIDEO a esa longitud — un Reel de 14 s salía de 12,85 s. El `apad`+`atrim`
+  del final del grafo no es decorativo: es lo que sostiene la duración.
+- **La música baja con DUCKING, no con volumen fijo.** `sidechaincompress` la
+  comprime en función de la voz, así que cede sólo mientras se habla y vuelve en
+  los silencios. Bajarla de forma fija dejaría la pieza sorda en los tramos sin
+  locución.
+- **Si el motor de voz no controla el acento, se dice.** `accentControl` en el
+  registro: OpenAI tiene voces buenas pero no seleccionables por acento —el
+  español sale con deje anglosajón—, mientras ElevenLabs tiene voces colombianas
+  reales. Prometer «acento colombiano» con un motor que no lo hace es
+  exactamente el tipo de afirmación que este módulo no hace.
+- **Regenerar la voz NO regenera el video.** Cambiar idioma, acento, estilo o
+  velocidad limpia el `renderJobId` y rehace la MEZCLA. Es lo que permite probar
+  voces sin gastar créditos de video.
 - **Los copies se escriben EN PARALELO con los clips**, al crear el Reel. Cuesta
   una llamada de texto porque el análisis de las tres fotos ya lo hizo el
   director: volver a mirarlas serían tres llamadas de visión para saber lo
@@ -349,6 +386,9 @@ en `config` sin que el servidor los leyera.
 | `REEL_ENGINE_VEO3_ENABLED`, `REEL_ENGINE_MINIMAX_ENABLED` | Habilitar motores tras verificar su id |
 | `REEL_MUSIC_PROVIDER`, `REEL_MUSIC_MODEL` | Fuente y modelo de la banda sonora |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
+| `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
+| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
+| `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |
 | `EXPANSION_PROVIDER`, `EXPANSION_MODEL_*` | Motor de la Expansión Inteligente y sus ids |
 | `EXPANSION_MIN_PRESERVATION` | Conservación mínima del original (0-1, default 0.82) |
 | `EXPANSION_CREATIVITY`, `EXPANSION_MAX_GROWTH`, `EXPANSION_TOLERANCE` | Cuánto puede inventar, cuánto crecer y cuándo no tocar la foto |

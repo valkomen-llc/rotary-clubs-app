@@ -184,7 +184,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - "transitionOut" de la última escena describe cómo cierra la pieza.
 - Elegí el ritmo según el contenido: más energía pide transiciones cortas y estilos con más movimiento.`;
 
-const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle }) => {
+const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, context = null }) => {
     const lines = analyses.map((a, i) => (
         `Foto ${i}: ${a.summary}. tipo=${a.subject}, plano=${a.shotSize}, energía=${a.energy}, ` +
         `rol sugerido=${a.narrativeRole}, personas=${a.hasPeople}, marca=${a.hasBrand}, texto=${a.hasText}, ` +
@@ -204,6 +204,12 @@ const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle })
     }
 
     return [
+        // El contexto estratégico va PRIMERO: un Reel de "Recaudación de fondos"
+        // sobre "Agua y Saneamiento" se monta distinto que uno "Estándar" de
+        // "Impacto General", y esa decisión es del conjunto, no de una foto.
+        context ? `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.` : '',
+        context ? `Área de enfoque Rotary: ${context.areaDescription}.` : '',
+        
         lines.join('\n'),
         '',
         `Estilos de animación disponibles: ${Object.entries(MOTION_STYLES).map(([id, s]) => `${id} (${s.description})`).join(', ')}.`,
@@ -329,9 +335,10 @@ export const buildDirection = async (analyses, {
     motionStyle = AUTO_MOTION_STYLE,
     transition = AUTO_TRANSITION,
     musicStyle = AUTO_MUSIC_STYLE,
+    context = null,
     provider = null
 } = {}) => {
-    const prefs = { motionStyle, transition, musicStyle };
+    const prefs = { motionStyle, transition, musicStyle, context };
 
     // Si el usuario fijó las tres cosas, el modelo sólo decidiría el orden y los
     // pesos. No vale una llamada: el criterio propio hace lo mismo.

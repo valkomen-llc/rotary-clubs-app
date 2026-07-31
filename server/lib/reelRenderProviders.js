@@ -157,6 +157,7 @@ export const buildEditSpec = ({
     fps = 30,
     soundtrackUrl = null,
     soundtrackVolume = MUSIC_VOLUME_DEFAULT,
+    voice = null,
     callbackUrl = null
 }) => {
     const clips = scenes.map((scene, i) => {
@@ -186,6 +187,9 @@ export const buildEditSpec = ({
         soundtrack: soundtrackUrl
             ? { src: soundtrackUrl, volume: soundtrackVolume, fadeIn: MUSIC_FADE_SEC, fadeOut: MUSIC_FADE_SEC }
             : null,
+        // La voz va aparte de la música: el montaje las mezcla con ducking, no
+        // las suma sin más. Sólo el compositor local lo soporta hoy.
+        voice,
         callbackUrl
     };
 };
@@ -523,6 +527,15 @@ const ffmpegLocal = {
             clips.push({ ...spec.clips[i], buffer: finalBuffer });
         }
 
+        let voiceBuffer = null;
+        if (spec.voice?.src) {
+            try {
+                voiceBuffer = await fetchBuffer(spec.voice.src, 'la narración');
+            } catch (e) {
+                notes.push(`La narración no se pudo descargar: ${e.message} El Reel se montó sin voz.`);
+            }
+        }
+
         let musicBuffer = null;
         if (spec.soundtrack?.src) {
             try {
@@ -536,6 +549,9 @@ const ffmpegLocal = {
         const result = await composeReel({
             clips,
             musicBuffer,
+            voiceBuffer,
+            voiceLeadIn: spec.voice?.leadIn ?? 0,
+            voiceStretch: spec.voice?.stretch ?? 1,
             width: spec.width,
             height: spec.height,
             fps: spec.fps,
@@ -549,6 +565,7 @@ const ffmpegLocal = {
                 posterBuffer: result.posterBuffer,
                 expectedDurationSec: result.expectedDurationSec,
                 hasMusic: Boolean(musicBuffer),
+                hasVoice: Boolean(voiceBuffer),
                 notes
             }
         };
@@ -573,6 +590,12 @@ const describeError = (resp, data) =>
     data?.message || data?.error || data?.msg || `HTTP ${resp.status} ${snippet(data)}`;
 
 export const submitRender = async (spec, providerId = null) => {
+    // Los proveedores alojados de este registro no exponen ducking por cadena
+    // lateral. Con narración, el montaje local es el único que mezcla bien, así
+    // que se prioriza y se dice por qué.
+    if (spec.voice?.src && !providerId && isRenderProviderAvailable('ffmpeg')) {
+        providerId = 'ffmpeg';
+    }
     // Con proveedor explícito se usa ese y sólo ese —lo pidió el usuario desde
     // el panel, y silenciarlo con un respaldo sería desobedecerlo—. Sin él, la
     // cadena completa.

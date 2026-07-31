@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.666.0",
-  "cache_bust": "2026-07-30q (Copies automaticos para TikTok, Instagram Reels y YouTube Shorts, con versionado y guardado automatico en la Biblioteca.)",
+  "version": "4.667.0",
+  "cache_bust": "2026-07-30r (Contexto del Generador de Publicaciones en el Reel y narracion IA sincronizada con la duracion exacta del video.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — pantalla
-// v4.666.0
+// v4.667.0
 //
 // Tres pantallas en una, según dónde esté el Reel:
 //
@@ -23,7 +23,8 @@ import {
     Plus, Trash2, GripVertical, Settings2, Music, Sparkles, Loader2,
     Clapperboard, X, CheckCircle2, Volume2, AlertTriangle, RefreshCw,
     Download, Image as ImageIcon, Wand2, ShieldCheck, Film, Clock, VolumeX,
-    Info, ChevronRight, Save, Copy, Check, Pencil, FileDown, History, FileText
+    Info, ChevronRight, Save, Copy, Check, Pencil, FileDown, History, FileText,
+    Mic, Target
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
@@ -84,7 +85,20 @@ const VideoCreator: React.FC = () => {
         transition: AUTO,
         musicStyle: AUTO,
         engine: '',
-        withMusic: true
+        withMusic: true,
+        // Contexto estratégico, el mismo del Generador de Publicaciones.
+        publicationType: 'standard',
+        interestArea: 'general'
+    });
+
+    // Narración IA. Apagada por defecto: es la opción que gasta créditos de voz
+    // y no todo Reel la quiere.
+    const [narration, setNarration] = useState({
+        enabled: false,
+        language: 'es-CO',
+        style: 'institucional',
+        gender: 'female',
+        speed: 1
     });
 
     // Outro adjunto (v4.645). Se conserva: es una pieza aparte que ya funciona.
@@ -108,8 +122,17 @@ const VideoCreator: React.FC = () => {
                     ...c,
                     format: data.defaultFormat,
                     qualityTier: data.defaultQualityTier,
-                    engine: data.defaultEngine
+                    engine: data.defaultEngine,
+                    publicationType: data.context?.defaultType || c.publicationType,
+                    interestArea: data.context?.defaultArea || c.interestArea
                 }));
+                if (data.narration) {
+                    setNarration(n => ({
+                        ...n,
+                        language: data.narration!.defaultLanguage,
+                        style: data.narration!.defaultStyle
+                    }));
+                }
             } catch { /* la pantalla funciona con los defaults locales */ }
         })();
     }, []);
@@ -197,6 +220,7 @@ const VideoCreator: React.FC = () => {
                     images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
                     ...config,
                     engine: config.engine || undefined,
+                    narration,
                     // El outro viaja aparte, no entra en `images`: no debe
                     // volver a pasar por la IA.
                     outro
@@ -499,6 +523,123 @@ const VideoCreator: React.FC = () => {
                                 <Trash2 className="w-4 h-4" />
                             </button>
                         </div>
+                    )}
+                </div>
+
+                {/* Contexto estratégico — el mismo del Generador de
+                    Publicaciones. Alimenta la narrativa del montaje, el copy y
+                    el guion de la voz, no sólo el texto. */}
+                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                        <Target className="w-5 h-5 text-indigo-600" />
+                        <h3 className="font-black text-gray-900">Contexto de la publicación</h3>
+                    </div>
+                    <p className="text-[11px] text-gray-400 font-bold mb-6">
+                        Lo mismo que en el Generador de Publicaciones. Cambia la narrativa del Reel, no sólo el texto.
+                    </p>
+
+                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block mb-2">
+                        Tipo de publicación (preajuste de IA)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
+                        {(options?.context?.types || []).map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => setConfig({ ...config, publicationType: t.id })}
+                                title={`${t.tone} · ${t.focus}`}
+                                className={`py-3 px-3 rounded-2xl text-[11px] font-black uppercase tracking-wide transition-all border ${
+                                    config.publicationType === t.id
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20'
+                                        : 'bg-white text-gray-400 border-gray-100 hover:border-indigo-200 hover:text-indigo-600'
+                                }`}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <Select
+                        label="Enfoque Rotary"
+                        value={config.interestArea}
+                        onChange={v => setConfig({ ...config, interestArea: v })}
+                        options={(options?.context?.areas || []).map(a => ({ id: a.id, label: a.label }))}
+                        hint={options?.context?.areas.find(a => a.id === config.interestArea)?.description}
+                    />
+                </div>
+
+                {/* Narración IA */}
+                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+                        <div className="flex items-center gap-3">
+                            <Mic className="w-5 h-5 text-indigo-600" />
+                            <h3 className="font-black text-gray-900">Narración IA</h3>
+                        </div>
+                        <button
+                            onClick={() => setNarration({ ...narration, enabled: !narration.enabled })}
+                            disabled={!options?.narration?.available}
+                            className={`px-4 py-2 rounded-xl font-black text-xs transition-all border disabled:opacity-40 ${
+                                narration.enabled
+                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                    : 'bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100'
+                            }`}
+                        >
+                            {narration.enabled ? 'Activada' : 'Desactivada'}
+                        </button>
+                    </div>
+                    <p className="text-[11px] text-gray-400 font-bold mb-6">
+                        Un guion escrito para ser hablado, sincronizado con la duración exacta del Reel.
+                    </p>
+
+                    {!options?.narration?.available ? (
+                        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                            <p className="text-xs font-medium text-amber-800 leading-relaxed">
+                                {options?.narration?.unavailableReason || 'Sin proveedor de voz configurado.'}
+                            </p>
+                        </div>
+                    ) : narration.enabled && (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <Select
+                                    label="Idioma y acento"
+                                    value={narration.language}
+                                    onChange={v => setNarration({ ...narration, language: v })}
+                                    options={(options.narration.languages || []).map(l => ({ id: l.id, label: l.label }))}
+                                />
+                                <Select
+                                    label="Estilo de narración"
+                                    value={narration.style}
+                                    onChange={v => setNarration({ ...narration, style: v })}
+                                    options={(options.narration.styles || []).map(st => ({ id: st.id, label: st.label }))}
+                                />
+                                <Select
+                                    label="Voz"
+                                    value={narration.gender}
+                                    onChange={v => setNarration({ ...narration, gender: v })}
+                                    options={(options.narration.genders || []).map(g => ({ id: g.id, label: g.label }))}
+                                />
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">
+                                        Velocidad · {narration.speed.toFixed(2)}×
+                                    </label>
+                                    <input
+                                        type="range" min={0.85} max={1.15} step={0.05}
+                                        value={narration.speed}
+                                        onChange={e => setNarration({ ...narration, speed: Number(e.target.value) })}
+                                        className="w-full accent-indigo-600"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Si el motor activo no elige acento, se dice. Prometer
+                                «acento colombiano» con un motor que no lo controla
+                                sería falso. */}
+                            {options.narration.accentControlled === false && (
+                                <p className="mt-4 text-[11px] font-bold text-amber-600 flex items-start gap-2">
+                                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                                    El motor activo ({options.narration.providers.find(p => p.isDefault)?.label}) no permite elegir el acento: el español sale neutro. Para acento colombiano real hace falta configurar ElevenLabs.
+                                </p>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -967,12 +1108,160 @@ const PreviewPanel: React.FC<{
                 </div>
             </div>
 
+            <NarrationPanel reel={reel} options={options} onChanged={onCopiesChanged} />
+
             <CopyPanel reel={reel} onChanged={onCopiesChanged} />
 
             {reel.notes.length > 0 && <NoteList notes={reel.notes} />}
         </div>
     </div>
 );
+
+// ─── Narración ─────────────────────────────────────────────────────────────
+//
+// Regenerar la voz NO vuelve a renderizar el video: sólo rehace la mezcla. Es
+// lo que permite probar idiomas, acentos y estilos sin gastar créditos de
+// video.
+const NarrationPanel: React.FC<{ reel: Reel; options: ReelOptions | null; onChanged: (r: Reel) => void }> = ({ reel, options, onChanged }) => {
+    const n = reel.narration;
+    const [busy, setBusy] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [form, setForm] = useState({
+        language: n?.language || options?.narration?.defaultLanguage || 'es-CO',
+        style: n?.style || options?.narration?.defaultStyle || 'institucional',
+        gender: n?.gender || 'female',
+        speed: n?.speed ?? 1
+    });
+
+    useEffect(() => {
+        if (n) setForm({ language: n.language, style: n.style, gender: n.gender, speed: n.speed });
+    }, [n?.id]);
+
+    const regenerate = async (overrides: Record<string, unknown> = {}) => {
+        setBusy(true);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/narration`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ ...form, ...overrides })
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo generar la narración'); return; }
+            onChanged(data);
+            setEditing(false);
+            toast.success('Narración lista. Se está rehaciendo la mezcla, sin regenerar el video.');
+        } catch { toast.error('Error de conexión'); } finally { setBusy(false); }
+    };
+
+    if (!options?.narration?.available) return null;
+
+    return (
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                    <Mic className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-black text-gray-900">Narración</h3>
+                    {n && <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{n.languageLabel} · {n.styleLabel}</span>}
+                    {n && n.version > 1 && (
+                        <span className="text-[10px] font-bold text-gray-400 flex items-center gap-0.5">
+                            <History className="w-3 h-3" /> v{n.version}
+                        </span>
+                    )}
+                </div>
+                <button
+                    onClick={() => regenerate()}
+                    disabled={busy}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-all flex items-center gap-1 disabled:opacity-40"
+                >
+                    {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    {n ? 'Regenerar voz' : 'Generar narración'}
+                </button>
+            </div>
+
+            {!n ? (
+                <p className="text-xs font-bold text-gray-400 mt-2">
+                    Este Reel se montó sin voz. Generarla no vuelve a renderizar el video.
+                </p>
+            ) : (
+                <>
+                    {/* La sincronía se MUESTRA con su número, no se promete. */}
+                    <p className={`text-[11px] font-bold mt-2 flex items-start gap-1.5 ${
+                        n.withinTolerance ? 'text-emerald-600' : 'text-amber-700'
+                    }`}>
+                        <Clock className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                        {n.summary}
+                    </p>
+                    {n.accentControlled === false && (
+                        <p className="text-[10px] font-bold text-gray-400 mt-1 pl-5">
+                            {n.ttsProviderLabel} no permite elegir el acento: el español sale neutro.
+                        </p>
+                    )}
+
+                    {n.audioUrl && <audio src={n.audioUrl} controls className="w-full h-10 mt-3" />}
+
+                    <div className="mt-3">
+                        {editing ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 resize-none h-28 font-sans"
+                                    value={draft}
+                                    onChange={e => setDraft(e.target.value)}
+                                />
+                                <p className="text-[10px] font-bold text-gray-400">
+                                    {draft.trim().split(/\s+/).filter(Boolean).length} palabras · el guion escrito a mano se sintetiza tal cual, sin reescribirlo para que encaje.
+                                </p>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => regenerate({ script: draft })}
+                                        disabled={busy || !draft.trim()}
+                                        className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all disabled:opacity-40"
+                                    >
+                                        Sintetizar este guion
+                                    </button>
+                                    <button onClick={() => setEditing(false)} className="px-4 py-2 bg-white text-gray-500 rounded-xl font-black text-xs border border-gray-200">
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-gray-50 rounded-2xl border border-gray-100 p-3">
+                                <p className="text-sm font-medium text-gray-700 leading-relaxed">{n.script}</p>
+                                <button
+                                    onClick={() => { setDraft(n.script); setEditing(true); }}
+                                    className="mt-2 text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-indigo-600 flex items-center gap-1"
+                                >
+                                    <Pencil className="w-3 h-3" /> Editar el guion
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+
+            {/* Cambiar cualquiera de estos regenera SÓLO la voz. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                <Select
+                    label="Idioma"
+                    value={form.language}
+                    onChange={v => { setForm({ ...form, language: v }); regenerate({ language: v }); }}
+                    options={(options.narration.languages || []).map(l => ({ id: l.id, label: l.label }))}
+                />
+                <Select
+                    label="Estilo"
+                    value={form.style}
+                    onChange={v => { setForm({ ...form, style: v }); regenerate({ style: v }); }}
+                    options={(options.narration.styles || []).map(st => ({ id: st.id, label: st.label }))}
+                />
+                <Select
+                    label="Voz"
+                    value={form.gender}
+                    onChange={v => { setForm({ ...form, gender: v }); regenerate({ gender: v }); }}
+                    options={(options.narration.genders || []).map(g => ({ id: g.id, label: g.label }))}
+                />
+            </div>
+        </div>
+    );
+};
 
 // ─── Copies de publicación ─────────────────────────────────────────────────
 //

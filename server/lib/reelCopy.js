@@ -109,7 +109,8 @@ export const buildCopyPrompt = ({
     clubCategory,
     clubCity,
     eventDateHuman = null,
-    locale = 'es'
+    locale = 'es',
+    context = null
 }) => {
     const hasSpecificClubName = Boolean(clubName && clubName.trim());
     const motion = MOTION_STYLES[scenes[0]?.style]?.label || 'cinematográfico';
@@ -122,6 +123,8 @@ export const buildCopyPrompt = ({
     return `Entidad: "${clubName || '(sin nombre)'}"${clubCategory ? ` (categoría: ${clubCategory})` : ''}${clubCity ? ` — ciudad: ${clubCity}` : ''}.
 ${identityClause(hasSpecificClubName)}
 ${dateClause(eventDateHuman)}
+${context ? `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.
+Área de enfoque Rotary: ${context.areaDescription}.` : ''}
 
 Se trata de un REEL VERTICAL de ${reel.config?.timing?.finalDurationSec || 14} segundos, en ${reel.format}, con tres escenas:
 ${describeScenes(scenes)}
@@ -243,10 +246,10 @@ export const sanitizeCopy = (raw, { locale = 'es' } = {}) => {
 
 export const generateReelCopy = async ({
     reel, scenes, clubName, clubCategory, clubCity, eventDateHuman = null,
-    locale = 'es', provider = null
+    locale = 'es', provider = null, context = null
 }) => {
     const system = buildSystemPrompt();
-    const userText = buildCopyPrompt({ reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale });
+    const userText = buildCopyPrompt({ reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale, context });
 
     const result = await generateCopy({
         ...(provider ? { provider } : {}),
@@ -274,12 +277,12 @@ export const generateReelCopy = async ({
 // insistir sobre el texto de TikTok sin perder el de Instagram que ya gustaba.
 export const regeneratePlatformCopy = async ({
     reel, scenes, platform, clubName, clubCategory, clubCity,
-    eventDateHuman = null, locale = 'es', instruction = null, provider = null
+    eventDateHuman = null, locale = 'es', instruction = null, provider = null, context = null
 }) => {
     const spec = COPY_PLATFORMS[platform];
     if (!spec) throw new Error(`Plataforma desconocida: ${platform}`);
 
-    const base = buildCopyPrompt({ reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale });
+    const base = buildCopyPrompt({ reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale, context });
     const userText = `${base}
 
 DEVOLVÉ SÓLO la plataforma "${platform}". El resto del JSON puede ir vacío.${instruction ? `\n\nIndicación adicional de quien pide el texto: ${instruction}` : ''}`;
