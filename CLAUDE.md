@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.671
+## Creador de Reels IA — v4.672
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -350,6 +350,37 @@ en `config` sin que el servidor los leyera.
   montaje y sólo se relanza el render. Cambiar el estilo SÍ regenera: el
   movimiento está dentro del clip. Nunca se puede pedir más metraje del que el
   clip tiene; para eso hay que regenerar, y el servidor lo dice con el máximo.
+- **La sobriedad institucional se pide EN POSITIVO, y una palabra basta para
+  romperla** (v4.672). El prompt decía «A N-second **cinematic** shot» y, al
+  detectar comida o bebida, pedía literalmente *«gentle steam rising … a soft
+  glisten travelling across the surface»*. Eso produjo humo, chispas y un
+  destello naranja en piezas reales del Distrito. «Cinematic» es una invitación
+  a que el modelo aporte SU idea de cine: luz dramática, halos, partículas.
+  Ahora dice `documentary shot` y afirma *«the only light in the shot is the
+  light already present in the photograph, and the air stays clear»*. **No
+  reintroducir la rama de vapor/brillo ni la palabra «cinematic»**, y no
+  arreglarlo con una lista de prohibiciones: la regla del sitio es que el modelo
+  se obsesiona con lo prohibido.
+- **Con personas se declara el TECHO del movimiento, no sólo su existencia.**
+  «Vienen a la vida con pequeño movimiento natural» dejaba al modelo reinterpretar
+  rostros y manos. Ahora se nombran rostros, rasgos, **edad**, proporciones y
+  manos como intactos, y el movimiento se acota a *«the smallest natural one — a
+  quiet breath, an occasional blink»*.
+- **El estilo por defecto es `documental`**, no `cinematografico`.
+- **Hay una vía SIN motor generativo** (`fotografico`, `isEngineless`,
+  `renderStillMotion`): la fotografía se anima desplazando lentamente la ventana
+  de encuadre con FFmpeg. Los píxeles son los del original, así que rostros,
+  insignias y textos no se reinterpretan. Cuesta **cero créditos** y 2-7 s,
+  frente a 20 créditos y 1-3 min del motor. Es la opción indicada para una foto
+  de grupo institucional.
+- **Una escena con PERSONAS que falló la fidelidad NO se regenera: cae a 2.5D.**
+  Un motor image-to-video redibuja lo que anima, así que pedirle la misma escena
+  otra vez vuelve a rehacer las caras — es pagar dos veces por el mismo
+  problema. Sin personas sí se reintenta con el motor: ahí lo que falló fue el
+  encuadre o la estabilidad, y la segunda pasada puede acertar.
+- **El 2.5D no declara una nota de fidelidad inventada.** Guarda `state: 'ok'`
+  con `method: 'still-motion'` y explica que no hubo modelo que pudiera alterar
+  nada. Poner «100 % de fidelidad» sería una medición que no se hizo.
 - **Los prompts son cortos y en positivo**, igual que en el resto del sitio.
   "Que no deforme el logo" se escribe como "el logotipo se mantiene exactamente
   como está". El prompt sólo crece cuando el análisis detecta marca, texto,
