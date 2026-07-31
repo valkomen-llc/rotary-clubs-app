@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.671.0 | 2026-07-31 (El montaje del Reel vuelve a completarse)
-// Cache bust: 2026-07-31c
+// UI V4.672.0 | 2026-07-31 (Estilo institucional sobrio y animación sin IA)
+// Cache bust: 2026-07-31d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.672.0',
+        title: 'Se acabaron el humo y las chispas: estilo institucional y fotos que no se redibujan 🎞️',
+        description: 'Los Reels estaban saliendo con humo, chispas y destellos naranjas que no existían en las fotografías. La causa estaba escrita en las instrucciones que recibía la IA: al detectar comida o bebida se le pedía literalmente «vapor suave elevándose y un brillo recorriendo la superficie», y el plano se describía como «cinematográfico» —una palabra que un modelo generativo entiende como permiso para añadir su propia idea de cine: luz dramática, halos y partículas—. Se quitaron ambas cosas. Ahora se le indica, en positivo, que la única luz es la que ya está en la fotografía y que la escena es exactamente la sala que se fotografió, sin nada añadido. El estilo por defecto pasa de «Cinematográfico» a «Documental». Además, cuando hay personas se especifica que rostros, edades, proporciones y manos quedan intactos, y que su único movimiento es el mínimo natural. La segunda novedad es un estilo nuevo, «Fotográfico», que no pasa por ninguna IA: la fotografía se anima con un desplazamiento lento de encuadre, así que los rostros, las insignias y los textos son los originales, píxel a píxel. Es el indicado para fotos de grupo, cuesta cero créditos y tarda segundos en vez de minutos. Y cuando el sistema detecta que el motor no conservó a las personas de una escena, ya no la manda a regenerar —que era volver a redibujar las mismas caras y pagarlo otra vez—: la resuelve por esa vía.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'identidad', 'fix'],
+        type: 'major',
+        changes: [
+            { type: 'fixed', text: 'Humo, chispas y destellos añadidos por la IA: se eliminó la instrucción que los pedía y la palabra «cinematográfico».' },
+            { type: 'changed', text: 'El estilo por defecto es ahora Documental, de registro sobrio e institucional.' },
+            { type: 'improved', text: 'Con personas en la foto se declaran intocables rostros, edad, proporciones y manos, y se acota su movimiento al mínimo natural.' },
+            { type: 'added', text: 'Estilo «Fotográfico»: anima la fotografía sin pasarla por ninguna IA. Identidad garantizada, cero créditos, segundos en vez de minutos.' },
+            { type: 'changed', text: 'Una escena con personas que no conservó los rostros se resuelve animando la foto original, en vez de regenerarla y volver a redibujarlas.' }
+        ],
+        details: [
+            'La adaptación de fotos horizontales al formato vertical no cambió: se sigue generando únicamente el lienzo que falta, sin recortar ni estirar, y la conservación del original se mide y se muestra en porcentaje.',
+            'El estilo «Fotográfico» sacrifica un 6 % de borde para que el encuadre pueda desplazarse. Es lo que separa un plano vivo de una foto fija, y está por debajo de lo perceptible en una fotografía de grupo.',
+            'Para una foto de grupo, «Fotográfico» es la opción recomendada: un motor generativo redibuja lo que anima, y con varias caras pequeñas es donde más se nota.'
+        ]
+    },
     {
         version: '4.671.0',
         title: 'El Reel vuelve a montarse — y deja de gastar créditos de más 🔧',

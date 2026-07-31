@@ -39,7 +39,7 @@ import {
     MOTION_STYLES, DEFAULT_MOTION_STYLE, AUTO_MOTION_STYLE,
     TRANSITIONS, DEFAULT_TRANSITION, AUTO_TRANSITION,
     MUSIC_STYLES, DEFAULT_MUSIC_STYLE, AUTO_MUSIC_STYLE,
-    REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC, estimateRemainingSec,
+    REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC, estimateRemainingSec, isEngineless,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildReelTitle, computeProgress
 } from '../lib/reelSpec.js';
@@ -53,7 +53,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
-import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment } from '../lib/reelFfmpeg.js';
+import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
     EXPANSION_SETTINGS, PHOTO_TYPES,
@@ -721,8 +721,87 @@ const advanceSceneExpansion = async (scene, settings) => {
     }
 };
 
+/**
+ * Resuelve una escena SIN motor generativo: anima la fotografía con un
+ * desplazamiento lento de la ventana de encuadre.
+ *
+ * Es síncrona y termina en segundos, así que la escena queda `ready` en la
+ * misma llamada — no hay tarea que sondear ni webhook que esperar.
+ *
+ * Se usa en dos situaciones y por el mismo motivo:
+ *
+ *  · El usuario eligió el estilo «Fotográfico», normalmente porque la foto es
+ *    de grupo y no quiere que un modelo le rehaga las caras.
+ *  · La medición de fidelidad dijo que el motor NO conservó a las personas.
+ *    Regenerar con el mismo motor vuelve a redibujarlas —es repetir el problema
+ *    pagándolo otra vez—, así que se cae a esta vía, que no reinterpreta nada.
+ *
+ * La fidelidad no se mide acá: no hay nada que medir. Los píxeles son los de la
+ * fotografía, y decirlo es más honesto que inventar una nota del 100 %.
+ */
+const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
+    const startedAt = Date.now();
+    const tier = resolveTier(scene.format || DEFAULT_FORMAT, DEFAULT_QUALITY_TIER);
+    const sourceUrl = animationSourceOf(scene);
+
+    const resp = await fetch(sourceUrl);
+    if (!resp.ok) throw new Error(`No se pudo descargar la imagen de la escena (${resp.status}).`);
+    const imageBuffer = Buffer.from(await resp.arrayBuffer());
+
+    // La dirección del desplazamiento se alterna por posición para que las tres
+    // escenas no se muevan igual: un Reel con tres paneos idénticos se lee como
+    // un error de montaje.
+    const drift = ['up', 'left', 'down'][scene.position % 3] || 'up';
+
+    const buffer = await renderStillMotion(imageBuffer, {
+        width: tier.width, height: tier.height, fps: 30,
+        durationSec: scene.durationSec || 5, drift
+    });
+
+    const probe = probeMp4(buffer);
+    const upload = await uploadBuffer(
+        buffer,
+        `clubs/${scene.clubId || 'global'}/reels/scenes/${scene.id}-still-${Date.now()}.mp4`,
+        'video/mp4'
+    );
+
+    await recordUsage({
+        projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
+        operation: 'scene.animate', provider: 'ffmpeg', model: 'still-motion-2.5d',
+        units: (Date.now() - startedAt) / 1000, unit: 'seconds',
+        credits: 0, ms: Date.now() - startedAt,
+        target: `Escena ${scene.position + 1}`,
+        detail: `Movimiento 2.5D sobre la fotografía (${drift}). Sin motor generativo, sin créditos.`
+    });
+
+    const { rows } = await db.query(
+        `UPDATE "ReelScene"
+            SET status = 'ready', "statusDetail" = NULL, "videoUrl" = $2, "s3Key" = $3,
+                "durationSec" = $4, engine = 'still_motion', "engineModel" = 'ffmpeg-2.5d',
+                fidelity = $5, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [
+            scene.id, upload.url, upload.key, probe.durationSec || scene.durationSec,
+            JSON.stringify({
+                state: 'ok', score: 1, issues: [], frames: [],
+                method: 'still-motion',
+                // Se dice CÓMO se conservó, no una nota inventada: no hubo
+                // modelo que pudiera alterar nada.
+                reason: 'La escena es la fotografía en movimiento, sin pasar por un modelo generativo: rostros, manos, insignias y textos son los originales.'
+            })
+        ]
+    );
+
+    console.log(`[REEL] escena ${scene.id} resuelta con movimiento 2.5D (${drift}) en ${Date.now() - startedAt}ms${reason ? ` — ${reason}` : ''}`);
+    return rows[0];
+};
+
 // Lanza la tarea de video de UNA escena. Se usa al crear y al regenerar.
 const dispatchScene = async (scene, { engineId, model }) => {
+    // Estilo sin motor: se resuelve acá mismo, sin crear tarea en el proveedor.
+    if (isEngineless(scene.style)) {
+        return resolveSceneWithStillMotion(scene, { reason: 'estilo Fotográfico elegido por el usuario' });
+    }
     const engine = VIDEO_ENGINES[engineId];
     const dispatchedAt = Date.now();
     const taskId = await createKieVideoTask({
@@ -1820,18 +1899,49 @@ const advance = async (project) => {
     // Una escena que no conservó la fotografía se regenera SOLA antes de entrar
     // al montaje. Es el sistema de preservación visual: no se ensambla un Reel
     // con una escena que ya se sabe que deformó la marca.
-    const infidel = finalScenes.filter(
-        s => s.fidelity?.state === 'failed' && s.attempts < MAX_AUTO_RETRIES
-    );
+    const infidel = finalScenes.filter(s => s.fidelity?.state === 'failed');
     if (infidel.length) {
-        console.warn(`[REEL] ${project.id}: ${infidel.length} escena(s) no conservan la foto; se regeneran.`);
-        await Promise.allSettled(infidel.map(s => relaunchScene(s, { auto: true, reason: 'la escena no conservó la fotografía' })));
-        await appendNote(project.id, `Se regeneraron ${infidel.length} escena(s) que no conservaban la fotografía original.`);
-        const { rows } = await db.query(
-            `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id]
-        );
-        return rows[0];
+        // ── Alternativa segura en vez de regenerar (v4.672) ──
+        //
+        // Una escena con PERSONAS que no conservó la fotografía no se arregla
+        // volviendo a pedírsela al mismo motor: un modelo image-to-video
+        // redibuja lo que anima, así que la segunda pasada vuelve a rehacer los
+        // rostros. Era gastar créditos para repetir el problema.
+        //
+        // Se cae a movimiento 2.5D sobre la propia foto, que conserva la
+        // identidad por construcción —los píxeles son los del original— y
+        // cuesta segundos y cero créditos.
+        //
+        // Sin personas sí tiene sentido reintentar con el motor: ahí lo que
+        // falló fue el encuadre o la estabilidad, no una cara, y el motor puede
+        // acertar en la segunda.
+        const conPersonas = infidel.filter(sc => sc.analysis?.hasPeople);
+        const sinPersonas = infidel.filter(sc => !sc.analysis?.hasPeople && sc.attempts < MAX_AUTO_RETRIES);
+
+        for (const sc of conPersonas) {
+            try {
+                await resolveSceneWithStillMotion(sc, { reason: 'el motor no conservó a las personas' });
+            } catch (e) {
+                console.error(`[REEL] escena ${sc.id} tampoco pudo resolverse con 2.5D:`, e.message);
+            }
+        }
+        if (conPersonas.length) {
+            await appendNote(project.id,
+                `${conPersonas.length} escena(s) con personas se resolvieron animando la fotografía original en vez de regenerarla: el motor no estaba conservando los rostros. Sin costo de créditos.`);
+        }
+
+        if (sinPersonas.length) {
+            await Promise.allSettled(sinPersonas.map(sc => relaunchScene(sc, { auto: true, reason: 'la escena no conservó la fotografía' })));
+            await appendNote(project.id, `Se regeneraron ${sinPersonas.length} escena(s) que no conservaban el encuadre original.`);
+        }
+
+        if (conPersonas.length || sinPersonas.length) {
+            const { rows } = await db.query(
+                `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                [project.id]
+            );
+            return rows[0];
+        }
     }
 
     // ── Música ──

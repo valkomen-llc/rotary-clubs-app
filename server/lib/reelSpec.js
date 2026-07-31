@@ -302,9 +302,35 @@ export const MOTION_STYLES = {
         camera: 'an almost imperceptible drift, the framing nearly locked',
         intensity: 0.2,
         pacing: 'still and quiet'
+    },
+    // ── Sin IA (v4.672) ──
+    //
+    // No va a ningún motor generativo: la fotografía se anima con un
+    // desplazamiento lento de la ventana de encuadre (`renderStillMotion`). Los
+    // píxeles son los de la foto, así que rostros, manos, insignias y textos son
+    // los originales, no una reinterpretación.
+    //
+    // Es el estilo indicado para una foto de grupo institucional, que es donde
+    // más se nota que un modelo redibuja las caras. Cuesta cero créditos y
+    // segundos en vez de minutos.
+    fotografico: {
+        label: 'Fotográfico — sin IA, identidad garantizada',
+        description: 'La fotografía se mueve, no se regenera. Rostros, insignias y textos quedan intactos.',
+        camera: null,
+        intensity: 0.15,
+        pacing: 'still and documentary',
+        // Marca que esta escena NO se despacha a un motor de video.
+        engineless: true,
+        drift: 'up'
     }
 };
-export const DEFAULT_MOTION_STYLE = 'cinematografico';
+// Documental por defecto (v4.672): «cinematográfico» empujaba al motor hacia su
+// propia idea de cine —luz dramática, destellos, partículas— y eso llegó a
+// aparecer en piezas del Distrito. El registro institucional es el documental.
+export const DEFAULT_MOTION_STYLE = 'documental';
+
+// Estilos que se resuelven sin llamar a un motor generativo.
+export const isEngineless = (styleId) => Boolean(MOTION_STYLES[styleId]?.engineless);
 
 // `auto` deja que el director elija el estilo por escena a partir del análisis.
 // Es el default de la UI: el pedido es que el usuario sólo elija tres fotos.
@@ -688,27 +714,42 @@ export const buildScenePrompt = ({
 } = {}) => {
     const s = MOTION_STYLES[style] || MOTION_STYLES[DEFAULT_MOTION_STYLE];
     const parts = [
-        `A ${Math.round(durationSec)}-second cinematic shot, animated from the provided photograph.`,
+        // «documentary», no «cinematic» (v4.672). La palabra importa: pedirle a
+        // un modelo generativo un plano «cinematográfico» es invitarlo a añadir
+        // lo que él entiende por cine —destellos, halos, partículas, luz
+        // dramática—, y eso apareció de verdad en piezas institucionales. El
+        // registro que se busca acá es el de un documental.
+        `A ${Math.round(durationSec)}-second documentary shot, animated from the provided photograph.`,
         // La conservación va primero: es lo que más pesa en un prompt corto.
-        'The photograph is the finished frame: same composition, same framing, same colours, same lighting, same subjects, same wardrobe, same textures. Every element keeps its exact shape and position, and the last frame still matches the photograph.'
+        'The photograph is the finished frame: same composition, same framing, same colours, same lighting, same subjects, same wardrobe, same textures. Every element keeps its exact shape and position, and the last frame still matches the photograph.',
+        // Sobriedad institucional, dicha EN POSITIVO. La regla del sitio es no
+        // enumerar prohibiciones —el modelo se obsesiona con lo prohibido—, así
+        // que en vez de «sin humo ni chispas» se afirma qué luz y qué aire hay:
+        // los del original, y ninguno más.
+        'The only light in the shot is the light already present in the photograph, and the air stays clear. The scene is exactly the room that was photographed, with nothing added to it.'
     ];
 
     // Refuerzo específico según lo que trae la escena. Cada rama nombra lo que
     // se conserva y, cuando corresponde, a qué se le permite moverse.
     if (analysis?.hasBrand || analysis?.hasText) {
-        parts.push('Logos, wordmarks, product labels and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions. Only the camera and the surrounding light move around them.');
+        parts.push('Logos, wordmarks, product labels and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions. Only the camera moves around them.');
     }
     if (analysis?.hasPeople) {
-        parts.push('The people keep their faces, their features and their expressions; they come alive with small natural motion — a breath, a slight shift of weight, a soft blink, hair settling.');
-    }
-    if (analysis?.hasFoodOrLiquid) {
-        parts.push('Organic detail comes alive: gentle steam rising, a slow ripple on the liquid, a soft glisten travelling across the surface.');
+        // Se nombra el TECHO del movimiento, no sólo su existencia. Sin acotarlo
+        // el modelo reinterpreta rostros y manos, que es donde se rompe una foto
+        // institucional de grupo.
+        parts.push('The people keep their faces, their features, their ages, their proportions, their hands and their expressions exactly as photographed. Their only movement is the smallest natural one — a quiet breath, an occasional blink — while everything else about them holds still.');
     }
     if (analysis?.hasNature) {
-        parts.push('The environment breathes: leaves and grass sway lightly, water moves slowly, light filters and shifts through the scene.');
+        parts.push('Foliage and water hold their shape, moving only as much as a light breeze would move them.');
     }
 
-    parts.push(`Camera: ${s.camera}, ${s.pacing}. The motion is smooth and continuous from the first frame to the last, with stable, consistent detail throughout.`);
+    // Un estilo sin motor no tiene descripción de cámara: su movimiento lo hace
+    // FFmpeg sobre la foto, no un modelo. El prompt no llega a usarse, pero
+    // escribir «Camera: null» sería basura guardada en la fila de la escena.
+    if (s.camera) {
+        parts.push(`Camera: ${s.camera}, ${s.pacing}. The motion is smooth and continuous from the first frame to the last, with stable, consistent detail throughout.`);
+    }
 
     if (analysis?.motionHint) parts.push(String(analysis.motionHint));
 

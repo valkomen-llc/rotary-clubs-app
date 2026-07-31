@@ -299,6 +299,72 @@ export const measureAudioDuration = async (buffer) => withTempDir(async (dir) =>
 // modos: doble encode, doble pérdida de generación, y el tiempo agotado que
 // dejaba el montaje sin terminar. No reintroducirla.
 
+// ─── Movimiento 2.5D sobre la fotografía quieta ────────────────────────────
+//
+// Anima una foto SIN pasarla por un modelo generativo: un desplazamiento lento
+// de la ventana de encuadre sobre la imagen sobreescalada. Es el recurso
+// clásico del documental.
+//
+// Por qué existe: un motor image-to-video REDIBUJA lo que anima, y en una foto
+// de grupo eso significa rehacer rostros, manos e insignias. Cuando la medición
+// de fidelidad dice que la escena no conservó a las personas, regenerarla con
+// el mismo motor vuelve a redibujarlas — es gastar créditos para repetir el
+// problema. Esta vía garantiza la identidad porque NO reinterpreta nada: los
+// píxeles son los de la fotografía.
+//
+// Cuesta ~2-8 s y cero créditos, frente a 1-3 minutos y 20 créditos del motor.
+//
+// El sobreescalado (`overscan`) es lo único que se sacrifica: para que la
+// ventana pueda moverse hace falta margen. Con 1,06 el borde que queda fuera es
+// del 6 %, por debajo de lo que se nota en una foto de grupo, y es lo que
+// separa esto de un plano completamente fijo. Con `overscan: 1` no hay
+// movimiento y la foto se ve entera.
+const DRIFTS = {
+    // [x, y] como fracción del margen disponible: de dónde a dónde va la ventana.
+    up:    { from: [0.5, 1.0], to: [0.5, 0.0] },
+    down:  { from: [0.5, 0.0], to: [0.5, 1.0] },
+    left:  { from: [1.0, 0.5], to: [0.0, 0.5] },
+    right: { from: [0.0, 0.5], to: [1.0, 0.5] },
+    still: { from: [0.5, 0.5], to: [0.5, 0.5] }
+};
+
+export const renderStillMotion = async (imageBuffer, {
+    width = 1080, height = 1920, fps = 30,
+    durationSec = 5, drift = 'up', overscan = 1.06,
+    timeoutMs = 90_000
+} = {}) => withTempDir(async (dir) => {
+    const input = path.join(dir, 'still.png');
+    const output = path.join(dir, 'out.mp4');
+    await writeFile(input, imageBuffer);
+
+    const d = DRIFTS[drift] || DRIFTS.up;
+    // El lienzo intermedio: el destino con margen, en números pares (x264 los
+    // exige) y sin exagerar — cuanto mayor, más cuesta escalar.
+    const bigW = Math.round((width * Math.max(1, overscan)) / 2) * 2;
+    const bigH = Math.round((height * Math.max(1, overscan)) / 2) * 2;
+
+    // La ventana se interpola con `t`. `min(t/dur,1)` la deja quieta al final en
+    // vez de salirse si el contenedor entrega un fotograma de más.
+    const p = `min(t/${durationSec},1)`;
+    const x = `(iw-${width})*(${d.from[0]}+(${d.to[0]}-${d.from[0]})*${p})`;
+    const y = `(ih-${height})*(${d.from[1]}+(${d.to[1]}-${d.from[1]})*${p})`;
+
+    const br = targetBitrate(width, height);
+    await runFfmpeg([
+        '-y', '-loop', '1', '-i', input, '-t', String(durationSec),
+        '-filter_complex',
+        // Se escala UNA vez y después sólo se recorta: mover la ventana es
+        // barato, reescalar cada fotograma —lo que hace `zoompan`— no lo es.
+        `scale=${bigW}:${bigH}:force_original_aspect_ratio=increase,crop=${bigW}:${bigH},` +
+        `setsar=1,fps=${fps},crop=${width}:${height}:x='${x}':y='${y}',format=yuv420p`,
+        '-c:v', 'libx264', '-preset', 'veryfast',
+        '-b:v', br.v, '-maxrate', br.max, '-bufsize', br.buf,
+        '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', output
+    ], { timeoutMs, label: 'movimiento 2.5D' });
+
+    return readFile(output);
+});
+
 // ─── Montaje ───────────────────────────────────────────────────────────────
 
 // `xfade` es el fundido real entre dos clips: solapa las dos imágenes durante
