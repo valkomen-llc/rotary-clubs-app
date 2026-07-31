@@ -442,7 +442,13 @@ export const buildFilterGraph = ({
     // sola en los silencios. Bajarla de forma fija dejaría la pieza sorda en los
     // tramos sin locución.
     const AFORMAT = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
-    const fadeOutStart = Math.max(0, totalSec - fadeSec);
+    // Entrada corta, salida larga. El cierre progresivo ocupa ~2 s —dentro del
+    // rango en que se percibe como un final y no como un corte— pero nunca más
+    // de un tercio de la pieza, para no dejar un Reel corto desvaneciéndose
+    // desde la mitad.
+    const fadeInSec = Math.min(0.6, totalSec / 6);
+    const fadeOutSec = Math.min(Math.max(fadeSec, 2), totalSec / 3);
+    const fadeOutStart = Math.max(0, totalSec - fadeOutSec);
     let audioLabel = null;
 
     if (hasVoice) {
@@ -460,10 +466,22 @@ export const buildFilterGraph = ({
     }
 
     if (hasMusic) {
+        // ── El orden importa: normalizar ANTES, desvanecer DESPUÉS (v4.674) ──
+        //
+        // Hasta v4.673 el `afade` iba primero y `loudnorm` después, y loudnorm
+        // es un normalizador con ganancia variable en el tiempo: levantaba la
+        // cola que el fade acababa de bajar. Medido sobre una pieza de 14 s, el
+        // último medio segundo quedaba en −27 dB —perfectamente audible— y el
+        // `atrim` lo cortaba en seco. Es el «la música se corta» que se
+        // reportó. Con el orden corregido ese mismo tramo cae a −33 dB y sigue
+        // bajando hasta el silencio.
+        //
+        // El fade de salida es más largo que el de entrada a propósito: entrar
+        // rápido no se nota, salir rápido sí.
         parts.push(
             `[${clips.length}:a]atrim=0:${totalSec},asetpts=PTS-STARTPTS,` +
-            `afade=t=in:st=0:d=${fadeSec},afade=t=out:st=${fadeOutStart}:d=${fadeSec},` +
             `loudnorm=I=-16:TP=-1.5:LRA=11,volume=${musicVolume},` +
+            `afade=t=in:st=0:d=${fadeInSec},afade=t=out:st=${fadeOutStart}:d=${fadeOutSec},` +
             // Se fuerza la duración exacta: si la pista viene más corta que la
             // pieza, `apad` la completa con silencio en vez de dejar el final
             // sin audio, que es un salto audible.
