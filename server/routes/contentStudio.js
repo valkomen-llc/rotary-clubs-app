@@ -46,7 +46,9 @@ import {
     updateReelCopy,
     restoreReelCopy,
     toggleCopyFavorite,
-    exportReel
+    exportReel,
+    getReelNarration,
+    regenerateNarration
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
@@ -122,6 +124,12 @@ router.patch('/reels/:id/copies', authMiddleware, updateReelCopy);
 router.post('/reels/:id/copies/restore', authMiddleware, restoreReelCopy);
 router.post('/reels/:id/copies/favorite', authMiddleware, toggleCopyFavorite);
 router.get('/reels/:id/export', authMiddleware, exportReel);
+
+// Narración IA (v4.667). Regenerar la voz NO vuelve a renderizar el video:
+// sólo rehace la mezcla, que es lo que permite probar voces sin gastar
+// créditos de video.
+router.get('/reels/:id/narration', authMiddleware, getReelNarration);
+router.post('/reels/:id/narration', authMiddleware, regenerateNarration);
 router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
 router.patch('/reels/:id/scenes/:sceneId', authMiddleware, updateScene);
 router.delete('/reels/:id', authMiddleware, deleteReel);

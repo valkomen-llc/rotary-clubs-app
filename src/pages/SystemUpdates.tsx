@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.666.0 | 2026-07-30 (Copies automáticos por plataforma + guardado en Biblioteca)
-// Cache bust: 2026-07-30q
+// UI V4.667.0 | 2026-07-30 (Contexto de publicación + narración IA sincronizada)
+// Cache bust: 2026-07-30r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.667.0',
+        title: 'El Reel ya entiende el contexto y habla 🎙️',
+        description: 'El Creador de Video incorpora los mismos parámetros estratégicos del Generador de Publicaciones: Tipo de Publicación y Enfoque Rotary. No son etiquetas decorativas — cambian la narrativa del montaje, el texto de cada red y el guion de la voz. Un Reel de «Recaudación de fondos» sobre «Agua y Saneamiento» se cuenta distinto que uno «Estándar» de «Impacto General». Además, cada Reel puede llevar narración en off generada automáticamente: un guion escrito para ser hablado —no el texto del post leído en voz alta— y sincronizado con la duración exacta del video. La voz se mezcla sobre la música con reducción automática, así que se entiende siempre sin que la música desaparezca.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'narracion', 'ia', 'audio'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Tipo de Publicación y Enfoque Rotary en el Creador de Video, con los mismos valores del Generador de Publicaciones.' },
+            { type: 'added', text: 'Narración en off automática, con guion propio escrito para ser hablado.' },
+            { type: 'added', text: 'Sincronización con la duración exacta del Reel: se mide el audio real y se ajusta el guion.' },
+            { type: 'added', text: 'La música baja sola mientras habla la voz y vuelve en los silencios.' },
+            { type: 'added', text: 'Idioma, acento, estilo, voz y velocidad configurables, con español de Colombia por defecto.' },
+            { type: 'added', text: 'El guion se puede escuchar, editar a mano y regenerar sin volver a renderizar el video.' },
+            { type: 'improved', text: 'Los catálogos de tipo y enfoque pasan a estar en un solo sitio, compartidos entre los dos módulos.' },
+            { type: 'fixed', text: 'Corregido un fallo que recortaba el final del Reel cuando llevaba voz.' }
+        ],
+        details: [
+            'La sincronía no se estima: se mide. El sistema sintetiza la voz, mide la duración real del archivo y reescribe el guion con el presupuesto corregido hasta que encaja. La ficha muestra el desvío en segundos.',
+            'No se acelera la voz para que quepa —se nota—. Sólo se admite un ajuste por debajo del umbral audible, y si sobra tiempo se completa con silencio: una pausa antes del último fotograma es invisible; una palabra cortada, no.',
+            'Cuando el motor de voz activo no permite elegir el acento, la interfaz lo dice en vez de prometer un acento que no puede entregar.'
+        ]
+    },
     {
         version: '4.666.0',
         title: 'El Reel llega con los textos ya escritos ✍️',

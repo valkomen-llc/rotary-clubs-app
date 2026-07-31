@@ -29,7 +29,7 @@ import db from './db.js';
 
 let _ready = false;
 
-const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy'];
+const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy', 'ReelNarration'];
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
@@ -66,6 +66,12 @@ export async function ensureReelSchema() {
             "userId" TEXT,
             "userEmail" TEXT,
             "organizationName" TEXT,
+
+            -- Contexto estratégico, el mismo del Generador de Publicaciones
+            -- (v4.667). Enriquece TODA la generación: prompts de escena, copy y
+            -- guion de narración.
+            "publicationType" TEXT NOT NULL DEFAULT 'standard',
+            "interestArea" TEXT NOT NULL DEFAULT 'general',
 
             -- Lo que eligió el usuario
             format TEXT NOT NULL DEFAULT '9:16',
@@ -271,7 +277,57 @@ export async function ensureReelSchema() {
             "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "publicationType" TEXT NOT NULL DEFAULT 'standard';
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "interestArea" TEXT NOT NULL DEFAULT 'general';
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS narration JSONB;
+
         CREATE INDEX IF NOT EXISTS "ReelCopy_project_idx" ON "ReelCopy"("projectId", platform, locale);
+
+        -- Narración, UNA FILA POR VERSIÓN igual que los copies. Cambiar el
+        -- idioma, el acento o el estilo genera otra versión y conserva la
+        -- anterior: es lo que permite volver a una voz que ya gustaba sin
+        -- volver a renderizar el video.
+        CREATE TABLE IF NOT EXISTS "ReelNarration" (
+            id TEXT PRIMARY KEY,
+            "projectId" TEXT NOT NULL REFERENCES "ReelProject"(id) ON DELETE CASCADE,
+            "clubId" TEXT,
+
+            version INTEGER NOT NULL DEFAULT 1,
+            "isCurrent" BOOLEAN NOT NULL DEFAULT TRUE,
+
+            script TEXT NOT NULL,
+            words INTEGER,
+            rationale TEXT,
+            language TEXT NOT NULL DEFAULT 'es-CO',
+            style TEXT NOT NULL DEFAULT 'institucional',
+            gender TEXT NOT NULL DEFAULT 'female',
+            speed DOUBLE PRECISION NOT NULL DEFAULT 1,
+
+            -- Audio
+            "audioUrl" TEXT,
+            "audioS3Key" TEXT,
+            "ttsProvider" TEXT,
+            "voiceId" TEXT,
+
+            -- Lo que midió el Narrative Timing Engine. Se guarda entero porque
+            -- es la prueba de la sincronía: cuántos intentos, qué desvío y si
+            -- entró en tolerancia.
+            timing JSONB,
+            "actualSec" DOUBLE PRECISION,
+            "targetSec" DOUBLE PRECISION,
+            "driftSec" DOUBLE PRECISION,
+            "withinTolerance" BOOLEAN,
+
+            source TEXT NOT NULL DEFAULT 'ai',
+            "scriptProvider" TEXT,
+            "scriptModel" TEXT,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS "ReelNarration_project_idx" ON "ReelNarration"("projectId");
+        CREATE UNIQUE INDEX IF NOT EXISTS "ReelNarration_current_uniq"
+            ON "ReelNarration"("projectId") WHERE "isCurrent";
         -- Un solo copy vigente por plataforma e idioma. El índice parcial es lo
         -- que hace imposible que dos versiones se declaren vigentes a la vez.
         CREATE UNIQUE INDEX IF NOT EXISTS "ReelCopy_current_uniq"
