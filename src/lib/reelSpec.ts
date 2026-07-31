@@ -349,6 +349,22 @@ export interface ReelUsageReport {
     contract: { id: string; label: string; role: string; note: string; allows: string[] }[];
     operations: { id: string; label: string; provider: string; scope: string }[];
     processingMs: number | null;
+    // Diagnóstico del montaje. Administrativo: el comando, el código de salida
+    // y la cola de stderr no se le muestran al usuario del Reel.
+    render?: {
+        environment: {
+            ok: boolean; binary: boolean; executable: boolean; tmpWritable: boolean;
+            version: string | null; error: string | null;
+        };
+        provider: string | null;
+        diagnostics: {
+            provider: string;
+            message: string;
+            code: string | null;
+            ffmpeg: { label: string; args: string[]; exitCode: number | null; timedOut: boolean; stderrTail: string } | null;
+            at: string;
+        }[];
+    };
 }
 
 export interface ReelOptions {

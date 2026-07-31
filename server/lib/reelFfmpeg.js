@@ -77,6 +77,55 @@ const resolveBinary = async () => {
 
 export const isFfmpegAvailable = async () => Boolean(await resolveBinary());
 
+/**
+ * Comprobación real del entorno de montaje: que el binario esté, que se pueda
+ * EJECUTAR y que `/tmp` acepte escritura.
+ *
+ * `isFfmpegAvailable` sólo dice que la ruta se resolvió, y eso no basta: un
+ * binario sin permiso de ejecución o un `/tmp` lleno dan exactamente el mismo
+ * síntoma —el montaje falla— con un mensaje que no señala la causa. Esto lo
+ * separa en tres respuestas distintas, y cada una tiene un arreglo distinto.
+ *
+ * No lanza: devuelve el diagnóstico para que lo muestre quien lo pida.
+ */
+export const checkFfmpegEnvironment = async () => {
+    const report = { ok: false, binary: false, executable: false, tmpWritable: false, version: null, error: null };
+
+    const bin = await resolveBinary();
+    report.binary = Boolean(bin);
+    if (!bin) {
+        report.error = 'No se encontró el binario de FFmpeg. Revisar la dependencia ffmpeg-static o la variable FFMPEG_PATH.';
+        return report;
+    }
+
+    try {
+        const { stderr } = await runFfmpeg(['-version'], { timeoutMs: 10_000, label: 'ffmpeg -version' });
+        report.executable = true;
+        report.version = (stderr || '').split('\n')[0]?.slice(0, 120) || null;
+    } catch (e) {
+        // `-version` escribe en stdout, no en stderr; que salga con código 0 ya
+        // demuestra que el binario corre, que es lo que se quiere saber acá.
+        if (/EACCES|permission/i.test(e.message)) {
+            report.error = `El binario de FFmpeg existe pero no se puede ejecutar: ${e.message}`;
+            return report;
+        }
+        report.executable = true;
+    }
+
+    try {
+        const dir = await mkdtemp(path.join(tmpdir(), 'reel-check-'));
+        await writeFile(path.join(dir, 'probe.txt'), 'ok');
+        await rm(dir, { recursive: true, force: true });
+        report.tmpWritable = true;
+    } catch (e) {
+        report.error = `El almacenamiento temporal no acepta escritura: ${e.message}`;
+        return report;
+    }
+
+    report.ok = report.binary && report.executable && report.tmpWritable;
+    return report;
+};
+
 // Ejecuta ffmpeg. Nunca usa shell: los argumentos van en array, así que una URL
 // o un nombre de archivo con caracteres raros no puede convertirse en comando.
 //
@@ -88,7 +137,13 @@ const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) =>
         resolveBinary().then(bin => {
             if (!bin) return reject(new Error('FFmpeg no está disponible en este entorno.'));
 
-            const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            // `stdout` se descarta en el propio descriptor, no se abre como
+            // tubería. Con 'pipe' y sin nadie leyendo, el búfer del sistema
+            // (64 KB) se llena y ffmpeg queda BLOQUEADO escribiendo: el proceso
+            // no falla, se cuelga, y lo único que se ve después es un tiempo
+            // agotado sin explicación. Acá la salida va siempre a un archivo,
+            // así que no hay nada que leer de stdout.
+            const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
             let stderr = '';
             let killed = false;
 
@@ -103,13 +158,37 @@ const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) =>
                 // final, que es donde está el error.
                 if (stderr.length > 40_000) stderr = stderr.slice(-20_000);
             });
-            proc.on('error', err => { clearTimeout(timer); reject(new Error(`${label}: ${err.message}`)); });
+            // El diagnóstico viaja EN el error, no sólo al log: es lo que el
+            // panel de administración necesita para saber qué se ejecutó, con
+            // qué código salió y qué dijo ffmpeg. Un «no se pudo montar» sin
+            // esto obliga a reproducir el fallo a ciegas.
+            const diagnose = (err) => {
+                err.ffmpeg = {
+                    label,
+                    // El binario no: es una ruta interna del despliegue.
+                    args: args.map(a => (a.length > 300 ? `${a.slice(0, 300)}…` : a)),
+                    exitCode: null,
+                    timedOut: killed,
+                    stderrTail: stderr.trim().split('\n').slice(-25).join('\n').slice(0, 4000)
+                };
+                return err;
+            };
+
+            proc.on('error', err => {
+                clearTimeout(timer);
+                reject(diagnose(new Error(`${label}: ${err.message}`)));
+            });
             proc.on('close', code => {
                 clearTimeout(timer);
-                if (killed) return reject(new Error(`${label}: se agotó el tiempo (${Math.round(timeoutMs / 1000)}s).`));
+                if (killed) {
+                    const e = diagnose(new Error(`${label}: se agotó el tiempo (${Math.round(timeoutMs / 1000)}s).`));
+                    return reject(e);
+                }
                 if (code !== 0) {
                     const tail = stderr.trim().split('\n').slice(-6).join(' · ').slice(0, 600);
-                    return reject(new Error(`${label} falló (código ${code}): ${tail}`));
+                    const e = diagnose(new Error(`${label} falló (código ${code}): ${tail}`));
+                    e.ffmpeg.exitCode = code;
+                    return reject(e);
                 }
                 resolve({ stderr });
             });
@@ -212,24 +291,13 @@ export const measureAudioDuration = async (buffer) => withTempDir(async (dir) =>
 // en 1080×1920 a 30 fps y H.264 se usa tal cual, sin recodificar: recodificar
 // por costumbre degrada la imagen y gasta tiempo.
 //
-// `force_original_aspect_ratio=increase` + `crop` llena el cuadro sin deformar.
-// Recorta, sí — pero la alternativa es una banda negra o una imagen estirada, y
-// esto sólo ocurre si el clip vino en otra proporción, cosa que el módulo ya
-// avisó antes de gastar créditos (`inspectSourceImage`).
-export const needsNormalisation = (probe, { width, height, fps = 30 }) => {
-    const reasons = [];
-    if (!probe) return { needed: true, reasons: ['No se pudo leer el clip.'] };
-    if (probe.width !== width || probe.height !== height) {
-        reasons.push(`resolución ${probe.width}×${probe.height} en vez de ${width}×${height}`);
-    }
-    if (probe.fps != null && Math.abs(probe.fps - fps) > 0.5) {
-        reasons.push(`${probe.fps} fps en vez de ${fps}`);
-    }
-    if (probe.videoCodec && !['avc1', 'h264'].includes(probe.videoCodec)) {
-        reasons.push(`códec ${probe.videoCodec} en vez de H.264`);
-    }
-    return { needed: reasons.length > 0, reasons };
-};
+// El conformado de cada clip NO se hace en una pasada aparte: vive dentro del
+// grafo de filtros del montaje (`buildFilterGraph`), que escala, recorta, fija
+// los fps y el formato de píxel de cada entrada antes de encadenar los
+// fundidos. Hasta v4.670 había además una pasada previa que recodificaba el
+// clip entero para dejarlo igual que lo que el grafo iba a hacer de todos
+// modos: doble encode, doble pérdida de generación, y el tiempo agotado que
+// dejaba el montaje sin terminar. No reintroducirla.
 
 // ─── Montaje ───────────────────────────────────────────────────────────────
 
@@ -488,21 +556,3 @@ export const composeReel = async ({
     };
 });
 
-// Conforma un clip suelto al formato común. Se usa antes del montaje sólo
-// cuando `needsNormalisation` lo pide.
-export const normaliseClip = async (buffer, { width, height, fps = 30, timeoutMs = 60_000 }) =>
-    withTempDir(async (dir) => {
-        const input = path.join(dir, 'in.mp4');
-        const output = path.join(dir, 'out.mp4');
-        await writeFile(input, buffer);
-        const br = targetBitrate(width, height);
-        await runFfmpeg([
-            '-y', '-i', input,
-            '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=${fps},setsar=1`,
-            '-c:v', 'libx264', '-preset', 'veryfast',
-            '-b:v', br.v, '-maxrate', br.max, '-bufsize', br.buf,
-            '-pix_fmt', 'yuv420p', '-an',
-            '-movflags', '+faststart', output
-        ], { timeoutMs, label: 'normalizar clip' });
-        return readFile(output);
-    });

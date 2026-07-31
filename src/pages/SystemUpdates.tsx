@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.670.0 | 2026-07-31 (Generación de Reels en segundo plano)
-// Cache bust: 2026-07-31b
+// UI V4.671.0 | 2026-07-31 (El montaje del Reel vuelve a completarse)
+// Cache bust: 2026-07-31c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.671.0',
+        title: 'El Reel vuelve a montarse — y deja de gastar créditos de más 🔧',
+        description: 'Los Reels llegaban con las tres escenas generadas pero morían al unirlas, con el mensaje «Ningún proveedor de montaje pudo completar el Reel». La causa era una pasada de trabajo que sobraba: antes de unir los clips, cada uno se recodificaba entero para dejarlo en 1080×1920 a 30 fps. Eso ya lo hacía el montaje por sí mismo, con la misma operación exacta, así que era un doble procesado que además agotaba el tiempo disponible y tumbaba la unión. Se eliminó. Ahora los tres clips se unen en una sola pasada, aunque vengan con resoluciones o velocidades distintas, y el resultado sale igual en 1080×1920 vertical. Aparte, se corrigió una comprobación que estaba gastando créditos sin motivo: cuando una foto se adaptaba al formato vertical, el sistema comparaba el video resultante contra la foto ORIGINAL apaisada en vez de contra la adaptada, así que la escena salía siempre «mal» y se regeneraba sola —dos veces— sin que hubiera nada que arreglar. Por último, cuando el montaje falle de verdad, queda guardado el diagnóstico técnico completo para revisarlo desde la ficha.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'fix', 'creditos'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'El montaje fallaba con «ningún proveedor pudo completar el Reel»: se quitó una recodificación previa que sobraba y agotaba el tiempo.' },
+            { type: 'fixed', text: 'Las escenas con foto adaptada se regeneraban solas, sin motivo y gastando créditos: la comprobación comparaba contra la imagen equivocada.' },
+            { type: 'fixed', text: 'Riesgo de bloqueo de FFmpeg por una salida sin leer, que se manifestaba como tiempo agotado sin explicación.' },
+            { type: 'added', text: 'Diagnóstico técnico del montaje —comando, código de salida y salida de FFmpeg— guardado y visible en la pestaña Consumo.' },
+            { type: 'added', text: 'Comprobación del entorno de montaje: binario presente, ejecutable y almacenamiento temporal con escritura.' },
+            { type: 'improved', text: 'El montaje es más rápido: se ahorra una recodificación completa por cada clip.' }
+        ],
+        details: [
+            'Comprobado con tres clips deliberadamente dispares —1280×720 a 30 fps, 1920×1080 a 24 fps y 720×1280 a 25 fps, uno de ellos con pista de audio— más banda sonora: salen unidos en 1080×1920 a 30 fps, 14,00 s, en una sola pasada de 11 segundos.',
+            'No hay riesgo al unir archivos distintos: nada se concatena en crudo. El montaje decodifica cada clip y lo conforma dentro de su propio proceso, que es donde corresponde hacerlo.',
+            'Adaptar el lienzo de una foto se sigue midiendo contra la foto original, pero sólo sobre la región donde ésta vive. Son dos comprobaciones distintas y ahora cada una mira su par correcto.'
+        ]
+    },
     {
         version: '4.670.0',
         title: 'El Reel se genera solo, aunque cierres el navegador ⚙️',

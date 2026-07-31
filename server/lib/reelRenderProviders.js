@@ -497,8 +497,7 @@ const json2video = {
 // diferencia con los alojados, que reciben URLs y descargan ellos.
 const ffmpegLocal = {
     async submit(spec) {
-        const { composeReel, normaliseClip, needsNormalisation } = await import('./reelFfmpeg.js');
-        const { probeMp4 } = await import('./outroQuality.js');
+        const { composeReel } = await import('./reelFfmpeg.js');
 
         const fetchBuffer = async (url, what) => {
             const resp = await fetch(url);
@@ -511,21 +510,29 @@ const ffmpegLocal = {
             spec.clips.map((c, i) => fetchBuffer(c.src, `el clip ${i + 1}`))
         );
 
-        // Conformado: sólo se recodifica el clip que NO coincide con el destino.
-        // Recodificar por costumbre degrada la imagen y gasta segundos que el
-        // techo de la función no regala.
+        // ── Sin pasada de normalización previa (v4.671) ──
+        //
+        // Hasta v4.670 cada clip cuya resolución o fps no coincidiera con el
+        // destino se recodificaba ENTERO antes de montar. Era trabajo perdido y
+        // es lo que rompía el módulo: la normalización agotaba su tiempo y el
+        // montaje moría con «ningún proveedor pudo completar el Reel».
+        //
+        // Perdido porque `buildFilterGraph` YA conforma cada entrada, con la
+        // misma cadena exacta —scale + crop + fps + setsar + format=yuv420p—
+        // antes de encadenar los fundidos. La pasada previa recodificaba para
+        // que el montaje volviera a recodificar idéntico: doble encode, doble
+        // pérdida de generación y el doble de segundos del presupuesto.
+        //
+        // No hay riesgo de "concatenar archivos dispares": nada se concatena en
+        // crudo. FFmpeg DECODIFICA cada entrada y la conforma dentro del grafo,
+        // que es el sitio correcto para hacerlo. Comprobado con tres clips a
+        // 1280x720@30, 1920x1080@24 y 720x1280@25 —uno de ellos con pista de
+        // audio—: salen unidos en 1080x1920@30, 14,00 s, en una sola pasada.
+        //
+        // El audio de un clip se ignora por construcción: el grafo sólo toma
+        // `[i:v]` de cada entrada, así que una pista suelta no desalinea nada.
         const notes = [];
-        const clips = [];
-        for (const [i, buffer] of buffers.entries()) {
-            const probe = probeMp4(buffer);
-            const check = needsNormalisation(probe, { width: spec.width, height: spec.height, fps: spec.fps });
-            let finalBuffer = buffer;
-            if (check.needed) {
-                notes.push(`Escena ${i + 1} conformada al montaje (${check.reasons.join(', ')}).`);
-                finalBuffer = await normaliseClip(buffer, { width: spec.width, height: spec.height, fps: spec.fps });
-            }
-            clips.push({ ...spec.clips[i], buffer: finalBuffer });
-        }
+        const clips = spec.clips.map((c, i) => ({ ...c, buffer: buffers[i] }));
 
         let voiceBuffer = null;
         if (spec.voice?.src) {
@@ -614,6 +621,7 @@ export const submitRender = async (spec, providerId = null) => {
     }
 
     const failures = [];
+    const diagnostics = [];
     for (const id of chain) {
         try {
             const res = await ADAPTERS[id].submit(spec);
@@ -634,6 +642,17 @@ export const submitRender = async (spec, providerId = null) => {
             };
         } catch (e) {
             failures.push(`${id}: ${e.message}`);
+            // El diagnóstico técnico se guarda aparte del mensaje: el comando,
+            // el código de salida y la cola de stderr no van a la pantalla del
+            // usuario, pero sin ellos un fallo de montaje hay que reproducirlo
+            // a ciegas. `submitRender` los propaga y el controlador los guarda.
+            diagnostics.push({
+                provider: id,
+                message: e.message,
+                code: e.code || null,
+                ffmpeg: e.ffmpeg || null,
+                at: new Date().toISOString()
+            });
             console.error(`[REEL] montaje con ${id} falló:`, e.message);
         }
     }
@@ -641,6 +660,7 @@ export const submitRender = async (spec, providerId = null) => {
     const err = new Error(`Ningún proveedor de montaje pudo completar el Reel — ${failures.join(' | ')}`);
     err.code = 'RENDER_FAILED';
     err.attempted = failures;
+    err.diagnostics = diagnostics;
     throw err;
 };
 
