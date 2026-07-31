@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — espejo en el navegador
-// v4.667.0
+// v4.668.0
 //
 // Los CATÁLOGOS (motores, estilos, transiciones, música, formatos) NO se
 // duplican aquí: se piden a `GET /api/content-studio/reels/options`, para que
@@ -299,7 +299,16 @@ export interface ReelOptions {
     defaultTransition: string;
     musicStyles: { id: string; label: string; mood: string; bpm: number }[];
     defaultMusicStyle: string;
-    musicProviders: { id: string; label: string; available: boolean; isDefault: boolean; note?: string }[];
+    musicProviders: {
+        id: string; label: string; available: boolean; isDefault: boolean; note?: string;
+        // 'cleared' = datos de entrenamiento licenciados. 'unclear' = no
+        // divulgados o en litigio. Se muestra en el panel: para una pieza
+        // institucional que se publica en YouTube, es el dato que decide.
+        licensing?: 'cleared' | 'unclear' | string;
+        licensingNote?: string;
+        mode?: 'sync' | 'async' | string;
+    }[];
+    musicChain?: string[];
     render: {
         provider: string | null;
         providerLabel: string | null;

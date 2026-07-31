@@ -62,7 +62,7 @@ import {
     verifyExpansion, judgeExpansion
 } from '../lib/canvasExpansion.js';
 import {
-    MUSIC_PROVIDERS, DEFAULT_MUSIC_PROVIDER, isMusicProviderAvailable,
+    MUSIC_PROVIDERS, DEFAULT_MUSIC_PROVIDER, isMusicProviderAvailable, musicChain,
     startSoundtrack, pollSoundtrack, fetchAudioBuffer
 } from '../lib/reelMusic.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
@@ -364,9 +364,16 @@ export const getReelOptions = async (req, res) => {
             defaultMusicStyle: AUTO_MUSIC_STYLE,
             musicProviders: Object.values(MUSIC_PROVIDERS).map(p => ({
                 id: p.id, label: p.label, note: p.note,
+                // La licencia se expone: quien cambie el proveedor desde el
+                // panel tiene que saber qué está aceptando para una pieza que
+                // se publica en YouTube.
+                licensing: p.licensing,
+                licensingNote: p.licensingNote,
+                mode: p.mode,
                 available: isMusicProviderAvailable(p.id),
                 isDefault: p.id === DEFAULT_MUSIC_PROVIDER
             })),
+            musicChain: musicChain(),
 
             // El montaje es lo único que puede faltar por completo. La UI lo
             // dice de frente en vez de dejar al usuario descubrirlo al final.
@@ -938,21 +945,11 @@ export const createReel = async (req, res) => {
         //    ya está lista cuando los clips terminan.
         if (withMusic) {
             try {
-                const track = await startSoundtrack({
+                const { rows: forMusic } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
+                await resolveSoundtrack(forMusic[0], {
                     style: direction.musicStyle,
-                    durationSec: timing.finalDurationSec,
-                    clubId: req.user?.clubId || null,
-                    metadata: { reelProjectId: projectId }
+                    durationSec: timing.finalDurationSec
                 });
-                await db.query(
-                    `UPDATE "ReelProject"
-                     SET "musicProvider" = $2, "musicTaskId" = $3, "musicUrl" = $4, "musicPrompt" = $5, "updatedAt" = NOW()
-                     WHERE id = $1`,
-                    [projectId, track.provider, track.taskId, track.url, track.prompt || null]
-                );
-                if (track.state === 'failed') {
-                    await appendNote(projectId, `Banda sonora: ${track.failMsg} El Reel se monta sin música.`);
-                }
             } catch (e) {
                 console.error('[REEL] música no se pudo lanzar:', e.message);
                 await appendNote(projectId, `No se pudo generar la banda sonora: ${e.message} El Reel se monta sin música.`);
@@ -1961,21 +1958,24 @@ export const changeMusic = async (req, res) => {
                 [project.id, url, mediaId || null]
             );
         } else if (MUSIC_STYLES[style]) {
-            const track = await startSoundtrack({
-                style,
-                durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
-                clubId: project.clubId,
-                metadata: { reelProjectId: project.id }
-            });
             await db.query(
                 `UPDATE "ReelProject"
-                 SET "musicProvider" = $2, "musicTaskId" = $3, "musicUrl" = $4, "musicPrompt" = $5,
-                     "musicStyle" = $6, direction = jsonb_set(COALESCE(direction,'{}'::jsonb), '{musicStyle}', $7::jsonb),
+                 SET "musicUrl" = NULL, "musicTaskId" = NULL, "musicStyle" = $2,
+                     direction = jsonb_set(COALESCE(direction,'{}'::jsonb), '{musicStyle}', $3::jsonb),
                      config = jsonb_set(config, '{withMusic}', 'true'::jsonb),
-                     "renderJobId" = NULL, status = 'scoring', "updatedAt" = NOW()
+                     "renderJobId" = NULL, "updatedAt" = NOW()
                  WHERE id = $1`,
-                [project.id, track.provider, track.taskId, track.url, track.prompt || null, style, JSON.stringify(style)]
+                [project.id, style, JSON.stringify(style)]
             );
+            const track = await resolveSoundtrack(project, {
+                style,
+                durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC
+            });
+            // Con un proveedor síncrono la pista ya está: no hay nada que
+            // sondear y el montaje puede relanzarse en el acto.
+            if (track.state === 'queued') {
+                await db.query(`UPDATE "ReelProject" SET status = 'scoring', "updatedAt" = NOW() WHERE id = $1`, [project.id]);
+            }
         } else {
             return res.status(400).json({ error: 'Indicá un estilo musical válido, una URL de pista o `mute: true`.' });
         }
@@ -2027,6 +2027,57 @@ export const renderReel = async (req, res) => {
         console.error('[REEL] render:', e);
         res.status(500).json({ error: e.message });
     }
+};
+
+// ─── Banda sonora ──────────────────────────────────────────────────────────
+//
+// `startSoundtrack` devuelve una de tres formas según el proveedor que resolvió
+// la cadena: un buffer (síncrono), una URL (biblioteca) o un id de tarea
+// (asíncrono). Este helper las unifica y deja el proyecto con `musicUrl` puesto
+// cuando ya hay archivo, para que el resto del flujo no tenga que saber por
+// dónde vino.
+const resolveSoundtrack = async (project, { style, durationSec }) => {
+    const track = await startSoundtrack({
+        style,
+        durationSec,
+        clubId: project.clubId,
+        metadata: { reelProjectId: project.id }
+    });
+
+    // Lo que se intentó y falló va al historial: que el principal cayera y lo
+    // salvara el respaldo es exactamente lo que hay que poder ver después.
+    for (const note of track.attempted || []) {
+        await appendNote(project.id, `Música: falló ${note}${track.provider ? `; se usó ${track.provider}.` : '.'}`);
+    }
+
+    let url = track.url;
+    let s3Key = null;
+
+    // Modo síncrono: el audio ya está en memoria. Se sube y queda listo — sin
+    // sondeo y sin URL de proveedor que caduque antes de copiarla.
+    if (track.buffer) {
+        const upload = await uploadBuffer(
+            track.buffer,
+            `clubs/${project.clubId || 'global'}/reels/music/${project.id}-${Date.now()}.${track.extension || 'mp3'}`,
+            track.contentType || 'audio/mpeg'
+        );
+        url = upload.url;
+        s3Key = upload.key;
+    }
+
+    await db.query(
+        `UPDATE "ReelProject"
+         SET "musicProvider" = $2, "musicTaskId" = $3, "musicUrl" = $4,
+             "musicS3Key" = COALESCE($5, "musicS3Key"), "musicPrompt" = $6, "updatedAt" = NOW()
+         WHERE id = $1`,
+        [project.id, track.provider, track.taskId, url, s3Key, track.prompt || null]
+    );
+
+    if (track.state === 'failed') {
+        await appendNote(project.id, `${track.failMsg} El Reel se monta sin música.`);
+    }
+
+    return { ...track, url, s3Key };
 };
 
 // ─── Narración ─────────────────────────────────────────────────────────────
