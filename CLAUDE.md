@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.675
+## Creador de Reels IA — v4.676
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -438,11 +438,22 @@ en `config` sin que el servidor los leyera.
   insignias y textos no se reinterpretan. Cuesta **cero créditos** y 2-7 s,
   frente a 20 créditos y 1-3 min del motor. Es la opción indicada para una foto
   de grupo institucional.
-- **Una escena con PERSONAS que falló la fidelidad NO se regenera: cae a 2.5D.**
-  Un motor image-to-video redibuja lo que anima, así que pedirle la misma escena
-  otra vez vuelve a rehacer las caras — es pagar dos veces por el mismo
-  problema. Sin personas sí se reintenta con el motor: ahí lo que falló fue el
-  encuadre o la estabilidad, y la segunda pasada puede acertar.
+- **El clip animado NO se sustituye por el respaldo 2.5D** (v4.676). Hasta
+  v4.675 una escena con personas que suspendía la fidelidad dos veces se
+  reemplazaba por un paneo sobre la foto quieta. Producía exactamente lo
+  reportado —«una escena animada y dos que se mueven de un lado a otro»— y era
+  irreversible: el rescate de escenas congeladas excluye `still_motion`.
+  Y el criterio se volvía CONTRA el objetivo: una escena con más vida se parece
+  MENOS a la foto de origen, así que era la más propensa a suspender. Se estaba
+  castigando lo que se busca. Ahora el clip se conserva, se marca
+  `needs_review` y la decisión es del usuario, que puede mirar el video. El
+  2.5D queda para la elección expresa de `fotografico`.
+- **Sólo se regenera sola la escena con `brandAltered` o `textIllegible`.** Son
+  los defectos que descalifican una pieza institucional y no admiten criterio
+  estético. El resto es una nota, no un descarte.
+- **Una escena resuelta sin IA se DICE en la línea de tiempo.** Antes se veía
+  igual que las demás y no había forma de saber por qué esa se movía «de un lado
+  a otro» y las otras no.
 - **El 2.5D no declara una nota de fidelidad inventada.** Guarda `state: 'ok'`
   con `method: 'still-motion'` y explica que no hubo modelo que pudiera alterar
   nada. Poner «100 % de fidelidad» sería una medición que no se hizo.
