@@ -46,7 +46,7 @@ import {
 import { directReel } from '../lib/reelDirector.js';
 import {
     probeMp4, inspectSourceImages, validateSceneFile, validateReelFile,
-    checkSceneFidelity, summarizeFidelity, REEL_THRESHOLDS
+    checkSceneFidelity, summarizeFidelity, REEL_THRESHOLDS, FROZEN_LIFE_SCORE
 } from '../lib/reelQuality.js';
 import {
     RENDER_PROVIDERS, activeRenderProvider, availableRenderProviders,
@@ -797,6 +797,30 @@ const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
 
     console.log(`[REEL] escena ${scene.id} resuelta con movimiento 2.5D (${drift}) en ${Date.now() - startedAt}ms${reason ? ` — ${reason}` : ''}`);
     return rows[0];
+};
+
+// Recalcula el total de créditos del proyecto a partir de sus escenas.
+//
+// Existe porque el total se calculaba UNA sola vez, dentro de `createReel`, y en
+// ese momento las escenas que necesitan adaptación de lienzo todavía no se han
+// despachado —se despachan más tarde, en `advance`, cuando su imagen está
+// lista—. Con las tres fotos apaisadas el total quedaba en 0 para siempre, y la
+// ficha decía «0 créditos» de un Reel que sí los había gastado.
+//
+// Es lectura, no cobro: no cambia lo que se consume, sólo lo que se informa.
+const refreshProjectCredits = async (projectId) => {
+    try {
+        await db.query(
+            `UPDATE "ReelProject"
+                SET "creditsEstimated" = (
+                        SELECT COALESCE(SUM("creditsEstimated"), 0)::int
+                          FROM "ReelScene" WHERE "projectId" = $1)
+              WHERE id = $1`,
+            [projectId]
+        );
+    } catch (e) {
+        console.warn(`[REEL] ${projectId} no se pudo recalcular el consumo: ${e.message}`);
+    }
 };
 
 // Lanza la tarea de video de UNA escena. Se usa al crear y al regenerar.
@@ -1849,6 +1873,9 @@ const advance = async (project) => {
         await Promise.allSettled(ready.map(sc =>
             dispatchScene(sc, { engineId: sc.engine || project.engine, model: sc.engineModel || project.engineModel })
         ));
+        // Estas escenas se despachan DESPUÉS de crear el Reel, así que su
+        // consumo no estaba en el total que se calculó entonces.
+        await refreshProjectCredits(project.id);
 
         const stillExpanding = (await fetchScenes(project.id)).some(s => s.status === 'expanding');
         if (stillExpanding) {
@@ -1870,6 +1897,7 @@ const advance = async (project) => {
     if (pending.length) {
         // En paralelo: son independientes y así un sondeo hace avanzar las tres.
         const results = await Promise.allSettled(pending.map(advanceScene));
+        await refreshProjectCredits(project.id);
         results.forEach((r, i) => {
             if (r.status === 'rejected') console.error(`[REEL] escena ${pending[i].id}:`, r.reason?.message);
         });
@@ -1902,6 +1930,38 @@ const advance = async (project) => {
     // Una escena que no conservó la fotografía se regenera SOLA antes de entrar
     // al montaje. Es el sistema de preservación visual: no se ensambla un Reel
     // con una escena que ya se sabe que deformó la marca.
+    // ── Escenas congeladas (v4.675) ──
+    //
+    // Una escena puede conservar la fotografía perfectamente y no tener vida
+    // ninguna: es el defecto que se reportó —«las escenas 2 y 3 permanecen
+    // prácticamente estáticas»— y la comprobación de fidelidad no lo ve, porque
+    // mide justo lo contrario. Con `lifeScore` sí se ve, y una escena congelada
+    // se relanza como cualquier otra que no cumplió.
+    //
+    // Sólo cuenta cuando el modelo de visión pudo emitir el juicio: es el único
+    // que distingue «se movió la gente» de «se movió el encuadre». Sin él no se
+    // regenera a ciegas.
+    const frozen = finalScenes.filter(sc =>
+        sc.fidelity?.state === 'ok'
+        && (sc.fidelity?.lifeSource === 'vision' || sc.fidelity?.lifeSource === 'frames')
+        && sc.fidelity?.lifeScore != null
+        && sc.fidelity.lifeScore < FROZEN_LIFE_SCORE
+        && sc.engine !== 'still_motion'
+        && sc.attempts < MAX_AUTO_RETRIES
+    );
+    if (frozen.length) {
+        console.warn(`[REEL] ${project.id}: ${frozen.length} escena(s) sin movimiento interno; se regeneran.`);
+        await Promise.allSettled(frozen.map(sc =>
+            relaunchScene(sc, { auto: true, reason: 'la escena quedó prácticamente estática' })));
+        await appendNote(project.id,
+            `Se regeneraron ${frozen.length} escena(s) que quedaron sin movimiento interno: el motor conservó la fotografía pero no la animó.`);
+        const { rows } = await db.query(
+            `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [project.id]
+        );
+        return rows[0];
+    }
+
     const infidel = finalScenes.filter(s => s.fidelity?.state === 'failed');
     if (infidel.length) {
         // ── Alternativa segura en vez de regenerar (v4.672) ──

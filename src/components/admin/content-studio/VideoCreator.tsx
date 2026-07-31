@@ -1699,6 +1699,26 @@ const SceneRow: React.FC<{
                                         ? (scene.fidelity.issues[0] || scene.fidelity.reason)
                                         : (scene.fidelity.reason || 'Fidelidad no comprobada')}
                             </p>
+                            {/* Nivel de vida: responde a una pregunta DISTINTA de
+                                la fidelidad. Una escena puede conservar la foto
+                                perfectamente y estar congelada — es el defecto
+                                que motivó la medida, así que se muestra aparte
+                                y no mezclado con la nota de fidelidad. */}
+                            {scene.fidelity.lifeScore != null && (
+                                <p className={`text-[10px] font-bold mt-0.5 pl-4 ${
+                                    scene.fidelity.lifeScore >= 60 ? 'text-emerald-600'
+                                        : scene.fidelity.lifeScore >= 25 ? 'text-amber-600' : 'text-red-600'
+                                }`}>
+                                    Nivel de vida: {scene.fidelity.lifeScore} %
+                                    {scene.fidelity.lifeScore < 25 && ' — la escena quedó prácticamente estática'}
+                                </p>
+                            )}
+                            {scene.fidelity.state === 'ok' && scene.fidelity.lifeScore == null && (
+                                <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
+                                    Nivel de vida sin medir: hace falta el modelo de visión para distinguir
+                                    el movimiento de las personas del movimiento de encuadre.
+                                </p>
+                            )}
                             {scene.fidelity.method === 'sólo estructural' && (
                                 <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
                                     Comparación estructural únicamente: no se pudo consultar el modelo de visión.

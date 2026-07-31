@@ -376,12 +376,68 @@ export const structuralCompare = async (originalBuffer, frameBuffer) => {
     }
 };
 
+/**
+ * Nivel de vida de la escena: cuánto CAMBIA el clip entre su primer fotograma y
+ * el último.
+ *
+ * Compara los fotogramas del clip ENTRE SÍ, no contra la foto original. Son dos
+ * preguntas distintas: la fidelidad mide si el clip sigue siendo la fotografía;
+ * esto mide si dentro del clip pasa algo.
+ *
+ * Lo que mide y lo que NO
+ * -----------------------
+ * Es una medida determinista de cambio, y por sí sola **no distingue** un
+ * desplazamiento de cámara de un movimiento interno: las dos cosas cambian los
+ * píxeles. Sirve para lo que motivó su existencia —detectar la escena
+ * PRÁCTICAMENTE CONGELADA, donde no pasa nada de nada— y esa es la afirmación
+ * que se hace en la interfaz. Distinguir paneo de vida es un juicio semántico y
+ * lo emite el modelo de visión (`internalMotion`), que sí puede mirar QUÉ se
+ * movió.
+ *
+ * Devuelve 0-100 para poder mostrarlo como porcentaje. `null` si no se pudo
+ * medir: menos de dos fotogramas, o sharp falló.
+ */
+export const measureSceneLife = async (frameBuffers = []) => {
+    if (!Array.isArray(frameBuffers) || frameBuffers.length < 2) {
+        return { score: null, pairs: [], reason: 'Hacen falta al menos dos fotogramas para medir el cambio.' };
+    }
+    try {
+        const sharp = (await import('sharp')).default;
+        const hashes = await Promise.all(frameBuffers.map(b => perceptualHash(sharp, b)));
+        const pairs = [];
+        for (let i = 1; i < hashes.length; i++) {
+            const sim = hashSimilarity(hashes[i - 1], hashes[i]);
+            if (sim != null) pairs.push(Number((1 - sim).toFixed(4)));
+        }
+        if (!pairs.length) return { score: null, pairs: [], reason: 'No se pudo comparar los fotogramas.' };
+
+        // El cambio ACUMULADO entre el primero y el último es lo que mejor
+        // representa «pasó algo»: un movimiento lento y continuo da diferencias
+        // pequeñas entre fotogramas consecutivos pero grande de punta a punta.
+        const endToEnd = 1 - (hashSimilarity(hashes[0], hashes[hashes.length - 1]) ?? 1);
+        const change = Math.max(endToEnd, ...pairs);
+
+        // 0,12 de diferencia de huella entre extremos es, en las pruebas, el
+        // punto en que un clip deja de parecer una foto fija. Se escala a 100
+        // ahí para que la cifra sea legible, no porque 0,12 sea «perfecto».
+        const score = Math.round(Math.min(1, change / 0.12) * 100);
+        return { score, pairs, endToEnd: Number(endToEnd.toFixed(4)) };
+    } catch (e) {
+        return { score: null, pairs: [], reason: `No se pudo medir el movimiento: ${e.message}` };
+    }
+};
+
+// Por debajo de esto la escena se considera congelada: no es «poco
+// movimiento», es «no pasa nada».
+export const FROZEN_LIFE_SCORE = 25;
+
 const FIDELITY_SYSTEM = `Eres un control de calidad de vídeo publicitario. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA la fotografía ORIGINAL, a la DERECHA un FOTOGRAMA del vídeo que una IA generó a partir de ella. Dices si el vídeo conservó la fotografía o la reinterpretó.
 
 Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin bloques de código:
 
 {
   "score": 0..10,
+  "internalMotion": 0..10,
   "deformation": boolean,
   "identityDrift": boolean,
   "brandAltered": boolean,
@@ -394,6 +450,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 }
 
 - "score" 10 = la mitad derecha es indistinguible de la izquierda salvo por el movimiento natural; 7 = diferencias mínimas aceptables; por debajo de 7 = hay que regenerar.
+- "internalMotion" responde a OTRA pregunta, independiente de "score": ¿la escena VIVE? 10 = las personas u objetos se han movido de verdad —una cabeza girada, una mano en otra posición, una expresión distinta, tela o vegetación desplazada—. 5 = apenas se aprecia algún cambio. 0 = la mitad derecha es la misma escena congelada, o lo único que cambió es el ENCUADRE (la imagen se ve desplazada, acercada o recortada, pero nadie se ha movido dentro de ella). Un paneo o un zoom, por marcado que sea, es 0: no es vida, es cámara.
 - Se ESPERA movimiento: un cambio de postura, una mano que se mueve o una hoja que se agita NO son defectos. Sí lo son un rostro que cambia de persona, un logotipo redibujado o un texto que ya no dice lo mismo.
 - "textLeft" y "textRight": transcribe literalmente lo que se lea en cada mitad. Si no hay texto, cadena vacía. Es lo que permite detectar que un cartel cambió de contenido.
 - "brandAltered" es true si un logotipo, una marca o un texto institucional cambió de forma, tipografía o color.
@@ -465,6 +522,13 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
             const score = Number(raw.score);
             semantic = {
                 score: Number.isFinite(score) ? Math.min(10, Math.max(0, score)) : null,
+                // Cuánta VIDA vio el modelo en ese fotograma respecto del
+                // original. Es independiente de `score`: una escena puede
+                // conservar la foto perfectamente (score 10) y estar congelada
+                // (internalMotion 0), que es exactamente el defecto que se
+                // busca detectar.
+                internalMotion: Number.isFinite(Number(raw?.internalMotion))
+                    ? Math.min(10, Math.max(0, Number(raw.internalMotion))) : null,
                 deformation: raw.deformation === true,
                 identityDrift: raw.identityDrift === true,
                 brandAltered: raw.brandAltered === true,
@@ -507,6 +571,13 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
 
     const results = await Promise.all(frames.map(frame => checkFrame({ originalBuffer, frame, analysis })));
 
+    // Cuánto cambia el clip ENTRE sus propios fotogramas. Es determinista y no
+    // depende de ningún proveedor, así que sirve de guarda del caso extremo:
+    // fotogramas idénticos significan clip congelado, diga lo que diga el
+    // modelo. No sustituye su juicio —no distingue paneo de vida— pero un cero
+    // aquí es incontestable.
+    const life = await measureSceneLife(frames.map(f => f.buffer).filter(Boolean));
+
     const semantics = results.map(r => r.semantic).filter(Boolean);
     const structurals = results.map(r => r.structural).filter(s => s?.score != null);
 
@@ -521,6 +592,12 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     };
 
     const semanticScore = semantics.length ? Math.min(...semantics.map(s => s.score ?? 10)) : null;
+    // La vida se toma del fotograma que MÁS se movió, no del que menos: basta
+    // con que la escena viva en algún momento para que no esté congelada. Es lo
+    // contrario del criterio de fidelidad, donde un solo fotograma malo
+    // condena la escena — y es a propósito: son dos preguntas opuestas.
+    const motionSeen = semantics.map(s => s.internalMotion).filter(v => v != null);
+    const semanticMotion = motionSeen.length ? Math.max(...motionSeen) : null;
     const structuralScore = structurals.length ? Math.min(...structurals.map(s => s.score)) : null;
 
     // Texto: si el original tenía texto y en el vídeo se conserva menos de la
@@ -567,6 +644,17 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         structuralScore,
         method: semantics.length ? 'estructural + visión' : 'sólo estructural',
         framesChecked: results.length,
+        // Nivel de vida: 0-100. Lo emite el modelo de visión cuando está —es
+        // quien puede distinguir «se movió la gente» de «se movió el
+        // encuadre»—; sin él queda `null` y la ficha lo dice, en vez de
+        // presentar la medida determinista como si respondiera esa pregunta.
+        // Fotogramas idénticos mandan sobre cualquier opinión: si el clip no
+        // cambia un solo píxel entre el primero y el último, está congelado.
+        lifeScore: life.score === 0 ? 0
+            : (semanticMotion != null ? Math.round(semanticMotion * 10) : null),
+        lifeSource: life.score === 0 ? 'frames'
+            : (semanticMotion != null ? 'vision' : null),
+        lifeChange: life.score,
         ...flags,
         text: worstText != null ? { keptRatio: worstText, samples: textChecks.slice(0, 2) } : null,
         issues,

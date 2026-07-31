@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.674
+## Creador de Reels IA — v4.675
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -361,6 +361,24 @@ en `config` sin que el servidor los leyera.
   reintroducir la rama de vapor/brillo ni la palabra «cinematic»**, y no
   arreglarlo con una lista de prohibiciones: la regla del sitio es que el modelo
   se obsesiona con lo prohibido.
+- **FIDELIDAD y NIVEL DE VIDA son preguntas OPUESTAS** (v4.675). La primera
+  penaliza el cambio respecto de la foto; la segunda lo exige. El control de
+  calidad sólo medía la primera, así que una escena congelada pasaba con nota
+  perfecta — es el defecto que se reportó. `lifeScore` (0-100) tiene dos
+  fuentes: `internalMotion` del modelo de visión, que es el único capaz de
+  distinguir «se movió la gente» de «se movió el encuadre» (un paneo puntúa 0
+  a propósito), y `measureSceneLife`, determinista sobre los fotogramas del
+  propio clip, que manda cuando da 0 —fotogramas idénticos es congelado, diga
+  lo que diga el modelo—. Por debajo de `FROZEN_LIFE_SCORE` la escena se
+  relanza. **No mezclar las dos notas en una sola**: se anulan.
+- **La vida se toma del fotograma que MÁS se movió**, al revés que la fidelidad,
+  donde un solo fotograma malo condena la escena. Basta con que la escena viva
+  en algún momento.
+- **El total de créditos del proyecto se RECALCULA** (`refreshProjectCredits`),
+  no se calcula una vez. Se computaba dentro de `createReel`, cuando las escenas
+  que necesitan adaptación aún no se han despachado —se despachan luego, en
+  `advance`—: con las tres fotos apaisadas el total quedaba en 0 para siempre y
+  la ficha decía «0 créditos» de un Reel que sí los gastó.
 - **La CÁMARA está fija; lo que se mueve es la ESCENA** (v4.674). Hasta v4.673
   cada estilo pedía un desplazamiento —`a slow continuous dolly`, `a confident
   push-in`, `a gentle orbit`, `a brisk lateral slider`— y eso SUSTITUÍA a la
