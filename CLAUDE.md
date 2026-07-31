@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.673
+## Creador de Reels IA — v4.674
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -361,6 +361,28 @@ en `config` sin que el servidor los leyera.
   reintroducir la rama de vapor/brillo ni la palabra «cinematic»**, y no
   arreglarlo con una lista de prohibiciones: la regla del sitio es que el modelo
   se obsesiona con lo prohibido.
+- **La CÁMARA está fija; lo que se mueve es la ESCENA** (v4.674). Hasta v4.673
+  cada estilo pedía un desplazamiento —`a slow continuous dolly`, `a confident
+  push-in`, `a gentle orbit`, `a brisk lateral slider`— y eso SUSTITUÍA a la
+  animación: el resultado era una fotografía con paneo. Ahora los ocho estilos
+  declaran `locked off` y lo que los distingue es el CARÁCTER de la vida dentro
+  del cuadro (`motion`). `orbital` y `aereo` se retiraron por ser movimientos de
+  cámara puros; entraron `conversacion` y `ceremonial`. **No reintroducir ejes
+  de cámara en `MOTION_STYLES`.**
+- **El `motionHint` es la instrucción POR FOTO y es lo que evita que las tres
+  escenas se muevan igual.** El análisis lo escribe mirando esa imagen: qué
+  hacen esas personas, hacia dónde miran, qué hacen sus manos. Ojo: hasta v4.673
+  ese mismo campo pedía «vapor, agua, hojas, tela, luz, **o el movimiento de
+  cámara**» — por ahí volvían a entrar las dos cosas que se habían quitado del
+  prompt principal. Se acota en positivo («sólo lo que YA está en la
+  fotografía»), sin lista negra.
+- **En el grafo de audio, `loudnorm` va ANTES del `afade`** (v4.674). Al revés
+  —que es como estaba— el normalizador levanta la cola que el fade acaba de
+  bajar y la música se corta en seco. Medido sobre una pieza de 14 s: el último
+  medio segundo quedaba en −27 dB; con el orden corregido el tramo 13-13,9 s
+  cae a −29,8 dB y sigue bajando. El fade de salida es de ~2 s, acotado a un
+  tercio de la pieza; el de entrada, 0,6 s — entrar rápido no se nota, salir
+  rápido sí.
 - **IDENTIDAD y MOVIMIENTO son dos ejes distintos, y confundirlos congela la
   escena** (v4.673). Es el error que siguió a la corrección del humo: al acotar
   el movimiento con *«the smallest natural one … while everything else about

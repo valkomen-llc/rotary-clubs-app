@@ -34,9 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.673.0 | 2026-07-31 (La fotografía cobra vida)
-// Cache bust: 2026-07-31e
+// UI V4.674.0 | 2026-07-31 (Cámara fija y música con cierre progresivo)
+// Cache bust: 2026-07-31f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.674.0',
+        title: 'La cámara se queda quieta: ahora lo que se mueve es la escena 🎥',
+        description: 'Quedaba una causa de fondo por corregir. Cada estilo de animación le pedía a la IA un movimiento de cámara concreto —un travelling lento, un acercamiento, una órbita alrededor del motivo, un desplazamiento lateral—, y eso es justo lo que sobraba: la cámara se movía en lugar de moverse la escena, y el resultado se veía como una fotografía con paneo. Ahora los ocho estilos declaran la cámara FIJA, y lo que los distingue es el carácter de la vida dentro del cuadro: «Conversación» hace que las personas se miren, asientan y se respondan; «Ceremonial» da gestos contenidos y atención al centro; «Enérgico» pone a varias personas activas a la vez; «Sereno» deja sólo la respiración y el aire. Se retiraron «Orbital» y «Aéreo», que eran movimientos de cámara puros. Además, cada fotografía recibe ahora su propia instrucción: el análisis previo describe qué están haciendo esas personas en concreto —hacia dónde miran, qué hacen sus manos, con quién interactúan— y eso viaja al motor, en vez de la misma indicación genérica para las tres escenas. También se corrigió la música: terminaba de golpe. El desvanecimiento final estaba aplicado ANTES del normalizador de volumen, que volvía a levantar la cola que el desvanecimiento acababa de bajar. Ahora la música cierra con un descenso progresivo de 2 segundos hasta el silencio exacto del último fotograma.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'audio', 'fix'],
+        type: 'major',
+        changes: [
+            { type: 'fixed', text: 'Los estilos pedían movimiento de cámara y sustituían la animación: ahora la cámara está fija en todos.' },
+            { type: 'changed', text: 'Los estilos se distinguen por el tipo de vida de la escena, no por cómo se mueve el objetivo.' },
+            { type: 'added', text: 'Estilos «Conversación» y «Ceremonial», pensados para reuniones y actos institucionales.' },
+            { type: 'removed', text: '«Orbital» y «Aéreo» se retiraron: eran movimientos de cámara puros.' },
+            { type: 'improved', text: 'Cada fotografía recibe su instrucción específica según lo que hacen las personas que aparecen en ella.' },
+            { type: 'fixed', text: 'La música terminaba cortada: el desvanecimiento se aplicaba antes del normalizador y éste lo deshacía.' },
+            { type: 'improved', text: 'La banda sonora cierra con un descenso progresivo de 2 segundos hasta el silencio.' }
+        ],
+        details: [
+            'Medido sobre una pieza real de 14 segundos: la música pasa de −19,5 dB a mitad del Reel a −29,8 dB en el último segundo, bajando hasta el silencio. Antes el último medio segundo quedaba en −27 dB y se cortaba en seco.',
+            'La instrucción por fotografía también dejó de sugerir movimiento de cámara: el análisis previo lo pedía explícitamente, y por ahí volvía a entrar lo que se había quitado del prompt principal.',
+            'Los Reels ya generados con los estilos retirados siguen funcionando: al abrirlos se muestran con el estilo documental, sin perder el video.'
+        ]
+    },
     {
         version: '4.673.0',
         title: 'La fotografía cobra vida: personas que respiran, se miran y gesticulan 🫧',

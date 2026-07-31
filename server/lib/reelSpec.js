@@ -245,61 +245,82 @@ export const isEngineAvailable = (engineId) => {
 // (dolly, orbit, slider, push in, pull out, paneo). La contención va por otro
 // lado: `preserve`, que es lo que se le dice al modelo que no puede cambiar, y
 // se refuerza cuando el análisis detecta marca, texto o producto.
+// ── La CÁMARA está fija; lo que se mueve es la ESCENA (v4.674) ──
+//
+// Hasta v4.673 cada estilo pedía un desplazamiento de cámara —dolly, push-in,
+// orbit, slider— y eso es exactamente lo que el módulo NO debe hacer: el
+// movimiento de cámara sustituía a la animación en vez de acompañarla, y el
+// resultado se veía como una foto con paneo.
+//
+// Ahora `camera` describe una cámara quieta en todos los estilos, y lo que
+// distingue a uno de otro es el CARÁCTER de la vida dentro del cuadro: qué se
+// mueve, con cuánta amplitud y a qué ritmo. `motion` es esa descripción.
+//
+// `intensity` deja de ser «cuánto se mueve la cámara» y pasa a ser «cuánta
+// actividad hay en la escena».
 export const MOTION_STYLES = {
     cinematografico: {
         label: 'Cinematográfico',
-        description: 'Movimiento lento y continuo, con profundidad de campo marcada.',
-        camera: 'a slow, continuous dolly with shallow depth of field',
+        description: 'Luz suave y ritmo pausado. La escena respira despacio.',
+        camera: 'The camera is locked off on a tripod: the framing does not move at all',
+        motion: 'the movement is unhurried — slow breaths, unhurried glances, gestures that take their time',
         intensity: 0.5,
-        pacing: 'unhurried and deliberate',
-        isDefault: true
+        pacing: 'unhurried and deliberate'
     },
     documental: {
         label: 'Documental',
-        description: 'Cámara al hombro, apenas viva. Sensación de registro real.',
-        camera: 'a subtle handheld drift, as if lightly held',
-        intensity: 0.4,
-        pacing: 'natural and observational'
+        description: 'Registro real: la gente sigue a lo suyo, la cámara observa.',
+        camera: 'The camera is locked off and observes without moving',
+        motion: 'everyone simply carries on with what they were doing, unaware of being filmed',
+        intensity: 0.55,
+        pacing: 'natural and observational',
+        isDefault: true
     },
     publicitario: {
         label: 'Publicitario',
-        description: 'Acercamiento firme al motivo principal, luz que realza.',
-        camera: 'a confident push-in towards the main subject',
+        description: 'El motivo principal cobra vida y el resto lo acompaña.',
+        camera: 'The camera is locked off; the framing stays exactly as photographed',
+        motion: 'the main subject is the one that comes alive most clearly, while the rest of the scene moves more quietly behind',
         intensity: 0.6,
-        pacing: 'assured and product-forward'
+        pacing: 'assured and clear'
     },
-    orbital: {
-        label: 'Orbital',
-        description: 'La cámara rodea el motivo revelando su volumen.',
-        camera: 'a gentle orbit around the main subject, revealing its volume',
-        intensity: 0.65,
-        pacing: 'smooth and revealing'
+    conversacion: {
+        label: 'Conversación',
+        description: 'Las personas se miran, asienten y hablan entre ellas.',
+        camera: 'The camera is locked off and does not move',
+        motion: 'the people talk quietly among themselves: heads turn towards one another, they nod, they answer, small laughs pass between them',
+        intensity: 0.7,
+        pacing: 'social and warm'
     },
-    aereo: {
-        label: 'Aéreo',
-        description: 'Desplazamiento amplio y ascendente. Ideal para paisaje.',
-        camera: 'a wide rising slider, opening the frame upward',
-        intensity: 0.6,
-        pacing: 'expansive and sweeping'
+    ceremonial: {
+        label: 'Ceremonial',
+        description: 'Actos y entregas: gestos contenidos y atención al centro.',
+        camera: 'The camera is locked off, framing the moment as it was photographed',
+        motion: 'the movement is composed and attentive — measured gestures, glances towards what is being presented, quiet acknowledgement between the people',
+        intensity: 0.45,
+        pacing: 'formal and composed'
     },
     intimo: {
         label: 'Íntimo',
-        description: 'Acercamiento corto y suave a las personas.',
-        camera: 'a short, tender push-in on the people in frame',
+        description: 'Cercanía: gestos pequeños, miradas, atención a una persona.',
+        camera: 'The camera is locked off and stays close, exactly as framed',
+        motion: 'the movement is small and human — a soft blink, a breath, a hand that shifts, an unhurried look',
         intensity: 0.35,
         pacing: 'close and human'
     },
     energico: {
         label: 'Enérgico',
-        description: 'Desplazamiento lateral rápido, ritmo alto.',
-        camera: 'a brisk lateral slider',
-        intensity: 0.75,
-        pacing: 'punchy and quick'
+        description: 'Actividad viva: varias personas moviéndose a la vez.',
+        camera: 'The camera is locked off while the scene stays busy in front of it',
+        motion: 'several people are active at once, each doing their own thing, hands and bodies busy with the task',
+        intensity: 0.8,
+        pacing: 'lively and busy'
     },
     sereno: {
         label: 'Sereno',
-        description: 'Casi quieto. Sólo respira la luz y el ambiente.',
-        camera: 'an almost imperceptible drift, the framing nearly locked',
+        description: 'Casi quieto. Sólo respiración y el aire del lugar.',
+        camera: 'The camera is locked off completely',
+        motion: 'almost nothing moves beyond breathing, a blink, and the air stirring fabric and hair',
         intensity: 0.2,
         pacing: 'still and quiet'
     },
@@ -767,14 +788,25 @@ export const buildScenePrompt = ({
         parts.push('Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.');
     }
 
+    // Lo que hace ESTA foto en concreto, según lo que vio el análisis. Va antes
+    // que la cámara porque es la instrucción principal: sin ella, las tres
+    // escenas reciben la misma descripción genérica y se mueven igual.
+    if (analysis?.motionHint) parts.push(String(analysis.motionHint));
+
     // Un estilo sin motor no tiene descripción de cámara: su movimiento lo hace
     // FFmpeg sobre la foto, no un modelo. El prompt no llega a usarse, pero
     // escribir «Camera: null» sería basura guardada en la fila de la escena.
     if (s.camera) {
-        parts.push(`Camera: ${s.camera}, ${s.pacing}. The motion is smooth and continuous from the first frame to the last, with stable, consistent detail throughout.`);
+        // La cámara se declara QUIETA y el movimiento se atribuye a la escena.
+        // Es el punto del módulo: un desplazamiento de cámara sustituyendo a la
+        // animación da una fotografía con paneo, que es justo lo que no se
+        // quiere. Se dice en la misma frase para que no queden como dos ideas
+        // sueltas que el modelo pueda promediar.
+        parts.push(
+            `${s.camera}, so every bit of movement in the shot comes from the people and the room themselves, never from the lens: ${s.motion}, ${s.pacing}. ` +
+            'The movement runs smoothly and continuously from the first frame to the last, with stable, consistent detail throughout.'
+        );
     }
-
-    if (analysis?.motionHint) parts.push(String(analysis.motionHint));
 
     // El audio nativo sólo se pide si el motor lo tiene Y no vamos a poner
     // música encima: dos pistas compitiendo es peor que ninguna. Cuando hay

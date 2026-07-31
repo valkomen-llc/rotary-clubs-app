@@ -50,7 +50,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "energy": 1..5,
   "narrativeRole": "opening" | "development" | "closing",
   "weight": 0.5..1.5,
-  "motionHint": "una frase EN INGLÉS describiendo qué elemento concreto puede moverse en esta foto",
+  "motionHint": "una frase EN INGLÉS describiendo qué hacen las PERSONAS de esta foto concreta durante los próximos segundos",
   "suggestedStyle": "<id de estilo>",
   "riskNotes": ["avisos en español sobre qué es delicado de animar acá"]
 }
@@ -60,7 +60,7 @@ Reglas:
 - "hasText" es true si hay texto legible de cualquier tipo.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
 - "weight" es cuánto tiempo merece la escena: 1.0 es lo normal, 1.4 si tiene mucho que mostrar, 0.7 si es simple.
-- "motionHint" describe SÓLO lo que puede moverse sin alterar el contenido: vapor, agua, hojas, tela, luz, o el movimiento de cámara. En inglés porque alimenta el prompt del modelo.
+- "motionHint" es la instrucción específica de ESTA foto y es lo más importante que devuelves: describe en inglés qué continúan haciendo las personas que aparecen —la acción concreta que ya están realizando, hacia dónde miran, qué hacen sus manos, con quién interactúan—. Escríbelo como la continuación natural del instante fotografiado: "the two women keep sorting the boxes while the man beside them looks over and says something". La cámara está fija: describe lo que hace la gente, nunca lo que hace el objetivo. Y describe únicamente lo que YA está en la fotografía — si algo no se ve en ella, no existe en el plano. Si no hay personas, di qué se mueve del entorno: tela, hojas, banderas, agua.
 - "riskNotes" en español: qué podría deformarse (rostros de perfil, texto pequeño, manos, logotipos finos). Lista vacía si no hay riesgo.`;
 
 // El director elige sólo entre estilos que ANIMAN. `fotografico` no entra
