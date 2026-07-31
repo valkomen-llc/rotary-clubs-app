@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.675.0 | 2026-07-31 (Nivel de vida de la escena)
-// Cache bust: 2026-07-31g
+// UI V4.676.0 | 2026-07-31 (El clip animado se conserva)
+// Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.676.0',
+        title: 'Ya no se reemplazan escenas animadas por un desplazamiento de foto 🔁',
+        description: 'Aquí está la razón de que unas escenas salieran animadas y otras se movieran «de un lado a otro»: no era que el motor fallara en unas y acertara en otras. Las tres pasaban por la IA, pero el control de calidad descartaba algunas y las sustituía por un recurso de respaldo —la fotografía quieta con un desplazamiento de encuadre— pensado para proteger los rostros. Ese respaldo tenía dos problemas. El primero, que el criterio se volvía en contra del objetivo: una escena que cobra MÁS vida se parece MENOS a la foto original, así que era justamente la más propensa a ser descartada; se estaba castigando lo que se busca. El segundo, que la sustitución era irreversible: una vez convertida en desplazamiento, esa escena ya no volvía a intentarse. Ahora el clip animado se conserva siempre. Si se aparta de la fotografía más de lo habitual, se anota y se marca para revisión, pero el video animado es el que va al Reel, y la decisión de rehacerlo es de quien puede mirarlo. La única excepción son los defectos que sí descalifican una pieza institucional: un logotipo redibujado o un texto ilegible se regeneran igual que antes. Y el desplazamiento sin IA queda reservado a lo que siempre fue: el estilo «Fotográfico», cuando se elige a propósito. Además, cada escena resuelta sin IA ahora lo dice en la línea de tiempo, en vez de parecer una escena normal que no se movió.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Escenas animadas se reemplazaban por un desplazamiento de la foto quieta: por eso unas cobraban vida y otras no.' },
+            { type: 'changed', text: 'El clip animado se conserva aunque se aparte de la fotografía; se marca para revisión en vez de descartarse.' },
+            { type: 'changed', text: 'Sólo se regenera automáticamente cuando un logotipo o un texto quedó alterado.' },
+            { type: 'added', text: 'La línea de tiempo indica qué escena se resolvió sin IA, en vez de parecer una escena normal.' }
+        ],
+        details: [
+            'El respaldo sin IA sigue existiendo y sigue siendo útil: garantiza la identidad porque los píxeles son los de la fotografía. Pero se aplica cuando se elige el estilo «Fotográfico», no como sustitución automática.',
+            'Una escena marcada para revisión se puede regenerar una a una desde la línea de tiempo, sin rehacer el Reel completo.',
+            'El Nivel de vida introducido en la versión anterior sigue funcionando: una escena que el motor deja congelada se relanza igual.'
+        ]
+    },
     {
         version: '4.675.0',
         title: 'Nivel de vida: el sistema ahora detecta una escena estática y la rehace 🔍',

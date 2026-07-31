@@ -1699,6 +1699,17 @@ const SceneRow: React.FC<{
                                         ? (scene.fidelity.issues[0] || scene.fidelity.reason)
                                         : (scene.fidelity.reason || 'Fidelidad no comprobada')}
                             </p>
+                            {/* Una escena resuelta sin IA se dice con todas las
+                                letras: hasta v4.675 se veía como cualquier otra
+                                y no había forma de saber por qué esa se movía
+                                «de un lado a otro» y las demás no. */}
+                            {scene.engine === 'still_motion' && (
+                                <p className="text-[10px] font-bold text-indigo-600 mt-1 flex items-start gap-1">
+                                    <Wand2 className="w-3 h-3 flex-shrink-0 mt-px" />
+                                    Sin IA: es la fotografía con un desplazamiento de encuadre. Identidad intacta,
+                                    pero la escena no se anima.
+                                </p>
+                            )}
                             {/* Nivel de vida: responde a una pregunta DISTINTA de
                                 la fidelidad. Una escena puede conservar la foto
                                 perfectamente y estar congelada — es el defecto

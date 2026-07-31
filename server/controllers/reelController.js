@@ -1978,36 +1978,51 @@ const advance = async (project) => {
         // Sin personas sí tiene sentido reintentar con el motor: ahí lo que
         // falló fue el encuadre o la estabilidad, no una cara, y el motor puede
         // acertar en la segunda.
-        // El motor tiene UNA segunda oportunidad antes del respaldo (v4.673).
-        // En v4.672 una escena con personas caía a 2.5D en el primer fallo, y
-        // eso dejaba fotos quietas dentro del Reel sin haberle dado al motor
-        // una pasada con el prompt corregido. El respaldo es una red, no el
-        // camino habitual: si tras el reintento sigue sin conservar los
-        // rostros, entonces sí — insistir una tercera vez es pagar por el mismo
-        // resultado.
-        const conPersonas = infidel.filter(sc => sc.analysis?.hasPeople && sc.attempts >= 1);
-        const reintentables = infidel.filter(sc =>
-            sc.attempts < MAX_AUTO_RETRIES && (!sc.analysis?.hasPeople || sc.attempts < 1));
-        const sinPersonas = reintentables;
+        // ── El respaldo 2.5D deja de sustituir al clip animado (v4.676) ──
+        //
+        // Hasta v4.675 una escena con personas que fallaba la fidelidad DOS
+        // veces se reemplazaba por un paneo sobre la foto quieta. El resultado
+        // es exactamente lo reportado: «una escena animada y dos que se mueven
+        // de un lado a otro». Y era irreversible — el rescate de escenas
+        // congeladas excluye a `still_motion`, así que ese paneo se quedaba.
+        //
+        // Peor: el criterio se volvía en contra del objetivo. Una escena que
+        // cobró MÁS vida se parece MENOS a la foto de origen, así que es la más
+        // propensa a suspender la fidelidad. Se estaba castigando justo lo que
+        // se busca, y sustituyéndolo por lo que no se busca.
+        //
+        // Ahora el clip animado SE CONSERVA. Lo que falla la fidelidad se
+        // anota y se muestra en la ficha, y la decisión de descartarlo es del
+        // usuario, que es quien puede mirar el video. El paneo queda para lo
+        // único que siempre fue: la elección expresa del estilo «Fotográfico».
+        //
+        // La excepción son los defectos que sí descalifican una pieza
+        // institucional —un logotipo redibujado o un texto ilegible—: ahí no
+        // hay criterio estético que valga y se reintenta mientras queden
+        // intentos.
+        const descalificados = infidel.filter(sc =>
+            (sc.fidelity?.brandAltered || sc.fidelity?.textIllegible) && sc.attempts < MAX_AUTO_RETRIES);
+        const conservados = infidel.filter(sc => !descalificados.includes(sc));
 
-        for (const sc of conPersonas) {
-            try {
-                await resolveSceneWithStillMotion(sc, { reason: 'el motor no conservó a las personas' });
-            } catch (e) {
-                console.error(`[REEL] escena ${sc.id} tampoco pudo resolverse con 2.5D:`, e.message);
-            }
-        }
-        if (conPersonas.length) {
+        if (descalificados.length) {
+            await Promise.allSettled(descalificados.map(sc =>
+                relaunchScene(sc, { auto: true, reason: 'la marca o el texto quedaron alterados' })));
             await appendNote(project.id,
-                `${conPersonas.length} escena(s) con personas se resolvieron animando la fotografía original en vez de regenerarla: el motor no estaba conservando los rostros. Sin costo de créditos.`);
+                `Se regeneraron ${descalificados.length} escena(s) donde un logotipo o un texto quedó alterado.`);
         }
 
-        if (sinPersonas.length) {
-            await Promise.allSettled(sinPersonas.map(sc => relaunchScene(sc, { auto: true, reason: 'la escena no conservó la fotografía' })));
-            await appendNote(project.id, `Se regeneraron ${sinPersonas.length} escena(s) que no conservaban el encuadre original.`);
+        if (conservados.length) {
+            // Se marcan como listas: el clip existe y se usa. La nota explica
+            // qué se midió para que la decisión de rehacerlas sea informada.
+            await db.query(
+                `UPDATE "ReelScene" SET status = 'needs_review', "updatedAt" = NOW() WHERE id = ANY($1)`,
+                [conservados.map(sc => sc.id)]
+            );
+            await appendNote(project.id,
+                `${conservados.length} escena(s) se apartan de la fotografía más de lo habitual —normal cuando el motor anima mucho—. Se conservan animadas; se pueden regenerar una a una desde la línea de tiempo.`);
         }
 
-        if (conPersonas.length || sinPersonas.length) {
+        if (descalificados.length) {
             const { rows } = await db.query(
                 `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
                 [project.id]
