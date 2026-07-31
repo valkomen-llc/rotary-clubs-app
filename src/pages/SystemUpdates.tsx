@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.667.0 | 2026-07-30 (Contexto de publicación + narración IA sincronizada)
-// Cache bust: 2026-07-30r
+// UI V4.668.0 | 2026-07-31 (Música generativa con licencia limpia: ElevenLabs + Stable Audio)
+// Cache bust: 2026-07-30s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.668.0',
+        title: 'Música original en cada Reel, con licencia en regla 🎵',
+        description: 'La banda sonora de cada Reel pasa a generarse con ElevenLabs Music, con Stable Audio como respaldo automático. El cambio no es de calidad de audio sino de LICENCIA: estas piezas se publican en YouTube, donde el sistema de detección reclama automáticamente, y un reclamo de copyright sobre un video de servicio comunitario es un problema serio para una institución. Los dos motores nuevos entrenan con catálogos licenciados y conceden derechos comerciales explícitos. El motor anterior queda disponible pero fuera de la selección automática, con su situación legal indicada en el panel. Cada Reel suena distinto porque un motor generativo nunca repite una pista, y el carácter lo marca el estilo que la IA elige mirando las fotos.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'musica', 'ia', 'legal'],
+        type: 'improvement',
+        changes: [
+            { type: 'added', text: 'ElevenLabs Music como generador principal de la banda sonora.' },
+            { type: 'added', text: 'Stable Audio como respaldo automático si el principal falla.' },
+            { type: 'added', text: 'El panel indica la situación de licencia de cada motor de música.' },
+            { type: 'changed', text: 'El motor anterior sale de la selección automática por su situación legal.' },
+            { type: 'improved', text: 'La pista llega en la misma petición: sin espera adicional ni enlaces que caduquen.' },
+            { type: 'fixed', text: 'Un fallo de la base de datos ya no interrumpe la generación de música.' }
+        ],
+        details: [
+            'La variedad no depende del proveedor: cualquier motor generativo entrega una pista distinta cada vez. Lo que hace que suenen variadas pero coherentes son los nueve estilos musicales con su ritmo y carácter, que la IA elige según lo que ve en las fotografías.',
+            'La música se pide siempre instrumental y sin voz: una voz cantada debajo de la narración es lo peor que le puede pasar a una pieza institucional.',
+            'Si el motor principal falla, se intenta el siguiente antes de mostrar un error, y queda registrado qué se intentó.'
+        ]
+    },
     {
         version: '4.667.0',
         title: 'El Reel ya entiende el contexto y habla 🎙️',

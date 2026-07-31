@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.667
+## Creador de Reels IA — v4.668
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -261,6 +261,27 @@ en `config` sin que el servidor los leyera.
   clips de 5 s y una pieza de **14 s**, no 15 — y el módulo lo anota en `notes`
   para que el número esté a la vista. "Duración aproximada" no es licencia para
   callar la real.
+- **El motor de música se elige por LICENCIA, no por calidad de audio** (v4.668).
+  Estas piezas las publica una institución en YouTube, donde el Content ID
+  reclama solo. `ElevenLabs Music` (principal) y `Stable Audio` (respaldo)
+  entrenan con catálogo licenciado y dan derechos comerciales explícitos; Suno
+  no divulga sus datos, está en litigio con las discográficas y, consumido vía
+  pasarela, su licencia no es trazable. Sigue **declarado y funcional** —se
+  enciende con `REEL_MUSIC_PROVIDER`— pero fuera de la cadena automática, y el
+  campo `licensing` del registro viaja al panel para que quien lo cambie sepa
+  qué acepta. No reintroducirlo como default.
+- **La variedad NO viene del proveedor.** Cualquier motor generativo devuelve
+  una pista distinta cada vez, incluso con el mismo prompt. Lo que hace que
+  suenen variadas pero coherentes son los nueve `MUSIC_STYLES` con su BPM y su
+  descriptor, que elige el director según lo que ve. Cambiar de proveedor
+  buscando variedad es resolver el problema equivocado.
+- **`mode` distingue cómo llega la pista**, igual que en el montaje: `sync`
+  devuelve el audio en la misma petición (ElevenLabs, Stable Audio) y `async`
+  crea una tarea que hay que sondear (Suno vía KIE). `resolveSoundtrack` en el
+  controlador unifica las tres formas —buffer, URL de biblioteca o taskId— para
+  que el resto del flujo no tenga que saber por dónde vino.
+- **Un proveedor pedido a mano NO tiene respaldo**: el usuario eligió, y
+  silenciarlo con otro motor sería desobedecerlo. Igual criterio que el montaje.
 - **Los clips se generan MUDOS cuando hay banda sonora.** Dos pistas compitiendo
   suena peor que una bien puesta. El audio nativo del motor sólo se pide si no
   va a haber música del montaje.
@@ -384,7 +405,10 @@ en `config` sin que el servidor los leyera.
 | `REEL_DEFAULT_ENGINE` | Motor principal (default: `kling26`) |
 | `REEL_MODEL_KLING26` y compañía | Corregir el id de un modelo sin desplegar |
 | `REEL_ENGINE_VEO3_ENABLED`, `REEL_ENGINE_MINIMAX_ENABLED` | Habilitar motores tras verificar su id |
-| `REEL_MUSIC_PROVIDER`, `REEL_MUSIC_MODEL` | Fuente y modelo de la banda sonora |
+| `REEL_MUSIC_PROVIDER` | Fuerza un motor de música concreto (sin respaldo) |
+| `ELEVENLABS_MUSIC_MODEL` | Modelo de ElevenLabs Music (default `music_v1`) |
+| `STABILITY_API_KEY`, `STABLE_AUDIO_MODEL` | Respaldo de música |
+| `REEL_MUSIC_MODEL` | Modelo de Suno vía KIE, si se activa a propósito |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
 | `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
