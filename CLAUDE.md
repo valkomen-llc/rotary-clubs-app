@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.672
+## Creador de Reels IA — v4.673
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -361,11 +361,36 @@ en `config` sin que el servidor los leyera.
   reintroducir la rama de vapor/brillo ni la palabra «cinematic»**, y no
   arreglarlo con una lista de prohibiciones: la regla del sitio es que el modelo
   se obsesiona con lo prohibido.
-- **Con personas se declara el TECHO del movimiento, no sólo su existencia.**
-  «Vienen a la vida con pequeño movimiento natural» dejaba al modelo reinterpretar
-  rostros y manos. Ahora se nombran rostros, rasgos, **edad**, proporciones y
-  manos como intactos, y el movimiento se acota a *«the smallest natural one — a
-  quiet breath, an occasional blink»*.
+- **IDENTIDAD y MOVIMIENTO son dos ejes distintos, y confundirlos congela la
+  escena** (v4.673). Es el error que siguió a la corrección del humo: al acotar
+  el movimiento con *«the smallest natural one … while everything else about
+  them holds still»* el modelo entregaba una fotografía con paneo. Van en frases
+  SEPARADAS: una fija lo que no puede cambiar —rostros, edad, gafas, chalecos,
+  insignias, logotipos, encuadre—; otra pide movimiento con VERBOS —respiran,
+  parpadean, giran la cabeza, se miran, terminan el gesto empezado— y exige que
+  **cada persona se mueva a su propio ritmo**, porque un grupo moviéndose al
+  unísono se lee como error. La primera línea dice *«this is the moment the
+  photograph was taken, filmed as it happened»*: pedir «animated from the
+  photograph» se satisface moviendo sólo la cámara.
+- **Ojo con las frases que se contradicen entre ramas.** La de logotipos decía
+  «Only the camera moves around them» y anulaba la de personas. Lo que se fija
+  de una marca es su DIBUJO, no la escena alrededor.
+- **El director NO puede elegir un estilo `engineless`.** `fotografico` se filtra
+  de `STYLE_IDS` en `reelDirector.js`: estando en la lista, el modelo lo elegía
+  por su cuenta y el Reel salía sin animar. Se reserva para la elección expresa
+  del usuario y para el respaldo automático.
+- **El respaldo 2.5D llega después de UN reintento**, no en el primer fallo. Caer
+  de inmediato metía fotos quietas en el Reel sin haberle dado al motor una
+  pasada. Es una red, no el camino habitual.
+- **El piso estructural depende de si hubo modelo de visión**
+  (`minStructuralScoreWithVision`, 0,3 frente a 0,5). La huella perceptual no
+  distingue «la escena se movió» de «la escena cambió»: con movimiento real, el
+  piso alto reprobaba escenas por estar vivas y las mandaba al respaldo
+  estático. Con modelo de visión, la estructural sólo guarda contra el
+  reencuadre grosero; sin él, sigue decidiendo sola con el criterio estricto.
+- **La fidelidad se puntúa de 0 a 10, no de 0 a 1.** El 2.5D declaraba `score: 1`
+  y la ficha mostraba «1/10» —la peor nota— en la escena que es la fotografía
+  intacta.
 - **El estilo por defecto es `documental`**, no `cinematografico`.
 - **Hay una vía SIN motor generativo** (`fotografico`, `isEngineless`,
   `renderStillMotion`): la fotografía se anima desplazando lentamente la ventana

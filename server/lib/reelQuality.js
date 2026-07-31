@@ -65,10 +65,27 @@ export const REEL_THRESHOLDS = {
     minSharpness: 8,
     // Nota de fidelidad por debajo de la cual la escena se regenera sola.
     minFidelityScore: 7,
-    // Similitud estructural mínima (0-1) entre la foto y sus fotogramas. Es la
-    // red de seguridad determinista: aunque el modelo de visión apruebe, por
-    // debajo de esto el encuadre cambió tanto que ya no es la misma toma.
-    minStructuralScore: 0.5
+    // Similitud estructural mínima (0-1) entre la foto y sus fotogramas.
+    //
+    // Hay DOS umbrales porque la señal estructural cumple dos papeles distintos
+    // (v4.673):
+    //
+    //  · SIN modelo de visión es la única señal que hay, y tiene que decidir
+    //    sola: 0,5 es el punto por debajo del cual el encuadre ya cambió de
+    //    forma visible.
+    //  · CON modelo de visión su papel se reduce a lo que el modelo no ve bien:
+    //    un reencuadre grosero, la toma que se fue a otra parte. Ahí el piso
+    //    baja a 0,3.
+    //
+    // El motivo es que la huella perceptual no distingue «la escena se movió»
+    // de «la escena cambió», y desde v4.673 se le pide al motor movimiento de
+    // verdad —cabezas que giran, manos que terminan su gesto—. Con el piso
+    // alto, una escena bien animada reprobaba por estar viva, se regeneraba y
+    // acababa cayendo al respaldo estático: justo lo contrario de lo buscado.
+    // El juicio fino lo hace el modelo, que es quien sí distingue un rostro
+    // redibujado de un rostro que se giró.
+    minStructuralScore: 0.5,
+    minStructuralScoreWithVision: 0.3
 };
 
 // ─── Inspección de las imágenes de origen ──────────────────────────────────
@@ -522,10 +539,15 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         : (structuralScore != null ? Number((structuralScore * 10).toFixed(1)) : null);
 
     const disqualifying = flags.brandAltered || flags.textIllegible;
+    // El piso estructural depende de si hubo modelo de visión: con él sólo
+    // guarda contra el reencuadre grosero; sin él decide solo.
+    const structuralFloor = semanticScore != null
+        ? REEL_THRESHOLDS.minStructuralScoreWithVision
+        : REEL_THRESHOLDS.minStructuralScore;
     const passes = !disqualifying
         && score != null
         && score >= REEL_THRESHOLDS.minFidelityScore
-        && (structuralScore == null || structuralScore >= REEL_THRESHOLDS.minStructuralScore);
+        && (structuralScore == null || structuralScore >= structuralFloor);
 
     // `unavailable` sólo si NADA se pudo medir. Con la estructural sola ya hay
     // veredicto — se dice que fue sin el modelo, pero no se finge no haber

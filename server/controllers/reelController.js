@@ -783,7 +783,10 @@ const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
         [
             scene.id, upload.url, upload.key, probe.durationSec || scene.durationSec,
             JSON.stringify({
-                state: 'ok', score: 1, issues: [], frames: [],
+                // La escala de fidelidad es 0-10, no 0-1: `score: 1` mostraba
+                // «1/10» —la peor nota posible— en una escena que es la
+                // fotografía misma. Error de v4.672.
+                state: 'ok', score: 10, framesChecked: 0, issues: [], frames: [],
                 method: 'still-motion',
                 // Se dice CÓMO se conservó, no una nota inventada: no hubo
                 // modelo que pudiera alterar nada.
@@ -1915,8 +1918,17 @@ const advance = async (project) => {
         // Sin personas sí tiene sentido reintentar con el motor: ahí lo que
         // falló fue el encuadre o la estabilidad, no una cara, y el motor puede
         // acertar en la segunda.
-        const conPersonas = infidel.filter(sc => sc.analysis?.hasPeople);
-        const sinPersonas = infidel.filter(sc => !sc.analysis?.hasPeople && sc.attempts < MAX_AUTO_RETRIES);
+        // El motor tiene UNA segunda oportunidad antes del respaldo (v4.673).
+        // En v4.672 una escena con personas caía a 2.5D en el primer fallo, y
+        // eso dejaba fotos quietas dentro del Reel sin haberle dado al motor
+        // una pasada con el prompt corregido. El respaldo es una red, no el
+        // camino habitual: si tras el reintento sigue sin conservar los
+        // rostros, entonces sí — insistir una tercera vez es pagar por el mismo
+        // resultado.
+        const conPersonas = infidel.filter(sc => sc.analysis?.hasPeople && sc.attempts >= 1);
+        const reintentables = infidel.filter(sc =>
+            sc.attempts < MAX_AUTO_RETRIES && (!sc.analysis?.hasPeople || sc.attempts < 1));
+        const sinPersonas = reintentables;
 
         for (const sc of conPersonas) {
             try {
