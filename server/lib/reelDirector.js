@@ -63,7 +63,13 @@ Reglas:
 - "motionHint" describe SÓLO lo que puede moverse sin alterar el contenido: vapor, agua, hojas, tela, luz, o el movimiento de cámara. En inglés porque alimenta el prompt del modelo.
 - "riskNotes" en español: qué podría deformarse (rostros de perfil, texto pequeño, manos, logotipos finos). Lista vacía si no hay riesgo.`;
 
-const STYLE_IDS = Object.keys(MOTION_STYLES);
+// El director elige sólo entre estilos que ANIMAN. `fotografico` no entra
+// (v4.673): es la vía sin motor generativo, y dejarla en la lista hacía que el
+// modelo la eligiera por su cuenta — el Reel salía con una foto quieta y un
+// paneo, que es justo lo contrario de lo que se le pide al módulo. Se reserva
+// para cuando la elige el usuario a propósito o para el respaldo automático
+// tras un fallo de fidelidad.
+const STYLE_IDS = Object.keys(MOTION_STYLES).filter(id => !MOTION_STYLES[id].engineless);
 
 // `generateCopy` devuelve { content, raw, provider, model }, NO una cadena.
 // Tratarlo como texto da `"[object Object]"`, que no parsea nunca: el análisis

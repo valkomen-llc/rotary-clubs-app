@@ -719,9 +719,16 @@ export const buildScenePrompt = ({
         // lo que él entiende por cine —destellos, halos, partículas, luz
         // dramática—, y eso apareció de verdad en piezas institucionales. El
         // registro que se busca acá es el de un documental.
-        `A ${Math.round(durationSec)}-second documentary shot, animated from the provided photograph.`,
-        // La conservación va primero: es lo que más pesa en un prompt corto.
-        'The photograph is the finished frame: same composition, same framing, same colours, same lighting, same subjects, same wardrobe, same textures. Every element keeps its exact shape and position, and the last frame still matches the photograph.',
+        // «This is the moment the photograph was taken, filmed» dice en una
+        // frase lo que se pide: que la escena TRANSCURRA. La versión anterior
+        // decía «animated from the provided photograph», que un modelo puede
+        // satisfacer moviendo sólo la cámara — y eso es lo que salía.
+        `A ${Math.round(durationSec)}-second documentary video: this is the moment the photograph was taken, filmed as it happened, ${Math.round(durationSec)} seconds of real time passing in the scene.`,
+        // La identidad es lo que NO cambia. Ojo con el alcance: se enumeran
+        // atributos y encuadre, NO el movimiento. Confundir las dos cosas fue
+        // el error de v4.672: pedir que «todo lo demás se quede quieto»
+        // congelaba la escena entera.
+        'Everyone and everything in the frame stays exactly who and what they are: the same faces, the same ages, the same hair, the same glasses and hats, the same clothing, vests, badges and lanyards, the same logos and wordmarks, the same room and furniture, the same colours and the same light. The camera keeps the same framing and composition as the photograph.',
         // Sobriedad institucional, dicha EN POSITIVO. La regla del sitio es no
         // enumerar prohibiciones —el modelo se obsesiona con lo prohibido—, así
         // que en vez de «sin humo ni chispas» se afirma qué luz y qué aire hay:
@@ -732,16 +739,32 @@ export const buildScenePrompt = ({
     // Refuerzo específico según lo que trae la escena. Cada rama nombra lo que
     // se conserva y, cuando corresponde, a qué se le permite moverse.
     if (analysis?.hasBrand || analysis?.hasText) {
-        parts.push('Logos, wordmarks, product labels and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions. Only the camera moves around them.');
+        // Sin la última frase esto contradecía la rama de personas: «sólo la
+        // cámara se mueve» le dice al modelo que congele a la gente. Lo que hay
+        // que fijar es el DIBUJO de la marca, no la escena a su alrededor.
+        parts.push('Logos, wordmarks, badges and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions, and they never redraw themselves — even while the person wearing them moves.');
     }
     if (analysis?.hasPeople) {
-        // Se nombra el TECHO del movimiento, no sólo su existencia. Sin acotarlo
-        // el modelo reinterpreta rostros y manos, que es donde se rompe una foto
-        // institucional de grupo.
-        parts.push('The people keep their faces, their features, their ages, their proportions, their hands and their expressions exactly as photographed. Their only movement is the smallest natural one — a quiet breath, an occasional blink — while everything else about them holds still.');
+        // El movimiento se describe con VERBOS y se pide que sea INDEPENDIENTE
+        // por persona. Un modelo al que sólo se le concede «un pequeño
+        // movimiento natural» entrega un grupo congelado, o peor, a todos
+        // haciendo lo mismo a la vez, que se lee como un error.
+        parts.push(
+            'The people behave as they did in that moment: they breathe, they blink, they shift their weight, ' +
+            'their heads turn a little, their glances move between one another, small smiles come and go, ' +
+            'and hands finish the gesture they had started. Whoever was holding something keeps holding it. ' +
+            'Whoever was mid-step continues the step. Each person moves on their own timing and in their own way, ' +
+            'never all together, so the group looks alive rather than posed.'
+        );
+        // El límite va aparte y es sobre la IDENTIDAD, no sobre el movimiento.
+        parts.push('Through all of it their faces remain the same faces, with the same features and the same age, and their hands keep five fingers and their natural shape.');
     }
     if (analysis?.hasNature) {
-        parts.push('Foliage and water hold their shape, moving only as much as a light breeze would move them.');
+        parts.push('The air moves through the scene: leaves and branches sway, flags and fabric ripple, loose hair drifts, water carries small ripples, and clouds slide slowly across the sky.');
+    } else {
+        // Interior: también hay vida, sólo que menos. Sin esta rama, una escena
+        // de salón quedaba con las personas moviéndose sobre un fondo muerto.
+        parts.push('Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.');
     }
 
     // Un estilo sin motor no tiene descripción de cámara: su movimiento lo hace

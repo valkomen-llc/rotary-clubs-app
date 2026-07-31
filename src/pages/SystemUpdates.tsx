@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.672.0 | 2026-07-31 (Estilo institucional sobrio y animación sin IA)
-// Cache bust: 2026-07-31d
+// UI V4.673.0 | 2026-07-31 (La fotografía cobra vida)
+// Cache bust: 2026-07-31e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.673.0',
+        title: 'La fotografía cobra vida: personas que respiran, se miran y gesticulan 🫧',
+        description: 'La versión anterior corrigió el humo y las chispas, pero se pasó de frenada: al pedirle a la IA que todo lo demás «se quedara quieto», las escenas salían como fotografías con un movimiento de cámara encima. Eso ya está corregido. Ahora se le pide explícitamente que la escena TRANSCURRA: las personas respiran, parpadean, cambian el peso de pie, giran un poco la cabeza, se miran entre ellas, aparecen y desaparecen pequeñas sonrisas, y quien había empezado un gesto lo termina. Quien sostenía algo lo sigue sosteniendo; quien iba caminando continúa el paso. Y cada persona se mueve a su propio ritmo, no todas a la vez —que es lo que delata una animación automática—. El entorno también vive: banderas y telas ondean, el cabello suelto se mueve, y en interiores quien está al fondo sigue con lo suyo. Todo esto sin tocar la identidad: rostros, edades, gafas, gorros, chalecos, insignias y logotipos siguen siendo exactamente los mismos. También se corrigieron dos errores propios de la versión anterior: el sistema podía elegir por su cuenta el estilo «Fotográfico» —que a propósito no anima nada—, y ese estilo mostraba una fidelidad de 1/10 cuando en realidad es la fotografía intacta.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'animacion'],
+        type: 'major',
+        changes: [
+            { type: 'fixed', text: 'Las escenas salían casi congeladas: se pedía que todo se quedara quieto salvo la cámara.' },
+            { type: 'improved', text: 'Las personas ahora respiran, parpadean, giran la cabeza, se miran y completan sus gestos, cada una a su propio ritmo.' },
+            { type: 'improved', text: 'El entorno acompaña: banderas, telas, cabello y, en interiores, quien está al fondo.' },
+            { type: 'fixed', text: 'El sistema podía elegir solo el estilo «Fotográfico», que por diseño no anima. Ahora sólo lo elige el usuario o el respaldo automático.' },
+            { type: 'fixed', text: 'El estilo «Fotográfico» mostraba fidelidad 1/10 siendo la fotografía intacta; ahora muestra 10/10.' },
+            { type: 'changed', text: 'Una escena con personas tiene una segunda oportunidad con la IA antes de caer al respaldo sin animación.' }
+        ],
+        details: [
+            'La identidad se declara aparte del movimiento, que era la confusión de fondo: una cosa es lo que NO puede cambiar —rostros, edad, insignias, encuadre— y otra lo que SÍ debe moverse. Pedir las dos juntas congelaba la escena.',
+            'La comprobación automática de fidelidad se ajustó en consecuencia: la medición geométrica no distingue «la escena se movió» de «la escena cambió», así que cuando el modelo de visión da su veredicto, aquélla queda sólo como guardia contra un reencuadre grosero. Sin modelo de visión sigue decidiendo sola, con el criterio estricto de antes.',
+            'La sincronía de voz, música y video no cambió: las tres pistas se fuerzan a la duración exacta de la pieza, y una locución que queda corta se completa con silencio en vez de cortar una palabra.'
+        ]
+    },
     {
         version: '4.672.0',
         title: 'Se acabaron el humo y las chispas: estilo institucional y fotos que no se redibujan 🎞️',

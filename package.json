@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.672.0",
-  "cache_bust": "2026-07-31d (Estilo institucional sobrio y animacion sin IA que preserva rostros e insignias.)",
+  "version": "4.673.0",
+  "cache_bust": "2026-07-31e (La fotografia cobra vida: movimiento real por persona, sin perder identidad.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
