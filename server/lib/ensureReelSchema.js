@@ -29,7 +29,7 @@ import db from './db.js';
 
 let _ready = false;
 
-const EXPECTED_TABLES = ['ReelProject', 'ReelScene'];
+const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy'];
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
@@ -223,6 +223,59 @@ export async function ensureReelSchema() {
         CREATE INDEX IF NOT EXISTS "ReelScene_expansionTask_idx" ON "ReelScene"("expansionTaskId");
 
         CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);
+
+        -- Copies de publicación, UNA FILA POR VERSIÓN. Nunca se actualiza el
+        -- texto de una fila existente: editar o regenerar inserta una versión
+        -- nueva y baja la bandera de la anterior. Es lo que permite volver a un
+        -- texto que ya gustaba después de haber probado otro, y lo que exige el
+        -- requisito de no sobrescribir nada.
+        --
+        -- La clave es (proyecto, plataforma, idioma, versión): así conviven el
+        -- copy de TikTok en español y en inglés sin pisarse, y cada uno lleva su
+        -- propio historial.
+        CREATE TABLE IF NOT EXISTS "ReelCopy" (
+            id TEXT PRIMARY KEY,
+            "projectId" TEXT NOT NULL REFERENCES "ReelProject"(id) ON DELETE CASCADE,
+            "clubId" TEXT,
+
+            platform TEXT NOT NULL,
+            locale TEXT NOT NULL DEFAULT 'es',
+            version INTEGER NOT NULL DEFAULT 1,
+            "isCurrent" BOOLEAN NOT NULL DEFAULT TRUE,
+
+            -- Comunes a la pieza; se copian en cada versión a propósito, para
+            -- que una versión antigua siga siendo legible por sí sola.
+            title TEXT,
+            subtitle TEXT,
+            hook TEXT,
+            category TEXT,
+            "marketingGoal" TEXT,
+            audience TEXT,
+            keywords JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+            -- Propios de la plataforma
+            description TEXT,
+            cta TEXT,
+            hashtags JSONB NOT NULL DEFAULT '[]'::jsonb,
+            "fullText" TEXT,
+            "charCount" INTEGER,
+
+            -- Procedencia: 'ai' | 'manual' | 'translation'
+            source TEXT NOT NULL DEFAULT 'ai',
+            provider TEXT,
+            model TEXT,
+            prompt TEXT,
+            "isFavorite" BOOLEAN NOT NULL DEFAULT FALSE,
+
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS "ReelCopy_project_idx" ON "ReelCopy"("projectId", platform, locale);
+        -- Un solo copy vigente por plataforma e idioma. El índice parcial es lo
+        -- que hace imposible que dos versiones se declaren vigentes a la vez.
+        CREATE UNIQUE INDEX IF NOT EXISTS "ReelCopy_current_uniq"
+            ON "ReelCopy"("projectId", platform, locale) WHERE "isCurrent";
         CREATE INDEX IF NOT EXISTS "ReelScene_kieJobId_idx"  ON "ReelScene"("kieJobId");
         CREATE INDEX IF NOT EXISTS "ReelScene_status_idx"    ON "ReelScene"(status);
     `);

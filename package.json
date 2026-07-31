@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.665.0",
-  "cache_bust": "2026-07-30p (Expansion Inteligente: las fotos horizontales se adaptan al formato del Reel generando el lienzo que falta, sin recortar.)",
+  "version": "4.666.0",
+  "cache_bust": "2026-07-30q (Copies automaticos para TikTok, Instagram Reels y YouTube Shorts, con versionado y guardado automatico en la Biblioteca.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:i18n": "node scripts/test-i18n-dom.mjs",
-    "test:i18n:providers": "node scripts/test-i18n-providers.mjs"
+    "test:i18n:providers": "node scripts/test-i18n-providers.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "engines": {
     "node": "22.x"

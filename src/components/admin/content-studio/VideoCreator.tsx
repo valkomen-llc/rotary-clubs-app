@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — pantalla
-// v4.665.0
+// v4.666.0
 //
 // Tres pantallas en una, según dónde esté el Reel:
 //
@@ -23,7 +23,7 @@ import {
     Plus, Trash2, GripVertical, Settings2, Music, Sparkles, Loader2,
     Clapperboard, X, CheckCircle2, Volume2, AlertTriangle, RefreshCw,
     Download, Image as ImageIcon, Wand2, ShieldCheck, Film, Clock, VolumeX,
-    Info, ChevronRight, Save
+    Info, ChevronRight, Save, Copy, Check, Pencil, FileDown, History, FileText
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
@@ -32,7 +32,7 @@ import type { Outro } from '../../../lib/outroSpec';
 import {
     SCENE_COUNT, MIN_SCENE_SEC, MAX_SCENE_SEC,
     isTerminal, timelineDuration, formatSeconds, formatBytes,
-    type Reel, type ReelScene, type ReelOptions
+    type Reel, type ReelScene, type ReelOptions, type ReelCopy
 } from '../../../lib/reelSpec';
 
 interface MediaItem {
@@ -316,6 +316,7 @@ const VideoCreator: React.FC = () => {
                         onChangeMusic={changeMusic}
                         onReRender={reRender}
                         onSaveLibrary={saveToLibrary}
+                        onCopiesChanged={setReel}
                     />}
 
                 {/* Sustituir la foto de una escena: se abre la Biblioteca con
@@ -701,7 +702,7 @@ const STAGES: { id: string; label: string }[] = [
     { id: 'analyzing', label: 'Analizando fotos' },
     { id: 'directing', label: 'Narrativa' },
     { id: 'expanding', label: 'Adaptando al formato' },
-    { id: 'generating', label: 'Generando escenas' },
+    { id: 'generating', label: 'Generando escenas y textos' },
     { id: 'scoring', label: 'Mezclando música' },
     { id: 'assembling', label: 'Montando Reel' },
     { id: 'validating', label: 'Exportando' }
@@ -815,9 +816,11 @@ const PreviewPanel: React.FC<{
     onChangeMusic: (body: Record<string, unknown>) => void;
     onReRender: () => void;
     onSaveLibrary: () => void;
+    onCopiesChanged: (r: Reel) => void;
 }> = ({
     reel, options, busyScene, savingLibrary, estimatedDuration,
-    onPatchScene, onRegenerateScene, onSwapImage, onChangeMusic, onReRender, onSaveLibrary
+    onPatchScene, onRegenerateScene, onSwapImage, onChangeMusic, onReRender, onSaveLibrary,
+    onCopiesChanged
 }) => (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Reproductor */}
@@ -964,9 +967,288 @@ const PreviewPanel: React.FC<{
                 </div>
             </div>
 
+            <CopyPanel reel={reel} onChanged={onCopiesChanged} />
+
             {reel.notes.length > 0 && <NoteList notes={reel.notes} />}
         </div>
     </div>
+);
+
+// ─── Copies de publicación ─────────────────────────────────────────────────
+//
+// Se generan solos mientras el video se renderiza, así que cuando esta pantalla
+// aparece ya están escritos. Cada uno se puede copiar, editar y regenerar por
+// separado: insistir sobre el texto de TikTok no debe perder el de Instagram.
+const CopyPanel: React.FC<{ reel: Reel; onChanged: (r: Reel) => void }> = ({ reel, onChanged }) => {
+    const [busy, setBusy] = useState<string | null>(null);
+    const [copied, setCopied] = useState<string | null>(null);
+    const [editing, setEditing] = useState<string | null>(null);
+    const [draft, setDraft] = useState<{ description: string; cta: string; hashtags: string }>({ description: '', cta: '', hashtags: '' });
+
+    const copies = reel.copies || [];
+
+    const refresh = async () => {
+        const r = await fetch(`${API}/content-studio/reels/${reel.id}`, { headers: authHeaders() });
+        if (r.ok) onChanged(await r.json());
+    };
+
+    // `navigator.clipboard` falla sin contexto seguro o sin permiso; el textarea
+    // oculto es el respaldo que funciona en todos los navegadores.
+    const toClipboard = async (text: string, key: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+        }
+        setCopied(key);
+        toast.success('Copiado al portapapeles');
+        window.setTimeout(() => setCopied(c => (c === key ? null : c)), 2000);
+    };
+
+    const regenerate = async (platform?: string) => {
+        setBusy(platform || 'all');
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/copies/regenerate`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ platform, locale: 'es' })
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo regenerar el texto'); return; }
+            await refresh();
+            toast.success(platform ? 'Texto regenerado' : 'Textos regenerados');
+        } catch { toast.error('Error de conexión'); } finally { setBusy(null); }
+    };
+
+    const saveEdit = async (platform: string) => {
+        setBusy(platform);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/copies`, {
+                method: 'PATCH', headers: authHeaders(),
+                body: JSON.stringify({
+                    platform, locale: 'es',
+                    description: draft.description,
+                    cta: draft.cta,
+                    hashtags: draft.hashtags.split(/[\s,]+/).filter(Boolean)
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo guardar'); return; }
+            setEditing(null);
+            await refresh();
+            toast.success('Guardado como versión nueva');
+        } catch { toast.error('Error de conexión'); } finally { setBusy(null); }
+    };
+
+    const exportAs = (format: string) => {
+        const token = localStorage.getItem('rotary_token');
+        // La descarga va por el propio navegador, así que el token viaja en la
+        // query: un `fetch` con cabecera no dispara el diálogo de guardar.
+        window.open(`${API}/content-studio/reels/${reel.id}/export?format=${format}&locale=es&token=${token}`, '_blank');
+    };
+
+    if (!copies.length) {
+        return (
+            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <FileText className="w-5 h-5 text-indigo-600" />
+                        <div>
+                            <h3 className="font-black text-gray-900">Textos de publicación</h3>
+                            <p className="text-[11px] font-bold text-gray-400">Todavía no se generaron.</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => regenerate()}
+                        disabled={busy === 'all'}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50 disabled:opacity-40"
+                    >
+                        {busy === 'all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        Generar textos
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    const meta = copies[0];
+
+    return (
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-black text-gray-900">Textos de publicación</h3>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {['txt', 'csv', 'json', 'zip'].map(f => (
+                        <button
+                            key={f}
+                            onClick={() => exportAs(f)}
+                            className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-100 transition-all flex items-center gap-1"
+                        >
+                            <FileDown className="w-3 h-3" /> {f}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => regenerate()}
+                        disabled={busy === 'all'}
+                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-all flex items-center gap-1 disabled:opacity-40"
+                    >
+                        {busy === 'all' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Todos
+                    </button>
+                </div>
+            </div>
+
+            {/* Metadatos comunes a la pieza. Se muestran una vez, no por
+                plataforma: son del Reel, no del texto. */}
+            <div className="flex flex-wrap gap-1.5 mb-5 mt-2">
+                {meta.category && <Chip>{meta.category}</Chip>}
+                {meta.marketingGoal && <Chip>{meta.marketingGoal}</Chip>}
+                {meta.audience && <Chip>{meta.audience}</Chip>}
+                {meta.keywords?.slice(0, 5).map(k => <Chip key={k} muted>{k}</Chip>)}
+            </div>
+
+            <div className="space-y-3">
+                {copies.map(c => (
+                    <CopyCard
+                        key={c.id}
+                        copy={c}
+                        busy={busy === c.platform}
+                        copied={copied === c.id}
+                        editing={editing === c.platform}
+                        draft={draft}
+                        setDraft={setDraft}
+                        onCopy={() => toClipboard(c.fullText || '', c.id)}
+                        onRegenerate={() => regenerate(c.platform)}
+                        onStartEdit={() => {
+                            setEditing(c.platform);
+                            setDraft({
+                                description: c.description || '',
+                                cta: c.cta || '',
+                                hashtags: (c.hashtags || []).join(' ')
+                            });
+                        }}
+                        onCancelEdit={() => setEditing(null)}
+                        onSaveEdit={() => saveEdit(c.platform)}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const Chip: React.FC<{ children: React.ReactNode; muted?: boolean }> = ({ children, muted }) => (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+        muted ? 'bg-gray-50 text-gray-400' : 'bg-indigo-50 text-indigo-600'
+    }`}>{children}</span>
+);
+
+const CopyCard: React.FC<{
+    copy: ReelCopy;
+    busy: boolean;
+    copied: boolean;
+    editing: boolean;
+    draft: { description: string; cta: string; hashtags: string };
+    setDraft: (d: { description: string; cta: string; hashtags: string }) => void;
+    onCopy: () => void;
+    onRegenerate: () => void;
+    onStartEdit: () => void;
+    onCancelEdit: () => void;
+    onSaveEdit: () => void;
+}> = ({ copy, busy, copied, editing, draft, setDraft, onCopy, onRegenerate, onStartEdit, onCancelEdit, onSaveEdit }) => {
+    // El contador se compara contra el límite real de la plataforma: pasarse es
+    // un texto que la red va a cortar sola.
+    const over = copy.maxChars != null && (copy.charCount || 0) > copy.maxChars;
+
+    return (
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                    <p className="text-xs font-black text-gray-800">{copy.platformLabel}</p>
+                    <span className={`text-[10px] font-bold ${over ? 'text-red-500' : 'text-gray-400'}`}>
+                        {copy.charCount}/{copy.maxChars}
+                    </span>
+                    {copy.version > 1 && (
+                        <span className="text-[10px] font-bold text-gray-400 flex items-center gap-0.5">
+                            <History className="w-3 h-3" /> v{copy.version}
+                        </span>
+                    )}
+                    {copy.source === 'manual' && <Chip muted>editado</Chip>}
+                </div>
+                <div className="flex items-center gap-1">
+                    <IconBtn onClick={onCopy} title="Copiar todo el texto">
+                        {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    </IconBtn>
+                    <IconBtn onClick={editing ? onCancelEdit : onStartEdit} title="Editar">
+                        {editing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                    </IconBtn>
+                    <IconBtn onClick={onRegenerate} disabled={busy} title="Regenerar sólo este texto">
+                        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    </IconBtn>
+                </div>
+            </div>
+
+            {editing ? (
+                <div className="space-y-2">
+                    <textarea
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 resize-none h-28 font-sans"
+                        value={draft.description}
+                        onChange={e => setDraft({ ...draft, description: e.target.value })}
+                        placeholder="Descripción"
+                    />
+                    <input
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 font-sans"
+                        value={draft.cta}
+                        onChange={e => setDraft({ ...draft, cta: e.target.value })}
+                        placeholder="Llamado a la acción"
+                    />
+                    <input
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 font-sans"
+                        value={draft.hashtags}
+                        onChange={e => setDraft({ ...draft, hashtags: e.target.value })}
+                        placeholder="#hashtags separados por espacio"
+                    />
+                    <div className="flex gap-2">
+                        <button
+                            onClick={onSaveEdit}
+                            disabled={busy}
+                            className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all disabled:opacity-40"
+                        >
+                            Guardar como versión nueva
+                        </button>
+                        <button onClick={onCancelEdit} className="px-4 py-2 bg-white text-gray-500 rounded-xl font-black text-xs border border-gray-200">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <p className="text-sm font-medium text-gray-700 whitespace-pre-line leading-relaxed">{copy.description}</p>
+                    {copy.cta && <p className="text-sm font-bold text-gray-800 mt-2">{copy.cta}</p>}
+                    {Boolean(copy.hashtags?.length) && (
+                        <p className="text-xs font-bold text-indigo-500 mt-2 break-words">{copy.hashtags.join(' ')}</p>
+                    )}
+                </>
+            )}
+        </div>
+    );
+};
+
+const IconBtn: React.FC<{ onClick: () => void; disabled?: boolean; title: string; children: React.ReactNode }> = ({ onClick, disabled, title, children }) => (
+    <button
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all disabled:opacity-40"
+    >
+        {children}
+    </button>
 );
 
 const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (

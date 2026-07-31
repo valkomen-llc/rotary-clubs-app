@@ -4,6 +4,9 @@ import { s3 } from '../lib/storage.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { createKieImageTask, pollKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
 import { generateCopy, COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
+// v4.666: las reglas editoriales viven en un solo sitio, compartidas con los
+// copies del Creador de Reels. El texto es idéntico al que estaba acá inline.
+import { INSTITUTIONAL_VOICE, dateClause, identityClause } from '../lib/institutionalVoice.js';
 
 // Multi-engine registry. Each entry maps the public engine id (used by the UI) to its
 // implementation metadata. Phase 1 (v4.326): KIE.AI via Nano Banana + OpenAI gpt-image-1.
@@ -370,23 +373,11 @@ export const generatePost = async (req, res) => {
                 ? config.copyEngine
                 : DEFAULT_COPY_PROVIDER;
 
-            const systemPrompt = `Eres director creativo de Rotary International. Escribes copies institucionales en español rioplatense/neutro, con voz humana, sin clichés, sin exclamaciones excesivas. Devuelves SIEMPRE JSON válido.
-
-Reglas institucionales obligatorias (NO opcionales):
-
-1. IDENTIDAD ESPECÍFICA DEL CLUB. Usás SIEMPRE el nombre institucional completo del club / entidad que se te indica. Nunca escribís frases genéricas como "El Club Rotario", "Nuestro Club Rotario" ni "Un Club Rotario" cuando hay un nombre concreto disponible. Ejemplo correcto: "El Club Rotario Bogotá Usaquén invita…". Ejemplo INCORRECTO: "El Club Rotario invita…".
-
-2. NORMALIZACIÓN "ROTARY" → "CLUB ROTARIO" EN CLUBES. Cuando la entidad es un club (te lo indicamos en el prompt), si el nombre llega como "Rotary X" lo escribís en español como "Club Rotario X". Ej: "Rotary Bogotá Usaquén" → "Club Rotario Bogotá Usaquén". Esto NO aplica a asociaciones, fundaciones, programas de intercambio, eventos ni conferencias: esas entidades conservan su nombre original.
-
-3. PROHIBIDO INVENTAR FECHAS Y DATOS. NO menciones fechas específicas (día, mes, año), nombres de días de la semana ("sábado", "lunes", "el próximo viernes"), ni horarios concretos ("a las 10 am", "este fin de semana") a menos que el contexto te los provea EXPLÍCITAMENTE en este prompt. Tampoco inventes lugares específicos, direcciones, montos en dinero, cantidades de personas, ni nombres de personas. Si no tenés el dato, no lo escribís. Si necesitás referirte al tiempo de un evento sin tener fecha, usá frases neutrales: "próximamente", "en esta jornada", "durante la actividad", "en el marco del proyecto", "en breve", "muy pronto".
-
-4. CONTEXTUALIZACIÓN AUTOMÁTICA SIN INVENTAR. Inferís el sentido de la publicación combinando los datos REALES disponibles: nombre de la entidad + categoría + ciudad + imagen + área de enfoque Rotary. Cuando el contexto provea fecha, podés usarla; si no, no la mencionás. El copy debe sentirse coherente con ese contexto real, no como texto genérico aplicable a cualquier club.
-
-5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → precisión informativa (NO inventar) → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario" o con una frase más "vendedora", priorizás la identidad institucional y la precisión.`;
+            const systemPrompt = INSTITUTIONAL_VOICE;
 
             const userPrompt = `Entidad: "${clubName}"${clubCategory ? ` (categoría: ${clubCategory})` : ''}${clubCity ? ` — ciudad: ${clubCity}` : ''}.
-${hasSpecificClubName ? `Usá EXACTAMENTE este nombre cuando te refieras a la entidad. No uses "El Club Rotario" genérico.` : `No hay nombre específico — evitá nombrar al club; hablá en primera persona plural ("compartimos", "celebramos") sin inventar nombres.`}
-${eventDateHuman ? `Fecha real del evento (provista por el sistema): ${eventDateHuman}. Podés mencionarla con naturalidad.` : `NO hay fecha provista en este contexto. PROHIBIDO inventar fechas, días de la semana u horarios. Usá frases neutrales: "próximamente", "en esta jornada", "durante la actividad", "en el marco del proyecto", "en breve".`}
+${identityClause(hasSpecificClubName)}
+${dateClause(eventDateHuman)}
 Tipo de publicación: ${config.type || 'standard'} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
 Área de enfoque Rotary: ${areaMeta}.
 
