@@ -66,8 +66,13 @@ import {
     startSoundtrack, pollSoundtrack, fetchAudioBuffer
 } from '../lib/reelMusic.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
+import {
+    COPY_PLATFORMS, DEFAULT_PLATFORMS, CAMPAIGN_CATEGORIES, MARKETING_GOALS,
+    generateReelCopy, regeneratePlatformCopy,
+    copyToText, copyToCsv, copyToJson
+} from '../lib/reelCopy.js';
 
-export const REEL_MODULE_VERSION = '4.665.0';
+export const REEL_MODULE_VERSION = '4.666.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -205,7 +210,7 @@ const sceneToDto = (row) => ({
     creditsEstimated: row.creditsEstimated
 });
 
-const projectToDto = (row, scenes = []) => {
+const projectToDto = (row, scenes = [], copies = []) => {
     const sceneDtos = scenes.map(sceneToDto);
     const scenesReady = sceneDtos.filter(s => SCENE_STATUSES[s.status]?.terminal).length;
     return {
@@ -257,13 +262,14 @@ const projectToDto = (row, scenes = []) => {
         version: row.version,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        scenes: sceneDtos
+        scenes: sceneDtos,
+        copies: copies.map(copyRowToDto)
     };
 };
 
 const respondProject = async (res, row, status = 200) => {
-    const scenes = await fetchScenes(row.id);
-    res.status(status).json(projectToDto(row, scenes));
+    const [scenes, copies] = await Promise.all([fetchScenes(row.id), fetchCopies(row.id)]);
+    res.status(status).json(projectToDto(row, scenes, copies));
 };
 
 // ─── Consumo de créditos ───────────────────────────────────────────────────
@@ -380,6 +386,17 @@ export const getReelOptions = async (req, res) => {
                     note: 'Las fotos que no están en el formato del Reel se adaptan generando el lienzo que falta, sin recortar. La conservación del original se mide sobre su propia región y se rehace la adaptación si no llega al umbral.'
                 };
             })(),
+
+            // Copies: qué plataformas se generan y con qué límites.
+            copy: {
+                platforms: Object.values(COPY_PLATFORMS).map(p => ({
+                    id: p.id, label: p.label, maxChars: p.maxChars,
+                    sweetSpot: p.sweetSpot, maxHashtags: p.maxHashtags, priority: p.priority
+                })),
+                categories: CAMPAIGN_CATEGORIES,
+                goals: MARKETING_GOALS,
+                exportFormats: ['txt', 'csv', 'json', 'zip']
+            },
 
             timing: {
                 sceneCount: SCENE_COUNT,
@@ -863,6 +880,19 @@ export const createReel = async (req, res) => {
             }
         }
 
+        // ── Copies, EN PARALELO con los clips ──
+        //
+        // Se hace acá y no al final a propósito: el análisis de las tres fotos
+        // ya está hecho, así que escribir los textos cuesta una llamada de
+        // texto. Los clips tardan 1-3 minutos; cuando el video esté listo, los
+        // copies llevarán rato esperando. Un fallo acá no tumba el Reel.
+        const { rows: forCopy } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
+        const copyScenes = await fetchScenes(projectId);
+        await produceCopy(forCopy[0], copyScenes, {
+            locale: req.body?.copyLocale || 'es',
+            createdBy: req.user?.id || null
+        });
+
         // Sin ninguna adaptación en curso, la etapa se atraviesa sin pararse.
         await db.query(
             `UPDATE "ReelProject"
@@ -1236,7 +1266,29 @@ const ingestLocalReel = async (project, output) => {
     );
 
     console.log(`[REEL] ${project.id} montado localmente → ${quality.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
+    await autoSaveToLibrary(rows[0]);
     return rows[0];
+};
+
+// Guarda el Reel en la Biblioteca en cuanto está listo, sin que nadie lo pida.
+// Es el requisito de "el usuario no debe realizar ninguna acción adicional".
+//
+// Sólo con veredicto `ready`: un Reel que no pasó la validación no debería
+// aparecer en la Biblioteca como si estuviera aprobado. Para ése queda el
+// guardado manual con `force`.
+//
+// Nunca lanza: que la Biblioteca falle no puede convertir un Reel terminado en
+// un Reel con error.
+const autoSaveToLibrary = async (project) => {
+    if (!project?.videoUrl || project.status !== 'ready' || project.mediaId) return project;
+    try {
+        const media = await createLibraryEntry(project);
+        console.log(`[REEL] ${project.id} guardado automáticamente en la Biblioteca (${media.id})`);
+    } catch (e) {
+        console.error(`[REEL] ${project.id} no se pudo guardar en la Biblioteca:`, e.message);
+        await appendNote(project.id, `No se pudo guardar automáticamente en la Biblioteca: ${e.message} Se puede guardar a mano desde la ficha.`);
+    }
+    return project;
 };
 
 // Baja el montaje terminado, lo mide y lo sube a nuestro bucket.
@@ -1286,6 +1338,7 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
     );
 
     console.log(`[REEL] ${project.id} → ${quality.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
+    await autoSaveToLibrary(rows[0]);
     return rows[0];
 };
 
@@ -1880,12 +1933,449 @@ export const renderReel = async (req, res) => {
     }
 };
 
+// ─── Copies de publicación ─────────────────────────────────────────────────
+//
+// Se generan al crear el Reel, EN PARALELO con los clips: el análisis de las
+// tres fotos ya está hecho (lo hizo el director), así que escribir los textos
+// cuesta una llamada de texto y ~10 s. Los clips tardan 1-3 minutos. Cuando el
+// video está listo, los copies llevan rato esperando.
+//
+// VERSIONADO: nunca se actualiza una fila. Editar o regenerar inserta una
+// versión nueva y baja la bandera de la anterior, así se puede volver a un
+// texto que ya gustaba. Un índice único parcial impide que dos versiones se
+// declaren vigentes a la vez.
+
+// Datos de la entidad para el prompt. Sin club, el copy habla en primera
+// persona plural sin inventar nombres — lo resuelve `identityClause`.
+const entityFor = async (project) => {
+    if (!project.clubId) {
+        return { clubName: project.organizationName || null, clubCategory: null, clubCity: null };
+    }
+    try {
+        const { rows } = await db.query('SELECT name, type, city FROM "Club" WHERE id = $1', [project.clubId]);
+        return {
+            clubName: rows[0]?.name || project.organizationName || null,
+            clubCategory: rows[0]?.type || null,
+            clubCity: rows[0]?.city || null
+        };
+    } catch {
+        return { clubName: project.organizationName || null, clubCategory: null, clubCity: null };
+    }
+};
+
+// Inserta una versión nueva y desmarca la anterior, en una transacción: si el
+// UPDATE pasara y el INSERT fallara, la plataforma quedaría sin copy vigente.
+const insertCopyVersion = async (projectId, clubId, platformData, common, meta) => {
+    // `db` expone `query`, no `connect`: para una transacción hay que tomar un
+    // cliente del pool y devolverlo siempre (el `finally`), o en serverless se
+    // agotan las 10 conexiones del pool en pocas peticiones.
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: prev } = await client.query(
+            `SELECT COALESCE(MAX(version), 0) AS v FROM "ReelCopy"
+             WHERE "projectId" = $1 AND platform = $2 AND locale = $3`,
+            [projectId, platformData.platform, common.locale]
+        );
+        await client.query(
+            `UPDATE "ReelCopy" SET "isCurrent" = FALSE
+             WHERE "projectId" = $1 AND platform = $2 AND locale = $3 AND "isCurrent"`,
+            [projectId, platformData.platform, common.locale]
+        );
+        const { rows } = await client.query(
+            `INSERT INTO "ReelCopy" (
+                id, "projectId", "clubId", platform, locale, version, "isCurrent",
+                title, subtitle, hook, category, "marketingGoal", audience, keywords,
+                description, cta, hashtags, "fullText", "charCount",
+                source, provider, model, prompt, "createdBy", "createdAt"
+             ) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW())
+             RETURNING *`,
+            [
+                randomUUID(), projectId, clubId, platformData.platform, common.locale,
+                Number(prev[0].v) + 1,
+                common.title, common.subtitle, common.hook, common.category,
+                common.marketingGoal, common.audience, JSON.stringify(common.keywords || []),
+                platformData.description, platformData.cta,
+                JSON.stringify(platformData.hashtags || []),
+                platformData.fullText, platformData.charCount,
+                meta.source || 'ai', meta.provider || null, meta.model || null,
+                meta.prompt || null, meta.createdBy || null
+            ]
+        );
+        await client.query('COMMIT');
+        return rows[0];
+    } catch (e) {
+        await client.query('ROLLBACK').catch(() => { });
+        throw e;
+    } finally {
+        client.release();
+    }
+};
+
+const persistCopy = async (project, copy, meta) => {
+    const common = {
+        locale: copy.locale, title: copy.title, subtitle: copy.subtitle, hook: copy.hook,
+        category: copy.category, marketingGoal: copy.marketingGoal,
+        audience: copy.audience, keywords: copy.keywords
+    };
+    const saved = [];
+    for (const p of Object.values(copy.platforms)) {
+        saved.push(await insertCopyVersion(project.id, project.clubId, p, common, meta));
+    }
+    return saved;
+};
+
+// Genera y guarda los copies. Nunca lanza hacia arriba: un fallo del
+// copywriter no puede tumbar un Reel que se está renderizando bien. Se anota y
+// el usuario puede regenerarlos desde la ficha.
+const produceCopy = async (project, scenes, { locale = 'es', createdBy = null } = {}) => {
+    try {
+        const entity = await entityFor(project);
+        const { copy, provider, model, prompt } = await generateReelCopy({
+            reel: project, scenes, ...entity, locale
+        });
+        await persistCopy(project, copy, { source: 'ai', provider, model, prompt, createdBy });
+        console.log(`[REEL] ${project.id} copies generados (${locale}) por ${provider}/${model}`);
+        return copy;
+    } catch (e) {
+        console.error(`[REEL] ${project.id} copies fallaron:`, e.message);
+        await appendNote(project.id, `Los textos de publicación no se pudieron generar: ${e.message} Se pueden regenerar desde la ficha del Reel.`);
+        return null;
+    }
+};
+
+const fetchCopies = async (projectId, { locale = null, includeHistory = false } = {}) => {
+    const where = ['"projectId" = $1'];
+    const params = [projectId];
+    if (!includeHistory) where.push('"isCurrent"');
+    if (locale) { params.push(locale); where.push(`locale = $${params.length}`); }
+    const { rows } = await db.query(
+        `SELECT * FROM "ReelCopy" WHERE ${where.join(' AND ')}
+         ORDER BY platform ASC, locale ASC, version DESC`,
+        params
+    );
+    return rows;
+};
+
+const copyRowToDto = (row) => ({
+    id: row.id,
+    platform: row.platform,
+    platformLabel: COPY_PLATFORMS[row.platform]?.label || row.platform,
+    locale: row.locale,
+    version: row.version,
+    isCurrent: row.isCurrent,
+    title: row.title,
+    subtitle: row.subtitle,
+    hook: row.hook,
+    category: row.category,
+    marketingGoal: row.marketingGoal,
+    audience: row.audience,
+    keywords: row.keywords || [],
+    description: row.description,
+    cta: row.cta,
+    hashtags: row.hashtags || [],
+    fullText: row.fullText,
+    charCount: row.charCount,
+    maxChars: COPY_PLATFORMS[row.platform]?.maxChars || null,
+    source: row.source,
+    provider: row.provider,
+    model: row.model,
+    isFavorite: row.isFavorite,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt
+});
+
+// Reconstruye la forma que espera `reelCopy.js` a partir de las filas vigentes.
+const copiesToShape = (rows) => {
+    if (!rows.length) return null;
+    const first = rows[0];
+    const platforms = {};
+    for (const r of rows) {
+        platforms[r.platform] = {
+            platform: r.platform,
+            label: COPY_PLATFORMS[r.platform]?.label || r.platform,
+            description: r.description, cta: r.cta,
+            hashtags: r.hashtags || [], fullText: r.fullText,
+            charCount: r.charCount, maxChars: COPY_PLATFORMS[r.platform]?.maxChars
+        };
+    }
+    return {
+        locale: first.locale, title: first.title, subtitle: first.subtitle,
+        hook: first.hook, category: first.category, marketingGoal: first.marketingGoal,
+        audience: first.audience, keywords: first.keywords || [], platforms
+    };
+};
+
+export const getReelCopies = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const rows = await fetchCopies(project.id, {
+            locale: req.query.locale || null,
+            includeHistory: req.query.history === 'true'
+        });
+        res.json({
+            copies: rows.map(copyRowToDto),
+            platforms: Object.values(COPY_PLATFORMS).map(p => ({
+                id: p.id, label: p.label, maxChars: p.maxChars, priority: p.priority
+            })),
+            categories: CAMPAIGN_CATEGORIES,
+            goals: MARKETING_GOALS
+        });
+    } catch (e) {
+        console.error('[REEL] copies:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Regenera: todas las plataformas, o sólo una. `instruction` deja pedir un
+// matiz ("más corto", "menos formal") sin tocar el prompt maestro.
+export const regenerateReelCopy = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const { platform, locale = 'es', instruction = null } = req.body || {};
+        const scenes = await fetchScenes(project.id);
+        const entity = await entityFor(project);
+
+        if (platform) {
+            if (!COPY_PLATFORMS[platform]) return res.status(400).json({ error: `Plataforma desconocida: ${platform}` });
+            const current = await fetchCopies(project.id, { locale });
+            const common = copiesToShape(current);
+            const { platform: data, provider, model, prompt } = await regeneratePlatformCopy({
+                reel: project, scenes, platform, ...entity, locale, instruction
+            });
+            await insertCopyVersion(project.id, project.clubId, data, {
+                locale,
+                title: common?.title, subtitle: common?.subtitle, hook: common?.hook,
+                category: common?.category, marketingGoal: common?.marketingGoal,
+                audience: common?.audience, keywords: common?.keywords
+            }, { source: 'ai', provider, model, prompt, createdBy: req.user?.id || null });
+        } else {
+            const copy = await produceCopy(project, scenes, { locale, createdBy: req.user?.id || null });
+            if (!copy) return res.status(502).json({ error: 'No se pudieron generar los textos. Reintentá en unos segundos.' });
+        }
+
+        const rows = await fetchCopies(project.id, { locale });
+        res.json({ copies: rows.map(copyRowToDto) });
+    } catch (e) {
+        console.error('[REEL] regenerate copy:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Edición manual. Guarda una versión nueva con `source: 'manual'`: el texto
+// escrito a mano no se distingue del generado sólo por quién lo escribió, y esa
+// distinción importa cuando alguien pregunta por qué un copy dice lo que dice.
+export const updateReelCopy = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const { platform, locale = 'es', description, cta, hashtags, title, subtitle } = req.body || {};
+        if (!COPY_PLATFORMS[platform]) return res.status(400).json({ error: `Plataforma desconocida: ${platform}` });
+
+        const current = await fetchCopies(project.id, { locale });
+        const common = copiesToShape(current);
+        const existing = current.find(r => r.platform === platform);
+
+        const nextHashtags = Array.isArray(hashtags)
+            ? hashtags.map(h => String(h).trim()).filter(Boolean).map(h => h.startsWith('#') ? h : `#${h}`)
+            : (existing?.hashtags || []);
+        const nextDescription = typeof description === 'string' ? description : (existing?.description || '');
+        const nextCta = typeof cta === 'string' ? cta : (existing?.cta || '');
+        const fullText = [nextDescription, nextCta, nextHashtags.join(' ')].filter(Boolean).join('\n\n');
+
+        const saved = await insertCopyVersion(project.id, project.clubId, {
+            platform,
+            description: nextDescription,
+            cta: nextCta,
+            hashtags: nextHashtags,
+            fullText,
+            charCount: fullText.length
+        }, {
+            locale,
+            title: typeof title === 'string' ? title : common?.title,
+            subtitle: typeof subtitle === 'string' ? subtitle : common?.subtitle,
+            hook: common?.hook, category: common?.category,
+            marketingGoal: common?.marketingGoal, audience: common?.audience,
+            keywords: common?.keywords
+        }, { source: 'manual', createdBy: req.user?.id || null });
+
+        res.json({ copy: copyRowToDto(saved) });
+    } catch (e) {
+        console.error('[REEL] update copy:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Vuelve a una versión anterior sin borrar nada: la recupera como versión
+// nueva. Deshacer no puede destruir el historial que hace posible deshacer.
+export const restoreReelCopy = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const { rows } = await db.query(
+            'SELECT * FROM "ReelCopy" WHERE id = $1 AND "projectId" = $2',
+            [req.body?.copyId, project.id]
+        );
+        const old = rows[0];
+        if (!old) return res.status(404).json({ error: 'Versión no encontrada' });
+
+        const saved = await insertCopyVersion(project.id, project.clubId, {
+            platform: old.platform, description: old.description, cta: old.cta,
+            hashtags: old.hashtags || [], fullText: old.fullText, charCount: old.charCount
+        }, {
+            locale: old.locale, title: old.title, subtitle: old.subtitle, hook: old.hook,
+            category: old.category, marketingGoal: old.marketingGoal,
+            audience: old.audience, keywords: old.keywords
+        }, { source: old.source, provider: old.provider, model: old.model, createdBy: req.user?.id || null });
+
+        res.json({ copy: copyRowToDto(saved) });
+    } catch (e) {
+        console.error('[REEL] restore copy:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const toggleCopyFavorite = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const { rows } = await db.query(
+            `UPDATE "ReelCopy" SET "isFavorite" = NOT "isFavorite"
+             WHERE id = $1 AND "projectId" = $2 RETURNING *`,
+            [req.body?.copyId, project.id]
+        );
+        if (!rows[0]) return res.status(404).json({ error: 'Copy no encontrado' });
+        res.json({ copy: copyRowToDto(rows[0]) });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ─── Exportación ───────────────────────────────────────────────────────────
+//
+// TXT, CSV, JSON y un ZIP con los tres más los metadatos. El PDF lo arma la
+// pantalla con `jspdf`, que ya es dependencia del panel y es una librería de
+// navegador: montarla en el servidor sería traer una segunda implementación
+// para el mismo resultado.
+export const exportReel = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const format = String(req.query.format || 'json').toLowerCase();
+        const locale = req.query.locale || 'es';
+        const rows = await fetchCopies(project.id, { locale });
+        const copy = copiesToShape(rows);
+        if (!copy) return res.status(400).json({ error: 'Este Reel todavía no tiene textos generados.' });
+
+        const base = slugify(project.title);
+        const send = (body, type, ext) => {
+            res.setHeader('Content-Type', type);
+            res.setHeader('Content-Disposition', `attachment; filename="${base}-${locale}.${ext}"`);
+            res.send(body);
+        };
+
+        if (format === 'txt') return send(copyToText(copy, project), 'text/plain; charset=utf-8', 'txt');
+        if (format === 'csv') return send(copyToCsv(copy, project), 'text/csv; charset=utf-8', 'csv');
+        if (format === 'json') {
+            return send(copyToJson(copy, project, {
+                scenes: (await fetchScenes(project.id)).map(sceneToDto),
+                versions: (await fetchCopies(project.id, { includeHistory: true })).map(copyRowToDto)
+            }), 'application/json; charset=utf-8', 'json');
+        }
+
+        if (format === 'zip') {
+            const JSZip = (await import('jszip')).default;
+            const zip = new JSZip();
+            zip.file(`${base}-copies.txt`, copyToText(copy, project));
+            zip.file(`${base}-copies.csv`, copyToCsv(copy, project));
+            zip.file(`${base}-metadata.json`, copyToJson(copy, project, {
+                scenes: (await fetchScenes(project.id)).map(sceneToDto)
+            }));
+            for (const p of Object.values(copy.platforms)) {
+                zip.file(`copies/${p.platform}.txt`, p.fullText);
+            }
+            // El video va DENTRO del ZIP: el paquete tiene que servir para
+            // publicar sin volver a la plataforma. Si falla la descarga, el ZIP
+            // sale igual con los textos y un aviso — mejor que no salir.
+            if (project.videoUrl) {
+                try {
+                    const resp = await fetch(project.videoUrl);
+                    if (resp.ok) zip.file(`${base}.mp4`, Buffer.from(await resp.arrayBuffer()));
+                    else zip.file('VIDEO-NO-INCLUIDO.txt', `No se pudo descargar el video (HTTP ${resp.status}). Está en: ${project.videoUrl}`);
+                } catch (e) {
+                    zip.file('VIDEO-NO-INCLUIDO.txt', `No se pudo descargar el video: ${e.message}\nEstá en: ${project.videoUrl}`);
+                }
+            }
+            const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+            return send(buffer, 'application/zip', 'zip');
+        }
+
+        res.status(400).json({ error: `Formato no soportado: ${format}. Disponibles: txt, csv, json, zip.` });
+    } catch (e) {
+        console.error('[REEL] export:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
 // ─── Biblioteca ────────────────────────────────────────────────────────────
 //
 // Guardar en la Biblioteca es una acción EXPLÍCITA del usuario, distinta de
 // copiar el archivo a S3 (que pasa solo, en cuanto está listo, porque la URL
 // del proveedor caduca). Acá se crea la fila en `Media` con toda la metadata
 // de producción, que es lo que permite reutilizar la pieza y versionarla.
+// Crea la fila en `Media` con toda la metadata de producción. Una sola
+// implementación para el guardado automático y el manual: si se duplicara, un
+// Reel guardado solo y otro guardado a mano acabarían con fichas distintas.
+//
+// La metadata va en `Media.sourceLabel` y en la ficha del Reel; el archivo en
+// S3 ya estaba subido desde antes (la URL del proveedor caduca, así que se
+// copia en cuanto está listo). Guardar en la Biblioteca es OTRA cosa: es
+// publicarlo como recurso reutilizable.
+const createLibraryEntry = async (project) => {
+    if (project.mediaId) {
+        const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [project.mediaId]);
+        if (rows[0]) return rows[0];
+    }
+
+    let sourceLabel = project.organizationName || null;
+    if (project.clubId) {
+        try {
+            const { rows } = await db.query('SELECT name FROM "Club" WHERE id = $1', [project.clubId]);
+            if (rows[0]?.name) sourceLabel = rows[0].name;
+        } catch { /* se queda con el nombre escrito */ }
+    }
+
+    const filename = `${slugify(project.title)}-${project.format.replace(':', 'x')}.mp4`;
+    const { rows: media } = await db.query(
+        `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
+                              "sourceType", "sourceId", "sourceLabel", "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+         RETURNING *`,
+        [
+            filename, project.videoUrl, Number(project.sizeBytes || 0),
+            bucketName(), process.env.AWS_REGION || 'us-east-1',
+            project.clubId, project.s3Key,
+            project.clubId ? 'club' : 'platform', project.clubId, sourceLabel
+        ]
+    );
+
+    await db.query('UPDATE "ReelProject" SET "mediaId" = $2, "updatedAt" = NOW() WHERE id = $1',
+        [project.id, media[0].id]);
+    return media[0];
+};
+
 export const saveReelToLibrary = async (req, res) => {
     try {
         await ensureReelSchema();
@@ -1898,44 +2388,16 @@ export const saveReelToLibrary = async (req, res) => {
                 quality: project.quality
             });
         }
-        if (project.mediaId) {
-            const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [project.mediaId]);
-            if (rows[0]) {
-                const scenes = await fetchScenes(project.id);
-                return res.json({ media: rows[0], reel: projectToDto(project, scenes), alreadySaved: true });
-            }
-        }
 
-        let sourceLabel = project.organizationName || null;
-        if (project.clubId) {
-            try {
-                const { rows } = await db.query('SELECT name FROM "Club" WHERE id = $1', [project.clubId]);
-                if (rows[0]?.name) sourceLabel = rows[0].name;
-            } catch { /* se queda con el nombre escrito */ }
-        }
-
-        const filename = `${slugify(project.title)}-${project.format.replace(':', 'x')}.mp4`;
-        const { rows: media } = await db.query(
-            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
-                                  "sourceType", "sourceId", "sourceLabel", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-             RETURNING *`,
-            [
-                filename, project.videoUrl, Number(project.sizeBytes || 0),
-                bucketName(), process.env.AWS_REGION || 'us-east-1',
-                project.clubId, project.s3Key,
-                project.clubId ? 'club' : 'platform', project.clubId, sourceLabel
-            ]
-        );
-
-        const { rows: updated } = await db.query(
-            'UPDATE "ReelProject" SET "mediaId" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *',
-            [project.id, media[0].id]
-        );
-
-        console.log(`[REEL] ${project.id} guardado en la Biblioteca como ${media[0].id}`);
+        const alreadySaved = Boolean(project.mediaId);
+        const media = await createLibraryEntry(project);
+        const { rows: updated } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [project.id]);
         const scenes = await fetchScenes(project.id);
-        res.status(201).json({ media: media[0], reel: projectToDto(updated[0], scenes) });
+        res.status(alreadySaved ? 200 : 201).json({
+            media,
+            reel: projectToDto(updated[0], scenes),
+            alreadySaved
+        });
     } catch (e) {
         console.error('[REEL] library:', e);
         res.status(500).json({ error: e.message });

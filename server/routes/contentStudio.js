@@ -40,7 +40,13 @@ import {
     renderReel,
     saveReelToLibrary,
     deleteReel,
-    handleRenderWebhook
+    handleRenderWebhook,
+    getReelCopies,
+    regenerateReelCopy,
+    updateReelCopy,
+    restoreReelCopy,
+    toggleCopyFavorite,
+    exportReel
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
@@ -107,6 +113,15 @@ router.get('/reels/:id/sync', authMiddleware, syncReel);
 router.post('/reels/:id/render', authMiddleware, renderReel);
 router.post('/reels/:id/music', authMiddleware, changeMusic);
 router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
+
+// Copies de publicación (v4.666). El orden importa: las rutas fijas van antes
+// que las paramétricas de escena para que no se confundan.
+router.get('/reels/:id/copies', authMiddleware, getReelCopies);
+router.post('/reels/:id/copies/regenerate', authMiddleware, regenerateReelCopy);
+router.patch('/reels/:id/copies', authMiddleware, updateReelCopy);
+router.post('/reels/:id/copies/restore', authMiddleware, restoreReelCopy);
+router.post('/reels/:id/copies/favorite', authMiddleware, toggleCopyFavorite);
+router.get('/reels/:id/export', authMiddleware, exportReel);
 router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
 router.patch('/reels/:id/scenes/:sceneId', authMiddleware, updateScene);
 router.delete('/reels/:id', authMiddleware, deleteReel);

@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Creador de Reels IA — espejo en el navegador
-// v4.665.0
+// v4.666.0
 //
 // Los CATÁLOGOS (motores, estilos, transiciones, música, formatos) NO se
 // duplican aquí: se piden a `GET /api/content-studio/reels/options`, para que
@@ -143,6 +143,35 @@ export interface ReelScene {
     creditsEstimated: number;
 }
 
+// Un copy de publicación, en su versión vigente. El historial son filas con
+// `isCurrent:false`: nunca se sobrescribe un texto, se inserta otra versión.
+export interface ReelCopy {
+    id: string;
+    platform: string;
+    platformLabel: string;
+    locale: string;
+    version: number;
+    isCurrent: boolean;
+    title: string | null;
+    subtitle: string | null;
+    hook: string | null;
+    category: string | null;
+    marketingGoal: string | null;
+    audience: string | null;
+    keywords: string[];
+    description: string | null;
+    cta: string | null;
+    hashtags: string[];
+    fullText: string | null;
+    charCount: number | null;
+    maxChars: number | null;
+    source: 'ai' | 'manual' | 'translation' | string;
+    provider: string | null;
+    model: string | null;
+    isFavorite: boolean;
+    createdAt: string;
+}
+
 export interface FidelitySummary {
     checked: number;
     failed: number;
@@ -211,6 +240,7 @@ export interface Reel {
     createdAt: string;
     updatedAt: string;
     scenes: ReelScene[];
+    copies?: ReelCopy[];
 }
 
 export interface ReelOptions {
@@ -241,6 +271,12 @@ export interface ReelOptions {
         photoTypes: { id: string; label: string }[];
         settings: Record<string, number | string | boolean>;
         note: string;
+    };
+    copy?: {
+        platforms: { id: string; label: string; maxChars: number; sweetSpot: number; maxHashtags: number; priority: string }[];
+        categories: string[];
+        goals: string[];
+        exportFormats: string[];
     };
     timing: { sceneCount: number; targetTotalSec: number; minSceneSec: number; maxSceneSec: number };
     usage: { spent: number; generations: number; limit: number | null; remaining: number | null; exceeded: boolean };

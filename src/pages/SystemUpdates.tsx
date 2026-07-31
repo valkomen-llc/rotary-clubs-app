@@ -16,7 +16,17 @@ interface UpdateItem {
     title: string;
     description?: string;
     author?: string;
-    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix' | 'improvement' | 'bugfix' | 'urgent' | 'patch';
+    // Todas las entradas lo usan desde hace versiones, pero faltaba en el tipo:
+    // el typecheck del proyecto nunca se ejecutaba de verdad (ver CLAUDE.md).
+    tags?: string[];
+    // Valores que los datos YA usan y que ya se renderizan en producción: el
+    // tipo iba por detrás porque el typecheck del proyecto nunca corría de
+    // verdad. Se amplía para reflejar lo que hay, no al revés — cambiar los
+    // datos reescribiría el historial publicado.
+    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix' | 'improvement' | 'bugfix' | 'urgent' | 'patch'
+        | 'added' | 'changed' | 'fixed' | 'improved' | 'enhancement';
+    id?: string;
+    impact?: string;
     changes?: Array<{
         type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved' | 'major' | 'fix';
         text: string;
@@ -24,9 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.665.0 | 2026-07-30 (Expansión Inteligente: fotos horizontales adaptadas al formato del Reel)
-// Cache bust: 2026-07-30p
+// UI V4.666.0 | 2026-07-30 (Copies automáticos por plataforma + guardado en Biblioteca)
+// Cache bust: 2026-07-30q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.666.0',
+        title: 'El Reel llega con los textos ya escritos ✍️',
+        description: 'Cada Reel se entrega ahora con su texto de publicación listo para TikTok, Instagram Reels y YouTube Shorts. Se escriben solos mientras el video se está generando, así que cuando el Reel termina los textos llevan rato esperando: no se suma ni un segundo de espera. Cada plataforma recibe un texto propio —no el mismo copiado tres veces—, con su longitud recomendada, su tono y sus hashtags: TikTok prioriza el enganche, Instagram el relato breve y Shorts las palabras clave para que se encuentre buscando. Se usan las mismas reglas editoriales del Generador de Publicaciones, incluida la que prohíbe inventar fechas, lugares o cifras. El Reel terminado se guarda solo en la Biblioteca, con el video, su miniatura y toda su ficha técnica.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'copywriting', 'redes-sociales', 'ia'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Textos automáticos para TikTok, Instagram Reels y YouTube Shorts, escritos en paralelo con el video.' },
+            { type: 'added', text: 'Título, subtítulo, hook, categoría, objetivo, público y palabras clave de cada Reel.' },
+            { type: 'added', text: 'Cada texto se puede copiar, editar y regenerar por separado, sin tocar los otros dos.' },
+            { type: 'added', text: 'Exportación en TXT, CSV, JSON y un ZIP que incluye el video.' },
+            { type: 'added', text: 'El Reel terminado se guarda solo en la Biblioteca, sin pedirlo.' },
+            { type: 'improved', text: 'Las reglas editoriales pasan a estar en un único sitio, compartidas con el Generador de Publicaciones.' },
+            { type: 'fixed', text: 'Corregido un fallo que habría impedido abrir el panel de textos.' }
+        ],
+        details: [
+            'Nada se sobrescribe: editar o regenerar un texto guarda una versión nueva y conserva la anterior, así se puede volver a un texto que ya gustaba.',
+            'El contador de caracteres mide el texto COMPLETO que se va a publicar —descripción, llamado a la acción y hashtags—, que es lo que cuenta cada red.',
+            'Un texto demasiado largo se recorta al límite de la plataforma sin partir palabras por la mitad.'
+        ]
+    },
     {
         version: '4.665.0',
         title: 'Expansión Inteligente: las fotos horizontales ya sirven para Reels 🖼️',
@@ -2646,8 +2678,8 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         title: 'Módulo Directorio Retirado',
         description: 'Se ha retirado temporalmente el módulo de Directorio de Contactos para construirlo bajo una nueva perspectiva.',
         changes: [
-            'Retiro del acceso a la herramienta Directorio de Contactos.',
-            'Limpieza del componente CRM.tsx'
+            { type: 'removed', text: 'Retiro del acceso a la herramienta Directorio de Contactos.' },
+            { type: 'changed', text: 'Limpieza del componente CRM.tsx' }
         ]
     },
     {
@@ -2657,9 +2689,9 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         title: 'Soporte de Etiquetas (Tags) y Resolución de DB Timeout',
         description: 'Se implementó el sistema de etiquetas en Listas y se solucionó el bloqueo de conexiones en el pooler de Postgres de Vercel.',
         changes: [
-            'Etiquetas activadas en la creación y edición de Listas.',
-            'Liberación de procesos Zombie en la base de datos de Neon.',
-            'Nueva purga de la caché del navegador para la UI en la versión 4.426.5.'
+            { type: 'added', text: 'Etiquetas activadas en la creación y edición de Listas.' },
+            { type: 'fixed', text: 'Liberación de procesos Zombie en la base de datos de Neon.' },
+            { type: 'changed', text: 'Nueva purga de la caché del navegador para la UI en la versión 4.426.5.' }
         ]
     },
     {

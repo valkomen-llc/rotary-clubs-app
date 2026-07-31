@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.665
+## Creador de Reels IA — v4.666
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -183,6 +183,8 @@ en `config` sin que el servidor los leyera.
 | `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: FFmpeg local + Shotstack, Creatomate, JSON2Video |
 | `server/lib/reelFfmpeg.js` | Compositor local: extracción de fotogramas, conformado y montaje |
 | `server/lib/canvasExpansion.js` | AI Canvas Expansion: adapta el lienzo de una foto al formato antes de animarla |
+| `server/lib/reelCopy.js` | Copies por plataforma, saneado, límites y exportación |
+| `server/lib/institutionalVoice.js` | Reglas editoriales compartidas con el Generador de Publicaciones |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
 | `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
@@ -312,6 +314,24 @@ en `config` sin que el servidor los leyera.
   base de datos de este archivo. `VideoProject` **no se toca**: sigue en Prisma
   con sus filas y sus `ScheduledPost` colgando, y las rutas `/projects` se
   conservan.
+- **Los copies se escriben EN PARALELO con los clips**, al crear el Reel. Cuesta
+  una llamada de texto porque el análisis de las tres fotos ya lo hizo el
+  director: volver a mirarlas serían tres llamadas de visión para saber lo
+  mismo. Los clips tardan 1-3 minutos; el copy, ~10 s.
+- **No hay motor de copy nuevo.** Se usa `generateCopy` —el del Generador de
+  Publicaciones, con su cadena de proveedores— y las reglas editoriales de
+  `institutionalVoice.js`, que desde v4.666 están en UN solo sitio. Si se
+  duplican, la voz de la plataforma se bifurca en silencio.
+- **`ReelCopy` es una tabla de VERSIONES.** Nunca se actualiza una fila: editar,
+  regenerar o restaurar inserta una versión nueva y baja la bandera de la
+  anterior. Un índice único parcial (`WHERE "isCurrent"`) hace imposible que dos
+  versiones se declaren vigentes a la vez. Restaurar tampoco borra: recupera la
+  versión antigua como una nueva.
+- **El contador de caracteres mide el texto COMPLETO** —descripción + CTA +
+  hashtags—, que es lo que cuenta la red. Medir sólo la descripción dejaría
+  pasar textos que la plataforma corta sola.
+- **Un texto que se pasa del límite se recorta sin partir palabras.** Un copy
+  cortado a mitad de palabra se lee como un error del sistema.
 - El medidor de créditos es **propio** (`REEL_MONTHLY_CREDIT_LIMIT`), no el saldo
   real de KIE. No presentarlo como el saldo del proveedor.
 
@@ -333,6 +353,14 @@ en `config` sin que el servidor los leyera.
 | `EXPANSION_MIN_PRESERVATION` | Conservación mínima del original (0-1, default 0.82) |
 | `EXPANSION_CREATIVITY`, `EXPANSION_MAX_GROWTH`, `EXPANSION_TOLERANCE` | Cuánto puede inventar, cuánto crecer y cuándo no tocar la foto |
 | `EXPANSION_MAX_RETRIES`, `EXPANSION_AUTO_REGENERATE` | Reintentos cuando la medición no llega al umbral |
+
+**Typecheck:** `npm run typecheck` (`tsc -p tsconfig.app.json`). **No usar
+`tsc -p tsconfig.json`**: el raíz tiene `files: []` y sólo referencias, así que
+no compila nada y pasa siempre — parece una comprobación y no lo es. El
+proyecto arrastra ~680 errores previos (en su mayoría imports sin usar, pero
+también identificadores inexistentes como `ClipboardList` en `AdminLayout.tsx`
+y `Plus` en `MissionControl.tsx`, que revientan en runtime al pintar esas
+pantallas). Al tocar un archivo, dejarlo sin errores propios.
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
