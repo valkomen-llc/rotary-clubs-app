@@ -21,10 +21,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Film, Search, Download, Copy as CopyIcon, Pencil, Trash2, X, Loader2,
     CheckCircle2, AlertTriangle, Clock, Coins, Music, Mic, Image as ImageIcon,
-    Share2, Activity, Save
+    Share2, Save, Ban, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel } from '../../../lib/reelSpec';
+import { isTerminal, formatEta } from '../../../lib/reelSpec';
 import ReelUsagePanel from './ReelUsagePanel';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -49,18 +50,48 @@ const fmtMs = (ms: number | null) => {
 };
 
 // Un Reel `needs_review` está en la Biblioteca a propósito desde v4.669: la
-// Biblioteca es el inventario de lo generado, no la lista de lo aprobado. Pero
-// el estado se ve, para que nadie publique sin saberlo.
+// Biblioteca es el inventario de lo generado, no la lista de lo aprobado. Y
+// desde v4.670 también están los que se están generando. El estado se ve
+// siempre, para que nadie publique sin saber qué tiene delante.
 const StatusChip: React.FC<{ reel: Reel }> = ({ reel }) => {
-    const ok = reel.status === 'ready';
+    const running = !isTerminal(reel.status);
+    const tone = running ? 'bg-sky-50 text-sky-700 border-sky-200'
+        : reel.status === 'ready' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : reel.status === 'error' ? 'bg-red-50 text-red-700 border-red-200'
+                : reel.status === 'cancelled' ? 'bg-gray-100 text-gray-600 border-gray-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200';
+    const Icon = running ? Loader2
+        : reel.status === 'ready' ? CheckCircle2
+            : reel.status === 'cancelled' ? Ban : AlertTriangle;
     return (
-        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-            ok ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-               : 'bg-amber-50 text-amber-700 border-amber-200'
-        }`}>
-            {ok ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${tone}`}>
+            <Icon className={`w-3 h-3 ${running ? 'animate-spin' : ''}`} />
             {reel.statusLabel}
         </span>
+    );
+};
+
+// Barra de avance de un Reel en curso. Sólo se pinta mientras se está
+// generando: en un Reel terminado una barra al 100 % no informa de nada.
+const ProgressBar: React.FC<{ reel: Reel }> = ({ reel }) => {
+    if (isTerminal(reel.status)) return null;
+    const pct = Math.round((reel.progress || 0) * 100);
+    const eta = formatEta(reel.etaSec);
+    return (
+        <div className="space-y-1">
+            <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-[width] duration-700 ease-out"
+                    style={{ width: `${Math.max(3, pct)}%` }}
+                />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-gray-500">
+                <span className="font-bold tabular-nums">{pct}%</span>
+                {/* «aprox.» no es un adorno: la cola del proveedor no la
+                    controlamos y prometer un minuto exacto sería inventarlo. */}
+                {eta && <span>aprox. {eta}</span>}
+            </div>
+        </div>
     );
 };
 
@@ -409,6 +440,22 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ o
         return () => window.clearTimeout(id);
     }, [search, load]);
 
+    // ── Refresco automático mientras haya algo generándose ──
+    //
+    // Sondeo y no WebSocket/SSE a propósito: la API corre en funciones
+    // serverless con un tope de 120 s por invocación, así que una conexión
+    // abierta se cortaría sola y consumiría tiempo de función mientras espera.
+    //
+    // El intervalo sólo existe mientras hay trabajo: en cuanto los Reels
+    // terminan, el efecto se desmonta y la Biblioteca deja de consultar. Una
+    // pantalla abierta toda la tarde sobre Reels terminados no genera tráfico.
+    const hasRunning = useMemo(() => reels.some(r => !isTerminal(r.status)), [reels]);
+    useEffect(() => {
+        if (!hasRunning) return;
+        const id = window.setInterval(() => { load(search); }, 5000);
+        return () => window.clearInterval(id);
+    }, [hasRunning, search, load]);
+
     const duplicate = async (reel: Reel) => {
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/duplicate`, {
@@ -423,6 +470,45 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ o
             });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo duplicar');
+        }
+    };
+
+    // Cancelar no detiene al proveedor —su API no lo permite y los créditos ya
+    // se gastaron—: detiene NUESTRA máquina de estados. El texto lo dice así.
+    const cancel = async (reel: Reel) => {
+        if (!window.confirm(
+            `¿Cancelar la generación de «${reel.title}»?\n\n` +
+            'Los clips que el proveedor ya esté generando no se pueden retirar y sus créditos ya se consumieron. ' +
+            'Lo que se detiene es el resto del proceso: no se montará el Reel. Podrás reintentarlo después.'
+        )) return;
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/cancel`, {
+                method: 'POST', headers: authHeaders()
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo cancelar');
+            setReels(rs => rs.map(x => (x.id === data.id ? data : x)));
+            if (selected?.id === data.id) setSelected(data);
+            toast.success('Generación cancelada');
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo cancelar');
+        }
+    };
+
+    const retry = async (reel: Reel) => {
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/retry`, {
+                method: 'POST', headers: authHeaders()
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo reintentar');
+            setReels(rs => rs.map(x => (x.id === data.id ? data : x)));
+            if (selected?.id === data.id) setSelected(data);
+            toast.success('Reintentando', {
+                description: 'Se conservan las fotos, los textos, la música y la locución. Sólo se relanza lo que falló.'
+            });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo reintentar');
         }
     };
 
@@ -481,43 +567,88 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ o
                 )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                    {reels.map(reel => (
-                        <button
-                            key={reel.id}
-                            onClick={() => setSelected(reel)}
-                            className="text-left rounded-2xl border border-gray-100 overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all group"
-                        >
-                            <div className="relative bg-black aspect-[9/16]">
-                                {reel.posterUrl ? (
-                                    <img src={reel.posterUrl} alt={reel.title} className="w-full h-full object-cover" />
-                                ) : reel.videoUrl ? (
-                                    <video src={reel.videoUrl} muted preload="metadata" className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <Film className="w-6 h-6 text-gray-600" />
+                    {reels.map(reel => {
+                        const running = !isTerminal(reel.status);
+                        // La miniatura provisional es la PRIMERA FOTO de origen.
+                        // Un Reel en curso no tiene portada todavía, y un
+                        // rectángulo gris no dice de cuál se trata; su propia
+                        // foto sí, y es la que el usuario acaba de elegir.
+                        const placeholder = reel.config?.sourceImages?.[0]?.url || null;
+                        return (
+                            <div
+                                key={reel.id}
+                                className="text-left rounded-2xl border border-gray-100 overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all group flex flex-col"
+                            >
+                                <button onClick={() => setSelected(reel)} className="text-left">
+                                    <div className="relative bg-black aspect-[9/16]">
+                                        {reel.posterUrl ? (
+                                            <img src={reel.posterUrl} alt={reel.title} className="w-full h-full object-cover" />
+                                        ) : reel.videoUrl ? (
+                                            <video src={reel.videoUrl} muted preload="metadata" className="w-full h-full object-cover" />
+                                        ) : placeholder ? (
+                                            <img src={placeholder} alt="" className={`w-full h-full object-cover ${running ? 'opacity-40' : 'opacity-70'}`} />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <Film className="w-6 h-6 text-gray-600" />
+                                            </div>
+                                        )}
+                                        {running && (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30">
+                                                <Loader2 className="w-6 h-6 text-white animate-spin" />
+                                                <span className="text-[10px] font-black text-white tabular-nums">
+                                                    {Math.round((reel.progress || 0) * 100)}%
+                                                </span>
+                                            </div>
+                                        )}
+                                        {!running && reel.durationSec && (
+                                            <span className="absolute bottom-2 right-2 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded">
+                                                {Math.round(reel.durationSec)}s
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="p-3 space-y-1.5">
+                                        <div className="text-xs font-black text-gray-900 line-clamp-2 leading-snug">{reel.title}</div>
+                                        <StatusChip reel={reel} />
+                                        <ProgressBar reel={reel} />
+                                        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                                            <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{fmtDate(reel.savedToLibraryAt || reel.createdAt)}</span>
+                                            {reel.creditsEstimated > 0 && (
+                                                <span className="flex items-center gap-0.5"><Coins className="w-3 h-3" />{reel.creditsEstimated}</span>
+                                            )}
+                                            {reel.engineLabel && (
+                                                <span className="truncate">{reel.engineLabel.split('—')[0].trim()}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </button>
+
+                                {(reel.cancellable || reel.retryable) && (
+                                    <div className="px-3 pb-3 -mt-1 flex gap-1.5">
+                                        {reel.cancellable && (
+                                            <button
+                                                onClick={() => cancel(reel)}
+                                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-[10px] font-bold hover:bg-gray-200"
+                                            >
+                                                <Ban className="w-3 h-3" /> Cancelar
+                                            </button>
+                                        )}
+                                        {reel.retryable && (
+                                            <button
+                                                onClick={() => retry(reel)}
+                                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100"
+                                            >
+                                                <RotateCcw className="w-3 h-3" /> Reintentar
+                                            </button>
+                                        )}
                                     </div>
                                 )}
-                                <span className="absolute bottom-2 right-2 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded">
-                                    {reel.durationSec ? `${Math.round(reel.durationSec)}s` : ''}
-                                </span>
+
+                                {reel.status === 'error' && reel.statusDetail && (
+                                    <p className="px-3 pb-3 -mt-1 text-[10px] text-red-600 line-clamp-2">{reel.statusDetail}</p>
+                                )}
                             </div>
-                            <div className="p-3 space-y-1.5">
-                                <div className="text-xs font-black text-gray-900 line-clamp-2 leading-snug">{reel.title}</div>
-                                <StatusChip reel={reel} />
-                                <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                                    <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{fmtDate(reel.savedToLibraryAt || reel.createdAt)}</span>
-                                    {reel.creditsEstimated > 0 && (
-                                        <span className="flex items-center gap-0.5"><Coins className="w-3 h-3" />{reel.creditsEstimated}</span>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-1.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <span className="text-[10px] font-bold text-indigo-600 flex items-center gap-1">
-                                        <Activity className="w-3 h-3" /> Ver ficha
-                                    </span>
-                                </div>
-                            </div>
-                        </button>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 

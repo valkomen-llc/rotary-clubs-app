@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.669
+## Creador de Reels IA — v4.670
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -444,6 +444,46 @@ en `config` sin que el servidor los leyera.
   los metadatos en `Media` obligaría a mantener dos verdades y a tocar el modelo
   de Prisma, que es justo lo que evita la regla de base de datos. `mediaId` es
   el puente, y es lo que consumen los demás módulos.
+- **La generación NO depende de la pantalla** (v4.670). El "worker" es un
+  **Vercel Cron** cada minuto (`/api/cron/reels-tick` → `sweepActiveReels`), no
+  un proceso persistente: en Vercel la función se congela al cerrar la
+  respuesta, así que una cola con trabajador clásico exigiría infraestructura
+  aparte. Hay **tres vías** que llaman al MISMO `advance`: el cron (siempre), el
+  webhook de KIE (reacciona en el acto) y el sondeo del navegador (el más
+  rápido cuando el usuario mira). Los UPDATE condicionales de dentro son lo que
+  impide que dos hagan el mismo trabajo. No quitar ninguna: sin el cron, un Reel
+  se queda parado si el usuario cierra la pestaña y el webhook no llega.
+- **El barrido tiene presupuesto de tiempo y ventana** (`timeBudgetMs`, 6 h).
+  La función corta a los 120 s: se atienden los Reels que quepan y el resto
+  espera al minuto siguiente —no se pierden—. Y un Reel sin tocar en 6 horas
+  deja de barrerse: no es un render lento, es uno perdido, y seguir gastando el
+  presupuesto en él dejaría sin atender a los vivos.
+- **La fila del Reel se INSERTA antes de llamar a ningún proveedor** (estado
+  `queued`). Dirigir cuesta ~20 s de visión y narrativa, y hasta v4.669 durante
+  esos 20 s el Reel no existía en ninguna parte: quien abría la Biblioteca no
+  veía nada y quien cerraba la pestaña perdía el rastro. Con la fila creada
+  primero la tarjeta aparece al instante, el barrido puede recogerlo aunque la
+  petición muera a mitad, y un fallo al dirigir deja un Reel **con su motivo
+  escrito** en vez de no dejar nada.
+- **Cancelar NO detiene al proveedor.** Su API no lo permite y los créditos ya
+  se gastaron. Lo que se detiene es NUESTRA máquina de estados: no se descargan
+  los clips que lleguen, no se lanza lo que faltara y no se pide el montaje. La
+  confirmación lo dice con esas palabras. Prometer que se cancela el proveedor
+  sería falso.
+- **Reintentar conserva lo que ya costó**: fotos, configuración, copies, música
+  y locución. Sólo se relanzan las escenas sin clip. Sin escenas rotas el fallo
+  estaba en el montaje y se vuelve a montar con los clips que ya existen — no se
+  regenera ninguna escena. Repetir el proceso entero por un fallo de montaje
+  sería gastar tres veces los créditos de video para nada.
+- **El progreso se sondea; no hay WebSocket ni SSE.** La API corre en funciones
+  serverless con tope de 120 s: una conexión abierta se cortaría sola y
+  consumiría tiempo de función esperando. El intervalo del navegador **sólo
+  existe mientras hay trabajo** — con todo terminado, el efecto se desmonta y no
+  se consulta más.
+- **El tiempo restante es una ESTIMACIÓN por etapas** (`STAGE_ETA_SEC`), y la UI
+  dice «aprox.». No sale del histórico del club a propósito: con tres o cuatro
+  Reels generados la media diría más del azar que del proceso. La cola del
+  proveedor varía por hora y no la controlamos.
 - **Duplicar NO clona el archivo**: devuelve la configuración y las fotos para
   abrir el creador ya relleno. Un duplicado existe para volver a generar con
   otra música u otro motor; copiar los clips daría un gemelo inútil, y copiar la
@@ -470,6 +510,7 @@ en `config` sin que el servidor los leyera.
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
 | `REEL_CREDITS_EXPANSION` | Créditos estimados por adaptación de lienzo (4 por defecto) |
 | `REEL_RATE_KIE_CREDIT_USD` y compañía | Tarifas del panel de auditoría. Sin ellas no hay costo en dinero, a propósito |
+| `CRON_SECRET` | Protege `/api/cron/reels-tick`, igual que el resto de los crons |
 | `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_FEMALE/MALE`, `ELEVENLABS_MODEL` | Voz con acento latino real |
 | `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voz con la credencial que la plataforma ya tiene |

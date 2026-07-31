@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.669.0",
-  "cache_bust": "2026-07-31a (Biblioteca de Reels, auditoria de consumo por proveedor y generacion mas rapida.)",
+  "version": "4.670.0",
+  "cache_bust": "2026-07-31b (Generacion de Reels en segundo plano: cola, progreso en vivo, cancelar y reintentar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
