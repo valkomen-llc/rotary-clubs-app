@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.674.0 | 2026-07-31 (Cámara fija y música con cierre progresivo)
-// Cache bust: 2026-07-31f
+// UI V4.675.0 | 2026-07-31 (Nivel de vida de la escena)
+// Cache bust: 2026-07-31g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.675.0',
+        title: 'Nivel de vida: el sistema ahora detecta una escena estática y la rehace 🔍',
+        description: 'Hasta ahora el control de calidad sólo comprobaba que el video CONSERVARA la fotografía. Esa medición no ve el defecto contrario: una escena puede conservar la foto a la perfección y estar completamente congelada — que es justamente lo que se reportó en las escenas 2 y 3. Se añade una segunda medición independiente, el Nivel de vida, con dos fuentes: el modelo de visión juzga si las personas se movieron de verdad o si lo único que cambió fue el encuadre —un paneo o un zoom puntúan cero, porque no son vida sino cámara—, y una comprobación propia compara los fotogramas del clip entre sí, de modo que un video sin un solo píxel de cambio se detecta con certeza, diga lo que diga el modelo. Una escena por debajo del 25 % se regenera automáticamente, y el porcentaje se ve en cada escena de la línea de tiempo. Aparte se corrigió el contador de créditos: mostraba «0» en Reels que sí habían consumido, porque el total se calculaba antes de que se lanzaran las escenas que necesitan adaptación de formato.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'calidad', 'fix'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Nivel de vida por escena (0-100 %), visible en la línea de tiempo.' },
+            { type: 'added', text: 'Una escena que quedó prácticamente estática se regenera sola, aunque su fidelidad sea perfecta.' },
+            { type: 'improved', text: 'El modelo de visión distingue ahora el movimiento de las personas del movimiento de encuadre.' },
+            { type: 'fixed', text: 'El contador de créditos mostraba 0 en Reels que sí habían consumido: el total se calculaba antes de despachar las escenas adaptadas.' }
+        ],
+        details: [
+            'Fidelidad y Nivel de vida son preguntas opuestas y por eso se muestran por separado: la primera penaliza el cambio, la segunda lo exige. Una escena buena necesita las dos.',
+            'La comprobación propia detecta con certeza el caso extremo —fotogramas idénticos— pero no distingue por sí sola un paneo de una escena viva: eso lo juzga el modelo de visión. Cuando no está disponible, la ficha lo dice en vez de dar un número que no responde a esa pregunta.',
+            'El arreglo del contador es de lectura, no de cobro: no cambia lo que se consume, sólo lo que se informa. Los Reels ya generados seguirán mostrando su total anterior.'
+        ]
+    },
     {
         version: '4.674.0',
         title: 'La cámara se queda quieta: ahora lo que se mueve es la escena 🎥',

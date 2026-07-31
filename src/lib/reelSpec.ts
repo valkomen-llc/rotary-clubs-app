@@ -52,6 +52,12 @@ export interface FrameCheck {
 // del propio clip con FFmpeg, así que ya no depende de que el proveedor mande
 // una portada.
 export interface FidelityReport {
+    /** Nivel de vida de la escena, 0-100. `null` si no se pudo juzgar. */
+    lifeScore?: number | null;
+    /** De dónde salió: sólo `vision` sabe distinguir vida de movimiento de cámara. */
+    lifeSource?: 'vision' | 'frames' | null;
+    /** Cambio medido entre fotogramas, 0-100. Determinista, sin proveedor. */
+    lifeChange?: number | null;
     state: 'ok' | 'failed' | 'unavailable';
     score: number | null;
     semanticScore?: number | null;
