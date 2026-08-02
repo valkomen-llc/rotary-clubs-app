@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.677.0 | 2026-08-02 (Postular Proyecto pide los datos que faltaban del representante)
+// UI V4.678.0 | 2026-08-02 (El paso 1 se ordena por importancia y pide departamento y rol en el club)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.678.0',
+        title: 'El primer paso se ordena por importancia y pregunta el rol en el club \ud83c\udff7\ufe0f',
+        description: 'Los campos del primer paso estaban en el orden en que se fueron agregando, así que los datos de la persona y los del club aparecían mezclados. Ahora están agrupados y en orden: primero Datos personales (nombre, apellido, documento, correo y contacto), después Ubicación, después Tu club en Rotary, y al final el acceso al panel. Con quince campos, ver los bloques separados es lo que hace que el formulario se lea de un vistazo. Se agregó el Departamento: cuando el país elegido es Colombia se despliega la lista de los 33 departamentos, para que la información quede pareja y se pueda segmentar de verdad —hoy "Valledupar" y "valledupar" son dos valores distintos en la base—; para cualquier otro país el campo se escribe a mano y se llama "Departamento, estado o provincia", porque no tendría sentido cargar el catálogo de todos los países. Los municipios no se pusieron en lista a propósito: son más de mil y la fuente autorizada es el DANE, así que escribirlos de memoria metería errores invisibles; la ciudad se escribe, y el departamento, que es el eje por el que realmente se agrupa, queda normalizado. Y se agregó el Rol dentro del club, con los cargos de la junta directiva. Están nombrados por el cargo —Presidencia, Secretaría, Tesorería, Dirección de Servicio en la Comunidad— y no por la persona, de modo que la lista sirve igual para una socia y para un socio sin llenarse de paréntesis; además está la opción "Socia o socio activo", que nombra a las dos, y "Otro", que al elegirse abre un campo para escribir el cargo exacto y no deja seguir sin llenarlo. Los cargos se administran desde la pestaña Convocatoria, así que cambiar un nombre o agregar uno no necesita una actualización del sistema. Todo lo nuevo aparece en la ficha del módulo de Postulaciones y Pagos y en las exportaciones a CSV, Excel y PDF; cuando alguien eligió "Otro", ahí se lee su cargo y no la palabra "Otro". Verificado con 20 pruebas automáticas sobre una base de datos real.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'formulario', 'rotary', 'segmentacion', 'lenguaje incluyente', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.677.0',
         title: 'Postular Proyecto pide los datos que faltaban del representante \ud83e\udeaa',

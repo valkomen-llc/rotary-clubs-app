@@ -24,7 +24,7 @@ import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 
-console.log('[projectFairController] v4.677.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard (ahora con país, ciudad, documento y comentarios) + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.678.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard agrupado (persona, ubicación con departamento, club con rol) + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -94,6 +94,32 @@ export const DEFAULT_CONFIG = {
         { key: 'ce', label: 'Cédula de extranjería' },
         { key: 'passport', label: 'Pasaporte' },
         { key: 'nit', label: 'NIT' },
+    ],
+    // Rol del representante dentro del club. Los cargos de junta se nombran por
+    // el CARGO ("Presidencia", "Secretaría") y no por la persona ("Presidente",
+    // "Secretario"): así la lista es neutra por construcción, sin la
+    // acumulación de "(a)" que vuelve ilegible un desplegable, y coincide con
+    // cómo Rotary nombra los cargos en sus propios documentos.
+    //
+    // `otro` es especial: al elegirlo, el formulario pide escribir el cargo y
+    // el servidor lo exige (`clubRoleOther`). Su clave no se cambia sin
+    // ajustar esa validación.
+    clubRoles: [
+        { key: 'presidencia', label: 'Presidencia' },
+        { key: 'presidencia_electa', label: 'Presidencia electa' },
+        { key: 'presidencia_saliente', label: 'Presidencia saliente' },
+        { key: 'vicepresidencia', label: 'Vicepresidencia' },
+        { key: 'secretaria', label: 'Secretaría' },
+        { key: 'tesoreria', label: 'Tesorería' },
+        { key: 'protocolo', label: 'Protocolo (macero)' },
+        { key: 'dir_club', label: 'Dirección de Servicio en el Club' },
+        { key: 'dir_profesional', label: 'Dirección de Servicio Profesional' },
+        { key: 'dir_comunidad', label: 'Dirección de Servicio en la Comunidad' },
+        { key: 'dir_internacional', label: 'Dirección de Servicio Internacional' },
+        { key: 'dir_nuevas_generaciones', label: 'Dirección de Nuevas Generaciones' },
+        { key: 'presidencia_comision', label: 'Presidencia de comisión' },
+        { key: 'socio_activo', label: 'Socia o socio activo' },
+        { key: 'otro', label: 'Otro' },
     ],
     // Las siete Áreas de Enfoque de Rotary International. `key` es el valor
     // que se almacena (estable para búsquedas/clasificación) y `label` el
@@ -369,6 +395,11 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "idTypeLabel" VARCHAR(120)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "idNumber" VARCHAR(60)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS notes TEXT`),
+        // v4.678 — Departamento y rol del representante dentro del club.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS department VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRole" VARCHAR(60)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRoleLabel" VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRoleOther" VARCHAR(160)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(40) DEFAULT 'received'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "internalCategory" VARCHAR(120)`),
@@ -799,6 +830,7 @@ const toPublicConfig = (cfg) => ({
     },
     districts: Array.isArray(cfg.districts) ? cfg.districts : [],
     idTypes: Array.isArray(cfg.idTypes) ? cfg.idTypes : [],
+    clubRoles: Array.isArray(cfg.clubRoles) ? cfg.clubRoles : [],
     focusAreas: Array.isArray(cfg.focusAreas) ? cfg.focusAreas : [],
     redirect: cfg.redirect,
     content: cfg.content,
@@ -1125,7 +1157,11 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
         clubName: row.clubName,
         district: row.district,
         country: row.country || null,
+        department: row.department || null,
         city: row.city || null,
+        clubRole: row.clubRole || null,
+        clubRoleLabel: row.clubRoleLabel || null,
+        clubRoleOther: row.clubRoleOther || null,
         idType: row.idType || null,
         idTypeLabel: row.idTypeLabel || null,
         idNumber: row.idNumber || null,
@@ -1165,7 +1201,10 @@ const validateSubmission = (body, cfg) => {
     const clubName = clean(body.clubName, 200);
     const district = clean(body.district, 160);
     const country = clean(body.country, 120);
+    const department = clean(body.department, 160);
     const city = clean(body.city, 160);
+    const clubRole = clean(body.clubRole, 60);
+    const clubRoleOther = clean(body.clubRoleOther, 160);
     const idType = clean(body.idType, 40);
     const idNumber = clean(body.idNumber, 60);
     const notes = clean(body.notes, 2000);
@@ -1188,6 +1227,9 @@ const validateSubmission = (body, cfg) => {
     // el formulario; aquí sólo se exige que venga, porque no es un dato del
     // que dependa ningún permiso ni ningún cobro.
     if (!country) errors.country = 'Selecciona tu país.';
+    // El departamento se elige de una lista cuando el país es Colombia y se
+    // escribe en los demás; aquí sólo se exige que venga, igual que el país.
+    if (!department) errors.department = 'Indica tu departamento, estado o provincia.';
     if (!city) errors.city = 'Escribe tu ciudad.';
 
     // Documento: el tipo sí se valida contra el catálogo de la convocatoria,
@@ -1198,6 +1240,15 @@ const validateSubmission = (body, cfg) => {
     else if (idTypes.length && !idTypeMatch) errors.idType = 'Selecciona un tipo de documento válido.';
     if (!idNumber) errors.idNumber = 'Escribe tu número de documento.';
     else if (idNumber.replace(/[^\w]/g, '').length < 5) errors.idNumber = 'El número de documento parece incompleto.';
+
+    // v4.678 — Rol dentro del club. Se valida contra el catálogo de la
+    // convocatoria; "Otro" obliga a escribir cuál, porque un "Otro" sin
+    // detalle no dice nada y es justo el dato que se quería recoger.
+    const clubRoles = Array.isArray(cfg.clubRoles) ? cfg.clubRoles : [];
+    const roleMatch = clubRoles.find(r => r.key === clubRole || r.label === clubRole);
+    if (!clubRole) errors.clubRole = 'Selecciona tu rol dentro del club.';
+    else if (clubRoles.length && !roleMatch) errors.clubRole = 'Selecciona un rol válido.';
+    else if (roleMatch?.key === 'otro' && !clubRoleOther) errors.clubRoleOther = 'Escribe cuál es tu cargo.';
 
     if (!projectName) errors.projectName = 'Escribe el nombre del proyecto.';
     if (!projectDescription || projectDescription.length < 40) errors.projectDescription = 'Describe el proyecto con al menos 40 caracteres.';
@@ -1225,7 +1276,12 @@ const validateSubmission = (body, cfg) => {
         password,
         data: {
             firstName, lastName, email, phone, clubName, district,
-            country, city,
+            country, department, city,
+            clubRole: roleMatch?.key || clubRole,
+            clubRoleLabel: roleMatch?.label || null,
+            // Sólo se guarda el texto libre si el rol elegido es "Otro": si no,
+            // quedaría un texto huérfano contradiciendo al cargo del catálogo.
+            clubRoleOther: roleMatch?.key === 'otro' ? clubRoleOther : null,
             idType: idTypeMatch?.key || idType,
             idTypeLabel: idTypeMatch?.label || null,
             idNumber, notes,
@@ -1275,17 +1331,19 @@ export const createSubmission = async (req, res) => {
         const { rows } = await db.query(`
             INSERT INTO "ProjectFairSubmission"
                 ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
-                 country, city, "idType", "idTypeLabel", "idNumber", notes,
+                 country, department, city, "idType", "idTypeLabel", "idNumber", notes,
+                 "clubRole", "clubRoleLabel", "clubRoleOther",
                  "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
                  status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
                  "priceMode", metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29::jsonb)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33::jsonb)
             RETURNING *
         `, [
             buildPublicRef(),
             cfg.edition?.key || null,
             data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
-            data.country, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
+            data.country, data.department, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
+            data.clubRole, data.clubRoleLabel, data.clubRoleOther,
             data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd,
             'pending_payment', pricing.amountCop, pricing.amountUsd,
             trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,

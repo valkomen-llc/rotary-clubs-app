@@ -16,11 +16,12 @@ import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
-    Globe, IdCard, MessageSquare,
+    Globe, IdCard, MessageSquare, Award,
 } from 'lucide-react';
 // La lista de países es la MISMA del selector de indicativo telefónico: una
 // sola fuente, para que no se desincronicen dos catálogos de lo mismo.
 import { COUNTRIES } from '../lib/countryPhones';
+import { DEPARTMENT_OPTIONS, departmentLabel, hasDepartmentList } from '../lib/colombiaGeo';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 // Los campos son los del módulo compartido: el formulario de inscripción a
 // un evento usa estos mismos componentes, no una copia parecida.
@@ -45,6 +46,7 @@ interface FairConfig {
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     idTypes: FocusArea[];
+    clubRoles: FocusArea[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     content: {
@@ -66,7 +68,8 @@ interface Submission {
     id: string; publicRef: string; status: string;
     firstName: string; lastName: string; email: string; phone: string;
     clubName: string; district: string;
-    country: string | null; city: string | null;
+    country: string | null; department: string | null; city: string | null;
+    clubRole: string | null; clubRoleLabel: string | null; clubRoleOther: string | null;
     idType: string | null; idTypeLabel: string | null; idNumber: string | null;
     notes: string | null;
     projectName: string; projectDescription: string;
@@ -82,7 +85,10 @@ type FormState = {
     clubName: string; district: string;
     // v4.677 — Datos que hacían falta para facturar la inscripción y para
     // acreditar a quien llega a la feria.
-    country: string; city: string; idType: string; idNumber: string;
+    country: string; department: string; city: string; idType: string; idNumber: string;
+    // Rol dentro del club. `clubRoleOther` sólo se usa —y sólo se exige—
+    // cuando el rol elegido es "Otro".
+    clubRole: string; clubRoleOther: string;
     projectName: string; projectDescription: string; focusArea: string; budgetUsd: string;
     // Opcional: cualquier cosa que el club quiera decirle al comité.
     notes: string;
@@ -91,21 +97,37 @@ type FormState = {
     password: string; passwordConfirm: string;
 };
 
+/**
+ * Encabezado de un bloque de campos dentro del paso 1. Ocupa el ancho completo
+ * de la rejilla: con quince campos seguidos, agruparlos es lo que hace que el
+ * formulario se lea de un vistazo en vez de parecer una lista interminable.
+ */
+const GroupTitle = ({ children }: { children: React.ReactNode }) => (
+    <p className="sm:col-span-2 -mb-1 mt-1 border-b border-slate-100 pb-2 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 first:mt-0">
+        {children}
+    </p>
+);
+
 // Se construye una vez: el desplegable de países no cambia entre renders.
 const COUNTRY_OPTIONS = COUNTRIES.map(c => ({ value: c.name, label: c.name }));
 
 const EMPTY_FORM: FormState = {
     firstName: '', lastName: '', email: '', phone: '',
     clubName: '', district: '',
-    country: '', city: '', idType: '', idNumber: '',
+    country: '', department: '', city: '', idType: '', idNumber: '',
+    clubRole: '', clubRoleOther: '',
     projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
     notes: '',
     password: '', passwordConfirm: '',
 };
 
 const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
-    1: ['firstName', 'lastName', 'email', 'phone', 'clubName', 'district',
-        'country', 'city', 'idType', 'idNumber', 'password', 'passwordConfirm'],
+    // El orden es el mismo de la pantalla: primero la persona, después dónde
+    // está, después su club, y al final el acceso.
+    1: ['firstName', 'lastName', 'idType', 'idNumber', 'email', 'phone',
+        'country', 'department', 'city',
+        'clubName', 'district', 'clubRole', 'clubRoleOther',
+        'password', 'passwordConfirm'],
     2: ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'],
     3: [],
 };
@@ -153,6 +175,10 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
         case 'clubName': return v ? null : 'Indica el Club Rotario que postula el proyecto.';
         case 'district': return v ? null : 'Selecciona el distrito al que pertenece el club.';
         case 'country': return v ? null : 'Selecciona tu país.';
+        case 'department': return v ? null : 'Indica tu departamento, estado o provincia.';
+        case 'clubRole':
+            if (!v) return 'Selecciona tu rol dentro del club.';
+            return (config?.clubRoles || []).some(r => r.key === v) ? null : 'Selecciona un rol válido.';
         case 'city': return v ? null : 'Escribe tu ciudad.';
         case 'idType':
             if (!v) return 'Selecciona el tipo de documento.';
@@ -208,6 +234,10 @@ const FeriaProyectos = () => {
     const errors = useMemo(() => {
         const out: Partial<Record<keyof FormState, string | null>> = {};
         (Object.keys(form) as (keyof FormState)[]).forEach(k => { out[k] = validateField(k, form[k], config); });
+        // Sólo se exige el cargo escrito a mano si el rol elegido es "Otro".
+        out.clubRoleOther = form.clubRole === 'otro' && !form.clubRoleOther.trim()
+            ? 'Escribe cuál es tu cargo.'
+            : null;
         // La confirmación se valida contra la contraseña, no por sí sola.
         out.passwordConfirm = !form.passwordConfirm
             ? 'Repite la contraseña.'
@@ -428,6 +458,10 @@ const FeriaProyectos = () => {
         : (trm?.rate ? Math.round(((amountCop || 0) / trm.rate) * 100) / 100 : null);
     const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
     const idTypeLabel = config?.idTypes?.find(t => t.key === form.idType)?.label || '';
+    // Con "Otro" se muestra el cargo que escribió, no la palabra "Otro".
+    const clubRoleLabel = form.clubRole === 'otro'
+        ? form.clubRoleOther
+        : (config?.clubRoles?.find(r => r.key === form.clubRole)?.label || '');
     const progress = stage === 'form' ? Math.round((step / 3) * 100) : 100;
 
     if (loadingConfig) {
@@ -730,25 +764,12 @@ const FeriaProyectos = () => {
 
                             {step === 1 && (
                                 <div className="grid gap-5 sm:grid-cols-2">
+                                    {/* El paso está ordenado de lo más particular a lo más
+                                        institucional: primero quién eres, después dónde estás,
+                                        después tu club, y al final el acceso a tu panel. */}
+                                    <GroupTitle>Datos personales</GroupTitle>
                                     <Field label="Nombre" name="firstName" icon={User} value={form.firstName} onChange={handleChange} onBlur={handleBlur} error={errors.firstName} touched={touched.firstName} placeholder="Introduce tu primer nombre" />
                                     <Field label="Apellido" name="lastName" icon={User} value={form.lastName} onChange={handleChange} onBlur={handleBlur} error={errors.lastName} touched={touched.lastName} placeholder="Escribe tu primer apellido" />
-                                    <Field label="Correo electrónico" name="email" type="email" icon={Mail} value={form.email} onChange={handleChange} onBlur={handleBlur} error={errors.email} touched={touched.email} placeholder="nombre@correo.com" />
-                                    <PhoneField
-                                        value={form.phone}
-                                        onChange={v => setForm(prev => ({ ...prev, phone: v }))}
-                                        onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
-                                        error={errors.phone}
-                                        touched={touched.phone}
-                                    />
-                                    <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
-                                    <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
-                                    <Field
-                                        as="select" label="País" name="country" icon={Globe}
-                                        value={form.country} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.country} touched={touched.country}
-                                        options={COUNTRY_OPTIONS}
-                                    />
-                                    <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />
                                     <Field
                                         as="select" label="Tipo de documento" name="idType" icon={IdCard}
                                         value={form.idType} onChange={handleChange} onBlur={handleBlur}
@@ -762,6 +783,62 @@ const FeriaProyectos = () => {
                                         placeholder="Escribe tu número de documento"
                                         hint="Lo usamos para la factura de la inscripción y para tu acreditación en la feria."
                                     />
+                                    <Field label="Correo electrónico" name="email" type="email" icon={Mail} value={form.email} onChange={handleChange} onBlur={handleBlur} error={errors.email} touched={touched.email} placeholder="nombre@correo.com" />
+                                    <PhoneField
+                                        value={form.phone}
+                                        onChange={v => setForm(prev => ({ ...prev, phone: v }))}
+                                        onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
+                                        error={errors.phone}
+                                        touched={touched.phone}
+                                    />
+
+                                    <GroupTitle>Ubicación</GroupTitle>
+                                    <Field
+                                        as="select" label="País" name="country" icon={Globe}
+                                        value={form.country} onChange={handleChange} onBlur={handleBlur}
+                                        error={errors.country} touched={touched.country}
+                                        options={COUNTRY_OPTIONS}
+                                    />
+                                    {/* Con Colombia el departamento se elige de una lista, para que
+                                        la base quede segmentable; fuera de Colombia se escribe,
+                                        porque no tenemos el catálogo de cada país. */}
+                                    {hasDepartmentList(form.country) ? (
+                                        <Field
+                                            as="select" label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                            value={form.department} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.department} touched={touched.department}
+                                            options={DEPARTMENT_OPTIONS}
+                                        />
+                                    ) : (
+                                        <Field
+                                            label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                            value={form.department} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.department} touched={touched.department}
+                                            placeholder="Escribe tu departamento, estado o provincia"
+                                        />
+                                    )}
+                                    <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />
+
+                                    <GroupTitle>Tu club en Rotary</GroupTitle>
+                                    <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
+                                    <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
+                                    <Field
+                                        as="select" label="Rol dentro del club" name="clubRole" icon={Award}
+                                        value={form.clubRole} onChange={handleChange} onBlur={handleBlur}
+                                        error={errors.clubRole} touched={touched.clubRole}
+                                        options={(config?.clubRoles || []).map(r => ({ value: r.key, label: r.label }))}
+                                        hint="Tu cargo en la junta directiva o tu condición de socia o socio."
+                                    />
+                                    {/* Sólo aparece con "Otro": pedir el cargo antes de saber que
+                                        hace falta sería un campo vacío para casi todo el mundo. */}
+                                    {form.clubRole === 'otro' && (
+                                        <Field
+                                            label="¿Cuál es tu cargo?" name="clubRoleOther" icon={Award}
+                                            value={form.clubRoleOther} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.clubRoleOther} touched={touched.clubRoleOther}
+                                            placeholder="Escribe el cargo que ocupas en el club"
+                                        />
+                                    )}
 
                                     <div className="sm:col-span-2">
                                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -835,7 +912,8 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Contacto / WhatsApp" value={form.phone} />
                                         <SummaryRow label="Club Rotario" value={form.clubName} />
                                         <SummaryRow label="Distrito" value={form.district} />
-                                        <SummaryRow label="País y ciudad" value={[form.city, form.country].filter(Boolean).join(', ')} />
+                                        <SummaryRow label="Rol en el club" value={clubRoleLabel} />
+                                        <SummaryRow label="Ubicación" value={[form.city, form.department, form.country].filter(Boolean).join(', ')} />
                                         <SummaryRow label="Documento" value={`${idTypeLabel}${idTypeLabel ? ' ' : ''}${form.idNumber}`.trim()} />
                                     </div>
 

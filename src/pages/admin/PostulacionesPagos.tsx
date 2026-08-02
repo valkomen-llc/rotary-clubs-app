@@ -47,7 +47,8 @@ interface Submission {
     id: string; publicRef: string; createdAt: string; updatedAt: string;
     firstName: string; lastName: string; responsable: string; email: string; phone: string;
     clubName: string; district: string; projectName: string; projectDescription: string;
-    country?: string | null; city?: string | null;
+    country?: string | null; department?: string | null; city?: string | null;
+    clubRole?: string | null; clubRoleLabel?: string | null; clubRoleOther?: string | null;
     idType?: string | null; idTypeLabel?: string | null; idNumber?: string | null;
     notes?: string | null;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
@@ -264,7 +265,9 @@ const PostulacionesPagos: React.FC = () => {
                 Responsable: s.responsable,
                 Correo: s.email,
                 WhatsApp: s.phone,
+                'Rol en el club': s.clubRoleLabel,
                 'País': s.country,
+                Departamento: s.department,
                 Ciudad: s.city,
                 'Tipo de documento': s.idTypeLabel || s.idType,
                 'Número de documento': s.idNumber,
@@ -1045,7 +1048,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             line('Responsable', `${s.firstName} ${s.lastName}`);
             line('Correo', s.email); line('WhatsApp', s.phone);
             line('Club Rotario', s.clubName); line('Distrito', s.district);
-            line('País y ciudad', [s.city, s.country].filter(Boolean).join(', '));
+            line('Rol en el club', s.clubRoleLabel);
+            line('Ubicación', [s.city, s.department, s.country].filter(Boolean).join(', '));
             line('Documento', [s.idTypeLabel || s.idType, s.idNumber].filter(Boolean).join(' '));
             y += 8; doc.setFontSize(12).text('Proyecto', 40, y); y += 20;
             line('Nombre', s.projectName);
@@ -1143,7 +1147,9 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <Row label="Nombre" value={`${s.firstName} ${s.lastName}`} />
                                         <Row label="Correo" value={s.email} />
                                         <Row label="WhatsApp" value={s.phone} />
+                                        <Row label="Rol en el club" value={s.clubRoleLabel} />
                                         <Row label="País" value={s.country} />
+                                        <Row label="Departamento" value={s.department} />
                                         <Row label="Ciudad" value={s.city} />
                                         <Row label="Documento" value={[s.idTypeLabel || s.idType, s.idNumber].filter(Boolean).join(' ')} />
                                     </Section>
