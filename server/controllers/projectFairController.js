@@ -1207,6 +1207,10 @@ const validateSubmission = (body, cfg) => {
     const clubRoleOther = clean(body.clubRoleOther, 160);
     const idType = clean(body.idType, 40);
     const idNumber = clean(body.idNumber, 60);
+    // v4.682 — La postulación ya NO pide comentarios: ese campo vive ahora en el
+    // registro de asistentes al evento, que es donde el cliente lo quiere. Se
+    // sigue aceptando —y mostrando en la ficha— para no perder lo que ya
+    // escribieron las postulaciones anteriores.
     const notes = clean(body.notes, 2000);
     const projectName = clean(body.projectName, 250);
     const projectDescription = clean(body.projectDescription, 8000);

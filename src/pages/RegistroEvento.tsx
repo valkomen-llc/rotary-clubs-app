@@ -24,10 +24,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-    Accessibility, AlertCircle, ArrowLeft, ArrowRight, Briefcase, Building2, CalendarDays,
+    AlertCircle, ArrowLeft, ArrowRight, Briefcase, Building2, CalendarDays,
     Check, CheckCircle2, Clock, CreditCard, FileText, Globe, Hotel, IdCard, KeyRound,
-    LayoutDashboard, Loader2, Lock, Mail, MapPin, Plane, Plus, ShieldCheck, Target,
-    Trash2, User, Users, Utensils,
+    LayoutDashboard, Loader2, Lock, Mail, MapPin, MessageSquare, Plane, Plus, ShieldCheck,
+    Target, Trash2, User, Users, Utensils,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -110,7 +110,7 @@ const FIELD_ICONS: Record<string, any> = {
     lodging: Hotel, lodgingDetail: Hotel,
     needsVisa: FileText, preferredLanguage: Globe,
     emergencyName: User, emergencyRelation: Users,
-    dietary: Utensils, dietaryDetail: Utensils, accessibility: Accessibility,
+    dietary: Utensils, dietaryDetail: Utensils, accessibility: MessageSquare,
     technicalExperience: Target, specialties: Target, availability: CalendarDays,
     supportedClubs: Building2,
 };

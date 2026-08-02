@@ -224,7 +224,11 @@ export const CORE_ROTARY_FIELDS = [
 export const CORE_NEEDS_FIELDS = [
     { key: 'dietary', label: 'Necesidades alimentarias', type: 'select', required: true, options: DIETARY },
     { key: 'dietaryDetail', label: 'Detalle de la necesidad alimentaria', type: 'text', required: false, max: 300, showIf: { key: 'dietary', notIn: ['ninguna'] } },
-    { key: 'accessibility', label: 'Requerimientos especiales', type: 'textarea', required: false, max: 600, help: 'Movilidad, salud, acompañamiento, lo que necesites que sepamos.' },
+    // La clave sigue siendo `accessibility` a propósito: las inscripciones ya
+    // enviadas guardan su respuesta ahí y renombrarla las dejaría huérfanas.
+    // Lo que cambia es el alcance: además de movilidad y salud, invita a
+    // escribir cualquier petición o comentario para el equipo.
+    { key: 'accessibility', label: 'Comentarios o solicitudes especiales', type: 'textarea', required: false, max: 600, help: 'Opcional. Movilidad, salud, acompañamiento o cualquier cosa que necesites que el equipo sepa.' },
 ];
 
 export const TERMS_FIELD = {

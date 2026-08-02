@@ -16,7 +16,7 @@ import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
-    Globe, IdCard, MessageSquare, Award,
+    Globe, IdCard, Award,
 } from 'lucide-react';
 // La lista de países es la MISMA del selector de indicativo telefónico: una
 // sola fuente, para que no se desincronicen dos catálogos de lo mismo.
@@ -90,8 +90,6 @@ type FormState = {
     // cuando el rol elegido es "Otro".
     clubRole: string; clubRoleOther: string;
     projectName: string; projectDescription: string; focusArea: string; budgetUsd: string;
-    // Opcional: cualquier cosa que el club quiera decirle al comité.
-    notes: string;
     // v4.608 — La cuenta del club se crea con la postulación: la contraseña se
     // pide aquí, mientras el club escribe su correo, y no después del pago.
     password: string; passwordConfirm: string;
@@ -117,7 +115,6 @@ const EMPTY_FORM: FormState = {
     country: '', department: '', city: '', idType: '', idNumber: '',
     clubRole: '', clubRoleOther: '',
     projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
-    notes: '',
     password: '', passwordConfirm: '',
 };
 
@@ -904,13 +901,6 @@ const FeriaProyectos = () => {
                                             placeholder="Ej: 25000" hint="Escribe en dólares estadounidenses el total del presupuesto."
                                         />
                                     </div>
-                                    <Field
-                                        as="textarea" label="Comentarios o solicitudes especiales (opcional)" name="notes" icon={MessageSquare}
-                                        value={form.notes} onChange={handleChange} onBlur={handleBlur}
-                                        rows={4} maxLength={2000}
-                                        placeholder="Escríbenos aquí cualquier cosa que el comité deba saber sobre tu proyecto o tu participación."
-                                        hint="Opcional. Queda guardado junto a tu postulación."
-                                    />
                                 </div>
                             )}
 
@@ -948,7 +938,6 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Nombre del proyecto" value={form.projectName} />
                                         <SummaryRow label="Área de interés" value={focusLabel} />
                                         <SummaryRow label="Presupuesto" value={`${fmtUsd(Number(form.budgetUsd.replace(/[^\d.]/g, '')) || 0)} USD`} />
-                                        {form.notes.trim() && <SummaryRow label="Comentarios" value={form.notes.trim()} />}
                                         <div className="py-3">
                                             <p className="mb-1.5 text-[13px] font-medium uppercase tracking-wide text-slate-500">Descripción</p>
                                             <p className="whitespace-pre-line text-[15px] leading-relaxed text-slate-800">{form.projectDescription}</p>
