@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.679.0 | 2026-08-02 (Ubicación y club, cada uno en una sola fila de tres columnas)
+// UI V4.680.0 | 2026-08-02 (Los tres campos del club quedan a la misma altura)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.680.0',
+        title: 'Los tres campos del club quedan a la misma altura \u2696\ufe0f',
+        description: 'En el bloque «Tu club en Rotary» los tres campos habían quedado escalonados: «Club Rotario con el que postula el proyecto» y «Distrito al que pertenece el Club Rotario» eran títulos tan largos que ocupaban dos líneas, y como el título va encima del campo, empujaban su casilla hacia abajo mientras la de «Rol dentro del club» —de una sola línea— quedaba más arriba. Ahora los títulos dicen «Club Rotario» y «Distrito», caben en una línea igual que el tercero, y las tres casillas arrancan a la misma altura. Lo que decían antes no se perdió: pasó al texto de ayuda que va debajo de cada campo, donde explica lo mismo sin descuadrar la fila. Es un cambio de presentación: los campos, sus opciones y lo que se guarda siguen siendo exactamente los mismos.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'formulario', 'interfaz', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.679.0',
         title: 'Ubicación y club, cada grupo en una sola fila \ud83d\udcd0',

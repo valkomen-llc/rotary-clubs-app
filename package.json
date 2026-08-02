@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.679.0",
-  "cache_bust": "2026-08-02 (Postular Proyecto: los tres campos de «Ubicacion» —Pais, Departamento, Ciudad— y los tres de «Tu club en Rotary» —Club, Distrito, Rol— van ahora en una sola fila de tres columnas. Antes la rejilla del paso era de dos columnas para todo, asi que el tercer campo de cada grupo caia debajo del primero. Cada bloque es su propia rejilla y decide cuantas columnas usa.)",
+  "version": "4.680.0",
+  "cache_bust": "2026-08-02 (Postular Proyecto: las etiquetas de «Club Rotario con el que postula el proyecto» y «Distrito al que pertenece el Club Rotario» ocupaban dos lineas y empujaban su campo hacia abajo, dejando la fila escalonada. Ahora dicen «Club Rotario» y «Distrito», caben en una linea como «Rol dentro del club», y el detalle pasa al texto de ayuda que va debajo del campo y no desalinea nada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
