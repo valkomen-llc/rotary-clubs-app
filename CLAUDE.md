@@ -893,12 +893,22 @@ UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
 - **Una edición nueva nace CERRADA** (`enabled: false`) y **sin fecha límite**:
   abrir una convocatoria al público es una decisión explícita, y la fecha de la
   edición anterior ya venció.
+- **`CalendarEvent` es de TODA la plataforma, no de un sitio.** Cualquier
+  consulta sobre eventos —la migración, los eventos disponibles— tiene que
+  acotarse por `clubId`, o traerá los de los demás sitios alojados. Fue
+  exactamente lo que impidió que la migración de v4.683 vinculara nada.
 - **`bindLegacyEdition` no adivina.** Migra la convocatoria global de v4.682 y
   sus postulaciones a su edición sólo si el evento se identifica sin ambigüedad
   (uno solo, o coincidencia exacta de nombre). Si no, deja la convocatoria sin
   vincular y el listado lo muestra — atar postulaciones pagadas a la edición
   equivocada es peor que no atarlas. Es idempotente y se reintenta en cada
   arranque en frío, así que se autorrepara si el evento se crea después.
+  Cuando de verdad no puede, el listado ofrece **«Vincular evento»**
+  (`linkEdition`): avisar sin dar salida dejaba la edición en un callejón.
+- **El conteo del listado une con `IS NOT DISTINCT FROM`**, no con `=`: una
+  edición sin vincular tiene `eventId` NULL y sus postulaciones también, y con
+  igualdad NULL nunca casa con NULL — mostraba «0 postulaciones» teniendo
+  cuatro.
 - **El índice único de `ProjectFairConfig` es PARCIAL** (`WHERE "eventId" IS NOT
   NULL`), así que su `ON CONFLICT` **debe repetir el predicado** o la sentencia
   falla entera. Mismo error real que costó una corrección en v4.648.

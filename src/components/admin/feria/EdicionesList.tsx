@@ -55,6 +55,10 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
     const [chosen, setChosen] = useState('');
     const [from, setFrom] = useState('');
     const [busy, setBusy] = useState(false);
+    // Vinculación a mano: es la salida cuando la migración automática no pudo
+    // identificar la edición sola. Sin esto, una convocatoria sin vincular era
+    // un callejón sin salida — se veía, pero no se podía abrir ni arreglar.
+    const [linking, setLinking] = useState(false);
 
     const load = useCallback(() => {
         setError(null);
@@ -77,6 +81,34 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
             .then(r => r.json())
             .then(body => setAvailable(body.events || []))
             .catch(() => setAvailable([]));
+    };
+
+    const openLinker = () => {
+        setLinking(true); setChosen(''); setError(null);
+        fetch(`${API}/project-fair/admin/ediciones/disponibles`, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(body => setAvailable(body.events || []))
+            .catch(() => setAvailable([]));
+    };
+
+    const link = async () => {
+        if (!chosen) return;
+        setBusy(true); setError(null);
+        try {
+            const res = await fetch(`${API}/project-fair/admin/ediciones/vincular`, {
+                method: 'PUT',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventId: chosen }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body?.error || 'No pudimos vincular la edición.');
+            setEditions(body.editions || []);
+            setLinking(false);
+        } catch (e: any) {
+            setError(e?.message || 'No pudimos vincular la edición.');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const create = async () => {
@@ -144,11 +176,16 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
 
             <div className="space-y-3">
                 {editions.map(ed => (
-                    <button
+                    <div
                         key={ed.eventId || ed.title}
+                        role={ed.eventId ? 'button' : undefined}
+                        tabIndex={ed.eventId ? 0 : undefined}
                         onClick={() => ed.eventId && onOpen(ed.eventId)}
-                        disabled={!ed.eventId}
-                        className="flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-blue-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+                        onKeyDown={e => { if (ed.eventId && (e.key === 'Enter' || e.key === ' ')) onOpen(ed.eventId); }}
+                        className={`flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border bg-white px-5 py-4 text-left transition ${
+                            ed.eventId
+                                ? 'cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                                : 'border-amber-300'}`}
                     >
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -171,6 +208,13 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
                                     </span>
                                 )}
                             </div>
+                            {!ed.linked && (
+                                <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-amber-800">
+                                    Sus {ed.submissions} postulación(es) están a salvo, pero para abrirla hay que decir
+                                    a qué evento del calendario corresponde. Al vincularla, sus postulaciones,
+                                    pagos y etiquetas quedan dentro de esa edición.
+                                </p>
+                            )}
                             <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-500">
                                 <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {fmtDate(ed.startDate)}</span>
                                 {ed.location && <span className="inline-flex items-center gap-1"><MapPin size={13} /> {ed.location}</span>}
@@ -189,11 +233,61 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
                                 </p>
                                 <p className="text-[11px] uppercase tracking-wide text-slate-400">{ed.paidSubmissions} pagadas</p>
                             </div>
-                            {ed.eventId && <ArrowRight size={18} className="text-slate-400" />}
+                            {ed.eventId
+                                ? <ArrowRight size={18} className="text-slate-400" />
+                                : (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); openLinker(); }}
+                                        className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600"
+                                    >Vincular evento</button>
+                                )}
                         </div>
-                    </button>
+                    </div>
                 ))}
             </div>
+
+            {linking && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-7 shadow-2xl">
+                        <div className="mb-1 flex items-start justify-between">
+                            <h2 className="text-xl font-bold text-slate-900">Vincular la edición</h2>
+                            <button onClick={() => setLinking(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                        </div>
+                        <p className="mb-5 text-sm text-slate-500">
+                            Elige el evento del calendario al que corresponde esta convocatoria. Sus
+                            postulaciones, pagos y etiquetas pasarán a formar parte de esa edición.
+                            <strong> No se crea ni se borra nada</strong>: sólo se dice a cuál pertenecen.
+                        </p>
+
+                        <label className="mb-6 block">
+                            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Evento del calendario</span>
+                            <select
+                                value={chosen} onChange={e => setChosen(e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none"
+                            >
+                                <option value="">- Elige el evento -</option>
+                                {(available || []).map(e => (
+                                    <option key={e.id} value={e.id}>{e.title}{e.startDate ? ` · ${fmtDate(e.startDate)}` : ''}</option>
+                                ))}
+                            </select>
+                            {available && !available.length && (
+                                <span className="mt-1.5 block text-[13px] text-amber-700">
+                                    No hay eventos disponibles en el calendario. Crea el evento de esta edición
+                                    en el módulo de Eventos y vuelve aquí.
+                                </span>
+                            )}
+                        </label>
+
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setLinking(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                            <button
+                                onClick={link} disabled={!chosen || busy}
+                                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-800 disabled:opacity-50"
+                            >{busy && <Loader2 size={15} className="animate-spin" />} Vincular</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {creating && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">

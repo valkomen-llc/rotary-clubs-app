@@ -654,7 +654,17 @@ export const bindLegacyEdition = async () => {
         let cfg = legacy.rows[0].config || {};
         if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
 
-        const events = await db.query('SELECT id, title FROM "CalendarEvent" ORDER BY "startDate" DESC NULLS LAST');
+        // OJO: `CalendarEvent` es de TODA la plataforma, que aloja muchos
+        // sitios. Buscar "si hay un solo evento" sin acotar por club no es
+        // cierto casi nunca, y por eso hasta v4.683 la vinculación no ocurría.
+        // El club sale de la convocatoria o, si no está configurado, del que
+        // quedó sellado en las propias postulaciones.
+        const clubId = cfg?.clubId
+            || (await db.query(`SELECT "clubId" FROM "ProjectFairSubmission" WHERE "clubId" IS NOT NULL LIMIT 1`)).rows[0]?.clubId
+            || null;
+        const events = clubId
+            ? await db.query('SELECT id, title FROM "CalendarEvent" WHERE "clubId" = $1 ORDER BY "startDate" DESC NULLS LAST', [clubId])
+            : await db.query('SELECT id, title FROM "CalendarEvent" ORDER BY "startDate" DESC NULLS LAST');
         let target = null;
         if (events.rows.length === 1) {
             target = events.rows[0];
@@ -937,7 +947,7 @@ export const listEditions = async () => {
                    count(*) FILTER (WHERE status = 'paid') AS paid,
                    sum("amountUsd") FILTER (WHERE status = 'paid') AS usd
             FROM "ProjectFairSubmission" GROUP BY "eventId"
-        ) s ON s."eventId" = c."eventId"
+        ) s ON s."eventId" IS NOT DISTINCT FROM c."eventId"
         ORDER BY e."startDate" DESC NULLS LAST, c."updatedAt" DESC
     `);
 
@@ -1126,19 +1136,60 @@ export const createEdition = async (req, res) => {
 };
 
 /**
+ * PUT /admin/ediciones/vincular — atar una convocatoria sin vincular a su
+ * evento del calendario.
+ *
+ * Es la salida cuando la migración automática no pudo identificar la edición
+ * sin ambigüedad. Aquí no hay ambigüedad posible: la elige una persona. Se
+ * arrastran también las postulaciones y etiquetas que quedaron sueltas, que es
+ * justo lo que hace que la edición pase a mostrar sus datos.
+ */
+export const linkEdition = async (req, res) => {
+    try {
+        await ensureTables();
+        const eventId = clean(req.body?.eventId, 60);
+        if (!eventId) return res.status(400).json({ error: 'Elige el evento del calendario al que corresponde esta edición.' });
+
+        const evento = await db.query('SELECT id, title FROM "CalendarEvent" WHERE id = $1 LIMIT 1', [eventId]);
+        if (!evento.rows[0]) return res.status(404).json({ error: 'Ese evento no existe en el calendario.' });
+
+        const ocupado = await db.query('SELECT 1 FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId]);
+        if (ocupado.rows.length) return res.status(409).json({ error: 'Ese evento ya tiene una convocatoria.' });
+
+        const { rowCount } = await db.query(
+            `UPDATE "ProjectFairConfig" SET "eventId" = $1, "updatedAt" = NOW() WHERE "eventId" IS NULL`, [eventId]);
+        if (!rowCount) return res.status(404).json({ error: 'No hay ninguna convocatoria sin vincular.' });
+
+        const subs = await db.query(`UPDATE "ProjectFairSubmission" SET "eventId" = $1 WHERE "eventId" IS NULL`, [eventId]);
+        const tags = await db.query(`UPDATE "ProjectFairTag" SET "eventId" = $1 WHERE "eventId" IS NULL`, [eventId]);
+        console.log(`[project-fair] Edición vinculada a mano con "${evento.rows[0].title}": ${subs.rowCount} postulación(es), ${tags.rowCount} etiqueta(s).`);
+
+        res.json({ eventId, submissions: subs.rowCount, editions: await listEditions() });
+    } catch (error) {
+        console.error('[project-fair] linkEdition:', error);
+        res.status(500).json({ error: 'No pudimos vincular la edición.' });
+    }
+};
+
+/**
  * GET /admin/ediciones/disponibles — eventos del calendario que todavía NO
  * tienen convocatoria. Es lo que se ofrece al crear una edición nueva, para
  * que no haya que escribir un identificador a mano.
  */
-export const getAvailableEvents = async (_req, res) => {
+export const getAvailableEvents = async (req, res) => {
     try {
         await ensureTables();
+        // Acotado al club de quien administra: `CalendarEvent` es de toda la
+        // plataforma y sin este filtro la lista traería los eventos de otros
+        // sitios alojados, que no tienen nada que ver con esta feria.
+        const clubId = req?.user?.clubId || null;
         const { rows } = await db.query(`
             SELECT e.id, e.title, e.slug, e."startDate", e.location
             FROM "CalendarEvent" e
             WHERE NOT EXISTS (SELECT 1 FROM "ProjectFairConfig" c WHERE c."eventId" = e.id)
+              ${clubId ? 'AND e."clubId" = $1' : ''}
             ORDER BY e."startDate" DESC NULLS LAST
-        `);
+        `, clubId ? [clubId] : []);
         res.json({ events: rows });
     } catch (error) {
         console.error('[project-fair] getAvailableEvents:', error);

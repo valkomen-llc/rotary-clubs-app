@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.683.0 | 2026-08-02 (Postulación de Proyectos trabaja por ediciones)
+// UI V4.684.0 | 2026-08-02 (La edición se vincula a su evento y se puede abrir)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.684.0',
+        title: 'La edición ya se vincula a su evento y se puede abrir \ud83d\udd17',
+        description: 'Tras estrenar el trabajo por ediciones, la XII Feria aparecía marcada como «Sin evento vinculado», con cero postulaciones y sin manera de entrar. Eran tres cosas distintas y las tres están corregidas. La primera: el paso que ata la convocatoria a su edición buscaba el evento en el calendario de TODA la plataforma, que aloja varios sitios; como ahí hay eventos de otros clubes, nunca podía identificar cuál era el de la feria y por prudencia no ataba nada. Ahora busca sólo entre los eventos de este sitio, donde la respuesta sí es inequívoca. La segunda: mientras estuvo sin vincular, la tarjeta decía «0 postulaciones» aunque las cuatro estaban intactas en la base — el conteo no las reconocía como suyas. Ahora las muestra, que es lo que corresponde: los datos nunca se movieron. Y la tercera, la más importante: avisábamos del problema pero no dábamos salida. Se agregó el botón «Vincular evento», que permite decir a qué edición del calendario corresponde la convocatoria; al hacerlo, sus postulaciones, pagos y etiquetas pasan a formar parte de esa edición y la versión queda lista para abrirse. No se crea ni se borra nada: sólo se dice a cuál pertenecen. Verificado con 11 pruebas automáticas que reproducen el caso real, con varios eventos de varios sitios alojados en la misma plataforma.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ediciones', 'migracion', 'multi-sitio', 'hotfix'],
+        type: 'hotfix'
+    },
     {
         version: '4.683.0',
         title: 'Postulación de Proyectos ahora trabaja por ediciones \ud83d\uddc2\ufe0f',
