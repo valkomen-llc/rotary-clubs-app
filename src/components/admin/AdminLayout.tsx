@@ -53,7 +53,10 @@ import {
     FileBarChart2,
     GraduationCap,
     CalendarClock,
-    Languages
+    Languages,
+    // Se usa en el ítem "Mi Proyecto" y faltaba: sin él, el panel de cualquier
+    // administrador que además tenga un proyecto postulado quedaba en blanco.
+    ClipboardList
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -132,6 +135,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // ── Domain-based super admin detection ──
     // If user is on a club-specific domain, always treat as club context
+    const currentHost = window.location.hostname;
     const isOnClubDomain = !isOnPlatformDomain();
 
     // Super administrador de la PLATAFORMA: rol `administrator` en el dominio

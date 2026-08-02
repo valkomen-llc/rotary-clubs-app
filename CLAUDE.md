@@ -654,12 +654,19 @@ en `config` sin que el servidor los leyera.
 | `EXPANSION_MAX_RETRIES`, `EXPANSION_AUTO_REGENERATE` | Reintentos cuando la medición no llega al umbral |
 
 **Typecheck:** `npm run typecheck` (`tsc -p tsconfig.app.json`). **No usar
-`tsc -p tsconfig.json`**: el raíz tiene `files: []` y sólo referencias, así que
-no compila nada y pasa siempre — parece una comprobación y no lo es. El
-proyecto arrastra ~680 errores previos (en su mayoría imports sin usar, pero
-también identificadores inexistentes como `ClipboardList` en `AdminLayout.tsx`
-y `Plus` en `MissionControl.tsx`, que revientan en runtime al pintar esas
-pantallas). Al tocar un archivo, dejarlo sin errores propios.
+`tsc -p tsconfig.json` NI `npx tsc --noEmit` a secas** — sin `-p` toma el
+raíz. Pasó de verdad en v4.687: se corrió el comando desnudo, no revisó nada,
+y un identificador borrado por descuido dejó **todo el panel en blanco** en
+producción. `vite build` tampoco lo detecta: esbuild quita los tipos sin
+comprobarlos, así que un identificador inexistente compila y sólo revienta al
+pintar. **La única comprobación real es `npm run typecheck`.**
+
+El proyecto arrastra ~340 errores previos, en su mayoría imports sin usar —
+pero también identificadores inexistentes que revientan en runtime al pintar
+esa pantalla. `ClipboardList` en `AdminLayout.tsx` era uno y se corrigió en
+v4.688; `Plus` en `MissionControl.tsx` sigue pendiente. Al tocar un archivo,
+dejarlo sin errores propios, y mirar si arrastra alguno de estos: son
+pantallas en blanco esperando a que alguien entre.
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
