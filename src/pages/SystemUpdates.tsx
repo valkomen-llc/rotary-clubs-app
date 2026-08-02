@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.678.0 | 2026-08-02 (El paso 1 se ordena por importancia y pide departamento y rol en el club)
+// UI V4.679.0 | 2026-08-02 (Ubicación y club, cada uno en una sola fila de tres columnas)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.679.0',
+        title: 'Ubicación y club, cada grupo en una sola fila \ud83d\udcd0',
+        description: 'Los grupos de «Ubicación» (País, Departamento y Ciudad) y de «Tu club en Rotary» (Club Rotario, Distrito y Rol dentro del club) tienen tres campos cada uno, pero el paso completo estaba armado sobre una rejilla de dos columnas: el tercer campo de cada grupo terminaba solo en la fila siguiente, debajo del primero, y el bloque se veía descuadrado. Ahora cada grupo es su propia rejilla y decide cuántas columnas usa, así que los tres campos de Ubicación quedan en una sola línea y los tres del club también. Los datos personales siguen en dos columnas, que es lo que les corresponde por número de campos, y en teléfono todo sigue apilándose en una sola columna. Es un cambio de presentación: no se agregó, quitó ni renombró ningún campo.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'formulario', 'interfaz', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.678.0',
         title: 'El primer paso se ordena por importancia y pregunta el rol en el club \ud83c\udff7\ufe0f',
