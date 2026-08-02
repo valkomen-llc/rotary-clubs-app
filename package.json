@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.678.0",
-  "cache_bust": "2026-08-02 (Postular Proyecto: el paso 1 se reordena por importancia y se agrupa en Datos personales, Ubicacion, Tu club en Rotary y Acceso. Se agrega Departamento —lista desplegable con los 33 de Colombia, texto libre para el resto de paises— y Rol dentro del club, con los cargos de junta nombrados por el cargo (Presidencia, Secretaria) para que la lista sirva igual a una socia y a un socio, la opcion «Socia o socio activo» y «Otro», que al elegirse pide escribir el cargo. Ambos catalogos se editan desde Convocatoria. 20 pruebas en verde.)",
+  "version": "4.679.0",
+  "cache_bust": "2026-08-02 (Postular Proyecto: los tres campos de «Ubicacion» —Pais, Departamento, Ciudad— y los tres de «Tu club en Rotary» —Club, Distrito, Rol— van ahora en una sola fila de tres columnas. Antes la rejilla del paso era de dos columnas para todo, asi que el tercer campo de cada grupo caia debajo del primero. Cada bloque es su propia rejilla y decide cuantas columnas usa.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

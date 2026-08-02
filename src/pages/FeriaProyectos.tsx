@@ -103,7 +103,7 @@ type FormState = {
  * formulario se lea de un vistazo en vez de parecer una lista interminable.
  */
 const GroupTitle = ({ children }: { children: React.ReactNode }) => (
-    <p className="sm:col-span-2 -mb-1 mt-1 border-b border-slate-100 pb-2 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 first:mt-0">
+    <p className="-mb-1 mt-1 border-b border-slate-100 pb-2 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 first:mt-0">
         {children}
     </p>
 );
@@ -763,84 +763,93 @@ const FeriaProyectos = () => {
                             </div>
 
                             {step === 1 && (
-                                <div className="grid gap-5 sm:grid-cols-2">
+                                <div className="grid gap-5">
                                     {/* El paso está ordenado de lo más particular a lo más
                                         institucional: primero quién eres, después dónde estás,
-                                        después tu club, y al final el acceso a tu panel. */}
+                                        después tu club, y al final el acceso a tu panel.
+                                        Cada bloque es su propia rejilla y decide sus columnas,
+                                        para que un grupo de tres campos quepa en una fila en
+                                        vez de dejar el tercero colgando bajo el primero. */}
                                     <GroupTitle>Datos personales</GroupTitle>
-                                    <Field label="Nombre" name="firstName" icon={User} value={form.firstName} onChange={handleChange} onBlur={handleBlur} error={errors.firstName} touched={touched.firstName} placeholder="Introduce tu primer nombre" />
-                                    <Field label="Apellido" name="lastName" icon={User} value={form.lastName} onChange={handleChange} onBlur={handleBlur} error={errors.lastName} touched={touched.lastName} placeholder="Escribe tu primer apellido" />
-                                    <Field
-                                        as="select" label="Tipo de documento" name="idType" icon={IdCard}
-                                        value={form.idType} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.idType} touched={touched.idType}
-                                        options={(config?.idTypes || []).map(t => ({ value: t.key, label: t.label }))}
-                                    />
-                                    <Field
-                                        label="Número de documento" name="idNumber" icon={IdCard}
-                                        value={form.idNumber} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.idNumber} touched={touched.idNumber}
-                                        placeholder="Escribe tu número de documento"
-                                        hint="Lo usamos para la factura de la inscripción y para tu acreditación en la feria."
-                                    />
-                                    <Field label="Correo electrónico" name="email" type="email" icon={Mail} value={form.email} onChange={handleChange} onBlur={handleBlur} error={errors.email} touched={touched.email} placeholder="nombre@correo.com" />
-                                    <PhoneField
-                                        value={form.phone}
-                                        onChange={v => setForm(prev => ({ ...prev, phone: v }))}
-                                        onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
-                                        error={errors.phone}
-                                        touched={touched.phone}
-                                    />
+                                    <div className="grid gap-5 sm:grid-cols-2">
+                                        <Field label="Nombre" name="firstName" icon={User} value={form.firstName} onChange={handleChange} onBlur={handleBlur} error={errors.firstName} touched={touched.firstName} placeholder="Introduce tu primer nombre" />
+                                        <Field label="Apellido" name="lastName" icon={User} value={form.lastName} onChange={handleChange} onBlur={handleBlur} error={errors.lastName} touched={touched.lastName} placeholder="Escribe tu primer apellido" />
+                                        <Field
+                                            as="select" label="Tipo de documento" name="idType" icon={IdCard}
+                                            value={form.idType} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.idType} touched={touched.idType}
+                                            options={(config?.idTypes || []).map(t => ({ value: t.key, label: t.label }))}
+                                        />
+                                        <Field
+                                            label="Número de documento" name="idNumber" icon={IdCard}
+                                            value={form.idNumber} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.idNumber} touched={touched.idNumber}
+                                            placeholder="Escribe tu número de documento"
+                                            hint="Lo usamos para la factura de la inscripción y para tu acreditación en la feria."
+                                        />
+                                        <Field label="Correo electrónico" name="email" type="email" icon={Mail} value={form.email} onChange={handleChange} onBlur={handleBlur} error={errors.email} touched={touched.email} placeholder="nombre@correo.com" />
+                                        <PhoneField
+                                            value={form.phone}
+                                            onChange={v => setForm(prev => ({ ...prev, phone: v }))}
+                                            onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
+                                            error={errors.phone}
+                                            touched={touched.phone}
+                                        />
+                                    </div>
 
                                     <GroupTitle>Ubicación</GroupTitle>
-                                    <Field
-                                        as="select" label="País" name="country" icon={Globe}
-                                        value={form.country} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.country} touched={touched.country}
-                                        options={COUNTRY_OPTIONS}
-                                    />
-                                    {/* Con Colombia el departamento se elige de una lista, para que
-                                        la base quede segmentable; fuera de Colombia se escribe,
-                                        porque no tenemos el catálogo de cada país. */}
-                                    {hasDepartmentList(form.country) ? (
+                                    <div className="grid gap-5 sm:grid-cols-3">
                                         <Field
-                                            as="select" label={departmentLabel(form.country)} name="department" icon={MapPin}
-                                            value={form.department} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.department} touched={touched.department}
-                                            options={DEPARTMENT_OPTIONS}
+                                            as="select" label="País" name="country" icon={Globe}
+                                            value={form.country} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.country} touched={touched.country}
+                                            options={COUNTRY_OPTIONS}
                                         />
-                                    ) : (
-                                        <Field
-                                            label={departmentLabel(form.country)} name="department" icon={MapPin}
-                                            value={form.department} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.department} touched={touched.department}
-                                            placeholder="Escribe tu departamento, estado o provincia"
-                                        />
-                                    )}
-                                    <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />
+                                        {/* Con Colombia el departamento se elige de una lista, para que
+                                            la base quede segmentable; fuera de Colombia se escribe,
+                                            porque no tenemos el catálogo de cada país. */}
+                                        {hasDepartmentList(form.country) ? (
+                                            <Field
+                                                as="select" label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                                value={form.department} onChange={handleChange} onBlur={handleBlur}
+                                                error={errors.department} touched={touched.department}
+                                                options={DEPARTMENT_OPTIONS}
+                                            />
+                                        ) : (
+                                            <Field
+                                                label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                                value={form.department} onChange={handleChange} onBlur={handleBlur}
+                                                error={errors.department} touched={touched.department}
+                                                placeholder="Escribe tu departamento, estado o provincia"
+                                            />
+                                        )}
+                                        <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />
+                                    </div>
 
                                     <GroupTitle>Tu club en Rotary</GroupTitle>
-                                    <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
-                                    <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
-                                    <Field
-                                        as="select" label="Rol dentro del club" name="clubRole" icon={Award}
-                                        value={form.clubRole} onChange={handleChange} onBlur={handleBlur}
-                                        error={errors.clubRole} touched={touched.clubRole}
-                                        options={(config?.clubRoles || []).map(r => ({ value: r.key, label: r.label }))}
-                                        hint="Tu cargo en la junta directiva o tu condición de socia o socio."
-                                    />
-                                    {/* Sólo aparece con "Otro": pedir el cargo antes de saber que
-                                        hace falta sería un campo vacío para casi todo el mundo. */}
-                                    {form.clubRole === 'otro' && (
+                                    <div className="grid gap-5 sm:grid-cols-3">
+                                        <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
+                                        <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
                                         <Field
-                                            label="¿Cuál es tu cargo?" name="clubRoleOther" icon={Award}
-                                            value={form.clubRoleOther} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.clubRoleOther} touched={touched.clubRoleOther}
-                                            placeholder="Escribe el cargo que ocupas en el club"
+                                            as="select" label="Rol dentro del club" name="clubRole" icon={Award}
+                                            value={form.clubRole} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.clubRole} touched={touched.clubRole}
+                                            options={(config?.clubRoles || []).map(r => ({ value: r.key, label: r.label }))}
+                                            hint="Tu cargo en la junta directiva o tu condición de socia o socio."
                                         />
-                                    )}
+                                        {/* Sólo aparece con "Otro": pedir el cargo antes de saber que
+                                            hace falta sería un campo vacío para casi todo el mundo. */}
+                                        {form.clubRole === 'otro' && (
+                                            <Field
+                                                label="¿Cuál es tu cargo?" name="clubRoleOther" icon={Award}
+                                                value={form.clubRoleOther} onChange={handleChange} onBlur={handleBlur}
+                                                error={errors.clubRoleOther} touched={touched.clubRoleOther}
+                                                placeholder="Escribe el cargo que ocupas en el club"
+                                            />
+                                        )}
+                                    </div>
 
-                                    <div className="sm:col-span-2">
+                                    <div>
                                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
                                                 <KeyRound size={15} className="text-slate-400" /> Crea tu clave de acceso
