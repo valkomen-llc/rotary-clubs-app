@@ -68,6 +68,7 @@ import { CartProvider } from './contexts/CartContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from './components/ui/sonner';
 import { PROJECT_FAIR_FORM_PATH } from './lib/ctaLinks';
+import { isPlatformSuperAdmin } from './lib/platformAdmin';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
@@ -232,6 +233,21 @@ const ADMIN_ROLES = [
   'administrator', 'superadmin', 'district_admin', 'club_admin',
   'editor', 'member', 'crowdfunder',
 ];
+
+/**
+ * Sólo el super administrador de la plataforma. Se usa para lo que es interno
+ * del producto y no del sitio de cada club —hoy, el historial de lanzamientos—.
+ *
+ * NOTA HONESTA: esto impide llegar por la interfaz y evita que el navegador
+ * descargue esa pantalla, pero el historial se compila dentro del paquete del
+ * sitio. Para que sea inaccesible de verdad habría que servirlo desde el
+ * servidor detrás de una sesión, no empaquetarlo con la aplicación.
+ */
+const PlatformOnlyRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  if (!isPlatformSuperAdmin(user as any)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, user } = useAuth();
@@ -529,7 +545,12 @@ function App() {
                 <Route path="/order/success" element={<OrderSuccess />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
-                <Route path="/system-updates" element={<SystemUpdates />} />
+                {/* El historial de lanzamientos es interno de la plataforma.
+                    Estaba FUERA de `PrivateRoute`, así que cualquiera podía
+                    abrirlo escribiendo la dirección: ocultar el enlace no lo
+                    protegía. Ahora sólo entra el super administrador de la
+                    plataforma. */}
+                <Route path="/system-updates" element={<PlatformOnlyRoute><SystemUpdates /></PlatformOnlyRoute>} />
 
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />

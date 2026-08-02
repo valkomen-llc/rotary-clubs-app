@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
+import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../lib/platformAdmin';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
 import { SYSTEM_UPDATES } from '../../pages/SystemUpdates';
@@ -131,12 +132,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // ── Domain-based super admin detection ──
     // If user is on a club-specific domain, always treat as club context
-    const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
-    const currentHost = window.location.hostname;
-    const isOnClubDomain = !PLATFORM_HOSTS.includes(currentHost);
+    const isOnClubDomain = !isOnPlatformDomain();
 
-    // isSuperAdmin = on the platform domain AND role is administrator
-    const isSuperAdmin = !isOnClubDomain && user?.role === 'administrator';
+    // Super administrador de la PLATAFORMA: rol `administrator` en el dominio
+    // de la plataforma. El mismo rol en el sitio de un club administra ese
+    // club. La regla vive en `src/lib/platformAdmin.ts`, compartida con el
+    // guardián de rutas.
+    const isSuperAdmin = isPlatformSuperAdmin(user);
     
     // For UI logic, if we are on a custom domain, we treat the user as a club admin even if they have the 'administrator' role
     const isUIAdmin = isSuperAdmin && !isOnClubDomain;
@@ -592,11 +594,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse flex-shrink-0" />
                     <span>Estamos desarrollando mejoras en la plataforma. Los módulos y herramientas se habilitarán progresivamente.</span>
                 </div>
-                <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
-                <Link to="/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
-                    <span>Release {SYSTEM_UPDATES[0].version}</span>
-                    <FileText className="w-3 h-3" />
-                </Link>
+                {/* El historial de lanzamientos es interno de la plataforma: quien
+                    administra el sitio de un club ve el aviso, pero no la lista de
+                    lo que vamos publicando. El enlace se oculta Y la ruta se
+                    protege en `App.tsx`; esconderlo solo no sería suficiente. */}
+                {isSuperAdmin && (
+                    <>
+                        <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
+                        <Link to="/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
+                            <span>Release {SYSTEM_UPDATES[0].version}</span>
+                            <FileText className="w-3 h-3" />
+                        </Link>
+                    </>
+                )}
             </div>
 
             {/* Impersonation Banner */}
@@ -814,11 +824,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
                                 Logout
                             </button>
-                            <div className="flex justify-center mt-2">
-                                <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
-                                    Release {SYSTEM_UPDATES[0].version}
-                                </span>
-                            </div>
+                            {/* Mismo criterio: el número de versión es información
+                                interna de la plataforma. */}
+                            {isSuperAdmin && (
+                                <div className="flex justify-center mt-2">
+                                    <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
+                                        Release {SYSTEM_UPDATES[0].version}
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4">
