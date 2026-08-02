@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.676.0",
-  "cache_bust": "2026-07-31h (El clip animado se conserva: el respaldo sin IA deja de sustituirlo.)",
+  "version": "4.677.0",
+  "cache_bust": "2026-08-02 (Postular Proyecto pide ahora pais, ciudad, tipo y numero de documento —obligatorios, para facturar la inscripcion y acreditar a quien llega— y un campo opcional de comentarios o solicitudes especiales. Los tipos de documento se editan desde Convocatoria, como los distritos. Los datos aparecen en la ficha del modulo de Postulaciones y Pagos y en las exportaciones a CSV, Excel y PDF; la ciudad ya no se vuelve a pedir en el formulario maestro ni en el del FDD. 21 pruebas en verde.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

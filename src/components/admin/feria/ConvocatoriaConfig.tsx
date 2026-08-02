@@ -13,7 +13,7 @@ import React, { useEffect, useState } from 'react';
 import {
     Save, Loader2, Plus, Trash2, RefreshCw, Calendar, MapPin,
     CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2, Ticket,
-    ArrowUp, ArrowDown, Mail, AlertTriangle,
+    ArrowUp, ArrowDown, Mail, AlertTriangle, IdCard,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -57,6 +57,7 @@ export interface FairConfig {
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
+    idTypes: FocusArea[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     trm: { provider: string; fallbackProviders: string[]; manualRate: number | null; refreshHours: number };
@@ -385,6 +386,38 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     onClick={() => patch('districts', [...config.districts, { value: '', label: '' }])}
                     className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
                 ><Plus size={15} /> Agregar distrito</button>
+            </Card>
+
+            <Card title="Tipos de documento" icon={IdCard}>
+                <p className="mb-3 text-xs text-slate-500">
+                    Los que puede elegir quien postula el proyecto. La clave se almacena en cada
+                    inscripción; el texto es lo que ve el usuario. Se piden para facturar la
+                    inscripción y para acreditar a quien llega a la feria.
+                </p>
+                <div className="space-y-2">
+                    {(config.idTypes || []).map((t, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                            <input
+                                value={t.key}
+                                onChange={e => patch('idTypes', (config.idTypes || []).map((x, ix) => ix === i ? { ...x, key: e.target.value } : x))}
+                                className="w-48 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-blue-500 focus:outline-none"
+                            />
+                            <input
+                                value={t.label}
+                                onChange={e => patch('idTypes', (config.idTypes || []).map((x, ix) => ix === i ? { ...x, label: e.target.value } : x))}
+                                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                            <button
+                                onClick={() => patch('idTypes', (config.idTypes || []).filter((_, ix) => ix !== i))}
+                                className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                            ><Trash2 size={15} /></button>
+                        </div>
+                    ))}
+                </div>
+                <button
+                    onClick={() => patch('idTypes', [...(config.idTypes || []), { key: '', label: '' }])}
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
+                ><Plus size={15} /> Agregar tipo de documento</button>
             </Card>
 
             <Card title="Áreas de enfoque" icon={Target}>

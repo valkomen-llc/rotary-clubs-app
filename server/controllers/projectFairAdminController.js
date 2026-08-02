@@ -195,6 +195,13 @@ const mapRow = (row, access) => {
         phone: row.phone,
         clubName: row.clubName,
         district: row.district,
+        // v4.677 — Datos del representante para facturar y acreditar.
+        country: row.country || null,
+        city: row.city || null,
+        idType: row.idType || null,
+        idTypeLabel: row.idTypeLabel || null,
+        idNumber: row.idNumber || null,
+        notes: row.notes || null,
         projectName: row.projectName,
         projectDescription: row.projectDescription,
         focusArea: row.focusArea,
@@ -798,7 +805,8 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
 
     const headers = [
         'Registro', 'Fecha de inscripción', 'Proyecto', 'Club Rotario', 'Distrito', 'Responsable',
-        'Correo', 'WhatsApp', 'Área de enfoque', 'Presupuesto USD', 'Estado de la postulación',
+        'Correo', 'WhatsApp', 'País', 'Ciudad', 'Tipo de documento', 'Número de documento',
+        'Área de enfoque', 'Presupuesto USD', 'Comentarios del postulante', 'Estado de la postulación',
         'Estado del pago', 'Valor pagado COP', 'Equivalente USD', 'TRM aplicada', 'Prioridad',
         'Responsable asignado', 'Categoría interna', 'Etiquetas', 'Fecha de confirmación',
     ];
@@ -810,7 +818,8 @@ export const exportCsv = withAccess(async (req, res, { access }) => {
         const values = [
             r.publicRef, r.createdAt ? new Date(r.createdAt).toISOString() : '', r.projectName, r.clubName, r.district,
             `${r.firstName || ''} ${r.lastName || ''}`.trim(), r.email, r.phone,
-            r.focusAreaLabel || r.focusArea, r.budgetUsd,
+            r.country, r.city, r.idTypeLabel || r.idType, r.idNumber,
+            r.focusAreaLabel || r.focusArea, r.budgetUsd, r.notes,
             WORKFLOW_STATES.find(s => s.key === (r.workflowStatus || 'received'))?.label || r.workflowStatus,
             PAYMENT_STATES.find(s => s.key === r.status)?.label || r.status,
             r.amountCop, r.amountUsd, r.trmRate, r.priority, r.assigneeName, r.internalCategory,

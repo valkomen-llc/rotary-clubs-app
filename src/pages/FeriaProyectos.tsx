@@ -16,7 +16,11 @@ import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
+    Globe, IdCard, MessageSquare,
 } from 'lucide-react';
+// La lista de países es la MISMA del selector de indicativo telefónico: una
+// sola fuente, para que no se desincronicen dos catálogos de lo mismo.
+import { COUNTRIES } from '../lib/countryPhones';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 // Los campos son los del módulo compartido: el formulario de inscripción a
 // un evento usa estos mismos componentes, no una copia parecida.
@@ -40,6 +44,7 @@ interface FairConfig {
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
+    idTypes: FocusArea[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     content: {
@@ -61,6 +66,9 @@ interface Submission {
     id: string; publicRef: string; status: string;
     firstName: string; lastName: string; email: string; phone: string;
     clubName: string; district: string;
+    country: string | null; city: string | null;
+    idType: string | null; idTypeLabel: string | null; idNumber: string | null;
+    notes: string | null;
     projectName: string; projectDescription: string;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
     priceMode?: 'COP' | 'USD' | null; chargeCurrency?: string | null;
@@ -72,21 +80,32 @@ interface Submission {
 type FormState = {
     firstName: string; lastName: string; email: string; phone: string;
     clubName: string; district: string;
+    // v4.677 — Datos que hacían falta para facturar la inscripción y para
+    // acreditar a quien llega a la feria.
+    country: string; city: string; idType: string; idNumber: string;
     projectName: string; projectDescription: string; focusArea: string; budgetUsd: string;
+    // Opcional: cualquier cosa que el club quiera decirle al comité.
+    notes: string;
     // v4.608 — La cuenta del club se crea con la postulación: la contraseña se
     // pide aquí, mientras el club escribe su correo, y no después del pago.
     password: string; passwordConfirm: string;
 };
 
+// Se construye una vez: el desplegable de países no cambia entre renders.
+const COUNTRY_OPTIONS = COUNTRIES.map(c => ({ value: c.name, label: c.name }));
+
 const EMPTY_FORM: FormState = {
     firstName: '', lastName: '', email: '', phone: '',
     clubName: '', district: '',
+    country: '', city: '', idType: '', idNumber: '',
     projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
+    notes: '',
     password: '', passwordConfirm: '',
 };
 
 const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
-    1: ['firstName', 'lastName', 'email', 'phone', 'clubName', 'district', 'password', 'passwordConfirm'],
+    1: ['firstName', 'lastName', 'email', 'phone', 'clubName', 'district',
+        'country', 'city', 'idType', 'idNumber', 'password', 'passwordConfirm'],
     2: ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'],
     3: [],
 };
@@ -133,6 +152,14 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
             return v.replace(/\D/g, '').length >= 7 ? null : 'El número no parece válido.';
         case 'clubName': return v ? null : 'Indica el Club Rotario que postula el proyecto.';
         case 'district': return v ? null : 'Selecciona el distrito al que pertenece el club.';
+        case 'country': return v ? null : 'Selecciona tu país.';
+        case 'city': return v ? null : 'Escribe tu ciudad.';
+        case 'idType':
+            if (!v) return 'Selecciona el tipo de documento.';
+            return (config?.idTypes || []).some(t => t.key === v) ? null : 'Selecciona un tipo válido.';
+        case 'idNumber':
+            if (!v) return 'Escribe tu número de documento.';
+            return v.replace(/[^\w]/g, '').length >= 5 ? null : 'El número parece incompleto.';
         case 'projectName': return v ? null : 'Escribe el nombre del proyecto.';
         case 'projectDescription':
             if (!v) return 'Describe el proyecto.';
@@ -400,6 +427,7 @@ const FeriaProyectos = () => {
         ? (config?.registration?.amountUsd ?? 0)
         : (trm?.rate ? Math.round(((amountCop || 0) / trm.rate) * 100) / 100 : null);
     const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
+    const idTypeLabel = config?.idTypes?.find(t => t.key === form.idType)?.label || '';
     const progress = stage === 'form' ? Math.round((step / 3) * 100) : 100;
 
     if (loadingConfig) {
@@ -714,6 +742,26 @@ const FeriaProyectos = () => {
                                     />
                                     <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
                                     <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
+                                    <Field
+                                        as="select" label="País" name="country" icon={Globe}
+                                        value={form.country} onChange={handleChange} onBlur={handleBlur}
+                                        error={errors.country} touched={touched.country}
+                                        options={COUNTRY_OPTIONS}
+                                    />
+                                    <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />
+                                    <Field
+                                        as="select" label="Tipo de documento" name="idType" icon={IdCard}
+                                        value={form.idType} onChange={handleChange} onBlur={handleBlur}
+                                        error={errors.idType} touched={touched.idType}
+                                        options={(config?.idTypes || []).map(t => ({ value: t.key, label: t.label }))}
+                                    />
+                                    <Field
+                                        label="Número de documento" name="idNumber" icon={IdCard}
+                                        value={form.idNumber} onChange={handleChange} onBlur={handleBlur}
+                                        error={errors.idNumber} touched={touched.idNumber}
+                                        placeholder="Escribe tu número de documento"
+                                        hint="Lo usamos para la factura de la inscripción y para tu acreditación en la feria."
+                                    />
 
                                     <div className="sm:col-span-2">
                                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -758,6 +806,13 @@ const FeriaProyectos = () => {
                                             placeholder="Ej: 25000" hint="Escribe en dólares estadounidenses el total del presupuesto."
                                         />
                                     </div>
+                                    <Field
+                                        as="textarea" label="Comentarios o solicitudes especiales (opcional)" name="notes" icon={MessageSquare}
+                                        value={form.notes} onChange={handleChange} onBlur={handleBlur}
+                                        rows={4} maxLength={2000}
+                                        placeholder="Escríbenos aquí cualquier cosa que el comité deba saber sobre tu proyecto o tu participación."
+                                        hint="Opcional. Queda guardado junto a tu postulación."
+                                    />
                                 </div>
                             )}
 
@@ -780,6 +835,8 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Contacto / WhatsApp" value={form.phone} />
                                         <SummaryRow label="Club Rotario" value={form.clubName} />
                                         <SummaryRow label="Distrito" value={form.district} />
+                                        <SummaryRow label="País y ciudad" value={[form.city, form.country].filter(Boolean).join(', ')} />
+                                        <SummaryRow label="Documento" value={`${idTypeLabel}${idTypeLabel ? ' ' : ''}${form.idNumber}`.trim()} />
                                     </div>
 
                                     <div className="mt-4 rounded-xl border border-slate-200 p-5">
@@ -792,6 +849,7 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Nombre del proyecto" value={form.projectName} />
                                         <SummaryRow label="Área de interés" value={focusLabel} />
                                         <SummaryRow label="Presupuesto" value={`${fmtUsd(Number(form.budgetUsd.replace(/[^\d.]/g, '')) || 0)} USD`} />
+                                        {form.notes.trim() && <SummaryRow label="Comentarios" value={form.notes.trim()} />}
                                         <div className="py-3">
                                             <p className="mb-1.5 text-[13px] font-medium uppercase tracking-wide text-slate-500">Descripción</p>
                                             <p className="whitespace-pre-line text-[15px] leading-relaxed text-slate-800">{form.projectDescription}</p>
