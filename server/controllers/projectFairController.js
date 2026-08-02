@@ -24,7 +24,7 @@ import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 
-console.log('[projectFairController] v4.678.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard agrupado (persona, ubicación con departamento, club con rol) + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.683.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -400,6 +400,13 @@ const ensureTables = async () => {
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRole" VARCHAR(60)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRoleLabel" VARCHAR(160)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "clubRoleOther" VARCHAR(160)`),
+        // v4.683 — El módulo pasa a trabajar por EDICIONES. La edición es el
+        // `CalendarEvent` de la feria, el mismo que ya usa el módulo de
+        // inscripciones a eventos: así una edición ("XIII Feria 2027") es UNA
+        // cosa en toda la plataforma y no dos que hay que mantener en paralelo.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "eventId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairTag" ADD COLUMN IF NOT EXISTS "eventId" TEXT`),
+        addColumn(`ALTER TABLE "ProjectFairConfig" ADD COLUMN IF NOT EXISTS "eventId" TEXT`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(40) DEFAULT 'received'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "internalCategory" VARCHAR(120)`),
@@ -600,6 +607,12 @@ const ensureTables = async () => {
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairStripeEvent_submission_idx" ON "ProjectFairStripeEvent" ("submissionId", "receivedAt" DESC);`).catch(() => {});
 
+    // Índices del aislamiento por edición (v4.683). El de configuración es
+    // ÚNICO: una edición tiene una convocatoria y sólo una.
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairSubmission_event_idx" ON "ProjectFairSubmission" ("eventId", "createdAt" DESC);`).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairTag_event_idx" ON "ProjectFairTag" ("eventId");`).catch(() => {});
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ProjectFairConfig_event_uidx" ON "ProjectFairConfig" ("eventId") WHERE "eventId" IS NOT NULL;`).catch(() => {});
+
     // Etiquetas sugeridas por el equipo. Se crean una sola vez; el admin puede
     // borrarlas o agregar las suyas desde el módulo.
     for (const [label, color] of DEFAULT_TAGS) {
@@ -609,7 +622,61 @@ const ensureTables = async () => {
         ).catch(() => {});
     }
 
+    await bindLegacyEdition();
+
     _tablesReady = true;
+};
+
+/**
+ * Migración de v4.683 — el módulo pasa a trabajar por ediciones.
+ *
+ * Hasta v4.682 había UNA convocatoria global (la fila `key = 'active'`) y las
+ * postulaciones sólo llevaban `editionKey`, un sello de texto que no filtraba
+ * nada. Aquí esa convocatoria y sus postulaciones se atan a la edición a la
+ * que de verdad pertenecen, que es el `CalendarEvent` de la feria.
+ *
+ * NO ADIVINA. Si hay un solo evento en el calendario, es ése sin ambigüedad.
+ * Si hay varios, se busca el que coincida con el nombre de la edición
+ * guardada; si tampoco, la convocatoria queda SIN vincular y el panel lo dice,
+ * en vez de atar las postulaciones pagadas de un cliente a la edición
+ * equivocada. Nada se borra ni se mueve: sólo se rellena una columna vacía.
+ *
+ * Se reintenta en cada arranque en frío hasta que consigue vincular, porque es
+ * idempotente y sale por lo derecho si ya está hecha. Eso la vuelve
+ * autorreparable: si el evento del calendario se crea después del despliegue,
+ * la vinculación ocurre sola en el siguiente arranque.
+ */
+export const bindLegacyEdition = async () => {
+    try {
+        const legacy = await db.query(`SELECT config, "eventId" FROM "ProjectFairConfig" WHERE key = 'active' LIMIT 1`);
+        if (!legacy.rows.length || legacy.rows[0].eventId) return;   // sin nada que migrar, o ya migrada
+
+        let cfg = legacy.rows[0].config || {};
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+
+        const events = await db.query('SELECT id, title FROM "CalendarEvent" ORDER BY "startDate" DESC NULLS LAST');
+        let target = null;
+        if (events.rows.length === 1) {
+            target = events.rows[0];
+        } else if (events.rows.length > 1) {
+            const name = String(cfg?.edition?.name || '').trim().toLowerCase();
+            if (name) target = events.rows.find(e => String(e.title || '').trim().toLowerCase() === name) || null;
+        }
+
+        if (!target) {
+            console.warn('[project-fair] La convocatoria quedó SIN edición vinculada: no hay un evento del calendario que la identifique sin ambigüedad. Se vincula desde el panel.');
+            return;
+        }
+
+        await db.query(`UPDATE "ProjectFairConfig" SET "eventId" = $1, "updatedAt" = NOW() WHERE key = 'active'`, [target.id]);
+        const subs = await db.query(`UPDATE "ProjectFairSubmission" SET "eventId" = $1 WHERE "eventId" IS NULL`, [target.id]);
+        const tags = await db.query(`UPDATE "ProjectFairTag" SET "eventId" = $1 WHERE "eventId" IS NULL`, [target.id]);
+        console.log(`[project-fair] Edición vinculada a "${target.title}": ${subs.rowCount} postulación(es) y ${tags.rowCount} etiqueta(s) migradas.`);
+    } catch (err) {
+        // Nunca tumba el arranque: sin migrar, el módulo sigue leyendo la
+        // convocatoria global de siempre.
+        console.error('[project-fair] bindLegacyEdition:', err?.message);
+    }
 };
 
 // Etiquetas iniciales (se pueden borrar o ampliar desde el módulo).
@@ -800,18 +867,102 @@ const normalizeSavedConfig = (saved) => {
     return out;
 };
 
-const readConfig = async () => {
-    await ensureTables();
-    const { rows } = await db.query('SELECT config FROM "ProjectFairConfig" WHERE key = $1 LIMIT 1', ['active']);
-    let saved = rows[0]?.config || {};
-    if (typeof saved === 'string') {
-        try { saved = JSON.parse(saved); } catch { saved = {}; }
-    }
-    return deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(saved));
+const parseConfig = (raw) => {
+    let saved = raw || {};
+    if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch { saved = {}; } }
+    return saved;
 };
 
-// La usa el módulo de Gestión de Postulaciones y Pagos.
-export const readConfigForAdmin = () => readConfig();
+/**
+ * Convocatoria de UNA edición. Sin `eventId` devuelve la convocatoria abierta
+ * —la que atiende el formulario público—, que es el comportamiento de siempre.
+ *
+ * Cada edición tiene su propia fila, así que cambiar precios, fechas, textos o
+ * el formulario de la XIII no toca nada de la XII.
+ */
+const readConfig = async (eventId = null) => {
+    await ensureTables();
+    const { rows } = eventId
+        ? await db.query('SELECT config FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId])
+        : await db.query(`
+            SELECT config FROM "ProjectFairConfig"
+            -- Abierta primero; entre varias, la editada más recientemente.
+            ORDER BY (config->>'enabled' IS DISTINCT FROM 'false') DESC, "updatedAt" DESC
+            LIMIT 1`);
+    return deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(parseConfig(rows[0]?.config)));
+};
+
+// La usa el módulo de Postulación de Proyectos, siempre con la edición abierta.
+export const readConfigForAdmin = (eventId = null) => readConfig(eventId);
+
+/**
+ * Igual que `readConfig`, pero devuelve TAMBIÉN a qué edición pertenece la
+ * convocatoria leída. Lo necesita el formulario público: una postulación se
+ * sella con la edición en la que se hizo, y con el texto solo —como hasta
+ * v4.682— no había forma de filtrar por ella.
+ */
+const readOpenEdition = async () => {
+    await ensureTables();
+    const { rows } = await db.query(`
+        SELECT "eventId", config FROM "ProjectFairConfig"
+        ORDER BY (config->>'enabled' IS DISTINCT FROM 'false') DESC, "updatedAt" DESC
+        LIMIT 1`);
+    return {
+        eventId: rows[0]?.eventId || null,
+        cfg: deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(parseConfig(rows[0]?.config))),
+    };
+};
+
+/**
+ * Las ediciones del módulo: los eventos del calendario que ya tienen
+ * convocatoria, con el resumen que necesita el listado. Es lo que ve el
+ * administrador al entrar, igual que en el módulo de Eventos.
+ */
+export const listEditions = async () => {
+    await ensureTables();
+    const { rows } = await db.query(`
+        SELECT
+            c."eventId",
+            c.config,
+            c."updatedAt",
+            e.title, e.slug, e."startDate", e.location,
+            COALESCE(s.total, 0)::int  AS "submissions",
+            COALESCE(s.paid, 0)::int   AS "paidSubmissions",
+            COALESCE(s.usd, 0)::numeric AS "collectedUsd"
+        FROM "ProjectFairConfig" c
+        LEFT JOIN "CalendarEvent" e ON e.id = c."eventId"
+        LEFT JOIN (
+            SELECT "eventId",
+                   count(*) AS total,
+                   count(*) FILTER (WHERE status = 'paid') AS paid,
+                   sum("amountUsd") FILTER (WHERE status = 'paid') AS usd
+            FROM "ProjectFairSubmission" GROUP BY "eventId"
+        ) s ON s."eventId" = c."eventId"
+        ORDER BY e."startDate" DESC NULLS LAST, c."updatedAt" DESC
+    `);
+
+    return rows.map(r => {
+        const cfg = deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(parseConfig(r.config)));
+        return {
+            eventId: r.eventId,
+            // Sin evento vinculado la edición sigue siendo utilizable: se
+            // muestra con el nombre que tiene su propia convocatoria y el panel
+            // ofrece vincularla. No se inventa un evento.
+            linked: Boolean(r.eventId),
+            title: r.title || cfg.edition?.name || 'Convocatoria sin vincular',
+            slug: r.slug || null,
+            startDate: r.startDate || null,
+            location: r.location || [cfg.edition?.city, cfg.edition?.country].filter(Boolean).join(', '),
+            edition: cfg.edition,
+            deadline: cfg.deadline,
+            enabled: cfg.enabled !== false,
+            submissions: r.submissions,
+            paidSubmissions: r.paidSubmissions,
+            collectedUsd: Number(r.collectedUsd) || 0,
+            updatedAt: r.updatedAt,
+        };
+    });
+};
 
 // Config pública: sin datos sensibles de operación (clubId, correos internos).
 const toPublicConfig = (cfg) => ({
@@ -868,23 +1019,130 @@ export const saveAdminConfig = async (req, res) => {
         await ensureTables();
         const incoming = isPlainObject(req.body) ? req.body : {};
 
-        const { rows } = await db.query('SELECT config FROM "ProjectFairConfig" WHERE key = $1 LIMIT 1', ['active']);
-        let current = rows[0]?.config || {};
-        if (typeof current === 'string') {
-            try { current = JSON.parse(current); } catch { current = {}; }
-        }
-        const merged = deepMerge(current, incoming);
+        // La edición viene de la ruta del panel. Sin ella se conserva el
+        // comportamiento anterior sobre la convocatoria histórica.
+        const eventId = clean(req.query?.evento, 60) || null;
 
-        await db.query(`
-            INSERT INTO "ProjectFairConfig" (key, config, "updatedAt")
-            VALUES ($1, $2::jsonb, NOW())
-            ON CONFLICT (key) DO UPDATE SET config = $2::jsonb, "updatedAt" = NOW()
-        `, ['active', JSON.stringify(merged)]);
+        const { rows } = eventId
+            ? await db.query('SELECT config FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId])
+            : await db.query(`SELECT config FROM "ProjectFairConfig" WHERE key = 'active' LIMIT 1`);
+        const merged = deepMerge(parseConfig(rows[0]?.config), incoming);
+
+        if (eventId) {
+            await db.query(`
+                INSERT INTO "ProjectFairConfig" (key, "eventId", config, "updatedAt")
+                VALUES ($1, $2, $3::jsonb, NOW())
+                ON CONFLICT ("eventId") WHERE "eventId" IS NOT NULL
+                DO UPDATE SET config = $3::jsonb, "updatedAt" = NOW()
+            `, [`edition:${eventId}`, eventId, JSON.stringify(merged)]);
+        } else {
+            await db.query(`
+                INSERT INTO "ProjectFairConfig" (key, config, "updatedAt")
+                VALUES ($1, $2::jsonb, NOW())
+                ON CONFLICT (key) DO UPDATE SET config = $2::jsonb, "updatedAt" = NOW()
+            `, ['active', JSON.stringify(merged)]);
+        }
 
         res.json(deepMerge(DEFAULT_CONFIG, merged));
     } catch (error) {
         console.error('[project-fair] saveAdminConfig:', error);
         res.status(500).json({ error: 'No se pudo guardar la configuración' });
+    }
+};
+
+// ── Ediciones del módulo (v4.683) ────────────────────────────────────
+
+// GET /admin/ediciones — la primera pantalla del módulo.
+export const getEditions = async (_req, res) => {
+    try {
+        res.json({ editions: await listEditions() });
+    } catch (error) {
+        console.error('[project-fair] getEditions:', error);
+        res.status(500).json({ error: 'No pudimos cargar las ediciones.' });
+    }
+};
+
+/**
+ * POST /admin/ediciones — crear una edición nueva.
+ *
+ * Body: { eventId, from?, enabled? }
+ *
+ * Se CLONA la convocatoria de otra edición (`from`) o, si no se indica, la más
+ * reciente. Clonar es lo que hace que abrir la XIV no obligue a reconstruir
+ * precios, textos, distritos, áreas, tipos de documento, cargos y la plantilla
+ * del formulario: la edición nueva nace con la estructura completa y se le
+ * cambia lo que haya cambiado.
+ *
+ * Lo que NO se clona son los datos: postulaciones, pagos, formularios
+ * diligenciados y etiquetas se quedan en su edición. Clonar la configuración es
+ * heredar el molde; clonar los datos sería inventar inscripciones.
+ *
+ * Nace CERRADA (`enabled: false`) a propósito, igual que en el módulo de
+ * inscripciones a eventos: abrir una convocatoria al público es una decisión
+ * explícita, no el efecto secundario de crearla.
+ */
+export const createEdition = async (req, res) => {
+    try {
+        await ensureTables();
+        const eventId = clean(req.body?.eventId, 60);
+        if (!eventId) return res.status(400).json({ error: 'Elige el evento del calendario al que corresponde esta edición.' });
+
+        const evento = await db.query('SELECT id, title, slug, "startDate", location FROM "CalendarEvent" WHERE id = $1 LIMIT 1', [eventId]);
+        if (!evento.rows[0]) return res.status(404).json({ error: 'Ese evento no existe en el calendario.' });
+
+        const yaExiste = await db.query('SELECT 1 FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId]);
+        if (yaExiste.rows.length) {
+            return res.status(409).json({ error: 'Ese evento ya tiene una convocatoria. Ábrela desde el listado.' });
+        }
+
+        const from = clean(req.body?.from, 60);
+        const origen = from
+            ? await db.query('SELECT config FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [from])
+            : await db.query('SELECT config FROM "ProjectFairConfig" ORDER BY "updatedAt" DESC LIMIT 1');
+
+        const base = deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(parseConfig(origen.rows[0]?.config)));
+        const clonada = {
+            ...base,
+            // La edición nueva se identifica con SU evento; heredar el nombre y
+            // la ciudad de la anterior sería anunciar la feria equivocada.
+            edition: { ...base.edition, name: evento.rows[0].title || base.edition?.name || '', key: eventId },
+            // Sin fecha límite heredada: la de la edición anterior ya pasó.
+            deadline: null,
+            enabled: req.body?.enabled === true,
+        };
+
+        const { rows } = await db.query(`
+            INSERT INTO "ProjectFairConfig" (key, "eventId", config, "updatedAt")
+            VALUES ($1, $2, $3::jsonb, NOW())
+            RETURNING "eventId"
+        `, [`edition:${eventId}`, eventId, JSON.stringify(clonada)]);
+
+        console.log(`[project-fair] Edición creada para "${evento.rows[0].title}"${from ? ` clonando ${from}` : ' clonando la más reciente'}.`);
+        res.status(201).json({ eventId: rows[0].eventId, editions: await listEditions() });
+    } catch (error) {
+        console.error('[project-fair] createEdition:', error);
+        res.status(500).json({ error: 'No pudimos crear la edición.' });
+    }
+};
+
+/**
+ * GET /admin/ediciones/disponibles — eventos del calendario que todavía NO
+ * tienen convocatoria. Es lo que se ofrece al crear una edición nueva, para
+ * que no haya que escribir un identificador a mano.
+ */
+export const getAvailableEvents = async (_req, res) => {
+    try {
+        await ensureTables();
+        const { rows } = await db.query(`
+            SELECT e.id, e.title, e.slug, e."startDate", e.location
+            FROM "CalendarEvent" e
+            WHERE NOT EXISTS (SELECT 1 FROM "ProjectFairConfig" c WHERE c."eventId" = e.id)
+            ORDER BY e."startDate" DESC NULLS LAST
+        `);
+        res.json({ events: rows });
+    } catch (error) {
+        console.error('[project-fair] getAvailableEvents:', error);
+        res.status(500).json({ error: 'No pudimos cargar los eventos del calendario.' });
     }
 };
 
@@ -1302,7 +1560,7 @@ const validateSubmission = (body, cfg) => {
 // el resumen con la TRM vigente para la pantalla de pago.
 export const createSubmission = async (req, res) => {
     try {
-        const cfg = await readConfig();
+        const { eventId, cfg } = await readOpenEdition();
         if (cfg.enabled === false) {
             return res.status(403).json({ error: 'La convocatoria no está disponible en este momento.' });
         }
@@ -1335,17 +1593,19 @@ export const createSubmission = async (req, res) => {
         const { rows } = await db.query(`
             INSERT INTO "ProjectFairSubmission"
                 ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
+                 "eventId",
                  country, department, city, "idType", "idTypeLabel", "idNumber", notes,
                  "clubRole", "clubRoleLabel", "clubRoleOther",
                  "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
                  status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
                  "priceMode", metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33::jsonb)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb)
             RETURNING *
         `, [
             buildPublicRef(),
             cfg.edition?.key || null,
             data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
+            eventId,
             data.country, data.department, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
             data.clubRole, data.clubRoleLabel, data.clubRoleOther,
             data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd,

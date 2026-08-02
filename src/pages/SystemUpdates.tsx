@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.682.0 | 2026-08-02 (Los comentarios pasan al registro de asistentes)
+// UI V4.683.0 | 2026-08-02 (Postulación de Proyectos trabaja por ediciones)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.683.0',
+        title: 'Postulación de Proyectos ahora trabaja por ediciones \ud83d\uddc2\ufe0f',
+        description: 'El módulo se llamaba «Postulaciones y Pagos» y administraba una sola convocatoria global: toda la información de la feria vivía junta, sin forma de separar una edición de otra ni de consultar un histórico. Ahora se llama «Postulación de Proyectos» y su primera pantalla es un listado de versiones, igual que el módulo de Eventos: se ve cada edición con sus postulaciones, cuántas están pagadas y cuánto se ha recaudado, y al abrir una se entra a su propio espacio. Dentro de una edición, absolutamente todo pertenece a ella: el dashboard, las postulaciones, los formularios, las etiquetas, las alertas, los reportes y las tres exportaciones. No hay filtro que aplicar ni forma de mezclar dos ediciones por descuido. Una edición es el mismo evento del calendario que ya usa el registro de asistentes, así que «XIII Feria 2029» es una sola cosa en toda la plataforma y no dos que alguien tenga que mantener sincronizadas. El botón «Nueva Versión» crea la edición siguiente heredando la estructura de otra —precios, textos, distritos, áreas de enfoque, tipos de documento, cargos y la plantilla del formulario— para no reconstruirla desde cero; lo que no hereda son los datos, porque las postulaciones y los pagos se quedan en su edición. Nace cerrada al público a propósito: abrirla es una decisión aparte. Y lo que ya existía se migró solo: la convocatoria y las postulaciones pagadas quedaron asociadas a su edición sin perder nada, ni una fila ni un pago ni una entrada de la línea de tiempo. La migración no adivina: si no puede identificar la edición sin ambigüedad, lo dice en pantalla en vez de asociar los datos a la edición equivocada. Verificado con 22 pruebas automáticas sobre una base de datos real, incluyendo la migración de una postulación pagada y el aislamiento entre dos ediciones.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ediciones', 'arquitectura', 'aislamiento', 'migracion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.682.0',
         title: 'Los comentarios pasan al registro de asistentes \ud83d\udcac',

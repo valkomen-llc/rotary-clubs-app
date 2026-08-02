@@ -164,7 +164,10 @@ export const actorFrom = (req, access) => ({
 export const withAccess = (handler, capability = 'view') => async (req, res) => {
     try {
         await ensureTables();
-        const cfg = await readConfigForAdmin();
+        // La convocatoria que se lee es la de la EDICIÓN abierta en el panel:
+        // precios, fechas, plantilla del formulario y permisos son suyos. Sin
+        // `evento` se lee la abierta, como hasta v4.682.
+        const cfg = await readConfigForAdmin(clean(req.query?.evento, 60) || null);
         const access = resolveAccess(req.user, cfg, { ownsFairSite: await isProjectFairSiteAdmin(req, cfg) });
         if (!access[capability]) {
             return res.status(403).json({ error: 'Tu perfil no tiene permiso para esta acción.' });
@@ -263,10 +266,25 @@ const loadTagsFor = async (ids) => {
 };
 
 // ── Filtros compartidos por listado, reportes y exportación ──────────
+/**
+ * AISLAMIENTO POR EDICIÓN (v4.683) — la razón de que esta función exista.
+ *
+ * Todas las consultas del panel pasan por aquí, así que es el único sitio donde
+ * hay que garantizar que una edición no vea las postulaciones de otra. Si el
+ * panel manda `?evento=`, se filtra por esa edición y punto; no hay forma de
+ * pedir "todas" desde la pantalla.
+ *
+ * Sin `evento` se conserva el comportamiento anterior —todo junto—, que es lo
+ * que necesitan las postulaciones aún sin migrar y cualquier consulta interna
+ * que no venga del panel.
+ */
 const buildFilters = (query) => {
     const where = [];
     const params = [];
     const add = (sql, value) => { params.push(value); where.push(sql.replace('$?', `$${params.length}`)); };
+
+    const eventId = clean(query.evento, 60);
+    if (eventId) add('"eventId" = $?', eventId);
 
     const search = clean(query.search, 160);
     if (search) {
@@ -527,13 +545,16 @@ export const addComment = withAccess(async (req, res, { access }) => {
 }, 'comment');
 
 // ── Etiquetas ────────────────────────────────────────────────────────
-export const listTags = withAccess(async (_req, res) => {
+export const listTags = withAccess(async (req, res) => {
+    // Las etiquetas pertenecen a su edición: la XIII no ve ni pisa las de la XII.
+    const eventId = clean(req.query?.evento, 60) || null;
     const { rows } = await db.query(`
         SELECT t.*, COUNT(st."submissionId")::int AS usage
         FROM "ProjectFairTag" t
         LEFT JOIN "ProjectFairSubmissionTag" st ON st."tagId" = t.id
+        ${eventId ? 'WHERE t."eventId" = $1' : ''}
         GROUP BY t.id ORDER BY t."isSystem" DESC, t.label ASC
-    `);
+    `, eventId ? [eventId] : []);
     res.json(rows);
 });
 
@@ -541,10 +562,11 @@ export const createTag = withAccess(async (req, res) => {
     const label = clean(req.body?.label, 120);
     const color = clean(req.body?.color, 20) || 'slate';
     if (!label) return res.status(400).json({ error: 'La etiqueta necesita un nombre.' });
+    const eventId = clean(req.query?.evento, 60) || null;
     const { rows } = await db.query(
-        `INSERT INTO "ProjectFairTag" (label, color) VALUES ($1, $2)
+        `INSERT INTO "ProjectFairTag" (label, color, "eventId") VALUES ($1, $2, $3)
          ON CONFLICT (lower(label)) DO UPDATE SET color = EXCLUDED.color RETURNING *`,
-        [label, color]
+        [label, color, eventId]
     );
     res.status(201).json(rows[0]);
 }, 'manageTags');

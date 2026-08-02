@@ -863,6 +863,55 @@ está escrito aparte a propósito.
   `select` con validación en el servidor —no un `datalist`, que sugiere sin
   restringir y confunde las dos cosas.
 
+## Postulación de Proyectos — ediciones (v4.683)
+
+El módulo administra **una edición a la vez**. Su primera pantalla es el listado
+de versiones (`EdicionesList.tsx`), igual que el módulo de Eventos.
+
+**Una edición ES un `CalendarEvent`.** No se inventó una entidad nueva: es el
+mismo evento que ya usa el registro de asistentes, así que «XIII Feria 2029» es
+UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
+
+**Reglas durables:**
+
+- **El aislamiento vive en `buildFilters`** (`projectFairAdminController.js`) y
+  en `withAccess`, que son los dos puntos por donde pasan TODAS las consultas y
+  la configuración del panel. Al agregar un endpoint administrativo, usarlos:
+  si se consulta la tabla por fuera, se pierde el aislamiento en silencio.
+- **La edición abierta viaja en la URL** (`?evento=`), no en el estado. Por eso
+  `currentEventId()` y `withEvento()` son de módulo en `PostulacionesPagos.tsx`:
+  hay peticiones dentro de subcomponentes y pasarla por props obligaría a
+  hilarla por media pantalla. El enlace se puede compartir y «atrás» devuelve al
+  listado.
+- **Sin `?evento=` NO se filtra**, a propósito: es lo que necesitan las filas
+  aún sin migrar y las consultas internas que no vienen del panel. Desde la
+  pantalla no hay forma de pedir «todas».
+- **Clonar copia la ESTRUCTURA, nunca los datos.** `createEdition` hereda
+  precios, textos, distritos, áreas, tipos de documento, cargos y la plantilla
+  del formulario; las postulaciones, pagos, formularios diligenciados y
+  etiquetas se quedan en su edición. Clonar datos sería inventar inscripciones.
+- **Una edición nueva nace CERRADA** (`enabled: false`) y **sin fecha límite**:
+  abrir una convocatoria al público es una decisión explícita, y la fecha de la
+  edición anterior ya venció.
+- **`bindLegacyEdition` no adivina.** Migra la convocatoria global de v4.682 y
+  sus postulaciones a su edición sólo si el evento se identifica sin ambigüedad
+  (uno solo, o coincidencia exacta de nombre). Si no, deja la convocatoria sin
+  vincular y el listado lo muestra — atar postulaciones pagadas a la edición
+  equivocada es peor que no atarlas. Es idempotente y se reintenta en cada
+  arranque en frío, así que se autorrepara si el evento se crea después.
+- **El índice único de `ProjectFairConfig` es PARCIAL** (`WHERE "eventId" IS NOT
+  NULL`), así que su `ON CONFLICT` **debe repetir el predicado** o la sentencia
+  falla entera. Mismo error real que costó una corrección en v4.648.
+- **El formulario público usa `readOpenEdition()`**, no una edición fija: la
+  postulación se sella con la edición en la que se hizo. Hasta v4.682 sólo
+  guardaba `editionKey`, un texto que no filtraba nada.
+
+**Pendiente conocido:** la plantilla del formulario ya es por edición (viaja en
+`config.masterForm`), pero el panel del club (`/mi-proyecto`) todavía resuelve
+la convocatoria con `readConfigForAdmin()` sin edición — funciona porque lee la
+abierta, y hay que pasarle la del proyecto cuando convivan dos convocatorias
+abiertas a la vez.
+
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en

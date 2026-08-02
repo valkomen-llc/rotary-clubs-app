@@ -12,7 +12,7 @@
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    AlertTriangle, ArrowUpDown, BarChart3, CheckCircle2, ClipboardList, Clock,
+    AlertTriangle, ArrowLeft, ArrowUpDown, BarChart3, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
@@ -24,10 +24,30 @@ import {
 } from 'recharts';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
+import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
+
+/**
+ * AISLAMIENTO POR EDICIÓN (v4.683).
+ *
+ * La edición abierta viaja en la URL (`?evento=`), que es la fuente de verdad:
+ * el enlace se puede compartir y el botón "atrás" hace lo que se espera. Toda
+ * consulta al panel la lleva, y el servidor filtra por ella — de modo que no
+ * hay forma de que una edición vea las postulaciones de otra ni por descuido
+ * ni a propósito.
+ *
+ * Se lee de la URL y no del estado del componente porque hay peticiones dentro
+ * de subcomponentes; pasarla por props obligaría a hilarla por media pantalla.
+ */
+export const currentEventId = () => new URLSearchParams(window.location.search).get('evento') || '';
+const withEvento = (url: string) => {
+    const id = currentEventId();
+    if (!id) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}evento=${encodeURIComponent(id)}`;
+};
 const jsonHeaders = () => ({ ...authHeaders(), 'Content-Type': 'application/json' });
 
 const BLUE = '#17458F';
@@ -131,6 +151,9 @@ const PostulacionesPagos: React.FC = () => {
         return (['dashboard', 'submissions', 'forms', 'alerts', 'reports', 'config'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
+    // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
+    // el botón "atrás" del navegador devuelva al listado de versiones.
+    const [eventId] = useState<string>(() => currentEventId());
     const [access, setAccess] = useState<Access | null>(null);
     const [catalog, setCatalog] = useState<any>(null);
     const [tags, setTags] = useState<Tag[]>([]);
@@ -170,8 +193,8 @@ const PostulacionesPagos: React.FC = () => {
     // ── Carga inicial ────────────────────────────────────────────────
     useEffect(() => {
         Promise.all([
-            fetch(`${API}/project-fair/admin/catalog`, { headers: authHeaders() }).then(r => r.json()),
-            fetch(`${API}/project-fair/admin/tags`, { headers: authHeaders() }).then(r => r.json()),
+            fetch(withEvento(`${API}/project-fair/admin/catalog`), { headers: authHeaders() }).then(r => r.json()),
+            fetch(withEvento(`${API}/project-fair/admin/tags`), { headers: authHeaders() }).then(r => r.json()),
         ]).then(([cat, tagList]) => {
             if (cat?.error) throw new Error(cat.error);
             setCatalog(cat);
@@ -241,7 +264,7 @@ const PostulacionesPagos: React.FC = () => {
 
     // ── Exportaciones ────────────────────────────────────────────────
     const exportCsv = async () => {
-        const res = await fetch(`${API}/project-fair/admin/export.csv?${queryString()}`, { headers: authHeaders() });
+        const res = await fetch(withEvento(`${API}/project-fair/admin/export.csv?${queryString()}`), { headers: authHeaders() });
         if (!res.ok) return toast.error('No se pudo exportar');
         const blob = await res.blob();
         const a = document.createElement('a');
@@ -254,7 +277,7 @@ const PostulacionesPagos: React.FC = () => {
     const exportExcel = async () => {
         try {
             const XLSX = await import('xlsx');
-            const res = await fetch(`${API}/project-fair/admin/postulaciones?${queryString({ page: 1, pageSize: 200 })}`, { headers: authHeaders() });
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones?${queryString({ page: 1, pageSize: 200 })}`), { headers: authHeaders() });
             const data = await res.json();
             const sheet = (data.submissions || []).map((s: Submission) => ({
                 Registro: s.publicRef,
@@ -363,7 +386,7 @@ const PostulacionesPagos: React.FC = () => {
     // ── Descargas y control de la formulación ────────────────────────
     const downloadDocx = async (row: any) => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/form.docx`, { headers: authHeaders() });
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${row.id}/form.docx`), { headers: authHeaders() });
             if (!res.ok) throw new Error((await res.json())?.error || 'No se pudo descargar');
             const blob = await res.blob();
             const a = document.createElement('a');
@@ -378,7 +401,7 @@ const PostulacionesPagos: React.FC = () => {
     // documento refleja cualquier campo que el administrador haya agregado.
     const downloadFormPdf = async (row: any) => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}`, { headers: authHeaders() });
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}`), { headers: authHeaders() });
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo cargar el formulario');
             const { default: JsPDF } = await import('jspdf');
@@ -438,7 +461,7 @@ const PostulacionesPagos: React.FC = () => {
     // Formulación: la ruta lleva la `formKey` que se esté mirando.
     const toggleFormLock = async (row: any, action: 'lock' | 'reopen') => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}/${action}`, {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${row.id}/forms/${formKey}/${action}`), {
                 method: 'POST', headers: jsonHeaders(), body: JSON.stringify({}),
             });
             const data = await res.json();
@@ -447,6 +470,22 @@ const PostulacionesPagos: React.FC = () => {
             reloadForms();
         } catch (e: any) { toast.error(e?.message); }
     };
+
+    // Sin edición abierta, la primera pantalla del módulo es el LISTADO DE
+    // VERSIONES, igual que en Eventos. Abrir una pone `?evento=` en la URL y a
+    // partir de ahí todo lo que se ve pertenece sólo a esa edición.
+    if (!eventId) {
+        return (
+            <AdminLayout>
+                <EdicionesList onOpen={id => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('evento', id);
+                    url.searchParams.delete('tab');
+                    window.location.assign(url.toString());
+                }} />
+            </AdminLayout>
+        );
+    }
 
     if (loading) {
         return <AdminLayout><div className="flex h-64 items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={20} /> Cargando módulo…</div></AdminLayout>;
@@ -462,7 +501,15 @@ const PostulacionesPagos: React.FC = () => {
             <div className="mx-auto max-w-[1400px] space-y-5 pb-16">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Gestión de Postulaciones y Pagos</h1>
+                        <button
+                            onClick={() => {
+                                const url = new URL(window.location.href);
+                                url.searchParams.delete('evento'); url.searchParams.delete('tab');
+                                window.location.assign(url.toString());
+                            }}
+                            className="mb-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-800"
+                        ><ArrowLeft size={14} /> Todas las ediciones</button>
+                        <h1 className="text-2xl font-bold text-slate-900">Postulación de Proyectos</h1>
                         <p className="text-sm text-slate-500">
                             {catalog?.edition?.name} · {catalog?.edition?.city}
                             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
@@ -957,7 +1004,7 @@ const PostulacionesPagos: React.FC = () => {
                     <ConvocatoriaConfig canEdit={!!access.config} onSaved={() => {
                         // Refrescar catálogo: la edición, los distritos y las áreas
                         // alimentan los filtros y las cabeceras del módulo.
-                        fetch(`${API}/project-fair/admin/catalog`, { headers: authHeaders() })
+                        fetch(withEvento(`${API}/project-fair/admin/catalog`), { headers: authHeaders() })
                             .then(r => r.json()).then(cat => { setCatalog(cat); setAccess(cat.access); }).catch(() => {});
                     }} />
                 )}
@@ -990,7 +1037,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
 
     const load = useCallback(() => {
         setLoading(true);
-        fetch(`${API}/project-fair/admin/postulaciones/${id}`, { headers: authHeaders() })
+        fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}`), { headers: authHeaders() })
             .then(r => r.json())
             .then(d => { if (d?.error) throw new Error(d.error); setData(d); })
             .catch(e => toast.error(e?.message || 'No se pudo abrir la ficha'))
@@ -1001,7 +1048,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const patch = async (body: Record<string, unknown>, successMsg = 'Cambios guardados') => {
         setSaving(true);
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${id}`, {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}`), {
                 method: 'PATCH', headers: jsonHeaders(), body: JSON.stringify(body),
             });
             const d = await res.json();
@@ -1015,7 +1062,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
     const action = async (path: string, body: Record<string, unknown> = {}, successMsg = 'Listo') => {
         setSaving(true);
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${id}/${path}`, {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/${path}`), {
                 method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body),
             });
             const d = await res.json();
@@ -1027,7 +1074,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
 
     const exportFicha = async () => {
         try {
-            const res = await fetch(`${API}/project-fair/admin/postulaciones/${id}/snapshot`, { headers: authHeaders() });
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/snapshot`), { headers: authHeaders() });
             const snap = await res.json();
             const { default: JsPDF } = await import('jspdf');
             const doc = new JsPDF({ unit: 'pt', format: 'a4' });
@@ -1219,7 +1266,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                                     {t.label}
                                                     {access.manageTags && (
                                                         <button onClick={async () => {
-                                                            await fetch(`${API}/project-fair/admin/postulaciones/${id}/tags/${t.id}`, { method: 'DELETE', headers: authHeaders() });
+                                                            await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/tags/${t.id}`), { method: 'DELETE', headers: authHeaders() });
                                                             load(); onChanged();
                                                         }} className="opacity-60 hover:opacity-100"><X size={11} /></button>
                                                     )}
@@ -1228,7 +1275,7 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                             {access.manageTags && (
                                                 <select value="" onChange={async e => {
                                                     if (!e.target.value) return;
-                                                    await fetch(`${API}/project-fair/admin/postulaciones/${id}/tags`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ tagId: e.target.value }) });
+                                                    await fetch(withEvento(`${API}/project-fair/admin/postulaciones/${id}/tags`), { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ tagId: e.target.value }) });
                                                     load(); onChanged();
                                                 }} className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-500">
                                                     <option value="">+ Agregar etiqueta</option>
