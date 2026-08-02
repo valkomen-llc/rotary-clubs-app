@@ -7,6 +7,7 @@ import {
     getEditions,
     createEdition,
     getAvailableEvents,
+    linkEdition,
     getPublicConfig,
     getTrm,
     createSubmission,
@@ -69,6 +70,8 @@ import fair from '../controllers/projectFairAdminController.js';
 router.get('/admin/ediciones', authMiddleware, requireSiteAdmin, getEditions);
 router.get('/admin/ediciones/disponibles', authMiddleware, requireSiteAdmin, getAvailableEvents);
 router.post('/admin/ediciones', authMiddleware, requireSiteAdmin, express.json(), createEdition);
+// Salida cuando la migración automática no pudo identificar la edición sola.
+router.put('/admin/ediciones/vincular', authMiddleware, requireSiteAdmin, express.json(), linkEdition);
 
 router.get('/admin/overview', authMiddleware, requireSiteAdmin, fair.getOverview);
 router.get('/admin/catalog', authMiddleware, requireSiteAdmin, fair.getCatalog);

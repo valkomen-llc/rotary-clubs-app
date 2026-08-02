@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.683.0",
-  "cache_bust": "2026-08-02 (Fase 1 del refactor por ediciones: el modulo pasa a llamarse «Postulacion de Proyectos» y su primera pantalla es el listado de versiones, como en Eventos. Una edicion ES un evento del calendario —el mismo que usa el registro de asistentes—. Todo queda aislado por edicion: postulaciones, dashboard, etiquetas, reportes, exportaciones y convocatoria. «Nueva Version» clona la estructura sin clonar los datos. Lo existente se migra solo a su edicion sin perder nada. 22 pruebas en verde.)",
+  "version": "4.684.0",
+  "cache_bust": "2026-08-02 (Correccion: la edicion quedaba «Sin evento vinculado» y no se podia abrir. La migracion buscaba el evento en TODO el calendario de la plataforma, que aloja varios sitios, asi que nunca lograba identificarlo; ahora se acota al club de la feria. Ademas la edicion sin vincular mostraba «0 postulaciones» teniendo cuatro —el conteo no unia NULL con NULL— y no habia forma de arreglarla: se agrega el boton «Vincular evento». 11 pruebas en verde reproduciendo el caso real.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
