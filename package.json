@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.688.0",
-  "cache_bust": "2026-08-02 (URGENTE: el panel de control quedaba en blanco. Al mover la deteccion de super administrador a un archivo compartido en v4.687 se elimino una variable que el resto del menu seguia usando. Corregido, y corregido tambien un segundo fallo del mismo tipo que ya estaba anotado en la guia: el icono del item «Mi Proyecto» se usaba sin importarlo, lo que dejaba en blanco el panel de cualquier administrador con un proyecto postulado.)",
+  "version": "4.689.0",
+  "cache_bust": "2026-08-02 (Dashboard y Reportes se unifican en el Centro de Inteligencia de la edicion. Mostraban lo mismo con otros nombres —proyectos por distrito, por area de enfoque y la evolucion salian duplicados— y se calculaban DOS veces en el servidor. Ahora es una sola consulta y una sola pantalla por bloques: resumen ejecutivo, embudo de conversion, analitica de postulaciones, analitica financiera, distribucion geografica, clubes y proyectos, y actividad reciente. Se agregan distritos/clubes/paises participantes, recaudo acumulado, top de presupuesto y la linea de tiempo del evento.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

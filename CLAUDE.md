@@ -923,6 +923,24 @@ UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
   postulación se sella con la edición en la que se hizo. Hasta v4.682 sólo
   guardaba `editionKey`, un texto que no filtraba nada.
 
+### Centro de Inteligencia (v4.689)
+
+`Dashboard` y `Reportes` eran dos pestañas que mostraban lo mismo con otros
+nombres y lo calculaban **dos veces**. Ahora hay una sola pantalla y un solo
+endpoint (`getIntelligence`); `/admin/overview` y `/admin/reports` son alias
+suyos, conservados para un navegador con el panel viejo en caché.
+
+- **Ninguna métrica se pinta dos veces.** Al agregar una, buscar antes si ya
+  está en otro bloque: la duplicación fue justo lo que hubo que deshacer.
+- **El embudo sólo tiene etapas que el módulo REGISTRA.** No se inventa
+  «proyecto publicado» ni nada que nadie marque: una etapa siempre en cero no
+  dice dónde se pierde nada, sólo estorba.
+- **Un bloque sin datos no se pinta**, y un eje geográfico sólo aparece si
+  dice algo (`hasGeo`): con todo en un país, «por país» es una barra que ocupa
+  sitio y no informa.
+- **El acumulado se deriva de la serie diaria** en el navegador, no con otra
+  consulta: el dato ya venía.
+
 **Pendiente conocido:** la plantilla del formulario ya es por edición (viaja en
 `config.masterForm`), pero el panel del club (`/mi-proyecto`) todavía resuelve
 la convocatoria con `readConfigForAdmin()` sin edición — funciona porque lee la

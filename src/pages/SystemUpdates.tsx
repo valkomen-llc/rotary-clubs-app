@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.688.0 | 2026-08-02 (Se corrige el panel en blanco)
+// UI V4.689.0 | 2026-08-02 (Dashboard y Reportes se unifican en el Centro de Inteligencia)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.689.0',
+        title: 'Dashboard y Reportes ahora son un solo Centro de Inteligencia \ud83e\udde0',
+        description: 'El módulo tenía dos pestañas, «Dashboard» y «Reportes», que mostraban prácticamente lo mismo con nombres distintos: proyectos por distrito, proyectos por área de enfoque y la evolución de las inscripciones aparecían duplicados, y el total de proyectos, el recaudo y la conversión salían en las dos. Había que cambiar de pestaña para ver la otra mitad de una misma pregunta. Ahora hay una sola pantalla, el Centro de Inteligencia de la edición, organizada en bloques que se leen en orden: primero el resumen ejecutivo, que responde de un vistazo cómo va el evento; después el embudo de conversión, que muestra dónde se quedan las postulaciones en el camino; luego la analítica de postulaciones, la analítica financiera —con el recaudo acumulado día a día—, la distribución geográfica, las tablas de clubes y de proyectos con mayor presupuesto, y al final la actividad reciente del evento. Ninguna gráfica ni indicador aparece dos veces. Se sumaron datos que antes no estaban: cuántos distritos, clubes y países participan, el promedio por proyecto y el ranking de presupuestos. Los bloques que no tienen nada que decir no se pintan — en una edición recién abierta, una rejilla de gráficas vacías informa menos que no mostrarlas —, y los ejes geográficos aparecen sólo cuando aportan: si todas las postulaciones son del mismo país, no tiene sentido una gráfica «por país» con una sola barra. Por dentro también se simplificó: las dos pantallas hacían consultas casi idénticas por separado, y ahora todo sale de una sola. Las exportaciones a CSV, Excel y PDF siguen donde estaban, en la cabecera del módulo, y todo se filtra por la edición abierta, así que cada versión de la feria tiene su propio Centro de Inteligencia sin configurar nada.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'dashboard', 'reportes', 'analitica', 'ediciones', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.688.0',
         title: 'Corregido: el panel de control quedaba en blanco \ud83d\udea8',
