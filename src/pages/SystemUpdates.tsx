@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.681.0 | 2026-08-02 (El ingreso se generaliza y recuerda la sesión)
+// UI V4.682.0 | 2026-08-02 (Los comentarios pasan al registro de asistentes)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.682.0',
+        title: 'Los comentarios pasan al registro de asistentes \ud83d\udcac',
+        description: 'El campo «Comentarios o solicitudes especiales» se retiró del segundo paso de Postular Proyecto: ahí no corresponde, porque ese paso describe el proyecto y no la participación de quien lo presenta. En el formulario de registro de asistentes al evento ese espacio ya existía, pero se llamaba «Requerimientos especiales» y su texto de ayuda lo acotaba a movilidad, salud y acompañamiento, así que nadie leía ahí una invitación a escribir una petición cualquiera. Ahora se llama «Comentarios o solicitudes especiales», sigue siendo opcional, y la ayuda invita explícitamente a contar cualquier cosa que el equipo deba saber. Lo que se guarda internamente no cambió de nombre, así que las inscripciones ya enviadas conservan intacto lo que escribieron. En las postulaciones anteriores que sí alcanzaron a llenar el campo, el comentario se sigue viendo en su ficha y en las exportaciones: nada se borró.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'inscripciones', 'formulario', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.681.0',
         title: 'El ingreso habla para todos y puede recordar tu sesión \ud83d\udd11',
