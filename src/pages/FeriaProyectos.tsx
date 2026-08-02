@@ -21,7 +21,7 @@ import {
 // La lista de países es la MISMA del selector de indicativo telefónico: una
 // sola fuente, para que no se desincronicen dos catálogos de lo mismo.
 import { COUNTRIES } from '../lib/countryPhones';
-import { DEPARTMENT_OPTIONS, departmentLabel, hasDepartmentList } from '../lib/colombiaGeo';
+import { DEPARTMENT_LABEL, DEPARTMENT_OPTIONS, departmentPlaceholder, hasDepartmentList } from '../lib/colombiaGeo';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 // Los campos son los del módulo compartido: el formulario de inscripción a
 // un evento usa estos mismos componentes, no una copia parecida.
@@ -172,7 +172,7 @@ const validateField = (name: keyof FormState, value: string, config: FairConfig 
         case 'clubName': return v ? null : 'Indica el Club Rotario que postula el proyecto.';
         case 'district': return v ? null : 'Selecciona el distrito al que pertenece el club.';
         case 'country': return v ? null : 'Selecciona tu país.';
-        case 'department': return v ? null : 'Indica tu departamento, estado o provincia.';
+        case 'department': return v ? null : 'Indica tu departamento o estado.';
         case 'clubRole':
             if (!v) return 'Selecciona tu rol dentro del club.';
             return (config?.clubRoles || []).some(r => r.key === v) ? null : 'Selecciona un rol válido.';
@@ -807,17 +807,17 @@ const FeriaProyectos = () => {
                                             porque no tenemos el catálogo de cada país. */}
                                         {hasDepartmentList(form.country) ? (
                                             <Field
-                                                as="select" label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                                as="select" label={DEPARTMENT_LABEL} name="department" icon={MapPin}
                                                 value={form.department} onChange={handleChange} onBlur={handleBlur}
                                                 error={errors.department} touched={touched.department}
                                                 options={DEPARTMENT_OPTIONS}
                                             />
                                         ) : (
                                             <Field
-                                                label={departmentLabel(form.country)} name="department" icon={MapPin}
+                                                label={DEPARTMENT_LABEL} name="department" icon={MapPin}
                                                 value={form.department} onChange={handleChange} onBlur={handleBlur}
                                                 error={errors.department} touched={touched.department}
-                                                placeholder="Escribe tu departamento, estado o provincia"
+                                                placeholder={departmentPlaceholder(form.country)}
                                             />
                                         )}
                                         <Field label="Ciudad" name="city" icon={MapPin} value={form.city} onChange={handleChange} onBlur={handleBlur} error={errors.city} touched={touched.city} placeholder="Escribe el nombre de tu ciudad" />

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.685.0 | 2026-08-02 (Postulación de Proyectos usa el ancho de Eventos)
+// UI V4.686.0 | 2026-08-02 (La etiqueta del departamento cabe en una línea)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.686.0',
+        title: 'La etiqueta del departamento cabe en una línea \ud83d\udcdd',
+        description: 'En el bloque «Ubicación», cuando el país elegido no era Colombia, el campo del medio se titulaba «Departamento, estado o provincia»: un texto tan largo que ocupaba dos líneas y, como el título va encima del campo, empujaba su casilla más abajo que las de País y Ciudad. Ahora se titula simplemente «Departamento», que cabe de sobra y además es exactamente como ya se llama ese mismo dato en el formulario de inscripción a eventos, así que el sitio lo nombra igual en los dos lugares. La equivalencia para quien no es de Colombia no se perdió: pasó al texto de ejemplo que se lee dentro de la casilla —«Estado o provincia»—, donde cumple la misma función de orientar sin descuadrar la fila. Es un cambio de presentación: el campo, su obligatoriedad y lo que se guarda siguen siendo los mismos.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'formulario', 'interfaz', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.685.0',
         title: 'Postulación de Proyectos usa el mismo ancho que Eventos \ud83d\udccf',

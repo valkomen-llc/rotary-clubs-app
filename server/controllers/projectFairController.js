@@ -1542,7 +1542,7 @@ const validateSubmission = (body, cfg) => {
     if (!country) errors.country = 'Selecciona tu país.';
     // El departamento se elige de una lista cuando el país es Colombia y se
     // escribe en los demás; aquí sólo se exige que venga, igual que el país.
-    if (!department) errors.department = 'Indica tu departamento, estado o provincia.';
+    if (!department) errors.department = 'Indica tu departamento o estado.';
     if (!city) errors.city = 'Escribe tu ciudad.';
 
     // Documento: el tipo sí se valida contra el catálogo de la convocatoria,
