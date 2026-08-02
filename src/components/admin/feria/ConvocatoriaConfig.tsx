@@ -13,7 +13,7 @@ import React, { useEffect, useState } from 'react';
 import {
     Save, Loader2, Plus, Trash2, RefreshCw, Calendar, MapPin,
     CreditCard, Target, Link as LinkIcon, DollarSign, Users, CheckCircle2, Ticket,
-    ArrowUp, ArrowDown, Mail, AlertTriangle, IdCard,
+    ArrowUp, ArrowDown, Mail, AlertTriangle, IdCard, Award,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,6 +58,7 @@ export interface FairConfig {
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
     districts: Option[];
     idTypes: FocusArea[];
+    clubRoles: FocusArea[];
     focusAreas: FocusArea[];
     redirect: { url: string; label: string; delaySeconds: number; name: string };
     trm: { provider: string; fallbackProviders: string[]; manualRate: number | null; refreshHours: number };
@@ -418,6 +419,54 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                     onClick={() => patch('idTypes', [...(config.idTypes || []), { key: '', label: '' }])}
                     className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
                 ><Plus size={15} /> Agregar tipo de documento</button>
+            </Card>
+
+            <Card title="Roles dentro del club" icon={Award}>
+                <p className="mb-3 text-xs text-slate-500">
+                    Los cargos que puede elegir quien postula. Se nombran por el CARGO
+                    («Presidencia», «Secretaría») y no por la persona, de modo que la lista sirve
+                    igual para una socia y para un socio sin llenarse de «(a)». La clave
+                    <code className="mx-1 rounded bg-slate-100 px-1">otro</code>
+                    es especial: al elegirla, el formulario pide escribir el cargo. No la renombres.
+                </p>
+                <div className="space-y-2">
+                    {(config.clubRoles || []).map((r, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                            <input
+                                value={r.key}
+                                onChange={e => patch('clubRoles', (config.clubRoles || []).map((x, ix) => ix === i ? { ...x, key: e.target.value } : x))}
+                                className="w-48 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-blue-500 focus:outline-none"
+                            />
+                            <input
+                                value={r.label}
+                                onChange={e => patch('clubRoles', (config.clubRoles || []).map((x, ix) => ix === i ? { ...x, label: e.target.value } : x))}
+                                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                            <button
+                                type="button"
+                                title="Subir"
+                                disabled={i === 0}
+                                onClick={() => patch('clubRoles', move(config.clubRoles || [], i, i - 1))}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            ><ArrowUp size={15} /></button>
+                            <button
+                                type="button"
+                                title="Bajar"
+                                disabled={i === (config.clubRoles || []).length - 1}
+                                onClick={() => patch('clubRoles', move(config.clubRoles || [], i, i + 1))}
+                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                            ><ArrowDown size={15} /></button>
+                            <button
+                                onClick={() => patch('clubRoles', (config.clubRoles || []).filter((_, ix) => ix !== i))}
+                                className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                            ><Trash2 size={15} /></button>
+                        </div>
+                    ))}
+                </div>
+                <button
+                    onClick={() => patch('clubRoles', [...(config.clubRoles || []), { key: '', label: '' }])}
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
+                ><Plus size={15} /> Agregar rol</button>
             </Card>
 
             <Card title="Áreas de enfoque" icon={Target}>
