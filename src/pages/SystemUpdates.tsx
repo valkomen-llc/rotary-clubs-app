@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.684.0 | 2026-08-02 (La edición se vincula a su evento y se puede abrir)
+// UI V4.685.0 | 2026-08-02 (Postulación de Proyectos usa el ancho de Eventos)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.685.0',
+        title: 'Postulación de Proyectos usa el mismo ancho que Eventos \ud83d\udccf',
+        description: 'El listado de ediciones se veía más angosto que el resto del panel: tenía un ancho máximo propio y quedaba centrado, mientras que módulos como Eventos aprovechan todo el espacio disponible. Ahora usa el mismo contenedor que Eventos, así que ocupa lo mismo. Se igualó también el ancho de la pantalla que se ve DENTRO de una edición: antes estaba limitada a una medida distinta y entrar a una versión producía un salto visible, como si la página cambiara de sitio. Y el encabezado y las tarjetas toman el mismo lenguaje del módulo de Eventos —el mismo tamaño de título, el mismo estilo de botón principal y los mismos bordes—, de modo que moverse entre los dos módulos se sienta como el mismo panel y no como dos pantallas distintas. No cambió ninguna función: es sólo presentación.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'ediciones', 'interfaz', 'consistencia', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.684.0',
         title: 'La edición ya se vincula a su evento y se puede abrir \ud83d\udd17',

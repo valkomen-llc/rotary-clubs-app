@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.684.0",
-  "cache_bust": "2026-08-02 (Correccion: la edicion quedaba «Sin evento vinculado» y no se podia abrir. La migracion buscaba el evento en TODO el calendario de la plataforma, que aloja varios sitios, asi que nunca lograba identificarlo; ahora se acota al club de la feria. Ademas la edicion sin vincular mostraba «0 postulaciones» teniendo cuatro —el conteo no unia NULL con NULL— y no habia forma de arreglarla: se agrega el boton «Vincular evento». 11 pruebas en verde reproduciendo el caso real.)",
+  "version": "4.685.0",
+  "cache_bust": "2026-08-02 (Postulacion de Proyectos usa el mismo ancho que el modulo de Eventos: el listado de ediciones estaba limitado y centrado, y se veia mas angosto que el resto del panel. Tambien se iguala el ancho DENTRO de una edicion, para que entrar no se vea como un salto, y el encabezado y las tarjetas toman el mismo lenguaje visual de Eventos.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
