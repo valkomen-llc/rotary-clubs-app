@@ -668,6 +668,34 @@ v4.688; `Plus` en `MissionControl.tsx` sigue pendiente. Al tocar un archivo,
 dejarlo sin errores propios, y mirar si arrastra alguno de estos: son
 pantallas en blanco esperando a que alguien entre.
 
+**Hooks: `npm run check:hooks`.** Es la OTRA causa de pantalla en blanco, y el
+typecheck **no** la ve — el código es válido y está bien tipado. React
+identifica cada hook por su ORDEN de llamada: si un render llama a más hooks
+que el anterior, aborta el árbol entero y no queda nada pintado. Pasó en
+v4.689: un `useMemo` escrito debajo de los dos returns tempranos de
+`PostulacionesPagos.tsx` (`Cargando módulo…` y `Tu perfil no tiene acceso`) no
+se ejecutaba en el primer render y sí en el segundo, así que el panel se caía
+**justo al terminar de cargar**. Reproducido con React real: `Rendered more
+hooks than during the previous render`, HTML vacío.
+
+- **Todo hook va arriba del componente, antes de cualquier `return`.** Lo
+  condicional se resuelve DENTRO del hook (`useEffect(() => { if (x) return; …
+  })`) o moviendo el `return` debajo. Es lo que se hizo en
+  `SuperAssistantDrawer.tsx` (cortaba por rol antes del `useEffect`, y `useAuth`
+  entrega el rol en el segundo render) y en `HeroSection.tsx` (cortaba hacia el
+  hero de Evento antes del `useEffect`, y `club` llega del contexto).
+- **Un hook dentro de un `.map` depende del largo de la lista.** Se extrae un
+  componente por elemento — `StatCell` en `LandingPage.tsx`. Funcionaba sólo
+  porque `STATS` es constante; el día que se volviera dinámica, caída.
+- **No nombrar `useAlgo` a un ayudante que no es un hook.** El linter lo trata
+  como hook y el aviso real se pierde entre falsos positivos
+  (`useExample` → `applyExample` en `ProjectAIModal.tsx`).
+- `scripts/check-hooks.mjs` corre en `prebuild` y **rompe el despliegue**. Mira
+  sólo `react-hooks/rules-of-hooks`, no `npm run lint`: el proyecto arrastra
+  cientos de avisos heredados y el que importa se perdería entre ellos. Degrada
+  a aviso si ESLint no se puede ejecutar — un despliegue no debe caerse por una
+  dependencia de desarrollo ausente.
+
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
 clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`

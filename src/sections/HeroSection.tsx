@@ -19,9 +19,7 @@ const HeroSection = () => {
 
   // Hero propio para sitios Evento/Convención (pantalla completa), si tiene imágenes configuradas.
   const eventHero = (club as any)?.eventHeroImages as { url: string; alt?: string }[] | undefined;
-  if (hasCustomTheme((club as any)?.type) && eventHero && eventHero.length > 0) {
-    return <EventHeroSection images={eventHero} />;
-  }
+  const useEventHero = hasCustomTheme((club as any)?.type) && !!eventHero && eventHero.length > 0;
 
   // Build slides from siteImages or defaults
   const hasCustomHero = siteImages.hero && siteImages.hero.length > 0 && !siteImages.hero[0].url.includes('unsplash.com');
@@ -30,13 +28,24 @@ const HeroSection = () => {
     : (siteImages._loading ? [] : defaultSlides);
 
   useEffect(() => {
-    if (siteImages._loading) return; // Wait for initial images
+    if (useEventHero || siteImages._loading) return; // Wait for initial images
 
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [slides.length, siteImages._loading]);
+  }, [slides.length, siteImages._loading, useEventHero]);
+
+  // El corte hacia el hero de Evento va DESPUÉS del `useEffect`, no antes.
+  // `club` llega del contexto: en el primer render es null —no hay tema
+  // propio, así que el `useEffect` se ejecuta— y en el siguiente ya trae sus
+  // imágenes —el `return` de arriba se llevaba el `useEffect` por delante—.
+  // React cuenta los hooks, encuentra uno de menos y aborta el árbol: la
+  // portada de un sitio de Evento se quedaba EN BLANCO. Mismo defecto que se
+  // corrigió en el panel de Postulación de Proyectos (v4.690).
+  if (useEventHero) {
+    return <EventHeroSection images={eventHero!} />;
+  }
 
   if (siteImages._loading) {
     return (

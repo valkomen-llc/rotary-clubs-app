@@ -82,6 +82,24 @@ function useCountUp(target: number, duration = 2000) {
     return { count, ref };
 }
 
+/* Una casilla de la barra de cifras. Existe como componente propio —y no como
+   el cuerpo de un `.map`— porque `useCountUp` es un hook: llamado dentro de un
+   callback queda a merced del largo de la lista. Hoy `STATS` es una constante
+   de cuatro entradas y no cambia, pero el día que alguien la vuelva dinámica
+   la pantalla se caería sin que nada avise. Con un componente por casilla,
+   cada una tiene su propio estado y el largo de la lista deja de importar. */
+const StatCell = ({ stat, divider }: { stat: { value: string; suffix: string; label: string }; divider: boolean }) => {
+    const { count, ref } = useCountUp(parseInt(stat.value), 1500);
+    return (
+        <div ref={ref} className={`text-center py-5 px-4 ${divider ? 'md:border-r border-gray-100' : ''}`}>
+            <div className="text-3xl font-black text-gray-900">
+                {count}{stat.suffix}
+            </div>
+            <div className="text-xs text-gray-400 font-medium mt-1">{stat.label}</div>
+        </div>
+    );
+};
+
 /* ═══════════════════════════════════════════════════════════
    Main Component
    ═══════════════════════════════════════════════════════════ */
@@ -279,17 +297,9 @@ export default function LandingPage() {
                     {/* Stats Bar */}
                     <div className="mt-20 bg-white rounded-2xl border border-gray-100 shadow-lg p-2">
                         <div className="grid grid-cols-2 md:grid-cols-4">
-                            {STATS.map((stat, i) => {
-                                const { count, ref } = useCountUp(parseInt(stat.value), 1500);
-                                return (
-                                    <div key={i} ref={ref} className={`text-center py-5 px-4 ${i < STATS.length - 1 ? 'md:border-r border-gray-100' : ''}`}>
-                                        <div className="text-3xl font-black text-gray-900">
-                                            {count}{stat.suffix}
-                                        </div>
-                                        <div className="text-xs text-gray-400 font-medium mt-1">{stat.label}</div>
-                                    </div>
-                                );
-                            })}
+                            {STATS.map((stat, i) => (
+                                <StatCell key={i} stat={stat} divider={i < STATS.length - 1} />
+                            ))}
                         </div>
                     </div>
                 </div>

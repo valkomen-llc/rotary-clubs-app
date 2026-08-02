@@ -201,6 +201,26 @@ const PostulacionesPagos: React.FC = () => {
     const [tags, setTags] = useState<Tag[]>([]);
 
     const [overview, setOverview] = useState<any>(null);
+
+    // El recaudo acumulado sale de la misma serie diaria que ya trajo el
+    // Centro de Inteligencia: pedirlo aparte sería otra consulta para un dato
+    // que ya tenemos.
+    //
+    // VA AQUÍ, CON EL RESTO DE LOS HOOKS, Y NO JUNTO AL BLOQUE QUE LO PINTA.
+    // Más abajo hay dos returns tempranos —«Cargando módulo…» y «Tu perfil no
+    // tiene acceso»—. Un `useMemo` escrito después de ellos no se ejecuta en el
+    // primer render y sí en el segundo, así que React encuentra un hook de más
+    // y aborta el árbol entero: la pantalla se queda EN BLANCO justo al
+    // terminar de cargar. Es lo que pasó al estrenar el Centro de Inteligencia
+    // (v4.689). Todo hook nuevo de esta pantalla va antes de esos returns.
+    const cumulative = useMemo(() => {
+        let suma = 0;
+        return (overview?.timeline || []).map((d: any) => {
+            suma += Number(d.totalAmount) || 0;
+            return { ...d, acumulado: Math.round(suma * 100) / 100 };
+        });
+    }, [overview?.timeline]);
+
     const [alerts, setAlerts] = useState<any>(null);
     const [forms, setForms] = useState<any>(null);
     const [formFilter, setFormFilter] = useState('all');
@@ -531,15 +551,6 @@ const PostulacionesPagos: React.FC = () => {
     }
 
     const k = overview?.kpis || {};
-    // El acumulado sale de la misma serie diaria: pedirlo aparte sería otra
-    // consulta para un dato que ya tenemos.
-    const cumulative = useMemo(() => {
-        let suma = 0;
-        return (overview?.timeline || []).map((d: any) => {
-            suma += Number(d.totalAmount) || 0;
-            return { ...d, acumulado: Math.round(suma * 100) / 100 };
-        });
-    }, [overview?.timeline]);
 
     return (
         <AdminLayout>
