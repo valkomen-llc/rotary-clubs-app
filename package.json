@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.685.0",
-  "cache_bust": "2026-08-02 (Postulacion de Proyectos usa el mismo ancho que el modulo de Eventos: el listado de ediciones estaba limitado y centrado, y se veia mas angosto que el resto del panel. Tambien se iguala el ancho DENTRO de una edicion, para que entrar no se vea como un salto, y el encabezado y las tarjetas toman el mismo lenguaje visual de Eventos.)",
+  "version": "4.686.0",
+  "cache_bust": "2026-08-02 (La etiqueta «Departamento, estado o provincia» ocupaba dos lineas en la fila de tres columnas y empujaba su campo hacia abajo. Ahora dice «Departamento» —una palabra, y es como ya se llama en el formulario de asistentes—, y la equivalencia para quien no es de Colombia pasa al texto de ejemplo dentro de la casilla, que no descuadra nada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

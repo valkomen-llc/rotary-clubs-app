@@ -67,11 +67,18 @@ export const hasDepartmentList = (country?: string | null): boolean =>
     String(country || '').trim().toLowerCase() === COLOMBIA.toLowerCase();
 
 /**
- * Etiqueta del campo según el país. Fuera de Colombia la división de primer
- * nivel se llama de otra forma y no todos los países la tienen igual, así que
- * se nombran las tres formas usuales en vez de imponer la colombiana.
+ * La etiqueta es SIEMPRE «Departamento», por dos razones. Una: en una fila de
+ * tres columnas, «Departamento, estado o provincia» ocupaba dos líneas y
+ * empujaba su campo hacia abajo, dejando la fila escalonada. Y otra: es el
+ * nombre que ya usa el formulario de inscripción a eventos, así que el mismo
+ * dato se llama igual en los dos sitios.
+ *
+ * La equivalencia para quien no es de Colombia va en el texto de ejemplo del
+ * campo, que se lee dentro de la casilla y no descuadra nada.
  */
-export const departmentLabel = (country?: string | null): string =>
-    (hasDepartmentList(country) ? 'Departamento' : 'Departamento, estado o provincia');
+export const DEPARTMENT_LABEL = 'Departamento';
+
+export const departmentPlaceholder = (country?: string | null): string =>
+    (hasDepartmentList(country) ? '' : 'Estado o provincia');
 
 export const DEPARTMENT_OPTIONS = DEPARTAMENTOS_COLOMBIA.map(d => ({ value: d, label: d }));
