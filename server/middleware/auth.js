@@ -27,6 +27,15 @@ export const PORTAL_AUDIENCE = 'project-fair-portal';
 export const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 
 /**
+ * Vigencia del token cuando NO se marca "Mantener la sesión iniciada".
+ * Es la misma para las tres identidades: quien pide no ser recordado espera
+ * que la sesión no le sobreviva al día, y no tendría sentido que dependiera de
+ * con cuál de las tres entró. Marcada, cada identidad conserva la suya, así
+ * que la casilla sólo puede acortar la sesión, nunca alargarla.
+ */
+export const SHORT_SESSION_TTL = '12h';
+
+/**
  * Roles de la tabla `User` que pueden entrar al panel administrativo.
  * Debe coincidir con `ADMIN_ROLES` de src/App.tsx: el cliente decide qué
  * pinta, éste decide qué se responde.

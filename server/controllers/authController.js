@@ -1,5 +1,5 @@
 import db from '../lib/db.js';
-import { PLATFORM_AUDIENCE, ADMIN_ROLES, JWT_SECRET } from '../middleware/auth.js';
+import { PLATFORM_AUDIENCE, ADMIN_ROLES, JWT_SECRET, SHORT_SESSION_TTL } from '../middleware/auth.js';
 
 let bcrypt = null;
 let jwt = null;
@@ -22,7 +22,7 @@ const getJwt = async () => {
  * @returns {Promise<{ok: true, user: object, token: string} | {ok: false}>}
  *          Nunca distingue "el correo no existe" de "la contraseña no coincide".
  */
-export const authenticatePlatform = async (email, password) => {
+export const authenticatePlatform = async (email, password, { remember = true } = {}) => {
     const clean = String(email || '').trim();
     if (!clean || !password) return { ok: false };
 
@@ -48,7 +48,10 @@ export const authenticatePlatform = async (email, password) => {
             aud: PLATFORM_AUDIENCE,
         },
         JWT_SECRET,
-        { expiresIn: '1d' }
+        // "Mantener la sesión iniciada" sólo conserva la vigencia de siempre;
+        // al desmarcarla el token vence el mismo día, así que la casilla nunca
+        // afloja la seguridad, sólo la aprieta.
+        { expiresIn: remember ? '1d' : SHORT_SESSION_TTL }
     );
 
     return {

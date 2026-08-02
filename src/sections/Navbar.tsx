@@ -152,6 +152,10 @@ const Navbar = () => {
   const [loginNotice, setLoginNotice] = useState('');
   const [loginOk, setLoginOk] = useState('');
   const [afterLogin, setAfterLogin] = useState<string | null>(null);
+  // Marcada, la sesión conserva la vigencia de siempre; desmarcada, el servidor
+  // emite un token que vence el mismo día. Nace marcada porque eso es lo que ya
+  // ocurría: la casilla sólo puede acortar la sesión, nunca alargarla.
+  const [remember, setRemember] = useState(true);
   // ¿Este usuario también tiene un proyecto postulado? Se consulta al servidor
   // por el correo de su sesión, así el atajo aparece siempre que corresponda y
   // no sólo justo después de iniciar sesión.
@@ -251,7 +255,7 @@ const Navbar = () => {
       const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/project-fair/portal/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       });
       const data = await res.json();
       if (res.ok && data?.token) {
@@ -309,7 +313,7 @@ const Navbar = () => {
       const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       });
       const data = await response.json();
 
@@ -861,7 +865,7 @@ const Navbar = () => {
                   ingresa no tiene por qué saber cuál le corresponde. */}
               <p className="mb-6 text-sm text-gray-500">
                 {loginMode === 'login'
-                  ? 'Administradores del sitio y clubes que postularon su proyecto ingresan aquí, con las credenciales que crearon al registrarse.'
+                  ? 'Este es el acceso a todo el sitio. Ingresa con el correo y la contraseña que creaste al registrarte y te llevamos a tu espacio.'
                   : 'Escribe tu correo y te enviaremos un enlace para crear una contraseña nueva.'}
               </p>
 
@@ -874,10 +878,13 @@ const Navbar = () => {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
                     required
+                    autoComplete="username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
@@ -886,16 +893,33 @@ const Navbar = () => {
                 </div>
                 {loginMode === 'login' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                    <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
                     <input
+                      id="login-password"
+                      name="password"
                       type="password"
                       required
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
                       placeholder="••••••••"
                     />
                   </div>
+                )}
+
+                {loginMode === 'login' && (
+                  <label htmlFor="login-remember" className="flex cursor-pointer items-center gap-2 pt-1 text-sm text-gray-600">
+                    <input
+                      id="login-remember"
+                      name="remember"
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue"
+                    />
+                    Mantener la sesión iniciada en este dispositivo
+                  </label>
                 )}
 
                 {error && <p className="text-red-500 text-sm">{error}</p>}
