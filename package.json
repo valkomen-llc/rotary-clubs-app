@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.680.0",
-  "cache_bust": "2026-08-02 (Postular Proyecto: las etiquetas de «Club Rotario con el que postula el proyecto» y «Distrito al que pertenece el Club Rotario» ocupaban dos lineas y empujaban su campo hacia abajo, dejando la fila escalonada. Ahora dicen «Club Rotario» y «Distrito», caben en una linea como «Rol dentro del club», y el detalle pasa al texto de ayuda que va debajo del campo y no desalinea nada.)",
+  "version": "4.681.0",
+  "cache_bust": "2026-08-02 (Formulario de ingreso: el texto ya no enumera quien entra —eran dos identidades y ahora son tres, con los asistentes al evento— sino que dice que es el acceso a todo el sitio. Se agrega la casilla «Mantener la sesion iniciada en este dispositivo», que controla la vigencia del token en el SERVIDOR: marcada conserva la de siempre, desmarcada vence a las 12 h. Y los campos declaran name/id/autoComplete para que el navegador reconozca el ingreso y ofrezca guardar y autocompletar las credenciales. 11 pruebas en verde.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

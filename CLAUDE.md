@@ -1210,6 +1210,23 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
 - Los tokens sin `aud` (emitidos antes de v4.627) se siguen aceptando a
   propósito, para no cerrar sesiones en marcha. Duran un día y rotan solos;
   esa tolerancia se puede quitar pasada una semana del despliegue.
+- **La casilla «Mantener la sesión iniciada» sólo puede ACORTAR la sesión**
+  (v4.681). Marcada —por omisión, y también cuando el cliente no manda el
+  campo— cada identidad conserva su vigencia de siempre: un día la de
+  plataforma, treinta días las de los dos paneles. Desmarcada, las tres pasan a
+  `SHORT_SESSION_TTL` (12 h). La decisión es del SERVIDOR, no del navegador:
+  cambiar dónde se guarda el token exigiría tocar 186 lecturas de
+  `localStorage` en 71 archivos, y además «no me recuerdes» no puede
+  significar sólo que olvidamos dónde lo pusimos mientras sigue siendo válido.
+  Al agregar una identidad, su `signToken` debe aceptar `{ remember }`.
+- **El texto del formulario NO enumera quién entra.** Decía «administradores
+  del sitio y clubes que postularon su proyecto» y se quedó corto al aparecer
+  la tercera identidad. Cada tipo de cuenta nuevo obligaría a reescribirlo y,
+  hasta que alguien lo hiciera, dejaría gente fuera de un texto que sí la
+  incluye.
+- Los campos del modal declaran `name`, `id` y `autoComplete`
+  (`username` / `current-password`): es lo que hace que el navegador reconozca
+  el ingreso y ofrezca guardar y autocompletar. No quitarlos.
 - El ingreso con Google **no está implementado**: el botón nunca tuvo
   manejador. Está oculto tras `GOOGLE_LOGIN_ENABLED` en `Navbar.tsx`. Cuando
   se implemente, debe verificar el `id_token` en el servidor y converger en

@@ -34,6 +34,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { ensureEventRegistrationSchema } from '../lib/ensureEventRegistrationSchema.js';
 import { PASSWORD_MIN, statusMeta } from '../lib/eventRegistrationSpec.js';
+import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import {
     clean, isEmail, parseJson, asNumber,
     listCompanions, listHistory, listMessages, listPayments,
@@ -103,7 +104,7 @@ export const permissionsFor = (role) =>
 export const emailVerificationEnabled = () =>
     String(process.env.EVENT_ATTENDEE_EMAIL_VERIFICATION || '').toLowerCase() === 'true';
 
-const signToken = (account) => jwt.sign(
+const signToken = (account, { remember = true } = {}) => jwt.sign(
     {
         sub: account.id,
         email: account.email,
@@ -111,7 +112,7 @@ const signToken = (account) => jwt.sign(
         aud: ATTENDEE_AUDIENCE,
     },
     JWT_SECRET,
-    { expiresIn: TOKEN_TTL }
+    { expiresIn: remember ? TOKEN_TTL : SHORT_SESSION_TTL }
 );
 
 // ── Auditoría de ingresos ────────────────────────────────────────────
@@ -344,7 +345,7 @@ export const describeAttendeeSession = async (account) => {
  * Mismo resultado para correo inexistente y contraseña incorrecta: no se
  * revela qué correos están registrados.
  */
-export const authenticateAttendee = async (email, password, req = null) => {
+export const authenticateAttendee = async (email, password, req = null, { remember = true } = {}) => {
     await ensureEventRegistrationSchema();
     const mail = clean(email, 200).toLowerCase();
     if (!isEmail(mail) || !password) return { ok: false };
@@ -363,7 +364,7 @@ export const authenticateAttendee = async (email, password, req = null) => {
 
     await db.query('UPDATE "EventAttendeeAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
     await auditLogin(req, { accountId: account.id, email: mail, outcome: 'success' });
-    return { ok: true, account, token: signToken(account) };
+    return { ok: true, account, token: signToken(account, { remember }) };
 };
 
 // POST /portal/login — entrada directa al panel del asistente.
@@ -375,7 +376,7 @@ export const login = async (req, res) => {
             return res.status(400).json({ error: 'Ingresa tu correo y contraseña.' });
         }
 
-        const result = await authenticateAttendee(email, password, req);
+        const result = await authenticateAttendee(email, password, req, { remember: req.body?.remember !== false });
         if (result.needsPassword) {
             return res.status(409).json({
                 error: 'Tu inscripción está registrada pero aún no tiene contraseña. Usa "Olvidé mi contraseña" para crear una.',

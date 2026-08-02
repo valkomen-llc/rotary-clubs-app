@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.680.0 | 2026-08-02 (Los tres campos del club quedan a la misma altura)
+// UI V4.681.0 | 2026-08-02 (El ingreso se generaliza y recuerda la sesión)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.681.0',
+        title: 'El ingreso habla para todos y puede recordar tu sesión \ud83d\udd11',
+        description: 'El texto bajo «Iniciar sesión» enumeraba quién entra por ahí: administradores del sitio y clubes que postularon su proyecto. Se había quedado corto, porque desde hace unas versiones también entran los asistentes que completaron su registro y su pago al evento, para consultar su inscripción. Enumerar tenía además el defecto de que cada nuevo tipo de cuenta obligaba a reescribirlo y, mientras nadie lo hiciera, dejaba a alguien fuera de un texto que sí lo incluye. Ahora dice simplemente que ese es el acceso a todo el sitio y que se ingresa con el correo y la contraseña creados al registrarse; el sistema ya sabe a qué espacio llevar a cada quien. Se agregó también la casilla «Mantener la sesión iniciada en este dispositivo», marcada por defecto. Marcada, la sesión dura lo mismo que hasta ahora. Al desmarcarla, la sesión vence el mismo día — y no es sólo que el navegador la olvide: el servidor emite una sesión corta de verdad, así que la casilla únicamente puede acortarla, nunca alargarla, y desmarcarla en un computador prestado sirve para lo que se espera que sirva. Por último, los campos de correo y contraseña ahora se identifican como lo que son, de modo que el navegador ofrece guardar las credenciales y autocompletarlas la próxima vez, como en cualquier otro sitio.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'inicio de sesion', 'seguridad', 'experiencia de usuario', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.680.0',
         title: 'Los tres campos del club quedan a la misma altura \u2696\ufe0f',

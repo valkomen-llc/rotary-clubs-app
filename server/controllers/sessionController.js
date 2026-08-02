@@ -31,6 +31,10 @@ const BAD_CREDENTIALS = 'Correo o contraseña incorrectos.';
 export const resolveSession = async (req, res) => {
     const email = String(req.body?.email || '').trim();
     const password = String(req.body?.password || '');
+    // "Mantener la sesión iniciada". Por omisión se conserva la vigencia de
+    // siempre, así que un cliente antiguo que no mande el campo se comporta
+    // igual que antes; desmarcarla sólo acorta la sesión.
+    const remember = req.body?.remember !== false;
     if (!email || !password) {
         return res.status(400).json({ error: 'Ingresa tu correo y contraseña.' });
     }
@@ -38,7 +42,7 @@ export const resolveSession = async (req, res) => {
     try {
         // 1) Identidad de plataforma. Va primero porque quien administra el
         //    sitio entra muchas veces al día; el club, unas pocas.
-        const platform = await authenticatePlatform(email, password).catch(err => {
+        const platform = await authenticatePlatform(email, password, { remember }).catch(err => {
             console.error('[session] authenticatePlatform:', err?.message);
             return { ok: false };
         });
@@ -60,7 +64,7 @@ export const resolveSession = async (req, res) => {
 
         // 2) Identidad del panel del club (las credenciales que creó al
         //    inscribir su proyecto).
-        const portal = await authenticatePortal(email, password).catch(err => {
+        const portal = await authenticatePortal(email, password, { remember }).catch(err => {
             console.error('[session] authenticatePortal:', err?.message);
             return { ok: false };
         });
@@ -87,7 +91,7 @@ export const resolveSession = async (req, res) => {
         //    inscribirse). Va al final porque es la más numerosa pero la que
         //    menos veces entra: se consulta el estado de una inscripción unas
         //    pocas veces, no a diario.
-        const attendee = await authenticateAttendee(email, password, req).catch(err => {
+        const attendee = await authenticateAttendee(email, password, req, { remember }).catch(err => {
             console.error('[session] authenticateAttendee:', err?.message);
             return { ok: false };
         });

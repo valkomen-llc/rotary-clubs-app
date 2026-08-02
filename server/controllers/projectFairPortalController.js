@@ -20,6 +20,7 @@ import Stripe from 'stripe';
 import db from '../lib/db.js';
 import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
+import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
 import {
     editability, listPortalForms, seedAnswersFor,
@@ -40,10 +41,10 @@ const TOKEN_TTL = '30d';
 const clean = (v, max = 250) => String(v ?? '').trim().slice(0, max);
 const isEmail = (v) => /^\S+@\S+\.\S+$/.test(String(v || ''));
 
-const signToken = (account) => jwt.sign(
+const signToken = (account, { remember = true } = {}) => jwt.sign(
     { sub: account.id, submissionId: account.submissionId, email: account.email, aud: PORTAL_AUDIENCE },
     JWT_SECRET,
-    { expiresIn: TOKEN_TTL }
+    { expiresIn: remember ? TOKEN_TTL : SHORT_SESSION_TTL }
 );
 
 /** Middleware del panel: exige un token emitido para esta audiencia. */
@@ -225,7 +226,7 @@ export const describePortalSession = async (account) => {
  * Comprueba unas credenciales contra la identidad del panel del club.
  * @returns {Promise<{ok:true, account, token} | {ok:false, needsPassword?:boolean}>}
  */
-export const authenticatePortal = async (email, password) => {
+export const authenticatePortal = async (email, password, { remember = true } = {}) => {
     await ensureTables();
     const mail = clean(email, 200).toLowerCase();
     if (!isEmail(mail) || !password) return { ok: false };
@@ -243,7 +244,7 @@ export const authenticatePortal = async (email, password) => {
     if (!ok) return { ok: false };
 
     await db.query('UPDATE "ProjectFairAccount" SET "lastLoginAt" = NOW() WHERE id = $1', [account.id]);
-    return { ok: true, account, token: signToken(account) };
+    return { ok: true, account, token: signToken(account, { remember }) };
 };
 
 // POST /portal/login
@@ -253,7 +254,7 @@ export const login = async (req, res) => {
         const password = String(req.body?.password || '');
         if (!isEmail(email) || !password) return res.status(400).json({ error: 'Ingresa tu correo y contraseña.' });
 
-        const result = await authenticatePortal(email, password);
+        const result = await authenticatePortal(email, password, { remember: req.body?.remember !== false });
         if (result.needsPassword) {
             return res.status(409).json({
                 error: 'Tu proyecto está registrado pero aún no tiene contraseña. Usa "Olvidé mi contraseña" para crear una.',
