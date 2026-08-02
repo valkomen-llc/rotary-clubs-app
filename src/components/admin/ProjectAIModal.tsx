@@ -270,7 +270,7 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
         }
     };
 
-    const useExample = (ex: string) => { setPrompt(ex); textareaRef.current?.focus(); };
+    const applyExample = (ex: string) => { setPrompt(ex); textareaRef.current?.focus(); };
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -416,7 +416,7 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">💡 Ejemplos rápidos</p>
                         <div className="flex flex-wrap gap-2">
                             {EXAMPLE_PROMPTS.slice(0, 3).map((ex, i) => (
-                                <button key={i} onClick={() => useExample(ex)}
+                                <button key={i} onClick={() => applyExample(ex)}
                                     className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-100 px-3 py-1.5 rounded-full transition-colors text-left">
                                     {ex.slice(0, 45)}...
                                 </button>

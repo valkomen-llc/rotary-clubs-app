@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.689.0 | 2026-08-02 (Dashboard y Reportes se unifican en el Centro de Inteligencia)
+// UI V4.690.0 | 2026-08-02 (HOTFIX: pantalla en blanco al entrar a una edicion)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.690.0',
+        title: 'Corregida la pantalla en blanco al entrar a una edición 🩹',
+        description: 'Al abrir una edición en Postulación de Proyectos, el panel se quedaba completamente en blanco. La causa estaba en el Centro de Inteligencia estrenado en la versión anterior: el cálculo del recaudo acumulado quedó escrito más abajo de donde debía, después de las dos salidas rápidas que tiene la pantalla mientras carga y cuando el perfil no tiene acceso. React lleva la cuenta de esos cálculos entre un dibujado y el siguiente, y al encontrar uno de más justo cuando terminaban de llegar los datos, descartaba la pantalla entera. Por eso se veía un instante «Cargando módulo…» y después nada. Ya está en su sitio, y el mismo defecto se corrigió en otros dos lugares donde estaba latente y nadie había llegado a toparse con él todavía: el asistente del super administrador, que se caía en cuanto se reconocía el perfil, y la portada de los sitios de tipo Evento, que se habría quedado en blanco al terminar de cargar sus imágenes. Y como ni la revisión de tipos ni la compilación pueden ver esta clase de error —el código es válido y está bien escrito; sólo falla al ejecutarse—, se agregó una comprobación que detiene el despliegue si vuelve a colarse. Es la tercera barrera del proyecto, junto a las dos que protegen la base de datos.',
+        date: new Date().toISOString(),
+        tags: ['hotfix', 'postulacion de proyectos', 'panel', 'estabilidad'],
+        type: 'hotfix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El panel de una edición de Postulación de Proyectos vuelve a abrirse: ya no se queda en blanco al terminar de cargar.' },
+            { type: 'fixed', text: 'El asistente del super administrador ya no tumba el panel cuando se reconoce el perfil.' },
+            { type: 'fixed', text: 'La portada de los sitios de tipo Evento ya no se queda en blanco al cargar sus imágenes propias.' },
+            { type: 'added', text: 'Nueva comprobación previa al despliegue que detiene la publicación si vuelve a aparecer este tipo de error.' },
+        ],
+    },
     {
         version: '4.689.0',
         title: 'Dashboard y Reportes ahora son un solo Centro de Inteligencia \ud83e\udde0',

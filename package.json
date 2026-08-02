@@ -1,13 +1,14 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.689.0",
-  "cache_bust": "2026-08-02 (Dashboard y Reportes se unifican en el Centro de Inteligencia de la edicion. Mostraban lo mismo con otros nombres —proyectos por distrito, por area de enfoque y la evolucion salian duplicados— y se calculaban DOS veces en el servidor. Ahora es una sola consulta y una sola pantalla por bloques: resumen ejecutivo, embudo de conversion, analitica de postulaciones, analitica financiera, distribucion geografica, clubes y proyectos, y actividad reciente. Se agregan distritos/clubes/paises participantes, recaudo acumulado, top de presupuesto y la linea de tiempo del evento.)",
+  "version": "4.690.0",
+  "cache_bust": "2026-08-02 (HOTFIX: corregida la pantalla en blanco al entrar a una edicion de Postulacion de Proyectos. El calculo del recaudo acumulado que se agrego en v4.689 quedo escrito debajo de dos salidas tempranas del componente, asi que React contaba un hook de mas al terminar de cargar y abortaba el dibujado entero. Se corrigio ahi y en otros dos sitios con el mismo defecto —el asistente del super administrador y la portada de los sitios de Evento—, y se agrego una barrera que detiene el despliegue si vuelve a aparecer, porque ni el typecheck ni el build pueden verlo.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/check-build-safety.mjs",
+    "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-hooks.mjs",
+    "check:hooks": "node scripts/check-hooks.mjs",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
     "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma",
     "db:push": "node scripts/db-push-guard.mjs && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",

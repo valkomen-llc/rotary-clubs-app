@@ -17,14 +17,20 @@ const SuperAssistantDrawer: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Only for Super Admins
-    if (user?.role !== 'administrator') return null;
-
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages, loading]);
+
+    // Sólo para el super administrador. El corte va DESPUÉS de los hooks, no
+    // antes: `useAuth` entrega `user` en null en el primer render y con su rol
+    // en el siguiente, así que un `return` colocado más arriba dejaba fuera el
+    // `useEffect` en la primera pasada y lo incluía en la segunda. React
+    // cuenta los hooks y, al encontrar uno de más, aborta el árbol entero: el
+    // panel se queda EN BLANCO. Es el mismo defecto que se corrigió en
+    // Postulación de Proyectos (v4.690).
+    if (user?.role !== 'administrator') return null;
 
     const handleSend = async () => {
         if (!input.trim() || loading) return;
