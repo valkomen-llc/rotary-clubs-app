@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.687.0",
-  "cache_bust": "2026-08-02 (El historial de lanzamientos queda reservado al super administrador de la plataforma. Se oculta el enlace «Release» de la barra superior y la insignia de version del pie del menu en los sitios de los clubes —el aviso de la barra se conserva—, y se PROTEGE la ruta /system-updates, que estaba fuera del guardian y se abria escribiendo la direccion. La regla de quien es super administrador de la plataforma pasa a un solo archivo compartido.)",
+  "version": "4.688.0",
+  "cache_bust": "2026-08-02 (URGENTE: el panel de control quedaba en blanco. Al mover la deteccion de super administrador a un archivo compartido en v4.687 se elimino una variable que el resto del menu seguia usando. Corregido, y corregido tambien un segundo fallo del mismo tipo que ya estaba anotado en la guia: el icono del item «Mi Proyecto» se usaba sin importarlo, lo que dejaba en blanco el panel de cualquier administrador con un proyecto postulado.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

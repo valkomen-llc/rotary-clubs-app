@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.687.0 | 2026-08-02 (El historial de lanzamientos es interno de la plataforma)
+// UI V4.688.0 | 2026-08-02 (Se corrige el panel en blanco)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.688.0',
+        title: 'Corregido: el panel de control quedaba en blanco \ud83d\udea8',
+        description: 'La actualización anterior dejó el panel de control completamente en blanco. Al mover la regla que identifica al super administrador de la plataforma a un archivo compartido, se eliminó una variable que otras partes del menú seguían usando, y esa falta rompía la pantalla entera al dibujarla. Ya está corregido. Aprovechando la revisión se corrigió también un segundo fallo idéntico que llevaba tiempo latente y estaba anotado como pendiente: el ícono del acceso «Mi Proyecto» se usaba en el menú sin haberlo importado, de modo que el panel se quedaba en blanco para cualquier administrador que además tuviera un proyecto postulado — justo el caso más común en este sitio. La causa de fondo de que ninguno de los dos se detectara antes es que la comprobación automática de errores se estaba ejecutando sobre una configuración que no revisa nada y por lo tanto siempre pasaba. Ya se corrió la comprobación correcta, que es la que encontró los dos.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'hotfix', 'urgente', 'estabilidad'],
+        type: 'hotfix'
+    },
     {
         version: '4.687.0',
         title: 'El historial de lanzamientos queda reservado a la plataforma \ud83d\udd12',
