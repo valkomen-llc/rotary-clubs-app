@@ -10,9 +10,9 @@
 // Los permisos llegan del backend en `access` y la interfaz se adapta: quien
 // no puede ver pagos no recibe ni siquiera las referencias de Stripe.
 // ════════════════════════════════════════════════════════════════════
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    AlertTriangle, ArrowLeft, ArrowUpDown, BarChart3, CheckCircle2, ClipboardList, Clock,
+    AlertTriangle, ArrowLeft, ArrowUpDown, BarChart3, Building2, Globe, MapPin, CheckCircle2, ClipboardList, Clock,
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
@@ -141,14 +141,56 @@ const EVENT_META: Record<string, { label: string; color: string }> = {
     redirect: { label: 'Redirección a Grants', color: 'violet' },
 };
 
+/** Encabezado de un bloque temático del Centro de Inteligencia. */
+const BlockTitle = ({ icon: Icon, children }: { icon: any; children: React.ReactNode }) => (
+    <h2 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
+        <Icon size={15} className="text-slate-400" /> {children}
+    </h2>
+);
+
+/** Tarjeta con título: la caja que envuelve cada gráfica o tabla. */
+const Panel = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h3 className="mb-3 text-sm font-bold text-slate-700">{title}</h3>
+        {children}
+    </div>
+);
+
+/**
+ * Un eje geográfico sólo se pinta si dice algo. Con todas las postulaciones en
+ * el mismo país, un gráfico de «por país» con una sola barra ocupa sitio y no
+ * informa; y si el dato nunca se llenó, la única fila es "Sin país".
+ */
+const hasGeo = (rows?: any[]): boolean =>
+    Array.isArray(rows) && rows.length > 0 && !(rows.length === 1 && String(rows[0]?.key || '').startsWith('Sin '));
+
+/** Ranking compacto: nombre, proyectos y recaudo. */
+const RankPanel = ({ title, rows, priceMode }: { title: string; rows: any[]; priceMode?: string }) => (
+    <Panel title={title}>
+        <ul className="divide-y divide-slate-100">
+            {rows.slice(0, 8).map(r => (
+                <li key={r.key} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0 truncate text-slate-700">{r.key}</span>
+                    <span className="flex shrink-0 items-center gap-3">
+                        <span className="text-slate-500">{r.count}</span>
+                        <span className="font-semibold text-slate-800">
+                            {priceMode === 'USD' ? fmtUsd(r.totalAmount) : fmtCop(r.totalAmount)}
+                        </span>
+                    </span>
+                </li>
+            ))}
+        </ul>
+    </Panel>
+);
+
 // ════════════════════════════════════════════════════════════════════
 const PostulacionesPagos: React.FC = () => {
-    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'reports' | 'config';
+    type Tab = 'dashboard' | 'submissions' | 'forms' | 'alerts' | 'config';
     // ?tab=config permite enlazar directo a la configuración (y mantiene vivos
     // los enlaces a la antigua entrada de menú "Postulación de Proyectos").
     const [tab, setTab] = useState<Tab>(() => {
         const requested = new URLSearchParams(window.location.search).get('tab');
-        return (['dashboard', 'submissions', 'forms', 'alerts', 'reports', 'config'] as const).includes(requested as Tab)
+        return (['dashboard', 'submissions', 'forms', 'alerts', 'config'] as const).includes(requested as Tab)
             ? (requested as Tab) : 'dashboard';
     });
     // Edición abierta. Vive en la URL para que el enlace se pueda compartir y
@@ -160,7 +202,6 @@ const PostulacionesPagos: React.FC = () => {
 
     const [overview, setOverview] = useState<any>(null);
     const [alerts, setAlerts] = useState<any>(null);
-    const [reports, setReports] = useState<any>(null);
     const [forms, setForms] = useState<any>(null);
     const [formFilter, setFormFilter] = useState('all');
     // v4.642 — Un proyecto tiene varios formularios. Este es el que se está
@@ -245,11 +286,6 @@ const PostulacionesPagos: React.FC = () => {
             getJson(`${API}/project-fair/admin/forms?formKey=${formKey}&formStatus=${formFilter}`)
                 .then(d => { setForms(d); setLoadError(null); })
                 .catch(e => setLoadError(e?.message || 'No se pudo cargar la formulación'));
-        }
-        if (tab === 'reports') {
-            getJson(`${API}/project-fair/admin/reports?${queryString()}`)
-                .then(d => { setReports(d); setLoadError(null); })
-                .catch(e => setLoadError(e?.message || 'No se pudieron cargar los reportes'));
         }
     }, [tab, loading, loadOverview, loadRows, queryString, formKey, formFilter]);
 
@@ -495,6 +531,15 @@ const PostulacionesPagos: React.FC = () => {
     }
 
     const k = overview?.kpis || {};
+    // El acumulado sale de la misma serie diaria: pedirlo aparte sería otra
+    // consulta para un dato que ya tenemos.
+    const cumulative = useMemo(() => {
+        let suma = 0;
+        return (overview?.timeline || []).map((d: any) => {
+            suma += Number(d.totalAmount) || 0;
+            return { ...d, acumulado: Math.round(suma * 100) / 100 };
+        });
+    }, [overview?.timeline]);
 
     return (
         <AdminLayout>
@@ -543,9 +588,12 @@ const PostulacionesPagos: React.FC = () => {
                 )}
 
                 <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
-                    {([['dashboard', 'Dashboard', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
+                    {/* «Reportes» desapareció en v4.689: mostraba los mismos
+                        indicadores y gráficas que el Dashboard con otros
+                        nombres. Todo vive ahora en el Centro de Inteligencia. */}
+                    {([['dashboard', 'Centro de Inteligencia', BarChart3], ['submissions', 'Postulaciones', ClipboardList],
                        ['forms', 'Formulación', FileSignature],
-                       ['alerts', 'Alertas', AlertTriangle], ['reports', 'Reportes', TrendingUp],
+                       ['alerts', 'Alertas', AlertTriangle],
                        ['config', 'Convocatoria', Settings]] as const).map(([key, label, Icon]) => (
                         <button key={key} onClick={() => setTab(key)}
                             className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
@@ -559,65 +607,267 @@ const PostulacionesPagos: React.FC = () => {
                 </div>
 
                 {/* ── Dashboard ─────────────────────────────────────── */}
-                {tab === 'dashboard' && (
-                    <div className="space-y-5">
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <Kpi label="Postulaciones" value={fmtNum(k.total)} sub={`${k.pendingReview || 0} pendientes de revisión`} icon={ClipboardList} tone="blue" />
-                            <Kpi label="Pagadas" value={fmtNum(k.paid)} sub={`Conversión ${k.conversionRate || 0}%`} icon={CheckCircle2} tone="emerald" />
-                            <Kpi label="Pendientes de pago" value={fmtNum(k.pending)} icon={Clock} tone="amber" />
-                            <Kpi label="Pagos fallidos" value={fmtNum(k.failed)} sub={`${k.refunded || 0} reembolsados`} icon={AlertTriangle} tone="red" />
-                            {k.priceMode === 'USD' ? (
-                                <Kpi label="Recaudo total" value={fmtUsd(k.totalUsd)} sub="Dólares" icon={Wallet} tone="blue" />
-                            ) : (
-                                <>
-                                    <Kpi label="Recaudo total" value={`${fmtCop(k.totalCop)}`} sub="Pesos colombianos" icon={Wallet} tone="blue" />
-                                    <Kpi label="Cobrado en dólares" value={fmtUsd(k.totalUsd)} sub="Convertido con la TRM de cada pago" icon={CreditCard} tone="emerald" />
-                                </>
-                            )}
-                            <Kpi label="Presupuesto de los proyectos" value={fmtUsd(k.totalBudget)} sub={`Promedio ${fmtUsd(k.avgBudget)}`} icon={TrendingUp} tone="indigo" />
-                            <Kpi label="Reembolsado" value={fmtCop(k.totalRefunded)} icon={RefreshCw} tone="orange" />
-                        </div>
+                {/* ══ CENTRO DE INTELIGENCIA DE LA EDICIÓN (v4.689) ══════
+                    Antes eran dos pestañas, «Dashboard» y «Reportes», que
+                    mostraban lo mismo con nombres distintos: proyectos por
+                    distrito, por área de enfoque y la evolución salían
+                    duplicadas, y había que cambiar de pestaña para ver la
+                    otra mitad de una misma pregunta. Ahora es una sola
+                    pantalla organizada por bloques, servida por una sola
+                    consulta y acotada a la edición abierta.
 
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                <h3 className="mb-3 text-sm font-bold text-slate-700">Proyectos por distrito</h3>
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <BarChart data={overview?.byDistrict || []}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="key" tick={{ fontSize: 11 }} />
-                                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                                        <Tooltip />
-                                        <Bar dataKey="count" name="Proyectos" fill={BLUE} radius={[6, 6, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                    Los bloques que no tienen datos NO se pintan: con una
+                    edición recién abierta, una rejilla de gráficas vacías
+                    dice menos que no mostrarlas. */}
+                {tab === 'dashboard' && (
+                    <div className="space-y-6">
+                        {/* ── 1. Resumen ejecutivo ─────────────────────
+                            Responde «¿cómo va el evento?» de un vistazo. */}
+                        <section>
+                            <BlockTitle icon={BarChart3}>Resumen ejecutivo</BlockTitle>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <Kpi label="Postulaciones" value={fmtNum(k.total)} sub={`${k.pendingReview || 0} pendientes de revisión`} icon={ClipboardList} tone="blue" />
+                                <Kpi label="Pagadas" value={fmtNum(k.paid)} sub={`Conversión ${k.conversionRate || 0}%`} icon={CheckCircle2} tone="emerald" />
+                                <Kpi label="Pendientes de pago" value={fmtNum(k.pending)} icon={Clock} tone="amber" />
+                                <Kpi label="Pagos fallidos" value={fmtNum(k.failed)} sub={`${k.refunded || 0} reembolsados`} icon={AlertTriangle} tone="red" />
+
+                                {k.priceMode === 'USD' ? (
+                                    <Kpi label="Recaudo total" value={fmtUsd(k.totalUsd)} sub="Dólares" icon={Wallet} tone="blue" />
+                                ) : (
+                                    <>
+                                        <Kpi label="Recaudo total" value={fmtCop(k.totalCop)} sub="Pesos colombianos" icon={Wallet} tone="blue" />
+                                        <Kpi label="Cobrado en dólares" value={fmtUsd(k.totalUsd)} sub="Convertido con la TRM de cada pago" icon={CreditCard} tone="emerald" />
+                                    </>
+                                )}
+                                <Kpi label="Presupuesto de los proyectos" value={fmtUsd(k.totalBudget)} sub={`Promedio ${fmtUsd(k.avgBudget)}`} icon={TrendingUp} tone="indigo" />
+                                <Kpi label="Reembolsado" value={fmtCop(k.totalRefunded)} icon={RefreshCw} tone="orange" />
+
+                                {/* Alcance de la convocatoria: cuántos participan, no cuánto se recaudó. */}
+                                <Kpi label="Distritos participantes" value={fmtNum(k.districts)} icon={MapPin} tone="indigo" />
+                                <Kpi label="Clubes participantes" value={fmtNum(k.clubs)} icon={Building2} tone="blue" />
+                                {k.countries > 0 && <Kpi label="Países representados" value={fmtNum(k.countries)} icon={Globe} tone="emerald" />}
+                                {/* La TRM sólo dice algo si el precio se fija en pesos. */}
+                                {k.priceMode !== 'USD' && k.avgTrm > 0 && (
+                                    <Kpi label="TRM promedio aplicada" value={fmtNum(Math.round(k.avgTrm))} sub="COP por dólar" icon={CreditCard} tone="amber" />
+                                )}
                             </div>
-                            <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                <h3 className="mb-3 text-sm font-bold text-slate-700">Proyectos por área de enfoque</h3>
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <PieChart>
-                                        <Pie data={overview?.byFocusArea || []} dataKey="count" nameKey="key" outerRadius={85} label={false}>
-                                            {(overview?.byFocusArea || []).map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                        </Pie>
-                                        <Tooltip />
-                                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                        </section>
+
+                        {/* ── 2. Embudo del proceso ────────────────────
+                            Dónde se pierden las postulaciones. Sólo etapas
+                            que el módulo registra de verdad. */}
+                        {k.total > 0 && (
+                            <section>
+                                <BlockTitle icon={TrendingUp}>Conversión del proceso</BlockTitle>
+                                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                                    <div className="space-y-2.5">
+                                        {(overview?.funnel || []).map((f: any) => (
+                                            <div key={f.key} className="flex items-center gap-3">
+                                                <span className="w-52 shrink-0 text-[13px] font-semibold text-slate-700">{f.label}</span>
+                                                <div className="h-7 flex-1 overflow-hidden rounded-lg bg-slate-100">
+                                                    <div className="flex h-full items-center justify-end rounded-lg px-2 text-[11px] font-bold text-white transition-all"
+                                                        style={{ width: `${Math.max(f.rate, f.count > 0 ? 6 : 0)}%`, background: BLUE }}>
+                                                        {f.count > 0 && fmtNum(f.count)}
+                                                    </div>
+                                                </div>
+                                                <span className="w-14 shrink-0 text-right text-[13px] font-bold text-slate-500">{f.rate}%</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="mt-3 border-t border-slate-100 pt-3 text-[12px] text-slate-500">
+                                        Cada etapa se mide sobre el total de formularios enviados. Sólo aparecen las
+                                        etapas que el módulo registra: no se inventan pasos que nadie marca.
+                                    </p>
+                                </div>
+                            </section>
+                        )}
+
+                        {/* ── 3. Analítica de postulaciones ────────────── */}
+                        <section>
+                            <BlockTitle icon={ClipboardList}>Analítica de postulaciones</BlockTitle>
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <Panel title="Proyectos por distrito">
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <BarChart data={overview?.byDistrict || []}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="key" tick={{ fontSize: 11 }} />
+                                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                                            <Tooltip />
+                                            <Bar dataKey="count" name="Proyectos" fill={BLUE} radius={[6, 6, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </Panel>
+                                <Panel title="Proyectos por área de enfoque">
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <PieChart>
+                                            <Pie data={overview?.byFocusArea || []} dataKey="count" nameKey="key" outerRadius={85} label={false}>
+                                                {(overview?.byFocusArea || []).map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                                            </Pie>
+                                            <Tooltip />
+                                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </Panel>
                             </div>
-                            <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-2">
-                                <h3 className="mb-3 text-sm font-bold text-slate-700">Evolución de inscripciones</h3>
-                                <ResponsiveContainer width="100%" height={220}>
-                                    <LineChart data={overview?.timeline || []}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                                        <Tooltip />
-                                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                                        <Line type="monotone" dataKey="total" name="Inscripciones" stroke={BLUE} strokeWidth={2} />
-                                        <Line type="monotone" dataKey="paid" name="Pagadas" stroke={GOLD} strokeWidth={2} />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                            <div className="mt-4">
+                                <Panel title="Evolución de las postulaciones">
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <LineChart data={overview?.timeline || []}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                                            <Tooltip />
+                                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                                            <Line type="monotone" dataKey="total" name="Postulaciones" stroke={BLUE} strokeWidth={2} />
+                                            <Line type="monotone" dataKey="paid" name="Pagadas" stroke={GOLD} strokeWidth={2} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </Panel>
                             </div>
-                        </div>
+                        </section>
+
+                        {/* ── 4. Analítica financiera ──────────────────── */}
+                        <section>
+                            <BlockTitle icon={Wallet}>Analítica financiera</BlockTitle>
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <Panel title="Recaudo por distrito">
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <BarChart data={overview?.byDistrict || []}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="key" tick={{ fontSize: 11 }} />
+                                            <YAxis tick={{ fontSize: 11 }} />
+                                            <Tooltip formatter={(v: any) => (k.priceMode === 'USD' ? fmtUsd(Number(v)) : fmtCop(Number(v)))} />
+                                            <Bar dataKey="totalAmount" name="Recaudo" fill={GOLD} radius={[6, 6, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </Panel>
+                                <Panel title="Presupuesto por área de enfoque">
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <BarChart data={overview?.byFocusArea || []} layout="vertical" margin={{ left: 90 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis type="number" tick={{ fontSize: 11 }} />
+                                            <YAxis type="category" dataKey="key" tick={{ fontSize: 10 }} width={95} />
+                                            <Tooltip formatter={(v: any) => fmtUsd(Number(v))} />
+                                            <Bar dataKey="totalBudget" name="Presupuesto USD" fill={BLUE} radius={[0, 6, 6, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </Panel>
+                            </div>
+                            <div className="mt-4">
+                                <Panel title="Recaudo acumulado">
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <LineChart data={cumulative}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                            <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                                            <YAxis tick={{ fontSize: 11 }} />
+                                            <Tooltip formatter={(v: any) => (k.priceMode === 'USD' ? fmtUsd(Number(v)) : fmtCop(Number(v)))} />
+                                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                                            <Line type="monotone" dataKey="acumulado" name="Acumulado" stroke={BLUE} strokeWidth={2} />
+                                            <Line type="monotone" dataKey="totalAmount" name="Del día" stroke={GOLD} strokeWidth={2} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </Panel>
+                            </div>
+                        </section>
+
+                        {/* ── 5. Distribución geográfica ───────────────
+                            Sólo los ejes que tienen algo que decir: con una
+                            edición nacional, «países» sobra. */}
+                        {(hasGeo(overview?.byCountry) || hasGeo(overview?.byDepartment) || hasGeo(overview?.byCity)) && (
+                            <section>
+                                <BlockTitle icon={Globe}>Distribución geográfica</BlockTitle>
+                                <div className="grid gap-4 lg:grid-cols-3">
+                                    {hasGeo(overview?.byCountry) && <RankPanel title="Por país" rows={overview.byCountry} priceMode={k.priceMode} />}
+                                    {hasGeo(overview?.byDepartment) && <RankPanel title="Por departamento" rows={overview.byDepartment} priceMode={k.priceMode} />}
+                                    {hasGeo(overview?.byCity) && <RankPanel title="Por ciudad" rows={overview.byCity} priceMode={k.priceMode} />}
+                                </div>
+                            </section>
+                        )}
+
+                        {/* ── 6. Tablas ────────────────────────────────── */}
+                        <section>
+                            <BlockTitle icon={Building2}>Clubes y proyectos</BlockTitle>
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <Panel title="Clubes participantes">
+                                    <div className="max-h-[320px] overflow-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Club</th>
+                                                    <th className="px-3 py-2 text-right">Proyectos</th>
+                                                    <th className="px-3 py-2 text-right">Pagados</th>
+                                                    <th className="px-3 py-2 text-right">Recaudo</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(overview?.byClub || []).map((c: any) => (
+                                                    <tr key={c.key}>
+                                                        <td className="px-3 py-2.5 text-slate-800">{c.key}</td>
+                                                        <td className="px-3 py-2.5 text-right">{c.count}</td>
+                                                        <td className="px-3 py-2.5 text-right text-emerald-700">{c.paid}</td>
+                                                        <td className="px-3 py-2.5 text-right font-semibold">{k.priceMode === 'USD' ? fmtUsd(c.totalAmount) : fmtCop(c.totalAmount)}</td>
+                                                    </tr>
+                                                ))}
+                                                {!(overview?.byClub || []).length && (
+                                                    <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">Todavía no hay postulaciones.</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Panel>
+                                <Panel title="Proyectos con mayor presupuesto">
+                                    <div className="max-h-[320px] overflow-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Proyecto</th>
+                                                    <th className="px-3 py-2 text-left">Club</th>
+                                                    <th className="px-3 py-2 text-right">Presupuesto</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(overview?.topBudget || []).map((r: any) => (
+                                                    <tr key={r.id}>
+                                                        <td className="px-3 py-2.5 text-slate-800">{r.projectName}</td>
+                                                        <td className="px-3 py-2.5 text-slate-500">{r.clubName}</td>
+                                                        <td className="px-3 py-2.5 text-right font-semibold">{fmtUsd(r.budgetUsd)}</td>
+                                                    </tr>
+                                                ))}
+                                                {!(overview?.topBudget || []).length && (
+                                                    <tr><td colSpan={3} className="px-3 py-6 text-center text-slate-400">Todavía no hay proyectos.</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Panel>
+                            </div>
+                        </section>
+
+                        {/* ── 7. Actividad reciente ────────────────────── */}
+                        {(overview?.activity || []).length > 0 && (
+                            <section>
+                                <BlockTitle icon={Clock}>Actividad reciente</BlockTitle>
+                                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                                    <ol className="space-y-3">
+                                        {overview.activity.map((a: any, i: number) => (
+                                            <li key={i} className="flex gap-3 text-sm">
+                                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: BLUE }} />
+                                                <div className="min-w-0">
+                                                    <p className="font-semibold text-slate-800">{a.title}</p>
+                                                    <p className="text-[13px] text-slate-500">
+                                                        {a.projectName} · {a.clubName} · Ref. {a.publicRef} · {fmtDateTime(a.createdAt)}
+                                                    </p>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </div>
+                            </section>
+                        )}
+
+                        <p className="text-center text-[12px] text-slate-400">
+                            Todos los datos corresponden a esta edición. Exporta desde los botones de arriba.
+                        </p>
                     </div>
                 )}
 
@@ -801,60 +1051,6 @@ const PostulacionesPagos: React.FC = () => {
                 )}
 
                 {/* ── Reportes ──────────────────────────────────────── */}
-                {tab === 'reports' && reports && (
-                    <div className="space-y-5">
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <Kpi label="Proyectos" value={fmtNum(reports.summary.total)} icon={ClipboardList} tone="blue" />
-                            <Kpi label="Recaudo" value={reports.summary.priceMode === 'USD' ? fmtUsd(reports.summary.totalUsd) : fmtCop(reports.summary.totalCop)} sub={reports.summary.priceMode === 'USD' ? 'Dólares' : `${fmtUsd(reports.summary.totalUsd)} USD cobrados`} icon={Wallet} tone="emerald" />
-                            <Kpi label="Conversión formulario → pago" value={`${reports.summary.conversionRate}%`} icon={TrendingUp} tone="indigo" />
-                            <Kpi label="TRM promedio aplicada" value={fmtNum(Math.round(reports.summary.avgTrm))} sub="COP por dólar" icon={CreditCard} tone="amber" />
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                <h3 className="mb-3 text-sm font-bold text-slate-700">Recaudo por distrito</h3>
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <BarChart data={reports.byDistrict}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="key" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} />
-                                        <Tooltip formatter={(v: any) => fmtCop(v)} />
-                                        <Bar dataKey="totalAmount" name={reports.summary?.priceMode === 'USD' ? 'Recaudo USD' : 'Recaudo COP'} fill={GOLD} radius={[6, 6, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                <h3 className="mb-3 text-sm font-bold text-slate-700">Presupuesto por área de enfoque</h3>
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <BarChart data={reports.byFocusArea} layout="vertical">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis type="number" tick={{ fontSize: 10 }} />
-                                        <YAxis type="category" dataKey="key" width={150} tick={{ fontSize: 10 }} />
-                                        <Tooltip formatter={(v: any) => fmtUsd(v)} />
-                                        <Bar dataKey="totalBudget" name="Presupuesto USD" fill={BLUE} radius={[0, 6, 6, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                            <table className="w-full min-w-[600px] text-sm">
-                                <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                                    <tr><th className="px-4 py-3">Club</th><th className="px-4 py-3 text-right">Proyectos</th><th className="px-4 py-3 text-right">Pagados</th><th className="px-4 py-3 text-right">Recaudo</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {reports.byClub.map((c: any) => (
-                                        <tr key={c.key} className="hover:bg-slate-50">
-                                            <td className="px-4 py-2.5 text-slate-800">{c.key}</td>
-                                            <td className="px-4 py-2.5 text-right">{c.count}</td>
-                                            <td className="px-4 py-2.5 text-right text-emerald-700">{c.paid}</td>
-                                            <td className="px-4 py-2.5 text-right font-semibold">{reports.summary?.priceMode === 'USD' ? fmtUsd(c.totalAmount) : fmtCop(c.totalAmount)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
                 {/* ── Formulación de proyectos ──────────────────────── */}
                 {tab === 'forms' && (() => {
                     const selectedForm = (forms?.available || []).find((f: any) => f.key === formKey);

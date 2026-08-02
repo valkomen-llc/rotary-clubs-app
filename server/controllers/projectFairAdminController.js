@@ -319,13 +319,40 @@ const SORTABLE = {
 
 // ── Dashboard ────────────────────────────────────────────────────────
 // GET /admin/overview
-export const getOverview = withAccess(async (req, res, { cfg, access }) => {
+/**
+ * CENTRO DE INTELIGENCIA DE LA EDICIÓN (v4.689) — antes `getOverview` + `getReports`.
+ *
+ * Las dos pantallas calculaban lo MISMO por separado: `byDistrict`,
+ * `byFocusArea`, `byWorkflow` y la línea de tiempo salían de consultas casi
+ * idénticas, en dos viajes al servidor, y se pintaban dos veces con nombres
+ * distintos. Aquí se calcula una sola vez y se sirve en una sola respuesta.
+ *
+ * Todo pasa por `buildFilters`, así que responde SIEMPRE sobre la edición
+ * abierta: cada versión de la feria tiene su propio centro de inteligencia sin
+ * que haya que hacer nada.
+ */
+export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
     const { clause, params } = buildFilters(req.query);
     const T = '"ProjectFairSubmission"';
     const priceMode = resolvePriceMode(cfg);
     const AMT = amountColumn(priceMode);
 
-    const [totals, byPayment, byWorkflow, byDistrict, byFocus, timeline] = await Promise.all([
+    // Agrupación por una columna cualquiera, con conteo, pagadas, recaudo y
+    // presupuesto. Sirve para distrito, club, área, país, departamento y
+    // ciudad: son la misma pregunta cambiando el eje.
+    const groupBy = (expr, limit = null) => db.query(
+        `SELECT ${expr} AS key,
+                COUNT(*)::int AS count,
+                COUNT(*) FILTER (WHERE status='paid')::int AS paid,
+                COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount",
+                COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget"
+         FROM ${T} ${clause}
+         GROUP BY 1 ORDER BY count DESC, key ASC ${limit ? `LIMIT ${limit}` : ''}`, params);
+
+    const [
+        totals, byPayment, byWorkflow, byDistrict, byFocus, byClub,
+        byCountry, byDepartment, byCity, timeline, topBudget, activity,
+    ] = await Promise.all([
         db.query(`
             SELECT COUNT(*)::int AS total,
                    COUNT(*) FILTER (WHERE status = 'paid')::int AS paid,
@@ -333,55 +360,109 @@ export const getOverview = withAccess(async (req, res, { cfg, access }) => {
                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
                    COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded,
                    COUNT(*) FILTER (WHERE "workflowStatus" IN ('received','pending_payment','payment_confirmed'))::int AS "pendingReview",
+                   COUNT(*) FILTER (WHERE "workflowStatus" = 'approved')::int AS approved,
+                   COUNT(*) FILTER (WHERE "workflowStatus" = 'rejected')::int AS rejected,
+                   COUNT(*) FILTER (WHERE "workflowStatus" = 'in_review')::int AS "inReview",
+                   COUNT(*) FILTER (WHERE "workflowStatus" = 'sent_to_grants')::int AS "sentToGrants",
+                   COUNT(DISTINCT district) FILTER (WHERE district IS NOT NULL)::int AS districts,
+                   COUNT(DISTINCT lower("clubName")) FILTER (WHERE "clubName" IS NOT NULL)::int AS clubs,
+                   COUNT(DISTINCT lower(country)) FILTER (WHERE country IS NOT NULL)::int AS countries,
                    COALESCE(SUM("amountCop") FILTER (WHERE status = 'paid'), 0)::float AS "totalCop",
                    COALESCE(SUM("amountUsd") FILTER (WHERE status = 'paid'), 0)::float AS "totalUsd",
                    COALESCE(SUM("refundedAmount"), 0)::float AS "totalRefunded",
                    COALESCE(AVG("budgetUsd"), 0)::float AS "avgBudget",
-                   COALESCE(SUM("budgetUsd"), 0)::float AS "totalBudget"
+                   COALESCE(SUM("budgetUsd"), 0)::float AS "totalBudget",
+                   COALESCE(AVG("trmRate") FILTER (WHERE status='paid'), 0)::float AS "avgTrm"
             FROM ${T} ${clause}`, params),
-        db.query(`SELECT status AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY status`, params),
+        db.query(`SELECT status AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY 1`, params),
         db.query(`SELECT COALESCE("workflowStatus",'received') AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY 1`, params),
-        db.query(`SELECT COALESCE(district,'Sin distrito') AS key, COUNT(*)::int AS count,
-                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
-        db.query(`SELECT COALESCE("focusAreaLabel", "focusArea", 'Sin área') AS key, COUNT(*)::int AS count,
-                         COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
+        groupBy(`COALESCE(district,'Sin distrito')`),
+        groupBy(`COALESCE("focusAreaLabel", "focusArea", 'Sin área')`),
+        groupBy(`COALESCE("clubName",'Sin club')`, 50),
+        groupBy(`COALESCE(country,'Sin país')`),
+        groupBy(`COALESCE(department,'Sin departamento')`, 25),
+        groupBy(`COALESCE(city,'Sin ciudad')`, 25),
         db.query(`SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
                          COUNT(*)::int AS total,
-                         COUNT(*) FILTER (WHERE status = 'paid')::int AS paid
+                         COUNT(*) FILTER (WHERE status = 'paid')::int AS paid,
+                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
                   FROM ${T} ${clause} GROUP BY 1 ORDER BY 1`, params),
+        db.query(`SELECT id, "publicRef", "projectName", "clubName", district,
+                         COALESCE("budgetUsd",0)::float AS "budgetUsd", status
+                  FROM ${T} ${clause} ORDER BY "budgetUsd" DESC NULLS LAST LIMIT 10`, params),
+        // Actividad reciente: la línea de tiempo que el módulo ya registra por
+        // cada postulación. Se acota a la edición uniendo con su postulación,
+        // porque `ProjectFairEvent` no lleva `eventId` propio.
+        db.query(`
+            SELECT e.type, e.title, e.detail, e."createdAt",
+                   ${T}."publicRef", ${T}."projectName", ${T}."clubName"
+            FROM "ProjectFairEvent" e
+            JOIN ${T} ON ${T}.id = e."submissionId"
+            ${clause}
+            ORDER BY e."createdAt" DESC LIMIT 25`, params),
     ]);
 
     const t = totals.rows[0] || {};
-    // Tasa de conversión: de cuántos formularios enviados terminaron en pago.
-    const conversionRate = t.total > 0 ? Math.round((t.paid / t.total) * 1000) / 10 : 0;
+    const pct = (n, d) => (d > 0 ? Math.round(((n || 0) / d) * 1000) / 10 : 0);
+
+    // EMBUDO. Sólo etapas que el módulo REGISTRA de verdad; no se inventan
+    // pasos ("proyecto publicado") que nadie marca, porque una etapa siempre en
+    // cero no dice dónde se pierde nada: sólo estorba.
+    const enviadas = t.total || 0;
+    const enRevision = (t.inReview || 0) + (t.approved || 0) + (t.sentToGrants || 0);
+    const aprobadas = (t.approved || 0) + (t.sentToGrants || 0);
+    const funnel = [
+        { key: 'submitted', label: 'Formulario enviado', count: enviadas, rate: enviadas ? 100 : 0 },
+        { key: 'paid', label: 'Pago confirmado', count: t.paid || 0, rate: pct(t.paid, enviadas) },
+        { key: 'in_review', label: 'En revisión', count: enRevision, rate: pct(enRevision, enviadas) },
+        { key: 'approved', label: 'Aprobada', count: aprobadas, rate: pct(aprobadas, enviadas) },
+        { key: 'sent_to_grants', label: 'Enviada a Rotary Grants', count: t.sentToGrants || 0, rate: pct(t.sentToGrants, enviadas) },
+    ];
 
     res.json({
         kpis: {
-            total: t.total || 0,
+            total: enviadas,
             paid: t.paid || 0,
             pending: t.pending || 0,
             failed: t.failed || 0,
             refunded: t.refunded || 0,
             pendingReview: t.pendingReview || 0,
+            approved: t.approved || 0,
+            rejected: t.rejected || 0,
+            districts: t.districts || 0,
+            clubs: t.clubs || 0,
+            countries: t.countries || 0,
             priceMode,
             totalCop: t.totalCop || 0,
             totalUsd: Math.round((t.totalUsd || 0) * 100) / 100,
             totalRefunded: t.totalRefunded || 0,
             totalBudget: t.totalBudget || 0,
             avgBudget: Math.round((t.avgBudget || 0) * 100) / 100,
-            conversionRate,
+            avgTrm: Math.round((t.avgTrm || 0) * 100) / 100,
+            conversionRate: pct(t.paid, enviadas),
         },
+        funnel,
         byPayment: byPayment.rows,
         byWorkflow: byWorkflow.rows,
         byDistrict: byDistrict.rows,
         byFocusArea: byFocus.rows,
+        byClub: byClub.rows,
+        byCountry: byCountry.rows,
+        byDepartment: byDepartment.rows,
+        byCity: byCity.rows,
         timeline: timeline.rows,
+        topBudget: topBudget.rows,
+        activity: activity.rows,
         edition: cfg.edition,
+        generatedAt: new Date().toISOString(),
         access,
     });
 });
+
+// `/admin/overview` responde lo MISMO: la pantalla es una sola desde v4.689.
+// Se conserva la ruta para que un navegador con el panel viejo en caché no se
+// quede sin datos.
+export const getOverview = getIntelligence;
 
 // ── Listado ──────────────────────────────────────────────────────────
 // GET /admin/submissions
@@ -768,59 +849,9 @@ export const getAlerts = withAccess(async (req, res, { cfg }) => {
 
 // ── Reportes ─────────────────────────────────────────────────────────
 // GET /admin/reports
-export const getReports = withAccess(async (req, res, { cfg }) => {
-    const { clause, params } = buildFilters(req.query);
-    const T = '"ProjectFairSubmission"';
-    const priceMode = resolvePriceMode(cfg);
-    const AMT = amountColumn(priceMode);
-
-    const [summary, byDistrict, byFocus, byClub, evolution, byWorkflow] = await Promise.all([
-        db.query(`
-            SELECT COUNT(*)::int AS total,
-                   COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                   COUNT(*) FILTER (WHERE status='pending_payment')::int AS pending,
-                   COUNT(*) FILTER (WHERE status='failed')::int AS failed,
-                   COUNT(*) FILTER (WHERE status='refunded')::int AS refunded,
-                   COALESCE(SUM("amountCop") FILTER (WHERE status='paid'),0)::float AS "totalCop",
-                   COALESCE(SUM("amountUsd") FILTER (WHERE status='paid'),0)::float AS "totalUsd",
-                   COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget",
-                   COALESCE(AVG("trmRate") FILTER (WHERE status='paid'),0)::float AS "avgTrm"
-            FROM ${T} ${clause}`, params),
-        db.query(`SELECT COALESCE(district,'Sin distrito') AS key, COUNT(*)::int AS count,
-                         COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
-        db.query(`SELECT COALESCE("focusAreaLabel","focusArea",'Sin área') AS key, COUNT(*)::int AS count,
-                         COALESCE(SUM("budgetUsd"),0)::float AS "totalBudget"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC`, params),
-        db.query(`SELECT COALESCE("clubName",'Sin club') AS key, COUNT(*)::int AS count,
-                         COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY count DESC LIMIT 50`, params),
-        db.query(`SELECT to_char(date_trunc('day',"createdAt"),'YYYY-MM-DD') AS day,
-                         COUNT(*)::int AS total,
-                         COUNT(*) FILTER (WHERE status='paid')::int AS paid,
-                         COALESCE(SUM(${AMT}) FILTER (WHERE status='paid'),0)::float AS "totalAmount"
-                  FROM ${T} ${clause} GROUP BY 1 ORDER BY 1`, params),
-        db.query(`SELECT COALESCE("workflowStatus",'received') AS key, COUNT(*)::int AS count FROM ${T} ${clause} GROUP BY 1`, params),
-    ]);
-
-    const s = summary.rows[0] || {};
-    res.json({
-        summary: {
-            ...s,
-            priceMode,
-            conversionRate: s.total > 0 ? Math.round((s.paid / s.total) * 1000) / 10 : 0,
-        },
-        byDistrict: byDistrict.rows,
-        byFocusArea: byFocus.rows,
-        byClub: byClub.rows,
-        evolution: evolution.rows,
-        byWorkflow: byWorkflow.rows,
-        edition: cfg.edition,
-        generatedAt: new Date().toISOString(),
-    });
-});
+// Alias de compatibilidad: Reportes dejó de ser una pantalla aparte en
+// v4.689 y su ruta responde lo mismo que el Centro de Inteligencia.
+export const getReports = getIntelligence;
 
 // ── Exportación ──────────────────────────────────────────────────────
 // GET /admin/export.csv — respeta los mismos filtros del listado. El detalle
@@ -1029,7 +1060,7 @@ export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
     addFile, deleteFile, syncStripe, resendReceipt,
-    getAlerts, getReports, exportCsv, getCatalog, getSubmissionSnapshot,
+    getAlerts, getReports, getIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
 };

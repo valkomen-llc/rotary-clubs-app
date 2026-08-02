@@ -73,6 +73,9 @@ router.post('/admin/ediciones', authMiddleware, requireSiteAdmin, express.json()
 // Salida cuando la migración automática no pudo identificar la edición sola.
 router.put('/admin/ediciones/vincular', authMiddleware, requireSiteAdmin, express.json(), linkEdition);
 
+// Centro de Inteligencia de la edición (v4.689). Las dos rutas responden lo
+// mismo: la pantalla es una sola desde que se unificaron Dashboard y Reportes.
+router.get('/admin/inteligencia', authMiddleware, requireSiteAdmin, fair.getIntelligence);
 router.get('/admin/overview', authMiddleware, requireSiteAdmin, fair.getOverview);
 router.get('/admin/catalog', authMiddleware, requireSiteAdmin, fair.getCatalog);
 router.get('/admin/alerts', authMiddleware, requireSiteAdmin, fair.getAlerts);
