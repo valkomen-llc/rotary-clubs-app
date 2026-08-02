@@ -498,7 +498,10 @@ const PostulacionesPagos: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="mx-auto max-w-[1400px] space-y-5 pb-16">
+            {/* Mismo ancho que el listado de ediciones y que el módulo de
+                Eventos: el panel ya pone su propio margen. Limitarlo aquí hacía
+                que entrar a una edición se viera como un salto de ancho. */}
+            <div className="space-y-5 pb-16">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <button

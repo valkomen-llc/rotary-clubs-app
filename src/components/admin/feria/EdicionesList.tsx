@@ -133,40 +133,40 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
 
     if (!editions) {
         return (
-            <div className="flex min-h-[40vh] items-center justify-center text-slate-500">
+            <div className="flex h-64 items-center justify-center text-gray-500">
                 <Loader2 className="mr-2 animate-spin" size={20} /> Cargando ediciones…
             </div>
         );
     }
 
     return (
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
-                        <ClipboardList className="text-blue-700" size={22} />
+        <div className="space-y-6">
+            <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+                <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100">
+                        <ClipboardList className="h-6 w-6 text-rotary-blue" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Postulación de Proyectos</h1>
-                        <p className="text-sm text-slate-500">
+                        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Postulación de Proyectos</h1>
+                        <p className="mt-1 text-sm text-gray-500">
                             Una versión por edición de la feria · {editions.length} {editions.length === 1 ? 'edición registrada' : 'ediciones registradas'}
                         </p>
                     </div>
                 </div>
                 <button
                     onClick={openCreator}
-                    className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-800"
-                ><Plus size={17} /> Nueva Versión</button>
+                    className="flex items-center gap-2 rounded-xl bg-rotary-blue px-5 py-2.5 font-bold text-white shadow-xl shadow-blue-900/20 transition-all hover:bg-sky-800 active:scale-95"
+                ><Plus className="h-5 w-5" /> Nueva Versión</button>
             </div>
 
             {error && (
-                <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" /> <span>{error}</span>
                 </div>
             )}
 
             {!editions.length && !error && (
-                <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-12 text-center">
+                <div className="rounded-xl border border-dashed border-gray-300 px-6 py-12 text-center">
                     <p className="font-semibold text-slate-700">Todavía no hay ninguna edición.</p>
                     <p className="mt-1 text-sm text-slate-500">
                         Crea la primera desde «Nueva Versión», eligiendo el evento del calendario al que corresponde.
@@ -182,9 +182,9 @@ const EdicionesList = ({ onOpen }: { onOpen: (eventId: string) => void }) => {
                         tabIndex={ed.eventId ? 0 : undefined}
                         onClick={() => ed.eventId && onOpen(ed.eventId)}
                         onKeyDown={e => { if (ed.eventId && (e.key === 'Enter' || e.key === ' ')) onOpen(ed.eventId); }}
-                        className={`flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border bg-white px-5 py-4 text-left transition ${
+                        className={`flex w-full flex-wrap items-center justify-between gap-4 rounded-xl border bg-white px-5 py-4 text-left transition ${
                             ed.eventId
-                                ? 'cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                                ? 'cursor-pointer border-gray-200 hover:border-sky-300 hover:shadow-sm'
                                 : 'border-amber-300'}`}
                     >
                         <div className="min-w-0">
