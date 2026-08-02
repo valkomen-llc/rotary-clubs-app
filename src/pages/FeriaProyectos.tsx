@@ -828,14 +828,26 @@ const FeriaProyectos = () => {
 
                                     <GroupTitle>Tu club en Rotary</GroupTitle>
                                     <div className="grid gap-5 sm:grid-cols-3">
-                                        <Field label="Club Rotario con el que postula el proyecto" name="clubName" icon={Building2} value={form.clubName} onChange={handleChange} onBlur={handleBlur} error={errors.clubName} touched={touched.clubName} placeholder="Escribe el nombre del club al que perteneces" />
-                                        <Field as="select" label="Distrito al que pertenece el Club Rotario" name="district" icon={MapPin} value={form.district} onChange={handleChange} onBlur={handleBlur} error={errors.district} touched={touched.district} options={config?.districts || []} />
+                                        <Field
+                                            label="Club Rotario" name="clubName" icon={Building2}
+                                            value={form.clubName} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.clubName} touched={touched.clubName}
+                                            placeholder="Escribe el nombre de tu club"
+                                            hint="El club con el que postulas el proyecto."
+                                        />
+                                        <Field
+                                            as="select" label="Distrito" name="district" icon={MapPin}
+                                            value={form.district} onChange={handleChange} onBlur={handleBlur}
+                                            error={errors.district} touched={touched.district}
+                                            options={config?.districts || []}
+                                            hint="Distrito al que pertenece tu club."
+                                        />
                                         <Field
                                             as="select" label="Rol dentro del club" name="clubRole" icon={Award}
                                             value={form.clubRole} onChange={handleChange} onBlur={handleBlur}
                                             error={errors.clubRole} touched={touched.clubRole}
                                             options={(config?.clubRoles || []).map(r => ({ value: r.key, label: r.label }))}
-                                            hint="Tu cargo en la junta directiva o tu condición de socia o socio."
+                                            hint="Tu cargo en la junta o tu condición de socia o socio."
                                         />
                                         {/* Sólo aparece con "Otro": pedir el cargo antes de saber que
                                             hace falta sería un campo vacío para casi todo el mundo. */}
