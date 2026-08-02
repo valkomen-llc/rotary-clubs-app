@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.686.0 | 2026-08-02 (La etiqueta del departamento cabe en una línea)
+// UI V4.687.0 | 2026-08-02 (El historial de lanzamientos es interno de la plataforma)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.687.0',
+        title: 'El historial de lanzamientos queda reservado a la plataforma \ud83d\udd12',
+        description: 'La barra superior del panel mostraba, junto al aviso de que estamos desarrollando mejoras, un enlace al historial completo de lanzamientos — y lo veía cualquiera que administrara un sitio. Ese historial es información interna del producto: describe en qué estamos trabajando, qué se corrigió y cuándo, y no tiene por qué llegarle a quien administra el sitio de un club. Ahora el aviso de la barra se conserva igual para todos, pero el enlace y el número de versión del pie del menú sólo los ve el super administrador de la plataforma. Y lo más importante: la dirección del historial estaba FUERA del guardián de rutas, así que se abría simplemente escribiéndola en el navegador, sin importar quién fuera. Ocultar el enlace no habría servido de nada; ahora la ruta también está protegida y quien no corresponde es devuelto al inicio. La regla de quién es super administrador de la plataforma —que es tener ese rol Y estar en el dominio de la plataforma, no en el de un club— pasó a vivir en un solo archivo compartido, para que el guardián de rutas y el menú no puedan interpretarla de forma distinta con el tiempo.',
+        date: new Date().toISOString(),
+        tags: ['plataforma', 'seguridad', 'permisos', 'panel', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.686.0',
         title: 'La etiqueta del departamento cabe en una línea \ud83d\udcdd',
