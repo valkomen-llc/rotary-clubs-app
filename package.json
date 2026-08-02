@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.682.0",
-  "cache_bust": "2026-08-02 (El campo de comentarios sale del paso 2 de Postular Proyecto: ahi no corresponde. En el registro de asistentes ya existia bajo el nombre «Requerimientos especiales», acotado a movilidad y salud; se ensancha a «Comentarios o solicitudes especiales» —opcional— para que se lea como lo que es. La clave guardada no cambia, asi que las inscripciones ya enviadas conservan su respuesta.)",
+  "version": "4.683.0",
+  "cache_bust": "2026-08-02 (Fase 1 del refactor por ediciones: el modulo pasa a llamarse «Postulacion de Proyectos» y su primera pantalla es el listado de versiones, como en Eventos. Una edicion ES un evento del calendario —el mismo que usa el registro de asistentes—. Todo queda aislado por edicion: postulaciones, dashboard, etiquetas, reportes, exportaciones y convocatoria. «Nueva Version» clona la estructura sin clonar los datos. Lo existente se migra solo a su edicion sin perder nada. 22 pruebas en verde.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

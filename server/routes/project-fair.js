@@ -4,6 +4,9 @@
 import express from 'express';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import {
+    getEditions,
+    createEdition,
+    getAvailableEvents,
     getPublicConfig,
     getTrm,
     createSubmission,
@@ -59,6 +62,13 @@ router.post('/portal/forms/:formKey/submit', portal.portalAuth, express.json({ l
 // club servía para leerlas. El permiso fino (ver pagos, editar, cambiar
 // estado, exportar) lo resuelve además el propio controlador.
 import fair from '../controllers/projectFairAdminController.js';
+
+// ── Ediciones (v4.683) ───────────────────────────────────────────────
+// La primera pantalla del módulo: el listado de versiones del evento. Cada una
+// es un contenedor independiente, y todo lo demás se consulta con `?evento=`.
+router.get('/admin/ediciones', authMiddleware, requireSiteAdmin, getEditions);
+router.get('/admin/ediciones/disponibles', authMiddleware, requireSiteAdmin, getAvailableEvents);
+router.post('/admin/ediciones', authMiddleware, requireSiteAdmin, express.json(), createEdition);
 
 router.get('/admin/overview', authMiddleware, requireSiteAdmin, fair.getOverview);
 router.get('/admin/catalog', authMiddleware, requireSiteAdmin, fair.getCatalog);

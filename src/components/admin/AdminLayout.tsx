@@ -410,7 +410,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Network, label: 'Zonas', path: '/admin/zonas', category: 'Management', keywords: ['zona'] },
                 { icon: Briefcase, label: 'Programas de Intercambio', path: '/admin/programas-intercambio', category: 'Management', keywords: ['programa', 'intercambio'] },
                 { icon: FolderKanban, label: 'Ferias de Proyectos', path: '/admin/ferias-proyectos', category: 'Management', keywords: ['feria', 'proyectos'] },
-                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'trm', 'grants'] },
+                { icon: Wallet, label: 'Postulación de Proyectos', path: '/admin/postulaciones-pagos', category: 'Management', keywords: ['postulacion de proyectos', 'postulaciones y pagos', 'ediciones', 'versiones', 'postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'trm', 'grants'] },
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
@@ -459,7 +459,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             // renderiza un conjunto fijo de categorías, y 'Management' no está
             // entre ellas — por eso los módulos se calculaban pero no se veían.
             items.push(
-                { icon: Wallet, label: 'Postulaciones y Pagos', path: '/admin/postulaciones-pagos', category: 'General', keywords: ['postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'formulario', 'trm', 'grants'] },
+                { icon: Wallet, label: 'Postulación de Proyectos', path: '/admin/postulaciones-pagos', category: 'General', keywords: ['postulacion de proyectos', 'postulaciones y pagos', 'ediciones', 'versiones', 'postulaciones', 'pagos', 'stripe', 'trazabilidad', 'feria', 'proyectos', 'recaudo', 'alertas', 'reportes', 'auditoria', 'convocatoria', 'configuracion', 'inscripcion', 'formulario', 'trm', 'grants'] },
             );
         }
 
