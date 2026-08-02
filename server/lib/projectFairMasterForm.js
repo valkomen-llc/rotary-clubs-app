@@ -54,6 +54,9 @@ export const DEFAULT_MASTER_FORM = {
         projectName: 'identificacion.projectName',
         clubName: 'identificacion.clubName',
         district: 'identificacion.district',
+        // v4.677 — La ciudad ya se pide en la postulación: se precarga en vez
+        // de volver a preguntarla. (No hay campo de país en esta plantilla.)
+        city: 'identificacion.city',
         focusArea: 'identificacion.focusAreas',
         contactName: 'contacto.contactName',
         contactEmail: 'contacto.contactEmail',

@@ -24,7 +24,7 @@ import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 
-console.log('[projectFairController] v4.625.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.677.0 cargado — Postulación de Proyectos XII Feria de Proyectos Rotary Colombia (Valledupar): wizard (ahora con país, ciudad, documento y comentarios) + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -85,6 +85,15 @@ export const DEFAULT_CONFIG = {
     districts: [
         { value: 'Rotary Distrito 4271', label: 'Rotary Distrito 4271' },
         { value: 'Rotary Distrito 4281', label: 'Rotary Distrito 4281' },
+    ],
+    // Tipos de documento del representante que postula. Se piden para poder
+    // facturar la inscripción y para acreditar a quien llega a la feria.
+    // `key` es lo que se almacena; `label` lo que ve el postulante.
+    idTypes: [
+        { key: 'cc', label: 'Cédula de ciudadanía' },
+        { key: 'ce', label: 'Cédula de extranjería' },
+        { key: 'passport', label: 'Pasaporte' },
+        { key: 'nit', label: 'NIT' },
     ],
     // Las siete Áreas de Enfoque de Rotary International. `key` es el valor
     // que se almacena (estable para búsquedas/clasificación) y `label` el
@@ -353,6 +362,13 @@ const ensureTables = async () => {
     // postulación por el circuito administrativo.
     const addColumn = async (sql) => { await db.query(sql).catch(() => {}); };
     await Promise.all([
+        // v4.677 — Datos del representante que faltaban para facturar y acreditar.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS country VARCHAR(120)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS city VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "idType" VARCHAR(40)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "idTypeLabel" VARCHAR(120)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "idNumber" VARCHAR(60)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS notes TEXT`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "workflowStatus" VARCHAR(40) DEFAULT 'received'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal'`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "internalCategory" VARCHAR(120)`),
@@ -782,6 +798,7 @@ const toPublicConfig = (cfg) => ({
         maxProjectsPerClub: cfg.registration?.maxProjectsPerClub ?? 1,
     },
     districts: Array.isArray(cfg.districts) ? cfg.districts : [],
+    idTypes: Array.isArray(cfg.idTypes) ? cfg.idTypes : [],
     focusAreas: Array.isArray(cfg.focusAreas) ? cfg.focusAreas : [],
     redirect: cfg.redirect,
     content: cfg.content,
@@ -1107,6 +1124,12 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
         phone: row.phone,
         clubName: row.clubName,
         district: row.district,
+        country: row.country || null,
+        city: row.city || null,
+        idType: row.idType || null,
+        idTypeLabel: row.idTypeLabel || null,
+        idNumber: row.idNumber || null,
+        notes: row.notes || null,
         projectName: row.projectName,
         projectDescription: row.projectDescription,
         focusArea: row.focusArea,
@@ -1141,6 +1164,11 @@ const validateSubmission = (body, cfg) => {
     const phone = clean(body.phone, 60);
     const clubName = clean(body.clubName, 200);
     const district = clean(body.district, 160);
+    const country = clean(body.country, 120);
+    const city = clean(body.city, 160);
+    const idType = clean(body.idType, 40);
+    const idNumber = clean(body.idNumber, 60);
+    const notes = clean(body.notes, 2000);
     const projectName = clean(body.projectName, 250);
     const projectDescription = clean(body.projectDescription, 8000);
     const focusArea = clean(body.focusArea, 80);
@@ -1155,6 +1183,21 @@ const validateSubmission = (body, cfg) => {
     const districts = Array.isArray(cfg.districts) ? cfg.districts : [];
     if (!district) errors.district = 'Selecciona el distrito al que pertenece el club.';
     else if (districts.length && !districts.some(d => d.value === district)) errors.district = 'Selecciona un distrito habilitado para esta convocatoria.';
+
+    // v4.677 — País y ciudad del representante. El país llega de una lista en
+    // el formulario; aquí sólo se exige que venga, porque no es un dato del
+    // que dependa ningún permiso ni ningún cobro.
+    if (!country) errors.country = 'Selecciona tu país.';
+    if (!city) errors.city = 'Escribe tu ciudad.';
+
+    // Documento: el tipo sí se valida contra el catálogo de la convocatoria,
+    // como el distrito, para que no entren valores inventados.
+    const idTypes = Array.isArray(cfg.idTypes) ? cfg.idTypes : [];
+    const idTypeMatch = idTypes.find(t => t.key === idType || t.label === idType);
+    if (!idType) errors.idType = 'Selecciona el tipo de documento.';
+    else if (idTypes.length && !idTypeMatch) errors.idType = 'Selecciona un tipo de documento válido.';
+    if (!idNumber) errors.idNumber = 'Escribe tu número de documento.';
+    else if (idNumber.replace(/[^\w]/g, '').length < 5) errors.idNumber = 'El número de documento parece incompleto.';
 
     if (!projectName) errors.projectName = 'Escribe el nombre del proyecto.';
     if (!projectDescription || projectDescription.length < 40) errors.projectDescription = 'Describe el proyecto con al menos 40 caracteres.';
@@ -1182,6 +1225,10 @@ const validateSubmission = (body, cfg) => {
         password,
         data: {
             firstName, lastName, email, phone, clubName, district,
+            country, city,
+            idType: idTypeMatch?.key || idType,
+            idTypeLabel: idTypeMatch?.label || null,
+            idNumber, notes,
             projectName, projectDescription,
             focusArea: area?.key || focusArea,
             focusAreaLabel: area?.label || null,
@@ -1228,15 +1275,17 @@ export const createSubmission = async (req, res) => {
         const { rows } = await db.query(`
             INSERT INTO "ProjectFairSubmission"
                 ("publicRef", "editionKey", "firstName", "lastName", email, phone, "clubName", district,
+                 country, city, "idType", "idTypeLabel", "idNumber", notes,
                  "projectName", "projectDescription", "focusArea", "focusAreaLabel", "budgetUsd",
                  status, "amountCop", "amountUsd", "trmRate", "trmDate", "trmSource", "trmFetchedAt", "clubId",
                  "priceMode", metadata)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29::jsonb)
             RETURNING *
         `, [
             buildPublicRef(),
             cfg.edition?.key || null,
             data.firstName, data.lastName, data.email, data.phone, data.clubName, data.district,
+            data.country, data.city, data.idType, data.idTypeLabel, data.idNumber, data.notes || null,
             data.projectName, data.projectDescription, data.focusArea, data.focusAreaLabel, data.budgetUsd,
             'pending_payment', pricing.amountCop, pricing.amountUsd,
             trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null,

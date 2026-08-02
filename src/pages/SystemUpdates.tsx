@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.676.0 | 2026-07-31 (El clip animado se conserva)
+// UI V4.677.0 | 2026-08-02 (Postular Proyecto pide los datos que faltaban del representante)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.677.0',
+        title: 'Postular Proyecto pide los datos que faltaban del representante \ud83e\udeaa',
+        description: 'El formulario de postulación recogía el nombre, el correo, el teléfono, el club y el distrito, pero no de dónde es quien postula ni con qué documento. Eso obligaba a perseguir esos datos por correo justo cuando había que facturar la inscripción o preparar las acreditaciones. Ahora el primer paso pide también país, ciudad, tipo de documento y número de documento, los cuatro obligatorios; el país sale de la misma lista que ya usa el selector de indicativo telefónico, así que no hay dos catálogos que se puedan desincronizar. Al final del segundo paso se agregó además un campo opcional de comentarios o solicitudes especiales, para que lo que el club quiera decirle al comité quede guardado junto a su postulación y no suelto en un correo. Los tipos de documento se administran desde la pestaña Convocatoria, igual que los distritos y las áreas de enfoque, de modo que agregar o quitar uno no necesita tocar el código. Todo lo nuevo aparece en la ficha del módulo de Postulaciones y Pagos y viaja en las tres exportaciones —CSV, Excel y PDF—. Y como la ciudad ya se conoce desde la inscripción, el formulario de formulación y el de Solicitud de Aportes del FDD la traen puesta en vez de volver a preguntarla. Los seis campos de viaje y alimentación que tiene el formulario de asistencia (fechas de llegada y salida, aerolínea, vuelo, alimentación y acompañantes) se dejaron deliberadamente fuera: son de quien ya sabe que asiste, no de quien todavía está postulando y aún no ha pagado. Verificado con 21 pruebas automáticas sobre una base de datos real.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulacion', 'formulario', 'facturacion', 'acreditacion', 'exportaciones', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.676.0',
         title: 'Ya no se reemplazan escenas animadas por un desplazamiento de foto 🔁',

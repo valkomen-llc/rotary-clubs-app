@@ -47,6 +47,9 @@ interface Submission {
     id: string; publicRef: string; createdAt: string; updatedAt: string;
     firstName: string; lastName: string; responsable: string; email: string; phone: string;
     clubName: string; district: string; projectName: string; projectDescription: string;
+    country?: string | null; city?: string | null;
+    idType?: string | null; idTypeLabel?: string | null; idNumber?: string | null;
+    notes?: string | null;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
     paymentStatus: string; workflowStatus: string; priority: string;
     internalCategory: string | null; assigneeName: string | null;
@@ -261,8 +264,13 @@ const PostulacionesPagos: React.FC = () => {
                 Responsable: s.responsable,
                 Correo: s.email,
                 WhatsApp: s.phone,
+                'País': s.country,
+                Ciudad: s.city,
+                'Tipo de documento': s.idTypeLabel || s.idType,
+                'Número de documento': s.idNumber,
                 'Área de enfoque': s.focusAreaLabel || s.focusArea,
                 'Presupuesto USD': s.budgetUsd,
+                'Comentarios del postulante': s.notes,
                 'Estado de la postulación': stateLabel(s.workflowStatus, catalog?.workflowStates).label,
                 'Estado del pago': stateLabel(s.paymentStatus, catalog?.paymentStates).label,
                 'Valor anunciado COP': s.amountCop,
@@ -1037,6 +1045,8 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
             line('Responsable', `${s.firstName} ${s.lastName}`);
             line('Correo', s.email); line('WhatsApp', s.phone);
             line('Club Rotario', s.clubName); line('Distrito', s.district);
+            line('País y ciudad', [s.city, s.country].filter(Boolean).join(', '));
+            line('Documento', [s.idTypeLabel || s.idType, s.idNumber].filter(Boolean).join(' '));
             y += 8; doc.setFontSize(12).text('Proyecto', 40, y); y += 20;
             line('Nombre', s.projectName);
             line('Área de enfoque', s.focusAreaLabel || s.focusArea);
@@ -1133,6 +1143,9 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <Row label="Nombre" value={`${s.firstName} ${s.lastName}`} />
                                         <Row label="Correo" value={s.email} />
                                         <Row label="WhatsApp" value={s.phone} />
+                                        <Row label="País" value={s.country} />
+                                        <Row label="Ciudad" value={s.city} />
+                                        <Row label="Documento" value={[s.idTypeLabel || s.idType, s.idNumber].filter(Boolean).join(' ')} />
                                     </Section>
                                     <Section title="Club y proyecto">
                                         <Row label="Club Rotario" value={s.clubName} />
@@ -1140,6 +1153,12 @@ const SubmissionDetail = ({ id, access, catalog, tags, onClose, onChanged }: any
                                         <Row label="Área de enfoque" value={s.focusAreaLabel || s.focusArea} />
                                         <Row label="Presupuesto" value={`${fmtUsd(s.budgetUsd)} USD`} />
                                         <Row label="Fecha de inscripción" value={fmtDateTime(s.createdAt)} />
+                                        {s.notes && (
+                                            <div className="pt-3">
+                                                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Comentarios o solicitudes del postulante</p>
+                                                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{s.notes}</p>
+                                            </div>
+                                        )}
                                         <div className="pt-3">
                                             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Descripción del proyecto</p>
                                             <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{s.projectDescription}</p>

@@ -190,8 +190,11 @@ export const seedAnswersFor = (template, submission, cfg, relatedAnswers = {}) =
         projectName: submission.projectName || '',
         clubName: submission.clubName || '',
         district: submission.district || '',
-        city: '',
-        country: cfg?.edition?.country || 'Colombia',
+        // v4.677 — Ya se piden en la postulación. Antes la ciudad iba vacía y
+        // el país era el de la edición, así que el club tenía que escribirlos
+        // otra vez en el formulario maestro.
+        city: submission.city || '',
+        country: submission.country || cfg?.edition?.country || 'Colombia',
         focusArea: submission.focusAreaLabel ? [submission.focusAreaLabel] : [],
         // Misma área, en texto: para los formularios que la piden con una sola
         // opción en vez de una lista.
