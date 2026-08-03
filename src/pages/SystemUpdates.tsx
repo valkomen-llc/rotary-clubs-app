@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.693.0 | 2026-08-03 (La sesión se ve en el avatar del encabezado y ya no parece cerrarse al salir del panel)
-// Cache bust: 2026-08-03a
+// UI V4.694.0 | 2026-08-03 (El Registro Nacional reconoce la cuenta existente aunque la categoría no declare su audiencia)
+// Cache bust: 2026-08-03b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.694.0',
+        title: 'El Registro Nacional sí reconoce la cuenta que ya tienes \ud83d\udd11',
+        description: 'En v4.692 se hizo que un rotario con cuenta de Gestor de Proyectos pudiera inscribirse al Registro Nacional con esa misma sesión, sin inventar una segunda contraseña. En la práctica seguía pidiéndola: el paso 1 mostraba «Crea tu clave de acceso» a alguien que ya había iniciado sesión. La causa no estaba en la sesión ni en la política, sino en un dato que nadie ve: la AUDIENCIA de la categoría. Todo lo que el módulo decide para «el registro nacional» —qué botón se ofrece en cada idioma, qué campos se piden y, desde v4.692, si se puede reutilizar la cuenta— se resuelve por audiencia y no por el nombre de la categoría, precisamente para que renombrarla no rompa nada. Pero el formulario del panel crea las categorías en «General», y una categoría creada así no pertenece a ninguna audiencia: la reutilización de cuenta quedaba desactivada en silencio, sin nada en pantalla que lo explicara. Ahora la audiencia se resuelve por orden: lo que declare la categoría manda; si no declara nada, se toma lo que declare el BOTÓN que lleva a ella —que es donde el administrador ya dejó escrito cuál es el nacional—; y en último lugar se deduce de claves que el módulo conoce, como «registro_nacional». Sigue siendo por audiencia y no por nombre. Resultado: quien llega con su sesión de Gestor de Proyectos abierta ve el aviso «Has iniciado sesión como…», el formulario precargado con sus datos y ningún campo de contraseña; quien llega sin sesión ve el bloque «¿Ya tienes una cuenta?»; y quien de verdad es nuevo crea su clave como siempre. El Registro Internacional y el de CADRES no cambian. Además la audiencia resuelta viaja ahora en la respuesta del servidor: era el dato del que dependía todo esto y no se veía en ninguna parte, así que cuando el formulario no reconocía una cuenta no había forma de saber si era por la política, por la sesión o por la categoría.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'cuentas', 'autenticacion', 'feria-de-proyectos', 'fix'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El Registro Nacional ya no pide crear contraseña a quien llega con su cuenta de Gestor de Proyectos.' },
+            { type: 'fixed', text: 'La audiencia de una categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara.' },
+            { type: 'added', text: 'La audiencia resuelta viaja en la respuesta del registro, para poder diagnosticar sin adivinar.' },
+        ]
+    },
     {
         version: '4.693.0',
         title: 'La sesión se queda abierta y se ve en el encabezado \ud83d\udc64',

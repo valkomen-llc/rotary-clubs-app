@@ -35,7 +35,7 @@ import {
     categoryWindow, resolveCharge, deriveSystemTags, SYSTEM_TAG_KEYS,
     COMPANION_FIELDS, randomCodeSuffix, tariffVersionOf,
     resolveAudienceHint, resolveCtaButtons, normalizeCtaConfig,
-    validateCredentials, PASSWORD_MIN, accountLinkingFor,
+    validateCredentials, PASSWORD_MIN, accountLinkingFor, audienceOfCategory,
 } from '../lib/eventRegistrationSpec.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -49,7 +49,7 @@ import {
     identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
-console.log('[eventRegistrationController] v4.692.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña.');
+console.log('[eventRegistrationController] v4.694.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña; la audiencia de la categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -227,6 +227,14 @@ export const getPublicRegistrationConfig = async (req, res) => {
                 allowed: linking.allowed,
                 requiresAccount: linking.requiresAccount,
                 mode: linking.mode,
+                /**
+                 * La audiencia con la que se decidió (v4.694). Va en la
+                 * respuesta porque es EL dato del que depende todo esto y no
+                 * se veía en ninguna parte: cuando el formulario no reconocía
+                 * la cuenta, no había forma de saber si era por la política,
+                 * por la sesión o porque la categoría no declaraba audiencia.
+                 */
+                audience: linkingTarget ? audienceOfCategory(linkingTarget, edition.settings) : null,
             },
             identity: identity ? {
                 realm: identity.realm,

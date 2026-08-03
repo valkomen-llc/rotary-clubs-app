@@ -265,6 +265,32 @@ export const DEFAULT_ACCOUNT_LINKING = {
     audiences: ['national'],
 };
 
+/**
+ * A qué audiencia pertenece una categoría (v4.694).
+ *
+ * `normalizeCategory` SIEMPRE deja un valor en `audience` —'general' cuando no
+ * se reconoce—, así que un `category.audience || …` nunca cae al respaldo: es
+ * lo que dejaba el Registro Nacional fuera de la reutilización de cuenta. Y el
+ * formulario de categorías del panel nace en 'general', de modo que una
+ * categoría creada a mano ahí se queda salvo que alguien la cambie.
+ *
+ * Por eso se pregunta por orden: lo que declara la categoría, lo que declara
+ * el BOTÓN que lleva a ella —el administrador arma los botones por audiencia y
+ * ahí sí queda escrito cuál es el nacional— y, por último, la deducción por
+ * clave conocida. Sigue siendo por AUDIENCIA y no por nombre: la clave es lo
+ * último y sólo para las que el módulo ya conoce.
+ */
+export const audienceOfCategory = (category, settings = {}) => {
+    const known = (value) => AUDIENCES.some(a => a.key === value) && value !== 'general';
+    if (known(category?.audience)) return category.audience;
+
+    const buttons = Array.isArray(settings?.cta?.buttons) ? settings.cta.buttons : [];
+    const button = buttons.find(b => b?.categoryKey && b.categoryKey === category?.key && known(b?.audience));
+    if (button) return button.audience;
+
+    return AUDIENCE_BY_CATEGORY[category?.key] || category?.audience || 'general';
+};
+
 export const normalizeAccountLinking = (raw = {}) => {
     const mode = LINKING_MODES.includes(raw?.mode) ? raw.mode : DEFAULT_ACCOUNT_LINKING.mode;
     const audiences = Array.isArray(raw?.audiences)
@@ -282,7 +308,7 @@ export const normalizeAccountLinking = (raw = {}) => {
  */
 export const accountLinkingFor = (category, settings = {}) => {
     const cfg = normalizeAccountLinking(settings?.accountLinking);
-    const audience = category?.audience || AUDIENCE_BY_CATEGORY[category?.key] || 'general';
+    const audience = audienceOfCategory(category, settings);
     const applies = cfg.audiences.includes(audience);
     if (!applies || cfg.mode === 'new_only') {
         return { allowed: false, requiresAccount: false, mode: 'new_only' };
@@ -381,6 +407,14 @@ export const AUDIENCE_BY_CATEGORY = {
     rotario_internacional: 'international',
     rotario_nacional: 'national',
     cadres: 'cadre',
+    // Las claves con las que el Distrito creó sus categorías a mano. El
+    // formulario del panel nace en 'general', así que sin esto una categoría
+    // creada ahí no pertenece a ninguna audiencia y queda fuera de todo lo que
+    // se decide por audiencia. Es el ÚLTIMO recurso: manda lo que declare la
+    // categoría, y luego lo que declare su botón.
+    registro_internacional: 'international',
+    registro_nacional: 'national',
+    registro_cadres: 'cadre',
 };
 
 const audienceFields = (audience) =>
