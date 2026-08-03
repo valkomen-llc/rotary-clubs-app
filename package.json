@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.694.0",
-  "cache_bust": "2026-08-03b (El Registro Nacional reconoce la cuenta existente aunque la categoria no declare su audiencia: se deduce del boton que lleva a ella o de su clave.)",
+  "version": "4.695.0",
+  "cache_bust": "2026-08-03c (Motor de automatizacion del WhatsApp CRM: ciclo de vida de cada sitio, eventos observados, recorridos con guardias de envio y constructor visual.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -17,6 +17,7 @@
     "preview": "vite preview",
     "test:i18n": "node scripts/test-i18n-dom.mjs",
     "test:i18n:providers": "node scripts/test-i18n-providers.mjs",
+    "test:crm": "node scripts/test-crm-automation.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "engines": {

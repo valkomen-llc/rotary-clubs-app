@@ -157,6 +157,43 @@ router.get('/campaigns/:id/report', getCampaignReport);
 // ── Analytics ────────────────────────────────────────────────────────────
 router.get('/analytics', getAnalytics);
 
+// ── Motor de automatización (v4.695) ─────────────────────────────────────
+// El control de permisos NO está acá sino dentro del controlador
+// (`denyIfNotOperator` / `scopeSiteFilter`), a propósito: varios de estos
+// endpoints responden cosas distintas según quién pregunta —el operador de la
+// plataforma ve todos los sitios, el administrador de uno ve el suyo— y eso no
+// se puede expresar con un middleware de "pasa o no pasa".
+import * as engine from '../controllers/crm/automation.engine.controller.js';
+
+router.get('/automation/catalog', engine.getCatalog);
+router.get('/automation/overview', engine.getAutomationOverview);
+router.get('/automation/settings', engine.getSettings);
+router.put('/automation/settings', engine.updateSettings);
+router.post('/automation/tick', engine.runTickNow);
+
+router.get('/journeys', engine.getJourneys);
+router.post('/journeys', engine.createJourney);
+router.get('/journeys/:id', engine.getJourneyDetail);
+router.put('/journeys/:id', engine.updateJourney);
+router.delete('/journeys/:id', engine.deleteJourney);
+router.patch('/journeys/:id/status', engine.setJourneyStatus);
+router.get('/journeys/:id/runs', engine.getJourneyRuns);
+router.post('/journeys/:id/enroll', engine.enrollInJourney);
+router.get('/journey-runs/:runId', engine.getRunTrace);
+
+router.get('/lifecycle', engine.getLifecycleBoard);
+router.post('/lifecycle/sync', engine.syncLifecycle);
+router.put('/lifecycle/:siteId', engine.setLifecycleManual);
+
+router.post('/segments/preview', engine.previewSegment);
+
+router.get('/alerts', engine.getAlerts);
+router.patch('/alerts/:id/resolve', engine.resolveAlert);
+
+router.get('/suppressions', engine.getSuppressions);
+router.post('/suppressions', engine.addSuppression);
+router.delete('/suppressions/:phone', engine.removeSuppression);
+
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';
 router.post('/upload-media', uploadWAMedia.single('file'), (req, res) => {

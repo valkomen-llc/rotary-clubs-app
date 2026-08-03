@@ -1,0 +1,266 @@
+// Crea en runtime, de forma perezosa e idempotente, las tablas del motor de
+// automatización del WhatsApp CRM.
+//
+// POR QUÉ EN RUNTIME: tras el incidente del 2026-07-13 el build ya NO ejecuta
+// `prisma db push` (regla durable de CLAUDE.md), así que una tabla nueva del
+// schema no aparece sola en producción. Mismo patrón que `ensureTrainingSchema`,
+// `ensureReelSchema` y las `ProjectFair*`.
+//
+// OJO CON LAS COLUMNAS DE `WhatsAppContact`: esa tabla SÍ la gestiona Prisma
+// (modelo `CrmContact`, con `@@map`). Las columnas que agrega este archivo están
+// declaradas ADEMÁS en `schema.prisma`, y tiene que seguir siendo así. El guardián
+// `db-push-guard.mjs` compara TABLAS, no columnas: una columna que exista sólo
+// acá la borraría el primer `npm run db:push` sin que nada avise.
+//
+// Sin claves foráneas a propósito, igual que en el resto de los módulos fuera de
+// Prisma: las relaciones se resuelven por columna y así no importa el orden de
+// creación ni se arriesgan cascadas de borrado entre módulos.
+import db from './db.js';
+
+let _ready = false;
+
+// Objetos que este archivo crea. La comprobación previa (v4.659) los cuenta
+// contra el catálogo para no gastar ~20 viajes a la base en cada arranque en
+// frío. NO es un número de versión: es la lista real de lo que hay abajo, y hay
+// que ampliarla al agregar algo o la comprobación lo dará por presente.
+const EXPECTED_TABLES = [
+  'CrmLifecycleState',
+  'CrmEvent',
+  'CrmJourney',
+  'CrmJourneyRun',
+  'CrmJourneyStep',
+  'CrmSuppression',
+  'CrmAlert',
+];
+
+const EXPECTED_COLUMNS = [
+  ['WhatsAppContact', 'siteId'],
+  ['WhatsAppContact', 'siteType'],
+  ['WhatsAppContact', 'orgRole'],
+  ['WhatsAppContact', 'language'],
+  ['WhatsAppContact', 'consentState'],
+  ['WhatsAppContact', 'consentSource'],
+  ['WhatsAppContact', 'consentAt'],
+  ['WhatsAppContact', 'consentCategories'],
+  ['WhatsAppContact', 'lastInboundAt'],
+  ['WhatsAppMessageLog', 'journeyId'],
+  ['WhatsAppMessageLog', 'journeyRunId'],
+];
+
+export async function ensureAutomationSchema() {
+  if (_ready) return;
+
+  // Dos consultas al catálogo deciden si hay algo que hacer.
+  const [tablesR, colsR] = await Promise.all([
+    db.query(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = current_schema() AND table_name = ANY($1)`,
+      [EXPECTED_TABLES]
+    ),
+    db.query(
+      `SELECT table_name, column_name FROM information_schema.columns
+       WHERE table_schema = current_schema() AND table_name = ANY($1)`,
+      [[...new Set(EXPECTED_COLUMNS.map(([t]) => t))]]
+    ),
+  ]);
+  const haveTables = new Set(tablesR.rows.map(r => r.table_name));
+  const haveCols = new Set(colsR.rows.map(r => `${r.table_name}.${r.column_name}`));
+  const tablesOk = EXPECTED_TABLES.every(t => haveTables.has(t));
+  const colsOk = EXPECTED_COLUMNS.every(([t, c]) => haveCols.has(`${t}.${c}`));
+  if (tablesOk && colsOk) { _ready = true; return; }
+
+  await db.query(`
+    -- Estado del ciclo de vida por sitio. Una fila por Club o District.
+    -- Guarda el estado ANTERIOR porque el motor dispara por transición, no por
+    -- estado: "está vencido" no es un evento, "acaba de vencer" sí.
+    CREATE TABLE IF NOT EXISTS "CrmLifecycleState" (
+      id TEXT PRIMARY KEY,
+      "siteId" TEXT NOT NULL,
+      "siteType" TEXT NOT NULL DEFAULT 'club',
+      state TEXT NOT NULL,
+      "manualState" TEXT,
+      reason TEXT,
+      since TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "previousState" TEXT,
+      "previousStateSince" TIMESTAMP(3),
+      signals JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "computedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmLifecycleState_site_key" ON "CrmLifecycleState"("siteId");
+    CREATE INDEX IF NOT EXISTS "CrmLifecycleState_state_idx" ON "CrmLifecycleState"(state);
+
+    -- Bitácora de eventos del sistema. Es la entrada del motor.
+    -- La columna dedupeKey con índice único es lo que hace que registrar dos veces el
+    -- mismo hecho (dos sondeos, un reintento de webhook) no dispare dos veces.
+    CREATE TABLE IF NOT EXISTS "CrmEvent" (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      "siteId" TEXT,
+      "siteType" TEXT DEFAULT 'club',
+      "contactId" TEXT,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "dedupeKey" TEXT,
+      "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "processedAt" TIMESTAMP(3),
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmEvent_dedupe_key" ON "CrmEvent"("dedupeKey") WHERE "dedupeKey" IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS "CrmEvent_pending_idx" ON "CrmEvent"("processedAt","occurredAt") WHERE "processedAt" IS NULL;
+    CREATE INDEX IF NOT EXISTS "CrmEvent_site_idx" ON "CrmEvent"("siteId","type");
+
+    -- Definición de un recorrido. La columna nodes es el grafo completo en JSON: el
+    -- constructor visual lo escribe y el motor lo recorre. Se guarda como
+    -- documento y no en tablas normalizadas porque el grafo se lee y se escribe
+    -- SIEMPRE entero, y normalizarlo obligaría a rehacer el esquema cada vez que
+    -- aparezca un tipo de nodo nuevo.
+    CREATE TABLE IF NOT EXISTS "CrmJourney" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      goal TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      audience JSONB NOT NULL DEFAULT '{}'::jsonb,
+      trigger JSONB NOT NULL DEFAULT '{}'::jsonb,
+      nodes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "isSeed" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmJourney_club_key" ON "CrmJourney"("clubId", key);
+    CREATE INDEX IF NOT EXISTS "CrmJourney_status_idx" ON "CrmJourney"(status);
+
+    -- Inscripción de un contacto en un recorrido. Es la unidad de trabajo del
+    -- motor: el cron busca las que tengan waitUntil vencido.
+    -- La columna dedupeKey evita la doble inscripción (mismo recorrido, mismo contacto,
+    -- mismo disparador), que es el defecto más caro de este tipo de motor.
+    CREATE TABLE IF NOT EXISTS "CrmJourneyRun" (
+      id TEXT PRIMARY KEY,
+      "journeyId" TEXT NOT NULL,
+      "clubId" TEXT NOT NULL,
+      "siteId" TEXT,
+      "siteType" TEXT DEFAULT 'club',
+      "contactId" TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      "currentNodeId" TEXT,
+      "waitUntil" TIMESTAMP(3),
+      context JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "dedupeKey" TEXT,
+      "lockedAt" TIMESTAMP(3),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      "lastError" TEXT,
+      "exitReason" TEXT,
+      "enrolledAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "completedAt" TIMESTAMP(3),
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmJourneyRun_dedupe_key" ON "CrmJourneyRun"("dedupeKey") WHERE "dedupeKey" IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS "CrmJourneyRun_due_idx" ON "CrmJourneyRun"(status, "waitUntil");
+    CREATE INDEX IF NOT EXISTS "CrmJourneyRun_journey_idx" ON "CrmJourneyRun"("journeyId", status);
+    CREATE INDEX IF NOT EXISTS "CrmJourneyRun_contact_idx" ON "CrmJourneyRun"("contactId");
+    CREATE INDEX IF NOT EXISTS "CrmJourneyRun_site_idx" ON "CrmJourneyRun"("siteId");
+
+    -- Traza de cada nodo ejecutado. Es lo que permite responder "por qué este
+    -- club recibió esto" sin reproducir el estado del motor.
+    CREATE TABLE IF NOT EXISTS "CrmJourneyStep" (
+      id TEXT PRIMARY KEY,
+      "runId" TEXT NOT NULL,
+      "journeyId" TEXT NOT NULL,
+      "nodeId" TEXT,
+      "nodeType" TEXT,
+      outcome TEXT NOT NULL,
+      detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "messageLogId" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS "CrmJourneyStep_run_idx" ON "CrmJourneyStep"("runId","createdAt");
+    CREATE INDEX IF NOT EXISTS "CrmJourneyStep_journey_idx" ON "CrmJourneyStep"("journeyId","outcome");
+
+    -- Lista de exclusión global. Vive aparte del contacto a propósito: una baja
+    -- tiene que sobrevivir al borrado y al re-alta del contacto, que es
+    -- exactamente como se vuelve a escribir sin querer a quien pidió no recibir.
+    CREATE TABLE IF NOT EXISTS "CrmSuppression" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      reason TEXT NOT NULL DEFAULT 'opt_out',
+      source TEXT NOT NULL DEFAULT 'manual',
+      note TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmSuppression_club_phone_key" ON "CrmSuppression"("clubId", phone) WHERE phone IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS "CrmSuppression_club_idx" ON "CrmSuppression"("clubId");
+
+    -- Alertas internas para el equipo (no se le envían al club).
+    CREATE TABLE IF NOT EXISTS "CrmAlert" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      detail TEXT,
+      "siteId" TEXT,
+      "entityId" TEXT,
+      "dedupeKey" TEXT,
+      "resolvedAt" TIMESTAMP(3),
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmAlert_dedupe_key" ON "CrmAlert"("dedupeKey") WHERE "dedupeKey" IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS "CrmAlert_open_idx" ON "CrmAlert"("clubId","createdAt") WHERE "resolvedAt" IS NULL;
+  `);
+
+  // Columnas nuevas del contacto. Declaradas también en `schema.prisma`.
+  // `consentState`: granted | denied | unknown. Arranca en 'unknown' a propósito
+  // — dar por otorgado un consentimiento que nadie registró es justamente lo que
+  // este campo existe para impedir.
+  await db.query(`
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "siteId" TEXT;
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "siteType" TEXT;
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "orgRole" TEXT;
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "language" TEXT;
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "consentState" TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "consentSource" TEXT;
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "consentAt" TIMESTAMP(3);
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "consentCategories" TEXT[] DEFAULT ARRAY[]::TEXT[];
+    ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "lastInboundAt" TIMESTAMP(3);
+    CREATE INDEX IF NOT EXISTS "idx_wa_contact_site" ON "WhatsAppContact"("siteId");
+    CREATE INDEX IF NOT EXISTS "idx_wa_contact_consent" ON "WhatsAppContact"("consentState");
+  `);
+
+  // Trazabilidad del envío automático. Sin estas dos columnas, "cuánto rindió el
+  // recorrido de renovación" habría que reconstruirlo cruzando `CrmJourneyStep`
+  // con el log mensaje por mensaje. Declaradas también en `schema.prisma`.
+  await db.query(`
+    ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyId" TEXT;
+    ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyRunId" TEXT;
+    CREATE INDEX IF NOT EXISTS "idx_wa_msglog_journey" ON "WhatsAppMessageLog"("journeyId","status");
+  `);
+
+  // Índice que necesita el tope de frecuencia por contacto. `WhatsAppMessageLog`
+  // sólo estaba indexada por clubId y por campaña; el guardrail consulta
+  // "cuántos mensajes recibió ESTE contacto en los últimos N días" y sin esto
+  // recorre la tabla entera en cada envío.
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS "idx_wa_msglog_contact_created" ON "WhatsAppMessageLog"("contactId","createdAt");
+  `);
+
+  // Un contacto que ya pidió la baja queda registrado en la lista de exclusión.
+  // Es una sola pasada de reconciliación, idempotente por el índice único.
+  await db.query(`
+    INSERT INTO "CrmSuppression" (id, "clubId", phone, reason, source, note)
+    SELECT gen_random_uuid()::text, c."clubId", c.phone, 'opt_out', 'migration',
+           'Baja previa a la lista de exclusión (optedOutAt)'
+    FROM "WhatsAppContact" c
+    WHERE c."optedOutAt" IS NOT NULL AND c.phone IS NOT NULL
+    ON CONFLICT DO NOTHING;
+  `).catch(() => {});
+
+  _ready = true;
+}
+
+export default ensureAutomationSchema;

@@ -1846,6 +1846,22 @@ export const handleWebhook = async (req, res) => {
                 // Automatización: respuestas automáticas + agente IA.
                 // Sólo para mensajes de texto NUEVOS (evita re-disparar en reintentos de Meta).
                 const isNewMessage = incRes.rows.length > 0;
+
+                // Última interacción del contacto (v4.695). Se guarda en columna en
+                // vez de deducirse del log porque la segmentación del motor de
+                // automatización pregunta por ella en cada evaluación, y sacarla de
+                // un MAX() sobre `WhatsAppMessageLog` costaría un agregado por
+                // contacto y por consulta.
+                //
+                // También es la señal de "respondió" que usan las condiciones de los
+                // recorridos — incluidos los botones de respuesta rápida, que Meta
+                // entrega como un mensaje entrante y no como un clic.
+                if (isNewMessage && contactId) {
+                    await db.query(
+                        `UPDATE "WhatsAppContact" SET "lastInboundAt"=$1,"updatedAt"=NOW() WHERE id=$2`,
+                        [timestamp, contactId]
+                    ).catch(() => {});
+                }
                 if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()) {
                     try {
                         const { runWhatsAppAutomation } = await import('../services/whatsappAgent.js');

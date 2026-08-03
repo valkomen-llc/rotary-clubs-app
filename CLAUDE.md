@@ -702,6 +702,156 @@ clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
 sólo existe el de KIE).
 
+## WhatsApp CRM — motor de automatización — v4.695
+
+El módulo dejó de ser sólo un enviador de campañas manuales. Ahora observa el
+estado de cada sitio, lo ubica en un momento del ciclo de vida y dispara
+recorridos a partir de las TRANSICIONES.
+
+**La plataforma es el único remitente.** El motor emite desde el WABA del club
+«Origen» (`crmTenant.js`) hacia los dirigentes de cada club cliente. No hay un
+WABA por club. El administrador de un sitio sólo CONSULTA lo suyo.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/lifecycleSpec.js` | Los 17 estados y la derivación (función PURA) |
+| `server/lib/crmLifecycle.js` | La pasada de observación: señales, persistencia y eventos |
+| `server/lib/crmEventBus.js` | Catálogo de eventos y registro idempotente |
+| `server/lib/crmSegments.js` | Audiencias dinámicas (catálogo cerrado de campos) |
+| `server/lib/crmGuardrails.js` | Consentimiento, exclusión, horario, frecuencia, duplicados |
+| `server/lib/journeySpec.js` | Nodos, condiciones, variables y validación del grafo |
+| `server/lib/journeyEngine.js` | Inscripción y avance de las inscripciones |
+| `server/lib/journeySeeds.js` | Bienvenida y Renovación precargados |
+| `server/lib/whatsappSender.js` | Envío de plantilla + registro en el log |
+| `server/lib/crmTenant.js` | Resolución del sitio «Origen» |
+| `server/lib/ensureAutomationSchema.js` | Crea las 7 tablas en runtime |
+| `src/components/admin/whatsapp/JourneyBuilder.tsx` | Constructor visual |
+| `src/components/admin/whatsapp/LifecycleBoard.tsx` | Tablero, guardias y exclusión |
+
+Pruebas: `npm run test:crm` (79 casos). Necesita una `DATABASE_URL` de una base
+**vacía** con el schema aplicado; el guion aborta si la cadena parece de un
+entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
+
+**Reglas durables:**
+
+- **Los eventos se OBSERVAN, no se empujan.** El pedido enumera 21 eventos
+  repartidos por once módulos. Instrumentar 21 puntos de llamada habría atado el
+  motor a código ajeno y, peor, habría perdido el evento para siempre cuando esa
+  línea fallara o el hecho ocurriera por otra vía (una corrección a mano en la
+  base, una importación masiva). `sweepDerivedEvents` MIRA el estado real y es
+  autorreparable: si el motor estuvo caído dos días, al volver observa igual.
+  `recordEvent` queda exportado para quien quiera menos latencia; comparten
+  `dedupeKey`, así que no se duplica.
+- **Un sitio visto por primera vez NO emite transición.** La primera vuelta
+  encuentra `CrmLifecycleState` vacía; sin esta regla TODOS los sitios
+  «entrarían» en su estado a la vez y se inscribirían en todos los recorridos el
+  día del despliegue. La primera observación sólo fotografía.
+- **Los eventos derivados tienen ventana** (`CRM_EVENT_LOOKBACK_DAYS`, 7). Un
+  proyecto publicado hace tres años es un hecho, no una noticia. Sin la ventana
+  la primera pasada emitiría el historial completo de la plataforma como si
+  acabara de ocurrir.
+- **La transición es el disparador, no el estado.** «Está vencido» no es un
+  evento; «acaba de vencer» sí. Por eso el estado se PERSISTE en vez de
+  recalcularse y descartarse, y por eso la fila guarda también el anterior.
+- **`contentTracked:false` significa «no lo medimos», no «no tiene».** Un
+  distrito no tiene `Post` ni `Publication` colgando. Sin esa distinción todos
+  los distritos caían para siempre en «en implementación» por una ausencia que
+  nunca se iba a llenar.
+- **`prospecto` y `cancelado` no se deducen**: son `manualOnly`. La plataforma no
+  observa nada que los distinga, y fabricarlos desde una señal parecida sería
+  inventar. `manualState` gana sobre la derivación.
+- **APLAZAR y DESCARTAR no son lo mismo, y confundirlos es el defecto clásico.**
+  Fuera de horario o pasado el tope de frecuencia el mensaje se APLAZA
+  (`defer` + `retryAt`) y sale cuando corresponde. Una baja, una exclusión o un
+  número inválido lo DESCARTAN (`skip`). Tratar «es de noche» como descarte
+  pierde el mensaje; tratar «pidió la baja» como aplazamiento lo convierte en
+  acoso diferido.
+- **La ventana horaria se evalúa en la zona del DESTINATARIO.** La función corre
+  en UTC y «las 8 de la mañana» no significa lo mismo en Bogotá que en Madrid.
+  Hay clubes en varios países.
+- **La lista de exclusión vive aparte del contacto** (`CrmSuppression`, por
+  NÚMERO). Es lo que hace que la baja sobreviva a que el contacto se borre y se
+  vuelva a crear, que es exactamente como se le termina escribiendo a quien pidió
+  que no. Probado en `test:crm`.
+- **La condición de salida se evalúa ANTES DE CADA PASO, no sólo al inscribir.**
+  El recorrido de renovación dura 75 días y el club renueva en medio. Es lo que
+  impide seguir cobrándole la renovación a quien ya renovó, y recordarle el
+  onboarding a quien ya lo completó.
+- **Una variable sin resolver NO se envía.** Meta rechaza el parámetro vacío y,
+  aunque no lo hiciera, «tu sitio vence el » es peor que no mandar nada. Se anota
+  una alerta interna y se sigue.
+- **`clicked` no existe como condición y no es un olvido.** La Cloud API informa
+  `sent`, `delivered`, `read` y `failed`; el clic en un botón de URL **no** se
+  reporta. Lo único observable es el botón de respuesta rápida, que llega como
+  mensaje entrante y por eso se pregunta con `replied`. Declarar `clicked` daría
+  una rama que nunca sería verdadera. No agregarla.
+- **Los recorridos sembrados nacen en `draft` y SIN `templateId`.** Una plantilla
+  la aprueba Meta y vive en la cuenta del cliente: sembrar un recorrido activo
+  que apunte a plantillas inventadas daría uno que falla en el primer envío o
+  —peor— que parece funcionar. Cada paso trae `templateHint` con qué debe decir
+  la suya, y `validateJourney` impide activar hasta que estén asignadas. La
+  siembra es **aditiva e idempotente**: una vez creado, el recorrido es del
+  operador y un despliegue no vuelve a tocarlo (misma regla que el Generador de
+  Pendones).
+- **El grafo se guarda como documento JSON**, no normalizado: se lee y se escribe
+  siempre entero, y normalizarlo obligaría a migrar el esquema cada vez que
+  aparezca un tipo de nodo nuevo, sin ganar ninguna consulta.
+- **`entryNodeId` vive en `settings`, no es «el primer nodo del array».**
+  Funcionaría hoy y se rompería el día que alguien reordene los pasos.
+- **Un ciclo sin espera se rechaza al guardar.** Un bucle que no pasa por un
+  `wait` gira sin fin dentro de una vuelta del motor. Un ciclo CON espera es
+  legítimo (un recorrido que sondea) y se permite.
+- **Una regla de audiencia con campo u operador desconocido se DESCARTA y se
+  reporta** (`skipped`), no se ignora en silencio: un filtro que no se aplica
+  ENSANCHA la audiencia, que en un motor de envíos es el error que no se puede
+  pasar por alto. Los campos y operadores son un catálogo cerrado; ningún valor
+  del cliente entra en el SQL.
+- **El JOIN con `CrmLifecycleState` es LEFT.** Con INNER, vincular mal un
+  contacto lo volvería invisible sin decirlo.
+- **Un recorrido activo que se edita hasta quedar inválido se PAUSA solo.**
+  Dejarlo activo lo haría fallar contacto por contacto en el próximo tick.
+- **Un recorrido con inscripciones vivas no se borra, se pausa.** Borrarlo
+  dejaría inscripciones apuntando a un grafo inexistente, y con ellas la única
+  traza de por qué un club recibió lo que recibió.
+- **El bloqueo es un UPDATE condicional sobre la fila** (`lockedAt`), igual que
+  en el Creador de Reels: es lo que impide que el cron, el webhook y el panel
+  hagan el mismo envío dos veces.
+- **El orden del tick es observar → inscribir → avanzar**, y no otro: así un club
+  recién activado recibe su primer mensaje en el mismo minuto. Al revés harían
+  falta tres vueltas.
+- **Las columnas nuevas de `WhatsAppContact` y `WhatsAppMessageLog` están
+  declaradas EN `schema.prisma` además de en el ensure.** El guardián de
+  `db:push` compara TABLAS, no columnas: una columna que existiera sólo en el
+  ensure la borraría el primer `npm run db:push` sin que nada avisara.
+- **`sendCampaign` conserva su propia copia de la lógica de envío.** Unificarla
+  con `whatsappSender.js` es deseable pero cambia el camino por el que hoy salen
+  las campañas manuales de producción. Al corregir algo del envío, mirar los dos
+  sitios.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `CRM_PLATFORM_CLUB_ID` | Sitio «Origen» desde el que emite la plataforma |
+| `CRM_EVENT_LOOKBACK_DAYS` | Ventana de los eventos derivados (7 por defecto) |
+| `LIFECYCLE_RENEWAL_WINDOW_DAYS` | Preaviso de renovación (45) |
+| `LIFECYCLE_GRACE_START_DAYS` / `LIFECYCLE_GRACE_END_DAYS` | Tramos de gracia (3 / 5) |
+| `LIFECYCLE_REACTIVATED_WINDOW_DAYS` | Cuánto dura el estado «reactivado» (14) |
+| `LIFECYCLE_LOW_USAGE_DAYS` | Días sin contenido para considerar bajo uso (30) |
+| `CRON_SECRET` | Protege `/api/cron/crm-automation-tick`, como el resto de los crons |
+
+Las guardias de envío (horario, frecuencia, consentimiento, enlaces
+institucionales) **no** son de entorno: viven en `PlatformConfig` bajo
+`crm_automation_settings` y se editan desde el panel, sin desplegar.
+
+**Pendientes conocidos:** las fases 3 y 4 del pedido —bandeja omnicanal con
+enrutamiento y asignación de agentes, chatbot de intención, A/B testing y
+recomendaciones con IA— no están en esta versión; el chat y las respuestas
+automáticas siguen siendo los de `WhatsAppChat.tsx` y `automation.controller.js`.
+Tampoco está el calendario de comunicaciones ni los cuatro recorridos restantes
+(onboarding, adopción, reactivación por bajo uso, sitios vencidos), que se pueden
+armar desde el constructor sin código nuevo.
+
 ## Inscripciones a eventos / Feria de Proyectos — v4.648
 
 El módulo de **Eventos** maneja la inscripción completa de cada edición de la
