@@ -36,3 +36,30 @@ export const onOpenLoginModal = (handler: (options: OpenLoginOptions) => void) =
     window.addEventListener(LOGIN_MODAL_EVENT, listener);
     return () => window.removeEventListener(LOGIN_MODAL_EVENT, listener);
 };
+
+// ── Aviso de ingreso completado (v4.692) ─────────────────────────────
+//
+// El formulario de inscripción a un evento necesita enterarse: quien entra
+// desde ahí con su cuenta de siempre debe ver, sin recargar, que ya se le
+// reconoció y que no tiene que crear contraseña. Va por el mismo camino que
+// la apertura del modal, y por el mismo motivo: el `Navbar` se monta dentro
+// de cada página, así que no hay un proveedor común donde colgar el estado.
+
+export const LOGIN_DONE_EVENT = 'rotary:login-done';
+
+export interface LoginDoneDetail {
+    /** Identidad con la que se entró: 'platform' | 'portal' | 'attendee'. */
+    realm?: string;
+}
+
+/** Lo emite el `Navbar` en cuanto una sesión queda abierta. */
+export const emitLoginSuccess = (detail: LoginDoneDetail = {}) => {
+    window.dispatchEvent(new CustomEvent<LoginDoneDetail>(LOGIN_DONE_EVENT, { detail }));
+};
+
+/** Escucha el ingreso. Devuelve la función para dejar de escuchar. */
+export const onLoginSuccess = (handler: (detail: LoginDoneDetail) => void) => {
+    const listener = (event: Event) => handler((event as CustomEvent<LoginDoneDetail>).detail || {});
+    window.addEventListener(LOGIN_DONE_EVENT, listener);
+    return () => window.removeEventListener(LOGIN_DONE_EVENT, listener);
+};

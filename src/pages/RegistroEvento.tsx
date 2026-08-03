@@ -26,7 +26,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
     AlertCircle, ArrowLeft, ArrowRight, Briefcase, Building2, CalendarDays,
     Check, CheckCircle2, Clock, CreditCard, FileText, Globe, Hotel, IdCard, KeyRound,
-    LayoutDashboard, Loader2, Lock, Mail, MapPin, MessageSquare, Plane, Plus, ShieldCheck,
+    LayoutDashboard, Loader2, Lock, LogIn, Mail, MapPin, MessageSquare, Plane, Plus, ShieldCheck,
+    UserCheck,
     Target, Trash2, User, Users, Utensils,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
@@ -38,6 +39,7 @@ import {
     type FormField, type FormStep, type PublicCategory, type Companion,
 } from '../lib/eventRegistrationSpec';
 import { localeOf } from '../components/EventRegistrationCta';
+import { openLoginModal, onLoginSuccess } from '../lib/loginModal';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 // Mismos componentes que usa Postular Proyecto — no una copia parecida.
 import { Field, PhoneField, StepProgress, controlCls } from '../components/forms/FairField';
@@ -48,6 +50,15 @@ const ATTENDEE_PATH = '/mi-inscripcion';
 const BLUE = '#17458F';
 const GOLD = '#F7A81B';
 
+/** Identidad reconocida por el servidor a partir del token del navegador. */
+interface Identity {
+    realm: 'portal' | 'platform' | 'attendee';
+    roleLabel: string;
+    email: string;
+    name: string;
+    organization: string | null;
+}
+
 interface RegistrationConfig {
     event: { id: string; slug: string | null; title: string; startDate: string; endDate: string | null; location: string | null };
     edition: { editionNumber: number | null; editionLabel: string; venue: string; city: string; country: string; opensAt: string | null; closesAt: string | null };
@@ -57,6 +68,12 @@ interface RegistrationConfig {
     categories: PublicCategory[];
     /** Clave de la categoría con la que se entró desde la ficha del evento. */
     lockedCategory: string | null;
+    /** Si esta categoría admite inscribirse con una cuenta que ya existe. */
+    accountLinking?: { allowed: boolean; requiresAccount: boolean; mode: string };
+    /** Quién está autenticado, si el navegador trajo una sesión válida. */
+    identity?: Identity | null;
+    /** Datos del perfil para precargar el formulario. */
+    prefill?: Record<string, string> | null;
 }
 
 interface Registration {
@@ -89,6 +106,22 @@ const emptyCompanion = (): Companion => ({
 
 const storageKey = (eventRef: string, categoryKey: string) =>
     `rotary_event_reg_${eventRef}_${categoryKey}`;
+
+/**
+ * Sesión que tenga abierta el navegador, sea cual sea (v4.692).
+ *
+ * Se manda tal cual y es el SERVIDOR quien decide si vale: aquí no se
+ * interpreta ni se confía en su contenido. El orden es el de utilidad para
+ * inscribirse: el panel del club primero, porque es el caso que motiva esto.
+ */
+const IDENTITY_TOKEN_KEYS = ['feria_portal_token', 'evento_asistente_token', 'rotary_token'];
+const currentIdentityToken = (): string => {
+    for (const key of IDENTITY_TOKEN_KEYS) {
+        const value = localStorage.getItem(key);
+        if (value) return value;
+    }
+    return '';
+};
 
 // ── Campo dinámico ───────────────────────────────────────────────────
 //
@@ -257,6 +290,15 @@ const RegistroEvento = () => {
     const [maxVisited, setMaxVisited] = useState(0);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+    /**
+     * Sube al ingresar (v4.692). Está en las dependencias del efecto que pide
+     * la configuración, así que al entrar con la cuenta el formulario vuelve a
+     * preguntarle al servidor quién es y se precarga solo, SIN recargar la
+     * página ni perder lo que la persona ya hubiera escrito.
+     */
+    const [authTick, setAuthTick] = useState(0);
+    useEffect(() => onLoginSuccess(() => setAuthTick(t => t + 1)), []);
+
     const [registration, setRegistration] = useState<Registration | null>(null);
     const draftRef = useRef<{ id: string; accessToken: string } | null>(null);
 
@@ -291,6 +333,23 @@ const RegistroEvento = () => {
     const touchCredential = (key: string) => setCredentialsTouched(prev => ({ ...prev, [key]: true }));
     const touchAllCredentials = () => setCredentialsTouched({ password: true, passwordConfirm: true });
 
+    // ── Cuenta que ya existe (v4.692) ────────────────────────────────
+    //
+    // `identity` la resuelve el SERVIDOR a partir del token que mandó el
+    // navegador; aquí sólo se pinta. `linkingAllowed` dice si esta categoría
+    // admite reutilizar la cuenta — por defecto sólo el registro nacional.
+    const identity = config?.identity || null;
+    const linkingAllowed = config?.accountLinking?.allowed === true;
+    const linkingRequired = config?.accountLinking?.requiresAccount === true;
+    /** Con sesión reconocida no hay contraseña que crear ni que validar. */
+    const usingExistingAccount = Boolean(identity) && linkingAllowed;
+
+    /** Vuelve aquí después de ingresar, al formulario y la categoría actuales. */
+    const openLoginAndReturn = () => openLoginModal({
+        next: `${window.location.pathname}${window.location.search}`,
+        reason: 'Ingresa con la cuenta que ya usas en la plataforma y seguimos con tu inscripción.',
+    });
+
     const clubId = (club as any)?.id as string | undefined;
     const returningId = params.get('registro');
     const returningToken = params.get('t') || '';
@@ -316,7 +375,9 @@ const RegistroEvento = () => {
         // ficha. Aquí importa cuando se entra al asistente sin categoría fijada.
         query.set('locale', localeOf(lang));
 
-        fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`)
+        const identityToken = currentIdentityToken();
+        fetch(`${API}/event-registrations/config/${clubId}/${encodeURIComponent(eventRef)}?${query}`,
+            identityToken ? { headers: { Authorization: `Bearer ${identityToken}` } } : undefined)
             .then(r => r.json())
             .then(data => {
                 if (data?.error) throw new Error(data.error);
@@ -324,10 +385,24 @@ const RegistroEvento = () => {
                 // Con categoría fijada se entra directo al primer paso del
                 // formulario, sin pasar por la pantalla de selección.
                 if (data.lockedCategory) setCategoryKey(data.lockedCategory);
+
+                // v4.692 — Precarga con el perfil de quien ya tiene cuenta. Se
+                // rellenan sólo los campos VACÍOS: si la persona ya escribió
+                // algo, o retomó un borrador, su texto manda sobre el perfil.
+                if (data.identity && data.prefill) {
+                    setAnswers(prev => {
+                        const next = { ...prev };
+                        for (const [key, value] of Object.entries(data.prefill as Record<string, string>)) {
+                            const actual = next[key];
+                            if (actual === undefined || actual === null || actual === '') next[key] = value;
+                        }
+                        return next;
+                    });
+                }
             })
             .catch(err => setError(err?.message || 'No pudimos cargar el registro de este evento.'))
             .finally(() => setLoading(false));
-    }, [clubId, eventRef, lockedCategory, lang]);
+    }, [clubId, eventRef, lockedCategory, lang, authTick]);
 
     // ── Dirección canónica (v4.658) ──────────────────────────────────
     //
@@ -450,7 +525,8 @@ const RegistroEvento = () => {
         }
         // No se avanza con las contraseñas incompletas o distintas: es el punto
         // donde todavía se ve el bloque y se puede corregir sin retroceder.
-        if (currentStep.key === 'personal' && !registration && Object.keys(credentialErrors).length) {
+        if (currentStep.key === 'personal' && !registration && !usingExistingAccount
+            && Object.keys(credentialErrors).length) {
             touchAllCredentials();
             setError(credentialErrors.passwordConfirm === 'Las contraseñas no coinciden.'
                 ? 'Las contraseñas no coinciden.'
@@ -491,7 +567,7 @@ const RegistroEvento = () => {
         // Última comprobación antes de gastar un viaje de red: si las
         // contraseñas fallan se vuelve al paso donde se corrigen, en vez de
         // dejar el aviso al pie del resumen.
-        if (Object.keys(credentialErrors).length) {
+        if (!usingExistingAccount && Object.keys(credentialErrors).length) {
             touchAllCredentials();
             setError('Revisa la contraseña con la que consultarás tu inscripción.');
             const personalStep = steps.findIndex(s => s.key === 'personal');
@@ -501,16 +577,22 @@ const RegistroEvento = () => {
 
         setSubmitting(true);
         try {
+            const identityToken = currentIdentityToken();
             const res = await fetch(`${API}/event-registrations`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    // El servidor verifica firma y audiencia; aquí sólo se pasa.
+                    ...(identityToken ? { Authorization: `Bearer ${identityToken}` } : {}),
+                },
                 body: JSON.stringify({
                     clubId, eventRef, categoryKey: category.key, answers, companions,
                     registrationId: draftRef.current?.id,
                     accessToken: draftRef.current?.accessToken,
                     // Van fuera de `answers`: el servidor guarda el hash, no el valor.
-                    password: credentials.password,
-                    passwordConfirm: credentials.passwordConfirm,
+                    // Con cuenta existente no se manda ninguna: no hay que crearla.
+                    password: usingExistingAccount ? undefined : credentials.password,
+                    passwordConfirm: usingExistingAccount ? undefined : credentials.passwordConfirm,
                     returnUrl: window.location.origin,
                 }),
             });
@@ -840,14 +922,84 @@ const RegistroEvento = () => {
                                                 onChange={v => setAnswer(f.key, v)} />
                                         ))}
 
-                                    {/* ── Clave de acceso ──────────────────
-                                        Mismo bloque, mismo texto y misma
-                                        jerarquía que en Postular Proyecto: la
-                                        cuenta se crea con la inscripción, no
-                                        después del pago. La contraseña NO entra
-                                        en `answers`, así que nunca se guarda con
-                                        las respuestas ni en el borrador local. */}
-                                    {currentStep.key === 'personal' && !registration && (
+                                    {/* ── Caso 1: ya tiene sesión ──────────
+                                        El servidor reconoció el token del
+                                        navegador. No se le vuelve a pedir
+                                        correo, contraseña ni datos que ya
+                                        conocemos: se le dice con qué cuenta va
+                                        a quedar su inscripción y sigue. */}
+                                    {currentStep.key === 'personal' && !registration && usingExistingAccount && identity && (
+                                        <div className="sm:col-span-2">
+                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                                                <p className="flex items-center gap-2 text-sm font-bold text-emerald-900">
+                                                    <UserCheck size={16} /> Has iniciado sesión como {identity.name}
+                                                </p>
+                                                <p className="mt-1.5 text-[13px] leading-relaxed text-emerald-800">
+                                                    Tu registro al evento utilizará esta cuenta, así que no necesitas
+                                                    crear otra contraseña.
+                                                </p>
+                                                <dl className="mt-3 space-y-1 text-[13px] text-emerald-900">
+                                                    <div className="flex gap-2">
+                                                        <dt className="font-semibold">Correo:</dt>
+                                                        <dd>{identity.email}</dd>
+                                                    </div>
+                                                    {identity.organization && (
+                                                        <div className="flex gap-2">
+                                                            <dt className="font-semibold">Organización:</dt>
+                                                            <dd>{identity.organization}</dd>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex gap-2">
+                                                        <dt className="font-semibold">Cuenta:</dt>
+                                                        <dd>{identity.roleLabel}</dd>
+                                                    </div>
+                                                </dl>
+                                                <button type="button" onClick={openLoginAndReturn}
+                                                    className="mt-3 text-[13px] font-semibold text-emerald-800 underline hover:text-emerald-900">
+                                                    Ingresar con otra cuenta
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ── Caso 2: sin sesión, pero puede tenerla
+                                        Se ofrece antes de que empiece a inventar
+                                        una contraseña que quizá ya tiene. */}
+                                    {currentStep.key === 'personal' && !registration && !usingExistingAccount && linkingAllowed && (
+                                        <div className="sm:col-span-2">
+                                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                                <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                    <LogIn size={15} className="text-slate-400" /> ¿Ya tienes una cuenta?
+                                                </p>
+                                                <p className="mb-3 text-[13px] leading-relaxed text-slate-500">
+                                                    Si anteriormente postulaste un proyecto o eres un gestor de proyectos
+                                                    registrado, puedes ingresar con tu cuenta para inscribirte al evento
+                                                    sin crear una nueva contraseña.
+                                                </p>
+                                                <button type="button" onClick={openLoginAndReturn}
+                                                    className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
+                                                    style={{ background: BLUE }}>
+                                                    <LogIn size={15} /> Iniciar sesión
+                                                </button>
+                                                {!linkingRequired && (
+                                                    <p className="mt-3 text-[13px] text-slate-500">
+                                                        ¿No tienes cuenta? Sigue llenando el formulario y creamos una
+                                                        contigo más abajo.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ── Caso 3: usuario nuevo ────────────
+                                        El flujo de siempre. Mismo bloque, mismo
+                                        texto y misma jerarquía que en Postular
+                                        Proyecto: la cuenta se crea con la
+                                        inscripción, no después del pago. La
+                                        contraseña NO entra en `answers`, así que
+                                        nunca se guarda con las respuestas ni en
+                                        el borrador local. */}
+                                    {currentStep.key === 'personal' && !registration && !usingExistingAccount && !linkingRequired && (
                                         <div className="sm:col-span-2">
                                             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                                 <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">

@@ -281,6 +281,233 @@ export const attachOrphanRegistrations = async (account) => {
     return rowCount;
 };
 
+
+// ════════════════════════════════════════════════════════════════════
+// Ingreso con una cuenta que ya existe (v4.692)
+// ════════════════════════════════════════════════════════════════════
+//
+// Un rotario que ya postuló un proyecto tiene cuenta, contraseña y perfil. Que
+// el formulario del evento le pida inventar OTRA contraseña es trabajo
+// repetido y una credencial más que recordar.
+//
+// La pieza central es `identityFromRequest`: mira el token que traiga el
+// navegador —el de la plataforma, el del panel del club o el del propio panel
+// del asistente— y devuelve quién es y con qué datos se puede precargar el
+// formulario.
+//
+// DECISIÓN DE ARQUITECTURA: la inscripción sigue perteneciendo SIEMPRE a un
+// `EventAttendeeAccount`. Es lo que sostiene el panel, los permisos y el
+// aislamiento por `accountId`, y no se toca. Lo nuevo es que esa cuenta puede
+// estar VINCULADA a una identidad anterior (`linkedRealm` + `linkedId`), en
+// cuyo caso no tiene contraseña propia: se entra con la de siempre. Así no hay
+// un usuario duplicado ni una segunda credencial, y el panel sigue funcionando
+// exactamente igual.
+
+const PLATFORM_AUDIENCE = 'rotary-platform';
+const PORTAL_AUDIENCE = 'project-fair-portal';
+
+/** Realms que pueden reutilizarse para inscribirse a un evento. */
+export const LINKABLE_REALMS = ['portal', 'platform', 'attendee'];
+
+export const REALM_LABELS = {
+    portal: 'Gestor de Proyectos',
+    platform: 'Usuario de la plataforma',
+    attendee: 'Asistente al Evento',
+};
+
+const decodeFor = (token, audience) => {
+    try { return jwt.verify(token, JWT_SECRET, { audience }); }
+    catch { return null; }
+};
+
+/**
+ * Quién viene en la petición, mirando el token que traiga.
+ *
+ * Se prueban las tres audiencias porque el navegador puede tener cualquiera de
+ * las tres sesiones. Devuelve `null` si no hay ninguna válida — nunca lanza:
+ * un token vencido no puede romper el formulario público, sólo hace que se
+ * ofrezca el flujo normal.
+ *
+ * @returns {Promise<null | { realm, id, email, name, organization, profile }>}
+ */
+export const identityFromRequest = async (req) => {
+    const raw = String(req?.headers?.authorization || '').split(' ')[1]
+        || clean(req?.body?.identityToken, 4000)
+        || clean(req?.query?.identityToken, 4000);
+    if (!raw) return null;
+
+    await ensureEventRegistrationSchema();
+
+    // 1) Panel del club — el caso que motiva esta función.
+    const portal = decodeFor(raw, PORTAL_AUDIENCE);
+    if (portal?.sub) {
+        const { rows } = await db.query(
+            'SELECT * FROM "ProjectFairAccount" WHERE id = $1 LIMIT 1', [portal.sub]);
+        const account = rows[0];
+        if (!account) return null;
+        return {
+            realm: 'portal',
+            id: account.id,
+            email: account.email,
+            name: null,                       // lo completa la postulación
+            organization: account.clubName || null,
+            roleLabel: REALM_LABELS.portal,
+            submissionId: account.submissionId || null,
+        };
+    }
+
+    // 2) Usuario de la plataforma.
+    const platform = decodeFor(raw, PLATFORM_AUDIENCE);
+    if (platform?.id || platform?.userId || platform?.sub) {
+        const id = platform.id || platform.userId || platform.sub;
+        const { rows } = await db.query(
+            'SELECT id, email, name, phone, "clubId" FROM "User" WHERE id = $1 LIMIT 1', [id]);
+        const user = rows[0];
+        if (!user) return null;
+        return {
+            realm: 'platform',
+            id: user.id,
+            email: user.email,
+            name: user.name || null,
+            phone: user.phone || null,
+            organization: null,
+            roleLabel: REALM_LABELS.platform,
+        };
+    }
+
+    // 3) Asistente que ya se inscribió antes (otra edición, u otra categoría).
+    const attendee = decodeFor(raw, ATTENDEE_AUDIENCE);
+    if (attendee?.sub) {
+        const { rows } = await db.query(
+            'SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [attendee.sub]);
+        const account = rows[0];
+        if (!account) return null;
+        return {
+            realm: 'attendee',
+            id: account.id,
+            email: account.email,
+            name: [account.firstName, account.lastName].filter(Boolean).join(' ') || null,
+            phone: account.phone || null,
+            organization: null,
+            roleLabel: REALM_LABELS.attendee,
+        };
+    }
+
+    return null;
+};
+
+/**
+ * Datos con los que se precarga el formulario, buscados en el antecedente más
+ * completo que tenga esa persona.
+ *
+ * Para el Gestor de Proyectos ese antecedente es su postulación, que desde
+ * v4.677 guarda país, ciudad, departamento, documento y cargo — justo lo que
+ * pide el registro nacional. Para quien ya se inscribió a un evento, sus
+ * propias respuestas anteriores.
+ *
+ * Sólo se devuelven campos con valor: un `''` sobrescribiría lo que el
+ * visitante ya hubiera escrito.
+ */
+export const prefillForIdentity = async (identity) => {
+    if (!identity?.email) return {};
+    const out = {};
+    const put = (key, value) => {
+        const v = typeof value === 'string' ? value.trim() : value;
+        if (v !== undefined && v !== null && v !== '') out[key] = v;
+    };
+
+    put('email', identity.email);
+    if (identity.name) {
+        const [first, ...rest] = String(identity.name).trim().split(/\s+/);
+        put('firstName', first);
+        put('lastName', rest.join(' '));
+    }
+    put('phone', identity.phone);
+
+    // La postulación más reciente de ese correo: el perfil más completo que
+    // existe en la plataforma.
+    const { rows } = await db.query(
+        `SELECT * FROM "ProjectFairSubmission"
+          WHERE lower(email) = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+        [String(identity.email).toLowerCase()]).catch(() => ({ rows: [] }));
+    const s = rows[0];
+    if (s) {
+        put('firstName', s.firstName);
+        put('lastName', s.lastName);
+        put('phone', s.phone);
+        put('country', s.country);
+        put('city', s.city);
+        put('department', s.department);
+        put('documentType', s.idType);
+        put('documentNumber', s.idNumber);
+        put('clubName', s.clubName);
+        put('district', s.district);
+    }
+
+    // Si ya se inscribió antes a un evento, sus respuestas mandan sobre lo
+    // anterior: son las más recientes y las del mismo tipo de formulario.
+    const previous = await db.query(
+        `SELECT answers FROM "EventRegistration"
+          WHERE lower(email) = $1 AND answers IS NOT NULL
+          ORDER BY "createdAt" DESC LIMIT 1`,
+        [String(identity.email).toLowerCase()]).catch(() => ({ rows: [] }));
+    const answers = parseJson(previous.rows?.[0]?.answers, {});
+    for (const key of ['firstName', 'lastName', 'phone', 'country', 'city', 'department',
+        'documentType', 'documentNumber', 'clubName', 'district', 'rotaryRole']) {
+        put(key, answers?.[key]);
+    }
+
+    return out;
+};
+
+/**
+ * Cuenta de asistente para una identidad que ya existía.
+ *
+ * Find-or-create POR CORREO —igual que el resto del módulo— y se marca el
+ * vínculo. Si la persona ya tenía cuenta de asistente con contraseña propia,
+ * NO se le toca: se respeta la que eligió y sólo se anota el vínculo.
+ *
+ * Nunca crea una segunda cuenta para el mismo correo, que es justamente lo que
+ * pedía evitarse.
+ */
+export const linkAttendeeAccountTo = async (identity) => {
+    if (!identity?.email) return null;
+    await ensureEventRegistrationSchema();
+    const mail = String(identity.email).toLowerCase();
+
+    const existing = await findAccountByEmail(mail);
+    if (existing) {
+        const { rows } = await db.query(
+            `UPDATE "EventAttendeeAccount"
+                SET "linkedRealm" = COALESCE("linkedRealm", $1),
+                    "linkedId"    = COALESCE("linkedId", $2),
+                    "firstName"   = COALESCE(NULLIF($3,''), "firstName"),
+                    "lastName"    = COALESCE(NULLIF($4,''), "lastName"),
+                    phone         = COALESCE(NULLIF($5,''), phone),
+                    "updatedAt"   = NOW()
+              WHERE id = $6 RETURNING *`,
+            [identity.realm, String(identity.id), clean(identity.firstName, 120),
+                clean(identity.lastName, 120), clean(identity.phone, 60), existing.id]);
+        return rows[0] || existing;
+    }
+
+    try {
+        const { rows } = await db.query(
+            `INSERT INTO "EventAttendeeAccount"
+                (email, "passwordHash", "firstName", "lastName", phone, role, "linkedRealm", "linkedId")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [
+                mail, UNUSABLE_HASH, clean(identity.firstName, 120), clean(identity.lastName, 120),
+                clean(identity.phone, 60), ATTENDEE_ROLES.ATTENDEE, identity.realm, String(identity.id),
+            ]);
+        return rows[0];
+    } catch (error) {
+        if (error?.code === '23505') return findAccountByEmail(mail);
+        console.error('[event-attendee] no pude vincular la cuenta:', error?.message);
+        return null;
+    }
+};
+
 // ── Middleware ───────────────────────────────────────────────────────
 
 /** Exige un token emitido para ESTA audiencia. */
@@ -288,17 +515,37 @@ export const attendeeAuth = async (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Inicia sesión para consultar tu inscripción.' });
     try {
-        const payload = jwt.verify(token, JWT_SECRET, { audience: ATTENDEE_AUDIENCE });
         await ensureEventRegistrationSchema();
+        const payload = jwt.verify(token, JWT_SECRET, { audience: ATTENDEE_AUDIENCE });
         const { rows } = await db.query('SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [payload.sub]);
         const account = rows[0];
         if (!account) return res.status(401).json({ error: 'Tu sesión ya no es válida. Vuelve a ingresar.' });
         // El rol se lee de la base, no del token: una suspensión tiene efecto
         // de inmediato y no espera a que caduque la sesión.
         req.attendee = { ...payload, account, role: account.role || ATTENDEE_ROLES.ATTENDEE };
-        next();
+        return next();
     } catch {
-        res.status(401).json({ error: 'Tu sesión expiró. Vuelve a ingresar.' });
+        // v4.692 — Quien se inscribió reutilizando su cuenta de siempre no
+        // tiene contraseña de asistente, así que su navegador NO lleva un token
+        // de esta audiencia: lleva el del panel del club. Se acepta, pero sólo
+        // si esa identidad está VINCULADA a una cuenta de asistente — el
+        // vínculo lo escribe el servidor al inscribirse, nunca el navegador.
+        try {
+            const identity = await identityFromRequest(req);
+            if (identity) {
+                const linked = await findAccountByEmail(identity.email);
+                if (linked && linked.linkedRealm === identity.realm
+                    && String(linked.linkedId) === String(identity.id)) {
+                    req.attendee = {
+                        sub: linked.id, email: linked.email, account: linked,
+                        role: linked.role || ATTENDEE_ROLES.ATTENDEE,
+                        viaRealm: identity.realm,
+                    };
+                    return next();
+                }
+            }
+        } catch { /* cae al 401 de abajo */ }
+        return res.status(401).json({ error: 'Tu sesión expiró. Vuelve a ingresar.' });
     }
 };
 
@@ -352,6 +599,16 @@ export const authenticateAttendee = async (email, password, req = null, { rememb
 
     const account = await findAccountByEmail(mail);
     if (account && account.passwordHash === UNUSABLE_HASH) {
+        // v4.692 — Una cuenta VINCULADA no tiene contraseña propia a propósito:
+        // su clave vive en la identidad de origen (el panel del club). Decirle
+        // "todavía no tiene contraseña, créala" sería mandarla a inventar una
+        // segunda credencial, justo lo que esta función existe para evitar. Se
+        // devuelve un fallo normal para que `resolveSession` siga probando —o
+        // dé el mensaje genérico si de verdad se equivocó de clave.
+        if (account.linkedRealm) {
+            await auditLogin(req, { accountId: account.id, email: mail, outcome: 'linked_account' });
+            return { ok: false };
+        }
         await auditLogin(req, { accountId: account.id, email: mail, outcome: 'needs_password' });
         return { ok: false, needsPassword: true };
     }

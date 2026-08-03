@@ -810,6 +810,48 @@ Cada uno abre `/eventos/:ref/registro?categoria=<clave>`.
   las categorías por inactivas y desaparecen todos los botones (error real,
   corregido antes de publicar v4.650).
 
+### Inscribirse con una cuenta que ya existe (v4.692)
+
+Un rotario que ya postuló un proyecto tiene cuenta, contraseña y perfil. El
+Registro Nacional lo reconoce y no le pide una segunda credencial.
+
+| Pieza | Qué hace |
+|---|---|
+| `accountLinkingFor` (`eventRegistrationSpec.js`) | Política por edición y **por audiencia** |
+| `identityFromRequest` (`eventAttendeeController.js`) | Quién viene, mirando el token |
+| `prefillForIdentity` | Datos de precarga desde su postulación |
+| `linkAttendeeAccountTo` | Vincula sin crear una segunda cuenta |
+
+- **La inscripción sigue perteneciendo SIEMPRE a un `EventAttendeeAccount`.** Es
+  lo que sostiene el panel, los permisos y el aislamiento por `accountId`. Lo
+  nuevo es que esa cuenta puede estar VINCULADA (`linkedRealm` + `linkedId`) a
+  una identidad anterior, y entonces no tiene contraseña propia
+  (`passwordHash = '!'`): se entra con la de siempre. No hay usuario duplicado
+  ni segunda credencial.
+- **Se limita por AUDIENCIA, no por clave de categoría** (`audiences:
+  ['national']` por defecto). El administrador renombra las categorías; la
+  audiencia no cambia. Sólo el nacional porque la cuenta que se reutiliza es la
+  del Gestor de Proyectos, y esa convocatoria es para clubes colombianos.
+- **La política vive en la edición** (`settings.accountLinking`): `both` /
+  `account_only` / `new_only`, más la lista de audiencias. Un evento nuevo
+  decide sin desplegar.
+- **El token se verifica en el SERVIDOR** (firma + audiencia) y **el correo del
+  formulario tiene que ser el de la cuenta**. Sin esa segunda comprobación,
+  quien tuviera sesión podría inscribir a otra persona a nombre de su cuenta.
+- **Una cuenta vinculada NUNCA responde `needsPassword`** al iniciar sesión: su
+  clave vive en la identidad de origen, así que ese mensaje la mandaría a crear
+  justo la segunda credencial que esto evita. Devuelve un fallo normal y
+  `resolveSession` sigue probando.
+- **La precarga sólo rellena campos VACÍOS.** Un borrador a medias no se pisa.
+- `attendeeAuth` acepta el token de la identidad vinculada, así que quien se
+  inscribió reutilizando su cuenta entra a `/mi-inscripcion` con esa misma
+  clave, sin una segunda sesión.
+- El aviso de ingreso completado va por `emitLoginSuccess` / `onLoginSuccess`
+  (`src/lib/loginModal.ts`), por el mismo motivo que la apertura del modal: el
+  `Navbar` se monta dentro de cada página, no por encima. **Emitirlo en las tres
+  ramas de `handleLogin`** — se escapó la del panel del club y el formulario no
+  se enteraba hasta recargar.
+
 ### Dirección pública de un evento (v4.658)
 
 Un evento se abre igual con su **id interno** que con su **slug**: el endpoint

@@ -35,7 +35,7 @@ import {
     categoryWindow, resolveCharge, deriveSystemTags, SYSTEM_TAG_KEYS,
     COMPANION_FIELDS, randomCodeSuffix, tariffVersionOf,
     resolveAudienceHint, resolveCtaButtons, normalizeCtaConfig,
-    validateCredentials, PASSWORD_MIN,
+    validateCredentials, PASSWORD_MIN, accountLinkingFor,
 } from '../lib/eventRegistrationSpec.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -46,9 +46,10 @@ import store, {
 import {
     ensureAttendeeAccount, ensurePendingAccountFor, linkRegistrationToAccount,
     attachOrphanRegistrations, sendVerificationEmail, ATTENDEE_PATH,
+    identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
-console.log('[eventRegistrationController] v4.659.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío.');
+console.log('[eventRegistrationController] v4.692.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -189,6 +190,25 @@ export const getPublicRegistrationConfig = async (req, res) => {
         const editionClosed = Boolean(edition.closesAt && today > edition.closesAt)
             || Boolean(edition.opensAt && today < edition.opensAt);
 
+        // ── Cuenta que ya existe (v4.692) ─────────────────────────────
+        //
+        // Va en ESTA respuesta y no en una petición aparte: el formulario ya la
+        // pide al abrirse, y añadir otro viaje de red sería deshacer parte del
+        // trabajo de rendimiento de v4.659.
+        //
+        // `linking` se calcula sobre la categoría fijada; sin categoría fijada
+        // se mira si alguna de las ofrecidas lo admite, para poder enseñar el
+        // bloque "¿Ya tienes una cuenta?" antes de elegir.
+        const linkingTarget = requested
+            ? decorated.find(c => c.key === requested)
+            : decorated.find(c => accountLinkingFor(c, edition.settings).allowed);
+        const linking = linkingTarget
+            ? accountLinkingFor(linkingTarget, edition.settings)
+            : { allowed: false, requiresAccount: false, mode: 'new_only' };
+
+        const identity = linking.allowed ? await identityFromRequest(req).catch(() => null) : null;
+        const identityPrefill = identity ? await prefillForIdentity(identity).catch(() => ({})) : null;
+
         res.json({
             visitor: {
                 audience: hint.audience,
@@ -197,6 +217,27 @@ export const getPublicRegistrationConfig = async (req, res) => {
                 countryCode: hint.countryCode || null,
             },
             cta,
+            /**
+             * Política de reutilización de cuenta para esta categoría, y —si el
+             * navegador trajo una sesión válida— quién es y con qué precargar.
+             * `identity` es null cuando no hay sesión: entonces el formulario
+             * ofrece el bloque "¿Ya tienes una cuenta?".
+             */
+            accountLinking: {
+                allowed: linking.allowed,
+                requiresAccount: linking.requiresAccount,
+                mode: linking.mode,
+            },
+            identity: identity ? {
+                realm: identity.realm,
+                roleLabel: identity.roleLabel,
+                email: identity.email,
+                name: identityPrefill?.firstName
+                    ? [identityPrefill.firstName, identityPrefill.lastName].filter(Boolean).join(' ')
+                    : (identity.name || identity.email),
+                organization: identity.organization || identityPrefill?.clubName || null,
+            } : null,
+            prefill: identityPrefill || null,
             /** La categoría que quedó fijada por el botón, si se entró por uno. */
             lockedCategory: requested || null,
             event: {
@@ -283,6 +324,23 @@ const saveRegistration = async (req, res, mode) => {
     const answers = typeof body.answers === 'object' && body.answers ? body.answers : {};
     const companions = readCompanions(body, category);
 
+    // ── ¿Llega con una cuenta que ya existía? (v4.692) ────────────────
+    //
+    // La política la fija la edición y se limita por audiencia; por defecto
+    // sólo el registro nacional, porque la cuenta que se reutiliza es la del
+    // Gestor de Proyectos y esa convocatoria es para clubes colombianos.
+    //
+    // El token se comprueba en el SERVIDOR. El navegador no puede decir "soy
+    // fulano": manda su token y aquí se verifica la firma y la audiencia.
+    const linking = accountLinkingFor(category, edition.settings);
+    const identity = linking.allowed ? await identityFromRequest(req) : null;
+    // Sólo vale si el correo del formulario es el de la cuenta: si alguien
+    // cambia el correo, se inscribe como esa otra persona y le toca el flujo
+    // normal. Nunca se inscribe a nombre de una cuenta ajena.
+    const linkedIdentity = identity
+        && String(answers.email || '').trim().toLowerCase() === String(identity.email).toLowerCase()
+        ? identity : null;
+
     // ── Validación (sólo al enviar; el borrador se guarda como venga) ──
     if (mode === 'submit') {
         const { ok, errors } = validateAnswers(category, answers);
@@ -293,14 +351,25 @@ const saveRegistration = async (req, res, mode) => {
         // ellas: sólo su hash, en `EventAttendeeAccount`. Se validan aquí,
         // antes de tocar la base, para no dejar una inscripción a medio crear
         // porque las contraseñas no coincidían.
-        const credentials = validateCredentials({
-            password: body.password, passwordConfirm: body.passwordConfirm,
-        });
-        if (!credentials.ok) {
-            return res.status(400).json({
-                error: 'Revisa la contraseña con la que consultarás tu inscripción.',
-                fieldErrors: credentials.errors,
+        //
+        // v4.692 — Salvo que la persona llegue autenticada y la categoría
+        // admita reutilizar la cuenta: entonces no hay contraseña que pedir.
+        if (!linkedIdentity) {
+            if (linking.requiresAccount) {
+                return res.status(401).json({
+                    error: 'Para inscribirte en esta categoría necesitas ingresar con tu cuenta.',
+                    requiresAccount: true,
+                });
+            }
+            const credentials = validateCredentials({
+                password: body.password, passwordConfirm: body.passwordConfirm,
             });
+            if (!credentials.ok) {
+                return res.status(400).json({
+                    error: 'Revisa la contraseña con la que consultarás tu inscripción.',
+                    fieldErrors: credentials.errors,
+                });
+            }
         }
         for (let i = 0; i < companions.length; i++) {
             const check = validateCompanion(companions[i], category.companions);
@@ -368,7 +437,19 @@ const saveRegistration = async (req, res, mode) => {
     // ya existe, que es lo que permite que quien vuelva en la edición siguiente
     // conserve una sola clave y vea su historial completo.
     let account = null;
-    if (mode === 'submit') {
+    if (mode === 'submit' && linkedIdentity) {
+        // Cuenta de siempre: se vincula, no se crea ninguna nueva ni se toca
+        // su contraseña.
+        account = await linkAttendeeAccountTo({
+            ...linkedIdentity,
+            firstName: answers.firstName,
+            lastName: answers.lastName,
+            phone: answers.phone,
+        });
+        if (!account) {
+            return res.status(500).json({ error: 'No pudimos vincular tu inscripción con tu cuenta.' });
+        }
+    } else if (mode === 'submit') {
         const resolved = await ensureAttendeeAccount({
             email,
             password: body.password,
