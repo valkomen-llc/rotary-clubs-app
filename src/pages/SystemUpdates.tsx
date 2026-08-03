@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.704.0 | 2026-08-03 (Cadencia real y control de intensidad)
+// UI V4.705.0 | 2026-08-03 (Preservación estricta de personas y fidelidad humana)
 // Cache bust: 2026-08-03l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.705.0',
+        title: 'Los Reels dejan de inventar personas: preservación estricta y fidelidad humana 👥',
+        description: 'En algunos clips aparecía un rostro, una silueta o una figura que no está en la fotografía original, y la escena pasaba el control de calidad con buena nota. No era un fallo de la medición: era que ese defecto no se medía. El control preguntaba por deformación, deriva de identidad, marca y texto, y una persona inventada no es ninguna de esas cosas —puede estar perfectamente dibujada y ser perfectamente ella misma—, así que el sistema podía responder «todo bien» con honestidad. Ahora el análisis cuenta cuántas personas hay en cada fotografía y describe a cada una, la instrucción que recibe el motor fija ese número y pide que lo que la foto tapa siga tapado, y el control cuenta las personas del clip y las compara con las de la foto. Una escena que muestre a alguien que no estuvo ahí se regenera sola.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'feature',
+        changes: [
+            { type: 'fixed', text: 'Aparecían personas, rostros y siluetas que no están en la fotografía, y la escena pasaba con nota alta.' },
+            { type: 'added', text: 'Modo «Preservación estricta de personas», activado por defecto en toda fotografía con gente.' },
+            { type: 'added', text: 'Validación por escena: personas en la foto, personas en el clip, identidades, oclusiones, rostros y sujetos nuevos.' },
+            { type: 'added', text: 'En los grupos apretados o con caras tapadas, el movimiento se reduce solo y la ficha explica por qué.' },
+            { type: 'fixed', text: 'La fidelidad se mostraba como «800 %» en la Biblioteca: la escala es de 0 a 10, ahora se lee «8/10».' }
+        ],
+        details: [
+            'El recuento se hace comparando la fotografía y el fotograma en una misma mirada, no contra un número tomado aparte: así el sesgo de conteo se cancela y la diferencia es fiable.',
+            'En fotografías con mucha gente el recuento no decide por sí solo —contar catorce cabezas no lo hace bien ningún sistema— y la ficha lo dice en vez de dar por buena una cifra dudosa.',
+            'La instrucción al motor nombra a cada persona visible para que conserve su identidad durante todo el clip, y pide expresamente que una cara detrás de un hombro siga detrás de ese hombro.',
+            'Cada indicador tiene tres estados: bien, mal y sin comprobar. «Sin comprobar» se ve distinto de «bien», porque presentarlo en verde llevaría a buscar el problema donde no está.'
+        ]
+    },
     {
         version: '4.704.0',
         title: 'Los Reels dejan de verse acelerados: control de intensidad del movimiento 🎚️',

@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import type { Reel } from '../../../lib/reelSpec';
 import { isTerminal, formatEta } from '../../../lib/reelSpec';
 import ReelUsagePanel from './ReelUsagePanel';
+import ScenePeopleCheck from './ScenePeopleCheck';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = (): Record<string, string> => ({
@@ -366,10 +367,14 @@ const ReelDetail: React.FC<{
                                                 sc.fidelity.state === 'ok' ? 'text-emerald-600'
                                                     : sc.fidelity.state === 'failed' ? 'text-red-600' : 'text-gray-400'
                                             }`}>
-                                                Fidelidad: {sc.fidelity.state === 'ok' ? `${Math.round((sc.fidelity.score || 0) * 100)}%`
+                                                {/* La escala de fidelidad es 0-10, no 0-1: mostrarla como
+                                                    porcentaje daba «800 %». Se muestra igual que en el
+                                                    Creador, que es donde el usuario la ve primero. */}
+                                                Fidelidad: {sc.fidelity.state === 'ok' ? `${sc.fidelity.score ?? '—'}/10`
                                                     : sc.fidelity.state === 'failed' ? 'no conservó la foto' : 'no comprobada'}
                                             </div>
                                         )}
+                                        <ScenePeopleCheck people={sc.fidelity?.people} />
                                         {sc.sourceImageUrl && (
                                             <a href={sc.sourceImageUrl} target="_blank" rel="noreferrer"
                                                className="text-[10px] font-bold text-indigo-600 hover:underline block">

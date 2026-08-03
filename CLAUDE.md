@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.704
+## Creador de Reels IA — v4.705
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -188,7 +188,7 @@ en `config` sin que el servidor los leyera.
 | `server/lib/publicationContext.js` | Tipo de Publicación y Enfoque Rotary, compartidos con el Generador de Publicaciones |
 | `server/lib/reelNarration.js` | Guion hablado, voces TTS y Narrative Timing Engine |
 | `server/lib/reelMusic.js` | Banda sonora: KIE generativo + biblioteca licenciada |
-| `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad |
+| `server/lib/reelQuality.js` | Inspección de las fotos, validación de los archivos y control de fidelidad visual y humana |
 | `server/lib/reelUsage.js` | Registro de consumo por proveedor, reparto declarado de responsabilidades y tarifas |
 | `server/lib/ensureReelSchema.js` | Crea `ReelProject` y `ReelScene` en runtime |
 | `server/controllers/reelController.js` | Flujo completo y máquina de estados |
@@ -196,6 +196,11 @@ en `config` sin que el servidor los leyera.
 | `src/components/admin/content-studio/ReelLibrary.tsx` | La Biblioteca de Reels: listado, ficha, edición y duplicado |
 | `src/components/admin/content-studio/ReelUsagePanel.tsx` | Panel de auditoría del consumo |
 | `src/lib/reelSpec.ts` | Espejo mínimo: tipos y cálculo de la línea de tiempo |
+
+Pruebas: `npm run test:reels:people` (42 casos). **No necesitan base, credenciales
+ni red**: prueban el CRITERIO —`buildPeopleReport`, `resolveSceneIntensity` y el
+presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
+`seoRules.js` vive aparte de `seoAudit.js`.
 
 **Reglas durables:**
 
@@ -550,6 +555,69 @@ en `config` sin que el servidor los leyera.
   pasar textos que la plataforma corta sola.
 - **Un texto que se pasa del límite se recorta sin partir palabras.** Un copy
   cortado a mitad de palabra se lee como un error del sistema.
+- **Una persona INVENTADA no la ve ninguna de las otras medidas** (v4.705). Es
+  el hallazgo de fondo del defecto reportado: en un clip aparecía un rostro que
+  no está en la foto y la escena pasaba con 8/10. No era un fallo de la
+  medición, es que el control preguntaba por deformación, deriva de identidad,
+  marca y texto — y un sujeto inventado no es ninguna de esas cosas: puede estar
+  perfectamente dibujado y ser perfectamente él mismo. El modelo contestaba «sin
+  problemas» con honestidad. **Al añadir un defecto al control, comprobar que
+  alguna pregunta lo cubra**; una nota alta sólo significa que no se encontró lo
+  que se preguntó.
+- **El recuento se hace comparando LAS DOS MITADES de la misma composición**, no
+  contra el censo del análisis. Los dos números salen de la misma pasada del
+  mismo modelo sobre la misma imagen, así que su sesgo de conteo se cancela al
+  restar. Contrastar contra un censo tomado en otra llamada compararía dos
+  criterios distintos y daría falsos positivos. `analysis.personCount` se usa
+  para MOSTRARLO y como referencia del prompt; no decide.
+- **Por encima de ocho personas el recuento no decide solo**
+  (`RELIABLE_COUNT_MAX`). Contar catorce cabezas no lo hace bien ningún modelo
+  de visión, y regenerar por un ±1 en una multitud sería gastar créditos en un
+  problema inexistente — el mismo error que ya costó dos rondas en v4.675. En
+  multitud sólo vale la señal explícita `newSubjects`, y la ficha lo dice.
+- **El desvío se mira en las DOS direcciones y por fotograma.** Con un solo
+  `Math.max` se detectaba que sobrara gente pero nunca que faltara: un fotograma
+  con una persona de menos quedaba tapado por los otros dos. Lo destapó una
+  prueba, no producción.
+- **El prompt negativo viaja en `negative_prompt`, NO pegado al positivo.** Dos
+  motivos y los dos importan: (1) presupuesto — los veinte términos consumían
+  640 de los 2500 caracteres que Kling da al prompt, el 26 %, y expulsaban
+  frases afinadas durante treinta versiones; en su campo tienen otros 2500 para
+  ellos solos; (2) la regla del sitio de escribir en positivo existe porque el
+  modelo se obsesiona con lo prohibido cuando la prohibición está DENTRO de la
+  descripción de la escena — en un campo aparte la lee como lo que es. Si la
+  pasarela rechaza el campo, `createKieVideoTask` **reintenta sin él** en vez de
+  fallar: el censo y la oclusión del positivo son la parte que sostiene la
+  preservación.
+- **El prompt de escena tiene presupuesto y se recorta con ORDEN** (2500,
+  `REEL_PROMPT_MAX_CHARS`). Se sacrifica el ambiente, luego el mapa de sujetos,
+  luego el `motionHint` —recortado por palabra entera, nunca eliminado, porque
+  es lo único específico de ESA foto—. El censo y la oclusión no se tocan: son
+  lo que se añadió para resolver el defecto. Lo que se deja fuera se anota en
+  consola; un recorte silencioso convierte «lo pedimos» en una afirmación falsa.
+  **Al añadir una frase al prompt, medir**: el peor caso llegó a 4.362.
+- **La intensidad se acota POR ESCENA y nunca sube** (`resolveSceneIntensity`).
+  Caras tapadas o grupo denso bajan a «sutil»; tres personas o más, a «natural».
+  El motivo es que cada acción pedida es una ocasión más de que el motor
+  redibuje lo que la foto no muestra. **Y el motivo se le enseña al usuario**:
+  una escena que se mueve menos que las otras sin explicación se lee como un
+  fallo del motor.
+- **La oclusión se pide en POSITIVO**, como todo lo demás: «lo que la fotografía
+  tapa sigue tapado», no «no inventes lo que hay detrás». Es además el mecanismo
+  concreto del defecto — lo que la foto oculta es exactamente lo que un modelo
+  generativo completa.
+- **Un sujeto inventado descalifica igual que un logotipo redibujado**, y por el
+  mismo motivo: no hay criterio estético que valga. Una pieza institucional no
+  puede mostrar a alguien que no estuvo ahí. Entra en `descalificados` junto a
+  `brandAltered` y `textIllegible`, con el mismo tope de reintentos.
+- **La escala de fidelidad es 0-10 y se pinta `X/10`.** La Biblioteca la
+  mostraba como porcentaje (`score * 100`) y decía «800 %». Es la misma clase de
+  error que el `score: 1` del 2.5D en v4.676: la escala está escrita en
+  `minFidelityScore: 7`, no hay que deducirla.
+- **`ScenePeopleCheck` es un componente compartido**, no una copia en cada
+  pantalla: lo usan el Creador y la Biblioteca, y duplicarlo los dejaría
+  separarse en silencio.
+
 - El medidor de créditos es **propio** (`REEL_MONTHLY_CREDIT_LIMIT`), no el saldo
   real de KIE. No presentarlo como el saldo del proveedor.
 - **El reparto de motores está DECLARADO, no sólo cumplido** (v4.669,
@@ -666,6 +734,8 @@ en `config` sin que el servidor los leyera.
 | `REEL_MUSIC_MODEL` | Modelo de Suno vía KIE, si se activa a propósito |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
 | `REEL_CREDITS_EXPANSION` | Créditos estimados por adaptación de lienzo (4 por defecto) |
+| `REEL_PEOPLE_NEGATIVE_PROMPT` | `off` apaga el prompt negativo de personas. El censo y la oclusión siguen |
+| `REEL_PROMPT_MAX_CHARS` | Tope de caracteres del prompt de escena (2500, el que declara Kling) |
 | `REEL_RATE_KIE_CREDIT_USD` y compañía | Tarifas del panel de auditoría. Sin ellas no hay costo en dinero, a propósito |
 | `CRON_SECRET` | Protege `/api/cron/reels-tick`, igual que el resto de los crons |
 | `REEL_TTS_PROVIDER` | `elevenlabs` \| `openai` (por defecto: el que tenga credencial) |
