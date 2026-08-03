@@ -8,10 +8,16 @@ import db from '../lib/db.js';
 import crypto from 'crypto';
 import { s3 } from '../lib/storage.js';
 import { normalizeForMeta, validateForMeta } from '../lib/phone.js';
+import { openWebhookEvent, closeWebhookEvent, verifySignature, logOutbound } from '../lib/crmWebhookAudit.js';
 import pkg from '@aws-sdk/client-s3';
 const { PutObjectCommand } = pkg;
 
 const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
+
+// Queda en el arranque en frío para poder confirmar QUÉ versión está atendiendo
+// los webhooks. Es lo primero que hace falta saber cuando el módulo se comporta
+// distinto de lo que dice el código que uno está leyendo.
+console.log('[WA-CRM] Controlador v4.702 — auditoría de webhooks y salidas activa.');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -94,16 +100,77 @@ async function trySyncContactPhoto(/* contactId, phone, name, clubId */) {
     return; // Cloud API no provee fotos de perfil de los contactos
 }
 
-async function metaApiCall({ method = 'GET', path, body, token }) {
+/**
+ * Única puerta de salida hacia Meta. TODA llamada queda registrada en
+ * `CrmOutboundLog` con su petición, su respuesta y su código HTTP (v4.702).
+ *
+ * Se instrumenta acá y no en cada sitio que envía porque es el punto por el que
+ * pasan todos: envío de campaña, respuesta de la bandeja, alta de plantilla y
+ * comprobación de la conexión. Hasta v4.701 el error de Meta se convertía en un
+ * `Error` con el mensaje y se perdía todo lo demás —el `code`, el `error_data`
+ * con el detalle, el estado HTTP—, que es exactamente lo que hace falta para
+ * distinguir «el número está limitado» de «la plantilla no existe».
+ *
+ * `audit` es el contexto que el registro no puede deducir (campaña, contacto,
+ * plantilla). Sin él la llamada se registra igual: perder la traza por no saber
+ * a qué campaña pertenece sería el peor de los dos males.
+ */
+async function metaApiCall({ method = 'GET', path, body, token, clubId = null, audit = {} }) {
     const url = `${WA_API_BASE}${path}`;
     const opts = {
         method,
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     };
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    const data = await res.json();
-    if (data.error) throw new Error(`Meta API Error: ${data.error.message}`);
+
+    const startedAt = Date.now();
+    let httpStatus = null;
+    let data = null;
+    let thrown = null;
+    try {
+        const res = await fetch(url, opts);
+        httpStatus = res.status;
+        data = await res.json();
+    } catch (err) {
+        // Fallo de red o respuesta que no es JSON. También se registra: un
+        // tiempo agotado contra Meta es indistinguible de un envío perdido si no
+        // queda anotado.
+        thrown = err;
+    }
+
+    const metaError = data?.error || null;
+    await logOutbound({
+        clubId,
+        operation: audit.operation || `${method} ${path.replace(/^\/\d+/, '/:id')}`,
+        endpoint: url,
+        requestBody: body || null,
+        httpStatus,
+        responseBody: data,
+        messageId: data?.messages?.[0]?.id || null,
+        errorCode: metaError?.code ?? (thrown ? 'network' : null),
+        errorMessage: metaError?.message || thrown?.message || null,
+        durationMs: Date.now() - startedAt,
+        ok: !thrown && !metaError,
+        campaignId: audit.campaignId || null,
+        journeyId: audit.journeyId || null,
+        contactId: audit.contactId || null,
+        phone: audit.phone || null,
+        templateName: audit.templateName || null,
+        userId: audit.userId || null,
+    });
+
+    if (thrown) throw thrown;
+    if (metaError) {
+        // El detalle de Meta viaja en el Error para que llegue a la UI: sus
+        // rechazos son específicos y convertirlos en «no se pudo enviar» deja a
+        // quien corrige sin saber qué corregir.
+        const err = new Error(`Meta API Error: ${metaError.message}`);
+        err.metaCode = metaError.code;
+        err.metaSubcode = metaError.error_subcode;
+        err.metaDetails = metaError.error_data?.details || null;
+        err.httpStatus = httpStatus;
+        throw err;
+    }
     return data;
 }
 
@@ -136,6 +203,8 @@ export async function sendWhatsAppTextMessage({ clubId, contact, text }) {
         path: `/${config.phoneNumberId}/messages`,
         body: apiBody,
         token: config.accessToken,
+        clubId,
+        audit: { operation: 'text_reply', contactId: contact.id, phone: contact.phone },
     });
 
     const messageId = apiRes.messages?.[0]?.id || null;
@@ -210,6 +279,8 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
             const metaTmpl = await metaApiCall({
                 path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
                 token: config.accessToken,
+                clubId: config.clubId || null,
+                audit: { operation: 'template_header_lookup', templateName: template.name },
             });
             const headerComp = metaTmpl?.data?.[0]?.components?.find(c => c.type === 'HEADER');
             const headerUrl = headerComp?.example?.header_url?.[0];
@@ -317,6 +388,8 @@ export const verifyConfig = async (req, res) => {
         const data = await metaApiCall({
             path: `/${config.phoneNumberId}?fields=verified_name,display_phone_number,quality_rating`,
             token: config.accessToken,
+            clubId,
+            audit: { operation: 'verify_config' },
         });
         await db.query(`UPDATE "WhatsAppConfig" SET "lastVerifiedAt"=NOW() WHERE "clubId"=$1`, [clubId]);
         res.json({ success: true, account: { verifiedName: data.verified_name, phoneNumber: data.display_phone_number, qualityRating: data.quality_rating } });
@@ -635,6 +708,13 @@ export const sendMessageToContact = async (req, res) => {
             path: `/${config.phoneNumberId}/messages`,
             body: apiBody,
             token: config.accessToken,
+            clubId,
+            audit: {
+                operation: 'manual_send',
+                contactId: contact?.id || null,
+                phone: toPhone,
+                templateName: logTemplateName,
+            },
         });
 
         const messageId = apiRes.messages?.[0]?.id;
@@ -1092,6 +1172,8 @@ export const syncTemplatesFromMeta = async (req, res) => {
         const data = await metaApiCall({
             path: `/${config.wabaId}/message_templates?fields=id,name,category,language,status,components`,
             token: config.accessToken,
+            clubId,
+            audit: { operation: 'template_sync' },
         });
 
         if (!data?.data) return res.status(400).json({ error: 'No se obtuvieron templates de Meta. Verifica tus credenciales.' });
@@ -1349,6 +1431,14 @@ export const sendCampaign = async (req, res) => {
                         to: toPhone,
                         type: 'template',
                         template: templatePayload,
+                    },
+                    clubId,
+                    audit: {
+                        operation: 'campaign_send',
+                        campaignId: id,
+                        contactId: contact.id,
+                        phone: toPhone,
+                        templateName: template.name,
                     },
                     token: config.accessToken,
                 });
@@ -1711,26 +1801,84 @@ export const handleWebhook = async (req, res) => {
     // Procesamos ANTES de responder 200 para que la automatización (LLM + envío)
     // se complete de forma fiable en serverless. La idempotencia por messageId
     // evita respuestas duplicadas si Meta reintenta el webhook.
+    //
+    // Todo lo que entra se PERSISTE antes de procesarlo (v4.702). Hasta v4.701
+    // el único rastro eran `console.warn`/`console.error`, efímeros en Vercel:
+    // cuando el módulo dejó de reflejar entregas no había forma de saber si Meta
+    // había mandado los eventos, si habían llegado o si los habíamos descartado.
+    // Sin ese registro la pregunta no tiene respuesta, y por eso se guarda ANTES
+    // —no después— de intentar nada.
+    const startedAt = Date.now();
+    const body = req.body || {};
+    let auditId = null;
+    let resolution = null;
+    let outcome = 'ok';
+    let failure = null;
+    let clubId = null;
+
     try {
-        const body = req.body;
-        if (body.object !== 'whatsapp_business_account') return;
+        const signatureValid = verifySignature(req.rawBody, req.headers['x-hub-signature-256']);
+        auditId = await openWebhookEvent({ body, headers: req.headers, signatureValid });
+
+        if (body.object !== 'whatsapp_business_account') { resolution = 'objeto_ajeno'; outcome = 'skipped'; return; }
         const changes = body.entry?.[0]?.changes?.[0]?.value;
-        if (!changes) return;
+        if (!changes) { resolution = 'sin_cambios'; outcome = 'skipped'; return; }
 
         // Resolve clubId from phoneNumberId in the webhook metadata
         const phoneNumberId = changes.metadata?.phone_number_id;
-        let clubId = null;
+        const wabaId = body.entry?.[0]?.id || null;
         let clubToken = null;
         if (phoneNumberId) {
             const configR = await db.query(`SELECT \"clubId\", \"accessToken\" FROM \"WhatsAppConfig\" WHERE \"phoneNumberId\"=$1 ORDER BY \"lastVerifiedAt\" DESC LIMIT 1`, [phoneNumberId]);
             if (configR.rows.length) {
                 clubId = configR.rows[0].clubId;
                 clubToken = configR.rows[0].accessToken;
+                resolution = 'phone_number_id';
+            }
+        }
+
+        // Respaldo por WABA. El `phoneNumberId` guardado se queda viejo cuando
+        // alguien migra el número o rehace la conexión en el panel de Meta, y
+        // entonces TODO —mensajes y estados— se descartaba en silencio. La cuenta
+        // (`entry[0].id`) es el mismo dato en los dos lados y sobrevive a eso.
+        if (!clubId && wabaId) {
+            const byWaba = await db.query(
+                `SELECT "clubId","accessToken","phoneNumberId" FROM "WhatsAppConfig" WHERE "wabaId"=$1 ORDER BY "lastVerifiedAt" DESC LIMIT 1`,
+                [wabaId]
+            );
+            if (byWaba.rows.length) {
+                clubId = byWaba.rows[0].clubId;
+                clubToken = byWaba.rows[0].accessToken;
+                resolution = 'waba_id';
+                console.warn(`[WA-CRM] phoneNumberId ${phoneNumberId} no coincide con el guardado (${byWaba.rows[0].phoneNumberId}); se encaminó por WABA ${wabaId}.`);
             }
         }
 
         if (!clubId) {
-            console.warn(`[WA-CRM] Webhook received for unknown phoneNumberId: ${phoneNumberId}`);
+            // Un webhook que no se puede encaminar es la avería que deja el módulo
+            // mudo sin dar la cara: los envíos salen, Meta confirma la entrega y
+            // acá no se anota nada. Se avisa y queda la fila con el payload.
+            resolution = 'unknown_phone_number_id';
+            outcome = 'skipped';
+            console.warn(`[WA-CRM] Webhook received for unknown phoneNumberId: ${phoneNumberId} (waba=${wabaId})`);
+            try {
+                const [{ raiseAlert }, { resolvePlatformClubId }] = await Promise.all([
+                    import('../lib/crmAlerts.js'),
+                    import('../lib/crmTenant.js'),
+                ]);
+                const platformClubId = await resolvePlatformClubId();
+                if (platformClubId) {
+                    await raiseAlert({
+                        clubId: platformClubId,
+                        type: 'webhook_unrouted',
+                        title: 'Llegó un webhook de WhatsApp que no corresponde a ningún sitio',
+                        detail: `Meta mandó un evento desde el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}) y ninguna configuración guardada coincide. Mientras siga así, ni los mensajes entrantes ni los estados de entrega se registran. Revisar el identificador del número en Configuración → WhatsApp.`,
+                        dedupeKey: `webhook_unrouted:${phoneNumberId || wabaId || 'na'}:${new Date().toISOString().slice(0, 10)}`,
+                    });
+                }
+            } catch (alertErr) {
+                console.error('[WA-CRM] No se pudo levantar la alerta de webhook sin encaminar:', alertErr.message);
+            }
             return;
         }
 
@@ -1928,11 +2076,21 @@ export const handleWebhook = async (req, res) => {
 
         // Handle status updates
         if (changes.statuses) {
+            let unmatched = 0;
             for (const s of changes.statuses) {
                 const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000) : new Date();
                 const status = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' }[s.status] || s.status;
                 const logR = await db.query(`SELECT id,"campaignId","contactId" FROM "WhatsAppMessageLog" WHERE "messageId"=$1 LIMIT 1`, [s.id]);
-                if (!logR.rows.length) continue;
+                if (!logR.rows.length) {
+                    // El estado llegó pero no tenemos el envío. Significa que el
+                    // `messageId` que devolvió Meta al enviar no se guardó, o que
+                    // el envío salió desde otra herramienta. Antes era un `continue`
+                    // mudo, y es justo el caso en que la campaña queda en «0
+                    // entregados» pareciendo un fallo de entrega.
+                    unmatched++;
+                    console.warn(`[WA Webhook] Estado '${s.status}' de ${s.id} sin envío registrado.`);
+                    continue;
+                }
                 const log = logR.rows[0];
                 const tsField = `"${status}At"`;
 
@@ -1958,12 +2116,23 @@ export const handleWebhook = async (req, res) => {
                     await db.query(`UPDATE "WhatsAppContact" SET ${fm[status]}=${fm[status]}+1,"updatedAt"=NOW() WHERE id=$1`, [log.contactId]).catch(() => {});
                 }
             }
+            if (unmatched) {
+                outcome = 'partial';
+                resolution = `${resolution || 'ok'}; ${unmatched} de ${changes.statuses.length} estados sin envío registrado`;
+            }
         }
     } catch (err) {
+        outcome = 'error';
+        failure = err;
         console.error('WA webhook error:', err);
     } finally {
         // Responder 200 exactamente una vez (Meta sólo necesita el ACK).
         if (!res.headersSent) res.sendStatus(200);
+        // Cerrar la bitácora va DESPUÉS del 200: es registro nuestro, no puede
+        // sumar latencia al acuse que Meta espera.
+        await closeWebhookEvent(auditId, {
+            clubId, resolution, outcome, error: failure, durationMs: Date.now() - startedAt,
+        });
     }
 };
 

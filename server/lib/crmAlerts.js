@@ -32,6 +32,7 @@ export const ALERT_TYPES = [
   { type: 'active_no_onboarding', label: 'Sitio activo sin onboarding',         severity: 'warning' },
   { type: 'no_activity',          label: 'Club sin actividad',                  severity: 'info' },
   { type: 'budget_threshold',     label: 'Presupuesto mensual',                 severity: 'warning' },
+  { type: 'webhook_unrouted',     label: 'Webhook sin sitio que lo reciba',     severity: 'error' },
 ];
 
 const BY_TYPE = Object.fromEntries(ALERT_TYPES.map(a => [a.type, a]));
@@ -273,4 +274,13 @@ export async function sweepAlerts(clubId, { settings = {}, now = new Date() } = 
   return { created };
 }
 
-export default { ALERT_TYPES, alertLabel, sweepAlerts, budgetStatus };
+/**
+ * Levanta una alerta desde fuera del barrido.
+ *
+ * El barrido corre cada minuto y observa el estado; esto es para el hecho que
+ * NO deja rastro observable después —un webhook que llegó y no se pudo
+ * encaminar—: si no se anota en el momento, nadie va a poder deducirlo luego.
+ */
+export const raiseAlert = raise;
+
+export default { ALERT_TYPES, alertLabel, sweepAlerts, budgetStatus, raiseAlert: raise };

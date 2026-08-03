@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.701.0 | 2026-08-03 (Biblioteca de plantillas: redacción con IA, carpetas y envío a Meta)
-// Cache bust: 2026-08-03f
+// UI V4.702.0 | 2026-08-03 (Auditoría del CRM WhatsApp: trazabilidad de webhooks y envíos, panel de diagnóstico)
+// Cache bust: 2026-08-03j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.702.0',
+        title: 'El WhatsApp CRM ahora deja rastro de todo lo que entra y sale \ud83d\udd0d',
+        description: 'Se reportó que las conversaciones entrantes y las campañas enviadas no reflejaban lo que se esperaba, y al ir a averiguar por qué apareció el problema de fondo: el módulo no dejaba ningún rastro. Todo lo que llegaba de WhatsApp se procesaba y se olvidaba, y lo único que quedaba eran mensajes en la consola del servidor, que en nuestra infraestructura duran minutos. Así, la pregunta «¿Meta mandó las confirmaciones del 3 de agosto?» no tenía respuesta posible: no había dónde mirar. Esta versión lo corrige de raíz. Ahora cada webhook que manda Meta se guarda ENTERO —el contenido completo, sin recortar— antes de intentar procesarlo, junto con qué se hizo con él, cuánto tardó y, si falló, por qué. Y cada llamada que hacemos hacia Meta queda registrada con lo que mandamos y lo que contestó, incluido el código de error exacto: hasta ahora ese detalle se perdía y sólo quedaba «no se pudo enviar», que no alcanza para arreglar nada. Con eso a la vista aparecieron dos fallas reales. La primera: cuando el identificador del número guardado en el panel no coincidía con el que Meta usa —cosa que pasa sola cuando alguien migra el número o rehace la conexión— el módulo descartaba el evento completo en silencio, mensajes y confirmaciones de entrega incluidos. Desde afuera se veía idéntico a que Meta no hubiera mandado nada, y por eso las campañas quedaban en «0 entregados» pareciendo un fallo de entrega cuando los mensajes sí habían llegado. Ahora se rescata por la cuenta de WhatsApp, que es un dato que sobrevive a ese cambio, y si aun así no se puede encaminar queda el registro y salta una alerta en vez de perderse. La segunda: una confirmación de entrega que no correspondía a ningún envío conocido también se descartaba sin decir nada; ahora se cuenta y se informa. Además hay una pestaña nueva, «Diagnóstico», que pregunta en vivo: si el token sirve, si el número que tenemos guardado es de verdad uno de la cuenta, si Meta sigue suscrita a nuestro webhook —se da de baja sola cuando el servidor falla o tarda, y cuando eso pasa todo parece normal salvo que no vuelve ninguna confirmación—, qué plantillas existen acá y no allá, y qué llegó y qué salió de verdad. Trae también una prueba controlada que manda un mensaje real y muestra la respuesta de Meta tal cual, sin interpretarla. Cada comprobación distingue «bien» de «no se pudo comprobar», que no es lo mismo: dar por buena una comprobación que no se hizo manda a buscar el problema donde no está.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'diagnostico', 'webhooks', 'meta', 'auditoria'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un webhook cuyo identificador de número no coincide ya no se descarta: se rescata por la cuenta de WhatsApp.' },
+            { type: 'fixed', text: 'Cuando aun así no se puede encaminar, queda registrado y salta una alerta. Antes desaparecía en silencio.' },
+            { type: 'fixed', text: 'Una confirmación de entrega sin envío conocido ya no se ignora: se cuenta y se informa.' },
+            { type: 'added', text: 'Todo webhook recibido se guarda completo, con su resultado, su duración y su error si lo hubo.' },
+            { type: 'added', text: 'Toda llamada a Meta queda registrada con la petición, la respuesta y el código de error exacto.' },
+            { type: 'added', text: 'Pestaña «Diagnóstico»: token, número, suscripción al webhook, plantillas y tráfico real.' },
+            { type: 'added', text: 'Comprobación de si Meta sigue suscrita al webhook, que es la avería que deja el módulo mudo sin avisar.' },
+            { type: 'added', text: 'Prueba controlada de envío que muestra la respuesta de Meta sin interpretarla.' },
+            { type: 'fixed', text: 'En el módulo de comunicaciones, las pestañas Historial y Plantillas de correo no cargaban sus datos.' },
+        ]
+    },
     {
         version: '4.701.0',
         title: 'Las plantillas de WhatsApp se redactan con IA y se envían a Meta desde el panel \u270d\ufe0f',

@@ -1032,6 +1032,75 @@ Las guardias de envío (horario, frecuencia, consentimiento, enlaces
 institucionales) **no** son de entorno: viven en `PlatformConfig` bajo
 `crm_automation_settings` y se editan desde el panel, sin desplegar.
 
+### Auditoría y diagnóstico (v4.702)
+
+El módulo no dejaba **ningún rastro persistente**. Todo iba a `console.warn` /
+`console.error`, efímeros en Vercel, así que «¿Meta mandó los estados del 3/8?»
+no tenía respuesta posible: no había dónde mirar. Eso era el defecto de fondo
+detrás de «las conversaciones y las campañas no reflejan lo esperado» — no se
+podía diagnosticar nada retroactivamente.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/crmWebhookAudit.js` | `CrmWebhookEvent` + `CrmOutboundLog`: persistencia, firma y consultas |
+| `server/lib/crmDiagnostics.js` | Comprobaciones en vivo contra Meta y contra nuestra base |
+| `server/controllers/crm/diagnostics.controller.js` | API del panel (sólo operador de plataforma) |
+| `src/components/admin/whatsapp/CrmDiagnostics.tsx` | La pestaña «Diagnóstico» |
+
+Pruebas: `npm run test:crm:diag` (69 casos, incluidas seis de punta a punta que
+llaman al `handleWebhook` real). Misma exigencia que `test:crm`: base vacía.
+
+**Reglas durables:**
+
+- **La fila del webhook se abre ANTES de procesar y se cierra después de
+  responder el 200.** Antes, porque un fallo a mitad de proceso tiene que dejar
+  rastro —es justo el caso que hay que diagnosticar—; después del 200, porque la
+  bitácora es registro nuestro y no puede sumar latencia al acuse que Meta
+  espera. Meta da de baja la suscripción cuando el endpoint tarda.
+- **El payload se guarda COMPLETO.** El campo que falta es siempre el que no se
+  guardó. Es `jsonb`, así que Postgres normaliza el orden de las claves: se
+  conserva el contenido, no los bytes.
+- **Un `phoneNumberId` que no coincide se rescata por el WABA.** Era el descarte
+  total y silencioso: el identificador guardado se queda viejo cuando alguien
+  migra el número o rehace la conexión, y entonces mensajes Y estados se
+  perdían. `entry[0].id` es el mismo dato en los dos lados y sobrevive a eso.
+  Si aun así no se encamina, queda la fila con su payload y salta
+  `webhook_unrouted` — nunca un `return` mudo.
+- **Un estado sin envío conocido se CUENTA, no se saltea.** Era un `continue`
+  mudo, y es exactamente el caso en que una campaña queda en «0 entregados»
+  pareciendo un fallo de entrega. El lote se marca `partial` y dice cuántos.
+- **Toda salida hacia Meta pasa por `metaApiCall` y queda registrada** con
+  petición, respuesta y `code`. El error de Meta se propaga con `metaCode` /
+  `metaDetails`: convertirlo en «no se pudo enviar» deja a quien corrige sin
+  saber qué. Hay DOS `metaApiCall` (controlador y `whatsappSender.js`) porque
+  hay dos caminos de envío — al tocar uno, mirar el otro.
+- **`verifySignature` devuelve `null` cuando no se puede comprobar**, que es
+  DISTINTO de `false`. Decir «firma inválida» sin haberla verificado manda a
+  buscar un problema de seguridad inexistente. El cuerpo crudo se captura desde
+  el `verify` de `express.json` y **sólo para la ruta del webhook**: guardarlo
+  para todas duplicaría en memoria cada subida de 25 MB.
+- **Una comprobación tiene CUATRO estados**, y `unknown` no es un tipo de «bien».
+  Presentar «no se pudo comprobar» como verde manda a buscar el problema donde
+  no está. Se pinta distinto a propósito.
+- **`GET /{waba}/subscribed_apps` es la comprobación que faltaba.** Meta da de
+  baja la suscripción por su cuenta cuando el endpoint falla o tarda; cuando
+  pasa, todo parece normal —los envíos salen y se entregan— pero no vuelve
+  ningún estado. Sin esta consulta la avería es indistinguible de un problema de
+  entrega.
+- **«Salieron N y no volvió NINGUNA confirmación» es un diagnóstico distinto de
+  «se entregaron pocas».** El primero no es un problema de entrega: los mensajes
+  llegaron y lo que no vuelve es la respuesta de Meta.
+- **El panel es del OPERADOR de la plataforma.** Lleva identificadores de Meta y
+  payloads crudos: infraestructura compartida, no datos de una organización. Lo
+  comprueba el controlador, no sólo la pantalla.
+- **El diagnóstico es de sólo lectura** salvo la prueba controlada, que manda un
+  mensaje real y lo avisa. Un panel que cambia cosas al mirarlas no sirve para
+  diagnosticar. Y un 200 en esa prueba confirma que Meta aceptó la llamada, **no**
+  que entregó: fuera de la ventana de 24 h acepta y no entrega.
+- **`auditSummary` incluye los webhooks con `clubId IS NULL`.** Son justamente
+  los que no se pudieron encaminar: filtrarlos escondería la avería que el
+  resumen existe para mostrar.
+
 **Estado:** las cuatro fases del pedido están implementadas.
 
 **Pendientes conocidos:** `WhatsAppChat.tsx` se conserva y convive con la bandeja
@@ -1484,10 +1553,11 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 22 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 24 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `EventRegistration`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
-`ReelCopy`, `ReelNarration`, `ReelUsage` y las once `ProjectFair*`.
+`ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`
+y las once `ProjectFair*`.
 (Más las seis del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory` y
