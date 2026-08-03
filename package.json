@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.693.0",
-  "cache_bust": "2026-08-03a (La sesion del Gestor de Proyectos y la del Asistente al Evento se ven en el avatar del encabezado y ya no parecen cerrarse al salir del panel.)",
+  "version": "4.694.0",
+  "cache_bust": "2026-08-03b (El Registro Nacional reconoce la cuenta existente aunque la categoria no declare su audiencia: se deduce del boton que lleva a ella o de su clave.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

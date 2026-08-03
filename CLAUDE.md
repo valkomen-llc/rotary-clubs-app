@@ -832,6 +832,23 @@ Registro Nacional lo reconoce y no le pide una segunda credencial.
   ['national']` por defecto). El administrador renombra las categorías; la
   audiencia no cambia. Sólo el nacional porque la cuenta que se reutiliza es la
   del Gestor de Proyectos, y esa convocatoria es para clubes colombianos.
+- **La audiencia de una categoría se RESUELVE, no se lee a secas** (v4.694,
+  `audienceOfCategory`). `normalizeCategory` siempre deja un valor —`'general'`
+  cuando no reconoce ninguno—, así que `category.audience || RESPALDO` **nunca**
+  cae al respaldo: el `||` era código muerto. Y el formulario de categorías del
+  panel nace en `'general'`, de modo que una categoría creada ahí no pertenece
+  a ninguna audiencia. Eso dejó la reutilización de cuenta apagada en silencio
+  en el Registro Nacional de producción, con el paso 1 pidiendo contraseña a
+  quien ya tenía sesión. El orden es: lo que declara la CATEGORÍA, lo que
+  declara el BOTÓN que lleva a ella (`settings.cta.buttons[].audience`, donde
+  el administrador ya dejó escrito cuál es el nacional) y, por último,
+  `AUDIENCE_BY_CATEGORY`. **Sigue siendo por audiencia**: la clave es el último
+  recurso y sólo para las que el módulo ya conoce. Al agregar una categoría con
+  clave nueva, declararle la audiencia — no confiar en la deducción.
+- **La audiencia resuelta viaja en la respuesta** (`accountLinking.audience`).
+  Es el dato del que depende todo esto y no se veía en ninguna parte: sin él,
+  un formulario que no reconoce una cuenta no distingue entre la política, la
+  sesión y la categoría.
 - **La política vive en la edición** (`settings.accountLinking`): `both` /
   `account_only` / `new_only`, más la lista de audiencias. Un evento nuevo
   decide sin desplegar.
