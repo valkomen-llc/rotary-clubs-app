@@ -450,4 +450,60 @@ router.get('/reels-tick', async (req, res) => {
     }
 });
 
+// ── Motor de automatización del WhatsApp CRM ────────────────────────────────
+// Tres etapas en el mismo tick, en este orden y no en otro:
+//
+//   1. OBSERVAR  — mirar el estado real de cada sitio, guardar su punto del
+//                  ciclo de vida y registrar los eventos que se encuentren.
+//   2. INSCRIBIR — por cada evento pendiente, meter en los recorridos a quien
+//                  corresponda.
+//   3. AVANZAR   — caminar las inscripciones vencidas y enviar.
+//
+// El orden importa: un evento observado en el paso 1 puede inscribir en el 2 y
+// enviar su primer mensaje en el 3, todo en el mismo minuto. Al revés harían
+// falta tres vueltas para el primer mensaje de un club recién activado.
+//
+// Cada etapa tiene su propio presupuesto y la suma queda por debajo de los 120 s
+// de `vercel.json`. Lo que no entra espera al minuto siguiente: nada se pierde,
+// porque las tres etapas trabajan sobre condiciones que siguen siendo ciertas.
+router.get('/crm-automation-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON crm-automation] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    const startedAt = Date.now();
+    try {
+        const { runLifecycleSweep } = await import('../lib/crmLifecycle.js');
+        const { enrollFromEvents, advanceRuns } = await import('../lib/journeyEngine.js');
+        const { resolvePlatformClubId } = await import('../lib/crmTenant.js');
+        const { ensureSeedJourneys } = await import('../lib/journeySeeds.js');
+
+        const now = new Date();
+        const clubId = await resolvePlatformClubId();
+
+        // La observación corre SIEMPRE, haya o no cuenta de WhatsApp: el tablero
+        // de ciclo de vida es útil por sí solo, y separar las dos cosas evita que
+        // una integración a medias deje al panel sin datos.
+        const lifecycle = await runLifecycleSweep({ now });
+
+        let seeds = { created: [] }, enrollment = { events: 0, enrolled: 0 }, delivery = { processed: 0, sent: 0 };
+        if (clubId) {
+            seeds = await ensureSeedJourneys(clubId);
+            enrollment = await enrollFromEvents({ clubId, now, limit: 200 });
+            delivery = await advanceRuns({ clubId, now, timeBudgetMs: 60_000, limit: 200 });
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+        if (lifecycle.transitions || enrollment.enrolled || delivery.sent) {
+            console.log(`[CRON crm-automation] sitios=${lifecycle.sites} transiciones=${lifecycle.transitions} ` +
+                `eventos=${lifecycle.eventsCreated} inscripciones=${enrollment.enrolled} enviados=${delivery.sent} en ${elapsedMs}ms`);
+        }
+        res.json({ ok: true, clubId, lifecycle, seeds, enrollment, delivery, elapsedMs });
+    } catch (e) {
+        console.error('[CRON crm-automation] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

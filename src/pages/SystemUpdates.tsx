@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.694.0 | 2026-08-03 (El Registro Nacional reconoce la cuenta existente aunque la categoría no declare su audiencia)
-// Cache bust: 2026-08-03b
+// UI V4.695.0 | 2026-08-03 (Motor de automatización del WhatsApp CRM: ciclo de vida, eventos observados y recorridos)
+// Cache bust: 2026-08-03c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.695.0',
+        title: 'El WhatsApp CRM acompaña a cada club durante todo el año \ud83e\udded',
+        description: 'Hasta ahora el módulo de WhatsApp servía para mandar campañas a mano: alguien armaba una lista, elegía una plantilla y pulsaba enviar. Eso deja fuera lo que más importa, que es escribirle a cada club en el momento en que le sirve — cuando acaba de activar su sitio, cuando le faltan seis semanas para renovar, cuando lleva un mes sin publicar nada. Esta versión agrega el motor que lo hace solo. La plataforma ahora mira el estado real de cada sitio y lo ubica en uno de diecisiete momentos del ciclo de vida: pendiente de activación, onboarding a medias, en producción, con bajo uso, próximo a renovar, en período de gracia, reactivado. Ese estado no se escribe a mano: se deduce de lo que ya ocurre en la plataforma —si conectó su dominio, si completó las fases de activación, si hizo una capacitación, si publicó algo el mes pasado, cuándo le vence la suscripción— y se recalcula solo. Cuando un club CAMBIA de momento, eso dispara los recorridos que estén escuchando. Un recorrido es una secuencia configurable de mensajes, esperas y bifurcaciones: «avisá a 45 días, esperá quince, volvé a avisar; si ya agendó su capacitación, no le insistas; si a los treinta días sigue sin hacerlo, avisale al equipo para que alguien lo llame». Se arman desde una pantalla nueva —Recorridos— sin tocar código, eligiendo el evento inicial, a quién le escribe, qué plantilla usa cada paso y qué pasa en cada rama; al lado se ve el recorrido dibujado, con sus ramas y dónde termina cada una. Vienen dos preparados, Bienvenida y Renovación, con los tiempos que pidió el equipo. Llegan en borrador y SIN plantillas asignadas a propósito: una plantilla de WhatsApp la tiene que aprobar Meta, así que cada paso trae escrito qué debe decir la suya y el sistema no deja activar el recorrido hasta que estén asignadas — es preferible eso a un recorrido que parece funcionar y falla en el primer envío. Nada sale sin pasar por las guardias de envío, que también son nuevas: no se le escribe a quien pidió la baja, no se manda marketing a quien no dio su consentimiento, no se escribe de madrugada —y la hora se calcula donde vive el destinatario, no donde está el servidor—, no se repite la misma plantilla dentro del período que se configure y hay un tope de mensajes por persona. La distinción importa: fuera de horario o pasado el tope el mensaje se APLAZA y sale cuando corresponde; una baja lo descarta para siempre. La lista de exclusión vive aparte del contacto justamente para que la baja sobreviva a que el contacto se borre y se vuelva a crear, que es como se le termina escribiendo a quien pidió que no. Un club que renueva en medio del recorrido de renovación sale de él en el acto, sin recibir los mensajes que faltaban. La pantalla de Ciclo de vida muestra en qué momento está cada sitio, permite fijar a mano los estados que la plataforma no puede observar —prospecto, cancelado— y reúne las alertas internas para el equipo, que son avisos nuestros y no le llegan al club. Todo el motor corre solo cada cinco minutos: no depende de que alguien tenga la pantalla abierta.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'automatizacion', 'ciclo de vida', 'renovaciones', 'onboarding', 'customer success'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Diecisiete estados del ciclo de vida por sitio, deducidos de lo que la plataforma ya observa y recalculados solos.' },
+            { type: 'added', text: 'Recorridos automatizados con esperas, bifurcaciones, etiquetas y alertas internas, configurables desde el panel.' },
+            { type: 'added', text: 'Recorridos de Bienvenida y Renovación precargados, en borrador hasta que se les asignen plantillas aprobadas por Meta.' },
+            { type: 'added', text: 'Guardias de envío: consentimiento, lista de exclusión global, horario en la zona del destinatario, tope de frecuencia y control de duplicados.' },
+            { type: 'added', text: 'Pantalla de Ciclo de vida con el estado de cada sitio, ajuste manual y alertas internas del equipo.' },
+            { type: 'added', text: 'Segmentación dinámica: las audiencias se vuelven a resolver en cada envío en lugar de ser una lista fija.' },
+            { type: 'added', text: 'Cada contacto queda vinculado a su organización, con su cargo, idioma y estado de consentimiento.' },
+        ]
+    },
     {
         version: '4.694.0',
         title: 'El Registro Nacional sí reconoce la cuenta que ya tienes \ud83d\udd11',

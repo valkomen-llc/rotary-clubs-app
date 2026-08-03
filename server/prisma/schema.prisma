@@ -895,6 +895,24 @@ model CrmContact {
   profilePictureUrl String?
   autoReplyDisabled    Boolean         @default(false)
   autoReplyPausedUntil DateTime?
+  // ── Vínculo con la organización y consentimiento (v4.695) ──────────────────
+  // Las crea `ensureAutomationSchema.js` en runtime (el build no corre db push).
+  // Están declaradas ACÁ ADEMÁS de allá a propósito: el guardián de db:push
+  // compara tablas, no columnas, así que una columna que sólo existiera en el
+  // ensure la borraría el primer `npm run db:push` sin que nada avisara.
+  //
+  // `siteId` apunta a un Club o un District SIN FK, igual que ExecutiveReport.siteIds
+  // y TrainingAppointment.districtId: es lo que permite que un mismo contacto
+  // cuelgue de cualquiera de los dos tipos de sitio sin arriesgar cascadas.
+  siteId          String?
+  siteType        String?   // club | district
+  orgRole         String?   // president | secretary | treasurer | technology | public_image | communications | platform_admin | other
+  language        String?   // es | en | pt | fr ...
+  consentState    String    @default("unknown") // granted | denied | unknown
+  consentSource   String?
+  consentAt       DateTime?
+  consentCategories String[] @default([])
+  lastInboundAt   DateTime?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   archivedAt      DateTime?            @db.Timestamptz(6)
@@ -1033,6 +1051,12 @@ model WhatsAppMessageLog {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   direction    String            @default("outgoing")
+  // Trazabilidad del motor de automatización (v4.695). Las crea
+  // `ensureAutomationSchema.js`; van declaradas acá para que `db:push` no las
+  // borre (el guardián compara tablas, no columnas). Sin FK: `CrmJourney` vive
+  // fuera de Prisma, como el resto de las tablas creadas en runtime.
+  journeyId    String?
+  journeyRunId String?
   campaign     WhatsAppCampaign? @relation(fields: [campaignId], references: [id])
   contact      CrmContact?  @relation(fields: [contactId], references: [id])
 
