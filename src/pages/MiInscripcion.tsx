@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { openLoginModal } from '../lib/loginModal';
+import { forgetSession, rememberProfile, emitSessionChange } from '../lib/siteSession';
 import { qrToSvg } from '../lib/qrcode';
 import { money, statusMeta } from '../lib/eventRegistrationSpec';
 import { Field } from '../components/forms/FairField';
@@ -155,8 +156,10 @@ const MiInscripcion = () => {
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
 
+    // Salir cierra la identidad en el sitio entero, no sólo en esta pantalla:
+    // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).
     const logout = useCallback(() => {
-        localStorage.removeItem(ATTENDEE_TOKEN_KEY);
+        forgetSession('attendee');
         setToken(null); setData(null); setDetail(null); setOpenId(null);
     }, []);
 
@@ -169,7 +172,19 @@ const MiInscripcion = () => {
                 if (!r.ok) throw new Error(body?.error || 'No pudimos cargar tu inscripción.');
                 return body as PortalData;
             })
-            .then(body => { if (body) setData(body); })
+            .then(body => {
+                if (!body) return;
+                setData(body);
+                // Nombre para el menú del avatar: el token lleva el correo, no
+                // cómo se llama quien entró.
+                const nombre = [body.profile?.firstName, body.profile?.lastName]
+                    .filter(Boolean).join(' ').trim();
+                rememberProfile('attendee', {
+                    name: nombre || null,
+                    org: body.registrations?.[0]?.event?.title || null,
+                    email: body.profile?.email || null,
+                });
+            })
             .catch(e => setNotice({ kind: 'error', text: e?.message || 'No pudimos cargar tu inscripción.' }))
             .finally(() => setLoading(false));
     }, [logout]);
@@ -187,6 +202,7 @@ const MiInscripcion = () => {
             .then(body => {
                 if (body?.token) {
                     localStorage.setItem(ATTENDEE_TOKEN_KEY, body.token);
+                    emitSessionChange();
                     setToken(body.token);
                     setNotice({ kind: 'ok', text: 'Tu correo quedó confirmado.' });
                 } else {
@@ -240,7 +256,7 @@ const MiInscripcion = () => {
     }
 
     if (!token || !data) {
-        const accept = (t: string) => { localStorage.setItem(ATTENDEE_TOKEN_KEY, t); setToken(t); };
+        const accept = (t: string) => { localStorage.setItem(ATTENDEE_TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <AttendeeReset token={resetToken} onToken={accept} />
             : <AttendeeSignIn notice={notice} />;

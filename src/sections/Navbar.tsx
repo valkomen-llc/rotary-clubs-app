@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn, Globe, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -17,6 +17,8 @@ import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 import { useEventCta } from '../components/EventRegistrationCta';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
 import { onOpenLoginModal, emitLoginSuccess } from '../lib/loginModal';
+// Las tres identidades del sitio, tal como las ve el encabezado (v4.693).
+import { useSiteSessions, closeAllSessions, initialsOf } from '../lib/siteSession';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // El ingreso con Google todavía no tiene flujo: el botón no llevaba ningún
@@ -161,10 +163,39 @@ const Navbar = () => {
   // no sólo justo después de iniciar sesión.
   const [justLinked, setJustLinked] = useState(false);
   const projectLink = useProjectFairLink(isAuthenticated);
-  const hasProjectPanel = projectLink.hasProject || justLinked;
   // Un postulante que no administra el sitio no tiene nada que hacer en el
   // panel administrativo: su acceso es el panel de su proyecto.
   const canManageSite = ['administrator', 'club_admin', 'district_admin', 'editor'].includes((user as any)?.role);
+
+  // ── Quién está dentro (v4.693) ────────────────────────────────────
+  // El encabezado conocía sólo la sesión de la plataforma, así que un Gestor
+  // de Proyectos que salía de su panel veía el ícono de "Ingresar" y creía que
+  // el sitio lo había echado: su token seguía guardado, pero nada lo decía.
+  // `useSiteSessions` lee las tres identidades y el avatar aparece con
+  // cualquiera de ellas.
+  const sessions = useSiteSessions();
+  const portalSession = sessions.find(s => s.realm === 'portal') || null;
+  const attendeeSession = sessions.find(s => s.realm === 'attendee') || null;
+  // La de la plataforma manda si existe; si no, la primera que haya.
+  const primarySession = sessions[0] || null;
+  const signedIn = isAuthenticated || sessions.length > 0;
+  const hasProjectPanel = projectLink.hasProject || justLinked || !!portalSession;
+  const avatarName = (user as any)?.name || primarySession?.name || null;
+  const avatarEmail = user?.email || primarySession?.email || '';
+  const avatarOrg = primarySession?.realm === 'platform' ? null : primarySession?.org || null;
+  // Rótulo del rol: con varias identidades abiertas es la única forma de saber
+  // con cuál se está mirando el sitio.
+  const avatarRole = isAuthenticated ? null : primarySession?.role || null;
+
+  /** Salir del sitio cierra las tres identidades, no una de las tres. */
+  const signOut = () => {
+    closeAllSessions();
+    logout();
+    setJustLinked(false);
+    setUserMenuOpen(false);
+    setMobileMenuOpen(false);
+    navigate('/');
+  };
 
   // Determine if it's a district site
   const currentHostname = window.location.hostname;
@@ -671,25 +702,29 @@ const Navbar = () => {
                 )}
               </button>
             )}
-            {isAuthenticated ? (
+            {signedIn ? (
               <div
                 className="relative"
                 onMouseEnter={() => setUserMenuOpen(true)}
                 onMouseLeave={() => setUserMenuOpen(false)}
               >
                 {/* Avatar Button */}
-                <button className="flex items-center justify-center w-8 h-8 rounded-full bg-rotary-blue text-white font-bold text-xs shadow-sm hover:bg-rotary-blue/90 transition-all ring-2 ring-white hover:ring-rotary-gold" title="Perfil">
-                  {user?.name ? user.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() ?? '?'}
+                <button className="flex items-center justify-center w-8 h-8 rounded-full bg-rotary-blue text-white font-bold text-xs shadow-sm hover:bg-rotary-blue/90 transition-all ring-2 ring-white hover:ring-rotary-gold" title={avatarEmail ? `Conectado como ${avatarEmail}` : 'Perfil'}>
+                  {initialsOf({ name: avatarName, email: avatarEmail })}
                 </button>
 
                 {/* Dropdown */}
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full pt-2 w-52 z-50">
+                  <div className="absolute right-0 top-full pt-2 w-56 z-50">
                     <div className="bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
                       {/* User info header */}
                       <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                        <p className="text-xs font-bold text-gray-800 truncate">{user?.name || 'Usuario'}</p>
-                        <p className="text-[11px] text-gray-400 truncate">{user?.email}</p>
+                        <p className="text-xs font-bold text-gray-800 truncate">{avatarName || 'Usuario'}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{avatarEmail}</p>
+                        {avatarOrg && <p className="text-[11px] text-gray-400 truncate">{avatarOrg}</p>}
+                        {avatarRole && (
+                          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-rotary-blue">{avatarRole}</p>
+                        )}
                       </div>
                       {/* Actions */}
                       <div className="py-1">
@@ -706,6 +741,18 @@ const Navbar = () => {
                             Mi Proyecto
                           </Link>
                         )}
+                        {/* La misma persona puede llevar los dos roles: gestiona
+                            su proyecto y además asiste al evento. */}
+                        {attendeeSession && (
+                          <Link
+                            to={attendeeSession.path}
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0"></span>
+                            {attendeeSession.menu}
+                          </Link>
+                        )}
                         {canManageSite && (
                           <Link
                             to="/admin/dashboard"
@@ -717,7 +764,7 @@ const Navbar = () => {
                           </Link>
                         )}
                         <button
-                          onClick={() => { logout(); setUserMenuOpen(false); }}
+                          onClick={signOut}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
                         >
                           <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0"></span>
@@ -826,14 +873,19 @@ const Navbar = () => {
                 })}
               </div>
 
-              {isAuthenticated ? (
+              {signedIn ? (
                 <>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 truncate">{avatarEmail}</p>
                   {hasProjectPanel && (
                     <Link to={PROJECT_FAIR_PORTAL_PATH} className="font-semibold text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Mi Proyecto</Link>
+                  )}
+                  {attendeeSession && (
+                    <Link to={attendeeSession.path} className="font-semibold text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>{attendeeSession.menu}</Link>
                   )}
                   {canManageSite && (
                     <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
                   )}
+                  <button onClick={signOut} className="text-left text-red-500">Cerrar sesión</button>
                 </>
               ) : (
                 <button
