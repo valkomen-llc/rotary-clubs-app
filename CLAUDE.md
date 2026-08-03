@@ -1496,6 +1496,25 @@ Prueba: `npm run test:assets` (21 casos). Pide `esbuild`, que se instala aparte.
 **Pendiente:** el cliente todavía no ha definido qué imágenes de la portada
 llevan versión internacional. El mecanismo está listo; falta la lista.
 
+### Casillas de imagen del panel (v4.700)
+
+**Toda casilla de imagen ofrece SIEMPRE dos vías**: subir un archivo nuevo o
+elegir uno ya cargado en la Biblioteca Multimedia. Al agregar una casilla nueva,
+usar `src/components/admin/ImageSourceOverlay.tsx` y un `MediaPicker` con
+`maxSelection={1}` — no volver a poner sólo el `<input type="file">`.
+
+- **Por qué importa**: sin la segunda vía, reutilizar un logo que ya estaba en la
+  Biblioteca obligaba a descargarlo del sitio y resubirlo, y quedaba duplicado
+  con otro nombre y otra dirección. Es justo lo que pasa con los logos, que se
+  cargan una vez y se reutilizan en varios sitios.
+- **Un solo `MediaPicker` por pantalla**, no uno por casilla: `pickerField`
+  guarda a qué campo se escribe lo elegido.
+- `MediaPicker` vive en `content-studio/` por historia, pero es genérico y lo
+  usan también Configuración → Identidad y el Generador de Outros.
+- **Con `maxSelection === 1` la selección se SUSTITUYE**, no se rechaza. Avisar
+  «máximo 1 imagen» obligaba a deseleccionar antes de poder cambiar de opinión.
+
+
 ## Traducción del sitio público — v4.662
 
 El selector de la barra superior es la **única** fuente del idioma activo, y

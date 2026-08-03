@@ -9,11 +9,13 @@ import {
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
     Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon,
-    ChevronUp, ChevronDown, GripVertical, Award, X, Crop
+    ChevronUp, ChevronDown, GripVertical, Award, X, Crop, Images
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
 import { toast } from 'sonner';
+import MediaPicker from '../../components/admin/content-studio/MediaPicker';
+import ImageSourceOverlay from '../../components/admin/ImageSourceOverlay';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
@@ -434,6 +436,10 @@ const ClubSettings: React.FC = () => {
             return file;
         }
     };
+
+    // Qué casilla de imagen abrió la Biblioteca. Un solo MediaPicker para
+    // todas: lo que cambia es a qué campo se escribe la elección.
+    const [pickerField, setPickerField] = useState<string | null>(null);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, folder: string, fieldName: string) => {
         const file = e.target.files?.[0];
@@ -947,16 +953,23 @@ const ClubSettings: React.FC = () => {
                                     <div className="w-28 h-28 rounded-full bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                         {formData.avatarUrl ? <img src={formData.avatarUrl} className="w-full h-full object-cover" /> : <Building2 className="w-10 h-10 text-gray-300" />}
                                     </div>
-                                    <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
-                                        <Upload className="text-white w-7 h-7" />
-                                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'avatars', 'avatarUrl')} accept="image/*" />
-                                    </label>
+                                    <ImageSourceOverlay
+                                        rounded="rounded-full"
+                                        onUpload={e => handleFileUpload(e, 'avatars', 'avatarUrl')}
+                                        onPickFromLibrary={() => setPickerField('avatarUrl')}
+                                    />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer">
-                                        <Upload className="w-4 h-4" /> Subir foto
-                                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'avatars', 'avatarUrl')} accept="image/*" />
-                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer">
+                                            <Upload className="w-4 h-4" /> Subir foto
+                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'avatars', 'avatarUrl')} accept="image/*" />
+                                        </label>
+                                        <button type="button" onClick={() => setPickerField('avatarUrl')}
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100">
+                                            <Images className="w-4 h-4" /> Biblioteca
+                                        </button>
+                                    </div>
                                     {formData.avatarUrl && (
                                         <button type="button" onClick={() => setFormData(prev => ({ ...prev, avatarUrl: '' }))} className="block text-xs font-bold text-gray-400 hover:text-red-500">Quitar avatar</button>
                                     )}
@@ -976,10 +989,11 @@ const ClubSettings: React.FC = () => {
                                         <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                             {formData.logo ? <img src={formData.logo} className="w-full h-full object-contain p-4" /> : <Building2 className="w-12 h-12 text-gray-300" />}
                                         </div>
-                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
-                                            <Upload className="text-white w-8 h-8" />
-                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos', 'logo')} accept="image/*" />
-                                        </label>
+                                        <ImageSourceOverlay
+                                            rounded="rounded-2xl"
+                                            onUpload={e => handleFileUpload(e, 'logos', 'logo')}
+                                            onPickFromLibrary={() => setPickerField('logo')}
+                                        />
                                     </div>
                                     <div className="space-y-2">
                                         <div className="flex justify-between text-[10px] font-bold text-gray-400">
@@ -1004,10 +1018,11 @@ const ClubSettings: React.FC = () => {
                                         <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                             {formData.logoIntl ? <img src={formData.logoIntl} className="w-full h-full object-contain p-4" /> : <Globe className="w-12 h-12 text-gray-300" />}
                                         </div>
-                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
-                                            <Upload className="text-white w-8 h-8" />
-                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos', 'logoIntl')} accept="image/*" />
-                                        </label>
+                                        <ImageSourceOverlay
+                                            rounded="rounded-2xl"
+                                            onUpload={e => handleFileUpload(e, 'logos', 'logoIntl')}
+                                            onPickFromLibrary={() => setPickerField('logoIntl')}
+                                        />
                                     </div>
                                     <p className="text-[11px] text-gray-400 leading-snug text-center">
                                         Se muestra en inglés, francés, portugués, alemán, italiano,
@@ -1029,10 +1044,11 @@ const ClubSettings: React.FC = () => {
                                         <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                             {formData.footerLogo ? <img src={formData.footerLogo} className="w-full h-full object-contain p-4" /> : <Building2 className="w-12 h-12 text-gray-300" />}
                                         </div>
-                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
-                                            <Upload className="text-white w-8 h-8" />
-                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos-footer', 'footerLogo')} accept="image/*" />
-                                        </label>
+                                        <ImageSourceOverlay
+                                            rounded="rounded-2xl"
+                                            onUpload={e => handleFileUpload(e, 'logos-footer', 'footerLogo')}
+                                            onPickFromLibrary={() => setPickerField('footerLogo')}
+                                        />
                                     </div>
                                 </div>
 
@@ -1042,10 +1058,11 @@ const ClubSettings: React.FC = () => {
                                         <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                             {formData.favicon ? <img src={formData.favicon} className="w-8 h-8 object-contain" /> : <Globe className="w-8 h-8 text-gray-300" />}
                                         </div>
-                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
-                                            <Upload className="text-white w-8 h-8" />
-                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'favicons', 'favicon')} accept="image/*" />
-                                        </label>
+                                        <ImageSourceOverlay
+                                            rounded="rounded-2xl"
+                                            onUpload={e => handleFileUpload(e, 'favicons', 'favicon')}
+                                            onPickFromLibrary={() => setPickerField('favicon')}
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -2390,6 +2407,21 @@ const ClubSettings: React.FC = () => {
                     </div>
                 </div>
             )}
+            {/* Un solo selector para todas las casillas de imagen. `pickerField`
+                dice a cuál se escribe lo elegido; `maxSelection={1}` porque
+                cada casilla guarda un archivo. */}
+            <MediaPicker
+                isOpen={!!pickerField}
+                maxSelection={1}
+                onClose={() => setPickerField(null)}
+                onSelect={items => {
+                    const chosen = items?.[0];
+                    if (chosen?.url && pickerField) {
+                        setFormData(prev => ({ ...prev, [pickerField]: chosen.url }));
+                    }
+                    setPickerField(null);
+                }}
+            />
         </AdminLayout>
     );
 };
