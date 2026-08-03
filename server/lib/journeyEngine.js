@@ -24,7 +24,7 @@ import { evaluateSend, getAutomationSettings } from './crmGuardrails.js';
 import { sendTemplate, getWhatsAppConfig } from './whatsappSender.js';
 import { lifecycleLabel } from './lifecycleSpec.js';
 import {
-  validateJourney, nodeById, entryNodeId, waitMs, resolveVariables,
+  validateJourney, nodeById, entryNodeId, waitMs, resolveVariables, pickVariant,
 } from './journeySpec.js';
 
 // Tope de nodos que una inscripción puede recorrer en un solo tick. Existe como
@@ -390,6 +390,27 @@ async function runOne(run, journey, { settings, now }) {
       continue;
     }
 
+    // ── prueba A/B ─────────────────────────────────────────────────────────
+    if (node.type === 'split') {
+      const variant = pickVariant(node.id, ctx.contact.id, node.variants || []);
+      if (!variant) {
+        // Sin variantes utilizables el recorrido no puede seguir. Se detiene y
+        // se dice, en vez de saltear el paso y falsear la prueba.
+        await recordStep(run, journey, node, 'failed', { error: 'La prueba A/B no tiene ninguna variante utilizable' });
+        await finishRun(run, 'failed', 'split_sin_variantes');
+        return { nodes: visited, sent, ended: true };
+      }
+      // La variante queda en el contexto de la inscripción: es lo que permite
+      // leer los resultados por variante sin recalcular el hash al analizar.
+      await db.query(
+        `UPDATE "CrmJourneyRun" SET context = context || $1::jsonb, "updatedAt"=NOW() WHERE id=$2`,
+        [JSON.stringify({ [`variant_${node.id}`]: variant.key || variant.next }), run.id]
+      ).catch(() => {});
+      await recordStep(run, journey, node, 'split', { variant: variant.key || variant.next });
+      nodeId = variant.next;
+      continue;
+    }
+
     // ── salir ──────────────────────────────────────────────────────────────
     if (node.type === 'exit') {
       await recordStep(run, journey, node, 'exited', { reason: node.reason || null, goalReached: !!node.goalReached });
@@ -563,6 +584,21 @@ export async function advanceRuns({ clubId, timeBudgetMs = 60_000, now = new Dat
   if (!config || config.enabled === false) {
     return { processed: 0, sent: 0, reason: 'whatsapp_deshabilitado' };
   }
+
+  // Corte por presupuesto. Se comprueba UNA vez por vuelta, no por envío: es una
+  // estimación sobre el mes entero y recalcularla por mensaje costaría una
+  // agregación por contacto sin cambiar la respuesta.
+  //
+  // Está APAGADO por defecto (`budgetHardStop`). Frenar los envíos por un número
+  // estimado puede dejar sin avisar a un club que vence mañana; quien lo enciende
+  // elige ese riesgo a sabiendas. Con el corte apagado sólo se levanta la alerta.
+  try {
+    const { budgetStatus } = await import('./crmAlerts.js');
+    const budget = await budgetStatus(tenant, settings);
+    if (budget.hardStop) {
+      return { processed: 0, sent: 0, reason: 'presupuesto_agotado', budget };
+    }
+  } catch { /* el presupuesto no puede impedir que el motor corra */ }
 
   const dueR = await db.query(
     `SELECT * FROM "CrmJourneyRun"

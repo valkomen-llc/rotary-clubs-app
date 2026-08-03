@@ -33,6 +33,10 @@ const { openConversation, listConversations, setConversationState, escalateToSup
 const { handleInboundMessage } = await import('../server/lib/crmChatbot.js');
 const { recommendNextTraining, buildBookingLink } = await import('../server/lib/crmTraining.js');
 const { SEED_JOURNEYS } = await import('../server/lib/journeySeeds.js');
+const { pickVariant } = await import('../server/lib/journeySpec.js');
+const { messagingMetrics, templatePerformance, costEstimate, conversionsByJourney } = await import('../server/lib/crmAnalytics.js');
+const { sweepAlerts, budgetStatus } = await import('../server/lib/crmAlerts.js');
+const { deriveFindings } = await import('../server/lib/crmRecommendations.js');
 
 let passed = 0, failed = 0;
 const results = [];
@@ -616,6 +620,155 @@ try {
   results.push(`  ✗ EXCEPCIÓN Fase 3: ${err.message}\n${err.stack}`);
 }
 
+// ── 10. Fase 4: A/B, analítica, alertas y recomendaciones ───────────────────
+section('10. Prueba A/B (pura)');
+{
+  const variants = [{ key: 'A', weight: 1, next: 'a' }, { key: 'B', weight: 1, next: 'b' }];
+
+  // Estable: el mismo contacto cae siempre en la misma variante.
+  const first = pickVariant('n1', 'contacto-1', variants);
+  const again = pickVariant('n1', 'contacto-1', variants);
+  check('la asignación es ESTABLE para el mismo contacto', first.key === again.key);
+
+  // Distinto nodo, posible distinta variante: cada prueba reparte por su cuenta.
+  check('nodos distintos reparten por separado',
+    typeof pickVariant('n2', 'contacto-1', variants).key === 'string');
+
+  // Reparto razonable sobre una muestra.
+  const counts = { A: 0, B: 0 };
+  for (let i = 0; i < 1000; i++) counts[pickVariant('n1', `c-${i}`, variants).key]++;
+  check('reparte parejo con pesos iguales', counts.A > 380 && counts.B > 380,
+    JSON.stringify(counts));
+
+  const weighted = [{ key: 'A', weight: 9, next: 'a' }, { key: 'B', weight: 1, next: 'b' }];
+  const wc = { A: 0, B: 0 };
+  for (let i = 0; i < 1000; i++) wc[pickVariant('nw', `c-${i}`, weighted).key]++;
+  check('respeta los pesos', wc.A > 800 && wc.B > 40, JSON.stringify(wc));
+
+  check('peso 0 saca a la variante del reparto',
+    pickVariant('nz', 'x', [{ key: 'A', weight: 0, next: 'a' }, { key: 'B', weight: 1, next: 'b' }]).key === 'B');
+  check('sin variantes utilizables devuelve null',
+    pickVariant('nn', 'x', [{ key: 'A', weight: 0, next: 'a' }]) === null);
+
+  // La validación tiene que ver las variantes como salidas.
+  const badSplit = {
+    name: 'X', trigger: { type: 'site.created' }, settings: { entryNodeId: 's' },
+    nodes: [{ id: 's', type: 'split', variants: [{ key: 'A', next: 'nope' }, { key: 'B', next: 'e' }] },
+            { id: 'e', type: 'exit' }],
+  };
+  check('detecta una variante que apunta a un paso inexistente',
+    validateJourney(badSplit).some(e => e.includes('nope')));
+  check('una prueba A/B con una sola variante no vale',
+    validateJourney({ ...badSplit, nodes: [{ id: 's', type: 'split', variants: [{ key: 'A', next: 'e' }] }, { id: 'e', type: 'exit' }] })
+      .some(e => e.includes('al menos dos variantes')));
+}
+
+section('11. Analítica, alertas y recomendaciones');
+const CLUB3 = uuid();
+const CLIENT3 = uuid();
+const CONTACT3 = uuid();
+try {
+  await db.query(`INSERT INTO "Club" (id,name,status,"subscriptionStatus",domain,"createdAt","updatedAt")
+                  VALUES ($1,'Origen 3','active','active','origen3.org',NOW(),NOW())`, [CLUB3]);
+  await db.query(`INSERT INTO "Club" (id,name,status,"subscriptionStatus",domain,"expirationDate","createdAt","updatedAt")
+                  VALUES ($1,'Cliente 3','active','active','cliente3.org',NOW() + INTERVAL '20 days',NOW(),NOW())`, [CLIENT3]);
+  await db.query(`INSERT INTO "WhatsAppConfig" (id,"clubId","phoneNumberId","wabaId","accessToken","verifyToken",enabled,"lastVerifiedAt","createdAt","updatedAt")
+                  VALUES ($1,$2,'PN3','WABA3','tok','vt',true,NOW(),NOW(),NOW())`, [uuid(), CLUB3]);
+  await db.query(`INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,status,"bodyText","createdAt","updatedAt")
+                  VALUES ($1,$2,'promo','Promo','MARKETING','es','approved','Hola',NOW(),NOW())`, [uuid(), CLUB3]);
+  await db.query(`INSERT INTO "WhatsAppContact"
+                    (id,"clubId",name,phone,status,tags,"siteId","siteType","orgRole","consentState","createdAt","updatedAt")
+                  VALUES ($1,$2,'Caro','+573007776655','active',ARRAY[]::text[],$3,'club','president','granted',NOW(),NOW())`,
+                  [CONTACT3, CLUB3, CLIENT3]);
+
+  // 30 envíos: 20 leídos, 10 fallidos (33 %), DENTRO de las últimas 24 h. La
+  // proporción está por encima del 25 % a propósito: es el umbral de la alerta de
+  // tasa de errores, y con 5 de 30 la alerta NO debía dispararse — la
+  // tasa de errores mira esa ventana, así que fechar la muestra dos días atrás
+  // haría que no encontrara nada (y la alerta estaría bien, la prueba mal).
+  const sentAt = new Date(Date.now() - 6 * 3600_000);
+  for (let i = 0; i < 30; i++) {
+    const failed = i >= 20;
+    await db.query(
+      `INSERT INTO "WhatsAppMessageLog"
+         (id,"clubId","contactId",phone,"templateName","bodyText",status,direction,"errorCode","sentAt","deliveredAt","readAt","createdAt","updatedAt")
+       VALUES ($1,$2,$3,'573007776655','promo','x',$4,'outgoing',$5,$6,$7,$8,$6,NOW())`,
+      [uuid(), CLUB3, CONTACT3, failed ? 'failed' : 'read',
+       failed ? '131047' : null, sentAt,
+       failed ? null : sentAt, failed ? null : sentAt]
+    );
+  }
+  // La respuesta va DESPUÉS del envío: "respondido" se define así.
+  await db.query(
+    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","contactId",phone,"bodyText",status,direction,"createdAt","updatedAt")
+     VALUES ($1,$2,$3,'573007776655','gracias','received','incoming',NOW() - INTERVAL '1 hour',NOW())`,
+    [uuid(), CLUB3, CONTACT3]
+  );
+
+  const metrics = await messagingMetrics(CLUB3, { days: 30 });
+  check('cuenta los envíos', metrics.sent === 30, `${metrics.sent}`);
+  check('cuenta los fallidos', metrics.failed === 10, `${metrics.failed}`);
+  check('calcula la tasa de fallo', metrics.failureRate === 33.3, `${metrics.failureRate}`);
+  check('detecta que hubo respuesta', metrics.responded > 0, `${metrics.responded}`);
+
+  const tpl = await templatePerformance(CLUB3, { days: 90 });
+  check('mide el rendimiento de la plantilla', tpl[0]?.templateName === 'promo' && tpl[0]?.sent === 30);
+  check('declara si la muestra alcanza', tpl[0]?.enoughSample === true);
+
+  // Costo: sin tarifa NO es cero.
+  const noRate = await costEstimate(CLUB3, { days: 30, rates: {} });
+  check('sin tarifa el costo es desconocido, no cero', noRate.totalCost === null);
+  check('y se dice qué tarifa falta', noRate.missingRates.includes('MARKETING'));
+
+  const withRate = await costEstimate(CLUB3, { days: 30, rates: { marketing: 0.05 } });
+  check('con tarifa sí calcula un costo', withRate.totalCost !== null && withRate.totalCost > 0,
+    JSON.stringify(withRate.lines));
+
+  // Presupuesto.
+  const noBudget = await budgetStatus(CLUB3, {});
+  check('sin presupuesto configurado no se inventa uno', noBudget.configured === false);
+  const noRates = await budgetStatus(CLUB3, { monthlyBudget: 100 });
+  check('con presupuesto pero sin tarifas se dice que faltan', noRates.configured === false && noRates.reason === 'sin_tarifas');
+  const okBudget = await budgetStatus(CLUB3, { monthlyBudget: 100, rates: { marketing: 0.05 } });
+  check('con ambos, el presupuesto se puede evaluar', okBudget.configured === true && okBudget.used > 0);
+  check('el corte duro está apagado por defecto', okBudget.hardStop === false);
+
+  // Alertas.
+  const alerts = await sweepAlerts(CLUB3, { settings: { monthlyBudget: 100, rates: { marketing: 0.05 } } });
+  check('el barrido levanta alertas', alerts.created > 0, JSON.stringify(alerts));
+  const errAlert = await db.query(
+    `SELECT 1 FROM "CrmAlert" WHERE "clubId"=$1 AND type='high_error_rate'`, [CLUB3]);
+  check('detecta la tasa alta de errores', errAlert.rows.length === 1);
+
+  const before = (await db.query(`SELECT COUNT(*)::int n FROM "CrmAlert" WHERE "clubId"=$1`, [CLUB3])).rows[0].n;
+  await sweepAlerts(CLUB3, { settings: {} });
+  const after = (await db.query(`SELECT COUNT(*)::int n FROM "CrmAlert" WHERE "clubId"=$1`, [CLUB3])).rows[0].n;
+  check('barrer dos veces NO duplica las alertas del día', after === before, `${before} → ${after}`);
+
+  // Recomendaciones: sobre datos medidos, sin modelo.
+  const { findings, sampleFloor } = await deriveFindings(CLUB3, { days: 30 });
+  check('las recomendaciones salen de datos medidos', Array.isArray(findings));
+  check('detecta la tasa de fallo alta', findings.some(f => f.key === 'failure_rate'), JSON.stringify(findings.map(f => f.key)));
+  check('cada hallazgo trae su evidencia', findings.every(f => !!f.evidence && !!f.suggestion));
+  check('declara el piso de muestra', sampleFloor >= 20);
+
+  // Con muy pocos datos no se opina.
+  const CLUB4 = uuid();
+  await db.query(`INSERT INTO "Club" (id,name,status,"subscriptionStatus",domain,"createdAt","updatedAt")
+                  VALUES ($1,'Origen 4','active','active','origen4.org',NOW(),NOW())`, [CLUB4]);
+  const quiet = await deriveFindings(CLUB4, { days: 30 });
+  check('sin muestra suficiente NO se recomienda nada', quiet.findings.length === 0,
+    JSON.stringify(quiet.findings.map(f => f.key)));
+  await db.query(`DELETE FROM "Club" WHERE id=$1`, [CLUB4]);
+
+  // Conversiones: sin evento posterior no se atribuye nada.
+  const conv = await conversionsByJourney(CLUB3, { days: 90 });
+  check('sin recorridos no hay conversiones que atribuir', Array.isArray(conv));
+} catch (err) {
+  failed++;
+  results.push(`  ✗ EXCEPCIÓN Fase 4: ${err.message}\n${err.stack}`);
+}
+
 // ── Limpieza ────────────────────────────────────────────────────────────────
 try {
   await db.query(`DELETE FROM "CrmJourneyStep"`);
@@ -632,10 +785,10 @@ try {
   await db.query(`DELETE FROM "TechnicalRequest" WHERE type='whatsapp_crm'`);
   await db.query(`DELETE FROM "CrmSuppression"`);
   await db.query(`DELETE FROM "WhatsAppMessageLog"`);
-  await db.query(`DELETE FROM "WhatsAppContact" WHERE "clubId" IN ($1,$2)`, [CLUB, CLUB2]);
-  await db.query(`DELETE FROM "WhatsAppTemplate" WHERE "clubId"=$1`, [CLUB]);
-  await db.query(`DELETE FROM "WhatsAppConfig" WHERE "clubId" IN ($1,$2)`, [CLUB, CLUB2]);
-  await db.query(`DELETE FROM "Club" WHERE id IN ($1,$2,$3,$4)`, [CLUB, CLIENT_CLUB, CLUB2, CLIENT_CLUB2]);
+  await db.query(`DELETE FROM "WhatsAppContact" WHERE "clubId" IN ($1,$2,$3)`, [CLUB, CLUB2, CLUB3]);
+  await db.query(`DELETE FROM "WhatsAppTemplate" WHERE "clubId" IN ($1,$2)`, [CLUB, CLUB3]);
+  await db.query(`DELETE FROM "WhatsAppConfig" WHERE "clubId" IN ($1,$2,$3)`, [CLUB, CLUB2, CLUB3]);
+  await db.query(`DELETE FROM "Club" WHERE id IN ($1,$2,$3,$4,$5,$6)`, [CLUB, CLIENT_CLUB, CLUB2, CLIENT_CLUB2, CLUB3, CLIENT3]);
 } catch { /* la limpieza no debe tapar el resultado de las pruebas */ }
 
 console.log(results.join('\n'));

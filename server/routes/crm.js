@@ -223,6 +223,17 @@ router.delete('/agents/:userId', inbox.deleteAgent);
 
 router.put('/chatbot', inbox.updateChatbotSettings);
 
+// ── Analítica, centro de campañas y calendario (Fase 4, v4.697) ─────────
+import * as analytics from '../controllers/crm/analytics.controller.js';
+
+router.get('/analytics/dashboard', analytics.getAnalyticsDashboard);
+router.get('/analytics/journeys/:id/funnel', analytics.getJourneyFunnel);
+router.get('/analytics/campaigns', analytics.getCampaignCenter);
+router.get('/analytics/calendar', analytics.getCommunicationCalendar);
+router.get('/analytics/recommendations', analytics.getRecommendations);
+router.post('/alerts/sweep', analytics.runAlertSweep);
+router.put('/automation/budget', analytics.updateBudget);
+
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';
 router.post('/upload-media', uploadWAMedia.single('file'), (req, res) => {
