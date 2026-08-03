@@ -996,6 +996,19 @@ model WhatsAppTemplate {
   footerText     String?
   buttons        String?
   metaTemplateId String?
+  // ── Biblioteca de plantillas (v4.701) ──────────────────────────────────────
+  // Las crea `ensureAutomationSchema.js`; van declaradas acá para que `db:push`
+  // no las borre — el guardián compara tablas, no columnas.
+  //
+  // `folder` es la carpeta interna del equipo (bienvenida, renovación…), DISTINTA
+  // de `category`, que es lo que se le declara a Meta y define el precio.
+  // `variableTokens` ata cada {{n}} a un dato que el motor sabe resolver; sin él
+  // la plantilla se aprueba pero ningún recorrido puede alimentarla.
+  folder         String?
+  variableTokens  String?
+  variableSamples String?
+  rejectionReason String?
+  submittedAt     DateTime?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   campaigns      WhatsAppCampaign[]

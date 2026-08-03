@@ -37,6 +37,7 @@ const { pickVariant } = await import('../server/lib/journeySpec.js');
 const { messagingMetrics, templatePerformance, costEstimate, conversionsByJourney } = await import('../server/lib/crmAnalytics.js');
 const { sweepAlerts, budgetStatus } = await import('../server/lib/crmAlerts.js');
 const { deriveFindings } = await import('../server/lib/crmRecommendations.js');
+const { validateTemplate, toMetaComponents, normalizeTemplateName, renderPreview, TEMPLATE_FOLDERS, extractVariables } = await import('../server/lib/templateSpec.js');
 
 let passed = 0, failed = 0;
 const results = [];
@@ -767,6 +768,113 @@ try {
 } catch (err) {
   failed++;
   results.push(`  ✗ EXCEPCIÓN Fase 4: ${err.message}\n${err.stack}`);
+}
+
+// ── 12. Biblioteca de plantillas ────────────────────────────────────────────
+section('12. Reglas de Meta para plantillas');
+{
+  const base = {
+    name: 'aviso_renovacion', displayName: 'Aviso', category: 'UTILITY', language: 'es',
+    headerType: 'NONE', bodyText: 'Hola {{1}}, tu sitio vence el {{2}}. Podés renovar cuando quieras.',
+    variableTokens: ['nombre_contacto', 'fecha_vencimiento'],
+    variableSamples: ['María', '15 de septiembre'],
+    buttons: [{ type: 'QUICK_REPLY', text: 'Quiero renovar' }],
+  };
+  check('una plantilla correcta pasa', validateTemplate(base).ok,
+    JSON.stringify(validateTemplate(base).errors));
+
+  const bad = (patch) => validateTemplate({ ...base, ...patch }).errors;
+
+  check('rechaza un nombre con mayúsculas o espacios',
+    bad({ name: 'Aviso Renovacion' }).some(e => e.includes('minúsculas')));
+  check('rechaza el cuerpo que EMPIEZA con variable',
+    bad({ bodyText: '{{1}}, tu sitio vence pronto.' }).some(e => e.includes('EMPEZAR')));
+  check('rechaza el cuerpo que TERMINA con variable',
+    bad({ bodyText: 'Tu sitio vence el {{1}}' }).some(e => e.includes('TERMINAR')));
+  check('rechaza dos variables seguidas',
+    bad({ bodyText: 'Hola {{1}} {{2}}, todo bien por acá.' }).some(e => e.includes('dos variables seguidas')));
+  check('rechaza variables con saltos de numeración',
+    bad({ bodyText: 'Hola {{1}}, vence el {{3}} de este mes.', variableTokens: ['a','b'], variableSamples: ['x','y'] })
+      .some(e => e.includes('sin saltos')));
+  check('rechaza el cuerpo que se pasa de 1024',
+    bad({ bodyText: 'a'.repeat(1100) }).some(e => e.includes('1024')));
+  check('rechaza el pie con variables',
+    bad({ footerText: 'Club {{1}}' }).some(e => e.includes('pie no admite variables')));
+  check('rechaza más de dos botones de enlace',
+    bad({ buttons: [
+      { type: 'URL', text: 'a', url: 'https://x.co' },
+      { type: 'URL', text: 'b', url: 'https://x.co' },
+      { type: 'URL', text: 'c', url: 'https://x.co' },
+    ] }).some(e => e.includes('2 botones de enlace')));
+  check('rechaza un botón de enlace sin dirección',
+    bad({ buttons: [{ type: 'URL', text: 'Ir' }] }).some(e => e.includes('no tiene dirección')));
+  check('rechaza el texto de botón de más de 25',
+    bad({ buttons: [{ type: 'QUICK_REPLY', text: 'x'.repeat(30) }] }).some(e => e.includes('25')));
+  check('rechaza si faltan datos para las variables',
+    bad({ variableTokens: ['nombre_contacto'] }).some(e => e.includes('necesita saber de dónde sale')));
+  check('rechaza una categoría que Meta no acepta',
+    bad({ category: 'PROMOCIONAL' }).some(e => e.includes('UTILITY o MARKETING')));
+
+  // Advertencias: no bloquean pero se dicen.
+  const marketing = validateTemplate({ ...base, category: 'MARKETING' });
+  check('marketing avisa del consentimiento y el costo',
+    marketing.ok && marketing.warnings.some(w => w.includes('consentimiento')));
+  const noQuick = validateTemplate({ ...base, buttons: [{ type: 'URL', text: 'Ir', url: 'https://x.co' }] });
+  check('avisa que sin respuesta rápida no hay nada medible',
+    noQuick.warnings.some(w => w.includes('no reporta el clic')));
+
+  check('normaliza el nombre al formato de Meta',
+    normalizeTemplateName('Aviso de Renovación 2027') === 'aviso_de_renovacion_2027',
+    normalizeTemplateName('Aviso de Renovación 2027'));
+  check('extrae las variables del texto',
+    JSON.stringify(extractVariables('Hola {{1}}, vence el {{2}}.')) === '[1,2]');
+}
+
+section('13. Traducción al formato de Meta');
+{
+  const t = {
+    name: 'x', displayName: 'X', category: 'UTILITY', language: 'es',
+    headerType: 'TEXT', headerContent: 'Tu suscripción',
+    bodyText: 'Hola {{1}}, vence el {{2}} y podés renovarla en un minuto.',
+    footerText: 'Club Platform',
+    variableTokens: ['nombre_contacto', 'fecha_vencimiento'],
+    variableSamples: ['María', '15 de septiembre'],
+    buttons: [
+      { type: 'QUICK_REPLY', text: 'Renovar' },
+      { type: 'URL', text: 'Ver panel', url: 'https://x.co/admin' },
+    ],
+  };
+  const comps = toMetaComponents(t);
+  const byType = Object.fromEntries(comps.map(c => [c.type, c]));
+
+  check('arma los cuatro componentes', comps.length === 4, comps.map(c => c.type).join(','));
+  check('el encabezado va como TEXT', byType.HEADER?.format === 'TEXT');
+  check('el cuerpo lleva su texto', byType.BODY?.text === t.bodyText);
+  // Meta EXIGE `example` cuando hay variables; sin él rechaza sin explicar bien.
+  check('el cuerpo incluye los ejemplos que Meta exige',
+    Array.isArray(byType.BODY?.example?.body_text?.[0]) &&
+    byType.BODY.example.body_text[0].length === 2,
+    JSON.stringify(byType.BODY?.example));
+  check('los ejemplos son los cargados', byType.BODY.example.body_text[0][0] === 'María');
+  check('el pie viaja sin ejemplos', byType.FOOTER?.text === 'Club Platform' && !byType.FOOTER?.example);
+  check('los botones se traducen con su tipo',
+    byType.BUTTONS?.buttons?.[0]?.type === 'QUICK_REPLY' && byType.BUTTONS.buttons[1].url === 'https://x.co/admin');
+
+  // Sin variables no debe haber `example`: mandarlo vacío también da rechazo.
+  const plain = toMetaComponents({ ...t, bodyText: 'Un mensaje sin variables.', variableSamples: [] });
+  check('sin variables NO se manda example',
+    !plain.find(c => c.type === 'BODY').example);
+
+  const preview = renderPreview(t, ['María', '15 de septiembre']);
+  check('la vista previa reemplaza las variables', preview.includes('Hola María') && preview.includes('15 de septiembre'));
+  check('la vista previa incluye encabezado, pie y botones',
+    preview.includes('Tu suscripción') && preview.includes('Club Platform') && preview.includes('[ Renovar ]'));
+  check('sin valor, la vista previa marca el hueco',
+    renderPreview(t, []).includes('[1]'));
+
+  check('las carpetas son las catorce del pedido', TEMPLATE_FOLDERS.length === 14, `${TEMPLATE_FOLDERS.length}`);
+  check('cada carpeta declara su categoría de Meta',
+    TEMPLATE_FOLDERS.every(f => ['UTILITY', 'MARKETING'].includes(f.metaCategory)));
 }
 
 // ── Limpieza ────────────────────────────────────────────────────────────────

@@ -51,6 +51,12 @@ const EXPECTED_COLUMNS = [
   ['WhatsAppContact', 'lastInboundAt'],
   ['WhatsAppMessageLog', 'journeyId'],
   ['WhatsAppMessageLog', 'journeyRunId'],
+  // Biblioteca de plantillas (v4.701)
+  ['WhatsAppTemplate', 'folder'],
+  ['WhatsAppTemplate', 'variableTokens'],
+  ['WhatsAppTemplate', 'variableSamples'],
+  ['WhatsAppTemplate', 'rejectionReason'],
+  ['WhatsAppTemplate', 'submittedAt'],
 ];
 
 export async function ensureAutomationSchema() {
@@ -353,6 +359,31 @@ export async function ensureAutomationSchema() {
     ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyId" TEXT;
     ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyRunId" TEXT;
     CREATE INDEX IF NOT EXISTS "idx_wa_msglog_journey" ON "WhatsAppMessageLog"("journeyId","status");
+  `);
+
+  // Biblioteca de plantillas (v4.701). Declaradas también en `schema.prisma`.
+  //
+  // `folder` es la organización INTERNA del equipo (bienvenida, renovación…) y
+  // NO la `category` de Meta, que sólo admite MARKETING/UTILITY/AUTHENTICATION.
+  // Son dos cosas distintas y por eso son dos columnas: mezclarlas obligaría a
+  // elegir entre organizar el trabajo y declararle a Meta la verdad de para qué
+  // se usa la plantilla —y esa declaración define el precio por conversación.
+  //
+  // `variableTokens` es lo que ata cada {{n}} a un dato que el motor sabe
+  // resolver. Sin esa columna, una plantilla con variables se puede aprobar pero
+  // ningún recorrido puede alimentarla.
+  //
+  // El índice único de (clubId, name) refleja una regla de Meta: el nombre es
+  // único por cuenta de WhatsApp Business. Sin él, dos plantillas con el mismo
+  // nombre se guardan bien acá y la segunda es rechazada allá.
+  await db.query(`
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "folder" TEXT;
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "variableTokens" TEXT;
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "variableSamples" TEXT;
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT;
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3);
+    CREATE INDEX IF NOT EXISTS "idx_wa_template_folder" ON "WhatsAppTemplate"("clubId","folder");
+    CREATE UNIQUE INDEX IF NOT EXISTS "WhatsAppTemplate_club_name_key" ON "WhatsAppTemplate"("clubId", name);
   `);
 
   // Índice que necesita el tope de frecuencia por contacto. `WhatsAppMessageLog`

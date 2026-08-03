@@ -234,6 +234,24 @@ router.get('/analytics/recommendations', analytics.getRecommendations);
 router.post('/alerts/sweep', analytics.runAlertSweep);
 router.put('/automation/budget', analytics.updateBudget);
 
+// ── Biblioteca de plantillas con IA (v4.701) ─────────────────────────────
+// Van bajo /template-library y NO reemplazan las rutas /templates de siempre:
+// aquéllas las usa la pestaña Templates original y `sendCampaign`. Cambiarlas
+// tocaría el camino por el que hoy salen las campañas de producción.
+import * as library from '../controllers/crm/templates.controller.js';
+
+router.get('/template-library/catalog', library.getTemplateCatalog);
+router.get('/template-library', library.getLibrary);
+router.post('/template-library/compose', library.composeWithAi);
+router.post('/template-library/preview', library.previewTemplate);
+router.post('/template-library', library.saveTemplate);
+router.put('/template-library/:id', library.saveTemplate);
+router.patch('/template-library/:id/folder', library.moveToFolder);
+router.post('/template-library/:id/duplicate', library.duplicateTemplate);
+router.post('/template-library/:id/submit', library.submitToMeta);
+router.delete('/template-library/:id', library.removeTemplate);
+router.post('/journeys/:id/compose-templates', library.composeForJourneyStep);
+
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';
 router.post('/upload-media', uploadWAMedia.single('file'), (req, res) => {
