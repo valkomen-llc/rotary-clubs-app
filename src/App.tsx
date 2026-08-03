@@ -150,6 +150,7 @@ const ContentCalendar = React.lazy(() => import('./pages/admin/ContentCalendar')
 const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
 const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
 const Translations = React.lazy(() => import('./pages/admin/Translations'));
+const SeoIntelligence = React.lazy(() => import('./pages/admin/SeoIntelligence'));
 const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
 const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
 const EmailManagement = React.lazy(() => import('./pages/admin/EmailManagement'));
@@ -612,6 +613,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <Translations />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/seo"
+                  element={
+                    <PrivateRoute>
+                      <SeoIntelligence />
                     </PrivateRoute>
                   }
                 />

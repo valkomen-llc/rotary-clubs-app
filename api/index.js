@@ -178,6 +178,8 @@ const getCRM = async () => _crm || (({ default: _crm } = await import('../server
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
 const getDistAnalytics = async () => _distAnalytics || (({ default: _distAnalytics } = await import('../server/routes/district-analytics.js')), _distAnalytics);
+let _seoEngine;
+const getSeoEngine = async () => _seoEngine || (({ default: _seoEngine } = await import('../server/routes/seo-engine.js')), _seoEngine);
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
@@ -289,6 +291,34 @@ app.use('/api/training', async (req, res, next) => { try { return (await getTrai
 app.use('/api/project-fair', async (req, res, next) => { try { return (await getProjectFair())(req, res, next); } catch (e) { console.error('API Error [project-fair]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/event-registrations', async (req, res, next) => { try { return (await getEventRegistrations())(req, res, next); } catch (e) { console.error('API Error [event-registrations]:', e); res.status(500).json({ error: e.message }); } });
 
+// SEO Inteligente (AI SEO Engine) — v4.703
+app.use('/api/seo-engine', async (req, res, next) => { try { return (await getSeoEngine())(req, res, next); } catch (e) { console.error('API Error [seo-engine]:', e); res.status(500).json({ error: e.message }); } });
+
+// ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
+//
+// Van montados acá, antes del catch-all, porque un rastreador los pide siempre
+// en la raíz del dominio y en ningún otro sitio. Hasta v4.702 sólo existían bajo
+// `/api/public/seo/…`, así que `GET /robots.txt` caía en la SPA y devolvía HTML
+// con un 200: para Google, un sitio sin robots.txt y sin sitemap.
+app.get('/robots.txt', async (req, res, next) => {
+    try {
+        const { getRobotsTxt } = await import('../server/controllers/seoController.js');
+        return getRobotsTxt(req, res, next);
+    } catch (e) {
+        console.error('[seo] robots.txt:', e);
+        res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin/\n');
+    }
+});
+app.get(['/sitemap.xml', '/sitemap_index.xml'], async (req, res, next) => {
+    try {
+        const { getSitemap } = await import('../server/controllers/seoController.js');
+        return getSitemap(req, res, next);
+    } catch (e) {
+        console.error('[seo] sitemap.xml:', e);
+        res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+    }
+});
+
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
     // v4.649 — Una ruta /api que no esté montada arriba llega hasta aquí. Antes
@@ -330,30 +360,53 @@ app.get('*', async (req, res) => {
         }
     }
 
+    // ── SEO Inteligente: el <head> se resuelve en el servidor ────────────────
+    //
+    // Hasta v4.702 esto AÑADÍA `<meta name="description">`, `og:title` y
+    // `og:image` antes de `</head>`, sin retirar los que `index.html` ya trae
+    // escritos a mano. El documento quedaba con DOS `og:title` y toda red social
+    // lee la primera aparición: la genérica de la plataforma. Ese es el motivo
+    // exacto de que compartir cualquier sitio alojado mostrara la tarjeta
+    // "Rotary ClubPlatform — Servicio por encima del interés propio" en vez de
+    // la del sitio, y de que la vista previa no llevara imagen.
+    //
+    // Además la inyección era por SITIO, no por página —todas las direcciones
+    // del mismo dominio compartían título y descripción— y el contenido se
+    // interpolaba sin escapar, así que una comilla en el nombre o la
+    // descripción del club partía la etiqueta.
+    //
+    // `renderPublicDocument` resuelve la entidad real de la dirección, retira lo
+    // que va a escribir y escribe una sola vez, escapado, con canonical, JSON-LD
+    // y Twitter Cards. Ver `server/lib/seoRender.js`.
     try {
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) return res.status(404).send('Frontend not built.');
-        let html = fs.readFileSync(indexPath, 'utf8');
-        const originParts = hostname.split('.');
-        const subdomain = hostname.includes('clubplatform.org') ? originParts[0] : null;
-        let club;
-        if (subdomain && !['app', 'www', 'landing'].includes(subdomain.toLowerCase())) {
-            club = await prisma.club.findFirst({ where: { subdomain: subdomain.toLowerCase() } });
-        } else {
-            club = await prisma.club.findFirst({ where: { domain: hostname } });
-        }
-        let meta = {
-            title: club?.name ? `${club.name} | Rotary` : 'Rotary ClubPlatform',
-            description: club?.description || 'Servicio por encima del interés propio.',
-            image: club?.logo || 'https://rotarycluborigen.org/logo.png',
-            url: `https://${hostname}${req.path}`
-        };
-        const tags = `<meta name="description" content="${meta.description}"><meta property="og:title" content="${meta.title}"><meta property="og:image" content="${meta.image}">`;
-        html = html.replace(/<title>.*?<\/title>/g, `<title>${meta.title}</title>`);
-        if (html.includes('</head>')) html = html.replace('</head>', `${tags}\n</head>`);
-        res.send(html);
+        const html = fs.readFileSync(indexPath, 'utf8');
+
+        const { renderPublicDocument } = await import('../server/lib/seoServe.js');
+        const doc = await renderPublicDocument({
+            html,
+            host: hostname,
+            path: req.path,
+            protocol: req.headers['x-forwarded-proto'] || 'https',
+        });
+
+        // Una entidad que ya no existe responde 404 y no 200 con la SPA vacía:
+        // un *soft 404* se indexa como página buena y acaba diluyendo el sitio.
+        // El cuerpo sigue siendo la aplicación, así que el visitante ve la
+        // pantalla de "no encontrado" con su navegación intacta.
+        res.status(doc.status);
+        // La ficha depende del dominio, así que una caché compartida tiene que
+        // saberlo. Sin `Vary: Host` un proxy podría servirle a un sitio el <head>
+        // de otro.
+        res.setHeader('Vary', 'Host');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(doc.html);
     } catch (err) {
-        console.error('Frontend Injection Error:', err);
+        // Un fallo del módulo de SEO NUNCA puede dejar el sitio sin servir. Se
+        // entrega el documento tal cual: pierde las etiquetas resueltas, no la
+        // página.
+        console.error('[seo] Fallo al resolver el <head>, se sirve el documento base:', err);
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
         res.status(500).send('Error loading page.');

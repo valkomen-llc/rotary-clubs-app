@@ -340,6 +340,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
         );
 
+        // SEO Inteligente (v4.703) — va para TODO administrador de sitio, no sólo
+        // para el global: el posicionamiento es de cada sitio y quien lo
+        // administra es quien corrige sus títulos y sus imágenes.
+        items.push(
+            { icon: Search, label: 'SEO Inteligente', path: '/admin/seo', category: 'General', keywords: ['seo', 'posicionamiento', 'google', 'buscador', 'metadatos', 'sitemap', 'robots', 'open graph', 'compartir', 'whatsapp', 'indexacion', 'keywords', 'palabras clave', 'schema'], badge: 'ia' }
+        );
+
         // Email Marketing (v4.438) — administrador global + administradores de sitios
         // tipo "Evento o Convención". Campañas de correo masivo tipo Mailchimp.
         if (isSuperAdmin || club?.type === 'Evento o Convención') {

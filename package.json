@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.702.0",
-  "cache_bust": "2026-08-03j (Auditoria del CRM WhatsApp: se persiste todo webhook, se registra toda llamada a Meta y hay panel de diagnostico.)",
+  "version": "4.703.0",
+  "cache_bust": "2026-08-03k (SEO Inteligente: el <head> se resuelve en el servidor, sin etiquetas duplicadas; robots y sitemap reales en la raiz; auditoria, recomendaciones y palabras clave.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -20,7 +20,8 @@
     "test:crm": "node scripts/test-crm-automation.mjs",
     "test:crm:diag": "node scripts/test-crm-diagnostics.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "test:assets": "node scripts/test-audience-assets.mjs"
+    "test:assets": "node scripts/test-audience-assets.mjs",
+    "test:seo": "node scripts/test-seo.mjs"
   },
   "engines": {
     "node": "22.x"
