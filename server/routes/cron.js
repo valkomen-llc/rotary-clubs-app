@@ -517,4 +517,35 @@ router.get('/crm-automation-tick', async (req, res) => {
     }
 });
 
+// ── SEO Inteligente — AI Tracker (v4.703) ────────────────────────────────────
+//
+// Cada sitio se reaudita como mucho una vez al día (`SEO_AUDIT_INTERVAL_HOURS`).
+// La cadencia del cron es más alta que eso a propósito: lo que reparte el
+// trabajo es el presupuesto de tiempo, no la frecuencia. Con un solo disparo
+// diario, un lote de sitios que no cupiera en 120 s quedaría sin auditar hasta
+// el día siguiente.
+router.get('/seo-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON seo] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepSeoAudits, enrollActiveSites } = await import('../lib/seoSweep.js');
+
+        // El alta va ANTES del barrido para que un sitio recién activado entre
+        // en la misma vuelta. Al revés harían falta dos.
+        const enrollment = await enrollActiveSites();
+        const sweep = await sweepSeoAudits({ timeBudgetMs: 90_000, maxSites: 8 });
+
+        if (sweep.audited || sweep.failed) {
+            console.log(`[CRON seo] auditados=${sweep.audited} fallidos=${sweep.failed} pendientes=${sweep.pending} en ${sweep.elapsedMs}ms`);
+        }
+        res.json({ ok: true, enrollment, ...sweep });
+    } catch (e) {
+        console.error('[CRON seo] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

@@ -1,111 +1,171 @@
-import db from '../lib/db.js';
+// ════════════════════════════════════════════════════════════════════════════
+// SEO Inteligente — robots.txt y sitemap.xml
+//
+// Reescritos en v4.703. Los dos tenían el mismo defecto de fondo: **describían
+// un sitio que ya no existe**.
+//
+// 1. Emitían direcciones con `/#/`. La aplicación migró de HashRouter a
+//    BrowserRouter hace decenas de versiones, pero el sitemap siguió publicando
+//    `https://sitio.org/#/blog/xxx`. Todo buscador descarta lo que va después
+//    del `#`, así que las cien direcciones del sitemap se resolvían a la misma:
+//    la portada. Un sitemap que declara cien veces la portada no es un sitemap
+//    incompleto, es uno que no sirve para nada.
+//
+// 2. `Disallow: /#/admin/` no bloquea nada, por lo mismo: el navegador nunca
+//    manda el fragmento al servidor y robots.txt no puede casar contra él. El
+//    panel quedaba abierto al rastreo mientras el archivo aparentaba protegerlo,
+//    que es peor que no tener la regla.
+//
+// 3. Se servían en `/api/public/seo/robots.txt` y `/api/public/seo/sitemap.xml`.
+//    Ningún rastreador mira ahí: robots.txt se pide SIEMPRE en la raíz del
+//    dominio. Las direcciones de la raíz caían en el catch-all de la SPA, así
+//    que pedir `/robots.txt` devolvía HTML. Ahora se montan en la raíz y estas
+//    rutas se conservan como alias.
+// ════════════════════════════════════════════════════════════════════════════
 
+import { resolveClubByHost, siteOrigin, listSitePages } from '../lib/seoEntities.js';
+import { readSiteConfig, listPageMeta } from '../lib/seoStore.js';
+import { PRIVATE_PREFIXES } from '../lib/seoSpec.js';
+
+function originFrom(req, club) {
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    return { host, origin: siteOrigin(club, host) };
+}
+
+// ── robots.txt ───────────────────────────────────────────────────────────────
 export const getRobotsTxt = async (req, res) => {
+    let body;
     try {
-        const host = req.headers.host || '';
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const domainUrl = `${protocol}://${host}`;
+        const hostHeader = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+        const club = await resolveClubByHost(hostHeader);
+        const { origin } = originFrom(req, club);
+        const config = club?.id ? await readSiteConfig(club.id).catch(() => ({})) : {};
 
-        // Return standard robots.txt with absolute sitemap URL
-        const txt = `User-agent: *
-Allow: /
-Disallow: /api/
-Disallow: /#/admin/
-Disallow: /#/login
-Disallow: /#/registro
+        // Las reglas salen de la MISMA lista que usa el resto del módulo para
+        // decidir qué no se indexa. Con dos listas, la del archivo y la del
+        // código, se separan en silencio y el sitemap acaba publicando lo que
+        // robots.txt bloquea.
+        //
+        // Van SIN barra final a propósito. En robots.txt la comparación es por
+        // PREFIJO: `Disallow: /login` cubre `/login`, `/login/` y cualquier cosa
+        // que empiece así, mientras que `Disallow: /login/` deja fuera
+        // justamente `/login`, que es la dirección que existe. Es el error de
+        // bulto que hace que una regla parezca puesta y no proteja nada.
+        const disallow = ['/api/', ...PRIVATE_PREFIXES];
 
-User-agent: AhrefsBot
-Crawl-delay: 10
+        const lines = [
+            `# ${club?.name || 'Rotary ClubPlatform'} — directivas de rastreo`,
+            `# Generado por SEO Inteligente. No editar a mano: se regenera en cada petición.`,
+            '',
+            'User-agent: *',
+            'Allow: /',
+            ...disallow.map(d => `Disallow: ${d}`),
+            // Los parámetros de seguimiento crean direcciones distintas con el
+            // mismo contenido. Bloquearlas evita que el buscador las trate como
+            // páginas separadas.
+            'Disallow: /*?utm_',
+            'Disallow: /*?fbclid=',
+            '',
+            // Un rastreador de SEO comercial puede pedir cientos de páginas por
+            // minuto a una función serverless que se cobra por invocación. No se
+            // les prohíbe el paso —son útiles para auditar— pero se les pone
+            // freno.
+            'User-agent: AhrefsBot',
+            'Crawl-delay: 10',
+            '',
+            'User-agent: SemrushBot',
+            'Crawl-delay: 10',
+            '',
+            'User-agent: MJ12bot',
+            'Crawl-delay: 10',
+            '',
+            `Sitemap: ${origin}/sitemap.xml`,
+        ];
 
-User-agent: SemrushBot
-Crawl-delay: 10
-
-Sitemap: ${domainUrl}/api/public/seo/sitemap.xml`;
-
-        res.setHeader('Content-Type', 'text/plain');
-        res.status(200).send(txt);
+        if (config?.robotsExtra) {
+            lines.push('', '# Reglas añadidas desde el panel', String(config.robotsExtra).trim());
+        }
+        body = lines.join('\n') + '\n';
     } catch (e) {
-        res.status(500).send('User-agent: *\nDisallow: /');
+        console.error('[seo] robots.txt:', e.message);
+        // Ante un fallo se sirve el archivo PERMISIVO, nunca `Disallow: /`.
+        // Un error transitorio de base no puede sacar un sitio entero de los
+        // buscadores: el rastreador guarda robots.txt en caché durante horas.
+        body = 'User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin/\n';
     }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Vary', 'Host');
+    res.status(200).send(body);
 };
+
+// ── sitemap.xml ──────────────────────────────────────────────────────────────
+const xmlEscape = (s) => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+// Una dirección de sitemap tiene que ser absoluta y estar codificada. Un título
+// con espacios o acentos en el slug rompe el archivo entero si no se escapa.
+function locFor(origin, path) {
+    const encoded = path.split('/').map(seg => encodeURIComponent(decodeURIComponent(seg))).join('/');
+    return xmlEscape(origin + (encoded === '' ? '/' : encoded));
+}
 
 export const getSitemap = async (req, res) => {
     try {
-        const host = req.headers.host || '';
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const domainUrl = `${protocol}://${host}`;
+        const hostHeader = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+        const club = await resolveClubByHost(hostHeader);
+        const { origin } = originFrom(req, club);
 
-        const originParts = host.split('.');
-        const isDefaultDomain = host.includes('rotaryplatform.com') || host.includes('clubplatform.org');
-        const subdomain = isDefaultDomain ? originParts[0] : null;
+        const { pages, notes, truncated } = await listSitePages(club);
 
-        let clubQuery;
-        let queryParams = [];
-        if (subdomain && subdomain !== 'www' && subdomain !== 'app') {
-            clubQuery = `SELECT id FROM "Club" WHERE subdomain=$1 LIMIT 1`;
-            queryParams = [subdomain];
-        } else {
-            clubQuery = `SELECT id FROM "Club" WHERE domain=$1 LIMIT 1`;
-            queryParams = [host];
-        }
+        // Los ajustes por página pueden marcar una dirección como no indexable o
+        // cambiarle la prioridad. El sitemap TIENE que respetarlo: publicar una
+        // página que a la vez se declara `noindex` es mandarle señales opuestas
+        // al buscador sobre el mismo contenido.
+        const overrides = club?.id ? await listPageMeta(club.id).catch(() => []) : [];
+        const byPath = new Map(overrides.map(o => [o.path, o]));
 
-        const clubRes = await db.query(clubQuery, queryParams);
-        
-        let urls = [
-            { loc: '/', changefreq: 'daily', priority: '1.0' },
-            { loc: '/#/quienes-somos', changefreq: 'monthly', priority: '0.8' },
-            { loc: '/#/nuestras-causas', changefreq: 'monthly', priority: '0.8' },
-            { loc: '/#/proyectos', changefreq: 'weekly', priority: '0.9' },
-            { loc: '/#/blog', changefreq: 'daily', priority: '0.9' },
-            { loc: '/#/eventos', changefreq: 'daily', priority: '0.9' },
-            { loc: '/#/contacto', changefreq: 'yearly', priority: '0.7' },
-            { loc: '/#/rotaract', changefreq: 'monthly', priority: '0.8' },
-            { loc: '/#/interact', changefreq: 'monthly', priority: '0.8' },
-            { loc: '/#/intercambio-jovenes', changefreq: 'monthly', priority: '0.8' }
-        ];
-
-        if (clubRes.rows.length > 0) {
-            const clubId = clubRes.rows[0].id;
-            
-            // Fetch active projects
-            const projectsRes = await db.query(`SELECT id, "updatedAt" FROM "Project" WHERE "clubId"=$1 AND status IN ('active', 'activa')`, [clubId]);
-            projectsRes.rows.forEach(p => {
-                urls.push({
-                    loc: `/#/proyectos/${p.id}`,
-                    lastmod: new Date(p.updatedAt).toISOString().split('T')[0],
-                    changefreq: 'weekly',
-                    priority: '0.8'
-                });
-            });
-
-            // Fetch published posts
-            const postsRes = await db.query(`SELECT id, "updatedAt" FROM "Post" WHERE "clubId"=$1 AND published=true`, [clubId]);
-            postsRes.rows.forEach(p => {
-                urls.push({
-                    loc: `/#/blog/${p.id}`,
-                    lastmod: new Date(p.updatedAt).toISOString().split('T')[0],
-                    changefreq: 'monthly',
-                    priority: '0.7'
-                });
+        const entries = [];
+        for (const p of pages) {
+            const o = byPath.get(p.path);
+            if (o?.indexable === false) continue;
+            entries.push({
+                loc: locFor(origin, p.path),
+                lastmod: p.lastmod ? new Date(p.lastmod).toISOString().split('T')[0] : null,
+                changefreq: o?.changefreq || p.changefreq,
+                priority: (o?.priority != null ? Number(o.priority) : p.priority).toFixed(1),
             });
         }
 
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-        urls.forEach(u => {
-            xml += `  <url>\n`;
-            xml += `    <loc>${domainUrl}${u.loc}</loc>\n`;
-            if (u.lastmod) xml += `    <lastmod>${u.lastmod}</lastmod>\n`;
-            xml += `    <changefreq>${u.changefreq}</changefreq>\n`;
-            xml += `    <priority>${u.priority}</priority>\n`;
-            xml += `  </url>\n`;
-        });
-        xml += `</urlset>`;
+        const xml = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            ...(notes.length || truncated
+                ? [`<!-- ${xmlEscape([...notes, truncated ? 'El sitio supera el límite de este sitemap.' : ''].filter(Boolean).join(' '))} -->`]
+                : []),
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+            ...entries.map(e => [
+                '  <url>',
+                `    <loc>${e.loc}</loc>`,
+                e.lastmod ? `    <lastmod>${e.lastmod}</lastmod>` : null,
+                e.changefreq ? `    <changefreq>${e.changefreq}</changefreq>` : null,
+                `    <priority>${e.priority}</priority>`,
+                '  </url>',
+            ].filter(Boolean).join('\n')),
+            '</urlset>',
+        ].join('\n');
 
-        res.setHeader('Content-Type', 'application/xml');
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        res.setHeader('Vary', 'Host');
         res.status(200).send(xml);
-
     } catch (e) {
-        console.error('Sitemap generation error:', e);
-        res.status(500).send('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+        console.error('[seo] sitemap:', e.message);
+        // Un sitemap vacío es preferible a un 500: el rastreador reintenta y no
+        // marca el archivo como roto en Search Console.
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.status(200).send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
     }
 };
+
+export default { getRobotsTxt, getSitemap };

@@ -34,9 +34,38 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.702.0 | 2026-08-03 (Auditoría del CRM WhatsApp: trazabilidad de webhooks y envíos, panel de diagnóstico)
-// Cache bust: 2026-08-03j
+// UI V4.703.0 | 2026-08-03 (SEO Inteligente: el <head> se resuelve en el servidor, robots y sitemap reales, auditoría con IA)
+// Cache bust: 2026-08-03k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.703.0',
+        title: 'SEO Inteligente: los sitios dejan de compartirse con la ficha de la plataforma 🔍',
+        description: 'Se pidió un módulo de SEO y, al ir a construirlo, apareció primero un problema que lo hacía imprescindible: al compartir CUALQUIER sitio de la plataforma por WhatsApp, Facebook o LinkedIn, la vista previa mostraba «Rotary ClubPlatform — Servicio por encima del interés propio» en lugar del nombre, la descripción y la imagen del sitio. No era que faltaran etiquetas: sobraban. La plantilla base ya traía las suyas escritas a mano y el servidor añadía las del sitio más abajo, así que el documento salía con dos títulos y dos descripciones, y toda red social lee la PRIMERA, que era la genérica. Cientos de sitios compartían la misma tarjeta. Aparecieron otras tres cosas del mismo orden. La etiqueta que le dice al buscador cuál es la dirección buena de una página se venía componiendo con un «#», herencia de una forma de navegar que la aplicación abandonó hace muchas versiones; como los buscadores descartan todo lo que va después del «#», cada sitio le estaba declarando a Google que TODAS sus páginas son la portada, y por eso se indexaba una sola dirección por sitio. El sitemap publicaba esas mismas direcciones con «#», o sea cien veces la portada. Y ni el sitemap ni el robots.txt estaban donde un buscador los busca —la raíz del dominio—: pedirlos devolvía la página web, de modo que para Google estos sitios no tenían ninguno de los dos. Todo eso está corregido. Ahora el encabezado de cada página se arma en el servidor, antes de mandar el HTML, con el título, la descripción y la imagen de ESA página en concreto —la noticia, el proyecto, el evento— y no del sitio entero; se reemplaza lo que hubiera en vez de añadirlo, y el texto va escapado, así que una comilla en el nombre de la organización ya no parte la etiqueta. Hace falta que sea en el servidor porque los rastreadores de WhatsApp, Facebook y LinkedIn no ejecutan JavaScript: leen lo que llega y nada más. Sobre esa base va el módulo nuevo. Analiza el sitio entero, encuentra lo que le impide posicionar y lo ordena por impacto, con un botón para aplicar lo que se puede resolver solo. Escribe títulos, descripciones y palabras clave con IA, describe imágenes mirándolas para el texto alternativo, publica datos estructurados por tipo de página y muestra cómo se va a ver el enlace en Google y en WhatsApp antes de publicarlo. Se revisa solo cada día. Dos cosas que el módulo NO hace, a propósito: no inventa datos de mercado —el volumen y la dificultad de una palabra clave se muestran marcados como estimación de un modelo, no como dato de un proveedor— y no rellena con ceros lo que no puede medir: impresiones, clics y posición sólo existen conectando Search Console, y hasta entonces esos indicadores salen vacíos con el motivo escrito. Un cero es una afirmación; un hueco es la verdad.',
+        date: new Date().toISOString(),
+        tags: ['seo', 'posicionamiento', 'google', 'whatsapp', 'compartir', 'ia', 'sitemap', 'indexacion'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Compartir un sitio ya no muestra la ficha genérica de la plataforma: se veía así por etiquetas duplicadas.' },
+            { type: 'fixed', text: 'La etiqueta canonical ya no lleva «#». Con «#» cada sitio declaraba que todas sus páginas son la portada.' },
+            { type: 'fixed', text: 'El sitemap publica las direcciones reales del sitio, no cien variantes de la portada.' },
+            { type: 'fixed', text: 'robots.txt y sitemap.xml se sirven en la raíz del dominio, que es donde los pide un buscador. Antes devolvían la página web.' },
+            { type: 'fixed', text: 'Las reglas de robots.txt sobre «/#/admin» no bloqueaban nada; el panel quedaba abierto al rastreo mientras el archivo aparentaba protegerlo.' },
+            { type: 'fixed', text: 'El nombre y la descripción del sitio se escapan: una comilla ya no parte la etiqueta.' },
+            { type: 'fixed', text: 'Una noticia o un evento borrado responde 404 y no una página vacía que el buscador indexaba igual.' },
+            { type: 'added', text: 'Cada página tiene su propio título, descripción e imagen al compartir, resueltos en el servidor.' },
+            { type: 'added', text: 'Datos estructurados por tipo de página: organización, artículo, evento, proyecto, producto y migas de pan.' },
+            { type: 'added', text: 'Tablero con nota SEO, salud del sitio, evolución y estado real de cada integración.' },
+            { type: 'added', text: 'Centro de recomendaciones ordenado por impacto, con arreglo automático donde corresponde.' },
+            { type: 'added', text: 'Redacción de títulos, descripciones y palabras clave con IA, validada contra las reglas antes de aceptarla.' },
+            { type: 'added', text: 'Texto alternativo de imágenes generado mirando la imagen, para lector de pantalla antes que para el buscador.' },
+            { type: 'added', text: 'Vista previa de cómo se ve el enlace en Google y en WhatsApp antes de publicarlo.' },
+            { type: 'added', text: 'Análisis automático diario de cada sitio, sin que nadie tenga que abrir el panel.' },
+            { type: 'changed', text: 'Lo editado a mano no lo sobrescribe la IA nunca, igual que las traducciones aprobadas.' },
+            { type: 'changed', text: 'El volumen y la dificultad de una palabra clave se muestran como estimación de un modelo, no como dato de mercado.' },
+            { type: 'changed', text: 'Impresiones, clics y posición salen vacíos con su motivo mientras Search Console no esté conectado, en vez de en cero.' },
+        ]
+    },
     {
         version: '4.702.0',
         title: 'El WhatsApp CRM ahora deja rastro de todo lo que entra y sale \ud83d\udd0d',
