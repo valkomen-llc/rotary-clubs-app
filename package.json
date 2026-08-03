@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.697.0",
-  "cache_bust": "2026-08-03e (Fase 4 del WhatsApp CRM: analitica con conversiones atribuidas, centro de campanas, calendario, A/B, alertas y presupuesto.)",
+  "version": "4.698.0",
+  "cache_bust": "2026-08-03f (El boton de iniciar sesion dice lo que hace y usa la misma pildora que Registrarse y Postular Proyecto.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
