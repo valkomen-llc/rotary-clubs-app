@@ -40,6 +40,7 @@ import {
     TRANSITIONS, DEFAULT_TRANSITION, AUTO_TRANSITION,
     MUSIC_STYLES, DEFAULT_MUSIC_STYLE, AUTO_MUSIC_STYLE,
     REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC, estimateRemainingSec, isEngineless,
+    MOTION_INTENSITY, DEFAULT_MOTION_INTENSITY,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildReelTitle, computeProgress
 } from '../lib/reelSpec.js';
@@ -370,6 +371,12 @@ export const getReelOptions = async (req, res) => {
                 id, label: s.label, description: s.description, intensity: s.intensity
             })),
             defaultMotionStyle: AUTO_MOTION_STYLE,
+            // Intensidad del movimiento: cuánta actividad se le pide al motor.
+            motionIntensities: Object.values(MOTION_INTENSITY).map(i => ({
+                id: i.id, label: i.label, description: i.description,
+                isDefault: i.id === DEFAULT_MOTION_INTENSITY
+            })),
+            defaultMotionIntensity: DEFAULT_MOTION_INTENSITY,
 
             transitions: Object.entries(TRANSITIONS).map(([id, t]) => ({
                 id, label: t.label, description: t.description, overlap: t.overlap
@@ -917,6 +924,10 @@ export const createReel = async (req, res) => {
         const safeMotion = (motionStyle === AUTO_MOTION_STYLE || MOTION_STYLES[motionStyle]) ? motionStyle : AUTO_MOTION_STYLE;
         const safeTransition = (transition === AUTO_TRANSITION || TRANSITIONS[transition]) ? transition : AUTO_TRANSITION;
         const safeMusic = (musicStyle === AUTO_MUSIC_STYLE || MUSIC_STYLES[musicStyle]) ? musicStyle : AUTO_MUSIC_STYLE;
+        // Intensidad del movimiento: cuántas acciones se le piden al motor. Es
+        // el mando de la cadencia — pedir de más da un clip acelerado.
+        const safeIntensity = MOTION_INTENSITY[req.body?.motionIntensity]
+            ? req.body.motionIntensity : DEFAULT_MOTION_INTENSITY;
 
         let engineChoice;
         try {
@@ -955,6 +966,7 @@ export const createReel = async (req, res) => {
                 safeFormat, engineChoice.qualityTier, safeMotion, safeTransition, safeMusic,
                 JSON.stringify({
                     withMusic: Boolean(withMusic),
+                    motionIntensity: safeIntensity,
                     requestedEngine: requestedEngine || null,
                     sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
                     copyLocale: req.body?.copyLocale || 'es',
@@ -1079,7 +1091,8 @@ export const createReel = async (req, res) => {
                 durationSec: timing.generated[position],
                 analysis,
                 withAudio: false,
-                musicStyle: direction.musicStyle
+                musicStyle: direction.musicStyle,
+                intensity: safeIntensity
             });
 
             const sceneId = randomUUID();
@@ -2216,7 +2229,8 @@ export const regenerateScene = async (req, res) => {
             durationSec: generated,
             analysis,
             withAudio: false,
-            musicStyle: project.direction?.musicStyle || DEFAULT_MUSIC_STYLE
+            musicStyle: project.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
+            intensity: project.config?.motionIntensity || DEFAULT_MOTION_INTENSITY
         });
 
         const { rows: updated } = await db.query(

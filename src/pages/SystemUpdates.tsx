@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.703.0 | 2026-08-03 (SEO Inteligente: el <head> se resuelve en el servidor, robots y sitemap reales, auditoría con IA)
-// Cache bust: 2026-08-03k
+// UI V4.704.0 | 2026-08-03 (Cadencia real y control de intensidad)
+// Cache bust: 2026-08-03l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.704.0',
+        title: 'Los Reels dejan de verse acelerados: control de intensidad del movimiento 🎚️',
+        description: 'Las escenas salían como en cámara rápida, con gestos y parpadeos apresurados. La causa no estaba en el montaje —ahí no se acelera nada— sino en cuánto se le pedía al motor: la instrucción enumeraba siete acciones distintas para un clip de cinco segundos, y un modelo generativo que recibe siete acciones y cinco segundos las comprime. Ahora hay un control llamado «Movimiento natural de la escena» con tres niveles: Muy sutil, Natural (por defecto) y Expresivo moderado. Cada nivel pide una cantidad distinta de acciones, que es lo que de verdad gobierna la cadencia: menos acciones, más tiempo para cada una, movimiento humano. Además se le declara explícitamente al motor que esos segundos transcurren a velocidad de vida real y con ritmo constante, en vez de ser el resumen de un momento más largo. La cámara sigue fija en todos los niveles: el movimiento sale de las personas y del entorno, nunca del objetivo.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'feature',
+        changes: [
+            { type: 'fixed', text: 'Las escenas se veían aceleradas: se pedían siete acciones para cinco segundos de clip.' },
+            { type: 'added', text: 'Control «Movimiento natural de la escena» con tres niveles; Natural por defecto.' },
+            { type: 'improved', text: 'Se declara al motor la cadencia de tiempo real y el ritmo constante de principio a fin.' },
+            { type: 'improved', text: '«Muy sutil» reduce además el riesgo de que el motor reinterprete un rostro, útil en fotos de grupo.' }
+        ],
+        details: [
+            'El montaje nunca aceleró el video: se verificó que no hay ninguna alteración de velocidad en el procesamiento. El clip llegaba así del proveedor.',
+            'La velocidad no se puede pedir directamente a un motor image-to-video. Lo que sí se controla es cuánto se le pide que ocurra, y eso es lo que hace el nuevo control.',
+            'Para fotografías de grupo numeroso, «Muy sutil» es la opción recomendada: menos movimiento por persona significa menos ocasiones de que el modelo redibuje una cara.'
+        ]
+    },
     {
         version: '4.703.0',
         title: 'SEO Inteligente: los sitios dejan de compartirse con la ficha de la plataforma 🔍',
