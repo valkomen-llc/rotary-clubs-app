@@ -232,6 +232,10 @@ function injectGA4Tag(gaId: string) {
 const ADMIN_ROLES = [
   'administrator', 'superadmin', 'district_admin', 'club_admin',
   'editor', 'member', 'crowdfunder',
+  // Agente del WhatsApp CRM (v4.696). Pinta el panel para llegar a su bandeja;
+  // qué responde el servidor lo decide `ADMIN_ROLES` de server/middleware/auth.js,
+  // que es la otra mitad de esta lista y hay que cambiar junto con ésta.
+  'crm_agent',
 ];
 
 /**

@@ -434,6 +434,22 @@ async function runOne(run, journey, { settings, now }) {
         return { nodes: visited, sent, ended: false };
       }
 
+      // Los datos de la capacitación se cargan SÓLO si algún hueco los pide.
+      // Son una consulta más contra el módulo de capacitaciones y la mayoría de
+      // los pasos no los usa; traerlos siempre sería una consulta por
+      // inscripción y por vuelta del cron.
+      const tokens = (node.variables || []).map(v => String(v).replace(/[{}]/g, '').trim());
+      let training = null;
+      if (tokens.some(t => t.startsWith('nombre_capacitacion') || t.startsWith('fecha_capacitacion') || t.startsWith('hora_capacitacion'))) {
+        try {
+          const { relevantAppointment } = await import('./crmTraining.js');
+          const appt = run.siteId
+            ? await relevantAppointment(run.siteId, { siteType: run.siteType, now })
+            : null;
+          if (appt) training = { name: appt.typeName || appt.categoryName, startAt: appt.startAt };
+        } catch { /* sin cita, el hueco queda sin resolver y el paso se saltea con su alerta */ }
+      }
+
       // Variables. Un hueco sin resolver NO se manda: Meta rechaza el parámetro
       // vacío y, aunque lo aceptara, un "tu sitio vence el " es peor que nada.
       const { values, missing } = resolveVariables(node.variables || [], {
@@ -442,6 +458,7 @@ async function runOne(run, journey, { settings, now }) {
         lifecycle: ctx.lifecycle,
         links: settings.links || {},
         timeZone: settings.timezone,
+        training,
       });
       if (missing.length) {
         await recordStep(run, journey, node, 'skipped', { reason: 'variables_sin_resolver', missing });

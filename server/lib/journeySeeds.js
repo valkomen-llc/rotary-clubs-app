@@ -179,7 +179,253 @@ const RENEWAL = {
   ],
 };
 
-export const SEED_JOURNEYS = [WELCOME, RENEWAL];
+// ── B. Onboarding ───────────────────────────────────────────────────────────
+// Disparador: `training.scheduled` — la cita quedó reservada.
+//
+// Los recordatorios de 24 h y 1 h de la CITA ya los manda el módulo de
+// Capacitaciones (`/api/cron/training-reminders`, por correo). Este recorrido NO
+// los repite: duplicarlos le llegaría dos veces a la misma persona por dos
+// canales para el mismo hecho. Lo que aporta acá es la confirmación por WhatsApp
+// y el seguimiento POSTERIOR, que el módulo de capacitaciones no cubre.
+const ONBOARDING = {
+  key: 'onboarding_capacitacion',
+  name: 'Onboarding: confirmación y próximos pasos',
+  goal: 'Que el club llegue a su sesión y salga de ella con la siguiente agendada.',
+  status: 'draft',
+  trigger: { type: 'training.scheduled' },
+  audience: {
+    match: 'all',
+    rules: [{ field: 'orgRole', op: 'in', value: ['president', 'platform_admin', 'technology', 'communications'] }],
+  },
+  settings: {
+    reentry: 'per_event',
+    exitOnEvents: ['training.cancelled'],
+  },
+  entryNodeId: 'confirmacion',
+  nodes: [
+    send('confirmacion',
+      'Confirmación de la sesión: fecha, hora y qué conviene tener a mano. Incluir el enlace al panel.',
+      ['nombre_contacto', 'nombre_capacitacion', 'fecha_capacitacion', 'hora_capacitacion'], 'esperar_sesion'),
+
+    // La espera cubre el tiempo hasta después de la sesión. El seguimiento sale
+    // sólo si la cita llegó a completarse.
+    wait('esperar_sesion', 8, 'se_hizo'),
+    cond('se_hizo', { kind: 'event', eventType: 'training.completed', withinDays: 30 },
+      'proximos_pasos', 'no_asistio'),
+
+    send('proximos_pasos',
+      'Después de la sesión: resumen de lo que se vio y qué hacer esta semana en el panel.',
+      ['nombre_contacto', 'link_admin'], 'esperar_segunda'),
+
+    wait('esperar_segunda', 7, 'invitar_segunda'),
+    send('invitar_segunda',
+      'Invitación a la siguiente capacitación del itinerario, con el enlace para reservarla.',
+      ['nombre_contacto', 'link_capacitacion'], 'fin_ok'),
+
+    send('no_asistio',
+      'La sesión no llegó a hacerse: ofrecer reprogramarla sin fricción, con el enlace.',
+      ['nombre_contacto', 'link_capacitacion'], 'fin_no_asistio'),
+
+    { id: 'fin_ok', type: 'exit', reason: 'onboarding_completado', goalReached: true },
+    { id: 'fin_no_asistio', type: 'exit', reason: 'no_asistio', goalReached: false },
+  ],
+};
+
+// ── C. Adopción ─────────────────────────────────────────────────────────────
+// Disparador: `onboarding.completed`. Es el recorrido más largo del pedido
+// —doce meses— y por eso el que más depende de la condición de salida: en un
+// año el club puede vencer, suspenderse o darse de baja.
+const ADOPTION = {
+  key: 'adopcion_modulos',
+  name: 'Adopción de módulos (12 meses)',
+  goal: 'Que el club use un módulo nuevo por mes y llegue a la renovación con el sitio vivo.',
+  status: 'draft',
+  trigger: { type: 'onboarding.completed' },
+  audience: {
+    match: 'all',
+    rules: [{ field: 'orgRole', op: 'in', value: ['president', 'platform_admin', 'communications', 'public_image'] }],
+  },
+  settings: {
+    reentry: 'once',
+    // Un club vencido o suspendido no tiene por qué recibir consejos de uso.
+    exitWhen: {
+      match: 'any',
+      rules: [{ field: 'lifecycleState', op: 'in', value: ['suscripcion_vencida', 'periodo_gracia', 'suspendido', 'cancelado'] }],
+    },
+  },
+  entryNodeId: 'sem_1',
+  nodes: [
+    send('sem_1', 'Semana 1 — administración del sitio web: dónde se edita cada cosa.',
+      ['nombre_contacto', 'link_admin'], 'e_s2'),
+    wait('e_s2', 7, 'sem_2'),
+    send('sem_2', 'Semana 2 — creación de contenido con IA: el Generador de Publicaciones.',
+      ['nombre_contacto', 'link_admin'], 'e_s3'),
+    wait('e_s3', 7, 'sem_3'),
+
+    // Antes de empujar redes se comprueba si ya las conectó: insistir con algo
+    // ya hecho es la forma más rápida de que dejen de leer.
+    cond('sem_3', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'socialCount', op: 'lte', value: 0 }] } },
+      'redes', 'e_s4'),
+    send('redes', 'Semana 3 — conectar las redes sociales desde el Hub Social.',
+      ['nombre_contacto', 'link_admin'], 'e_s4'),
+
+    wait('e_s4', 7, 'sem_4'),
+    send('sem_4', 'Semana 4 — noticias y posicionamiento: por qué publicar seguido mejora la visibilidad.',
+      ['nombre_contacto', 'link_admin'], 'e_m2'),
+
+    wait('e_m2', 30, 'mes_2'),
+    cond('mes_2', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'projectCount', op: 'lte', value: 0 }] } },
+      'proyectos', 'e_m3'),
+    send('proyectos', 'Mes 2 — proyectos y crowdfunding: cómo publicar el primero.',
+      ['nombre_contacto', 'link_admin'], 'e_m3'),
+
+    wait('e_m3', 30, 'mes_3'),
+    cond('mes_3', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'donationCount', op: 'lte', value: 0 }] } },
+      'donaciones', 'e_m4'),
+    send('donaciones', 'Mes 3 — fundraising: dejar el módulo de donaciones listo para recibir.',
+      ['nombre_contacto', 'link_admin'], 'e_m4'),
+
+    wait('e_m4', 30, 'mes_4'),
+    cond('mes_4', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'eventCount', op: 'lte', value: 0 }] } },
+      'eventos', 'e_m5'),
+    send('eventos', 'Mes 4 — eventos e inscripciones: publicar el primero y cobrarlo.',
+      ['nombre_contacto', 'link_admin'], 'e_m5'),
+
+    wait('e_m5', 30, 'mes_5'),
+    cond('mes_5', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'productCount', op: 'lte', value: 0 }] } },
+      'tienda', 'e_m6'),
+    send('tienda', 'Mes 5 — tienda virtual: vender productos del club.',
+      ['nombre_contacto', 'link_admin'], 'e_m6'),
+
+    wait('e_m6', 30, 'mes_6'),
+    send('mes_6', 'Mes 6 — analítica: qué mirar para saber si el sitio está funcionando.',
+      ['nombre_contacto', 'link_admin'], 'e_m9'),
+
+    wait('e_m9', 90, 'mes_9'),
+    send('mes_9', 'Mes 9 — revisión estratégica: invitación a una sesión para ver el año.',
+      ['nombre_contacto', 'link_capacitacion'], 'e_m11'),
+
+    wait('e_m11', 60, 'mes_11'),
+    send('mes_11', 'Mes 11 — preparación de la renovación: qué viene el año próximo.',
+      ['nombre_contacto', 'nombre_club', 'fecha_vencimiento'], 'fin'),
+
+    { id: 'fin', type: 'exit', reason: 'ciclo_de_adopcion_completo', goalReached: true },
+  ],
+};
+
+// ── D. Reactivación por bajo uso ────────────────────────────────────────────
+// Disparador: entrada en `activo_bajo_uso`, que la derivación fija tras
+// `LIFECYCLE_LOW_USAGE_DAYS` (30) sin contenido nuevo.
+const REACTIVATION = {
+  key: 'reactivacion_bajo_uso',
+  name: 'Reactivación por bajo uso',
+  goal: 'Que un club sin actividad vuelva a publicar o agende una capacitación.',
+  status: 'draft',
+  trigger: { type: 'lifecycle.entered', state: 'activo_bajo_uso' },
+  audience: {
+    match: 'all',
+    rules: [{ field: 'orgRole', op: 'in', value: ['president', 'platform_admin', 'communications'] }],
+  },
+  settings: {
+    reentry: 'per_event',
+    // Basta con que vuelva a publicar algo para que el recorrido sobre.
+    exitOnEvents: ['content.first_post', 'project.published', 'social.connected', 'training.scheduled'],
+    exitWhen: {
+      match: 'any',
+      rules: [{ field: 'lifecycleState', op: 'in', value: ['activo_uso_frecuente', 'suspendido', 'cancelado'] }],
+    },
+  },
+  entryNodeId: 'recordatorio',
+  nodes: [
+    send('recordatorio',
+      'Recordatorio amable de las herramientas disponibles, sin reproche. Enlace al panel.',
+      ['nombre_contacto', 'nombre_club', 'link_admin'], 'e_1'),
+
+    wait('e_1', 7, 'invitar_capacitacion'),
+    send('invitar_capacitacion',
+      'Invitación a una capacitación corta para retomar, con el enlace de reserva.',
+      ['nombre_contacto', 'link_capacitacion'], 'e_2'),
+
+    wait('e_2', 10, 'sugerencia'),
+    // La sugerencia se elige por lo que le falta al club, no por un guion fijo.
+    cond('sugerencia', { kind: 'audience', audience: { match: 'all', rules: [{ field: 'socialCount', op: 'lte', value: 0 }] } },
+      'sugerir_redes', 'sugerir_contenido'),
+    send('sugerir_redes',
+      'Sugerencia concreta: conectar una red social lleva cinco minutos y multiplica el alcance.',
+      ['nombre_contacto', 'link_admin'], 'e_3'),
+    send('sugerir_contenido',
+      'Sugerencia concreta: publicar una noticia del club con el generador de contenido.',
+      ['nombre_contacto', 'link_admin'], 'e_3'),
+
+    wait('e_3', 14, 'sin_respuesta'),
+    {
+      id: 'sin_respuesta', type: 'alert', severity: 'warning',
+      title: 'Club con bajo uso que no reaccionó al recorrido',
+      detail: 'Recibió los tres mensajes de reactivación y sigue sin publicar. Conviene una llamada.',
+      next: 'fin',
+    },
+    { id: 'fin', type: 'exit', reason: 'sin_reaccion', goalReached: false },
+  ],
+};
+
+// ── F. Sitios vencidos ──────────────────────────────────────────────────────
+// Disparador: entrada en `suspendido`.
+//
+// Es distinto del recorrido de renovación: aquél acompaña al club ANTES y
+// durante la gracia; éste empieza cuando el sitio ya dejó de estar disponible.
+// Por eso el tono y el contenido cambian —acá ya hay un servicio interrumpido
+// que explicar— y por eso son dos recorridos y no uno con más pasos.
+const EXPIRED = {
+  key: 'sitios_vencidos',
+  name: 'Sitios vencidos y suspendidos',
+  goal: 'Recuperar al club después de la suspensión, o cerrar el ciclo con claridad.',
+  status: 'draft',
+  trigger: { type: 'lifecycle.entered', state: 'suspendido' },
+  audience: {
+    match: 'all',
+    rules: [{ field: 'orgRole', op: 'in', value: ['president', 'treasurer', 'platform_admin'] }],
+  },
+  settings: {
+    reentry: 'per_event',
+    exitOnEvents: ['subscription.renewed'],
+    exitWhen: {
+      match: 'any',
+      rules: [{ field: 'lifecycleState', op: 'in', value: ['reactivado', 'activo_uso_frecuente', 'activo_bajo_uso', 'sitio_produccion'] }],
+    },
+  },
+  entryNodeId: 'estado_actual',
+  nodes: [
+    send('estado_actual',
+      'Estado de la suscripción: qué pasó, desde cuándo, y que los datos del club siguen guardados.',
+      ['nombre_contacto', 'nombre_club', 'estado_suscripcion', 'link_renovacion'], 'e_1'),
+
+    wait('e_1', 5, 'que_se_pierde'),
+    send('que_se_pierde',
+      'Qué deja de estar disponible mientras el sitio esté suspendido, dicho sin dramatismo.',
+      ['nombre_contacto', 'link_renovacion'], 'e_2'),
+
+    wait('e_2', 10, 'reactivar'),
+    send('reactivar',
+      'Cómo reactivar y la oferta de una capacitación de puesta al día después de hacerlo.',
+      ['nombre_contacto', 'link_renovacion', 'link_capacitacion'], 'e_3'),
+
+    wait('e_3', 15, 'soporte'),
+    send('soporte',
+      'Canal de soporte abierto: si hubo un motivo para no renovar, queremos escucharlo.',
+      ['nombre_contacto'], 'e_4'),
+
+    wait('e_4', 20, 'alerta_final'),
+    {
+      id: 'alerta_final', type: 'alert', severity: 'error',
+      title: 'Sitio suspendido sin recuperar tras 50 días',
+      detail: 'Completó el recorrido de sitios vencidos sin renovar. Decidir si se archiva o se hace un último contacto.',
+      next: 'fin',
+    },
+    { id: 'fin', type: 'exit', reason: 'no_recuperado', goalReached: false },
+  ],
+};
+
+export const SEED_JOURNEYS = [WELCOME, ONBOARDING, ADOPTION, REACTIVATION, RENEWAL, EXPIRED];
 
 /**
  * Siembra los recorridos que falten. No pisa los existentes.

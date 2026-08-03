@@ -28,6 +28,11 @@ const { nextAllowedSendTime, evaluateSend, DEFAULT_SETTINGS, suppressContact } =
 const { buildAudienceSql, countAudience } = await import('../server/lib/crmSegments.js');
 const { ensureSeedJourneys } = await import('../server/lib/journeySeeds.js');
 const { enrollFromEvents, advanceRuns } = await import('../server/lib/journeyEngine.js');
+const { detectIntentDeterministic, buildIntentReply, buildMenuText } = await import('../server/lib/crmIntents.js');
+const { openConversation, listConversations, setConversationState, escalateToSupport, upsertAgent, routeConversation, inboxCounters } = await import('../server/lib/crmInbox.js');
+const { handleInboundMessage } = await import('../server/lib/crmChatbot.js');
+const { recommendNextTraining, buildBookingLink } = await import('../server/lib/crmTraining.js');
+const { SEED_JOURNEYS } = await import('../server/lib/journeySeeds.js');
 
 let passed = 0, failed = 0;
 const results = [];
@@ -298,7 +303,7 @@ try {
 
   // ── Recorridos precargados ──────────────────────────────────────────────
   const seeded = await ensureSeedJourneys(CLUB);
-  check('siembra los dos recorridos', seeded.created.length === 2, seeded.created.join(','));
+  check('siembra los seis recorridos del pedido', seeded.created.length === 6, seeded.created.join(','));
   const reseeded = await ensureSeedJourneys(CLUB);
   check('la siembra no pisa lo ya existente', reseeded.created.length === 0);
 
@@ -453,6 +458,164 @@ try {
   results.push(`  ✗ EXCEPCIÓN: ${err.message}\n${err.stack}`);
 }
 
+// ── 7. Fase 3: intención, bandeja y enrutamiento ────────────────────────────
+section('7. Intención del chatbot (pura)');
+{
+  const d = (t) => detectIntentDeterministic(t);
+  check('el título exacto del botón gana', d('Agendar capacitación')?.method === 'button');
+  check('el número del menú también', d('2')?.key === 'renovar_suscripcion', JSON.stringify(d('2')));
+  check('detecta por palabra clave sin tilde', d('quiero una capacitacion')?.key === 'agendar_capacitacion');
+  check('detecta la baja', d('no quiero recibir mas mensajes')?.key === 'baja');
+  check('gana la coincidencia MÁS LARGA', d('necesito ayuda tecnica')?.key === 'soporte_tecnico',
+    JSON.stringify(d('necesito ayuda tecnica')));
+  check('un texto sin señales no fuerza intención', d('buenos dias todo bien') === null);
+  check('el menú lista las opciones numeradas', buildMenuText().includes('1. Agendar capacitación'));
+  check('sin enlace configurado NO se arma la respuesta', buildIntentReply('agendar_capacitacion', {}) === null);
+  check('con enlace configurado se resuelve',
+    buildIntentReply('agendar_capacitacion', { training: 'https://x.co/agenda' })?.includes('https://x.co/agenda'));
+  check('el enlace de reserva lleva la categoría',
+    buildBookingLink({ training: 'https://x.co/agenda' }, { categoryId: 'cat1' })?.includes('categoria=cat1'));
+  check('sin enlace base no hay enlace de reserva', buildBookingLink({}, {}) === null);
+}
+
+section('8. Recorridos precargados');
+{
+  check('son los seis del pedido', SEED_JOURNEYS.length === 6, `${SEED_JOURNEYS.length}`);
+  const bad = [];
+  for (const seed of SEED_JOURNEYS) {
+    // Se valida el grafo con las plantillas ya asignadas: el único error
+    // esperable en una semilla es justamente el de la plantilla sin asignar.
+    const withTemplates = {
+      ...seed,
+      settings: { ...seed.settings, entryNodeId: seed.entryNodeId },
+      nodes: seed.nodes.map(n => (n.type === 'send_template' ? { ...n, templateId: 'fake' } : n)),
+    };
+    const errs = validateJourney(withTemplates);
+    if (errs.length) bad.push(`${seed.key}: ${errs.join(' ')}`);
+  }
+  check('los seis grafos son válidos (sin referencias colgantes ni ciclos)', bad.length === 0, bad.join(' | '));
+  check('todos nacen en borrador', SEED_JOURNEYS.every(s => s.status === 'draft'));
+  check('ninguno trae plantilla asignada',
+    SEED_JOURNEYS.every(s => s.nodes.filter(n => n.type === 'send_template').every(n => n.templateId === null)));
+  check('todos declaran qué debe decir cada plantilla',
+    SEED_JOURNEYS.every(s => s.nodes.filter(n => n.type === 'send_template').every(n => !!n.templateHint)));
+}
+
+section('9. Bandeja de conversaciones');
+// Ids propios: el bloque anterior sigue vivo (la limpieza corre al final), así
+// que reutilizar los suyos chocaría contra la clave primaria de Club.
+const CLUB2 = uuid();
+const CLIENT_CLUB2 = uuid();
+const CONTACT2 = uuid();
+try {
+  await db.query(`INSERT INTO "Club" (id,name,status,"subscriptionStatus",domain,"createdAt","updatedAt")
+                  VALUES ($1,'Plataforma Origen 2','active','active','origen2.org',NOW(),NOW())`, [CLUB2]);
+  await db.query(`INSERT INTO "Club" (id,name,status,"subscriptionStatus",domain,"createdAt","updatedAt")
+                  VALUES ($1,'Club Cliente 2','active','active','cliente2.org',NOW(),NOW())`, [CLIENT_CLUB2]);
+  await db.query(`INSERT INTO "WhatsAppConfig" (id,"clubId","phoneNumberId","wabaId","accessToken","verifyToken",enabled,"createdAt","updatedAt")
+                  VALUES ($1,$2,'PN2','WABA2','tok','vt',true,NOW(),NOW())`, [uuid(), CLUB2]);
+  await db.query(`INSERT INTO "WhatsAppContact"
+                    (id,"clubId",name,phone,status,tags,"siteId","siteType","orgRole","consentState","createdAt","updatedAt")
+                  VALUES ($1,$2,'Beto Secretario','+573009998877','active',ARRAY[]::text[],$3,'club','secretary','granted',NOW(),NOW())`,
+                  [CONTACT2, CLUB2, CLIENT_CLUB2]);
+
+  const first = await openConversation({ clubId: CLUB2, contactId: CONTACT2, siteId: CLIENT_CLUB2 });
+  check('abre la conversación', first.created === true && first.conversation.state === 'nuevo');
+
+  const second = await openConversation({ clubId: CLUB2, contactId: CONTACT2, siteId: CLIENT_CLUB2 });
+  check('un segundo mensaje NO abre otra conversación', second.created === false && second.conversation.id === first.conversation.id);
+
+  const convId = first.conversation.id;
+
+  // Enrutamiento por regla.
+  await db.query(
+    `INSERT INTO "CrmRoutingRule" (id,"clubId",name,priority,active,intents,keywords,team,"assignMode")
+     VALUES ($1,$2,'Soporte',0,true,ARRAY['soporte_tecnico']::text[],ARRAY[]::text[],'soporte','team')`,
+    [uuid(), CLUB2]
+  );
+  const AGENT_USER = uuid();
+  await db.query(`INSERT INTO "User" (id,email,password,role,name,"createdAt","updatedAt")
+                  VALUES ($1,$2,'x','crm_agent','Agente Uno',NOW(),NOW())`, [AGENT_USER, `agente-${AGENT_USER}@test.local`]);
+  await upsertAgent({ clubId: CLUB2, userId: AGENT_USER, displayName: 'Agente Uno', teams: ['soporte'] });
+
+  const routed = await routeConversation({
+    clubId: CLUB2, conversationId: convId, contactId: CONTACT2,
+    intentKey: 'soporte_tecnico', messageText: 'no funciona el sitio',
+  });
+  check('la regla enruta al equipo correcto', routed.team === 'soporte', JSON.stringify(routed));
+  check('y asigna al agente disponible de ese equipo', routed.assignTo === AGENT_USER);
+  check('la conversación pasa a "en atención"', routed.conversation.state === 'en_atencion');
+
+  const otherIntent = await routeConversation({
+    clubId: CLUB2, conversationId: convId, contactId: CONTACT2,
+    intentKey: 'fundraising', messageText: 'donaciones',
+  });
+  check('una intención que ninguna regla cubre no enruta', otherIntent.routed === false);
+
+  // Escalada a soporte.
+  const esc = await escalateToSupport(convId, { title: 'Prueba', description: 'detalle' });
+  check('la escalada crea una solicitud técnica real', !!esc.technicalRequestId);
+  const tr = await db.query(`SELECT * FROM "TechnicalRequest" WHERE id=$1`, [esc.technicalRequestId]);
+  check('la solicitud cuelga del CLUB CLIENTE, no del Origen', tr.rows[0]?.clubId === CLIENT_CLUB2);
+  check('la solicitud guarda de dónde vino', tr.rows[0]?.details?.source === 'whatsapp_crm');
+  const escAgain = await escalateToSupport(convId, {});
+  check('escalar dos veces no crea dos solicitudes', escAgain.alreadyEscalated === true);
+
+  // Listado y aislamiento.
+  const list = await listConversations({ clubId: CLUB2 });
+  check('la bandeja lista la conversación', list.length === 1 && list[0].contactName === 'Beto Secretario');
+  check('trae el nombre del sitio para poder ubicarla', list[0].siteName === 'Club Cliente 2');
+
+  const otherSite = await listConversations({ clubId: CLUB2, siteIds: [uuid()] });
+  check('acotada a otro sitio, no devuelve nada', otherSite.length === 0);
+
+  const counters = await inboxCounters(CLUB2);
+  // Escalar mueve la conversación a 'seguimiento': es lo que hace
+  // `escalateToSupport`, y el contador tiene que reflejarlo.
+  check('los contadores cuentan los hilos abiertos por su estado real',
+    counters.states.find(s => s.key === 'seguimiento')?.n === 1,
+    JSON.stringify(counters.states.map(s => [s.key, s.n])));
+
+  // Cerrar libera el índice parcial y un mensaje nuevo abre otro hilo.
+  await setConversationState(convId, 'cerrado');
+  const reopened = await openConversation({ clubId: CLUB2, contactId: CONTACT2, siteId: CLIENT_CLUB2 });
+  check('al cerrar, un mensaje nuevo abre OTRA conversación',
+    reopened.created === true && reopened.conversation.id !== convId);
+
+  // Resuelto NO cierra: el hilo sigue y se reabre solo.
+  await setConversationState(reopened.conversation.id, 'resuelto');
+  const afterResolved = await openConversation({ clubId: CLUB2, contactId: CONTACT2, siteId: CLIENT_CLUB2 });
+  check('"resuelto" no cierra: el mismo hilo se reabre',
+    afterResolved.created === false && afterResolved.conversation.id === reopened.conversation.id);
+  check('y vuelve a estado "nuevo"', afterResolved.conversation.state === 'nuevo');
+
+  // El chatbot APAGADO clasifica y enruta, pero no contesta.
+  const off = await handleInboundMessage({
+    clubId: CLUB2, contactId: CONTACT2, messageText: 'no funciona el sitio', at: new Date(),
+  });
+  check('con el chatbot apagado se clasifica igual', off.intent?.key === 'soporte_tecnico');
+  check('pero NO se genera respuesta', off.reply === null && off.botDisabled === true);
+
+  // La baja se atiende SIEMPRE, esté el bot encendido o no.
+  const optOut = await handleInboundMessage({
+    clubId: CLUB2, contactId: CONTACT2, messageText: 'no quiero recibir mas mensajes', at: new Date(),
+  });
+  check('la baja se atiende aunque el chatbot esté apagado', optOut.optedOut === true);
+  const supp = await db.query(`SELECT phone FROM "CrmSuppression" WHERE "clubId"=$1`, [CLUB2]);
+  check('y el número queda en la lista de exclusión', supp.rows.length === 1, JSON.stringify(supp.rows));
+  check('guardado normalizado (sólo dígitos, como lo deja validateForMeta)',
+    supp.rows[0]?.phone === '573009998877', supp.rows[0]?.phone);
+
+  // Recomendación de capacitación: sin catálogo no inventa nada.
+  const rec = await recommendNextTraining(CLIENT_CLUB2, { siteType: 'club' });
+  check('sin catálogo de capacitaciones no recomienda nada', rec === null);
+
+  await db.query(`DELETE FROM "User" WHERE id=$1`, [AGENT_USER]);
+} catch (err) {
+  failed++;
+  results.push(`  ✗ EXCEPCIÓN Fase 3: ${err.message}\n${err.stack}`);
+}
+
 // ── Limpieza ────────────────────────────────────────────────────────────────
 try {
   await db.query(`DELETE FROM "CrmJourneyStep"`);
@@ -461,12 +624,18 @@ try {
   await db.query(`DELETE FROM "CrmEvent"`);
   await db.query(`DELETE FROM "CrmLifecycleState"`);
   await db.query(`DELETE FROM "CrmAlert"`);
+  await db.query(`DELETE FROM "CrmConversationNote"`);
+  await db.query(`DELETE FROM "CrmConversationEvent"`);
+  await db.query(`DELETE FROM "CrmConversation"`);
+  await db.query(`DELETE FROM "CrmRoutingRule"`);
+  await db.query(`DELETE FROM "CrmAgent"`);
+  await db.query(`DELETE FROM "TechnicalRequest" WHERE type='whatsapp_crm'`);
   await db.query(`DELETE FROM "CrmSuppression"`);
   await db.query(`DELETE FROM "WhatsAppMessageLog"`);
-  await db.query(`DELETE FROM "WhatsAppContact" WHERE "clubId"=$1`, [CLUB]);
+  await db.query(`DELETE FROM "WhatsAppContact" WHERE "clubId" IN ($1,$2)`, [CLUB, CLUB2]);
   await db.query(`DELETE FROM "WhatsAppTemplate" WHERE "clubId"=$1`, [CLUB]);
-  await db.query(`DELETE FROM "WhatsAppConfig" WHERE "clubId"=$1`, [CLUB]);
-  await db.query(`DELETE FROM "Club" WHERE id IN ($1,$2)`, [CLUB, CLIENT_CLUB]);
+  await db.query(`DELETE FROM "WhatsAppConfig" WHERE "clubId" IN ($1,$2)`, [CLUB, CLUB2]);
+  await db.query(`DELETE FROM "Club" WHERE id IN ($1,$2,$3,$4)`, [CLUB, CLIENT_CLUB, CLUB2, CLIENT_CLUB2]);
 } catch { /* la limpieza no debe tapar el resultado de las pruebas */ }
 
 console.log(results.join('\n'));

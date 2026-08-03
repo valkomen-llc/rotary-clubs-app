@@ -1862,7 +1862,52 @@ export const handleWebhook = async (req, res) => {
                         [timestamp, contactId]
                     ).catch(() => {});
                 }
-                if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()) {
+
+                // Bandeja, intención y enrutamiento (v4.696).
+                //
+                // Corre ANTES del respondedor histórico y, por defecto, NO manda
+                // nada: sólo abre la conversación, clasifica la intención y la
+                // enruta a un equipo. Eso deja intacto lo que el contacto recibe
+                // hoy —las reglas de palabra clave y el agente de IA de
+                // `whatsappAgent.js`— mientras la bandeja se llena.
+                //
+                // La única excepción es la BAJA: se atiende siempre, encendido o
+                // no el chatbot. Que la respuesta automática esté apagada no
+                // puede significar ignorar a quien pide no recibir más mensajes.
+                //
+                // Con `chatbot.enabled` en true, una intención reconocida se
+                // contesta acá y el respondedor histórico se saltea para no
+                // mandar dos mensajes por el mismo entrante.
+                let chatbotReplied = false;
+                let chatbotOptedOut = false;
+                if (isNewMessage && contactId) {
+                    try {
+                        const { handleInboundMessage } = await import('../lib/crmChatbot.js');
+                        const outcome = await handleInboundMessage({
+                            clubId, contactId, messageText: bodyText, at: timestamp,
+                        });
+                        chatbotOptedOut = !!outcome?.optedOut;
+                        if (outcome?.reply) {
+                            const contactRow = await db.query(
+                                `SELECT id, phone FROM "WhatsAppContact" WHERE id=$1`, [contactId]
+                            );
+                            if (contactRow.rows.length) {
+                                await sendWhatsAppTextMessage({ clubId, contact: contactRow.rows[0], text: outcome.reply });
+                                chatbotReplied = true;
+                            }
+                        }
+                    } catch (botErr) {
+                        // La bandeja no puede tumbar el webhook: si falla, el
+                        // mensaje ya quedó guardado y el respondedor histórico
+                        // sigue funcionando como siempre.
+                        console.error('[WA-Inbox] Error en la bandeja:', botErr.message);
+                    }
+                }
+                // Se saltea si el chatbot ya contestó (no mandar dos respuestas al
+                // mismo entrante) o si la persona acaba de pedir la baja (a quien
+                // pide no recibir más mensajes no se le contesta con un agente).
+                if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()
+                    && !chatbotReplied && !chatbotOptedOut) {
                     try {
                         const { runWhatsAppAutomation } = await import('../services/whatsappAgent.js');
                         console.log(`[WA-Auto] Procesando entrante club=${clubId} de=${normalizedPhone}: "${bodyText.slice(0, 80)}"`);

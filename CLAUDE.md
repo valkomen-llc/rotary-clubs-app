@@ -702,7 +702,7 @@ clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
 sólo existe el de KIE).
 
-## WhatsApp CRM — motor de automatización — v4.695
+## WhatsApp CRM — motor de automatización — v4.696
 
 El módulo dejó de ser sólo un enviador de campañas manuales. Ahora observa el
 estado de cada sitio, lo ubica en un momento del ciclo de vida y dispara
@@ -727,8 +727,13 @@ WABA por club. El administrador de un sitio sólo CONSULTA lo suyo.
 | `server/lib/ensureAutomationSchema.js` | Crea las 7 tablas en runtime |
 | `src/components/admin/whatsapp/JourneyBuilder.tsx` | Constructor visual |
 | `src/components/admin/whatsapp/LifecycleBoard.tsx` | Tablero, guardias y exclusión |
+| `server/lib/crmIntents.js` | Catálogo CERRADO de intenciones y su detección |
+| `server/lib/crmInbox.js` | Estado de la atención, enrutamiento y agentes |
+| `server/lib/crmChatbot.js` | Orquesta un entrante: conversación, intención, ruta y respuesta |
+| `server/lib/crmTraining.js` | Puente con el módulo de Capacitaciones (sólo lectura) |
+| `src/components/admin/whatsapp/ConversationInbox.tsx` | La bandeja |
 
-Pruebas: `npm run test:crm` (79 casos). Necesita una `DATABASE_URL` de una base
+Pruebas: `npm run test:crm` (118 casos). Necesita una `DATABASE_URL` de una base
 **vacía** con el schema aplicado; el guion aborta si la cadena parece de un
 entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 
@@ -828,6 +833,74 @@ entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
   las campañas manuales de producción. Al corregir algo del envío, mirar los dos
   sitios.
 
+### Fase 3 — bandeja, intención y enrutamiento (v4.696)
+
+- **Una conversación NO guarda mensajes.** Ya viven en `WhatsAppMessageLog`;
+  duplicarlos daría dos verdades sobre el mismo hilo. `CrmConversation` guarda el
+  ESTADO de la atención: en qué punto está, quién la tiene, qué quería la persona
+  y qué sitio hay detrás.
+- **Un hilo abierto por contacto, por índice único PARCIAL** (`WHERE "closedAt"
+  IS NULL`). Al cerrarse deja el lugar libre y el mensaje siguiente abre otro, así
+  el historial queda por episodio. Ojo: por ser parcial, el `ON CONFLICT` tiene
+  que repetir el predicado o la sentencia falla entera — mismo error que costó una
+  corrección en v4.648.
+- **`resuelto` NO cierra; `cerrado` sí.** Un hilo resuelto que recibe un mensaje
+  vuelve a `nuevo` en vez de quedarse ahí con alguien esperando. Sólo `cerrado`
+  libera el índice.
+- **La detección de intención va de lo exacto a lo inseguro**: botón pulsado →
+  palabras clave → modelo. Empezar por el modelo costaría una llamada por mensaje
+  para resolver lo que una palabra clave resuelve, y haría el enrutamiento no
+  reproducible («¿por qué esto fue a soporte?»). Gana la coincidencia MÁS LARGA:
+  «ayuda técnica» tiene que ganarle a «ayuda».
+- **El catálogo de intenciones es CERRADO.** Si el modelo contesta algo que no
+  está, se descarta y queda `otro`. Una etiqueta inventada no enruta a ningún
+  equipo y no se puede reportar.
+- **El chatbot viene APAGADO y el seguimiento no.** La bandeja clasifica y enruta
+  siempre —eso no le manda nada a nadie—, pero las respuestas automáticas sólo
+  salen con `chatbot.enabled`. El sitio ya tenía dos respondedores en producción
+  (`WhatsAppAutoReplyRule` y `WhatsAppAgentConfig`, en `whatsappAgent.js`) y
+  cambiar lo que reciben los contactos no es un efecto secundario aceptable de
+  agregar una bandeja. Cuando el bot contesta, el respondedor histórico se saltea
+  para no mandar dos mensajes por el mismo entrante.
+- **La BAJA se atiende siempre**, encendido o no el chatbot, y antes que nada.
+  Que la respuesta automática esté apagada no puede significar ignorar a quien
+  pide no recibir más mensajes.
+- **`clicked` sigue sin existir.** Un botón de respuesta rápida llega como
+  mensaje entrante y por eso lo detecta el catálogo de intenciones; el clic en un
+  botón de URL Meta no lo reporta.
+- **El reparto de conversaciones es por CARGA, no por turnos.** Con turnos, quien
+  estuvo ausente vuelve y recibe lo mismo que quien atendió todo el día.
+- **Sin agente disponible, la conversación se enruta al EQUIPO igual** y queda sin
+  asignar. Dejarla sin equipo la volvería invisible en los filtros, que es peor
+  que verla sin dueño.
+- **Tomar un hilo es un UPDATE condicional** (`WHERE "assignedTo" IS NULL`): si
+  otro agente llegó primero, este pierde y se le dice quién lo tiene. Sin la
+  condición, dos personas creerían tenerla.
+- **Escalar crea un `TechnicalRequest` REAL**, no una tarea propia del CRM. El
+  equipo ya trabaja en ese módulo; una cola paralela sería un segundo lugar donde
+  mirar, y las que se olvidan son siempre las del segundo lugar. Sin sitio
+  vinculado NO se escala: se dice por qué, en vez de colgar la solicitud del
+  Origen y dejarla en la cola equivocada.
+- **El error de Meta al responder se propaga TEXTUAL.** Fuera de la ventana de 24
+  horas un mensaje libre se rechaza y hay que usar una plantilla; convertirlo por
+  lo bajo dejaría a quien atiende sin entender qué pasó.
+- **Las capacitaciones NO se duplican.** El catálogo y las citas viven en el
+  módulo de Capacitaciones y desde acá sólo se leen. Copiar las categorías daría
+  dos listas que se separan en silencio y el CRM ofrecería un tema que no se puede
+  reservar.
+- **La recomendación de capacitación sigue el `sortOrder` del catálogo**, que ya
+  es el itinerario que definió el equipo. Inventar un segundo criterio se
+  contradiría con el suyo. Si ya las hizo todas, no recomienda nada: repetir la
+  última sería empujar por empujar.
+- **El recorrido de Onboarding no repite los recordatorios de 24 h y 1 h** de la
+  cita: los manda el módulo de Capacitaciones por correo
+  (`/api/cron/training-reminders`). Duplicarlos le llegaría dos veces a la misma
+  persona por el mismo hecho.
+- **`crm_agent` está en las DOS listas `ADMIN_ROLES`** (servidor y `src/App.tsx`),
+  y NO en `SITE_ADMIN_ROLES`: entra al panel para atender su bandeja y nada más.
+- **Un administrador de sitio no ve las notas internas ni la traza.** Están
+  escritas para el equipo y hablan de su organización.
+
 **Variables de entorno:**
 
 | Variable | Para qué |
@@ -844,13 +917,12 @@ Las guardias de envío (horario, frecuencia, consentimiento, enlaces
 institucionales) **no** son de entorno: viven en `PlatformConfig` bajo
 `crm_automation_settings` y se editan desde el panel, sin desplegar.
 
-**Pendientes conocidos:** las fases 3 y 4 del pedido —bandeja omnicanal con
-enrutamiento y asignación de agentes, chatbot de intención, A/B testing y
-recomendaciones con IA— no están en esta versión; el chat y las respuestas
-automáticas siguen siendo los de `WhatsAppChat.tsx` y `automation.controller.js`.
-Tampoco está el calendario de comunicaciones ni los cuatro recorridos restantes
-(onboarding, adopción, reactivación por bajo uso, sitios vencidos), que se pueden
-armar desde el constructor sin código nuevo.
+**Pendientes conocidos:** la **fase 4** del pedido —centro de campañas unificado,
+calendario de comunicaciones, analítica de conversiones y costos, A/B testing y
+recomendaciones con IA— no está en esta versión. El `WhatsAppChat.tsx` original
+se conserva y convive con la bandeja: es el chat libre de siempre, sin estado ni
+asignación. Unificarlos es deseable pero cambia una pantalla que el equipo usa a
+diario.
 
 ## Inscripciones a eventos / Feria de Proyectos — v4.648
 

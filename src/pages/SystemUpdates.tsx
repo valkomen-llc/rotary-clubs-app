@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.695.0 | 2026-08-03 (Motor de automatización del WhatsApp CRM: ciclo de vida, eventos observados y recorridos)
-// Cache bust: 2026-08-03c
+// UI V4.696.0 | 2026-08-03 (Fase 3 del WhatsApp CRM: bandeja de conversaciones, chatbot de intención y enrutamiento)
+// Cache bust: 2026-08-03d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.696.0',
+        title: 'Las respuestas de los clubes llegan a una bandeja, con dueño y seguimiento \ud83d\udce5',
+        description: 'La versión anterior le dio voz a la plataforma: recorridos que le escriben a cada club en el momento que le sirve. Pero cuando el club CONTESTA, ese mensaje caía en un chat corrido donde no se sabía quién lo estaba atendiendo, si alguien lo había leído ni en qué había quedado. Esta versión cierra ese lado. Ahora cada mensaje entrante abre una conversación con estado propio —nuevo, en atención, pendiente de respuesta, seguimiento, resuelto, cerrado—, con un responsable, etiquetas, notas internas que el contacto nunca ve, y la ficha del club que hay detrás: en qué momento del ciclo de vida está, qué capacitaciones hizo y qué le mandamos antes. Eso último evita el papelón de explicarle algo que ya se le explicó por mensaje automático. Cada mensaje se clasifica además por INTENCIÓN, sobre una lista cerrada de siete: agendar capacitación, renovar, soporte técnico, redes sociales, fundraising, proyectos, hablar con un asesor. La clasificación empieza por lo exacto —el botón que la persona pulsó, o palabras clave— y sólo recurre al modelo de lenguaje cuando eso no alcanza; así el enrutamiento se puede explicar («fue a soporte porque escribió "no funciona"») en vez de depender de una caja negra. Con la intención resuelta, reglas configurables mandan la conversación al equipo que corresponde y se la asignan al agente con menos hilos abiertos. Hay un rol nuevo, Agente del CRM, que entra al panel sólo para atender su bandeja: no configura nada ni ve datos de otros sitios. Desde la conversación se puede responder, tomar un hilo sin dueño, dejar una nota para el equipo, cambiar la prioridad o escalar a soporte —lo que crea una solicitud técnica de verdad en el módulo que el equipo ya usa, no una segunda cola dentro del CRM que nadie miraría—. El chatbot que contesta solo viene APAGADO. Encendido, ofrece el menú de opciones y responde las intenciones que reconoce; apagado, la bandeja igual clasifica y enruta todo, y el contacto sigue recibiendo exactamente lo que recibía antes. La única excepción, y es a propósito: quien pide la baja queda excluido en el acto, esté el chatbot encendido o no. Que la respuesta automática esté apagada no puede significar que ignoremos a alguien que pide no recibir más mensajes. Se completaron además los seis recorridos del pedido: a Bienvenida y Renovación se suman Onboarding, Adopción de módulos a doce meses, Reactivación por bajo uso y Sitios vencidos. Los cuatro nuevos llegan en borrador y sin plantillas asignadas, igual que los anteriores. El de Onboarding no repite los recordatorios de 24 y 1 hora que el módulo de Capacitaciones ya manda por correo: duplicarlos le llegaría dos veces a la misma persona por el mismo motivo.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'bandeja', 'chatbot', 'agentes', 'capacitaciones', 'automatizacion'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Bandeja de conversaciones con seis estados, responsable, etiquetas, notas internas y traza de quién hizo qué.' },
+            { type: 'added', text: 'Clasificación por intención sobre un catálogo cerrado, primero exacta y sólo después con modelo.' },
+            { type: 'added', text: 'Reglas de enrutamiento a equipos y reparto por carga entre los agentes disponibles.' },
+            { type: 'added', text: 'Rol Agente del CRM: atiende la bandeja sin configurar el motor ni ver otros sitios.' },
+            { type: 'added', text: 'Escalar a soporte crea una solicitud técnica real en el módulo que el equipo ya usa.' },
+            { type: 'added', text: 'Chatbot con menú de opciones, apagado por defecto para no cambiar lo que hoy reciben los contactos.' },
+            { type: 'added', text: 'Los seis recorridos del pedido: se suman Onboarding, Adopción, Reactivación por bajo uso y Sitios vencidos.' },
+            { type: 'added', text: 'La ficha de cada conversación muestra las capacitaciones del club y cuál le tocaría seguir.' },
+        ]
+    },
     {
         version: '4.695.0',
         title: 'El WhatsApp CRM acompaña a cada club durante todo el año \ud83e\udded',

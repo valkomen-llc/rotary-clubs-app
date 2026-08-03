@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.695.0",
-  "cache_bust": "2026-08-03c (Motor de automatizacion del WhatsApp CRM: ciclo de vida de cada sitio, eventos observados, recorridos con guardias de envio y constructor visual.)",
+  "version": "4.696.0",
+  "cache_bust": "2026-08-03d (Fase 3 del WhatsApp CRM: bandeja de conversaciones, chatbot de intencion, enrutamiento a agentes y los seis recorridos precargados.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
