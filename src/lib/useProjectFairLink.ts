@@ -12,6 +12,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from './ctaLinks';
+import { readSessions, emitSessionChange, forgetSession } from './siteSession';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -38,15 +39,22 @@ export const useProjectFairLink = (enabled: boolean): ProjectFairLink => {
                 if (cancelled || !data) return;
                 if (data.hasProject && data.portalToken) {
                     localStorage.setItem(PROJECT_FAIR_PORTAL_TOKEN_KEY, data.portalToken);
+                    emitSessionChange();
                     setLink({
                         hasProject: true,
                         path: data.path || PROJECT_FAIR_PORTAL_PATH,
                         submission: data.submission || null,
                     });
                 } else {
-                    // Sin proyecto: se limpia cualquier sesión de panel que
-                    // hubiera quedado de otro usuario en este navegador.
-                    localStorage.removeItem(PROJECT_FAIR_PORTAL_TOKEN_KEY);
+                    // Sin proyecto: se limpia la sesión de panel que hubiera
+                    // quedado, PERO sólo si es del mismo correo (v4.693). Una
+                    // sesión de OTRO correo es una identidad que alguien abrió
+                    // con sus credenciales, y borrarla aquí era cerrarle la
+                    // sesión a quien no había hecho nada: que este usuario de la
+                    // plataforma no tenga proyecto no dice nada sobre ella.
+                    const portal = readSessions().find(s => s.realm === 'portal');
+                    const mine = (data.email || '').toLowerCase();
+                    if (portal && mine && portal.email.toLowerCase() === mine) forgetSession('portal');
                     setLink(EMPTY);
                 }
             })

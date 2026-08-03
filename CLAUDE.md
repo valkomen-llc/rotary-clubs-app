@@ -1404,6 +1404,44 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
   `server/middleware/auth.js`): el cliente decide qué pinta, el servidor qué
   responde. Si cambia una lista, cambiar la otra.
 
+### La sesión se VE en el encabezado (v4.693)
+
+`src/lib/siteSession.ts` es lo que el `Navbar` consulta para saber quién está
+dentro. Lee los tokens que ya existen; no abre ni renueva sesiones.
+
+- **El encabezado conoce las TRES identidades, no sólo la de la plataforma.**
+  Hasta v4.692 el avatar dependía de `isAuthenticated` (`useAuth`), que sólo
+  mira `rotary_token`: un Gestor de Proyectos que salía de `/mi-proyecto` veía
+  el ícono de «Ingresar» y daba su sesión por cerrada. **No lo estaba** —el
+  token nunca se borró—, pero una sesión que no se ve no existe para quien la
+  usa. Al agregar una identidad, agregarla a `REALMS`/`REALM_META`.
+- **Se resuelve en el navegador, leyendo el propio token.** El encabezado se
+  pinta en todas las páginas: una consulta al servidor por visita reabriría el
+  problema de rendimiento de v4.659. Leer el token aquí decide **qué se
+  pinta**, nunca a qué se tiene acceso — eso lo verifica el servidor en cada
+  petición, con firma y audiencia.
+- **Se comprueban vencimiento y audiencia.** Un token vencido se retira del
+  navegador ahí mismo (dejarlo sólo sirve para que el siguiente intento falle
+  con un 401); uno con audiencia ajena se ignora. Un token **ilegible no se
+  toca**: puede no ser nuestro, y borrarlo sería cerrarle la sesión a alguien
+  por no saber leerlo. Los tokens sin `aud` se siguen aceptando, igual que en
+  el servidor.
+- **El nombre lo guarda el panel, no el token.** El token lleva el correo; el
+  menú del avatar quiere el nombre. Cada panel llama a `rememberProfile` al
+  cargar sus datos (`site_session_<realm>`). Pedirlo al servidor sólo para
+  dibujar el encabezado sería, otra vez, una consulta por visita.
+- **«Cerrar sesión» cierra las TRES.** Quien lo pulsa quiere salir del sitio,
+  no de una de tres identidades que ni sabe que tiene separadas.
+- **`/portal/link` sólo retira la sesión del panel si es del MISMO correo**
+  (v4.693). Antes la borraba siempre que el usuario de la plataforma no
+  tuviera proyecto: eso cerraba la sesión de OTRA persona que la había abierto
+  con sus credenciales en ese navegador. Que este usuario no tenga proyecto no
+  dice nada sobre ella. Por eso el endpoint devuelve `email` también en la
+  respuesta negativa.
+- **Toda escritura de un token avisa** (`emitSessionChange`), y el hook escucha
+  además `storage` (otra pestaña) y `visibilitychange` (venció en segundo
+  plano). Sin el aviso, el avatar aparece recién en la siguiente recarga.
+
 ## Credenciales
 
 **Nunca escribir cadenas de conexión ni claves en el código.** Siempre

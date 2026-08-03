@@ -27,7 +27,7 @@ import {
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
-console.log('[projectFairPortalController] v4.642.0 cargado — Panel del club: varios formularios por proyecto (Formulación + Solicitud de Aportes del FDD)');
+console.log('[projectFairPortalController] v4.693.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo');
 
 // La edición de un formulario la decide un solo lugar, compartido por todos
 // (`projectFormsController`). Se reexporta porque este módulo era su casa.
@@ -133,7 +133,10 @@ export const linkPlatformUser = async (req, res) => {
     try {
         await ensureTables();
         const email = String(req.user?.email || '').trim().toLowerCase();
-        if (!isEmail(email)) return res.json({ hasProject: false });
+        // El correo viaja también en la respuesta negativa: el navegador lo
+        // necesita para saber si la sesión del panel que tenga guardada es de
+        // ESTE usuario (y entonces está vencida) o de otro (y no se toca).
+        if (!isEmail(email)) return res.json({ hasProject: false, email: null });
 
         const { rows } = await db.query(`
             SELECT * FROM "ProjectFairSubmission"
@@ -141,10 +144,10 @@ export const linkPlatformUser = async (req, res) => {
             ORDER BY (status = 'paid') DESC, "createdAt" DESC
             LIMIT 1`, [email]);
         const submission = rows[0];
-        if (!submission) return res.json({ hasProject: false });
+        if (!submission) return res.json({ hasProject: false, email });
 
         const account = await ensureAccountFor(submission);
-        if (!account) return res.json({ hasProject: false });
+        if (!account) return res.json({ hasProject: false, email });
 
         const cfg = await readConfigForAdmin();
         res.json({

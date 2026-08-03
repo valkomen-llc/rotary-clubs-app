@@ -33,6 +33,7 @@ import {
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { openLoginModal } from '../lib/loginModal';
+import { forgetSession, rememberProfile, emitSessionChange } from '../lib/siteSession';
 import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState } from '../lib/projectForms';
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
@@ -125,8 +126,10 @@ const MiProyecto = () => {
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
 
     // ── Sesión ───────────────────────────────────────────────────────
+    // Salir cierra la identidad en el sitio entero, no sólo en esta pantalla:
+    // el encabezado escucha ese aviso y baja el avatar en el acto (v4.693).
     const logout = useCallback(() => {
-        localStorage.removeItem(TOKEN_KEY);
+        forgetSession('portal');
         setToken(null); setData(null); setOpenForm(null);
     }, []);
 
@@ -139,7 +142,18 @@ const MiProyecto = () => {
                 if (!r.ok) throw new Error(body?.error || 'No pudimos cargar tu panel.');
                 return body as PortalData;
             })
-            .then(body => { if (body) setData(body); })
+            .then(body => {
+                if (!body) return;
+                setData(body);
+                // El token lleva el correo, no el nombre: se guarda aquí lo que
+                // el encabezado necesita para el menú del avatar, y así no hace
+                // falta una consulta por visita sólo para dibujarlo.
+                rememberProfile('portal', {
+                    name: body.submission?.clubName || null,
+                    org: body.submission?.projectName || null,
+                    email: body.submission?.email || null,
+                });
+            })
             .catch(e => setNotice({ kind: 'error', text: e?.message || 'No pudimos cargar tu panel.' }))
             .finally(() => setLoading(false));
     }, [logout]);
@@ -161,6 +175,7 @@ const MiProyecto = () => {
             .then(body => {
                 if (body?.token) {
                     localStorage.setItem(TOKEN_KEY, body.token);
+                    emitSessionChange();
                     setToken(body.token);
                     window.history.replaceState(null, '', window.location.pathname);
                 } else {
@@ -203,7 +218,7 @@ const MiProyecto = () => {
     // el enlace de correo abre la creación de contraseña; todo lo demás manda
     // al formulario único del encabezado.
     if (!token || !data) {
-        const accept = (t: string) => { localStorage.setItem(TOKEN_KEY, t); setToken(t); };
+        const accept = (t: string) => { localStorage.setItem(TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <PortalReset token={resetToken} onToken={accept} />
             : <PortalSignIn notice={notice} />;

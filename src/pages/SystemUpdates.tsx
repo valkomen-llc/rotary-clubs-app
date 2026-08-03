@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.692.0 | 2026-08-03 (Quien ya tiene cuenta se inscribe al Registro Nacional con esa misma sesión)
-// Cache bust: 2026-08-02a
+// UI V4.693.0 | 2026-08-03 (La sesión se ve en el avatar del encabezado y ya no parece cerrarse al salir del panel)
+// Cache bust: 2026-08-03a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.693.0',
+        title: 'La sesión se queda abierta y se ve en el encabezado \ud83d\udc64',
+        description: 'Quien entraba a gestionar su proyecto y luego salía de esa pantalla tenía toda la impresión de que el sitio lo había echado: el ícono del encabezado volvía a decir «Ingresar», como si no hubiera nadie dentro. La sesión en realidad seguía abierta —el acceso nunca se borró y bastaba volver a /mi-proyecto para comprobarlo—, pero nada en pantalla lo decía, y una sesión que no se ve es una sesión que no existe para quien la usa. El motivo era que el encabezado sólo conocía una de las tres identidades del sitio, la de los administradores; el Gestor de Proyectos y el Asistente al Evento le resultaban invisibles. Ahora el avatar aparece con cualquiera de las tres. Al pasar el cursor por encima se ve con qué cuenta se está navegando —nombre, correo, club o evento— y, cuando no es la de administrador, también qué rol es, que es la única forma de saberlo cuando alguien tiene más de uno. Desde ahí se entra directo a «Mi Proyecto» o a «Mi Inscripción», y una misma persona que lleva los dos roles ve los dos accesos en el mismo menú, sin volver a escribir su contraseña para pasar de uno al otro. El menú del teléfono muestra lo mismo. «Cerrar sesión» ahora cierra de verdad: sale de las tres identidades a la vez, no de una que la persona ni sabía que tenía separada de las otras. Y si el acceso venció mientras el navegador estaba en otra cosa, el encabezado lo retira solo en lugar de ofrecer un avatar que ya no lleva a ninguna parte; si se cierra sesión en otra pestaña, esta se entera. Se corrigió además un caso en que la sesión sí se cerraba de verdad: un administrador del sitio cuyo correo no tiene proyecto postulado hacía que se borrara la sesión del panel del club abierta en ese navegador, aunque fuera de OTRA persona con sus propias credenciales. Ahora sólo se retira si es del mismo correo, que es el único caso en que sobra.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'sesiones', 'encabezado', 'gestion de proyectos', 'asistente al evento', 'experiencia de usuario'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La sesión del Gestor de Proyectos y la del Asistente al Evento se ven en el avatar del encabezado en todo el sitio, no sólo dentro de su panel.' },
+            { type: 'added', text: 'El menú del avatar lleva a «Mi Proyecto» y a «Mi Inscripción», y muestra los dos accesos a quien tiene los dos roles.' },
+            { type: 'changed', text: '«Cerrar sesión» cierra las tres identidades a la vez.' },
+            { type: 'fixed', text: 'Un acceso vencido se retira solo, y un cierre de sesión en otra pestaña se refleja en esta.' },
+            { type: 'fixed', text: 'Un administrador sin proyecto postulado ya no cierra la sesión del panel del club abierta por otra persona en el mismo navegador.' },
+        ]
+    },
     {
         version: '4.692.0',
         title: 'Quien ya tiene cuenta se inscribe sin crear otra contraseña 🔑',
