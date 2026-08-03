@@ -381,6 +381,8 @@ export interface ReelOptions {
     defaultEngine: string;
     motionStyles: { id: string; label: string; description: string; intensity: number }[];
     defaultMotionStyle: string;
+    motionIntensities?: { id: string; label: string; description: string; isDefault: boolean }[];
+    defaultMotionIntensity?: string;
     transitions: { id: string; label: string; description: string; overlap: number }[];
     defaultTransition: string;
     musicStyles: { id: string; label: string; mood: string; bpm: number }[];

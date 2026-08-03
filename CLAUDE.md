@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.676
+## Creador de Reels IA — v4.704
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -401,6 +401,29 @@ en `config` sin que el servidor los leyera.
   cae a −29,8 dB y sigue bajando. El fade de salida es de ~2 s, acotado a un
   tercio de la pieza; el de entrada, 0,6 s — entrar rápido no se nota, salir
   rápido sí.
+- **La CANTIDAD de acciones pedidas es el mando de la CADENCIA** (v4.704,
+  `MOTION_INTENSITY`). Los clips salían acelerados, como un time-lapse, y el
+  montaje no tenía nada que ver: no hay ninguna alteración de velocidad en el
+  grafo —`setpts=PTS-STARTPTS` sólo rebasa marcas de tiempo—. El clip llegaba
+  así del motor porque el prompt de v4.673 enumeraba SIETE acciones para cinco
+  segundos, y un modelo generativo comprime lo que se le pide en el tiempo que
+  tiene. La velocidad no se puede pedir a un motor image-to-video; lo que se
+  controla es cuánto se le pide que ocurra. Tres niveles: `sutil` (2-3
+  acciones), `natural` (por defecto) y `expresivo`. **Al tocar la cláusula de
+  personas, contar las acciones**: es el número que gobierna si se ve humano o
+  apresurado.
+- **La cadencia se AFIRMA aparte de la duración.** Decir «un video de N
+  segundos» no basta: el modelo entrega el resumen comprimido de un momento más
+  largo. Hace falta la frase que dice que esos segundos SE OCUPAN —«everything
+  happens at the speed it happens in life … evenly paced from the first frame to
+  the last»—.
+- **Kling no acepta `negative_prompt`.** El input de `kling-*/image-to-video` es
+  exactamente `{ prompt, image_urls, duration, sound }` (`buildVideoInput`), y
+  mandar campos que el modelo no declara es lo que rompió el módulo en v4.645.
+  Las restricciones se expresan dentro del prompt positivo, que además es la
+  regla del sitio. Acotar CÓMO ocurre el movimiento («nunca todos a la vez»,
+  «nunca desde el objetivo») no es una lista negra; enumerar efectos —humo,
+  chispas, destellos— sí lo es, y eso no se hace.
 - **IDENTIDAD y MOVIMIENTO son dos ejes distintos, y confundirlos congela la
   escena** (v4.673). Es el error que siguió a la corrección del humo: al acotar
   el movimiento con *«the smallest natural one … while everything else about

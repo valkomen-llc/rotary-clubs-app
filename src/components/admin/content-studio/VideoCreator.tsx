@@ -82,6 +82,7 @@ const VideoCreator: React.FC = () => {
         format: '9:16',
         qualityTier: 'fullhd',
         motionStyle: AUTO,
+        motionIntensity: 'natural',
         transition: AUTO,
         musicStyle: AUTO,
         engine: '',
@@ -663,6 +664,26 @@ const VideoCreator: React.FC = () => {
                         </div>
                         <p className="text-[11px] text-gray-400 font-bold mb-6">Opcional. En automático lo elige la IA por escena.</p>
                         <div className="space-y-6">
+                            {/* Intensidad: cuántas acciones se le piden al motor.
+                                Es lo que gobierna la CADENCIA — pedirle muchas
+                                para cinco segundos las comprime y el clip se ve
+                                acelerado. Por eso el control es de intensidad y
+                                no de velocidad: la velocidad no se pide, se
+                                obtiene no pidiendo de más. */}
+                            <div>
+                                <Select
+                                    label="Movimiento natural de la escena"
+                                    value={config.motionIntensity}
+                                    onChange={v => setConfig({ ...config, motionIntensity: v })}
+                                    options={options?.motionIntensities?.map(i => ({ id: i.id, label: i.label }))
+                                        || [{ id: 'natural', label: 'Natural' }]}
+                                    hint={options?.motionIntensities?.find(i => i.id === config.motionIntensity)?.description}
+                                />
+                                <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+                                    La IA anima a las personas y los elementos de la fotografía. La cámara no se
+                                    mueve: todo el movimiento sale de la escena.
+                                </p>
+                            </div>
                             <Select
                                 label="Estilo de animación"
                                 value={config.motionStyle}

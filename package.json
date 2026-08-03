@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.703.0",
-  "cache_bust": "2026-08-03k (SEO Inteligente: el <head> se resuelve en el servidor, sin etiquetas duplicadas; robots y sitemap reales en la raiz; auditoria, recomendaciones y palabras clave.)",
+  "version": "4.704.0",
+  "cache_bust": "2026-08-03l (Cadencia real en los Reels: control de intensidad del movimiento.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -713,6 +713,44 @@ export const resolveEngine = ({ engine, format = DEFAULT_FORMAT, qualityTier = D
     };
 };
 
+// ─── Intensidad del movimiento (v4.677) ───────────────────────────────────
+//
+// Cuánta ACTIVIDAD se le pide al motor. Es distinto del estilo y es el mando
+// real de la velocidad aparente del clip.
+//
+// Nació de un defecto medido en producción: v4.672 congeló las escenas pidiendo
+// que todo se quedara quieto, y v4.673 corrigió de más — enumeraba SIETE
+// acciones («respiran, parpadean, cambian el peso, giran la cabeza, se miran,
+// sonríen, terminan el gesto») para un clip de cinco segundos. Un modelo
+// generativo al que se le dan siete acciones y cinco segundos las COMPRIME, y
+// el resultado se ve acelerado, como un time-lapse.
+//
+// Menos acciones = más tiempo para cada una = cadencia humana. Por eso el
+// control que ve el usuario es de intensidad, no de velocidad: la velocidad no
+// se puede pedir, se obtiene no pidiendo demasiado.
+export const MOTION_INTENSITY = {
+    sutil: {
+        id: 'sutil',
+        label: 'Muy sutil',
+        description: 'Apenas respiración y algún parpadeo. El menor riesgo de que el motor reinterprete un rostro.',
+        clause: 'Their movement is minimal: they breathe, and now and then one of them blinks or settles their weight a little.'
+    },
+    natural: {
+        id: 'natural',
+        label: 'Natural',
+        description: 'Respiran, parpadean, y alguno gira la cabeza o termina un gesto.',
+        isDefault: true,
+        clause: 'They breathe and blink, and over these seconds one or two of them turn their head a little, glance towards someone beside them, or finish the gesture their hands had already begun.'
+    },
+    expresivo: {
+        id: 'expresivo',
+        label: 'Expresivo moderado',
+        description: 'Más interacción entre las personas. Más vida, y algo más de riesgo de deriva.',
+        clause: 'They breathe and blink, they shift their weight, heads turn towards one another, glances pass between them and small smiles come and go, and whoever had begun a gesture carries it through.'
+    }
+};
+export const DEFAULT_MOTION_INTENSITY = 'natural';
+
 // ─── Prompts ───────────────────────────────────────────────────────────────
 //
 // Cortos y en positivo, igual que en el resto del sitio. Aprendizaje del
@@ -731,7 +769,8 @@ export const buildScenePrompt = ({
     durationSec = DEFAULT_SCENE_SEC,
     analysis = null,
     withAudio = false,
-    musicStyle = DEFAULT_MUSIC_STYLE
+    musicStyle = DEFAULT_MUSIC_STYLE,
+    intensity = DEFAULT_MOTION_INTENSITY
 } = {}) => {
     const s = MOTION_STYLES[style] || MOTION_STYLES[DEFAULT_MOTION_STYLE];
     const parts = [
@@ -744,7 +783,12 @@ export const buildScenePrompt = ({
         // frase lo que se pide: que la escena TRANSCURRA. La versión anterior
         // decía «animated from the provided photograph», que un modelo puede
         // satisfacer moviendo sólo la cámara — y eso es lo que salía.
-        `A ${Math.round(durationSec)}-second documentary video: this is the moment the photograph was taken, filmed as it happened, ${Math.round(durationSec)} seconds of real time passing in the scene.`,
+        `A ${Math.round(durationSec)}-second documentary video: this is the moment the photograph was taken, filmed as it happened.`,
+        // La cadencia se declara aparte y en positivo. No basta con decir «N
+        // segundos de tiempo real» junto a la duración: hay que afirmar que lo
+        // que se ve OCUPA esos segundos, o el modelo entrega un resumen
+        // comprimido de un momento más largo — que es el time-lapse reportado.
+        `Everything happens at the speed it happens in life. These are ${Math.round(durationSec)} unhurried seconds of that moment, at natural human cadence, evenly paced from the first frame to the last.`,
         // La identidad es lo que NO cambia. Ojo con el alcance: se enumeran
         // atributos y encuadre, NO el movimiento. Confundir las dos cosas fue
         // el error de v4.672: pedir que «todo lo demás se quede quieto»
@@ -766,16 +810,14 @@ export const buildScenePrompt = ({
         parts.push('Logos, wordmarks, badges and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions, and they never redraw themselves — even while the person wearing them moves.');
     }
     if (analysis?.hasPeople) {
-        // El movimiento se describe con VERBOS y se pide que sea INDEPENDIENTE
-        // por persona. Un modelo al que sólo se le concede «un pequeño
-        // movimiento natural» entrega un grupo congelado, o peor, a todos
-        // haciendo lo mismo a la vez, que se lee como un error.
+        // La cantidad de acciones la fija la INTENSIDAD, no el prompt fijo.
+        // Enumerar de más es lo que produce el efecto de cámara rápida: el
+        // modelo comprime todo lo que se le pide en los segundos que tiene.
+        const level = MOTION_INTENSITY[intensity] || MOTION_INTENSITY[DEFAULT_MOTION_INTENSITY];
+        parts.push(`The people behave as they did in that moment. ${level.clause}`);
         parts.push(
-            'The people behave as they did in that moment: they breathe, they blink, they shift their weight, ' +
-            'their heads turn a little, their glances move between one another, small smiles come and go, ' +
-            'and hands finish the gesture they had started. Whoever was holding something keeps holding it. ' +
-            'Whoever was mid-step continues the step. Each person moves on their own timing and in their own way, ' +
-            'never all together, so the group looks alive rather than posed.'
+            'Whoever was holding something keeps holding it, and whoever was mid-step continues the step. ' +
+            'Each person moves on their own timing, never all together, so the group looks alive rather than posed.'
         );
         // El límite va aparte y es sobre la IDENTIDAD, no sobre el movimiento.
         parts.push('Through all of it their faces remain the same faces, with the same features and the same age, and their hands keep five fingers and their natural shape.');
