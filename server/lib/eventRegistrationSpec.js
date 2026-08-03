@@ -236,6 +236,64 @@ export const TERMS_FIELD = {
     type: 'checkbox', required: true,
 };
 
+// ── Ingreso con una cuenta que ya existe (v4.692) ────────────────────
+//
+// Un rotario que ya postuló un proyecto tiene cuenta, contraseña y perfil en
+// la plataforma. Pedirle que invente OTRA contraseña para inscribirse al
+// evento es trabajo repetido y una segunda credencial que recordar.
+//
+// La política vive en la edición (`settings.accountLinking`), no en el código,
+// para que cada evento decida sin desplegar. Y se limita por AUDIENCIA, no por
+// clave de categoría: el administrador renombra las categorías, pero la
+// audiencia («este registro es el nacional») no cambia.
+//
+// Por qué sólo la audiencia nacional por defecto: la cuenta que se reutiliza es
+// la del Gestor de Proyectos, y esa convocatoria es para clubes colombianos.
+// Un asistente internacional no tiene ese antecedente, así que ofrecerle
+// «ingresa con tu cuenta» sería ofrecerle algo que no puede usar.
+
+export const LINKING_MODES = ['both', 'account_only', 'new_only'];
+
+export const DEFAULT_ACCOUNT_LINKING = {
+    /**
+     * `both`         → puede entrar con su cuenta O crear una nueva (por defecto)
+     * `account_only` → sólo con cuenta existente (no se ofrece crear contraseña)
+     * `new_only`     → como antes de v4.692: siempre crea credenciales
+     */
+    mode: 'both',
+    /** Audiencias en las que se ofrece. Vacío = ninguna. */
+    audiences: ['national'],
+};
+
+export const normalizeAccountLinking = (raw = {}) => {
+    const mode = LINKING_MODES.includes(raw?.mode) ? raw.mode : DEFAULT_ACCOUNT_LINKING.mode;
+    const audiences = Array.isArray(raw?.audiences)
+        ? [...new Set(raw.audiences.map(a => String(a || '').trim().toLowerCase()).filter(Boolean))]
+        : [...DEFAULT_ACCOUNT_LINKING.audiences];
+    return { mode, audiences };
+};
+
+/**
+ * Qué se le ofrece a quien abre el formulario de esta categoría.
+ *
+ * @returns {{ allowed: boolean, requiresAccount: boolean, mode: string }}
+ *   `allowed`         → se puede usar una cuenta existente
+ *   `requiresAccount` → NO se pide contraseña porque no se admite cuenta nueva
+ */
+export const accountLinkingFor = (category, settings = {}) => {
+    const cfg = normalizeAccountLinking(settings?.accountLinking);
+    const audience = category?.audience || AUDIENCE_BY_CATEGORY[category?.key] || 'general';
+    const applies = cfg.audiences.includes(audience);
+    if (!applies || cfg.mode === 'new_only') {
+        return { allowed: false, requiresAccount: false, mode: 'new_only' };
+    }
+    return {
+        allowed: true,
+        requiresAccount: cfg.mode === 'account_only',
+        mode: cfg.mode,
+    };
+};
+
 // ── Credenciales del asistente ───────────────────────────────────────
 //
 // v4.655 — La inscripción crea la cuenta con la que el asistente entrará

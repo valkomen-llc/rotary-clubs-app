@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.691.0",
-  "cache_bust": "2026-08-03 (El panel del Gestor de Proyectos identifica la feria a la que postula: nombre de la edicion, sede, fechas y enlace a la ficha del evento, en una franja del encabezado. La tarjeta de plazo pasa a decir cuanto falta, no solo la fecha. Y el panel resuelve la convocatoria de SU edicion en vez de la que este abierta: plazo, precios y formulario son los de la feria a la que ese club postulo.)",
+  "version": "4.692.0",
+  "cache_bust": "2026-08-02a (Quien ya tiene cuenta en la plataforma puede inscribirse al Registro Nacional con esa misma sesion, sin crear otra contrasena y con el formulario precargado.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

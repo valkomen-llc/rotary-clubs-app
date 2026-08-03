@@ -16,7 +16,7 @@ import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 // qué registro se ofrece (regla durable del módulo, v4.652).
 import { useEventCta } from '../components/EventRegistrationCta';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
-import { onOpenLoginModal } from '../lib/loginModal';
+import { onOpenLoginModal, emitLoginSuccess } from '../lib/loginModal';
 import { useVisitorCountry } from '../hooks/useVisitorCountry';
 
 // El ingreso con Google todavía no tiene flujo: el botón no llevaba ningún
@@ -260,6 +260,7 @@ const Navbar = () => {
       const data = await res.json();
       if (res.ok && data?.token) {
         localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
+        emitLoginSuccess({ realm: 'portal' });
         return true;
       }
       return false;
@@ -333,6 +334,7 @@ const Navbar = () => {
         // Gestor de Proyectos: identidad del módulo, token en su propia llave.
         localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
         setJustLinked(true);
+        emitLoginSuccess({ realm: 'portal' });
         closeLoginModal();
         navigate(target);
         return;
@@ -342,12 +344,14 @@ const Navbar = () => {
         // Asistente al Evento: su propia identidad y su propia llave. No se
         // toca la sesión de la plataforma ni la del panel del club.
         localStorage.setItem(ATTENDEE_TOKEN_KEY, data.token);
+        emitLoginSuccess({ realm: 'attendee' });
         closeLoginModal();
         navigate(target);
         return;
       }
 
       login(data.token, data.user);
+      emitLoginSuccess({ realm: 'platform' });
       closeLoginModal();
       // Un administrador del sitio puede además haber postulado un proyecto.
       // Se guarda su acceso al panel del club para ofrecérselo en el menú, sin

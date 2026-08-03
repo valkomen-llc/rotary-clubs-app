@@ -62,6 +62,9 @@ const OWNED_REGISTRATION_COLUMNS = [
     'answers', 'pricing', 'tags', 'companionsCount', 'submittedAt', 'accountId',
 ];
 
+// Columnas de `EventAttendeeAccount` añadidas después de crear la tabla.
+const OWNED_ACCOUNT_COLUMNS = ['linkedRealm', 'linkedId'];
+
 /** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
 const alreadyApplied = async () => {
     try {
@@ -74,7 +77,13 @@ const alreadyApplied = async () => {
             `SELECT column_name FROM information_schema.columns
               WHERE table_schema = 'public' AND table_name = 'EventRegistration'
                 AND column_name = ANY($1)`, [OWNED_REGISTRATION_COLUMNS]);
-        return columns.rows.length === OWNED_REGISTRATION_COLUMNS.length;
+        if (columns.rows.length !== OWNED_REGISTRATION_COLUMNS.length) return false;
+
+        const accountColumns = await db.query(
+            `SELECT column_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'EventAttendeeAccount'
+                AND column_name = ANY($1)`, [OWNED_ACCOUNT_COLUMNS]);
+        return accountColumns.rows.length === OWNED_ACCOUNT_COLUMNS.length;
     } catch (error) {
         // Ante la duda, se ejecuta el DDL: es idempotente y no destructivo.
         console.warn('[eventRegistrationSchema] no pude comprobar el catálogo:', error?.message);
@@ -382,6 +391,15 @@ export const ensureEventRegistrationSchema = async () => {
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventAttendeeAccount_email_key"
                     ON "EventAttendeeAccount" (lower(email));`).catch(() => { });
+
+    // v4.692 — Vínculo con una identidad que YA existía (el Gestor de
+    // Proyectos, o un usuario de la plataforma). Una cuenta vinculada no tiene
+    // contraseña propia: se entra con la de siempre y su `passwordHash` queda
+    // en el marcador inutilizable. Es lo que evita pedir una segunda clave a
+    // quien ya postuló un proyecto y ya se autenticó.
+    await addColumn('EventAttendeeAccount', 'linkedRealm', 'VARCHAR(30)');
+    await addColumn('EventAttendeeAccount', 'linkedId', 'TEXT');
+    await index('EventAttendeeAccount_linked_idx', 'ON "EventAttendeeAccount" ("linkedRealm", "linkedId")');
 
     // Auditoría de ingresos. Guarda también los intentos fallidos: sin ellos no
     // se puede distinguir "la persona olvidó la clave" de "alguien está

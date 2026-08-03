@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.691.0 | 2026-08-03 (El panel del club identifica la feria a la que postula)
-// Cache bust: 2026-07-31h
+// UI V4.692.0 | 2026-08-03 (Quien ya tiene cuenta se inscribe al Registro Nacional con esa misma sesión)
+// Cache bust: 2026-08-02a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.692.0',
+        title: 'Quien ya tiene cuenta se inscribe sin crear otra contraseña 🔑',
+        description: 'Un rotario que ya postuló un proyecto tiene cuenta, contraseña y perfil en la plataforma, y aun así el Registro Nacional le pedía inventar una segunda contraseña y volver a escribir datos que el sistema ya conoce. A partir de esta versión el formulario lo reconoce. Si llega con la sesión abierta, ve un aviso que dice "Has iniciado sesión como…", con su correo, su club y el tipo de cuenta, y el bloque de crear contraseña sencillamente desaparece: su inscripción quedará ligada a la cuenta que ya usa. Además el formulario se llena solo con lo que ya está en su postulación —nombres, apellidos, correo, teléfono, país, ciudad, departamento, tipo y número de documento, club y distrito—, de modo que sólo tiene que revisar y continuar. La precarga respeta lo que la persona haya escrito: sólo rellena lo que esté vacío, así que un borrador a medias no se pisa. Si llega sin sesión, antes de empezar a inventar una contraseña ve un bloque que le pregunta si ya tiene cuenta y le ofrece ingresar; al hacerlo se usa el mismo formulario de ingreso de siempre, el del encabezado, y al volver el registro se actualiza al instante sin recargar la página ni perder lo escrito. Y si de verdad es la primera vez, el flujo queda exactamente igual que antes: crea su contraseña y sigue. No se duplican cuentas: una persona, un correo, una sola credencial, aunque se inscriba a varias ediciones. La funcionalidad está limitada al Registro Nacional, porque la cuenta que se reutiliza es la del gestor de proyectos y esa convocatoria es para clubes colombianos; el Registro Internacional y el de CADRES siguen igual. Queda parametrizada por evento: cada edición puede permitir ambos caminos, exigir cuenta existente o volver al registro nuevo de siempre, y ampliarlo a otras categorías, sin tocar código. Por último, quien se inscribió reutilizando su cuenta entra a consultar su inscripción con esa misma clave, sin una segunda sesión.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'cuentas', 'autenticacion', 'feria-de-proyectos', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.691.0',
         title: 'El panel del Gestor de Proyectos ya dice a qué feria postula \ud83c\udfc6',
