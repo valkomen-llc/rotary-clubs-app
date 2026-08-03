@@ -494,12 +494,23 @@ router.get('/crm-automation-tick', async (req, res) => {
             delivery = await advanceRuns({ clubId, now, timeBudgetMs: 60_000, limit: 200 });
         }
 
-        const elapsedMs = Date.now() - startedAt;
-        if (lifecycle.transitions || enrollment.enrolled || delivery.sent) {
-            console.log(`[CRON crm-automation] sitios=${lifecycle.sites} transiciones=${lifecycle.transitions} ` +
-                `eventos=${lifecycle.eventsCreated} inscripciones=${enrollment.enrolled} enviados=${delivery.sent} en ${elapsedMs}ms`);
+        // Las alertas se barren al final: dependen del estado que las tres etapas
+        // anteriores acaban de dejar, y levantarlas antes las calcularía sobre
+        // la foto de la vuelta pasada.
+        let alerts = { created: 0 };
+        if (clubId) {
+            const { sweepAlerts } = await import('../lib/crmAlerts.js');
+            const { getAutomationSettings } = await import('../lib/crmGuardrails.js');
+            alerts = await sweepAlerts(clubId, { settings: await getAutomationSettings(), now });
         }
-        res.json({ ok: true, clubId, lifecycle, seeds, enrollment, delivery, elapsedMs });
+
+        const elapsedMs = Date.now() - startedAt;
+        if (lifecycle.transitions || enrollment.enrolled || delivery.sent || alerts.created) {
+            console.log(`[CRON crm-automation] sitios=${lifecycle.sites} transiciones=${lifecycle.transitions} ` +
+                `eventos=${lifecycle.eventsCreated} inscripciones=${enrollment.enrolled} enviados=${delivery.sent} ` +
+                `alertas=${alerts.created} en ${elapsedMs}ms`);
+        }
+        res.json({ ok: true, clubId, lifecycle, seeds, enrollment, delivery, alerts, elapsedMs });
     } catch (e) {
         console.error('[CRON crm-automation] error:', e);
         res.status(500).json({ error: e.message });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Workflow, Plus, Trash2, Play, Pause, AlertTriangle, CheckCircle2, Clock,
-    Send, GitBranch, Tag as TagIcon, BellRing, LogOut, ChevronRight, Users,
+    Send, GitBranch, Tag as TagIcon, BellRing, LogOut, ChevronRight, Users, Shuffle,
     RefreshCw, Eye, X, Save, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,7 +15,7 @@ type Audience = { match?: 'all' | 'any'; rules?: Rule[]; scopeToEventSite?: bool
 
 type Node = {
     id: string;
-    type: 'send_template' | 'wait' | 'condition' | 'tag' | 'alert' | 'exit';
+    type: 'send_template' | 'wait' | 'condition' | 'tag' | 'alert' | 'split' | 'exit';
     next?: string | null;
     nextTrue?: string | null;
     nextFalse?: string | null;
@@ -27,6 +27,7 @@ type Node = {
     add?: string[]; remove?: string[];
     severity?: string; title?: string; detail?: string;
     reason?: string; goalReached?: boolean;
+    variants?: { key?: string; weight?: number; next?: string | null }[];
     ignoreFrequency?: boolean;
 };
 
@@ -58,6 +59,7 @@ const NODE_ICON: Record<string, React.ReactNode> = {
     condition: <GitBranch className="w-4 h-4" />,
     tag: <TagIcon className="w-4 h-4" />,
     alert: <BellRing className="w-4 h-4" />,
+    split: <Shuffle className="w-4 h-4" />,
     exit: <LogOut className="w-4 h-4" />,
 };
 
@@ -445,6 +447,64 @@ const NodeEditor: React.FC<{
                 </div>
             )}
 
+            {node.type === 'split' && (
+                <div className="space-y-2">
+                    <p className="text-xs bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-2">
+                        A cada contacto le toca siempre la misma variante, calculada a partir de su identificador.
+                        No es azar: así un reintento no lo cambia de rama y el resultado mide las variantes, no la suerte.
+                    </p>
+                    {(node.variants || []).map((v, i) => (
+                        <div key={i} className="flex flex-wrap items-center gap-2 bg-gray-50 border rounded-lg p-2">
+                            <input
+                                value={v.key || ''}
+                                onChange={e => onChange({
+                                    ...node,
+                                    variants: (node.variants || []).map((x, idx) => (idx === i ? { ...x, key: e.target.value } : x)),
+                                })}
+                                placeholder={`Variante ${String.fromCharCode(65 + i)}`}
+                                className="border rounded px-2 py-1 text-sm w-28"
+                            />
+                            <label className="flex items-center gap-1 text-xs text-gray-500">
+                                peso
+                                <input
+                                    type="number" min={0} value={v.weight ?? 1}
+                                    onChange={e => onChange({
+                                        ...node,
+                                        variants: (node.variants || []).map((x, idx) => (idx === i ? { ...x, weight: Number(e.target.value) } : x)),
+                                    })}
+                                    className="border rounded px-2 py-1 text-sm w-16"
+                                />
+                            </label>
+                            <select
+                                value={v.next || ''}
+                                onChange={e => onChange({
+                                    ...node,
+                                    variants: (node.variants || []).map((x, idx) => (idx === i ? { ...x, next: e.target.value || null } : x)),
+                                })}
+                                className="border rounded px-2 py-1 text-sm flex-1 min-w-[120px]"
+                            >
+                                <option value="">— elegí el paso —</option>
+                                {others.map(n => <option key={n.id} value={n.id}>{n.id}</option>)}
+                            </select>
+                            <button
+                                onClick={() => onChange({ ...node, variants: (node.variants || []).filter((_, idx) => idx !== i) })}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            ><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                    ))}
+                    <button
+                        onClick={() => onChange({
+                            ...node,
+                            variants: [...(node.variants || []), { key: `v${(node.variants || []).length + 1}`, weight: 1, next: null }],
+                        })}
+                        className="text-sm px-3 py-1.5 border rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                    ><Plus className="w-3.5 h-3.5" /> Variante</button>
+                    <p className="text-xs text-gray-400">
+                        Una variante con peso 0 deja de recibir contactos nuevos sin romper las inscripciones que ya estaban en ella.
+                    </p>
+                </div>
+            )}
+
             {node.type === 'exit' && (
                 <div className="space-y-2">
                     <input
@@ -488,6 +548,8 @@ const FlowPreview: React.FC<{ journey: Journey }> = ({ journey }) => {
             if (node.type === 'condition') {
                 walk(node.nextTrue, depth + 1, 'sí');
                 walk(node.nextFalse, depth + 1, 'no');
+            } else if (node.type === 'split') {
+                (node.variants || []).forEach((v, i) => walk(v.next, depth + 1, v.key || `v${i + 1}`));
             } else if (node.type !== 'exit') {
                 walk(node.next, depth, undefined);
             }
@@ -510,6 +572,7 @@ const FlowPreview: React.FC<{ journey: Journey }> = ({ journey }) => {
         if (n.type === 'alert') return n.title || 'alerta interna';
         if (n.type === 'exit') return n.reason || 'terminar';
         if (n.type === 'tag') return 'etiquetar';
+        if (n.type === 'split') return `prueba A/B (${(n.variants || []).length} variantes)`;
         return n.type;
     };
 
@@ -520,7 +583,9 @@ const FlowPreview: React.FC<{ journey: Journey }> = ({ journey }) => {
                     <div key={i} className="flex items-center gap-2 text-sm" style={{ paddingLeft: l.depth * 20 }}>
                         {l.branch && (
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                l.branch === 'sí' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'
+                                l.branch === 'sí' ? 'bg-green-500/20 text-green-300'
+                                    : l.branch === 'no' ? 'bg-red-500/20 text-red-300'
+                                    : 'bg-blue-500/20 text-blue-300'
                             }`}>{l.branch}</span>
                         )}
                         <ChevronRight className="w-3 h-3 text-gray-600 shrink-0" />
@@ -686,6 +751,7 @@ export default function JourneyBuilder() {
         if (type === 'wait') node.days = 1;
         if (type === 'condition') node.condition = { kind: 'audience', audience: { match: 'all', rules: [] } };
         if (type === 'send_template') node.variables = [];
+        if (type === 'split') node.variants = [{ key: 'A', weight: 1, next: null }, { key: 'B', weight: 1, next: null }];
         setEditing({ ...editing, nodes: [...(editing.nodes || []), node] });
     };
 

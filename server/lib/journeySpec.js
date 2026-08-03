@@ -51,6 +51,13 @@ export const NODE_TYPES = [
     outputs: ['next'],
   },
   {
+    type: 'split',
+    label: 'Prueba A/B',
+    description: 'Reparte a los contactos entre dos o más ramas para comparar qué funciona mejor.',
+    fields: ['variants'],
+    outputs: ['variants'],
+  },
+  {
     type: 'exit',
     label: 'Terminar',
     description: 'Cierra la inscripción con un motivo.',
@@ -58,6 +65,41 @@ export const NODE_TYPES = [
     outputs: [],
   },
 ];
+
+/**
+ * A qué variante le toca un contacto en un nodo de prueba A/B.
+ *
+ * LA ASIGNACIÓN ES ESTABLE, no aleatoria: sale de un hash de (nodo + contacto).
+ * Con `Math.random()` un contacto que reintenta el mismo paso —porque el envío
+ * se aplazó por horario o falló y se reintentó— podría caer en la otra variante,
+ * y entonces el resultado no mediría las variantes sino el azar de los
+ * reintentos. Además es reproducible: se puede responder «¿por qué a este club
+ * le tocó la B?» sin haberlo guardado.
+ *
+ * Los pesos son enteros; una variante con peso 0 queda fuera del reparto sin
+ * borrarla, que es como se apaga la que perdió sin romper las inscripciones que
+ * ya estaban en ella.
+ */
+export function pickVariant(nodeId, contactId, variants = []) {
+  const usable = variants.filter(v => v && v.next && (v.weight === undefined || Number(v.weight) > 0));
+  if (!usable.length) return null;
+
+  const total = usable.reduce((a, v) => a + (Number(v.weight) || 1), 0);
+  // Hash determinista simple (FNV-1a de 32 bits). No hace falta criptografía:
+  // sólo un reparto estable y bien distribuido.
+  const seed = `${nodeId}:${contactId}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  let point = h % total;
+  for (const v of usable) {
+    point -= (Number(v.weight) || 1);
+    if (point < 0) return v;
+  }
+  return usable[usable.length - 1];
+}
 
 export const NODE_TYPE_KEYS = NODE_TYPES.map(n => n.type);
 const NODE_BY_TYPE = Object.fromEntries(NODE_TYPES.map(n => [n.type, n]));
@@ -203,13 +245,22 @@ export function validateJourney(journey) {
         errors.push(`El paso "${n.id}" pregunta por un resultado de mensaje que no se puede observar.`);
       }
     }
+    if (n.type === 'split') {
+      const variants = Array.isArray(n.variants) ? n.variants : [];
+      if (variants.length < 2) errors.push(`La prueba A/B del paso "${n.id}" necesita al menos dos variantes.`);
+      if (variants.some(v => !v?.next)) errors.push(`Una variante del paso "${n.id}" no apunta a ningún paso.`);
+      if (variants.length && variants.every(v => Number(v.weight) === 0)) {
+        errors.push(`Todas las variantes del paso "${n.id}" tienen peso cero: nadie pasaría por ahí.`);
+      }
+    }
   }
 
   // Referencias colgantes. Un `next` que apunta a un nodo inexistente deja la
   // inscripción varada sin decir por qué, así que se detecta al guardar.
+  // Las variantes de una prueba A/B son salidas como cualquier otra: si se
+  // olvidan acá, una rama rota pasa la validación y revienta en producción.
   for (const n of nodes) {
-    for (const key of ['next', 'nextTrue', 'nextFalse']) {
-      const target = n?.[key];
+    for (const target of outgoingTargets(n)) {
       if (target && !ids.has(target)) errors.push(`El paso "${n.id}" apunta a "${target}", que no existe.`);
     }
   }
@@ -223,6 +274,15 @@ export function validateJourney(journey) {
   if (cycle) errors.push(`Hay un ciclo sin espera entre los pasos: ${cycle.join(' → ')}.`);
 
   return errors;
+}
+
+/** Todas las salidas de un nodo, sea cual sea su tipo. */
+function outgoingTargets(node) {
+  const out = [node?.next, node?.nextTrue, node?.nextFalse];
+  if (node?.type === 'split') {
+    for (const v of (node.variants || [])) out.push(v?.next);
+  }
+  return out.filter(Boolean);
 }
 
 function findWaitlessCycle(nodes, entryId) {
@@ -239,9 +299,7 @@ function findWaitlessCycle(nodes, entryId) {
 
     state.set(id, 0);
     stack.push(id);
-    for (const key of ['next', 'nextTrue', 'nextFalse']) {
-      const target = node[key];
-      if (!target) continue;
+    for (const target of outgoingTargets(node)) {
       const found = visit(target);
       if (found) return found;
     }

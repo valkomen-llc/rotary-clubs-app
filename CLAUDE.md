@@ -702,7 +702,7 @@ clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
 sólo existe el de KIE).
 
-## WhatsApp CRM — motor de automatización — v4.696
+## WhatsApp CRM — motor de automatización — v4.697
 
 El módulo dejó de ser sólo un enviador de campañas manuales. Ahora observa el
 estado de cada sitio, lo ubica en un momento del ciclo de vida y dispara
@@ -732,8 +732,12 @@ WABA por club. El administrador de un sitio sólo CONSULTA lo suyo.
 | `server/lib/crmChatbot.js` | Orquesta un entrante: conversación, intención, ruta y respuesta |
 | `server/lib/crmTraining.js` | Puente con el módulo de Capacitaciones (sólo lectura) |
 | `src/components/admin/whatsapp/ConversationInbox.tsx` | La bandeja |
+| `server/lib/crmAnalytics.js` | Métricas y conversiones ATRIBUIDAS |
+| `server/lib/crmAlerts.js` | Alertas internas y presupuesto |
+| `server/lib/crmRecommendations.js` | Hallazgos por regla + redacción con modelo |
+| `src/components/admin/whatsapp/CrmAnalytics.tsx` | Inteligencia: analítica, campañas, calendario |
 
-Pruebas: `npm run test:crm` (118 casos). Necesita una `DATABASE_URL` de una base
+Pruebas: `npm run test:crm` (148 casos). Necesita una `DATABASE_URL` de una base
 **vacía** con el schema aplicado; el guion aborta si la cadena parece de un
 entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 
@@ -901,6 +905,67 @@ entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 - **Un administrador de sitio no ve las notas internas ni la traza.** Están
   escritas para el equipo y hablan de su organización.
 
+### Fase 4 — analítica, campañas y optimización (v4.697)
+
+- **Una conversión se DERIVA, no se declara.** Es la coincidencia de un mensaje
+  que salió y un evento del sistema POSTERIOR, del mismo sitio, dentro de
+  `CRM_ATTRIBUTION_DAYS` (14). Un contador que alguien incremente al enviar
+  mediría envíos, no resultados.
+- **Es ATRIBUCIÓN, no causalidad, y la UI lo dice.** El club pudo renovar solo.
+  El número responde «de los que recibieron esto, cuántos hicieron aquello
+  después». Llamarlo «renovaciones generadas» sería atribuirse un mérito que el
+  dato no demuestra.
+- **Las conversiones se cuentan por SITIO, no por mensaje.** Tres dirigentes del
+  mismo club que reciben el aviso y un club que renueva son UNA renovación.
+  Contar por mensaje infla el número con el tamaño de la audiencia.
+- **«Respondido» no existe como columna** y no se agrega una: se cuenta el
+  saliente que tuvo un entrante del mismo contacto DESPUÉS. Es la única
+  definición observable.
+- **La muestra insuficiente se declara, no se esconde** (`enoughSample`,
+  `MIN_SAMPLE` = 20). Con seis envíos, un 100 % de lectura no dice nada, y
+  ordenar por esa tasa pondría arriba justo lo que menos se sabe.
+- **Sin tarifa configurada el costo es NULL, no 0.** Un cero es una afirmación
+  falsa; un hueco es la verdad. Misma regla que el panel de auditoría del Creador
+  de Reels. El costo es una ESTIMACIÓN propia sobre ventanas de 24 h: la Cloud
+  API no devuelve el importe y Meta cobra por conversación y país.
+- **El corte por presupuesto está APAGADO por defecto** (`budgetHardStop`).
+  Frenar los envíos por un número estimado puede dejar sin avisar a un club que
+  vence mañana; quien lo enciende elige ese riesgo. Se comprueba una vez por
+  vuelta del cron, no por envío.
+- **La asignación de variantes A/B es ESTABLE, no aleatoria** (hash FNV-1a de
+  nodo+contacto). Con `Math.random()` un reintento —por horario o por fallo de
+  red— movería al contacto de rama, y el resultado mediría la suerte en vez de
+  las variantes. Además es reproducible sin haberlo guardado. Peso 0 saca una
+  variante del reparto sin romper las inscripciones que ya estaban en ella.
+- **Las variantes de un `split` son salidas como cualquier otra**: entran en la
+  detección de referencias colgantes y de ciclos (`outgoingTargets`). Olvidarlas
+  dejaría pasar una rama rota que revienta en producción.
+- **Del token NO se declara vencimiento.** Meta no nos dice cuándo vence y no
+  tenemos las credenciales de la app para consultarlo. Se avisa por lo
+  observable: que rechazó una llamada (código 190) o que hace mucho que nadie
+  verifica la conexión. Decir «vence en 5 días» sin poder saberlo es peor que no
+  avisar.
+- **Las alertas se deduplican por PERÍODO** (día o mes según el tipo), no por
+  existencia: una condición que persiste tiene que volver a avisar mañana, pero
+  no cada cinco minutos. Y el volumen se agrupa: veinte alertas iguales informan
+  menos que una que diga «veinte».
+- **El barrido de alertas va al FINAL del tick**, después de observar, inscribir
+  y avanzar: depende del estado que esas tres etapas acaban de dejar.
+- **La IA de las recomendaciones NO mira los datos.** Los hallazgos los calcula
+  SQL con reglas, cada uno con su evidencia; el modelo sólo los redacta. Darle la
+  base y pedirle «decime qué mejorar» produciría cifras plausibles y no
+  auditables, que en un módulo que decide a quién escribirle son peligrosas. Sin
+  credencial de modelo las recomendaciones se muestran igual, con su texto de
+  regla.
+- **Ninguna recomendación se aplica sola.** Son sugerencias con un enlace a la
+  pantalla donde se resuelven.
+- **El calendario muestra inscripciones REALES con espera pendiente**, no una
+  proyección del grafo. Un recorrido de diez pasos sin inscripciones vivas no va
+  a mandar nada, y el calendario tiene que reflejarlo.
+- **El centro de campañas unifica en la LECTURA, no en el modelo.** Una campaña
+  es un envío puntual y un recorrido es una máquina que corre sola; se muestran
+  juntos porque para quien mira el mes son lo mismo.
+
 **Variables de entorno:**
 
 | Variable | Para qué |
@@ -911,18 +976,20 @@ entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 | `LIFECYCLE_GRACE_START_DAYS` / `LIFECYCLE_GRACE_END_DAYS` | Tramos de gracia (3 / 5) |
 | `LIFECYCLE_REACTIVATED_WINDOW_DAYS` | Cuánto dura el estado «reactivado» (14) |
 | `LIFECYCLE_LOW_USAGE_DAYS` | Días sin contenido para considerar bajo uso (30) |
+| `CRM_ATTRIBUTION_DAYS` | Ventana de atribución de conversiones (14 por defecto) |
 | `CRON_SECRET` | Protege `/api/cron/crm-automation-tick`, como el resto de los crons |
 
 Las guardias de envío (horario, frecuencia, consentimiento, enlaces
 institucionales) **no** son de entorno: viven en `PlatformConfig` bajo
 `crm_automation_settings` y se editan desde el panel, sin desplegar.
 
-**Pendientes conocidos:** la **fase 4** del pedido —centro de campañas unificado,
-calendario de comunicaciones, analítica de conversiones y costos, A/B testing y
-recomendaciones con IA— no está en esta versión. El `WhatsAppChat.tsx` original
-se conserva y convive con la bandeja: es el chat libre de siempre, sin estado ni
-asignación. Unificarlos es deseable pero cambia una pantalla que el equipo usa a
-diario.
+**Estado:** las cuatro fases del pedido están implementadas.
+
+**Pendientes conocidos:** `WhatsAppChat.tsx` se conserva y convive con la bandeja
+—es el chat libre de siempre, sin estado ni asignación—; unificarlos cambia una
+pantalla que el equipo usa a diario. `sendCampaign` mantiene su copia de la
+lógica de envío (ver arriba). Y el chatbot sigue **apagado** hasta que alguien lo
+encienda a propósito.
 
 ## Inscripciones a eventos / Feria de Proyectos — v4.648
 

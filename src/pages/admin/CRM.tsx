@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -15,6 +15,7 @@ import WhatsAppAutomation from '../../components/admin/whatsapp/WhatsAppAutomati
 import JourneyBuilder from '../../components/admin/whatsapp/JourneyBuilder';
 import LifecycleBoard from '../../components/admin/whatsapp/LifecycleBoard';
 import ConversationInbox from '../../components/admin/whatsapp/ConversationInbox';
+import CrmAnalytics from '../../components/admin/whatsapp/CrmAnalytics';
 
 // FluentCRM Components
 import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
@@ -24,7 +25,7 @@ import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsM
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'wa-insights' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
 
 /**
  * CRM Interfaz
@@ -114,6 +115,7 @@ const CRMManagement: React.FC = () => {
         { key: 'wa-journeys', label: 'Recorridos', icon: <Workflow className="w-4 h-4" /> },
         { key: 'wa-lifecycle', label: 'Ciclo de vida', icon: <Activity className="w-4 h-4" /> },
         { key: 'wa-analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4" /> },
+        { key: 'wa-insights', label: 'Inteligencia', icon: <TrendingUp className="w-4 h-4" /> },
     ];
 
     const isCrmTab = activeTab.startsWith('crm-');
@@ -310,6 +312,7 @@ const CRMManagement: React.FC = () => {
                 {activeTab === 'wa-journeys' && <JourneyBuilder />}
                 {activeTab === 'wa-lifecycle' && <LifecycleBoard />}
                 {activeTab === 'wa-inbox' && <ConversationInbox />}
+                {activeTab === 'wa-insights' && <CrmAnalytics />}
                 {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
             </div>
         </AdminLayout>

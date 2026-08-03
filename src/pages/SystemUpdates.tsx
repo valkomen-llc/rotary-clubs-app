@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.696.0 | 2026-08-03 (Fase 3 del WhatsApp CRM: bandeja de conversaciones, chatbot de intención y enrutamiento)
-// Cache bust: 2026-08-03d
+// UI V4.697.0 | 2026-08-03 (Fase 4 del WhatsApp CRM: analítica, centro de campañas, calendario, A/B y presupuesto)
+// Cache bust: 2026-08-03e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.697.0',
+        title: 'El WhatsApp CRM ahora dice qué funcionó y qué conviene cambiar \ud83d\udcc8',
+        description: 'Con esta versión se completa el módulo. Las dos anteriores construyeron el motor —recorridos que escriben solos— y la bandeja —lo que pasa cuando el club contesta—. Faltaba lo que cierra el ciclo: saber si sirvió. La pantalla nueva, Inteligencia, responde cuatro cosas. Primero, lo básico de mensajería: cuántos mensajes salieron, cuántos llegaron, cuántos se leyeron, cuántos se respondieron y cuántos fallaron, con sus tasas y una vista diaria. «Respondido» no sale de ningún campo, porque no existe: se cuenta el mensaje que tuvo una respuesta del contacto DESPUÉS de haber salido, que es la única definición observable. Segundo, y es lo que más se pedía: las conversiones. Cuántas renovaciones, capacitaciones agendadas y clubes reactivados ocurrieron después de cada recorrido. Acá hay una decisión que conviene entender: una conversión se DERIVA de dos hechos que ya existen —un mensaje que salió y un evento del sistema posterior, del mismo club, dentro de una ventana de dos semanas—, nunca de un contador que alguien incremente al enviar. Y se cuenta por club, no por mensaje: si tres dirigentes del mismo club reciben el aviso y el club renueva, es una renovación, no tres. La pantalla lo dice con todas las letras: es ATRIBUCIÓN, no causalidad. El club pudo renovar por su cuenta; lo que el número responde es «de los que recibieron esto, cuántos hicieron aquello después». Tercero, rendimiento por plantilla y por segmento, para ver qué mensaje se lee y a qué grupo de clubes hay que hablarle distinto. Las plantillas con poca muestra se marcan como tales en vez de ordenarlas junto a las demás: con seis envíos, un 100 % de lectura no dice nada. Cuarto, el costo: se estiman las ventanas de conversación de 24 horas y se multiplican por la tarifa que se configure. Sin tarifa cargada NO aparece un cero — aparece «sin tarifa configurada», porque un cero sería mentira. Con presupuesto mensual definido hay barra de avance y avisos al 80 % y al superarlo. Se agregan además el Centro de campañas, que junta en una sola lista las campañas manuales y los recorridos automáticos —son cosas distintas, pero para quien mira el mes son lo mismo: cosas que les llegaron a los clubes—; y el Calendario de comunicaciones, con lo programado, lo ya enviado, las capacitaciones agendadas y los vencimientos. Lo que el calendario muestra a futuro de un recorrido son sus inscripciones reales con espera pendiente, no una proyección teórica: un recorrido con diez pasos y ninguna inscripción viva no va a mandar nada, y el calendario lo refleja. Los recorridos incorporan un paso de prueba A/B para comparar dos versiones de un mensaje. A cada contacto le toca siempre la misma variante, calculada a partir de su identificador y no al azar: así un reintento por horario o por un fallo de red no lo cambia de rama, y el resultado mide las variantes en vez de la suerte. Las alertas internas se completaron: tasa alta de errores, token rechazado por Meta, plantilla rechazada, club que pidió ayuda sin respuesta, conversaciones sin atender, renovaciones pendientes, sitios activos sin capacitación, clubes sin actividad y presupuesto. Sobre el token hay una precisión deliberada: no se avisa «vence en X días», porque Meta no nos dice cuándo vence; se avisa por lo que sí es observable —que rechazó una llamada, o que hace mucho que nadie verifica la conexión—. Por último, Recomendaciones. Los hallazgos los calcula el sistema con reglas sobre datos medidos, y cada uno viene con el número que lo justifica. La IA sólo los redacta en un resumen: no mira la base ni inventa cifras. Sin muestra suficiente no se recomienda nada, que es preferible a una sugerencia basada en ocho envíos.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'analitica', 'conversiones', 'campanas', 'calendario', 'presupuesto', 'ab testing'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Panel de analítica: mensajería, conversiones atribuidas, rendimiento por plantilla y por segmento.' },
+            { type: 'added', text: 'Las conversiones se derivan de eventos reales posteriores al mensaje y se cuentan por club, no por mensaje.' },
+            { type: 'added', text: 'Centro de campañas: campañas manuales y recorridos automáticos en una sola lista.' },
+            { type: 'added', text: 'Calendario de comunicaciones con lo programado, lo enviado, capacitaciones y vencimientos.' },
+            { type: 'added', text: 'Paso de prueba A/B con asignación estable por contacto, no aleatoria.' },
+            { type: 'added', text: 'Estimación de costo por ventanas de conversación y presupuesto mensual con avisos.' },
+            { type: 'added', text: 'Alertas internas completas, barridas automáticamente en cada ciclo del motor.' },
+            { type: 'added', text: 'Recomendaciones calculadas sobre datos medidos; la IA sólo redacta el resumen.' },
+        ]
+    },
     {
         version: '4.696.0',
         title: 'Las respuestas de los clubes llegan a una bandeja, con dueño y seguimiento \ud83d\udce5',
