@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.700.0",
-  "cache_bust": "2026-08-03h (Toda casilla de imagen del panel ofrece subir un archivo o elegir uno ya cargado en la Biblioteca Multimedia.)",
+  "version": "4.701.0",
+  "cache_bust": "2026-08-03i (Biblioteca de plantillas: redaccion con IA validada contra las reglas de Meta, carpetas y envio a aprobacion.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

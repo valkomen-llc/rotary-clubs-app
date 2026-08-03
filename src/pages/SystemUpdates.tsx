@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.700.0 | 2026-08-03 (Las casillas de imagen permiten elegir desde la Biblioteca)
+// UI V4.701.0 | 2026-08-03 (Biblioteca de plantillas: redacción con IA, carpetas y envío a Meta)
 // Cache bust: 2026-08-03f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.701.0',
+        title: 'Las plantillas de WhatsApp se redactan con IA y se envían a Meta desde el panel \u270d\ufe0f',
+        description: 'Los recorridos del WhatsApp CRM quedaron listos pero no podían activarse: cada paso pedía una plantilla aprobada por Meta y no había forma cómoda de crearlas. Peor: el formulario que existía guardaba la plantilla sólo en nuestra base y nunca se la mandaba a Meta, así que parecía creada y en realidad no existía para WhatsApp — un recorrido que la usara habría fallado en el primer envío con «la plantilla no existe». Esta versión resuelve las dos cosas. Ahora se le describe en una frase qué tiene que lograr el mensaje —«avisarle al club que su suscripción vence en 30 días»— y la IA redacta la plantilla completa: encabezado, cuerpo, pie, botones y las variables que hagan falta, con la misma voz institucional que usan el Generador de Publicaciones y el Creador de Reels. Lo importante no es que escriba bonito sino que escriba VÁLIDO: una plantilla de WhatsApp se rechaza por reglas aritméticas —el cuerpo no puede pasar de 1024 caracteres, no puede empezar ni terminar con una variable, las variables se numeran 1, 2, 3 sin saltos, el pie no admite ninguna, hay topes de botones— y un modelo de lenguaje las incumple con naturalidad por más que se le pidan. Por eso todo borrador se revisa contra esas reglas con código y, si algo no cumple, se le devuelven los errores concretos y se reintenta solo, hasta tres veces. Eso importa porque un rechazo de Meta no es gratis: baja la calificación de calidad de la cuenta y puede terminar limitando cuántos mensajes se pueden enviar por día. El borrador se muestra con una vista previa de cómo se verá en el teléfono, con las variables ya reemplazadas por ejemplos. Se puede editar todo a mano, y recién cuando el equipo lo aprueba se pulsa «Enviar a Meta», que ahora sí crea la plantilla de verdad en la cuenta de WhatsApp Business y queda en revisión. Enviar es un paso aparte y con confirmación a propósito: el texto que escribió la IA lo tiene que leer una persona. Una vez en Meta el texto es inmutable —así funciona allá—, de modo que el panel bloquea la edición y ofrece duplicarla para trabajar sobre una copia, en lugar de dejar que el panel muestre una cosa y WhatsApp envíe otra. Las plantillas se organizan en catorce carpetas: Bienvenida, Onboarding, Capacitación, Marketing digital, Inteligencia Artificial, Proyectos, Fundraising, Crowdfunding, E-commerce, Eventos, Soporte, Renovación, Reactivación y Fidelización. La carpeta es la organización interna del equipo y se guarda aparte de la categoría que se le declara a Meta, que sólo admite Utilidad o Marketing y define el precio por conversación: son dos cosas distintas y mezclarlas obligaría a elegir entre ordenar el trabajo y decirle la verdad a Meta. También se avisa lo que no se puede medir: el clic en un botón de enlace Meta no lo reporta, así que si interesa saber la reacción hay que usar un botón de respuesta rápida.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'plantillas', 'ia', 'meta', 'biblioteca'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Redactor con IA: describe el objetivo y genera cuerpo, encabezado, pie, botones y variables.' },
+            { type: 'added', text: 'Todo borrador se valida contra las reglas de Meta y se reintenta solo cuando no cumple.' },
+            { type: 'fixed', text: 'Las plantillas ahora SÍ se envían a Meta. Antes se guardaban sólo en la base y no existían para WhatsApp.' },
+            { type: 'added', text: 'Catorce carpetas para organizar la biblioteca, separadas de la categoría que se le declara a Meta.' },
+            { type: 'added', text: 'Vista previa de cómo se ve el mensaje en el teléfono, con las variables resueltas.' },
+            { type: 'added', text: 'Una plantilla ya aprobada no se puede editar (Meta no lo permite): se ofrece duplicarla.' },
+            { type: 'added', text: 'Cada variable declara de qué dato sale, para que los recorridos puedan alimentarla.' },
+        ]
+    },
     {
         version: '4.700.0',
         title: 'Las imágenes se pueden elegir desde la Biblioteca \ud83d\uddbc\ufe0f',

@@ -702,7 +702,7 @@ clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
 sólo existe el de KIE).
 
-## WhatsApp CRM — motor de automatización — v4.697
+## WhatsApp CRM — motor de automatización — v4.701
 
 El módulo dejó de ser sólo un enviador de campañas manuales. Ahora observa el
 estado de cada sitio, lo ubica en un momento del ciclo de vida y dispara
@@ -736,8 +736,12 @@ WABA por club. El administrador de un sitio sólo CONSULTA lo suyo.
 | `server/lib/crmAlerts.js` | Alertas internas y presupuesto |
 | `server/lib/crmRecommendations.js` | Hallazgos por regla + redacción con modelo |
 | `src/components/admin/whatsapp/CrmAnalytics.tsx` | Inteligencia: analítica, campañas, calendario |
+| `server/lib/templateSpec.js` | Reglas de Meta, carpetas y traducción al payload |
+| `server/lib/templateComposer.js` | Redactor con IA + bucle de validación |
+| `server/controllers/crm/templates.controller.js` | Biblioteca, carpetas y envío a Meta |
+| `src/components/admin/whatsapp/TemplateLibrary.tsx` | La biblioteca |
 
-Pruebas: `npm run test:crm` (148 casos). Necesita una `DATABASE_URL` de una base
+Pruebas: `npm run test:crm` (178 casos). Necesita una `DATABASE_URL` de una base
 **vacía** con el schema aplicado; el guion aborta si la cadena parece de un
 entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 
@@ -965,6 +969,51 @@ entorno real. La llamada a Meta se intercepta reemplazando `globalThis.fetch`.
 - **El centro de campañas unifica en la LECTURA, no en el modelo.** Una campaña
   es un envío puntual y un recorrido es una máquina que corre sola; se muestran
   juntos porque para quien mira el mes son lo mismo.
+
+### Biblioteca de plantillas con IA (v4.701)
+
+- **`createTemplate` NUNCA mandaba la plantilla a Meta.** Insertaba una fila local
+  con estado `pending` y nada más, así que la plantilla no existía para la Cloud
+  API y un recorrido que la usara fallaba con «template name does not exist». Lo
+  corrige `submitToMeta` (`POST /{waba}/message_templates`). La ruta vieja
+  `/templates` se conserva porque la usan la pestaña original y `sendCampaign`.
+- **El modelo escribe; el CÓDIGO decide si es válido.** Las reglas de Meta son
+  aritméticas —1024 caracteres de cuerpo, variables numeradas sin saltos, ni al
+  principio ni al final, topes por tipo de botón— y un modelo de lenguaje las
+  incumple con naturalidad aunque se le pidan. `composeTemplate` valida con
+  `validateTemplate` y REINTENTA devolviéndole los errores concretos. Pedirle
+  «revisá el formato» no corrige nada: hay que decirle qué regla rompió.
+- **Un rechazo de Meta no es gratis**: baja la calificación de calidad de la
+  cuenta y puede limitar el volumen diario. Por eso se valida antes y por eso
+  enviar es un paso explícito con confirmación, no algo que pase al redactar.
+- **`folder` y `category` son DOS cosas y por eso son dos columnas.** `folder` es
+  la organización interna (bienvenida, renovación…); `category` es lo que se le
+  declara a Meta —UTILITY o MARKETING— y define el precio por conversación y si
+  hace falta consentimiento. Mezclarlas obligaría a elegir entre ordenar el
+  trabajo y declarar la verdad.
+- **AUTHENTICATION no se ofrece.** Es para códigos de un solo uso, con un formato
+  que Meta impone, y nada de lo que este módulo manda encaja: ofrecerla sólo
+  daría rechazos.
+- **`example` es obligatorio cuando hay variables.** Meta rechaza sin explicar
+  bien si falta. Por eso el redactor genera `variableSamples` junto con el texto:
+  no son decorativos. Y cuando NO hay variables, no se manda `example` vacío —eso
+  también se rechaza—.
+- **Una plantilla ya enviada a Meta no se edita.** Allá el texto es inmutable una
+  vez aprobado; permitir editarla acá daría dos verdades —lo que muestra el panel
+  y lo que WhatsApp envía—. Se bloquea y se ofrece duplicar. Lo único editable es
+  la carpeta.
+- **El índice único es (clubId, name)** porque en Meta el nombre es único por
+  cuenta. Sin él, dos plantillas homónimas se guardan bien acá y la segunda es
+  rechazada allá.
+- **`variableTokens` ata cada `{{n}}` a un dato que el motor sabe resolver.** Sin
+  esa columna una plantilla se aprueba pero ningún recorrido puede alimentarla.
+- **No se borra una plantilla que un recorrido usa**: el recorrido quedaría
+  apuntando a algo inexistente y fallaría en el próximo envío.
+- **El error de Meta se propaga TEXTUAL.** Sus rechazos son específicos y
+  convertirlos en «no se pudo enviar» deja a quien corrige sin saber qué.
+- **La voz sale de `institutionalVoice.js`**, la misma del Generador de
+  Publicaciones y del Creador de Reels. Escribir una voz propia acá bifurcaría en
+  silencio cómo habla la plataforma.
 
 **Variables de entorno:**
 
