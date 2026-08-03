@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.698.0 | 2026-08-03 (El botón de iniciar sesión dice lo que hace y comparte la píldora de los CTA)
+// UI V4.699.0 | 2026-08-03 (El logo del encabezado sigue al idioma activo del sitio)
 // Cache bust: 2026-08-03f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.699.0',
+        title: 'El logo cambia con el idioma \ud83c\udff3\ufe0f',
+        description: 'El logo del encabezado lleva texto, así que tiene idioma. Ahora sigue al idioma que elige cada visitante: quien navega en Español (Colombia) ve el logo en español, y quien navega en inglés, francés, portugués, alemán, italiano, japonés o coreano ve la versión internacional. La versión internacional se sube desde Configuración → Identidad, junto al logo de siempre; mientras no se cargue, todos los idiomas siguen viendo el logo actual, de modo que ningún sitio cambia sin que alguien lo decida. Manda el idioma del selector, no el país: es el mismo criterio que ya rige los botones de registro, para que un visitante que lee el sitio en inglés desde Colombia vea una página coherente. El mecanismo queda listo para aplicarlo a otras imágenes del sitio cuando se definan cuáles.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'idiomas', 'sitio-publico', 'logo'],
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Campo «Logo Header (Internacional)» en Configuración → Identidad.' },
+            { type: 'added', text: 'El logo del encabezado se resuelve según el idioma activo del sitio.' },
+            { type: 'improved', text: 'Sin versión internacional cargada, todos los idiomas siguen usando el logo actual.' },
+        ],
+    },
     {
         version: '4.698.0',
         title: 'El botón de iniciar sesión ahora dice que es para iniciar sesión \ud83d\udd11',

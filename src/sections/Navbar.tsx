@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useClub } from '../contexts/ClubContext';
 import { useCart } from '../contexts/CartContext';
 import { useLang, SUPPORTED_LANGUAGES, orderLanguages } from '../contexts/LanguageContext';
+import { pickLocalizedAsset } from '../lib/audienceAssets';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
@@ -40,6 +41,13 @@ const Navbar = () => {
   const [sobreNosotrosOpen, setSobreNosotrosOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const { lang, languageChosen, setLang, applyDefaultLanguage } = useLang();
+
+  // El logo lleva texto rotulado, así que tiene idioma. Sigue al IDIOMA ACTIVO
+  // del sitio —no al país—, igual que los botones de registro desde v4.652:
+  // español de Colombia usa `logo`; los otros siete idiomas usan `logoIntl`.
+  // Si no se ha cargado la versión internacional se usa el de siempre, de modo
+  // que los sitios que no configuran esto no cambian en nada.
+  const headerLogo = pickLocalizedAsset(club.logo, (club as any)?.logoIntl, lang);
   const currentLanguage = SUPPORTED_LANGUAGES.find(l => l.code === lang) || SUPPORTED_LANGUAGES[0];
   // Idioma por defecto configurado en la identidad del sitio: va SIEMPRE de primero en el
   // listado y se aplica a los visitantes que aún no eligieron idioma.
@@ -579,9 +587,9 @@ const Navbar = () => {
         <div className="flex items-center justify-between min-h-[4rem] py-2 cursor-default">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
-            {club.logo ? (
+            {headerLogo ? (
               <div className="relative flex items-center" style={{ width: `${club.logoHeaderSize ?? 200}px`, maxWidth: '100%' }}>
-                <img src={club.logo} alt={club.name} className="w-full h-auto max-h-[100px] object-contain object-left" />
+                <img src={headerLogo} alt={club.name} className="w-full h-auto max-h-[100px] object-contain object-left" />
               </div>
             ) : (
               <>

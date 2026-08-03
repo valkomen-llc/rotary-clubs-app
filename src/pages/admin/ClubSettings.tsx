@@ -154,6 +154,7 @@ const ClubSettings: React.FC = () => {
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         avatarUrl: '',
+        logoIntl: '',
         footerLogo: '',
         endPolioLogo: '',
         rotaractLogo: '',
@@ -371,6 +372,7 @@ const ClubSettings: React.FC = () => {
                 })(),
                 logo: club.logo || '',
                 avatarUrl: (club as any).avatarUrl || '',
+                logoIntl: (club as any).logoIntl || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
                 rotaractLogo: settingsMap['rotaract_logo'] || '',
@@ -967,9 +969,9 @@ const ClubSettings: React.FC = () => {
                             <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
                                 <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logos y Favicon
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
                                 <div className="space-y-4">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Logo Header (Principal)</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Logo Header (Español)</label>
                                     <div className="relative group mx-auto w-40 h-40">
                                         <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
                                             {formData.logo ? <img src={formData.logo} className="w-full h-full object-contain p-4" /> : <Building2 className="w-12 h-12 text-gray-300" />}
@@ -990,6 +992,35 @@ const ClubSettings: React.FC = () => {
                                             className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
                                         />
                                     </div>
+                                </div>
+
+                                {/* Versión del logo para los idiomas internacionales. El logo lleva
+                                    texto rotulado, así que tiene idioma: en Español (Colombia) se
+                                    muestra el de al lado y en los otros siete idiomas éste. Si se
+                                    deja vacío, se usa el de español en todos los idiomas. */}
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Logo Header (Internacional)</label>
+                                    <div className="relative group mx-auto w-40 h-40">
+                                        <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                            {formData.logoIntl ? <img src={formData.logoIntl} className="w-full h-full object-contain p-4" /> : <Globe className="w-12 h-12 text-gray-300" />}
+                                        </div>
+                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                                            <Upload className="text-white w-8 h-8" />
+                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos', 'logoIntl')} accept="image/*" />
+                                        </label>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 leading-snug text-center">
+                                        Se muestra en inglés, francés, portugués, alemán, italiano,
+                                        japonés y coreano. Si se deja vacío, esos idiomas usan el logo
+                                        en español.
+                                    </p>
+                                    {formData.logoIntl && (
+                                        <button type="button"
+                                            onClick={() => setFormData({ ...formData, logoIntl: '' })}
+                                            className="w-full text-[11px] font-bold text-red-500 hover:text-red-700">
+                                            Quitar
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div className="space-y-4">
