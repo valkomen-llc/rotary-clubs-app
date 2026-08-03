@@ -40,7 +40,22 @@ app.post('/api/social/webhooks/meta', express.raw({ type: '*/*' }), async (req, 
     return handleMetaWebhook(req, res, next);
 });
 
-app.use(express.json({ limit: '25mb' }));
+// El webhook de WhatsApp necesita el cuerpo CRUDO para comprobar la firma
+// `X-Hub-Signature-256`, pero también necesita el cuerpo parseado (lo procesa
+// entero antes de responder). Por eso se guarda desde `verify` en vez de
+// montarlo con `express.raw` como el de Stripe o el del Hub Social.
+//
+// Se guarda SÓLO para esa ruta: hacerlo para todas duplicaría en memoria cada
+// subida de hasta 25 MB.
+app.use(express.json({
+    limit: '25mb',
+    verify: (req, _res, buf) => {
+        const url = req.originalUrl || req.url || '';
+        if (url.startsWith('/api/crm/webhook') || url.startsWith('/api/whatsapp/webhook')) {
+            req.rawBody = buf;
+        }
+    },
+}));
 
 // ── Technical Requests Logic (Consolidated for Vercel Stability) ──────────────
 app.post('/api/technical-requests', async (req, res) => {

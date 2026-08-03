@@ -13,6 +13,7 @@
 import crypto from 'crypto';
 import db from './db.js';
 import { validateForMeta } from './phone.js';
+import { logOutbound } from './crmWebhookAudit.js';
 
 const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
 
@@ -21,17 +22,54 @@ export async function getWhatsAppConfig(clubId) {
   return r.rows[0] || null;
 }
 
-async function metaApiCall({ method = 'POST', path, body, token }) {
-  const res = await fetch(`${WA_API_BASE}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
+async function metaApiCall({ method = 'POST', path, body, token, clubId = null, audit = {} }) {
+  const url = `${WA_API_BASE}${path}`;
+  const startedAt = Date.now();
+  let httpStatus = null;
+  let data = null;
+  let thrown = null;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    httpStatus = res.status;
+    data = await res.json().catch(() => ({}));
+  } catch (err) {
+    thrown = err;
+  }
+
+  const metaError = data?.error || null;
+  const failed = !!thrown || !!metaError || (httpStatus !== null && httpStatus >= 400);
+
+  // Igual que en `crmController.js`: TODA salida hacia Meta queda registrada
+  // con su petición y su respuesta. Acá importa el doble, porque estos envíos
+  // los dispara un cron y no hay nadie mirando cuando fallan.
+  await logOutbound({
+    clubId,
+    operation: audit.operation || 'journey_send',
+    endpoint: url,
+    requestBody: body || null,
+    httpStatus,
+    responseBody: data,
+    messageId: data?.messages?.[0]?.id || null,
+    errorCode: metaError?.code ?? (thrown ? 'network' : (failed ? httpStatus : null)),
+    errorMessage: metaError?.message || thrown?.message || null,
+    durationMs: Date.now() - startedAt,
+    ok: !failed,
+    campaignId: audit.campaignId || null,
+    journeyId: audit.journeyId || null,
+    contactId: audit.contactId || null,
+    phone: audit.phone || null,
+    templateName: audit.templateName || null,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) {
-    const err = new Error(data.error?.message || `Meta respondió ${res.status}`);
-    err.code = data.error?.code || res.status;
-    err.details = data.error;
+
+  if (thrown) throw thrown;
+  if (failed) {
+    const err = new Error(metaError?.message || `Meta respondió ${httpStatus}`);
+    err.code = metaError?.code || httpStatus;
+    err.details = metaError;
     throw err;
   }
   return data;
@@ -72,6 +110,12 @@ export async function sendTemplate({
       path: `/${cfg.phoneNumberId}/messages`,
       token: cfg.accessToken,
       body: { messaging_product: 'whatsapp', to: v.e164, type: 'template', template: payload },
+      clubId,
+      audit: {
+        operation: journeyId ? 'journey_send' : 'template_send',
+        journeyId, campaignId, contactId: contact.id,
+        phone: v.e164, templateName: template.name,
+      },
     });
     const messageId = apiRes.messages?.[0]?.id || null;
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox, TrendingUp, FolderOpen } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle, Bot, Workflow, Activity, Inbox, TrendingUp, FolderOpen, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -16,6 +16,7 @@ import JourneyBuilder from '../../components/admin/whatsapp/JourneyBuilder';
 import LifecycleBoard from '../../components/admin/whatsapp/LifecycleBoard';
 import ConversationInbox from '../../components/admin/whatsapp/ConversationInbox';
 import CrmAnalytics from '../../components/admin/whatsapp/CrmAnalytics';
+import CrmDiagnostics from '../../components/admin/whatsapp/CrmDiagnostics';
 import TemplateLibrary from '../../components/admin/whatsapp/TemplateLibrary';
 
 // FluentCRM Components
@@ -26,7 +27,7 @@ import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsM
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'wa-insights' | 'wa-library' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'wa-automation' | 'wa-journeys' | 'wa-lifecycle' | 'wa-inbox' | 'wa-insights' | 'wa-library' | 'wa-diagnostics' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
 
 /**
  * CRM Interfaz
@@ -34,7 +35,7 @@ type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'w
  * Incluye el CRM completo de WhatsApp Business Cloud API.
  */
 const CRMManagement: React.FC = () => {
-    const { token, user } = useAuth();
+    const { token } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     
@@ -50,11 +51,12 @@ const CRMManagement: React.FC = () => {
     const [logs, setLogs] = useState<any[]>([]);
     const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
 
-    const isAdmin = user?.role === 'administrator' || user?.role === 'superadmin';
-
     useEffect(() => {
-        if (activeTab === 'logs') fetchLogs();
-        if (activeTab === 'templates') fetchEmailTemplates();
+        // Las claves son 'email-logs' y 'email-templates' desde que las pestañas
+        // se agruparon por canal. Seguían comparándose contra los nombres
+        // viejos, así que ninguna de las dos cargaba nunca sus datos.
+        if (activeTab === 'email-logs') fetchLogs();
+        if (activeTab === 'email-templates') fetchEmailTemplates();
     }, [activeTab]);
 
     const fetchLogs = async () => {
@@ -118,6 +120,7 @@ const CRMManagement: React.FC = () => {
         { key: 'wa-lifecycle', label: 'Ciclo de vida', icon: <Activity className="w-4 h-4" /> },
         { key: 'wa-analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4" /> },
         { key: 'wa-insights', label: 'Inteligencia', icon: <TrendingUp className="w-4 h-4" /> },
+        { key: 'wa-diagnostics', label: 'Diagnóstico', icon: <Stethoscope className="w-4 h-4" /> },
     ];
 
     const isCrmTab = activeTab.startsWith('crm-');
@@ -315,6 +318,7 @@ const CRMManagement: React.FC = () => {
                 {activeTab === 'wa-lifecycle' && <LifecycleBoard />}
                 {activeTab === 'wa-inbox' && <ConversationInbox />}
                 {activeTab === 'wa-insights' && <CrmAnalytics />}
+                {activeTab === 'wa-diagnostics' && <CrmDiagnostics />}
                 {activeTab === 'wa-library' && <TemplateLibrary />}
                 {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
             </div>

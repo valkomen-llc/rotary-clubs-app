@@ -7,8 +7,9 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 25 tablas en tiempo de ejecución que no están en el
-// schema (las once ProjectFair*, BannerTemplate, FAQ, OutroProject, las seis
+// La aplicación crea 27 tablas en tiempo de ejecución que no están en el
+// schema (las once ProjectFair*, BannerTemplate, FAQ, OutroProject, las dos de
+// la auditoría del CRM: CrmWebhookEvent y CrmOutboundLog, las seis
 // del módulo de inscripciones a eventos: EventRegistration, EventEdition,
 // EventRegistrationCategory, EventRegistrationCompanion,
 // EventRegistrationPayment, EventRegistrationHistory y

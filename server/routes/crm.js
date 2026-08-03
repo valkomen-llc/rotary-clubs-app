@@ -252,6 +252,19 @@ router.post('/template-library/:id/submit', library.submitToMeta);
 router.delete('/template-library/:id', library.removeTemplate);
 router.post('/journeys/:id/compose-templates', library.composeForJourneyStep);
 
+// ── Diagnóstico técnico (v4.702) ─────────────────────────────────────────
+// Sólo lectura, salvo /diagnostics/test-send, que manda un mensaje real y lo
+// dice. Todas exigen rol de operador de la plataforma (lo comprueba el
+// controlador, no sólo la pantalla).
+import * as diagnostics from '../controllers/crm/diagnostics.controller.js';
+
+router.get('/diagnostics', diagnostics.getDiagnostics);
+router.get('/diagnostics/webhooks', diagnostics.getWebhookLog);
+router.get('/diagnostics/webhooks/:id', diagnostics.getWebhookDetail);
+router.get('/diagnostics/outbound', diagnostics.getOutboundLog);
+router.get('/diagnostics/templates', diagnostics.getTemplateAudit);
+router.post('/diagnostics/test-send', diagnostics.runSendTest);
+
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';
 router.post('/upload-media', uploadWAMedia.single('file'), (req, res) => {
