@@ -24,17 +24,25 @@ const KIE_API_BASE = 'https://api.kie.ai/api/v1';
 //
 // Por eso cada familia arma su propio input, con los campos que su
 // documentación declara y ninguno más.
-const buildVideoInput = (model, { prompt, imageUrls, duration, aspectRatio, resolution, enableAudio }) => {
+const buildVideoInput = (model, { prompt, imageUrls, duration, aspectRatio, resolution, enableAudio, negativePrompt }) => {
     // Kling image-to-video (2.x / 3.x). El formato de salida lo hereda de la
     // imagen de entrada: el modelo NO recibe relación de aspecto ni resolución.
     // `sound` es obligatorio y es el interruptor del audio nativo — con él en
     // `true`, Kling 2.6 genera voz, ambiente y efectos dentro del mismo archivo.
+    //
+    // `negative_prompt` está documentado en la API de Kling, con su propio tope
+    // de 2500 caracteres, y por eso se manda AQUÍ y no pegado al prompt: inline
+    // se comía el 26 % del presupuesto del positivo. Sólo se incluye cuando hay
+    // algo que poner — un campo vacío es un campo de más, y mandar campos que
+    // el modelo no declara es lo que rompió el módulo en v4.645. Si la pasarela
+    // igualmente lo rechaza, `createKieVideoTask` reintenta sin él.
     if (/^kling/i.test(model) && /image-to-video/i.test(model)) {
         return {
             prompt,
             image_urls: imageUrls,
             duration: String(duration),
-            sound: Boolean(enableAudio)
+            sound: Boolean(enableAudio),
+            ...(negativePrompt ? { negative_prompt: negativePrompt } : {})
         };
     }
 
@@ -366,6 +374,13 @@ export const fetchKieImageBuffer = async (kieImageUrl) => {
 // image-to-video de Kling heredan el formato de la imagen de entrada y no
 // reciben esos parámetros. Lo que realmente entregó el proveedor se mide
 // después sobre el archivo (outroQuality.js) — nunca se corrige recortando.
+// Un rechazo de KIE que habla de un CAMPO —desconocido, inválido, no
+// permitido— es el que se puede resolver quitando el campo opcional. Un fallo
+// de credencial, de saldo o de red no lo es, y reintentar ahí sólo gastaría
+// otra llamada. La distinción se hace por el texto porque es lo único que KIE
+// devuelve: no hay código de error por campo.
+const looksLikeFieldRejection = (message) => /field|parameter|param|unknown|unrecogni|not allowed|not supported|invalid input|schema/i.test(String(message || ''));
+
 export const createKieVideoTask = async ({
     model,
     prompt,
@@ -374,55 +389,76 @@ export const createKieVideoTask = async ({
     duration = 5,
     resolution = '1080p',
     enableAudio = false,
+    negativePrompt = null,
     callBackUrl = null,
     metadata = {}
 }) => {
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) throw new Error('KIE_API_KEY no configurada');
 
-    const input = buildVideoInput(model, {
-        prompt,
-        imageUrls: [imageUrl],
-        duration,
-        aspectRatio,
-        resolution,
-        enableAudio
-    });
+    const submit = async (negative) => {
+        const input = buildVideoInput(model, {
+            prompt,
+            imageUrls: [imageUrl],
+            duration,
+            aspectRatio,
+            resolution,
+            enableAudio,
+            negativePrompt: negative
+        });
 
-    const body = {
-        model,
-        ...(callBackUrl ? { callBackUrl } : {}),
-        input,
-        metadata
+        const body = {
+            model,
+            ...(callBackUrl ? { callBackUrl } : {}),
+            input,
+            metadata
+        };
+
+        const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        const data = await response.json();
+        if (!response.ok || (data.code && data.code !== 200)) {
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            console.error('[KIE video] createTask error response:', rawBody, '— input enviado:', JSON.stringify(input));
+            const reason = data.msg || data.message || `HTTP ${response.status} ${rawBody}`;
+            // Dos datos, porque son los dos que hacen falta para arreglarlo: el id
+            // del modelo (corregible por entorno, sin desplegar) y los campos que se
+            // enviaron. KIE contesta "This field is required" sin decir cuál, así
+            // que la lista de lo enviado es lo que permite deducir el que falta.
+            throw new Error(`KIE createTask (${model}): ${reason} — campos enviados: ${Object.keys(input).join(', ')}`);
+        }
+
+        const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
+        if (!taskId) {
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            throw new Error(`KIE createTask devolvió sin task_id: ${rawBody}`);
+        }
+        return taskId;
     };
 
-    const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
-
-    const data = await response.json();
-    if (!response.ok || (data.code && data.code !== 200)) {
-        const rawBody = JSON.stringify(data).slice(0, 400);
-        console.error('[KIE video] createTask error response:', rawBody, '— input enviado:', JSON.stringify(input));
-        const reason = data.msg || data.message || `HTTP ${response.status} ${rawBody}`;
-        // Dos datos, porque son los dos que hacen falta para arreglarlo: el id
-        // del modelo (corregible por entorno, sin desplegar) y los campos que se
-        // enviaron. KIE contesta "This field is required" sin decir cuál, así
-        // que la lista de lo enviado es lo que permite deducir el que falta.
-        throw new Error(`KIE createTask (${model}): ${reason} — campos enviados: ${Object.keys(input).join(', ')}`);
+    let taskId;
+    try {
+        taskId = await submit(negativePrompt);
+    } catch (e) {
+        // `negative_prompt` está documentado en la API de Kling, pero lo que
+        // valida es el esquema de la PASARELA, y ese no lo controlamos: KIE
+        // renombra y recorta campos. Si lo rechaza, se reintenta sin él antes
+        // de dar un fallo — el prompt positivo ya lleva el censo y la oclusión,
+        // que son la parte que sostiene la preservación. Perder el refuerzo es
+        // mucho mejor que no generar el clip.
+        if (!negativePrompt || !looksLikeFieldRejection(e.message)) throw e;
+        console.warn(`[KIE video] la pasarela rechazó negative_prompt (${e.message}); se reintenta sin él.`);
+        taskId = await submit(null);
     }
 
-    const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
-    if (!taskId) {
-        const rawBody = JSON.stringify(data).slice(0, 400);
-        throw new Error(`KIE createTask devolvió sin task_id: ${rawBody}`);
-    }
-    console.log(`[OUTRO] KIE video task creada: ${taskId} (${model}, ${aspectRatio}, ${duration}s, audio=${enableAudio})`);
+    console.log(`[KIE video] task creada: ${taskId} (${model}, ${aspectRatio}, ${duration}s, audio=${enableAudio}, negativo=${negativePrompt ? 'sí' : 'no'})`);
     return taskId;
 };
 

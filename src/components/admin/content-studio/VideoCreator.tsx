@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
+import ScenePeopleCheck from './ScenePeopleCheck';
 import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
 import {
@@ -83,6 +84,8 @@ const VideoCreator: React.FC = () => {
         qualityTier: 'fullhd',
         motionStyle: AUTO,
         motionIntensity: 'natural',
+        // Preservación estricta de personas: encendida por defecto (v4.705).
+        strictPeople: true,
         transition: AUTO,
         musicStyle: AUTO,
         engine: '',
@@ -684,6 +687,36 @@ const VideoCreator: React.FC = () => {
                                     mueve: todo el movimiento sale de la escena.
                                 </p>
                             </div>
+
+                            {/* Preservación estricta de personas (v4.705).
+                                Encendida por defecto en cuanto el análisis ve
+                                personas. Fija el censo de la escena en el prompt,
+                                baja sola la intensidad en grupos apretados y hace
+                                que una persona inventada descalifique la escena.
+
+                                Se puede apagar porque hay fotografías —un
+                                paisaje, un plato, una fachada— donde no aplica y
+                                donde limitar el movimiento sólo resta; en esas
+                                el modo ya no actúa igualmente, pero quien quiera
+                                animar a fondo un retrato debe poder decidirlo. */}
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.strictPeople !== false}
+                                    onChange={e => setConfig({ ...config, strictPeople: e.target.checked })}
+                                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span>
+                                    <span className="block text-xs font-black text-gray-900">
+                                        Preservación estricta de personas
+                                    </span>
+                                    <span className="block text-[11px] text-gray-500 leading-relaxed mt-0.5">
+                                        En las fotografías con personas fija cuántas hay y quiénes son, mantiene
+                                        tapado lo que la foto tapa y reduce el movimiento en los grupos apretados.
+                                        Una escena que muestre a alguien que no está en la fotografía se regenera.
+                                    </span>
+                                </span>
+                            </label>
                             <Select
                                 label="Estilo de animación"
                                 value={config.motionStyle}
@@ -1754,6 +1787,20 @@ const SceneRow: React.FC<{
                             {scene.fidelity.method === 'sólo estructural' && (
                                 <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
                                     Comparación estructural únicamente: no se pudo consultar el modelo de visión.
+                                </p>
+                            )}
+                            {/* Fidelidad humana (v4.705). Va aparte de la nota
+                                porque responde a otra pregunta: si en el clip
+                                hay alguien que no está en la fotografía. Una
+                                persona inventada puede estar perfectamente
+                                dibujada, así que la nota general no la ve. */}
+                            <ScenePeopleCheck people={scene.fidelity.people} />
+                            {/* Por qué esta escena se anima menos que las otras.
+                                Sin decirlo, una escena más quieta se lee como
+                                un fallo del motor. */}
+                            {scene.analysis?.intensityReason && (
+                                <p className="text-[9px] font-bold text-indigo-600 mt-1 pl-4">
+                                    {scene.analysis.intensityReason}
                                 </p>
                             )}
                             {/* Los fotogramas comparados, para poder revisar el

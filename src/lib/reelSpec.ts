@@ -51,6 +51,43 @@ export interface FrameCheck {
 // que no se pudo mirar. Desde v4.664 es un caso raro: los fotogramas se sacan
 // del propio clip con FFmpeg, así que ya no depende de que el proveedor mande
 // una portada.
+/**
+ * Fidelidad humana de una escena (v4.705): si en el clip hay alguien que no
+ * está en la fotografía.
+ *
+ * Es una pregunta distinta de la fidelidad general y por eso viaja aparte: una
+ * persona inventada puede estar perfectamente dibujada y ser perfectamente ella
+ * misma, así que no es deformación ni deriva de identidad. Hasta v4.704 no se
+ * medía, y por eso una escena con un rostro fantasma pasaba con 8/10.
+ *
+ * `null` en un indicador significa que esa comprobación no se pudo hacer, y se
+ * pinta distinto de «bien». El campo entero es `null` cuando la fotografía no
+ * tiene personas.
+ */
+export interface PeopleFidelity {
+    verdict: 'ok' | 'failed';
+    label: string;
+    reason: string | null;
+    /** Personas que contó el análisis de la fotografía, al dirigir. */
+    sourceCount: number | null;
+    /** Personas que el control contó en la mitad original de la comparación. */
+    originalSeen: number | null;
+    /** Personas que contó en el fotograma del clip. */
+    clipSeen: number | null;
+    countStable: boolean | null;
+    identitiesPreserved: boolean | null;
+    occlusionsPreserved: boolean | null;
+    facesConsistent: boolean | null;
+    noNewSubjects: boolean | null;
+    newSubjects?: boolean;
+    occlusionBroken?: boolean;
+    faceConsistency: number | null;
+    countDelta: number | null;
+    /** Por encima de ocho personas el recuento no decide solo. */
+    countReliable: boolean | null;
+    framesChecked?: number;
+}
+
 export interface FidelityReport {
     /** Nivel de vida de la escena, 0-100. `null` si no se pudo juzgar. */
     lifeScore?: number | null;
@@ -76,12 +113,25 @@ export interface FidelityReport {
     textIllegible?: boolean;
     colorShift?: boolean;
     anatomyErrors?: boolean;
+    people?: PeopleFidelity | null;
 }
 
 export interface SceneAnalysis {
     summary: string;
     subject: string;
     hasPeople: boolean;
+    /** Censo de la fotografía (v4.705): contra esto se contrasta el clip. */
+    personCount?: number;
+    peopleDensity?: 'none' | 'sparse' | 'dense';
+    occludedPeople?: boolean;
+    /** Descripción corta por persona: el mapa de sujetos que viaja al prompt. */
+    subjects?: string[];
+    /** Preservación estricta aplicada a ESTA escena. */
+    strictPeople?: boolean;
+    /** Intensidad efectiva tras acotarla por lo que hay en la foto. */
+    resolvedIntensity?: string;
+    /** Por qué se acotó. Se muestra: una escena más quieta sin motivo parece un fallo. */
+    intensityReason?: string | null;
     hasBrand: boolean;
     hasText: boolean;
     hasFoodOrLiquid: boolean;

@@ -40,9 +40,10 @@ import {
     TRANSITIONS, DEFAULT_TRANSITION, AUTO_TRANSITION,
     MUSIC_STYLES, DEFAULT_MUSIC_STYLE, AUTO_MUSIC_STYLE,
     REEL_STATUSES, SCENE_STATUSES, SCENE_COUNT, TARGET_TOTAL_SEC, estimateRemainingSec, isEngineless,
-    MOTION_INTENSITY, DEFAULT_MOTION_INTENSITY,
+    MOTION_INTENSITY, DEFAULT_MOTION_INTENSITY, resolveSceneIntensity,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
-    distributeDurations, resolveEngine, buildScenePrompt, buildReelTitle, computeProgress
+    distributeDurations, resolveEngine, buildScenePrompt, buildSceneNegativePrompt,
+    buildReelTitle, computeProgress
 } from '../lib/reelSpec.js';
 import { directReel } from '../lib/reelDirector.js';
 import {
@@ -91,9 +92,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.669.0';
+export const REEL_MODULE_VERSION = '4.705.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, fidelidad sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, preservación estricta de personas, fidelidad humana y visual sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -841,6 +842,14 @@ const dispatchScene = async (scene, { engineId, model }) => {
     const taskId = await createKieVideoTask({
         model,
         prompt: scene.prompt,
+        // El prompt negativo se recalcula acá, del análisis de la escena, en vez
+        // de guardarse: es una función pura de lo que se vio en la foto y de la
+        // preservación estricta, así que guardarlo daría una segunda copia que
+        // se separaría en silencio el día que cambie la lista.
+        negativePrompt: buildSceneNegativePrompt({
+            analysis: scene.analysis,
+            strictPeople: scene.analysis?.strictPeople ?? null
+        }),
         // La adaptada si existe; la original si la adaptación no hizo falta o
         // no salió. `animationSourceOf` es el único sitio donde se decide.
         imageUrl: animationSourceOf(scene),
@@ -928,6 +937,11 @@ export const createReel = async (req, res) => {
         // el mando de la cadencia — pedir de más da un clip acelerado.
         const safeIntensity = MOTION_INTENSITY[req.body?.motionIntensity]
             ? req.body.motionIntensity : DEFAULT_MOTION_INTENSITY;
+        // Preservación estricta de personas (v4.705). Encendida por defecto: lo
+        // que apaga es una decisión explícita del usuario, no la ausencia del
+        // campo — un cliente viejo que no lo mande sigue protegido. Sólo actúa
+        // en escenas donde el análisis vio personas.
+        const safeStrictPeople = req.body?.strictPeople === false ? false : true;
 
         let engineChoice;
         try {
@@ -967,6 +981,7 @@ export const createReel = async (req, res) => {
                 JSON.stringify({
                     withMusic: Boolean(withMusic),
                     motionIntensity: safeIntensity,
+                    strictPeople: safeStrictPeople,
                     requestedEngine: requestedEngine || null,
                     sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
                     copyLocale: req.body?.copyLocale || 'es',
@@ -1085,14 +1100,32 @@ export const createReel = async (req, res) => {
         for (let position = 0; position < direction.scenes.length; position++) {
             const plan = direction.scenes[position];
             const source = images[plan.sourceIndex];
-            const analysis = analyses[plan.sourceIndex];
+            // La intensidad efectiva se decide POR ESCENA, no por proyecto
+            // (v4.705): un grupo apretado o con caras tapadas se anima menos que
+            // un retrato, porque cuanto más movimiento se pide más ocasiones
+            // tiene el motor de redibujar lo que la foto no muestra. Nunca sube
+            // por encima de lo que pidió el usuario, sólo baja — y el motivo se
+            // guarda porque se le enseña: una escena que se mueve menos que las
+            // otras sin explicación se lee como un fallo.
+            const level = resolveSceneIntensity({
+                analysis: analyses[plan.sourceIndex],
+                requested: safeIntensity,
+                strictPeople: safeStrictPeople
+            });
+            const analysis = {
+                ...analyses[plan.sourceIndex],
+                strictPeople: level.strictPeople,
+                resolvedIntensity: level.intensity,
+                intensityReason: level.reason
+            };
             const prompt = buildScenePrompt({
                 style: plan.style,
                 durationSec: timing.generated[position],
                 analysis,
                 withAudio: false,
                 musicStyle: direction.musicStyle,
-                intensity: safeIntensity
+                intensity: level.intensity,
+                strictPeople: safeStrictPeople
             });
 
             const sceneId = randomUUID();
@@ -2013,15 +2046,31 @@ const advance = async (project) => {
         // institucional —un logotipo redibujado o un texto ilegible—: ahí no
         // hay criterio estético que valga y se reintenta mientras queden
         // intentos.
+        //
+        // Desde v4.705 la fidelidad HUMANA entra en esa excepción: una persona,
+        // un rostro o una silueta que no está en la fotografía descalifica la
+        // escena igual que un logotipo redibujado. No es una cuestión de nota
+        // —el clip puede estar impecable— sino de que una pieza institucional
+        // no puede mostrar a alguien que no estuvo ahí.
         const descalificados = infidel.filter(sc =>
-            (sc.fidelity?.brandAltered || sc.fidelity?.textIllegible) && sc.attempts < MAX_AUTO_RETRIES);
+            (sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed')
+            && sc.attempts < MAX_AUTO_RETRIES);
         const conservados = infidel.filter(sc => !descalificados.includes(sc));
 
         if (descalificados.length) {
             await Promise.allSettled(descalificados.map(sc =>
-                relaunchScene(sc, { auto: true, reason: 'la marca o el texto quedaron alterados' })));
-            await appendNote(project.id,
-                `Se regeneraron ${descalificados.length} escena(s) donde un logotipo o un texto quedó alterado.`);
+                relaunchScene(sc, {
+                    auto: true,
+                    reason: sc.fidelity?.people?.verdict === 'failed'
+                        ? (sc.fidelity.people.reason || 'aparecieron personas que no están en la fotografía')
+                        : 'la marca o el texto quedaron alterados'
+                })));
+            const humanas = descalificados.filter(sc => sc.fidelity?.people?.verdict === 'failed').length;
+            const marca = descalificados.length - humanas;
+            await appendNote(project.id, [
+                humanas ? `Se regeneraron ${humanas} escena(s) donde el clip mostró personas que no están en la fotografía.` : '',
+                marca ? `Se regeneraron ${marca} escena(s) donde un logotipo o un texto quedó alterado.` : ''
+            ].filter(Boolean).join(' '));
         }
 
         if (conservados.length) {
@@ -2224,13 +2273,24 @@ export const regenerateScene = async (req, res) => {
             .filter(d => d >= nextDuration - 0.01)
             .sort((a, b) => a - b)[0] || Math.max(...engineChoice.durations);
 
+        // La regeneración pasa por el MISMO criterio que la creación: si no, una
+        // escena regenerada perdería la preservación estricta justo cuando se la
+        // regenera por haber inventado a alguien.
+        const strictPeople = project.config?.strictPeople === false ? false : true;
+        const level = resolveSceneIntensity({
+            analysis,
+            requested: project.config?.motionIntensity || DEFAULT_MOTION_INTENSITY,
+            strictPeople
+        });
+
         const prompt = buildScenePrompt({
             style: nextStyle,
             durationSec: generated,
             analysis,
             withAudio: false,
             musicStyle: project.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
-            intensity: project.config?.motionIntensity || DEFAULT_MOTION_INTENSITY
+            strictPeople,
+            intensity: level.intensity
         });
 
         const { rows: updated } = await db.query(
@@ -2249,7 +2309,15 @@ export const regenerateScene = async (req, res) => {
              WHERE id = $1 RETURNING *`,
             [
                 scene.id, nextStyle, nextImage, sourceMediaId || null,
-                analysis ? JSON.stringify(analysis) : null, prompt,
+                analysis
+                    ? JSON.stringify({
+                        ...analysis,
+                        strictPeople: level.strictPeople,
+                        resolvedIntensity: level.intensity,
+                        intensityReason: level.reason
+                    })
+                    : null,
+                prompt,
                 nextDuration, generated,
                 nextImage !== scene.sourceImageUrl
             ]

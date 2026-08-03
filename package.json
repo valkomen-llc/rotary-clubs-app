@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.704.0",
-  "cache_bust": "2026-08-03l (Cadencia real en los Reels: control de intensidad del movimiento.)",
+  "version": "4.705.0",
+  "cache_bust": "2026-08-03m (Preservación estricta de personas en los Reels: mapa de sujetos y fidelidad humana.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -21,7 +21,8 @@
     "test:crm:diag": "node scripts/test-crm-diagnostics.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test:assets": "node scripts/test-audience-assets.mjs",
-    "test:seo": "node scripts/test-seo.mjs"
+    "test:seo": "node scripts/test-seo.mjs",
+    "test:reels:people": "node scripts/test-reel-people.mjs"
   },
   "engines": {
     "node": "22.x"

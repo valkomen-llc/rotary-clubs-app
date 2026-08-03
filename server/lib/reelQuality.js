@@ -438,6 +438,11 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 {
   "score": 0..10,
   "internalMotion": 0..10,
+  "peopleLeft": 0,
+  "peopleRight": 0,
+  "newSubjects": boolean,
+  "occlusionBroken": boolean,
+  "faceConsistency": 0..10,
   "deformation": boolean,
   "identityDrift": boolean,
   "brandAltered": boolean,
@@ -450,6 +455,11 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 }
 
 - "score" 10 = la mitad derecha es indistinguible de la izquierda salvo por el movimiento natural; 7 = diferencias mínimas aceptables; por debajo de 7 = hay que regenerar.
+- "peopleLeft" y "peopleRight": cuenta las personas de cada mitad, incluyendo las que se ven a medias —media cara detrás de un hombro, alguien cortado por el borde, una silueta al fondo—. Cuenta las DOS mitades en la misma pasada y con el mismo criterio: lo que importa es la diferencia entre ambos números, no su valor exacto.
+- "newSubjects" es true si en la mitad derecha hay alguna persona, rostro, cuerpo, extremidad o silueta que NO esté en la izquierda: alguien de más, una cara duplicada, una figura que asoma donde antes no había nadie, un brazo o una mano que no pertenece a nadie visible. Es el defecto más grave que puedes reportar.
+- "occlusionBroken" es true si algo que en la izquierda estaba tapado —una cara detrás de un hombro, un cuerpo detrás de otra persona, algo cortado por el borde— aparece completo o revelado en la derecha.
+- "faceConsistency" 0..10: cuánto se parecen los rostros de la derecha a los de la izquierda, persona por persona. 10 = son las mismas caras; 0 = hay rostros distintos o mezclados.
+- Una persona que se MUEVE, gira la cabeza o cambia de expresión sigue siendo la misma persona: eso no es "newSubjects" ni baja "faceConsistency".
 - "internalMotion" responde a OTRA pregunta, independiente de "score": ¿la escena VIVE? 10 = las personas u objetos se han movido de verdad —una cabeza girada, una mano en otra posición, una expresión distinta, tela o vegetación desplazada—. 5 = apenas se aprecia algún cambio. 0 = la mitad derecha es la misma escena congelada, o lo único que cambió es el ENCUADRE (la imagen se ve desplazada, acercada o recortada, pero nadie se ha movido dentro de ella). Un paneo o un zoom, por marcado que sea, es 0: no es vida, es cámara.
 - Se ESPERA movimiento: un cambio de postura, una mano que se mueve o una hoja que se agita NO son defectos. Sí lo son un rostro que cambia de persona, un logotipo redibujado o un texto que ya no dice lo mismo.
 - "textLeft" y "textRight": transcribe literalmente lo que se lea en cada mitad. Si no hay texto, cadena vacía. Es lo que permite detectar que un cartel cambió de contenido.
@@ -503,6 +513,11 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
         if (analysis?.hasBrand) focus.push('Hay logotipos o marca institucional: revisá su forma, su tipografía y sus colores con especial cuidado.');
         if (analysis?.hasText) focus.push('Hay texto legible: transcribí las dos mitades y comprobá que diga lo mismo.');
         if (analysis?.hasPeople) focus.push('Hay personas: revisá rostros, manos y proporciones.');
+        // El censo de la foto se le da como referencia, no como respuesta: lo
+        // que decide es lo que él CUENTA en las dos mitades. Dárselo hecho
+        // invitaría a repetirlo en vez de mirar.
+        if (analysis?.personCount) focus.push(`El análisis de la fotografía original contó ${analysis.personCount} persona(s): contá vos las dos mitades y decí lo que veas.`);
+        if (analysis?.occludedPeople) focus.push('En la fotografía original hay personas parcialmente tapadas: comprobá que sigan igual de tapadas en el fotograma.');
 
         const result = await generateCopy({
             system: FIDELITY_SYSTEM,
@@ -529,6 +544,16 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
                 // busca detectar.
                 internalMotion: Number.isFinite(Number(raw?.internalMotion))
                     ? Math.min(10, Math.max(0, Number(raw.internalMotion))) : null,
+                // Censo del fotograma (v4.705). Los dos números salen de la
+                // MISMA pasada sobre la MISMA imagen, así que su diferencia es
+                // mucho más fiable que cualquiera de ellos por separado: el
+                // sesgo de conteo del modelo se cancela.
+                peopleLeft: Number.isFinite(Number(raw?.peopleLeft)) ? Math.max(0, Math.round(Number(raw.peopleLeft))) : null,
+                peopleRight: Number.isFinite(Number(raw?.peopleRight)) ? Math.max(0, Math.round(Number(raw.peopleRight))) : null,
+                newSubjects: raw.newSubjects === true,
+                occlusionBroken: raw.occlusionBroken === true,
+                faceConsistency: Number.isFinite(Number(raw?.faceConsistency))
+                    ? Math.min(10, Math.max(0, Number(raw.faceConsistency))) : null,
                 deformation: raw.deformation === true,
                 identityDrift: raw.identityDrift === true,
                 brandAltered: raw.brandAltered === true,
@@ -547,6 +572,114 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
     }
 
     return { at: frame.at, position: frame.position, frameUrl: frame.url || null, structural, semantic };
+};
+
+// Un rostro por debajo de esto ya no es la misma cara.
+const MIN_FACE_CONSISTENCY = 6;
+
+// Por encima de este censo el recuento de un modelo de visión deja de ser
+// fiable —contar catorce cabezas en una foto de grupo no lo hace bien ningún
+// modelo—, así que en multitudes sólo vale la señal explícita `newSubjects`, no
+// la diferencia de números. Contar mal y regenerar por eso sería gastar
+// créditos en un problema inexistente, que es el error que ya costó dos rondas
+// en v4.675.
+const RELIABLE_COUNT_MAX = 8;
+
+/**
+ * Fidelidad humana de la escena: seis comprobaciones sobre las personas.
+ *
+ * Lo que se compara es la MITAD IZQUIERDA contra la DERECHA de la misma imagen
+ * de comparación, contadas por el mismo modelo en la misma pasada. Es
+ * deliberado: el sesgo de conteo de un modelo se cancela al restar, mientras
+ * que contrastar contra un censo tomado en otra llamada compararía dos criterios
+ * distintos y daría falsos positivos.
+ *
+ * `analysis.personCount` sí se usa, pero sólo para MOSTRARLO —«personas
+ * detectadas en la fotografía original»— y como referencia en el prompt. El
+ * veredicto no depende de él.
+ *
+ * Devuelve `null` cuando no hay personas o no hubo modelo de visión: no se
+ * afirma haber comprobado lo que no se comprobó.
+ */
+export const buildPeopleReport = (semantics, analysis) => {
+    if (!analysis?.hasPeople) return null;
+    const withCount = semantics.filter(s => s.peopleLeft != null && s.peopleRight != null);
+    const withFlags = semantics.filter(s => s.newSubjects != null);
+    if (!withCount.length && !withFlags.length) return null;
+
+    // El peor fotograma manda, igual que en la fidelidad: la deriva de un motor
+    // generativo es progresiva y una figura que aparece al final es tan defecto
+    // como una que aparece al principio.
+    const sourceCount = Number.isFinite(Number(analysis?.personCount)) && analysis.personCount > 0
+        ? Number(analysis.personCount) : null;
+    const originalSeen = withCount.length ? Math.max(...withCount.map(s => s.peopleLeft)) : null;
+    // El desvío se mira en las DOS direcciones por fotograma. Con un solo
+    // `Math.max` se detectaba que sobrara gente pero nunca que faltara: un
+    // fotograma con una persona de menos quedaba tapado por los otros dos, que
+    // sí cuadraban. Lo destapó la prueba de «alguien desaparece».
+    const deltas = withCount.map(s => s.peopleRight - s.peopleLeft);
+    const maxDelta = deltas.length ? Math.max(...deltas) : null;
+    const minDelta = deltas.length ? Math.min(...deltas) : null;
+    const worstDelta = maxDelta == null ? null
+        : (Math.abs(maxDelta) >= Math.abs(minDelta) ? maxDelta : minDelta);
+    // El recuento que se muestra es el del fotograma que MÁS se desvía: es el
+    // que explica el veredicto. Con todo cuadrado da el recuento real.
+    const worstFrame = withCount.length
+        ? withCount.reduce((a, b) => (Math.abs(b.peopleRight - b.peopleLeft) > Math.abs(a.peopleRight - a.peopleLeft) ? b : a))
+        : null;
+    const clipSeen = worstFrame ? worstFrame.peopleRight : null;
+
+    const newSubjects = semantics.some(s => s.newSubjects === true);
+    const occlusionBroken = semantics.some(s => s.occlusionBroken === true);
+    const faces = semantics.map(s => s.faceConsistency).filter(v => v != null);
+    const faceConsistency = faces.length ? Math.min(...faces) : null;
+
+    // El recuento sólo descalifica por sí solo en grupos donde contar es fiable.
+    const countable = originalSeen != null && originalSeen <= RELIABLE_COUNT_MAX;
+    const countGrew = countable && maxDelta != null && maxDelta > 0;
+    const countShrank = countable && minDelta != null && minDelta < 0;
+    const facesBroken = faceConsistency != null && faceConsistency < MIN_FACE_CONSISTENCY;
+
+    // El recuento descalifica en LAS DOS DIRECCIONES. Que sobre gente es el
+    // defecto reportado, pero que falte también lo pidió el equipo («no
+    // disappearing person») y, sobre todo, el ruido de conteo es simétrico: una
+    // persona casi tapada por otra se cuenta o no se cuenta según el fotograma,
+    // igual de fácil en un sentido que en el otro. Tratar sólo un lado dejaba
+    // además un indicador en rojo bajo una cabecera en verde.
+    const failed = newSubjects || countGrew || countShrank || occlusionBroken || facesBroken;
+
+    const reason = newSubjects
+        ? 'Aparece en el clip alguna persona, rostro o silueta que no está en la fotografía.'
+        : countGrew
+            ? `El clip llegó a mostrar ${clipSeen} persona(s) donde la fotografía tiene ${originalSeen}.`
+            : countShrank
+                ? `El clip llegó a mostrar ${clipSeen} persona(s) y la fotografía tiene ${originalSeen}: alguien desaparece.`
+                : occlusionBroken
+                    ? 'El clip reveló algo que la fotografía mantiene tapado: una cara o un cuerpo que estaba oculto.'
+                    : facesBroken
+                        ? `Los rostros no se conservan (consistencia ${faceConsistency}/10).`
+                        : null;
+
+    return {
+        verdict: failed ? 'failed' : 'ok',
+        // Los seis indicadores que se muestran en la ficha, uno por uno.
+        sourceCount,          // personas detectadas en la fotografía original
+        originalSeen,         // ...vistas por el control en la mitad izquierda
+        clipSeen,             // personas detectadas en el clip final
+        countStable: worstDelta != null ? worstDelta === 0 : null,
+        identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
+        occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
+        facesConsistent: faceConsistency != null ? !facesBroken : null,
+        noNewSubjects: withFlags.length ? !newSubjects : null,
+        newSubjects,
+        occlusionBroken,
+        faceConsistency,
+        countDelta: worstDelta,
+        countReliable: originalSeen != null ? originalSeen <= RELIABLE_COUNT_MAX : null,
+        framesChecked: semantics.length,
+        reason,
+        label: failed ? 'Requiere regeneración' : 'Fidelidad humana verificada'
+    };
 };
 
 // Comprueba la fidelidad de una escena sobre TODOS sus fotogramas.
@@ -607,7 +740,18 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     const worstText = textChecks.length ? Math.min(...textChecks.map(t => t.ratio)) : null;
     if (worstText != null && worstText < 0.5) flags.textIllegible = true;
 
+    // ── Fidelidad humana (v4.705) ──
+    //
+    // Responde a una pregunta que hasta ahora nadie hacía: ¿hay en el clip
+    // alguien que no esté en la fotografía? No es deformación ni deriva de
+    // identidad —una persona inventada puede estar perfectamente dibujada y ser
+    // perfectamente ella misma—, así que el modelo podía contestar «todo bien»
+    // con honestidad mientras el clip tenía un sujeto de más. Es exactamente lo
+    // que hacía que una escena con una cara fantasma pasara con 8/10.
+    const people = buildPeopleReport(semantics, analysis);
+
     const issues = [...new Set(semantics.flatMap(s => s.issues))].slice(0, 6);
+    if (people?.verdict === 'failed' && people.reason) issues.unshift(people.reason);
 
     // Sin modelo, la estructural decide sola: 0.55 de similitud combinada es el
     // punto por debajo del cual el encuadre ya cambió de forma visible.
@@ -615,7 +759,10 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         ? semanticScore
         : (structuralScore != null ? Number((structuralScore * 10).toFixed(1)) : null);
 
-    const disqualifying = flags.brandAltered || flags.textIllegible;
+    // Una persona inventada descalifica igual que un logotipo redibujado, y por
+    // el mismo motivo: no hay criterio estético que valga. Una pieza
+    // institucional no puede mostrar a alguien que no estuvo ahí.
+    const disqualifying = flags.brandAltered || flags.textIllegible || people?.verdict === 'failed';
     // El piso estructural depende de si hubo modelo de visión: con él sólo
     // guarda contra el reencuadre grosero; sin él decide solo.
     const structuralFloor = semanticScore != null
@@ -656,6 +803,7 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
             : (semanticMotion != null ? 'vision' : null),
         lifeChange: life.score,
         ...flags,
+        people,
         text: worstText != null ? { keptRatio: worstText, samples: textChecks.slice(0, 2) } : null,
         issues,
         frames: results.map(({ at, position, frameUrl, structural, semantic }) => ({
@@ -667,9 +815,11 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         checkedAt: new Date().toISOString(),
         reason: passes
             ? null
-            : (disqualifying
-                ? 'El clip alteró la marca o el texto de la fotografía.'
-                : `La fidelidad quedó en ${Number(score.toFixed(1))}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`)
+            : (people?.verdict === 'failed'
+                ? people.reason
+                : (disqualifying
+                    ? 'El clip alteró la marca o el texto de la fotografía.'
+                    : `La fidelidad quedó en ${Number(score.toFixed(1))}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`))
     };
 };
 

@@ -42,6 +42,10 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "summary": "una frase en español, máximo 15 palabras, de qué se ve",
   "subject": "people" | "product" | "food" | "nature" | "venue" | "document" | "abstract",
   "hasPeople": boolean,
+  "personCount": 0,
+  "peopleDensity": "none" | "sparse" | "dense",
+  "occludedPeople": boolean,
+  "subjects": ["una descripción corta EN INGLÉS por persona visible, máximo 8"],
   "hasBrand": boolean,
   "hasText": boolean,
   "hasFoodOrLiquid": boolean,
@@ -56,6 +60,10 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 }
 
 Reglas:
+- "personCount" es cuántas personas se ven, contando también las que aparecen parcialmente (media cara detrás de un hombro, alguien cortado por el borde, alguien de espaldas al fondo). Cuenta con cuidado: este número es el censo de la escena. 0 si no hay ninguna.
+- "peopleDensity": "none" sin personas; "sparse" si están separadas y cada una se ve entera; "dense" si se solapan, se tocan los hombros o hay un grupo apretado.
+- "occludedPeople" es true si alguna persona está parcialmente tapada por otra, por un objeto o por el borde del encuadre. Es el dato más delicado: lo que la fotografía oculta es lo que un modelo generativo tiende a completar inventando.
+- "subjects": una descripción corta y distintiva por persona, en inglés, en el orden en que se leen de izquierda a derecha, para poder identificarlas sin ambigüedad: "the woman in the red vest on the left", "the man in the blue shirt behind her". Máximo 8; si hay más personas, describe las 8 más visibles. Lista vacía si no hay personas.
 - "hasBrand" es true si hay logotipos, marcas, uniformes institucionales o packaging identificable.
 - "hasText" es true si hay texto legible de cualquier tipo.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
@@ -110,6 +118,18 @@ const sanitizeAnalysis = (raw, index) => ({
     subject: ['people', 'product', 'food', 'nature', 'venue', 'document', 'abstract'].includes(raw?.subject)
         ? raw.subject : 'abstract',
     hasPeople: bool(raw?.hasPeople),
+    // Censo de la escena (v4.705). `personCount` es el número contra el que se
+    // contrasta el clip: si en el vídeo hay más gente que acá, el motor inventó
+    // un sujeto. Se acota a 40 porque por encima de eso ningún modelo de visión
+    // cuenta con fiabilidad y la comprobación se hace por otra vía (comparando
+    // las dos mitades de la composición, no contra este número).
+    personCount: Math.round(clampNum(raw?.personCount, 0, 40, bool(raw?.hasPeople) ? 1 : 0)),
+    peopleDensity: ['none', 'sparse', 'dense'].includes(raw?.peopleDensity)
+        ? raw.peopleDensity : (bool(raw?.hasPeople) ? 'sparse' : 'none'),
+    occludedPeople: bool(raw?.occludedPeople),
+    subjects: Array.isArray(raw?.subjects)
+        ? raw.subjects.filter(s => typeof s === 'string' && s.trim()).slice(0, 8).map(s => s.slice(0, 120))
+        : [],
     hasBrand: bool(raw?.hasBrand),
     hasText: bool(raw?.hasText),
     hasFoodOrLiquid: bool(raw?.hasFoodOrLiquid),
@@ -134,6 +154,7 @@ const neutralAnalysis = (index, reason = null) => ({
     summary: 'No se pudo analizar la imagen',
     subject: 'abstract',
     hasPeople: false, hasBrand: false, hasText: false,
+    personCount: 0, peopleDensity: 'none', occludedPeople: false, subjects: [],
     hasFoodOrLiquid: false, hasNature: false,
     shotSize: 'medium', energy: 3, narrativeRole: 'development', weight: 1,
     motionHint: null, suggestedStyle: null,

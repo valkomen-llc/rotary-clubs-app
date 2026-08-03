@@ -751,6 +751,134 @@ export const MOTION_INTENSITY = {
 };
 export const DEFAULT_MOTION_INTENSITY = 'natural';
 
+// Orden de menor a mayor actividad. Se usa para ACOTAR: nunca para subir.
+const INTENSITY_ORDER = ['sutil', 'natural', 'expresivo'];
+
+// ─── Preservación estricta de personas (v4.705) ────────────────────────────
+//
+// El defecto que motiva esto: en un clip generado a partir de una foto de
+// grupo aparecía un rostro parcial que no está en la fotografía. El motor
+// «completa» lo que la foto oculta —una cara detrás de un hombro, un cuerpo
+// tapado por otro— y lo dibuja como una persona más.
+//
+// Es un defecto que hasta ahora NO SE MEDÍA. La comprobación de fidelidad
+// preguntaba por deformación, deriva de identidad, marca y texto; una persona
+// inventada no es ninguna de esas cosas, así que el modelo de visión podía
+// contestar «todo bien» con honestidad mientras el clip tenía un sujeto de
+// más. Por eso una escena con una cara fantasma pasaba con 8/10.
+//
+// El modo actúa en tres sitios y los tres hacen falta:
+//   1. PROMPT — fija el número de personas y la oclusión, en positivo.
+//   2. INTENSIDAD — un grupo denso o con caras tapadas se anima menos: cuanto
+//      más movimiento se pide, más ocasiones tiene el motor de redibujar lo
+//      que no ve.
+//   3. MEDICIÓN — `reelQuality.js` cuenta personas en las dos mitades de la
+//      comparación y una que aparece descalifica la escena.
+export const isGroupSubject = (analysis) => {
+    if (!analysis?.hasPeople) return false;
+    return true;
+};
+
+// Cuándo la preservación estricta se enciende sola. El pedido enumera
+// fotografías «grupales, institucionales, sociales, rotarias, corporativas,
+// médicas, comunitarias o de eventos»: todas ellas tienen en común que hay
+// PERSONAS RECONOCIBLES y que la pieza es institucional, que es exactamente
+// para lo que existe este módulo. Por eso la condición es «hay personas», y no
+// una clasificación de escenarios que el análisis no puede hacer con
+// fiabilidad.
+export const DEFAULT_STRICT_PEOPLE = true;
+export const strictPeopleFor = (analysis, requested = null) => {
+    if (requested === false) return false;
+    if (requested === true) return Boolean(analysis?.hasPeople);
+    return DEFAULT_STRICT_PEOPLE && Boolean(analysis?.hasPeople);
+};
+
+/**
+ * Acota la intensidad según lo que el análisis vio en la foto.
+ *
+ * NUNCA sube: si el usuario pidió «Muy sutil», sale «Muy sutil». Lo que hace es
+ * bajar cuando el riesgo de que el motor invente un sujeto es alto:
+ *
+ *   · caras u cuerpos parcialmente tapados → `sutil`. Es el caso exacto del
+ *     defecto: lo que está oculto es lo que el motor completa.
+ *   · grupo denso (hombros superpuestos, o seis personas o más) → `sutil`.
+ *   · tres a cinco personas → como mucho `natural`.
+ *
+ * Devuelve la intensidad y el motivo, porque el motivo se le muestra al usuario:
+ * una escena que se mueve menos que las otras sin explicación se lee como un
+ * fallo.
+ */
+export const resolveSceneIntensity = ({
+    analysis = null,
+    requested = DEFAULT_MOTION_INTENSITY,
+    strictPeople = null
+} = {}) => {
+    const asked = MOTION_INTENSITY[requested] ? requested : DEFAULT_MOTION_INTENSITY;
+    const strict = strictPeopleFor(analysis, strictPeople);
+    if (!strict) return { intensity: asked, requested: asked, strictPeople: false, reason: null };
+
+    const count = Number.isFinite(Number(analysis?.personCount)) ? Number(analysis.personCount) : null;
+    const dense = analysis?.peopleDensity === 'dense' || (count != null && count >= 6);
+    const occluded = analysis?.occludedPeople === true;
+
+    let cap = null;
+    let reason = null;
+    if (occluded) {
+        cap = 'sutil';
+        reason = 'Hay personas parcialmente tapadas: se anima con el movimiento mínimo para que el motor no complete lo que la foto no muestra.';
+    } else if (dense) {
+        cap = 'sutil';
+        reason = 'El grupo está muy junto: se anima con el movimiento mínimo para que no se mezclen dos personas en una.';
+    } else if (count != null && count >= 3) {
+        cap = 'natural';
+        reason = 'Hay un grupo de personas: la intensidad se limita a «Natural» para conservar cada rostro.';
+    }
+
+    if (!cap) return { intensity: asked, requested: asked, strictPeople: true, reason: null };
+
+    const capped = INTENSITY_ORDER.indexOf(asked) > INTENSITY_ORDER.indexOf(cap) ? cap : asked;
+    return {
+        intensity: capped,
+        requested: asked,
+        strictPeople: true,
+        reason: capped === asked ? null : reason
+    };
+};
+
+// ─── Prompt negativo permanente para escenas con personas ──────────────────
+//
+// La lista es literalmente la que pidió el equipo. Se conserva palabra por
+// palabra a propósito: es su criterio, no una interpretación nuestra.
+//
+// TENSIÓN DECLARADA, no resuelta en silencio. La regla del sitio —heredada del
+// Generador de Publicaciones— es que las listas de prohibiciones son
+// contraproducentes porque el modelo se obsesiona con lo prohibido, y por eso
+// TODO el resto del prompt está escrito en positivo. Esto es la excepción, y
+// va acotada de tres maneras para que la excepción no contamine la regla:
+//
+//   · va SÓLO en escenas con personas y con preservación estricta encendida;
+//   · va al FINAL y en un bloque `Negative prompt:` claramente delimitado, que
+//     es la convención que los modelos de video leen como exclusión — no
+//     mezclada dentro de la descripción positiva, que es lo que provoca la
+//     fijación;
+//   · se puede apagar sin desplegar con `REEL_PEOPLE_NEGATIVE_PROMPT=off`, por
+//     si la medición muestra que empeora las escenas en vez de mejorarlas.
+//
+// Y se puede MEDIR si sirve: el recuento de personas de `reelQuality.js` dice
+// si la lista está evitando sujetos nuevos o no.
+export const PEOPLE_NEGATIVE_TERMS = [
+    'no new people', 'no extra person', 'no hidden person emerging', 'no ghost figure',
+    'no duplicated face', 'no duplicated body', 'no disappearing person', 'no identity swap',
+    'no morphing faces', 'no merging bodies', 'no splitting subjects',
+    'no invented background characters', 'no transient silhouettes',
+    'no reconstructed hidden body', 'no hallucinated limbs', 'no crowd expansion',
+    'no face replacement', 'no body replacement', 'no flickering person',
+    'no temporal inconsistency'
+];
+export const PEOPLE_NEGATIVE_PROMPT = PEOPLE_NEGATIVE_TERMS.join(', ');
+export const peopleNegativeEnabled = () =>
+    String(process.env.REEL_PEOPLE_NEGATIVE_PROMPT || '').toLowerCase() !== 'off';
+
 // ─── Prompts ───────────────────────────────────────────────────────────────
 //
 // Cortos y en positivo, igual que en el resto del sitio. Aprendizaje del
@@ -770,9 +898,14 @@ export const buildScenePrompt = ({
     analysis = null,
     withAudio = false,
     musicStyle = DEFAULT_MUSIC_STYLE,
-    intensity = DEFAULT_MOTION_INTENSITY
+    intensity = DEFAULT_MOTION_INTENSITY,
+    strictPeople = null
 } = {}) => {
     const s = MOTION_STYLES[style] || MOTION_STYLES[DEFAULT_MOTION_STYLE];
+    const strict = strictPeopleFor(analysis, strictPeople);
+    // Las tres frases del mapa de sujetos se arman abajo y se ensamblan al
+    // final, porque son las que se sacrifican primero si el prompt no cabe.
+    let census = null, subjectMap = null, occlusion = null;
     const parts = [
         // «documentary», no «cinematic» (v4.672). La palabra importa: pedirle a
         // un modelo generativo un plano «cinematográfico» es invitarlo a añadir
@@ -788,17 +921,17 @@ export const buildScenePrompt = ({
         // segundos de tiempo real» junto a la duración: hay que afirmar que lo
         // que se ve OCUPA esos segundos, o el modelo entrega un resumen
         // comprimido de un momento más largo — que es el time-lapse reportado.
-        `Everything happens at the speed it happens in life. These are ${Math.round(durationSec)} unhurried seconds of that moment, at natural human cadence, evenly paced from the first frame to the last.`,
+        `Everything happens at the speed it happens in life: ${Math.round(durationSec)} unhurried seconds of that moment, at natural human cadence, evenly paced from the first frame to the last.`,
         // La identidad es lo que NO cambia. Ojo con el alcance: se enumeran
         // atributos y encuadre, NO el movimiento. Confundir las dos cosas fue
         // el error de v4.672: pedir que «todo lo demás se quede quieto»
         // congelaba la escena entera.
-        'Everyone and everything in the frame stays exactly who and what they are: the same faces, the same ages, the same hair, the same glasses and hats, the same clothing, vests, badges and lanyards, the same logos and wordmarks, the same room and furniture, the same colours and the same light. The camera keeps the same framing and composition as the photograph.',
+        'Everyone and everything in the frame stays exactly who and what they are: the same faces, ages, hair, glasses, hats, clothing, vests, badges and lanyards, the same logos and wordmarks, the same room, furniture, colours and light. The camera keeps the same framing and composition as the photograph.',
         // Sobriedad institucional, dicha EN POSITIVO. La regla del sitio es no
         // enumerar prohibiciones —el modelo se obsesiona con lo prohibido—, así
         // que en vez de «sin humo ni chispas» se afirma qué luz y qué aire hay:
         // los del original, y ninguno más.
-        'The only light in the shot is the light already present in the photograph, and the air stays clear. The scene is exactly the room that was photographed, with nothing added to it.'
+        'The only light in the shot is the light already present in the photograph, the air stays clear, and the scene is exactly the room that was photographed, with nothing added to it.'
     ];
 
     // Refuerzo específico según lo que trae la escena. Cada rama nombra lo que
@@ -807,7 +940,7 @@ export const buildScenePrompt = ({
         // Sin la última frase esto contradecía la rama de personas: «sólo la
         // cámara se mueve» le dice al modelo que congele a la gente. Lo que hay
         // que fijar es el DIBUJO de la marca, no la escena a su alrededor.
-        parts.push('Logos, wordmarks, badges and any text stay pixel-exact and perfectly legible: they keep their typography, their colours and their proportions, and they never redraw themselves — even while the person wearing them moves.');
+        parts.push('Logos, wordmarks, badges and any text stay pixel-exact and perfectly legible, keeping their typography, colours and proportions, and never redrawing themselves — even while the person wearing them moves.');
     }
     if (analysis?.hasPeople) {
         // La cantidad de acciones la fija la INTENSIDAD, no el prompt fijo.
@@ -816,50 +949,163 @@ export const buildScenePrompt = ({
         const level = MOTION_INTENSITY[intensity] || MOTION_INTENSITY[DEFAULT_MOTION_INTENSITY];
         parts.push(`The people behave as they did in that moment. ${level.clause}`);
         parts.push(
-            'Whoever was holding something keeps holding it, and whoever was mid-step continues the step. ' +
-            'Each person moves on their own timing, never all together, so the group looks alive rather than posed.'
+            'Whoever was holding something keeps holding it, and whoever was mid-step continues it. ' +
+            'Each moves on their own timing, never all together, so the group looks alive rather than posed.'
         );
         // El límite va aparte y es sobre la IDENTIDAD, no sobre el movimiento.
         parts.push('Through all of it their faces remain the same faces, with the same features and the same age, and their hands keep five fingers and their natural shape.');
+
+        // ── Mapa de sujetos (v4.705) ──
+        //
+        // Fija el CENSO de la escena. Es la pieza que faltaba: el prompt decía
+        // que cada persona conserva su identidad, pero no decía CUÁNTAS
+        // personas hay, así que añadir una no contradecía nada de lo pedido.
+        //
+        // Se dice en positivo —«hay exactamente N y son esas N»— y se enumeran
+        // los sujetos con su descripción para que el modelo tenga un anclaje
+        // por persona a lo largo del clip, que es lo que pide un identificador
+        // temporal estable en un motor que no expone ninguno.
+        if (strict) {
+            const n = Number(analysis?.personCount);
+            census = Number.isFinite(n) && n > 0
+                ? `Exactly ${n} ${n === 1 ? 'person is' : 'people are'} in this photograph, and exactly ` +
+                  `${n === 1 ? 'that same person is' : `those same ${n} people are`} in every frame of the clip, first to last: the count stays ${n}, and each keeps their own place and their own face.`
+                : 'The clip holds exactly the people who are in the photograph, the same ones from the first frame to the last: the count stays as it is.';
+
+            const list = Array.isArray(analysis?.subjects)
+                ? analysis.subjects.filter(t => typeof t === 'string' && t.trim()).slice(0, 5)
+                : [];
+            if (list.length) {
+                subjectMap = `They are: ${list.map(t => t.trim().slice(0, 80)).join('; ')}. Each stays that same person in that same place.`;
+            }
+
+            // Oclusión. Es el mecanismo concreto del defecto reportado: lo que
+            // la foto tapa es lo que el motor completa e inventa. Se pide en
+            // positivo —lo oculto SIGUE oculto—, que además es lo que hay que
+            // conservar para que el plano se lea igual.
+            occlusion = 'What the photograph hides stays hidden: a face behind a shoulder stays behind that shoulder, and whatever the frame cuts off stays cut off. What cannot be seen simply stays out of view.';
+        }
     }
-    if (analysis?.hasNature) {
-        parts.push('The air moves through the scene: leaves and branches sway, flags and fabric ripple, loose hair drifts, water carries small ripples, and clouds slide slowly across the sky.');
-    } else {
+    // Ambiente. Es sabor: da vida al fondo, pero es lo primero que sobra si el
+    // prompt no cabe.
+    const ambience = analysis?.hasNature
+        ? 'The air moves through the scene: leaves and branches sway, flags and fabric ripple, loose hair drifts, water carries small ripples, and clouds slide slowly across the sky.'
         // Interior: también hay vida, sólo que menos. Sin esta rama, una escena
         // de salón quedaba con las personas moviéndose sobre un fondo muerto.
-        parts.push('Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.');
-    }
+        : 'Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.';
 
     // Lo que hace ESTA foto en concreto, según lo que vio el análisis. Va antes
     // que la cámara porque es la instrucción principal: sin ella, las tres
     // escenas reciben la misma descripción genérica y se mueven igual.
-    if (analysis?.motionHint) parts.push(String(analysis.motionHint));
+    const hint = analysis?.motionHint ? String(analysis.motionHint) : null;
 
     // Un estilo sin motor no tiene descripción de cámara: su movimiento lo hace
     // FFmpeg sobre la foto, no un modelo. El prompt no llega a usarse, pero
     // escribir «Camera: null» sería basura guardada en la fila de la escena.
-    if (s.camera) {
-        // La cámara se declara QUIETA y el movimiento se atribuye a la escena.
-        // Es el punto del módulo: un desplazamiento de cámara sustituyendo a la
-        // animación da una fotografía con paneo, que es justo lo que no se
-        // quiere. Se dice en la misma frase para que no queden como dos ideas
-        // sueltas que el modelo pueda promediar.
-        parts.push(
-            `${s.camera}, so every bit of movement in the shot comes from the people and the room themselves, never from the lens: ${s.motion}, ${s.pacing}. ` +
-            'The movement runs smoothly and continuously from the first frame to the last, with stable, consistent detail throughout.'
-        );
-    }
+    //
+    // La cámara se declara QUIETA y el movimiento se atribuye a la escena. Es el
+    // punto del módulo: un desplazamiento de cámara sustituyendo a la animación
+    // da una fotografía con paneo, que es justo lo que no se quiere. Se dice en
+    // la misma frase para que no queden como dos ideas sueltas que el modelo
+    // pueda promediar.
+    const camera = s.camera
+        ? `${s.camera}, so every bit of movement in the shot comes from the people and the room themselves, never from the lens: ${s.motion}, ${s.pacing}. ` +
+          'The movement runs smoothly and continuously, with stable, consistent detail throughout.'
+        : null;
 
     // El audio nativo sólo se pide si el motor lo tiene Y no vamos a poner
     // música encima: dos pistas compitiendo es peor que ninguna. Cuando hay
     // banda sonora del montaje, los clips se piden mudos a propósito.
-    parts.push(
-        withAudio
-            ? `Audio: a quiet ambient bed matching the scene, ${MUSIC_STYLES[musicStyle]?.mood || 'calm'}, with no speech.`
-            : 'The clip itself carries no speech and no music; the soundtrack is added in the edit.'
-    );
+    const audio = withAudio
+        ? `Audio: a quiet ambient bed matching the scene, ${MUSIC_STYLES[musicStyle]?.mood || 'calm'}, with no speech.`
+        : 'The clip itself carries no speech and no music; the soundtrack is added in the edit.';
 
-    return parts.join(' ');
+    // ── Presupuesto de longitud (v4.705) ──
+    //
+    // Kling declara un tope de 2500 caracteres para el prompt. Con el mapa de
+    // sujetos y la oclusión, el peor caso medido —ocho personas descritas,
+    // marca, texto y naturaleza— se pasa, y un prompt rechazado es un Reel que
+    // no se genera. Mandarle a un modelo algo que no acepta es exactamente lo
+    // que rompió el módulo en v4.645, así que se acota acá en vez de
+    // descubrirlo en producción. `REEL_PROMPT_MAX_CHARS` corrige el tope por
+    // entorno si resulta ser otro, sin desplegar.
+    //
+    // El recorte tiene ORDEN y sacrifica primero lo menos cargante:
+    //   1. la frase de ambiente — da vida al fondo, pero es sabor;
+    //   2. el mapa de sujetos — refuerza el censo, que va aparte y se conserva;
+    //   3. el `motionHint`, RECORTADO por la última palabra entera y nunca
+    //      eliminado: es la instrucción de ESTA foto, y sin ella las tres
+    //      escenas se mueven igual.
+    //
+    // El censo y la oclusión no se tocan: son lo que se añadió para resolver el
+    // defecto, y recortarlos sería dejar de hacer lo que se dice que se hace.
+    // Lo que se deja fuera queda anotado en consola — un recorte silencioso
+    // convierte «lo pedimos» en una afirmación falsa.
+    //
+    // El bloque negativo NO entra en este presupuesto: viaja en su propio campo
+    // (`buildSceneNegativePrompt`), que en Kling tiene su propio tope de 2500.
+    // Inline consumía 640 de los 2500 del positivo —el 26 %— y empujaba fuera
+    // frases afinadas a lo largo de treinta versiones.
+    const limit = Number(process.env.REEL_PROMPT_MAX_CHARS) || 2500;
+    const trimWords = (t, n) => {
+        if (t.length <= n) return t;
+        const cut = t.slice(0, n);
+        const sp = cut.lastIndexOf(' ');
+        return (sp > n * 0.6 ? cut.slice(0, sp) : cut).trimEnd();
+    };
+
+    const build = ({ withSubjects = true, withAmbience = true, hintChars = Infinity } = {}) => [
+        ...parts,
+        withAmbience ? ambience : null,
+        hint ? (hintChars === Infinity ? hint : trimWords(hint, hintChars)) : null,
+        camera,
+        audio,
+        census,
+        withSubjects ? subjectMap : null,
+        occlusion
+    ].filter(Boolean).join(' ');
+
+    const steps = [
+        {},
+        { withAmbience: false },
+        { withAmbience: false, withSubjects: false },
+        { withAmbience: false, withSubjects: false, hintChars: 90 }
+    ];
+    let prompt = build();
+    for (let i = 1; i < steps.length && prompt.length > limit; i++) {
+        console.warn(`[REEL] prompt de ${prompt.length} caracteres sobre el tope de ${limit}: se recorta (paso ${i}).`);
+        prompt = build(steps[i]);
+    }
+    if (prompt.length > limit) {
+        // Última red. Se recorta la descripción fija y se vuelven a pegar el
+        // censo y la oclusión, que van al final y no se sacrifican.
+        const keep = [census, occlusion].filter(Boolean).join(' ');
+        console.warn(`[REEL] prompt de ${prompt.length} caracteres aún sobre el tope de ${limit}: se recorta la descripción fija.`);
+        prompt = `${trimWords(prompt, Math.max(0, limit - keep.length - 1))} ${keep}`.trim();
+    }
+    return prompt;
+};
+
+/**
+ * El prompt negativo de la escena, para el campo `negative_prompt` del motor.
+ *
+ * Va SEPARADO del positivo por dos motivos y los dos importan:
+ *
+ *   · Presupuesto. Kling da 2500 caracteres al prompt y otros 2500 al negativo.
+ *     Inline, esta lista se comía 640 del positivo —el 26 %— y expulsaba frases
+ *     afinadas durante treinta versiones. En su campo no cuesta nada.
+ *   · Regla del sitio. Los prompts se escriben en POSITIVO porque el modelo se
+ *     obsesiona con lo prohibido; mezclar una lista de veinte negaciones dentro
+ *     de la descripción de la escena es exactamente lo que produce esa
+ *     fijación. En un campo aparte el modelo la lee como lo que es.
+ *
+ * Devuelve `null` cuando no aplica —sin personas, sin preservación estricta, o
+ * apagado por entorno— y entonces el campo no se manda.
+ */
+export const buildSceneNegativePrompt = ({ analysis = null, strictPeople = null } = {}) => {
+    if (!strictPeopleFor(analysis, strictPeople)) return null;
+    if (!peopleNegativeEnabled()) return null;
+    return PEOPLE_NEGATIVE_PROMPT;
 };
 
 export const buildReelTitle = ({ organizationName, motionStyle, format }) => {
