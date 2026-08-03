@@ -18,7 +18,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
-import { ensureTables, logEvent, readConfigForAdmin, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
+import { ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
@@ -412,10 +412,14 @@ const seedAnswers = (submission, cfg) =>
 export const getPortalData = async (req, res) => {
     try {
         await ensureTables();
-        const cfg = await readConfigForAdmin();
         const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
         const submission = rows[0];
         if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+
+        // La convocatoria de SU edición, no la que esté abierta: el plazo, los
+        // precios y la plantilla del formulario son los de la feria a la que
+        // este club postuló. Ver `readConfigForSubmission`.
+        const cfg = await readConfigForSubmission(submission.eventId || null);
 
         let form = await loadForm(submission.id);
         if (!form && submission.status === 'paid') {
@@ -473,6 +477,11 @@ export const getPortalData = async (req, res) => {
             forms: await listPortalForms(submission, cfg, account),
             focusAreas: cfg.focusAreas || [],
             edition: cfg.edition,
+            // El evento al que postula, para que el panel pueda identificarlo:
+            // nombre, sede, fechas y el enlace a su ficha pública. Va aparte de
+            // `edition` a propósito — uno es el evento real de la plataforma y
+            // el otro el bloque de respaldo escrito a mano.
+            event: await readEditionEvent(submission.eventId || null),
             deadline: cfg.deadline,
             portal: cfg.portal,
             nextStep: cfg.redirect,

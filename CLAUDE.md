@@ -969,11 +969,26 @@ suyos, conservados para un navegador con el panel viejo en caché.
 - **El acumulado se deriva de la serie diaria** en el navegador, no con otra
   consulta: el dato ya venía.
 
-**Pendiente conocido:** la plantilla del formulario ya es por edición (viaja en
-`config.masterForm`), pero el panel del club (`/mi-proyecto`) todavía resuelve
-la convocatoria con `readConfigForAdmin()` sin edición — funciona porque lee la
-abierta, y hay que pasarle la del proyecto cuando convivan dos convocatorias
-abiertas a la vez.
+### El panel del club conoce SU edición (v4.691)
+
+- **`/mi-proyecto` resuelve la convocatoria por `submission.eventId`**
+  (`readConfigForSubmission`), no la abierta. Hasta v4.690 usaba
+  `readConfigForAdmin()` sin edición: acertaba sólo porque hay una feria. Con la
+  XIII abierta, un club de la XII habría visto el plazo, los precios y **la
+  plantilla del formulario** de la XIII.
+- **Si la edición no tiene fila propia se cae a la abierta**, a propósito.
+  `readConfig` mezcla contra `DEFAULT_CONFIG` y nunca devuelve vacío, así que
+  sin esa comprobación un `eventId` huérfano dejaría al club con la plantilla
+  POR DEFECTO —perdiendo el formulario que está diligenciando— sin avisar.
+- **La sede y las fechas salen del `CalendarEvent`** (`readEditionEvent`), no de
+  `cfg.edition`. Una edición ES un evento de la plataforma: si el panel leyera
+  del bloque escrito a mano, podría decir una ciudad mientras la ficha del
+  evento dice otra. `cfg.edition` queda de respaldo para una edición sin
+  vincular. Sin evento se devuelve `null`; no se inventa uno.
+- **El encabezado contesta dos preguntas y ninguna más**: cuál es mi proyecto y
+  a qué feria va, separadas por una línea. El monto y el estado del pago **no**
+  van ahí: ya tienen su tarjeta y en el encabezado convertirían el dinero en el
+  titular de una pantalla que trata del proyecto.
 
 ## Formularios del proyecto (Gestión de Proyectos) — v4.642
 
