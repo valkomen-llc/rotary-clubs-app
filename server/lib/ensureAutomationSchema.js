@@ -31,6 +31,12 @@ const EXPECTED_TABLES = [
   'CrmJourneyStep',
   'CrmSuppression',
   'CrmAlert',
+  // Fase 3 — bandeja de conversaciones y enrutamiento (v4.696)
+  'CrmConversation',
+  'CrmConversationNote',
+  'CrmConversationEvent',
+  'CrmRoutingRule',
+  'CrmAgent',
 ];
 
 const EXPECTED_COLUMNS = [
@@ -230,6 +236,114 @@ export async function ensureAutomationSchema() {
     ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "lastInboundAt" TIMESTAMP(3);
     CREATE INDEX IF NOT EXISTS "idx_wa_contact_site" ON "WhatsAppContact"("siteId");
     CREATE INDEX IF NOT EXISTS "idx_wa_contact_consent" ON "WhatsAppContact"("consentState");
+  `);
+
+  // ── Fase 3: bandeja de conversaciones, enrutamiento y agentes ─────────────
+  await db.query(`
+    -- Una conversación por contacto. NO guarda los mensajes: esos ya viven en
+    -- "WhatsAppMessageLog" y duplicarlos daría dos verdades sobre el mismo hilo.
+    -- Esta fila es el ESTADO del hilo: en qué punto de atención está, quién lo
+    -- tiene, qué quería la persona y qué sitio hay detrás.
+    CREATE TABLE IF NOT EXISTS "CrmConversation" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      "contactId" TEXT NOT NULL,
+      "siteId" TEXT,
+      "siteType" TEXT DEFAULT 'club',
+      state TEXT NOT NULL DEFAULT 'nuevo',
+      intent TEXT,
+      "intentMethod" TEXT,
+      "intentAt" TIMESTAMP(3),
+      team TEXT,
+      "assignedTo" TEXT,
+      "assignedAt" TIMESTAMP(3),
+      "assignedBy" TEXT,
+      tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      priority TEXT NOT NULL DEFAULT 'normal',
+      "lastInboundAt" TIMESTAMP(3),
+      "lastOutboundAt" TIMESTAMP(3),
+      "botHandled" BOOLEAN NOT NULL DEFAULT false,
+      "escalatedAt" TIMESTAMP(3),
+      "technicalRequestId" TEXT,
+      "resolvedAt" TIMESTAMP(3),
+      "closedAt" TIMESTAMP(3),
+      "openedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    -- Un solo hilo ABIERTO por contacto. El índice único es PARCIAL: al cerrarse
+    -- la conversación deja de ocupar el lugar y un mensaje nuevo abre otra, con
+    -- lo cual el historial queda separado por episodio en vez de ser un hilo
+    -- eterno. OJO: por ser parcial, cualquier ON CONFLICT contra él tiene que
+    -- repetir el predicado (mismo error que costó una corrección en v4.648).
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmConversation_open_key"
+      ON "CrmConversation"("clubId","contactId") WHERE "closedAt" IS NULL;
+    CREATE INDEX IF NOT EXISTS "CrmConversation_state_idx" ON "CrmConversation"(state,"lastInboundAt");
+    CREATE INDEX IF NOT EXISTS "CrmConversation_assignee_idx" ON "CrmConversation"("assignedTo",state);
+    CREATE INDEX IF NOT EXISTS "CrmConversation_site_idx" ON "CrmConversation"("siteId");
+
+    -- Notas internas. NUNCA se le muestran al contacto: por eso viven acá y no
+    -- como un mensaje del hilo.
+    CREATE TABLE IF NOT EXISTS "CrmConversationNote" (
+      id TEXT PRIMARY KEY,
+      "conversationId" TEXT NOT NULL,
+      "authorId" TEXT,
+      "authorName" TEXT,
+      body TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS "CrmConversationNote_conv_idx" ON "CrmConversationNote"("conversationId","createdAt");
+
+    -- Traza de la conversación: quién la tomó, quién la reasignó, cuándo cambió
+    -- de estado. Es lo que permite responder "por qué esto quedó sin atender"
+    -- sin reconstruirlo de memoria.
+    CREATE TABLE IF NOT EXISTS "CrmConversationEvent" (
+      id TEXT PRIMARY KEY,
+      "conversationId" TEXT NOT NULL,
+      type TEXT NOT NULL,
+      "actorId" TEXT,
+      "actorName" TEXT,
+      detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS "CrmConversationEvent_conv_idx" ON "CrmConversationEvent"("conversationId","createdAt");
+
+    -- Reglas de enrutamiento, evaluadas en orden. La primera que coincide gana.
+    CREATE TABLE IF NOT EXISTS "CrmRoutingRule" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      name TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT true,
+      intents TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      keywords TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      audience JSONB NOT NULL DEFAULT '{}'::jsonb,
+      team TEXT,
+      "assignTo" TEXT,
+      "assignMode" TEXT NOT NULL DEFAULT 'team',
+      "priorityLevel" TEXT NOT NULL DEFAULT 'normal',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS "CrmRoutingRule_club_idx" ON "CrmRoutingRule"("clubId",active,priority);
+
+    -- Quién puede atender, de qué equipos y si está disponible. Es una tabla
+    -- aparte de "User" a propósito: ser agente del CRM no es un rol del sitio
+    -- sino una asignación operativa que se prende y se apaga (vacaciones, turnos)
+    -- sin tocar los permisos de la persona.
+    CREATE TABLE IF NOT EXISTS "CrmAgent" (
+      id TEXT PRIMARY KEY,
+      "clubId" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "displayName" TEXT,
+      teams TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      available BOOLEAN NOT NULL DEFAULT true,
+      "maxOpen" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS "CrmAgent_club_user_key" ON "CrmAgent"("clubId","userId");
+    CREATE INDEX IF NOT EXISTS "CrmAgent_available_idx" ON "CrmAgent"("clubId",available);
   `);
 
   // Trazabilidad del envío automático. Sin estas dos columnas, "cuánto rindió el

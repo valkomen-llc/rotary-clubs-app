@@ -43,6 +43,12 @@ export const SHORT_SESSION_TTL = '12h';
 export const ADMIN_ROLES = [
     'administrator', 'superadmin', 'district_admin', 'club_admin',
     'editor', 'member', 'crowdfunder',
+    // Agente de soporte o comunicaciones del WhatsApp CRM (v4.696). Entra al
+    // panel para atender su bandeja y nada más: NO está en SITE_ADMIN_ROLES, así
+    // que no administra el sitio, no toca la configuración del motor y no ve
+    // datos de otros sitios. El alcance de lo que atiende lo decide
+    // `scopeSiteFilter` en el controlador del CRM.
+    'crm_agent',
 ];
 
 /**

@@ -194,6 +194,35 @@ router.get('/suppressions', engine.getSuppressions);
 router.post('/suppressions', engine.addSuppression);
 router.delete('/suppressions/:phone', engine.removeSuppression);
 
+// ── Bandeja de conversaciones, enrutamiento y agentes (v4.696) ───────────
+// Igual que arriba: los permisos van DENTRO del controlador, porque estos
+// endpoints responden cosas distintas al operador de la plataforma, al agente
+// y al administrador de un sitio.
+import * as inbox from '../controllers/crm/inbox.controller.js';
+
+router.get('/inbox/catalog', inbox.getInboxCatalog);
+router.get('/inbox', inbox.getInbox);
+router.get('/inbox/booking-link', inbox.getBookingLink);
+router.get('/conversations/:id', inbox.getConversation);
+router.patch('/conversations/:id', inbox.patchConversation);
+router.post('/conversations/:id/claim', inbox.claimConversation);
+router.post('/conversations/:id/notes', inbox.createNote);
+router.post('/conversations/:id/reply', inbox.replyConversation);
+router.post('/conversations/:id/escalate', inbox.escalate);
+router.post('/conversations/:id/training', inbox.linkTraining);
+
+router.get('/routing-rules', inbox.getRoutingRules);
+router.post('/routing-rules', inbox.upsertRoutingRule);
+router.put('/routing-rules/:id', inbox.upsertRoutingRule);
+router.delete('/routing-rules/:id', inbox.deleteRoutingRule);
+
+router.get('/agents', inbox.getAgents);
+router.get('/agents/assignable', inbox.getAssignableUsers);
+router.put('/agents', inbox.putAgent);
+router.delete('/agents/:userId', inbox.deleteAgent);
+
+router.put('/chatbot', inbox.updateChatbotSettings);
+
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';
 router.post('/upload-media', uploadWAMedia.single('file'), (req, res) => {
