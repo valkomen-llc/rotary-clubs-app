@@ -55,6 +55,12 @@ const Navbar = () => {
   // v4.602 — En las Ferias de Proyectos el segundo botón es el de registro y
   // lleva a /registro-feria, la página con el panel de inscripción (cuenta
   // regresiva, precios y fecha de cierre) desde la que se abre el formulario.
+  // Forma de los botones del encabezado. Está EXTRAÍDA a una constante porque el
+  // botón de ingreso tiene que verse igual que los CTA —mismo alto, mismo radio—
+  // y hasta v4.697 repetía sus clases por su cuenta: era un círculo de 32 px con
+  // sólo un ícono, y los rotarios no reconocían que ahí se iniciaba sesión.
+  // Duplicar estas clases otra vez volvería a permitir que se separen.
+  const CTA_SHAPE = 'items-center justify-center gap-2 font-bold text-sm px-5 py-2.5 rounded-full transition-colors';
   const CTA_CLASSES = [
     'bg-rotary-blue text-white hover:bg-rotary-blue/90',
     'bg-sky-100 text-rotary-blue hover:bg-sky-200',
@@ -673,7 +679,7 @@ const Navbar = () => {
           <div className="flex items-center space-x-4">
             {/* CTAs del header (configurables por sitio): default Contribuye + Únete a un club */}
             {visibleHeaderCtas.map(withLanguageAwareRegistration).map((cta, i) => {
-              const cls = `hidden lg:inline-flex items-center justify-center font-bold text-sm px-5 py-2.5 rounded-full transition-colors ${cta.cls}`;
+              const cls = `hidden lg:inline-flex ${CTA_SHAPE} ${cta.cls}`;
               const content = cta.isCustomLabel ? cta.label : <T>{cta.label}</T>;
               // Un enlace al PROPIO sitio se navega en la misma pestaña,
               // aunque esté configurado con la dirección completa.
@@ -778,10 +784,15 @@ const Navbar = () => {
             ) : (
               <button
                 onClick={() => setLoginModalOpen(true)}
-                className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-gray-50 text-rotary-blue border border-gray-200 hover:bg-rotary-blue hover:text-white transition-all"
-                title="Iniciar sesión"
+                /* `sm` y no `lg` como los CTA: entre md y lg el menú móvil ya no
+                   se muestra (`md:hidden`), así que esconderlo hasta lg dejaría
+                   esa franja sin ninguna forma de iniciar sesión.
+                   El contorno va con `ring-inset` y no con `border`: un borde
+                   sumaría 2 px al alto y el botón dejaría de alinear con los CTA. */
+                className={`hidden sm:inline-flex ${CTA_SHAPE} bg-white text-rotary-blue ring-1 ring-inset ring-rotary-blue/25 hover:bg-rotary-blue hover:text-white hover:ring-rotary-blue`}
               >
-                <LogIn className="w-4 h-4 ml-0.5" />
+                <LogIn className="w-4 h-4" />
+                <T>Iniciar sesión</T>
               </button>
             )}
 
@@ -895,7 +906,7 @@ const Navbar = () => {
                   }}
                   className="flex items-center gap-2 text-rotary-blue text-left"
                 >
-                  <LogIn className="w-4.5 h-4.5" /> Ingresar
+                  <LogIn className="w-4.5 h-4.5" /> <T>Iniciar sesión</T>
                 </button>
               )}
             </div>

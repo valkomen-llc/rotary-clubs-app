@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.697.0 | 2026-08-03 (Fase 4 del WhatsApp CRM: analítica, centro de campañas, calendario, A/B y presupuesto)
-// Cache bust: 2026-08-03e
+// UI V4.698.0 | 2026-08-03 (El botón de iniciar sesión dice lo que hace y comparte la píldora de los CTA)
+// Cache bust: 2026-08-03f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.698.0',
+        title: 'El botón de iniciar sesión ahora dice que es para iniciar sesión \ud83d\udd11',
+        description: 'Los rotarios no encontraban dónde entrar al sitio. El acceso estaba ahí —a la derecha del buscador— pero era un círculo azul de 32 píxeles con una flechita adentro, sin una sola palabra. Al lado, los botones de «Registrarse» y «Postular Proyecto» sí decían lo que hacían, así que el ojo los leía a ellos y pasaba de largo por el tercero. El texto sólo aparecía al dejar el cursor encima, que es justo lo que no ayuda a quien está buscando y no sabe dónde mirar; y en un teléfono, donde no hay cursor, no aparecía nunca. Ahora es un botón como los otros dos: dice «Iniciar sesión», tiene la misma altura, el mismo redondeo y el mismo tamaño de letra, y se apoya en la misma línea. Se distingue por el color —fondo blanco con un contorno azul fino, en vez de relleno— porque no compite con las llamadas a la acción del sitio: es el acceso de quien ya es parte, no una invitación a sumarse. Al pasar el cursor se rellena de azul. En el menú del teléfono decía «Ingresar» y ahora dice también «Iniciar sesión»: dos palabras distintas para la misma acción eran parte del mismo problema. Y algo que no se ve pero evita que vuelva a pasar: la forma de los tres botones ahora sale de un solo lugar en el código, así que el de acceso no puede volver a quedarse atrás cuando alguien ajuste los otros.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'encabezado', 'usabilidad', 'diseno'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'El acceso pasa de ser un ícono circular sin texto a un botón que dice «Iniciar sesión».' },
+            { type: 'changed', text: 'Comparte altura, redondeo y tipografía con «Registrarse» y «Postular Proyecto»; se distingue por el contorno, no por la forma.' },
+            { type: 'changed', text: 'El menú del teléfono también dice «Iniciar sesión» en vez de «Ingresar».' },
+            { type: 'improved', text: 'La forma de los botones del encabezado se define una sola vez, para que no vuelvan a divergir.' },
+        ]
+    },
     {
         version: '4.697.0',
         title: 'El WhatsApp CRM ahora dice qué funcionó y qué conviene cambiar \ud83d\udcc8',
