@@ -6,6 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
+console.log('[clubController] v4.699.0 — El logo del encabezado sigue al idioma activo: `logo_intl` (Setting) se sirve como `logoIntl` en /clubs/by-domain y el navegador elige con src/lib/audienceAssets.ts.');
 console.log('[clubController] v4.551.0 — Editar Club: nuevo campo "Distrito al que pertenece" (persiste districtId) para segmentar la difusión de noticias por distrito.');
 console.log('[clubController] v4.482.0 — Evento/Convención: colores + hero + menú reordenable + secciones editables + footer configurable | scroll-to-top | correo: envío directo vía Resend (multi-destinatario) + Enviados persistentes + recepción vía Resend (email.received → fetch del cuerpo vía API de recepción, firma Svix no bloqueante) + botón Enviar robusto + Diagnóstico (lee dominio/MX con key de lectura + verifica webhook email.received + probar envío real)');
 
@@ -177,7 +178,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, districtId, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, honoraryMembersVisible, governorsVisible, authorsVisible, paymentBlocks, currency, defaultLanguage, headerCtas,
@@ -374,6 +375,13 @@ export const updateClub = async (req, res) => {
                 'header_ctas': headerCtas !== undefined ? JSON.stringify(headerCtas) : undefined,
                 'footer_config': footerConfig !== undefined ? JSON.stringify(footerConfig) : undefined,
                 'causes_section_content': causesContent !== undefined ? JSON.stringify(causesContent) : undefined,
+                // Versión del logo para los idiomas internacionales. Vive en
+                // `Setting` —como los logos de Rotaract/Interact y el tamaño del
+                // encabezado— y NO como columna de "Club": agregar una columna
+                // obligaría a declararla en schema.prisma, y `by-domain` consulta
+                // con Prisma, así que el primer despliegue respondería 500 en todo
+                // el sitio público hasta que la columna existiera de verdad.
+                'logo_intl': logoIntl,
                 'rotaract_logo': rotaractLogo,
                 'interact_logo': interactLogo,
                 'youth_exchange_logo': youthExchangeLogo,

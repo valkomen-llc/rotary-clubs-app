@@ -270,6 +270,12 @@ router.get('/by-domain', async (req, res) => {
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
             logoHeaderSize: parseInt(settings['logo_header_size']) || parseInt(masterSettings['logo_header_size']) || 200,
+            // Versión del logo para los idiomas internacionales (rotulada en inglés).
+            // El logo lleva texto, así que tiene idioma: en Español (Colombia) se
+            // muestra `logo` y en los otros siete idiomas ésta. Se hereda del club
+            // maestro igual que los demás logos. Si no está configurada, el navegador
+            // usa `logo` en todos los idiomas (src/lib/audienceAssets.ts).
+            logoIntl: settings['logo_intl'] || masterSettings['logo_intl'] || null,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
 

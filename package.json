@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.698.0",
-  "cache_bust": "2026-08-03f (El boton de iniciar sesion dice lo que hace y usa la misma pildora que Registrarse y Postular Proyecto.)",
+  "version": "4.699.0",
+  "cache_bust": "2026-08-03g (El logo del encabezado sigue al idioma: version en espanol para Colombia y version internacional para los otros siete idiomas.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -18,7 +18,8 @@
     "test:i18n": "node scripts/test-i18n-dom.mjs",
     "test:i18n:providers": "node scripts/test-i18n-providers.mjs",
     "test:crm": "node scripts/test-crm-automation.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test:assets": "node scripts/test-audience-assets.mjs"
   },
   "engines": {
     "node": "22.x"
