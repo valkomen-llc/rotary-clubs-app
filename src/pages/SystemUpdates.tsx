@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.699.0 | 2026-08-03 (El logo del encabezado sigue al idioma activo del sitio)
+// UI V4.700.0 | 2026-08-03 (Las casillas de imagen permiten elegir desde la Biblioteca)
 // Cache bust: 2026-08-03f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.700.0',
+        title: 'Las imágenes se pueden elegir desde la Biblioteca \ud83d\uddbc\ufe0f',
+        description: 'Hasta ahora, cada casilla de imagen del panel sólo dejaba subir un archivo del computador. Si la imagen ya estaba en la Biblioteca Multimedia —cosa habitual con los logos— había que descargarla del sitio y volverla a subir, y quedaba duplicada con otro nombre y otra dirección. Ahora cada casilla ofrece las dos formas: «Subir» un archivo nuevo o «Biblioteca» para escoger uno ya cargado. Está en el avatar del club, los dos logos del encabezado, el logo del pie y el favicon. Además, en las casillas de un solo archivo, elegir otra imagen ahora simplemente reemplaza la anterior en vez de avisar que ya se llegó al máximo.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'imagenes', 'biblioteca', 'usabilidad'],
+        type: 'improvement',
+        changes: [
+            { type: 'added', text: 'Botón «Biblioteca» junto a «Subir» en todas las casillas de imagen de Configuración → Identidad.' },
+            { type: 'improved', text: 'En una casilla de un solo archivo, elegir otra imagen reemplaza la anterior sin avisos innecesarios.' },
+            { type: 'improved', text: 'Se dejan de duplicar imágenes en la Biblioteca por tener que resubir algo que ya estaba.' },
+        ],
+    },
     {
         version: '4.699.0',
         title: 'El logo cambia con el idioma \ud83c\udff3\ufe0f',

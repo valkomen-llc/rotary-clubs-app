@@ -178,13 +178,21 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     const toggleSelection = (item: MediaItem) => {
         if (selectedIds.includes(item.id)) {
             setSelectedIds(prev => prev.filter(id => id !== item.id));
-        } else {
-            if (selectedIds.length >= maxSelection) {
-                toast.warning(`Máximo ${maxSelection} imágenes permitidas`);
-                return;
-            }
-            setSelectedIds(prev => [...prev, item.id]);
+            return;
         }
+        // Casilla de un solo archivo (un logo, un favicon): elegir otra imagen
+        // SUSTITUYE a la anterior. Avisar de que ya se llegó al máximo sería
+        // absurdo cuando el máximo es uno: obligaría a deseleccionar primero
+        // para poder cambiar de opinión.
+        if (maxSelection === 1) {
+            setSelectedIds([item.id]);
+            return;
+        }
+        if (selectedIds.length >= maxSelection) {
+            toast.warning(`Máximo ${maxSelection} imágenes permitidas`);
+            return;
+        }
+        setSelectedIds(prev => [...prev, item.id]);
     };
 
     const handleConfirm = () => {
