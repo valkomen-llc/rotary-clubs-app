@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.690.0 | 2026-08-02 (HOTFIX: pantalla en blanco al entrar a una edicion)
+// UI V4.691.0 | 2026-08-03 (El panel del club identifica la feria a la que postula)
 // Cache bust: 2026-07-31h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.691.0',
+        title: 'El panel del Gestor de Proyectos ya dice a qué feria postula \ud83c\udfc6',
+        description: 'Quien entra a gestionar su proyecto veía el nombre del proyecto, su club, su distrito y su referencia — pero nada del evento al que se está postulando. Ahora el encabezado lleva una franja con la edición de la feria, la ciudad y el país donde se realiza, las fechas del evento y un enlace directo a su ficha pública, donde están el programa, la sede y la agenda. Las fechas no aparecían en ninguna parte del panel y son justamente lo que un club necesita para organizar su viaje. La franja va separada por una línea del nombre del proyecto, porque son dos cosas distintas: cuál es mi proyecto y a qué evento va. No se agregó ahí el monto ni el estado del pago: los dos ya tienen su tarjeta más abajo y repetirlos habría convertido el dinero en el titular de una pantalla que trata del proyecto. La tarjeta de «Plazo» también mejoró: antes mostraba sólo la fecha límite y obligaba a hacer la cuenta mental; ahora dice cuántos días faltan, avisa en ámbar cuando queda una semana o menos, y cuando la fecha ya pasó lo dice con todas las letras en vez de mostrar una fecha vencida que se lee igual que una vigente. Por dentro se cerró algo importante: hasta ahora el panel del club leía la convocatoria que estuviera abierta, no la de su propia edición. Acertaba porque hay una sola feria; el día que se abriera la siguiente, un club de la XII habría visto el plazo, los precios y el formulario de la XIII. Ahora cada proyecto resuelve su edición por el evento al que pertenece.',
+        date: new Date().toISOString(),
+        tags: ['gestion de proyectos', 'panel del club', 'ediciones', 'experiencia de usuario'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'El encabezado del panel muestra la edición de la feria, la sede, las fechas y un enlace a la ficha del evento.' },
+            { type: 'improved', text: 'La tarjeta de plazo dice cuántos días faltan y avisa cuando el plazo está por vencer o ya venció.' },
+            { type: 'fixed', text: 'El panel resuelve la convocatoria de la edición del proyecto, no la que esté abierta: plazo, precios y formulario correctos cuando convivan dos ferias.' },
+        ],
+    },
     {
         version: '4.690.0',
         title: 'Corregida la pantalla en blanco al entrar a una edición 🩹',

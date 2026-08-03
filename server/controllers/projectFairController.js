@@ -906,6 +906,63 @@ const readConfig = async (eventId = null) => {
 export const readConfigForAdmin = (eventId = null) => readConfig(eventId);
 
 /**
+ * Convocatoria a la que pertenece UNA postulación — la del panel del club.
+ *
+ * No es lo mismo que `readConfig(null)`, que devuelve la convocatoria ABIERTA.
+ * Hasta v4.690 el panel del club usaba esa: acertaba sólo porque hay una sola
+ * edición. El día que se abra la XIII, un proyecto de la XII habría visto el
+ * plazo, los precios y el formulario de la XIII. Era el pendiente que dejó
+ * anotado la refactorización por ediciones (v4.683) y aquí se cierra, porque
+ * nombrar el evento en el panel obliga a nombrar el correcto.
+ *
+ * SI LA EDICIÓN NO TIENE FILA PROPIA se cae a la abierta, que es el
+ * comportamiento de siempre. Es deliberado: `readConfig` mezcla contra
+ * `DEFAULT_CONFIG` y nunca devuelve vacío, así que sin esta comprobación una
+ * postulación con `eventId` huérfano se quedaría con la plantilla POR DEFECTO
+ * —perdiendo el formulario que su club está diligenciando— sin que nada avise.
+ */
+export const readConfigForSubmission = async (eventId = null) => {
+    await ensureTables();
+    if (eventId) {
+        const { rows } = await db.query('SELECT config FROM "ProjectFairConfig" WHERE "eventId" = $1 LIMIT 1', [eventId]);
+        if (rows[0]) return deepMerge(DEFAULT_CONFIG, normalizeSavedConfig(parseConfig(rows[0].config)));
+    }
+    return readConfig(null);
+};
+
+/**
+ * El evento de una edición, para que el panel del club pueda decir a qué feria
+ * está postulando: nombre, sede, fechas y la dirección de su ficha pública.
+ *
+ * LOS DATOS SALEN DEL `CalendarEvent`, no de `cfg.edition`. Una edición ES un
+ * evento de la plataforma (v4.683), así que su sede y sus fechas ya viven ahí y
+ * son las que muestra el módulo de Eventos. `cfg.edition` es un bloque escrito
+ * a mano que sólo se usa de respaldo: si el panel leyera de ahí, podría decir
+ * una ciudad mientras la ficha del evento dice otra — dos verdades del mismo
+ * dato, y la que ve el rotario sería la que nadie mantiene.
+ */
+export const readEditionEvent = async (eventId) => {
+    if (!eventId) return null;
+    const { rows } = await db.query(
+        'SELECT id, title, slug, "startDate", "endDate", location, image FROM "CalendarEvent" WHERE id = $1 LIMIT 1',
+        [eventId],
+    );
+    const e = rows[0];
+    if (!e) return null;
+    return {
+        id: e.id,
+        title: e.title || '',
+        // Sin slug la ficha se abre igual por el id: el endpoint público acepta
+        // los dos (v4.658). Se prefiere el slug porque es lo que se publica.
+        url: `/eventos/${e.slug || e.id}`,
+        startDate: e.startDate || null,
+        endDate: e.endDate || null,
+        location: e.location || '',
+        image: e.image || null,
+    };
+};
+
+/**
  * Igual que `readConfig`, pero devuelve TAMBIÉN a qué edición pertenece la
  * convocatoria leída. Lo necesita el formulario público: una postulación se
  * sella con la edición en la que se hizo, y con el texto solo —como hasta

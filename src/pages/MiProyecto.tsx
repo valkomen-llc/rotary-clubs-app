@@ -26,9 +26,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
-    AlertCircle, ArrowRight, CheckCircle2, ChevronRight, Clock, ExternalLink,
-    FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, PenLine,
-    ShieldCheck, Wallet,
+    AlertCircle, ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink,
+    FileText, KeyRound, LayoutDashboard, Loader2, LogOut, Lock, MapPin, PenLine,
+    ShieldCheck, Trophy, Wallet,
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
@@ -54,6 +54,10 @@ interface PortalData {
     };
     forms: FormCard[];
     edition: { name: string; city: string; country: string };
+    // El evento real de la plataforma al que postula. Null si la edición
+    // todavía no está vinculada a un evento: entonces se usa `edition`, que es
+    // el bloque de respaldo escrito a mano.
+    event: { id: string; title: string; url: string; startDate: string | null; endDate: string | null; location: string } | null;
     deadline: string | null;
     nextStep: { url: string; name: string; label: string };
     canEdit: boolean;
@@ -65,6 +69,43 @@ const fmtDate = (v?: string | null) => {
     if (!v) return '';
     const d = new Date(`${v}T12:00:00`);
     return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString(activeLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+/**
+ * Fechas del evento en una sola frase. Un evento de varios días dentro del
+ * mismo mes se escribe «12 – 14 de marzo de 2027», sin repetir el mes: es como
+ * se leen las fechas de un evento y ocupa la mitad.
+ */
+const fmtEventDates = (start?: string | null, end?: string | null): string => {
+    if (!start) return '';
+    const a = new Date(start);
+    if (isNaN(a.getTime())) return '';
+    const loc = activeLocale();
+    const largo: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+    const b = end ? new Date(end) : null;
+    if (!b || isNaN(b.getTime()) || a.toDateString() === b.toDateString()) {
+        return a.toLocaleDateString(loc, largo);
+    }
+    if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+        return `${a.toLocaleDateString(loc, { day: 'numeric' })} – ${b.toLocaleDateString(loc, largo)}`;
+    }
+    return `${a.toLocaleDateString(loc, { day: 'numeric', month: 'long' })} – ${b.toLocaleDateString(loc, largo)}`;
+};
+
+/**
+ * Cuánto falta para el plazo. Una fecha sola obliga a hacer la cuenta mental, y
+ * una fecha ya vencida se lee igual que una vigente: es justo cuando hay que
+ * decirlo con todas las letras.
+ */
+const deadlineNotice = (v?: string | null): { text: string; urgent: boolean; over: boolean } | null => {
+    if (!v) return null;
+    const fin = new Date(`${v}T23:59:59`);
+    if (isNaN(fin.getTime())) return null;
+    const dias = Math.ceil((fin.getTime() - Date.now()) / 86_400_000);
+    if (dias < 0) return { text: 'El plazo ya venció', urgent: false, over: true };
+    if (dias === 0) return { text: 'Último día', urgent: true, over: false };
+    if (dias === 1) return { text: 'Falta 1 día', urgent: true, over: false };
+    return { text: `Faltan ${dias} días`, urgent: dias <= 7, over: false };
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -193,6 +234,17 @@ const MiProyecto = () => {
                         <LogOut size={14} /> Salir
                     </button>
                 </div>
+
+                {/* ── A qué feria postula ──────────────────────────────
+                    Va DENTRO del encabezado y separado por una línea, no
+                    mezclado con el nombre del proyecto: son dos identidades
+                    distintas —cuál es mi proyecto y a qué evento va— y
+                    juntarlas en un mismo renglón diluye las dos.
+
+                    El nombre, la sede y las fechas salen del evento real de la
+                    plataforma; `edition` es el respaldo para una edición que
+                    todavía no se ha vinculado a su evento. */}
+                <EventStrip event={data.event} edition={data.edition} />
             </header>
 
             <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -242,7 +294,19 @@ const MiProyecto = () => {
                                     <Clock size={13} /> Plazo
                                 </p>
                                 <p className="mt-1 text-lg font-bold text-slate-800">{data.deadline ? fmtDate(data.deadline) : 'Sin fecha límite'}</p>
-                                <p className="text-xs text-slate-500">{data.edition?.name}</p>
+                                {/* La fecha sola obliga a hacer la cuenta mental, y una ya
+                                    vencida se lee igual que una vigente. El nombre de la
+                                    edición salió de aquí: ahora está en el encabezado, y
+                                    repetirlo dejaba esta línea sin decir nada del plazo. */}
+                                {(() => {
+                                    const aviso = deadlineNotice(data.deadline);
+                                    if (!aviso) return <p className="text-xs text-slate-500">Tu club puede enviar cuando esté listo.</p>;
+                                    return (
+                                        <p className={`text-xs font-semibold ${aviso.over ? 'text-red-600' : aviso.urgent ? 'text-amber-600' : 'text-slate-500'}`}>
+                                            {aviso.text}
+                                        </p>
+                                    );
+                                })()}
                             </div>
                         </section>
 
@@ -305,6 +369,43 @@ const ACTION_LABEL: Record<FormState, string> = {
     in_review: 'Ver formulario',
     approved: 'Ver formulario',
     rejected: 'Corregir y reenviar',
+};
+
+/**
+ * La feria a la que postula el proyecto, dentro del encabezado.
+ *
+ * QUÉ LLEVA Y POR QUÉ. El nombre de la edición ancla todo lo demás; la sede y
+ * las fechas son lo que el gestor necesita para organizarse y hasta ahora no
+ * aparecían en ninguna parte del panel; y el enlace a la ficha lleva al
+ * programa, la sede y la agenda, que ya están publicados y no hay que repetir
+ * aquí. Deliberadamente NO lleva el monto pagado ni el estado del pago: los dos
+ * ya tienen su tarjeta abajo, y repetirlos en el encabezado los convertiría en
+ * el titular de una pantalla que trata de otra cosa.
+ */
+const EventStrip = ({ event, edition }: { event: PortalData['event']; edition: PortalData['edition'] }) => {
+    const titulo = event?.title || edition?.name || '';
+    const lugar = event?.location || [edition?.city, edition?.country].filter(Boolean).join(', ');
+    const fechas = fmtEventDates(event?.startDate, event?.endDate);
+    if (!titulo && !lugar && !fechas) return null;
+
+    return (
+        <div className="mx-auto mt-5 max-w-5xl border-t border-white/15 pt-4">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/85">
+                {titulo && (
+                    <span className="flex items-center gap-1.5 font-semibold text-white">
+                        <Trophy size={14} className="shrink-0 opacity-80" /> {titulo}
+                    </span>
+                )}
+                {lugar && <span className="flex items-center gap-1.5"><MapPin size={14} className="shrink-0 opacity-70" /> {lugar}</span>}
+                {fechas && <span className="flex items-center gap-1.5"><CalendarDays size={14} className="shrink-0 opacity-70" /> {fechas}</span>}
+                {event?.url && (
+                    <a href={event.url} className="flex items-center gap-1.5 font-semibold underline decoration-white/40 underline-offset-4 hover:decoration-white">
+                        Ver el evento <ExternalLink size={13} className="shrink-0" />
+                    </a>
+                )}
+            </div>
+        </div>
+    );
 };
 
 const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) => {

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.690.0",
-  "cache_bust": "2026-08-02 (HOTFIX: corregida la pantalla en blanco al entrar a una edicion de Postulacion de Proyectos. El calculo del recaudo acumulado que se agrego en v4.689 quedo escrito debajo de dos salidas tempranas del componente, asi que React contaba un hook de mas al terminar de cargar y abortaba el dibujado entero. Se corrigio ahi y en otros dos sitios con el mismo defecto —el asistente del super administrador y la portada de los sitios de Evento—, y se agrego una barrera que detiene el despliegue si vuelve a aparecer, porque ni el typecheck ni el build pueden verlo.)",
+  "version": "4.691.0",
+  "cache_bust": "2026-08-03 (El panel del Gestor de Proyectos identifica la feria a la que postula: nombre de la edicion, sede, fechas y enlace a la ficha del evento, en una franja del encabezado. La tarjeta de plazo pasa a decir cuanto falta, no solo la fecha. Y el panel resuelve la convocatoria de SU edicion en vez de la que este abierta: plazo, precios y formulario son los de la feria a la que ese club postulo.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
