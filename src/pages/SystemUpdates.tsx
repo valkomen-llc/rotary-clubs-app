@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.706.0 | 2026-08-04 (Postular Proyecto: distrito primero y club por catálogo)
+// UI V4.707.0 | 2026-08-04 (Catálogo de clubes de los distritos 4271 y 4281)
 // Cache bust: 2026-08-03l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.707.0',
+        title: 'Ya están cargados los clubes de los distritos 4271 y 4281 \ud83d\udccb',
+        description: 'La versión anterior dejó lista la mecánica; ésta trae el contenido. Quedaron cargados los 59 clubes del Distrito 4271 y los 74 del Distrito 4281 —133 en total—, así que al elegir el distrito en el formulario de Postular Proyecto el desplegable de Club Rotario aparece con los clubes que le corresponden, sin que nadie tenga que cargarlos a mano. Los nombres llegaron en mayúsculas sostenidas y sin tildes, y se pasaron a mayúscula inicial con la ortografía correcta: Cúcuta, Medellín, Itagüí, Bogotá, Ciénaga, Magangué, Facatativá, Fusagasugá, Tuluá, Popayán, Urabá y las demás. Las preposiciones internas van en minúscula («Cartagena de Indias», «Montería Ronda del Sinú») y los números romanos se conservan («Cúcuta II», «Montería II»). El catálogo es una semilla, no un valor fijo: se aplica sólo a los distritos que todavía no tienen lista propia, y en cuanto se guarde una lista desde la pestaña Convocatoria —aunque sea para dejarla vacía— esa lista manda y la semilla no vuelve a entrar. Así el catálogo se puede corregir, ampliar o reemplazar desde el panel sin depender de una actualización. Los distritos se reconocen por su número, no por el texto completo, de modo que también funciona si el distrito está guardado como «Distrito 4271» en vez de «Rotary Distrito 4271».',
+        date: new Date().toISOString(),
+        tags: ['postulacion de proyectos', 'formulario', 'clubes', 'distritos'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Cargados los 59 clubes del Distrito 4271 y los 74 del Distrito 4281.' },
+            { type: 'added', text: 'Nombres con mayúscula inicial y tildes corregidas.' },
+            { type: 'added', text: 'El catálogo se puede corregir o reemplazar desde la pestaña Convocatoria; lo que se guarde ahí manda.' },
+        ],
+    },
     {
         version: '4.706.0',
         title: 'Postular Proyecto: primero el distrito, y el club se elige de una lista \ud83c\udfdb\ufe0f',
