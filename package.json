@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.705.0",
-  "cache_bust": "2026-08-03m (Preservación estricta de personas en los Reels: mapa de sujetos y fidelidad humana.)",
+  "version": "4.706.0",
+  "cache_bust": "2026-08-04 (Postular Proyecto: el Distrito Rotario se pregunta ANTES que el club, y el club pasa a ser un desplegable con los clubes de ese distrito. El catalogo se carga por distrito desde la pestana Convocatoria; un distrito sin lista sigue pidiendo el club a mano. Quien no figure en el catalogo puede escribirlo, y el servidor rechaza un club que pertenece al catalogo de otro distrito.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

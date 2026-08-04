@@ -1510,6 +1510,33 @@ UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
   postulación se sella con la edición en la que se hizo. Hasta v4.682 sólo
   guardaba `editionKey`, un texto que no filtraba nada.
 
+### Distrito y club en el formulario público (v4.706)
+
+- **El distrito se pregunta ANTES que el club**, porque es lo que decide qué
+  clubes se ofrecen. Preguntar el club primero obligaría a volver atrás.
+- **Los clubes viven DENTRO de cada distrito** (`districts[].clubs`), no en un
+  mapa aparte con el nombre del distrito como llave: renombrar un distrito no
+  puede dejar su lista huérfana. El campo es **opcional y aditivo** — una
+  convocatoria guardada antes no lo trae, y `normalizeSavedConfig` lo completa a
+  lista vacía. Un distrito sin lista pide el club a mano, que es como funcionó
+  siempre; así se pueden ir cargando los catálogos sin romper nada.
+- **La lista NO es obligatoria de cumplir.** Un catálogo se queda viejo solo
+  —clubes nuevos, fusiones, cambios de nombre— y esta es una inscripción que se
+  paga: dejar fuera a quien no figure sería perder la postulación. Por eso el
+  desplegable termina en «Mi club no está en la lista» y el servidor acepta
+  cualquier nombre. La opción va de ÚLTIMA y cuesta un clic extra, así que quien
+  sí está en la lista la usa.
+- **Lo que SÍ se rechaza es un club del catálogo de OTRO distrito.** Eso no es
+  un club que falte, es una pareja distrito-club que se contradice. Sin falso
+  positivo posible: un club que figure en los dos catálogos pasa por la primera
+  condición. En la pantalla no llega a ocurrir porque **cambiar de distrito
+  borra el club elegido** —y también la marca de «no está en la lista»—.
+- **Volver del texto libre a la lista es un botón explícito.** Re-elegir el
+  mismo distrito no dispara nada, así que sin él quien se equivocara al marcar
+  «no está en la lista» se quedaría escribiendo a mano.
+- `clubNotListed` es estado **de la pantalla**: dice de dónde salió el nombre,
+  no cuál es. No se envía ni se guarda.
+
 ### Centro de Inteligencia (v4.689)
 
 `Dashboard` y `Reportes` eran dos pestañas que mostraban lo mismo con otros

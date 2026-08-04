@@ -36,7 +36,13 @@ interface FieldProps {
     name: string;
     value: any;
     onChange: (e: any) => void;
-    onBlur?: () => void;
+    // Recibe el evento, igual que `onChange`. Estaba declarado `() => void`, y
+    // como los dos formularios que usan este componente le pasan un manejador
+    // que lee `e.target.name` para marcar el campo como tocado, cada uno de sus
+    // campos producía un error de tipos: veinte en el formulario de postulación
+    // y otros tantos en el de inscripción. El componente ya pasaba el evento;
+    // lo que estaba mal era la firma.
+    onBlur?: (e: any) => void;
     error?: string | null;
     touched?: boolean;
     required?: boolean;
@@ -130,7 +136,7 @@ export const PhoneField = ({
     value, onChange, onBlur, error, touched,
     label = 'Número de contacto o WhatsApp', name = 'phone', required = true, hint,
 }: {
-    value: string; onChange: (v: string) => void; onBlur?: () => void;
+    value: string; onChange: (v: string) => void; onBlur?: (e: any) => void;
     error?: string | null; touched?: boolean;
     label?: string; name?: string; required?: boolean; hint?: ReactNode;
 }) => {
