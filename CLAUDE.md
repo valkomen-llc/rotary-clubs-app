@@ -1536,6 +1536,26 @@ UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
   «no está en la lista» se quedaría escribiendo a mano.
 - `clubNotListed` es estado **de la pantalla**: dice de dónde salió el nombre,
   no cuál es. No se envía ni se guarda.
+- **El catálogo de los distritos 4271 y 4281 es una SEMILLA** (v4.707,
+  `server/lib/rotaryClubs.js`), no un valor por defecto. `deepMerge` reemplaza
+  los arrays enteros, así que un catálogo escrito en `DEFAULT_CONFIG` nunca
+  llegaría a producción: lo taparía el array `districts` de la fila guardada.
+  Por eso `seedDistrictClubs` corre dentro de `normalizeSavedConfig`, **antes**
+  de normalizar — normalizar primero convertiría todo en `[]` y borraría la
+  distinción de la que depende todo esto.
+- **`undefined` y `[]` significan cosas distintas.** Un distrito sin el campo
+  `clubs` nunca se tocó y recibe la semilla; uno con la lista VACÍA es una
+  decisión del administrador («que el club se escriba a mano») y se respeta.
+  Es lo que hace innecesario un flag en la base y una escritura al arrancar, y
+  es la misma regla del Generador de Pendones: una vez que el operador tocó
+  algo, un despliegue no vuelve a tocarlo.
+- **El distrito se reconoce por su NÚMERO de cuatro dígitos**, no por el texto:
+  el nombre guardado puede ser «Rotary Distrito 4271», «Distrito 4271» o
+  «D-4271». Un distrito renombrado a algo sin número no recibe semilla — mejor
+  sin lista que con la lista de otro.
+- Pruebas: `npm run test:clubes` (24 casos). Comprueban que el catálogo llegó
+  completo, la ortografía —mayúscula inicial, tildes, preposiciones internas en
+  minúscula, números romanos intactos— y que la semilla no pisa lo editado.
 
 ### Centro de Inteligencia (v4.689)
 

@@ -23,6 +23,7 @@ import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
+import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
 console.log('[projectFairController] v4.683.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
@@ -877,14 +878,20 @@ const normalizeSavedConfig = (saved) => {
         out = { ...out, districts: [out.districts[1], out.districts[0]] };
     }
 
-    // v4.706 — Cada distrito lleva SU lista de clubes. Las convocatorias
-    // guardadas antes no tienen el campo, así que se normaliza a lista vacía:
-    // un distrito sin lista mantiene el club como texto libre, que es como
-    // funcionó siempre. La lista se agrega desde la pestaña Convocatoria.
+    // v4.706 — Cada distrito lleva SU lista de clubes; sin lista, el club se
+    // escribe a mano, que es como funcionó siempre.
+    //
+    // v4.707 — Y antes de normalizar se SIEMBRA el catálogo de los distritos
+    // 4271 y 4281. El orden importa: `seedDistrictClubs` distingue un distrito
+    // que nunca tuvo el campo (`undefined` → se siembra) de uno cuya lista
+    // dejó vacía el administrador (`[]` → se respeta), y normalizar primero
+    // borraría esa distinción convirtiendo todo en `[]`. La semilla no puede
+    // ir en `DEFAULT_CONFIG` porque `deepMerge` reemplaza los arrays enteros:
+    // la fila guardada la taparía.
     if (Array.isArray(out?.districts)) {
         out = {
             ...out,
-            districts: out.districts.map(d => ({
+            districts: seedDistrictClubs(out.districts).map(d => ({
                 ...d,
                 clubs: Array.isArray(d?.clubs) ? d.clubs.map(c => String(c || '').trim()).filter(Boolean) : [],
             })),
