@@ -23,6 +23,14 @@ const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
 
 interface Option { value: string; label: string }
+
+/**
+ * Un distrito con su catálogo de clubes. Los clubes viven DENTRO del distrito y
+ * no en un mapa aparte con el nombre como llave: renombrar un distrito no puede
+ * dejar su lista huérfana. `clubs` es opcional — una convocatoria guardada
+ * antes de v4.706 no lo trae, y sin lista el club se escribe a mano.
+ */
+interface DistrictOption extends Option { clubs?: string[] }
 interface FocusArea { key: string; label: string }
 
 /**
@@ -56,7 +64,7 @@ export interface FairConfig {
     deadline: string;
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
-    districts: Option[];
+    districts: DistrictOption[];
     idTypes: FocusArea[];
     clubRoles: FocusArea[];
     focusAreas: FocusArea[];
@@ -350,41 +358,73 @@ const ConvocatoriaConfig: React.FC<{ canEdit?: boolean; onSaved?: () => void }> 
                 </div>
             </Card>
 
-            <Card title="Distritos habilitados" icon={Users}>
+            <Card title="Distritos y sus clubes" icon={Users}>
                 <p className="mb-3 text-xs text-slate-500">
                     Aparecen en la lista del formulario en este mismo orden. Usa las flechas para acomodarlos.
+                    Debajo de cada uno va su lista de clubes, uno por línea: con la lista cargada,
+                    el formulario ofrece un desplegable de clubes al elegir ese distrito;
+                    sin ella, el club se escribe a mano.
                 </p>
-                <div className="space-y-2">
-                    {config.districts.map((d, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                            <input
-                                value={d.label}
-                                onChange={e => patch('districts', config.districts.map((x, ix) => ix === i ? { value: e.target.value, label: e.target.value } : x))}
-                                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                            <button
-                                type="button"
-                                title="Subir"
-                                disabled={i === 0}
-                                onClick={() => patch('districts', move(config.districts, i, i - 1))}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
-                            ><ArrowUp size={15} /></button>
-                            <button
-                                type="button"
-                                title="Bajar"
-                                disabled={i === config.districts.length - 1}
-                                onClick={() => patch('districts', move(config.districts, i, i + 1))}
-                                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
-                            ><ArrowDown size={15} /></button>
-                            <button
-                                onClick={() => patch('districts', config.districts.filter((_, ix) => ix !== i))}
-                                className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                            ><Trash2 size={15} /></button>
-                        </div>
-                    ))}
+                <div className="space-y-4">
+                    {config.districts.map((d, i) => {
+                        // Al reemplazar un distrito se conserva `clubs`: renombrarlo no
+                        // puede vaciar su lista. Por eso los clubes viven DENTRO del
+                        // distrito y no en un mapa aparte con el nombre como llave.
+                        const replace = (patchDistrict: Partial<DistrictOption>) =>
+                            patch('districts', config.districts.map((x, ix) => ix === i ? { ...x, ...patchDistrict } : x));
+                        const clubs = d.clubs || [];
+                        return (
+                            <div key={i} className="rounded-xl border border-slate-200 p-3">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        value={d.label}
+                                        onChange={e => replace({ value: e.target.value, label: e.target.value })}
+                                        placeholder="Rotary Distrito 4271"
+                                        className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-blue-500 focus:outline-none"
+                                    />
+                                    <button
+                                        type="button"
+                                        title="Subir"
+                                        disabled={i === 0}
+                                        onClick={() => patch('districts', move(config.districts, i, i - 1))}
+                                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                                    ><ArrowUp size={15} /></button>
+                                    <button
+                                        type="button"
+                                        title="Bajar"
+                                        disabled={i === config.districts.length - 1}
+                                        onClick={() => patch('districts', move(config.districts, i, i + 1))}
+                                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                                    ><ArrowDown size={15} /></button>
+                                    <button
+                                        onClick={() => patch('districts', config.districts.filter((_, ix) => ix !== i))}
+                                        className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                                    ><Trash2 size={15} /></button>
+                                </div>
+                                <textarea
+                                    value={clubs.join('\n')}
+                                    onChange={e => replace({
+                                        // Se guarda lo que hay, sin filtrar líneas vacías: filtrarlas
+                                        // mientras se escribe impediría pulsar Intro para el club
+                                        // siguiente. El servidor las descarta al leer la convocatoria.
+                                        clubs: e.target.value.split('\n').map(c => c.replace(/^\s+/, '')),
+                                    })}
+                                    onBlur={e => replace({ clubs: e.target.value.split('\n').map(c => c.trim()).filter(Boolean) })}
+                                    rows={6}
+                                    placeholder={'Un club por línea:\nRotary Club Valledupar\nRotary Club Valledupar Hurtado\n…'}
+                                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-[13px] leading-relaxed focus:border-blue-500 focus:outline-none"
+                                />
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                    {clubs.filter(Boolean).length
+                                        ? `${clubs.filter(Boolean).length} clubes · en el formulario aparecerán como desplegable`
+                                        : 'Sin lista: el club se escribe a mano en el formulario'}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </div>
                 <button
-                    onClick={() => patch('districts', [...config.districts, { value: '', label: '' }])}
+                    onClick={() => patch('districts', [...config.districts, { value: '', label: '', clubs: [] }])}
                     className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
                 ><Plus size={15} /> Agregar distrito</button>
             </Card>

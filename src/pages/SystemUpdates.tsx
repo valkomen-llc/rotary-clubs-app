@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.705.0 | 2026-08-03 (Preservación estricta de personas y fidelidad humana)
+// UI V4.706.0 | 2026-08-04 (Postular Proyecto: distrito primero y club por catálogo)
 // Cache bust: 2026-08-03l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.706.0',
+        title: 'Postular Proyecto: primero el distrito, y el club se elige de una lista \ud83c\udfdb\ufe0f',
+        description: 'En el paso 1 del formulario, el Distrito Rotario ahora se pregunta antes que el Club Rotario. El cambio no es sólo de orden: es el distrito el que decide qué clubes se ofrecen a continuación. Con el catálogo de ese distrito cargado, el Club Rotario deja de ser una casilla de texto libre y pasa a ser una lista desplegable con los clubes que le pertenecen, así que el nombre llega escrito siempre igual y los informes por club dejan de partirse entre variantes del mismo nombre. Los listados se cargan por distrito desde la pestaña Convocatoria del panel: cada distrito tiene su propia caja donde se pegan los clubes, uno por línea, y debajo se ve cuántos quedaron. Un distrito al que todavía no se le haya cargado la lista sigue funcionando exactamente como antes, con el club escrito a mano, así que nada se rompe mientras se completan los catálogos. Dos decisiones para que la lista no se convierta en un muro: quien no encuentre su club puede elegir «Mi club no está en la lista» —al final del desplegable— y escribirlo, porque un catálogo se queda viejo solo y dejar a un club nuevo sin poder postular sería peor; y cambiar de distrito borra el club elegido, para que no quede una pareja distrito-club que se contradiga. El servidor comprueba lo mismo: acepta un club que no figure en ningún catálogo, pero rechaza uno que pertenece al catálogo de otro distrito y dice a cuál.',
+        date: new Date().toISOString(),
+        tags: ['postulacion de proyectos', 'formulario', 'distritos', 'clubes'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'El Distrito Rotario se pregunta antes que el Club Rotario, y el campo pasó a llamarse «Distrito Rotario».' },
+            { type: 'added', text: 'El Club Rotario es un desplegable con los clubes del distrito elegido, cuando ese distrito tiene lista cargada.' },
+            { type: 'added', text: 'Los listados de clubes se administran por distrito desde la pestaña Convocatoria, pegando un club por línea.' },
+            { type: 'added', text: 'Quien no encuentre su club puede escribirlo con «Mi club no está en la lista».' },
+            { type: 'added', text: 'El servidor rechaza un club que pertenece al catálogo de otro distrito e indica a cuál.' },
+        ],
+    },
     {
         version: '4.705.0',
         title: 'Los Reels dejan de inventar personas: preservación estricta y fidelidad humana 👥',

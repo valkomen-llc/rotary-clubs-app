@@ -82,9 +82,12 @@ export const DEFAULT_CONFIG = {
     },
     // El orden es el que ve el postulante en la lista desplegable. Se puede
     // reordenar desde la pestaña Convocatoria.
+    // Cada distrito puede traer SU lista de clubes (`clubs`). Con la lista
+    // cargada, el formulario ofrece un desplegable; sin ella, el club se
+    // escribe a mano. Se administra desde la pestaña Convocatoria.
     districts: [
-        { value: 'Rotary Distrito 4271', label: 'Rotary Distrito 4271' },
-        { value: 'Rotary Distrito 4281', label: 'Rotary Distrito 4281' },
+        { value: 'Rotary Distrito 4271', label: 'Rotary Distrito 4271', clubs: [] },
+        { value: 'Rotary Distrito 4281', label: 'Rotary Distrito 4281', clubs: [] },
     ],
     // Tipos de documento del representante que postula. Se piden para poder
     // facturar la inscripción y para acreditar a quien llega a la feria.
@@ -874,7 +877,32 @@ const normalizeSavedConfig = (saved) => {
         out = { ...out, districts: [out.districts[1], out.districts[0]] };
     }
 
+    // v4.706 — Cada distrito lleva SU lista de clubes. Las convocatorias
+    // guardadas antes no tienen el campo, así que se normaliza a lista vacía:
+    // un distrito sin lista mantiene el club como texto libre, que es como
+    // funcionó siempre. La lista se agrega desde la pestaña Convocatoria.
+    if (Array.isArray(out?.districts)) {
+        out = {
+            ...out,
+            districts: out.districts.map(d => ({
+                ...d,
+                clubs: Array.isArray(d?.clubs) ? d.clubs.map(c => String(c || '').trim()).filter(Boolean) : [],
+            })),
+        };
+    }
+
     return out;
+};
+
+/**
+ * Los clubes que el catálogo reconoce para un distrito. Vacío significa dos
+ * cosas distintas y las dos llevan al mismo sitio: que ese distrito no tiene
+ * lista cargada, o que el distrito no existe. En ambos casos el club se
+ * escribe a mano, que es el comportamiento anterior a v4.706.
+ */
+export const clubsOfDistrict = (cfg, district) => {
+    const d = (Array.isArray(cfg?.districts) ? cfg.districts : []).find(x => x?.value === district);
+    return Array.isArray(d?.clubs) ? d.clubs : [];
 };
 
 const parseConfig = (raw) => {
@@ -1592,6 +1620,23 @@ const validateSubmission = (body, cfg) => {
     const districts = Array.isArray(cfg.districts) ? cfg.districts : [];
     if (!district) errors.district = 'Selecciona el distrito al que pertenece el club.';
     else if (districts.length && !districts.some(d => d.value === district)) errors.district = 'Selecciona un distrito habilitado para esta convocatoria.';
+
+    // v4.706 — El club NO se exige dentro de la lista: un catálogo se queda
+    // viejo, y un club nuevo o recién fusionado que no figure en él no puede
+    // quedarse sin postular. Lo que SÍ se rechaza es un club que pertenece al
+    // catálogo de OTRO distrito: eso no es un club que falte en la lista, es
+    // una pareja distrito-club que se contradice, y llegaría de haber elegido
+    // el club y cambiado el distrito después. Sin riesgo de falso positivo: un
+    // club que figure en los dos catálogos pasa por la primera condición.
+    if (clubName && district && !errors.district) {
+        const propios = clubsOfDistrict(cfg, district);
+        const igual = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+        if (propios.length && !propios.some(c => igual(c, clubName))) {
+            const ajeno = districts.find(d => d.value !== district
+                && (Array.isArray(d.clubs) ? d.clubs : []).some(c => igual(c, clubName)));
+            if (ajeno) errors.clubName = `${clubName} pertenece a ${ajeno.label}. Revisa el distrito seleccionado.`;
+        }
+    }
 
     // v4.677 — País y ciudad del representante. El país llega de una lista en
     // el formulario; aquí sólo se exige que venga, porque no es un dato del

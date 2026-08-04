@@ -36,6 +36,23 @@ const BLUE = '#17458F';
 const GOLD = '#F7A81B';
 
 interface Option { value: string; label: string }
+
+/**
+ * Un distrito con su catálogo de clubes. `clubs` puede venir vacío: entonces el
+ * club se escribe a mano, que es como funcionó el formulario hasta v4.706.
+ */
+interface DistrictOption extends Option { clubs?: string[] }
+
+/**
+ * Valor reservado del desplegable de clubes: «mi club no está en la lista».
+ *
+ * POR QUÉ EXISTE. Un catálogo de clubes se queda viejo solo —se fundan clubes,
+ * se fusionan, cambian de nombre— y esta es una inscripción que se paga: dejar
+ * fuera a quien no figure en la lista es perder una postulación y ganar un
+ * correo de soporte. Va de ÚLTIMO y con un clic extra, así que quien sí está en
+ * la lista la usa; no es un atajo cómodo.
+ */
+const CLUB_OTRO = '__otro__';
 interface FocusArea { key: string; label: string }
 
 interface FairConfig {
@@ -44,7 +61,7 @@ interface FairConfig {
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
-    districts: Option[];
+    districts: DistrictOption[];
     idTypes: FocusArea[];
     clubRoles: FocusArea[];
     focusAreas: FocusArea[];
@@ -83,6 +100,10 @@ interface Submission {
 type FormState = {
     firstName: string; lastName: string; email: string; phone: string;
     clubName: string; district: string;
+    // Sólo de la pantalla: quien marcó que su club no aparece en el catálogo de
+    // su distrito y lo va a escribir. NO se envía al servidor — lo que se
+    // guarda es el nombre del club, venga de la lista o escrito a mano.
+    clubNotListed: boolean;
     // v4.677 — Datos que hacían falta para facturar la inscripción y para
     // acreditar a quien llega a la feria.
     country: string; department: string; city: string; idType: string; idNumber: string;
@@ -111,7 +132,7 @@ const COUNTRY_OPTIONS = COUNTRIES.map(c => ({ value: c.name, label: c.name }));
 
 const EMPTY_FORM: FormState = {
     firstName: '', lastName: '', email: '', phone: '',
-    clubName: '', district: '',
+    clubName: '', district: '', clubNotListed: false,
     country: '', department: '', city: '', idType: '', idNumber: '',
     clubRole: '', clubRoleOther: '',
     projectName: '', projectDescription: '', focusArea: '', budgetUsd: '',
@@ -123,7 +144,9 @@ const STEP_FIELDS: Record<number, (keyof FormState)[]> = {
     // está, después su club, y al final el acceso.
     1: ['firstName', 'lastName', 'idType', 'idNumber', 'email', 'phone',
         'country', 'department', 'city',
-        'clubName', 'district', 'clubRole', 'clubRoleOther',
+        // El distrito va ANTES que el club: es lo que decide qué clubes se
+        // ofrecen, y preguntar por el club primero obligaría a volver atrás.
+        'district', 'clubName', 'clubRole', 'clubRoleOther',
         'password', 'passwordConfirm'],
     2: ['projectName', 'projectDescription', 'focusArea', 'budgetUsd'],
     3: [],
@@ -230,7 +253,12 @@ const FeriaProyectos = () => {
 
     const errors = useMemo(() => {
         const out: Partial<Record<keyof FormState, string | null>> = {};
-        (Object.keys(form) as (keyof FormState)[]).forEach(k => { out[k] = validateField(k, form[k], config); });
+        // `clubNotListed` es una bandera de la pantalla, no un dato que se
+        // valide: dice de dónde viene el nombre del club, no cuál es.
+        (Object.keys(form) as (keyof FormState)[]).forEach(k => {
+            if (typeof form[k] !== 'string') return;
+            out[k] = validateField(k, form[k] as string, config);
+        });
         // Sólo se exige el cargo escrito a mano si el rol elegido es "Otro".
         out.clubRoleOther = form.clubRole === 'otro' && !form.clubRoleOther.trim()
             ? 'Escribe cuál es tu cargo.'
@@ -362,7 +390,6 @@ const FeriaProyectos = () => {
         return () => clearInterval(tick);
     }, [stage, config, submission]);
 
-    const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     // Se espera al siguiente frame porque la tarjeta destino puede ser una
     // recién montada (la pantalla de pago reemplaza a la del wizard). El
     // `scroll-mt-*` de la tarjeta deja el margen necesario para que el menú
@@ -373,8 +400,31 @@ const FeriaProyectos = () => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setForm(prev => ({ ...prev, [name]: value }));
+        setForm(prev => {
+            // Cambiar de distrito descarta el club elegido: el que estaba
+            // seleccionado pertenece al distrito anterior, y dejarlo puesto
+            // enviaría una pareja distrito-club que se contradice —justo lo
+            // que el servidor rechaza—. También se descarta el «no está en la
+            // lista»: si el distrito nuevo sí tiene a ese club, corresponde
+            // elegirlo del catálogo.
+            if (name === 'district' && value !== prev.district) {
+                return { ...prev, district: value, clubName: '', clubNotListed: false };
+            }
+            return { ...prev, [name]: value };
+        });
+        if (name === 'district') setTouched(prev => ({ ...prev, clubName: false }));
     };
+
+    /**
+     * El club se elige de una lista cuando su distrito tiene catálogo; si no,
+     * se escribe. Es el ÚNICO sitio donde se decide, para que el campo, su
+     * validación y el resumen no puedan discrepar.
+     */
+    const clubOptions = useMemo(
+        () => (config?.districts || []).find(d => d.value === form.district)?.clubs || [],
+        [config?.districts, form.district],
+    );
+    const clubAsList = clubOptions.length > 0 && !form.clubNotListed;
     const handleBlur = (e: React.FocusEvent<any>) => setTouched(prev => ({ ...prev, [e.target.name]: true }));
 
     const goNext = () => {
@@ -401,7 +451,12 @@ const FeriaProyectos = () => {
             const res = await fetch(`${API}/project-fair/submissions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...form, budgetUsd: form.budgetUsd.replace(/[^\d.]/g, '') }),
+                // `clubNotListed` es de la pantalla: dice de dónde salió el
+                // nombre del club, no cuál es. Lo que se guarda es el nombre.
+                body: JSON.stringify({
+                    ...form, clubNotListed: undefined,
+                    budgetUsd: form.budgetUsd.replace(/[^\d.]/g, ''),
+                }),
             });
             const data = await res.json();
             if (!res.ok) {
@@ -557,8 +612,8 @@ const FeriaProyectos = () => {
                                 <FileText size={15} /> Comprobante
                             </h3>
                             <SummaryRow label="Estado" value={<span className="text-emerald-600">Pago confirmado</span>} />
+                            <SummaryRow label="Distrito Rotario" value={submission.district} />
                             <SummaryRow label="Club Rotario" value={submission.clubName} />
-                            <SummaryRow label="Distrito" value={submission.district} />
                             <SummaryRow label="Área de enfoque" value={submission.focusAreaLabel || submission.focusArea} />
                             {submission.amountCop ? (
                                 <SummaryRow label="Valor de la inscripción" value={`${fmtCop(submission.amountCop)} COP`} />
@@ -825,20 +880,63 @@ const FeriaProyectos = () => {
 
                                     <GroupTitle>Tu club en Rotary</GroupTitle>
                                     <div className="grid gap-5 sm:grid-cols-3">
+                                        {/* El distrito va PRIMERO: es lo que decide qué clubes se
+                                            ofrecen a continuación. */}
                                         <Field
-                                            label="Club Rotario" name="clubName" icon={Building2}
-                                            value={form.clubName} onChange={handleChange} onBlur={handleBlur}
-                                            error={errors.clubName} touched={touched.clubName}
-                                            placeholder="Escribe el nombre de tu club"
-                                            hint="El club con el que postulas el proyecto."
-                                        />
-                                        <Field
-                                            as="select" label="Distrito" name="district" icon={MapPin}
+                                            as="select" label="Distrito Rotario" name="district" icon={MapPin}
                                             value={form.district} onChange={handleChange} onBlur={handleBlur}
                                             error={errors.district} touched={touched.district}
-                                            options={config?.districts || []}
+                                            options={(config?.districts || []).map(d => ({ value: d.value, label: d.label }))}
                                             hint="Distrito al que pertenece tu club."
                                         />
+                                        {/* Desplegable cuando su distrito tiene catálogo cargado;
+                                            texto libre cuando no lo tiene o cuando la persona marcó
+                                            que su club no aparece. Es la misma casilla en los tres
+                                            casos, para que el campo no se mueva de sitio. */}
+                                        {clubAsList ? (
+                                            <Field
+                                                as="select" label="Club Rotario" name="clubName" icon={Building2}
+                                                value={form.clubName}
+                                                onChange={e => {
+                                                    if (e.target.value === CLUB_OTRO) {
+                                                        setForm(prev => ({ ...prev, clubNotListed: true, clubName: '' }));
+                                                        setTouched(prev => ({ ...prev, clubName: false }));
+                                                        return;
+                                                    }
+                                                    handleChange(e);
+                                                }}
+                                                onBlur={handleBlur}
+                                                error={errors.clubName} touched={touched.clubName}
+                                                options={[
+                                                    ...clubOptions.map(c => ({ value: c, label: c })),
+                                                    { value: CLUB_OTRO, label: 'Mi club no está en la lista' },
+                                                ]}
+                                                hint="El club con el que postulas el proyecto."
+                                            />
+                                        ) : (
+                                            <div>
+                                                <Field
+                                                    label="Club Rotario" name="clubName" icon={Building2}
+                                                    value={form.clubName} onChange={handleChange} onBlur={handleBlur}
+                                                    error={errors.clubName} touched={touched.clubName}
+                                                    placeholder="Escribe el nombre de tu club"
+                                                    hint={form.clubNotListed
+                                                        ? 'Escribe el nombre completo del club.'
+                                                        : 'El club con el que postulas el proyecto.'}
+                                                />
+                                                {/* La vuelta atrás tiene que ser explícita: volver a
+                                                    elegir el MISMO distrito no cambia nada, así que
+                                                    sin este botón quien se equivocara al marcar «no
+                                                    está en la lista» se quedaría escribiendo a mano. */}
+                                                {form.clubNotListed && clubOptions.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setForm(prev => ({ ...prev, clubNotListed: false, clubName: '' }))}
+                                                        className="mt-1.5 text-[13px] font-semibold text-blue-700 hover:underline"
+                                                    >Elegir de la lista</button>
+                                                )}
+                                            </div>
+                                        )}
                                         <Field
                                             as="select" label="Rol dentro del club" name="clubRole" icon={Award}
                                             value={form.clubRole} onChange={handleChange} onBlur={handleBlur}
@@ -921,8 +1019,8 @@ const FeriaProyectos = () => {
                                         <SummaryRow label="Nombre" value={`${form.firstName} ${form.lastName}`.trim()} />
                                         <SummaryRow label="Correo electrónico" value={form.email} />
                                         <SummaryRow label="Contacto / WhatsApp" value={form.phone} />
+                                        <SummaryRow label="Distrito Rotario" value={form.district} />
                                         <SummaryRow label="Club Rotario" value={form.clubName} />
-                                        <SummaryRow label="Distrito" value={form.district} />
                                         <SummaryRow label="Rol en el club" value={clubRoleLabel} />
                                         <SummaryRow label="Ubicación" value={[form.city, form.department, form.country].filter(Boolean).join(', ')} />
                                         <SummaryRow label="Documento" value={`${idTypeLabel}${idTypeLabel ? ' ' : ''}${form.idNumber}`.trim()} />
