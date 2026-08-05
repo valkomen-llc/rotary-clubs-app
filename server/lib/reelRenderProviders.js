@@ -151,6 +151,34 @@ export const renderChain = () => {
 // entregó 5 s y el montaje quiere 4.3, el sobrante se descarta desde el final:
 // el arranque de un clip generativo es siempre el más fiel a la foto original,
 // porque es donde el modelo todavía no derivó.
+/**
+ * Ritmo de fotogramas del montaje (v4.716).
+ *
+ * Hasta v4.715 se forzaba 30 fps sin mirar qué había entregado el motor. Si los
+ * clips vienen a 24, el filtro `fps=30` no interpola: DUPLICA fotogramas, y lo
+ * hace en un patrón irregular (unos se repiten y otros no). Sobre contenido con
+ * poco movimiento eso se percibe como saltos —«reproducción por fotogramas»—,
+ * que es parte de lo que se reportó.
+ *
+ * Si los tres clips coinciden en su ritmo, se adopta el suyo y no se duplica
+ * nada. Si difieren, hay que conformarlos igualmente y se toma el MAYOR: subir
+ * duplica, pero bajar tira fotogramas y eso sí se ve siempre.
+ *
+ * `probeMp4` deja el fps medido en `quality.measured.fps` de cada escena. Sin
+ * esa medida se mantiene el valor por defecto: no se adivina.
+ */
+export const resolveEditFps = (scenes = [], fallback = 30) => {
+    const measured = scenes
+        .map(s => Number(s?.quality?.measured?.fps))
+        // Un fps fuera de este rango es un error de lectura del contenedor, no
+        // un ritmo real: no se le hace caso.
+        .filter(v => Number.isFinite(v) && v >= 20 && v <= 61)
+        .map(v => Math.round(v));
+    if (!measured.length) return fallback;
+    const unique = [...new Set(measured)];
+    return unique.length === 1 ? unique[0] : Math.max(...measured);
+};
+
 export const buildEditSpec = ({
     scenes,
     tier,
@@ -181,7 +209,9 @@ export const buildEditSpec = ({
     return {
         width: tier.width,
         height: tier.height,
-        fps,
+        // El ritmo real de los clips manda sobre el valor por defecto: forzar
+        // 30 sobre clips de 24 duplica fotogramas y se ve como saltos.
+        fps: resolveEditFps(scenes, fps),
         clips,
         totalSec: Number(totalSec.toFixed(2)),
         soundtrack: soundtrackUrl

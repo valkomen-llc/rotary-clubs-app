@@ -732,21 +732,21 @@ export const MOTION_INTENSITY = {
     sutil: {
         id: 'sutil',
         label: 'Muy sutil',
-        description: 'Apenas respiración y algún parpadeo. El menor riesgo de que el motor reinterprete un rostro.',
-        clause: 'Their movement is minimal: they breathe, and now and then one of them blinks or settles their weight a little.'
+        description: 'Movimiento pequeño pero continuo: respiración, parpadeos y el peso que se acomoda.',
+        clause: 'Their movement is small but it never stops: they breathe steadily, their weight eases from one foot to the other, eyelids close and open, a shoulder settles. Something is always in motion, and each movement flows into the next without pausing.'
     },
     natural: {
         id: 'natural',
         label: 'Natural',
-        description: 'Respiran, parpadean, y alguno gira la cabeza o termina un gesto.',
+        description: 'Respiran y parpadean sin parar, y alguno gira la cabeza o termina un gesto.',
         isDefault: true,
-        clause: 'They breathe and blink, and over these seconds one or two of them turn their head a little, glance towards someone beside them, or finish the gesture their hands had already begun.'
+        clause: 'They breathe and blink continuously, and across these seconds a head turns slowly towards someone beside them while another finishes the gesture their hands had already begun. The movements overlap and never stop: as one settles, the next is already under way.'
     },
     expresivo: {
         id: 'expresivo',
         label: 'Expresivo moderado',
         description: 'Más interacción entre las personas. Más vida, y algo más de riesgo de deriva.',
-        clause: 'They breathe and blink, they shift their weight, heads turn towards one another, glances pass between them and small smiles come and go, and whoever had begun a gesture carries it through.'
+        clause: 'They breathe, blink and shift their weight without pause; a head turns towards someone, a glance passes between them, a smile grows and softens, and whoever had begun a gesture carries it through. More than one person is always in motion and the movements overlap continuously.'
     }
 };
 export const DEFAULT_MOTION_INTENSITY = 'natural';
@@ -832,12 +832,21 @@ export const resolveSceneIntensity = ({
 
     let cap = null;
     let reason = null;
+    // La OCLUSIÓN ya no baja a «sutil» (v4.716). En una fotografía de grupo
+    // institucional casi siempre hay alguien parcialmente detrás de otro, así
+    // que esta condición se cumplía en la práctica SIEMPRE y todas las escenas
+    // acababan en el nivel más quieto: es la causa de que los clips se vieran
+    // congelados. Y era el lever equivocado — lo que el motor no debe completar
+    // se le pide directamente con la cláusula de oclusión del prompt, que es
+    // una instrucción concreta y en positivo, no apagando el movimiento entero.
     if (occluded) {
-        cap = 'sutil';
-        reason = 'Hay personas parcialmente tapadas: se anima con el movimiento mínimo para que el motor no complete lo que la foto no muestra.';
+        cap = 'natural';
+        reason = 'Hay personas parcialmente tapadas: la intensidad se limita a «Natural» para que el motor no complete lo que la foto no muestra.';
     } else if (dense) {
         cap = 'sutil';
         reason = 'El grupo está muy junto: se anima con el movimiento mínimo para que no se mezclen dos personas en una.';
+        // Nota: `dense` exige que el análisis vea hombros superpuestos o seis
+        // personas o más. Un grupo posando separado no entra acá.
     } else if (count != null && count >= 3) {
         cap = 'natural';
         reason = 'Hay un grupo de personas: la intensidad se limita a «Natural» para conservar cada rostro.';
@@ -934,16 +943,24 @@ export const buildScenePrompt = ({
         // que se ve OCUPA esos segundos, o el modelo entrega un resumen
         // comprimido de un momento más largo — que es el time-lapse reportado.
         `Everything happens at the speed it happens in life: ${Math.round(durationSec)} unhurried seconds of that moment, at natural human cadence, evenly paced from the first frame to the last.`,
+        // CONTINUIDAD (v4.716). Es lo que separa un vídeo de una secuencia de
+        // poses, y lo que faltaba: un clip con movimiento pequeño pero A RATOS
+        // se lee como fotogramas sueltos —los pocos cambios que ocurren
+        // aparecen como saltos sobre una imagen quieta—. La amplitud del
+        // movimiento no arregla eso; la continuidad sí. Se pide en positivo y
+        // por separado de la cadencia: «despacio» y «sin pausas» son
+        // compatibles, y hacen falta las dos.
+        'The motion is continuous film, not a series of still poses: at every instant something is already moving, and each movement flows into the next without stopping or holding.',
         // La identidad es lo que NO cambia. Ojo con el alcance: se enumeran
         // atributos y encuadre, NO el movimiento. Confundir las dos cosas fue
         // el error de v4.672: pedir que «todo lo demás se quede quieto»
         // congelaba la escena entera.
-        'Everyone and everything in the frame stays exactly who and what they are: the same faces, ages, hair, glasses, hats, clothing, vests, badges and lanyards, the same logos and wordmarks, the same room, furniture, colours and light. The camera keeps the same framing and composition as the photograph.',
+        'Everyone and everything stays exactly who and what they are: the same faces, ages, hair, glasses, clothing, badges and lanyards, the same room, furniture, colours and light. The camera keeps the same framing as the photograph.',
         // Sobriedad institucional, dicha EN POSITIVO. La regla del sitio es no
         // enumerar prohibiciones —el modelo se obsesiona con lo prohibido—, así
         // que en vez de «sin humo ni chispas» se afirma qué luz y qué aire hay:
         // los del original, y ninguno más.
-        'The only light in the shot is the light already present in the photograph, the air stays clear, and the scene is exactly the room that was photographed, with nothing added to it.'
+        'The only light is the light already in the photograph, the air stays clear, and nothing is added to the room that was photographed.'
     ];
 
     // Refuerzo específico según lo que trae la escena. Cada rama nombra lo que
@@ -952,7 +969,7 @@ export const buildScenePrompt = ({
         // Sin la última frase esto contradecía la rama de personas: «sólo la
         // cámara se mueve» le dice al modelo que congele a la gente. Lo que hay
         // que fijar es el DIBUJO de la marca, no la escena a su alrededor.
-        parts.push('Logos, wordmarks, badges and any text stay pixel-exact and perfectly legible, keeping their typography, colours and proportions, and never redrawing themselves — even while the person wearing them moves.');
+        parts.push('Logos, wordmarks, badges and text stay pixel-exact and legible, keeping their typography, colours and proportions, and never redraw themselves even while the person wearing them moves.');
     }
     if (analysis?.hasPeople) {
         // La cantidad de acciones la fija la INTENSIDAD, no el prompt fijo.
@@ -961,11 +978,10 @@ export const buildScenePrompt = ({
         const level = MOTION_INTENSITY[intensity] || MOTION_INTENSITY[DEFAULT_MOTION_INTENSITY];
         parts.push(`The people behave as they did in that moment. ${level.clause}`);
         parts.push(
-            'Whoever was holding something keeps holding it, and whoever was mid-step continues it. ' +
-            'Each moves on their own timing, never all together, so the group looks alive rather than posed.'
+            'Each person moves on their own timing, never all together, so the group looks alive rather than posed.'
         );
         // El límite va aparte y es sobre la IDENTIDAD, no sobre el movimiento.
-        parts.push('Through all of it their faces remain the same faces, with the same features and the same age, and their hands keep five fingers and their natural shape.');
+        parts.push('Their faces stay the same faces throughout, and their hands keep five fingers and their natural shape.');
 
         // ── Mapa de sujetos (v4.705) ──
         //
@@ -1021,8 +1037,7 @@ export const buildScenePrompt = ({
     // la misma frase para que no queden como dos ideas sueltas que el modelo
     // pueda promediar.
     const camera = s.camera
-        ? `${s.camera}, so every bit of movement in the shot comes from the people and the room themselves, never from the lens: ${s.motion}, ${s.pacing}. ` +
-          'The movement runs smoothly and continuously, with stable, consistent detail throughout.'
+        ? `${s.camera}, so every bit of movement in the shot comes from the people and the room themselves, never from the lens: ${s.motion}, ${s.pacing}.`
         : null;
 
     // El audio nativo sólo se pide si el motor lo tiene Y no vamos a poner
@@ -1079,9 +1094,9 @@ export const buildScenePrompt = ({
 
     const steps = [
         {},
-        { withAmbience: false },
-        { withAmbience: false, withSubjects: false },
-        { withAmbience: false, withSubjects: false, hintChars: 90 }
+        { withSubjects: false },
+        { withSubjects: false, withAmbience: false },
+        { withSubjects: false, withAmbience: false, hintChars: 90 }
     ];
     let prompt = build();
     for (let i = 1; i < steps.length && prompt.length > limit; i++) {

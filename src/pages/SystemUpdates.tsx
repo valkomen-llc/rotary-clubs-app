@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.715.0 | 2026-08-05 (Fidelidad de identidad visual: los logotipos se miran de cerca)
+// UI V4.716.0 | 2026-08-05 (Movimiento continuo y ritmo de fotogramas real)
 // Cache bust: 2026-08-05f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.716.0',
+        title: 'Las escenas dejan de verse congeladas y a saltos 🎞️',
+        description: 'Los clips parecían fotografías casi quietas y se reproducían como si fueran fotogramas sueltos. La causa principal fue una corrección anterior que se pasó de frenada: para evitar que la IA inventara personas, el sistema reducía el movimiento al mínimo cuando detectaba a alguien parcialmente tapado por otro — y en una fotografía de grupo institucional eso ocurre prácticamente siempre, así que todas las escenas acababan en el nivel más quieto. Ahora esa condición limita el movimiento a «Natural» en vez de al mínimo, y lo que la IA no debe completar se le pide directamente, que era el sitio correcto. Además se corrigió lo que hacía que el poco movimiento existente se viera a saltos: las instrucciones pedían movimientos «de vez en cuando», y ahora piden movimiento continuo — algo está siempre en marcha y cada gesto enlaza con el siguiente. Y el montaje deja de forzar 30 fotogramas por segundo sobre clips que vienen a 24: duplicarlos producía un tirón visible.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Las escenas salían casi congeladas: una persona tapada por otra bastaba para reducir el movimiento al mínimo.' },
+            { type: 'fixed', text: 'El movimiento se pedía «de vez en cuando» y se veía a saltos; ahora se pide continuo y enlazado.' },
+            { type: 'fixed', text: 'El montaje forzaba 30 fps sobre clips de 24 y duplicaba fotogramas: ahora adopta el ritmo real.' },
+            { type: 'improved', text: 'El nivel «Muy sutil» queda para los grupos realmente apretados, donde dos personas pueden fundirse en una.' }
+        ],
+        details: [
+            'El movimiento pequeño no es el problema: el problema es el movimiento intermitente. Una escena que se mueve poco pero sin parar se lee como vídeo; una que se mueve a ratos se lee como fotogramas sueltos.',
+            'La protección contra personas inventadas no se debilita: el censo de personas y la instrucción de respetar lo que la fotografía tapa siguen intactos, y son medidas directas en vez de apagar el movimiento entero.',
+            'Se recortó texto redundante de las instrucciones para que cupiera todo dentro del límite del motor sin sacrificar la descripción del ambiente, que es justamente lo que da vida al fondo.'
+        ]
+    },
     {
         version: '4.715.0',
         title: 'Los logotipos de Rotary dejan de deformarse sin que nadie se entere 🛡️',

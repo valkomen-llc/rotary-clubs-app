@@ -92,7 +92,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.715.0';
+export const REEL_MODULE_VERSION = '4.716.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, preservación estricta de personas, fidelidad humana y visual sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
