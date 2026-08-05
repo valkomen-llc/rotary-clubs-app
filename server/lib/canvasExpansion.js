@@ -128,10 +128,26 @@ export const EXPANSION_SETTINGS = () => ({
     // Nota mínima de conservación del original (0-1) para dar por buena la
     // expansión. Por debajo, se regenera.
     minPreservation: numberEnv('EXPANSION_MIN_PRESERVATION', 0.82, 0, 1),
-    // Cuánto puede crecer el lienzo. Una foto muy apaisada llevada a 9:16
-    // necesita generar más del triple de su altura, y ahí ningún modelo
-    // sostiene la coherencia: se avisa y se deja de expandir.
-    maxGrowth: numberEnv('EXPANSION_MAX_GROWTH', 3.2, 1.1, 8),
+    // Cuánto puede crecer el lienzo.
+    //
+    // Estuvo en 3,2 hasta v4.713 y ese número dejaba fuera justo el caso más
+    // común del cliente. Medido con las tres fotos que se reportaron —2,2:1 a
+    // 2,3:1, apaisadas de móvil— hacía falta crecer 3,95× / 4,04× / 4,09×: las
+    // tres por encima del techo, las tres rechazadas, las tres recortadas al
+    // centro por el montaje. Un 16:9 exacto daba 3,16 y pasaba por los pelos,
+    // así que en la práctica cualquier foto más ancha que 16:9 se recortaba.
+    //
+    // A 4,5 entra todo hasta ~2,53:1, que cubre la foto apaisada de móvil y de
+    // cámara. Por encima ya es una panorámica de verdad y se sigue rechazando:
+    // el criterio de que a partir de cierto punto el modelo no sostiene la
+    // coherencia no cambia, cambia dónde está el punto.
+    //
+    // EL COSTE, DICHO: a 2,3:1 el original ocupa el 24 % del alto final y el
+    // 76 % restante es contenido generado. No es un detalle — es la mayor parte
+    // del cuadro. Por eso `generatedFraction` se calcula y se muestra: la
+    // decisión entre «perder a las personas de los bordes» y «generar tres
+    // cuartos del cuadro» es del usuario, y no se puede tomar sin ver el número.
+    maxGrowth: numberEnv('EXPANSION_MAX_GROWTH', 4.5, 1.1, 8),
     // Diferencia de proporción por debajo de la cual NO se toca la imagen.
     // 3 % absorbe redondeos de exportación sin dejar pasar una apaisada.
     tolerance: numberEnv('EXPANSION_TOLERANCE', 0.03, 0.005, 0.2),

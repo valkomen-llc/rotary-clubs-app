@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.713.0",
-  "cache_bust": "2026-08-05f (El puente busca la inscripcion por CORREO, no por cuenta: una inscripcion enviada sin vincular tambien aparece, y queda atada a su cuenta.)",
+  "version": "4.714.0",
+  "cache_bust": "2026-08-05g (Las fotos apaisadas se expanden en vez de recortarse, y un rechazo de la adaptacion se ve.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

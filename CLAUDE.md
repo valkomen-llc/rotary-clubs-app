@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.705
+## Creador de Reels IA — v4.714
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -228,8 +228,32 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
   donde se decide cuál se anima. Cambiar la foto de una escena descarta su
   adaptación, porque la anterior ya no describe nada.
 - **Una foto demasiado panorámica se rechaza con motivo** (`maxGrowth`), no se
-  intenta. Por encima de ~3× de crecimiento ningún modelo sostiene la
-  coherencia, y entregar un lienzo inventado es peor que pedir otra foto.
+  intenta: por encima de cierto crecimiento ningún modelo sostiene la coherencia
+  y entregar un lienzo inventado es peor que pedir otra foto. **Dónde está ese
+  punto sí cambió** (v4.714): estaba en 3,2 y dejaba fuera el caso más común del
+  cliente. Medido con las tres fotos reportadas —2,2:1 a 2,3:1, apaisadas de
+  móvil— hacía falta crecer 3,95× / 4,04× / 4,09×; un 16:9 exacto daba 3,16 y
+  pasaba por los pelos, así que **en la práctica cualquier foto más ancha que
+  16:9 se recortaba**. Ahora el techo es 4,5 (~2,53:1). Al tocar este número,
+  medirlo contra fotos reales: el rango útil es estrecho y el fallo es
+  silencioso por el otro lado.
+- **Un `skip` con `ok:false` NO es «no hacía falta»: es «no se pudo»**, y hasta
+  v4.713 esa distinción se perdía en el camino. `planExpansion` devuelve el
+  rechazo sin la marca `failed`, y la ficha sólo pinta el motivo cuando la ve:
+  el aviso «la imagen es demasiado apaisada» se escribía en la base y **no lo
+  leía nadie**. El usuario veía el recorte sin explicación. La marca se pone en
+  `startSceneExpansion`, que es el único sitio que conoce el resultado real.
+- **El rechazo se dice con su CONSECUENCIA, no sólo con su motivo**
+  (`consequence`). «Demasiado apaisada» no le explica a nadie que va a perder a
+  las personas de los bordes. Y va también a las anotaciones del proyecto, no
+  sólo a la escena: quien mira el Reel terminado no está mirando la ficha de
+  cada foto.
+- **Cuando la expansión no actúa, el montaje RECORTA AL CENTRO**
+  (`buildFilterGraph`: `scale=…:force_original_aspect_ratio=increase,crop=W:H`).
+  No es un modo alternativo ni un respaldo elegido: es lo que queda cuando la
+  adaptación no se hizo. Por eso un rechazo silencioso es tan caro — el recorte
+  se lleva exactamente los bordes, que es donde están las personas de los
+  extremos.
 - **Una tarea de video POR ESCENA.** Es la corrección de fondo del módulo
   anterior. Los modelos image-to-video reciben UNA imagen; mandarles un array
   de tres no produce tres clips. Nunca volver a agrupar.

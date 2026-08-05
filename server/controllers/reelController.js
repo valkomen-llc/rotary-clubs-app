@@ -92,7 +92,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.705.0';
+export const REEL_MODULE_VERSION = '4.714.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, preservación estricta de personas, fidelidad humana y visual sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -589,11 +589,39 @@ const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings 
     });
 
     if (plan.action === 'skip') {
+        // Un `skip` con `ok:false` NO es «no hacía falta»: es «no se pudo», y la
+        // consecuencia es que el clip sale apaisado y el montaje lo recorta al
+        // centro, perdiendo a las personas de los extremos.
+        //
+        // Hasta v4.713 esa distinción se perdía. `planExpansion` devuelve
+        // `{action:'skip', ok:false, reason}` SIN `failed`, y la ficha sólo
+        // pinta el motivo cuando ve `failed:true` — así que el aviso «la imagen
+        // es demasiado apaisada» se escribía en la base y no lo leía nadie. El
+        // usuario veía el recorte y no tenía forma de saber por qué. Se marca
+        // acá, en el único sitio donde se conoce el resultado real.
+        const refused = plan.ok === false;
+        const report = {
+            ...plan,
+            sourceWidth: meta.width, sourceHeight: meta.height,
+            failed: refused,
+            // Qué le va a pasar a la foto si nadie interviene. Se guarda escrito
+            // porque es la consecuencia, no el diagnóstico: «demasiado apaisada»
+            // no le dice a nadie que va a perder los bordes.
+            consequence: refused
+                ? 'El clip va a salir apaisado y el montaje lo encuadra al centro: se pierden los bordes de la fotografía.'
+                : null
+        };
         const { rows } = await db.query(
             `UPDATE "ReelScene" SET status = 'pending',
                  "expansionReport" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [scene.id, JSON.stringify({ ...plan, sourceWidth: meta.width, sourceHeight: meta.height })]
+            [scene.id, JSON.stringify(report)]
         );
+        if (refused) {
+            console.warn(`[REEL] escena ${scene.position + 1}: expansión rechazada — ${plan.reason}`);
+            await appendNote(scene.projectId,
+                `Foto ${scene.position + 1}: no se pudo adaptar al formato vertical (${meta.width}×${meta.height}). ` +
+                `El montaje la encuadra al centro y se pierden los bordes. ${plan.reason || ''}`.trim());
+        }
         return rows[0];
     }
 
