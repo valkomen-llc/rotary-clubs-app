@@ -40,6 +40,7 @@ import {
   Minimize2,
   Square,
   Maximize2,
+  Users,
 } from "lucide-react";
 
 const getApiBase = () => {

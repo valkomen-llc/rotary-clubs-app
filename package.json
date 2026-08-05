@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.710.0",
-  "cache_bust": "2026-08-05c (La inscripcion abre la sesion del asistente: Ir a mi inscripcion entra directo, sin volver a pedir la contrasena que se acaba de crear. Al volver de la pasarela se canjea la sesion aunque sea otro dispositivo.)",
+  "version": "4.711.0",
+  "cache_bust": "2026-08-05d (Un ingreso abre TODAS las identidades que coincidan: quien tiene proyecto y asistencia al evento ve los dos paneles en el menu del avatar, separados. Corregidos dos identificadores que dejaban el panel en blanco.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Activity, ArrowRight, Bot, CheckCircle2, ChevronRight, FileText, History, Mic, MicOff,
-    Paperclip, Send, Terminal, Trash2, X, Users, Sparkles, MessageSquare
+    Paperclip, Plus, Send, Terminal, Trash2, X, Users, Sparkles, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
