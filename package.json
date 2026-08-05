@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.708.0",
-  "cache_bust": "2026-08-05 (El paso 1 del registro al evento pide ubicacion (pais, departamento, ciudad) y datos rotarios (distrito, club, rol EN LA FERIA) en las tres categorias. Con Colombia son listas; fuera de Colombia, texto libre. El cargo dentro de Rotary se retira: se reemplaza por el rol en la feria.)",
+  "version": "4.709.0",
+  "cache_bust": "2026-08-05b (Ubicacion y Tu club en Rotary se piden en una sola linea de tres columnas, como en Postular Proyecto. El rotulo del departamento se acorta para que los tres controles queden alineados.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

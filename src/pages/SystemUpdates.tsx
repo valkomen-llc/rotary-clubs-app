@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.708.0 | 2026-08-05 (Registro al evento: ubicación y datos rotarios en el paso 1, con listas en Colombia y texto libre fuera)
-// Cache bust: 2026-08-05
+// UI V4.709.0 | 2026-08-05 (Ubicación y Tu club en Rotary, en una sola línea de tres columnas)
+// Cache bust: 2026-08-05b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.709.0',
+        title: 'Ubicación y club, en una sola línea \ud83d\udccf',
+        description: 'Los dos bloques que se estrenaron en la versión anterior se dibujaban a dos columnas, así que el tercer campo de cada uno —Ciudad, y Rol dentro de la feria— quedaba colgando en una segunda fila bajo el primero. Ahora Ubicación (País, Departamento, Ciudad) y Tu club en Rotary (Distrito Rotario, Club Rotario, Rol dentro de la feria) ocupan una sola línea de tres columnas, exactamente como el formulario de Postular Proyecto. Cada bloque decide sus propias columnas en vez de heredarlas del paso, que es lo que permite que los datos básicos sigan a dos —son pares naturales: nombres y apellidos, correo y teléfono, tipo y número de documento— y estos dos vayan a tres. De paso se acortó el rótulo del departamento: «Departamento / Estado / Provincia» no cabía en una columna de un tercio, se partía en dos líneas y bajaba ese control veinte píxeles respecto de sus vecinos, que era justo lo que se veía torcido. Ahora dice «Departamento» cuando el país es Colombia y «Estado / Provincia» cuando no lo es, que además es más claro en los dos casos: fuera de Colombia, «Departamento» a secas no significa nada.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'formularios', 'interfaz'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'Ubicación y Tu club en Rotary se piden en una sola línea de tres columnas, como en Postular Proyecto.' },
+            { type: 'changed', text: 'El rótulo del departamento se acorta —«Departamento» en Colombia, «Estado / Provincia» fuera— para que los tres controles queden alineados.' },
+        ]
+    },
     {
         version: '4.708.0',
         title: 'El registro al evento ya pregunta de dónde vienes y qué vas a hacer en la feria \ud83c\udfab',

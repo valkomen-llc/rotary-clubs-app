@@ -55,6 +55,10 @@ grupo('Los grupos del paso 1');
 const grupos = paso1(NACIONAL).groups.map(g => g.key);
 check('hay tres bloques: básicos, ubicación y club',
     JSON.stringify(grupos) === JSON.stringify(['basic', 'location', 'rotary']), grupos.join(', '));
+check('ubicación y club se piden a TRES columnas, como en Postular Proyecto',
+    paso1(NACIONAL).groups.filter(g => g.columns === 3).map(g => g.key).join(',') === 'location,rotary');
+check('y los datos básicos a dos, que es como estaban',
+    paso1(NACIONAL).groups.find(g => g.key === 'basic').columns === 2);
 check('`fields` sigue trayendo todo aplanado, para un navegador anterior',
     paso1(NACIONAL).fields.length === paso1(NACIONAL).groups.reduce((n, g) => n + g.fields.length, 0));
 check('y en el mismo orden que los grupos',
@@ -106,6 +110,9 @@ grupo('Escenario internacional');
 check('no se presume ningún país', Object.keys(defaultAnswersFor(INTERNACIONAL)).length === 0);
 check('ni para CADRES', Object.keys(defaultAnswersFor(CADRE)).length === 0);
 const fuera = { country: 'Italia' };
+check('el rótulo del departamento cambia fuera de Colombia',
+    campoDep.label === 'Departamento' && campoDep.altLabel === 'Estado / Provincia',
+    `${campoDep.label} / ${campoDep.altLabel}`);
 check('fuera de Colombia el departamento es texto libre',
     optionsForField(campoDep, fuera, { ...CATALOGOS, departments: ['Cesar'] }) === null);
 check('el distrito también, aunque el catálogo colombiano exista',

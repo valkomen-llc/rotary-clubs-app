@@ -1521,6 +1521,14 @@ rol en la feria). Van en las tres categorías.
   `OWNED_REGISTRATION_COLUMNS` en el ensure — esa lista **no es un número de
   versión**: si no se amplía, la comprobación rápida da la columna por presente
   y no se crea.
+- **Las columnas las decide CADA bloque, no el paso** (`columns` en el grupo).
+  Un bloque de tres campos tiene su propia rejilla y ocupa el ancho completo,
+  igual que en Postular Proyecto: heredar las dos columnas del paso dejaba el
+  tercero colgando bajo el primero. Los datos básicos siguen a dos porque son
+  pares naturales. Y por eso el departamento tiene DOS rótulos (`altLabel`):
+  «Departamento / Estado / Provincia» se parte en dos líneas dentro de una
+  columna de un tercio y baja el control respecto de sus vecinos. Al agregar un
+  campo a estos bloques, mirar que su rótulo quepa en una línea.
 - **Los `groups` del paso son ADITIVOS.** `FormStep.fields` sigue trayendo todo
   aplanado y en orden, así que un navegador con el bundle anterior dibuja el
   mismo formulario sin los subtítulos, en vez de quedarse sin los campos nuevos.

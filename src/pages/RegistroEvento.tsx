@@ -173,8 +173,13 @@ const DynamicField = ({ field, value, error, onChange, answers, catalogs, onClea
     onClear?: () => void;
 }) => {
     const invalid = Boolean(error);
+    // `onClear` sólo llega cuando la persona marcó «no está en la lista»: es
+    // la señal de que pidió escribirlo a mano, aunque haya catálogo.
+    const catalogOptions = onClear ? null : optionsForField(field, answers, catalogs);
     const common = {
-        label: field.label,
+        // Un campo con catálogo puede llamarse distinto según si lo hay:
+        // «Departamento» en Colombia, «Estado / Provincia» fuera.
+        label: (!catalogOptions && field.altLabel) ? field.altLabel : field.label,
         name: field.key,
         value,
         error,
@@ -268,10 +273,6 @@ const DynamicField = ({ field, value, error, onChange, answers, catalogs, onClea
     // Hasta v4.656 esto se intentó con un `<datalist>` y el cliente lo
     // rechazó: sugería sin restringir y confundía las dos cosas. La conclusión
     // que quedó escrita fue que si hay lista, es un `select`. Esto es eso.
-    // `onClear` sólo llega cuando la persona marcó «no está en la lista»: es
-    // la señal de que pidió escribirlo a mano, aunque haya catálogo.
-    const catalogOptions = onClear ? null : optionsForField(field, answers, catalogs);
-
     if (catalogOptions) {
         // El club se ofrece con salida: un catálogo se queda viejo solo
         // —clubes nuevos, fusiones, cambios de nombre— y esta inscripción se
@@ -1032,6 +1033,32 @@ const RegistroEvento = () => {
                                     ).map(group => {
                                         const visible = group.fields.filter(f => isFieldVisible(f, answers));
                                         if (!visible.length) return null;
+                                        const campos = visible.map(f => (
+                                            <DynamicField key={f.key} field={f}
+                                                value={answers[f.key]} error={fieldErrors[f.key]}
+                                                answers={answers} catalogs={catalogs}
+                                                onChange={v => setAnswer(f.key, v)}
+                                                onClear={f.key === 'clubName' && clubNotListed
+                                                    ? () => setClubNotListed(false)
+                                                    : undefined} />
+                                        ));
+                                        // Un bloque de tres campos tiene su PROPIA rejilla y ocupa
+                                        // el ancho completo, igual que en Postular Proyecto: así los
+                                        // tres caben en una fila en vez de dejar el tercero colgando
+                                        // bajo el primero. Los de dos columnas se disuelven en la
+                                        // rejilla del paso (`contents`), que es la que ya tenían.
+                                        if (group.columns === 3) {
+                                            return (
+                                                <div key={group.key} className="sm:col-span-2">
+                                                    {group.label && (
+                                                        <h3 className="mb-5 mt-2 border-b border-slate-200 pb-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                                                            {group.label}
+                                                        </h3>
+                                                    )}
+                                                    <div className="grid gap-5 sm:grid-cols-3">{campos}</div>
+                                                </div>
+                                            );
+                                        }
                                         return (
                                             <div key={group.key} className="contents">
                                                 {group.label && (
@@ -1039,15 +1066,7 @@ const RegistroEvento = () => {
                                                         {group.label}
                                                     </h3>
                                                 )}
-                                                {visible.map(f => (
-                                                    <DynamicField key={f.key} field={f}
-                                                        value={answers[f.key]} error={fieldErrors[f.key]}
-                                                        answers={answers} catalogs={catalogs}
-                                                        onChange={v => setAnswer(f.key, v)}
-                                                        onClear={f.key === 'clubName' && clubNotListed
-                                                            ? () => setClubNotListed(false)
-                                                            : undefined} />
-                                                ))}
+                                                {campos}
                                             </div>
                                         );
                                     })}

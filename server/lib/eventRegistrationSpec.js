@@ -270,9 +270,14 @@ export const CORE_LOCATION_FIELDS = [
         column: 'country', placeholder: 'Escribe tu país', catalog: 'countries',
     },
     {
-        key: 'department', label: 'Departamento / Estado / Provincia', type: 'text',
-        required: true, max: 120, catalog: 'departments', dependsOn: 'country',
-        placeholder: 'Departamento, estado o provincia',
+        // Dos rótulos, y no uno que los diga los tres: «Departamento / Estado /
+        // Provincia» parte en dos líneas dentro de una columna de un tercio y
+        // baja el control respecto de sus vecinos. `altLabel` es el que se usa
+        // cuando NO hay catálogo, es decir, fuera de Colombia — donde además
+        // «Departamento» a secas no significa nada.
+        key: 'department', label: 'Departamento', altLabel: 'Estado / Provincia',
+        type: 'text', required: true, max: 120, catalog: 'departments', dependsOn: 'country',
+        placeholder: 'Estado, provincia o región',
     },
     { key: 'city', label: 'Ciudad', type: 'text', required: true, max: 120, placeholder: 'Ciudad de residencia' },
 ];
@@ -544,10 +549,15 @@ export const buildFormSchema = (category) => {
     // `groups` son ADITIVOS: `fields` sigue trayendo todo aplanado y en orden,
     // así que un navegador con el bundle anterior dibuja el mismo formulario
     // sin los subtítulos, en vez de quedarse sin los campos nuevos.
+    //
+    // `columns` lo decide CADA bloque, como en Postular Proyecto: un grupo de
+    // tres campos tiene que caber en una fila en vez de dejar el tercero
+    // colgando bajo el primero. Los datos básicos van de a dos porque son
+    // pares naturales (nombres/apellidos, correo/teléfono, tipo/número).
     const personalGroups = [
-        { key: 'basic', label: '', fields: [...CORE_PERSONAL_FIELDS] },
-        { key: 'location', label: 'Ubicación', fields: [...CORE_LOCATION_FIELDS] },
-        { key: 'rotary', label: 'Tu club en Rotary', fields: rotaryFields },
+        { key: 'basic', label: '', columns: 2, fields: [...CORE_PERSONAL_FIELDS] },
+        { key: 'location', label: 'Ubicación', columns: 3, fields: [...CORE_LOCATION_FIELDS] },
+        { key: 'rotary', label: 'Tu club en Rotary', columns: 3, fields: rotaryFields },
     ];
 
     const steps = [
