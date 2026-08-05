@@ -574,6 +574,264 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
     return { at: frame.at, position: frame.position, frameUrl: frame.url || null, structural, semantic };
 };
 
+// ─── Fidelidad de identidad visual (marca) — v4.715 ────────────────────────
+//
+// POR QUÉ HACE FALTA UN CONTROL APARTE PARA LOS LOGOTIPOS
+//
+// El control de fidelidad general mira una composición lado a lado REDUCIDA a
+// 640 px de alto (`buildComparisonImage`). Un fotograma de 1080x1920 se achica
+// tres veces, así que el estampado de la espalda de una camiseta —unos 230x140
+// px en el fotograma— llega a la imagen que ve el modelo con 77x47 px, y las
+// letras de «Rotary» con 9 px de alto. A ese tamaño no las lee ningún modelo de
+// visión, y encima se recomprime a JPEG.
+//
+// Por eso `brandAltered` contestaba `false` con un logotipo visiblemente
+// destrozado: no era un error de criterio del modelo, es que no se le estaba
+// enseñando el logotipo. La escena pasaba en verde y la maquinaria de
+// regeneración —que YA existe y descalifica por `brandAltered`— no llegaba a
+// dispararse nunca.
+//
+// QUÉ HACE ESTE CONTROL
+//
+// Recorta la región de cada marca en la fotografía original y en cada fotograma
+// del clip, A RESOLUCIÓN NATIVA, y las compara. Dos señales, como en el resto
+// del módulo:
+//
+//   1. ESTRUCTURAL sobre el recorte (sharp, determinista, sin API). Sobre una
+//      región pequeña la huella perceptual es MUCHO más sensible que sobre la
+//      escena entera: ahí un logotipo ocupa el 1 % de los píxeles y no mueve la
+//      aguja; recortado, es el 100 %.
+//   2. TEMPORAL: el mismo recorte comparado entre fotogramas del propio clip.
+//      Un logotipo que cambia de dibujo entre fotograma y fotograma es el
+//      defecto de «derretimiento», y se ve sin mirar el original.
+//
+// Y una sola llamada de visión sobre el PEOR fotograma, con el recorte ampliado
+// —no reducido—, que es la única forma de preguntar por el texto y la geometría
+// del engranaje y obtener una respuesta con sentido.
+//
+// LO QUE ESTE CONTROL NO HACE, Y POR QUÉ
+//
+// No reproyecta el logotipo original sobre cada fotograma. Eso es composite, y
+// la regla #1 del sitio lo prohíbe —el equipo lo rechazó dos veces con las
+// palabras «se ve overlay / montaje»—. Además exigiría decodificar el video
+// entero, seguir la tela con flujo óptico y volver a codificar, dentro de una
+// función de 120 s y 250 MB que ya empaqueta FFmpeg. Este control MIDE y manda
+// a regenerar; no retoca el archivo.
+const BRAND_MARGIN = 0.12;          // margen alrededor del recuadro, para no cortar trazos
+export const BRAND_MIN_STRUCTURE = 0.55;   // por debajo, el dibujo cambió
+export const BRAND_MIN_TEMPORAL = 0.62;    // por debajo, cambia entre fotogramas
+
+// Recorta una región normalizada de una imagen, con margen, a resolución nativa.
+// Devuelve `null` si el recorte no tiene sentido (región degenerada o fuera).
+const cropBrandRegion = async (sharp, buffer, region) => {
+    try {
+        const meta = await sharp(buffer, { failOn: 'none' }).metadata();
+        if (!meta.width || !meta.height) return null;
+        const mx = region.w * BRAND_MARGIN, my = region.h * BRAND_MARGIN;
+        const x0 = Math.max(0, region.x - mx), y0 = Math.max(0, region.y - my);
+        const x1 = Math.min(1, region.x + region.w + mx), y1 = Math.min(1, region.y + region.h + my);
+        const left = Math.round(x0 * meta.width), top = Math.round(y0 * meta.height);
+        const width = Math.round((x1 - x0) * meta.width), height = Math.round((y1 - y0) * meta.height);
+        if (width < 12 || height < 12) return null;
+        return await sharp(buffer, { failOn: 'none' })
+            .extract({ left, top, width, height })
+            .toBuffer();
+    } catch { return null; }
+};
+
+const BRAND_SYSTEM = `Eres un control de calidad de identidad visual de marca. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA el logotipo tal como aparece en la FOTOGRAFÍA original, a la DERECHA el mismo logotipo en un FOTOGRAMA del vídeo que una IA generó a partir de ella. Ambos recortes están ampliados.
+
+Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin bloques de código:
+
+{
+  "textLeft": "el texto que leas en el logotipo de la izquierda, o cadena vacía",
+  "textRight": "el texto que leas en el logotipo de la derecha, o cadena vacía",
+  "sameDesign": boolean,
+  "inventedGlyphs": boolean,
+  "geometryBroken": boolean,
+  "colorChanged": boolean,
+  "score": 0..10,
+  "issues": ["descripción breve en español de cada problema real"]
+}
+
+- "sameDesign" es true si es el MISMO logotipo: mismo símbolo, misma tipografía, mismas proporciones. Que esté más borroso, más pequeño, en otro ángulo o parcialmente tapado por un brazo NO lo hace distinto.
+- "inventedGlyphs" es true si en la derecha hay letras o signos que no están en la izquierda, o si las letras se volvieron garabatos sin sentido.
+- "geometryBroken" es true si el símbolo perdió su forma: un engranaje al que le cambian los dientes, un círculo que se volvió óvalo irregular, trazos que se funden entre sí.
+- "colorChanged" es true si los colores institucionales cambiaron de tono.
+- "score" 10 = es el mismo logotipo, sólo movido o con la tela plegada; 7 = reconocible con pérdidas menores; por debajo de 7 = el diseño se alteró.
+- Una oclusión parcial —un brazo delante, un pliegue— no es una alteración: es la escena. No la marques como defecto.`;
+
+/**
+ * Comprueba la fidelidad de las marcas de una escena.
+ *
+ * `frames` son los mismos fotogramas del control general, con su buffer y su
+ * `publish`. `regions` viene del análisis de la fotografía.
+ *
+ * Devuelve `null` cuando no hay nada que comprobar — sin regiones declaradas no
+ * se afirma haber mirado ningún logotipo.
+ */
+export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions = [] }) => {
+    if (!originalBuffer || !frames.length || !regions.length) return null;
+
+    let sharp;
+    try { sharp = (await import('sharp')).default; }
+    catch (e) { return { state: 'unavailable', reason: `No se pudo inspeccionar la marca: ${e.message}`, logos: [] }; }
+
+    const logos = [];
+    for (const region of regions.slice(0, 4)) {
+        const originalCrop = await cropBrandRegion(sharp, originalBuffer, region);
+        if (!originalCrop) continue;
+
+        // El mismo recorte en cada fotograma del clip. La región se toma en las
+        // MISMAS coordenadas normalizadas: el encuadre no cambia (la cámara está
+        // fija) y por eso el recorte cae sobre el mismo sitio.
+        const crops = [];
+        for (const f of frames) {
+            const c = await cropBrandRegion(sharp, f.buffer, region);
+            crops.push(c ? { at: f.at, position: f.position, buffer: c, publish: f.publish } : null);
+        }
+        const valid = crops.filter(Boolean);
+        if (!valid.length) continue;
+
+        // 1. Estructural: cada recorte del clip contra el recorte del original.
+        const perFrame = [];
+        for (const c of valid) {
+            const cmp = await structuralCompare(originalCrop, c.buffer);
+            perFrame.push({ at: c.at, position: c.position, structure: cmp.structure, score: cmp.score });
+        }
+        const structural = perFrame.map(f => f.score).filter(v => v != null);
+        const worstStructural = structural.length ? Math.min(...structural) : null;
+
+        // 2. Temporal: los recortes del clip entre sí. Un logotipo que se
+        //    redibuja fotograma a fotograma es el «derretimiento» reportado, y
+        //    se detecta sin necesidad del original.
+        let temporal = null;
+        if (valid.length >= 2) {
+            const sims = [];
+            for (let i = 1; i < valid.length; i++) {
+                const cmp = await structuralCompare(valid[i - 1].buffer, valid[i].buffer);
+                if (cmp.score != null) sims.push(cmp.score);
+            }
+            if (sims.length) temporal = Number(Math.min(...sims).toFixed(3));
+        }
+
+        // 3. Visión sobre el PEOR fotograma, ampliado. Uno solo: la deriva es
+        //    progresiva y el peor es el que decide; tres llamadas por logotipo
+        //    triplicarían el coste para confirmar lo mismo.
+        let semantic = null;
+        const worstFrame = perFrame.length
+            ? valid[perFrame.indexOf(perFrame.reduce((a, b) => ((b.score ?? 1) < (a.score ?? 1) ? b : a)))]
+            : null;
+        if (worstFrame) {
+            try {
+                // 520 px de alto por mitad: el recorte se AMPLÍA en vez de
+                // reducirse, que es el punto de todo esto.
+                const comparison = await buildComparisonImage(originalCrop, worstFrame.buffer, { height: 520 });
+                const url = await worstFrame.publish?.(comparison);
+                if (url) {
+                    const result = await generateCopy({
+                        system: BRAND_SYSTEM,
+                        userText: `Logotipo: ${region.label || 'marca institucional'}. Recorte tomado en el segundo ${worstFrame.at} del clip. Devolvé únicamente el JSON.`,
+                        imageUrl: url,
+                        temperature: 0.1, maxTokens: 500, jsonMode: true
+                    });
+                    const raw = parseJsonObject(result);
+                    if (raw) {
+                        const sc = Number(raw.score);
+                        semantic = {
+                            score: Number.isFinite(sc) ? Math.min(10, Math.max(0, sc)) : null,
+                            sameDesign: raw.sameDesign !== false,
+                            inventedGlyphs: raw.inventedGlyphs === true,
+                            geometryBroken: raw.geometryBroken === true,
+                            colorChanged: raw.colorChanged === true,
+                            text: compareText(raw.textLeft, raw.textRight),
+                            issues: Array.isArray(raw.issues)
+                                ? raw.issues.filter(i => typeof i === 'string').slice(0, 3).map(i => i.slice(0, 160)) : [],
+                            comparisonUrl: url
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn(`[REEL] fidelidad de marca «${region.label}»:`, e.message);
+            }
+        }
+
+        // El texto del logotipo es la señal más dura que hay: si el original
+        // decía «Rotary» y el fotograma dice otra cosa, no hay matiz posible.
+        const textRatio = semantic?.text?.ratio ?? null;
+        const textBroken = textRatio != null && textRatio < 0.6;
+
+        // QUIÉN DECIDE, Y POR QUÉ NO LAS SEÑALES DETERMINISTAS CUANDO HAY MODELO
+        //
+        // El recorte se toma en coordenadas FIJAS y la persona SE MUEVE: en el
+        // último fotograma el estampado puede haberse desplazado, girado con el
+        // torso o quedado tapado por un brazo. La huella perceptual del recorte
+        // no distingue «el logotipo se movió» de «el logotipo cambió» —es la
+        // misma limitación que ya está anotada para la fidelidad general— y
+        // hacerla decidir mandaría a regenerar escenas correctas. Ese error ya
+        // costó dos rondas de créditos en v4.675 y no se repite.
+        //
+        // Así que con modelo de visión decide el modelo, que sí puede mirar el
+        // recorte ampliado y decir si es el mismo dibujo. Las señales
+        // deterministas se muestran igual —son medidas reales y ayudan a
+        // entender el veredicto— pero sólo deciden solas cuando no hubo modelo.
+        const alteredByVision = Boolean(
+            semantic?.inventedGlyphs || semantic?.geometryBroken
+            || semantic?.sameDesign === false || textBroken
+            || (semantic?.score != null && semantic.score < REEL_THRESHOLDS.minFidelityScore)
+        );
+        const alteredByMetrics = Boolean(
+            (worstStructural != null && worstStructural < BRAND_MIN_STRUCTURE)
+            || (temporal != null && temporal < BRAND_MIN_TEMPORAL)
+        );
+        const altered = semantic ? alteredByVision : alteredByMetrics;
+
+        logos.push({
+            label: region.label || 'Marca',
+            region,
+            framesChecked: valid.length,
+            structuralScore: worstStructural,
+            temporalScore: temporal,
+            score: semantic?.score ?? (worstStructural != null ? Number((worstStructural * 10).toFixed(1)) : null),
+            method: semantic ? 'estructural + visión' : 'sólo estructural',
+            sameDesign: semantic?.sameDesign ?? null,
+            inventedGlyphs: semantic?.inventedGlyphs ?? null,
+            geometryBroken: semantic?.geometryBroken ?? null,
+            colorChanged: semantic?.colorChanged ?? null,
+            textKeptRatio: textRatio,
+            textOriginal: semantic?.text?.original ?? null,
+            textRendered: semantic?.text?.rendered ?? null,
+            comparisonUrl: semantic?.comparisonUrl || null,
+            issues: semantic?.issues || [],
+            altered,
+            // De dónde salió el veredicto. Se muestra porque «sólo estructural»
+            // significa que el recorte se comparó sin nadie capaz de distinguir
+            // un logotipo movido de uno redibujado.
+            decidedBy: semantic ? 'vision' : 'metrics',
+            metricsWarn: !semantic && alteredByMetrics ? true : (semantic && alteredByMetrics ? true : false),
+            perFrame
+        });
+    }
+
+    if (!logos.length) return null;
+
+    const altered = logos.filter(l => l.altered);
+    return {
+        state: altered.length ? 'failed' : 'ok',
+        label: altered.length ? 'Identidad visual alterada' : 'Identidad visual conservada',
+        logos,
+        alteredCount: altered.length,
+        total: logos.length,
+        // El peor logotipo manda: una pieza institucional con UN emblema roto
+        // está rota. No se promedia.
+        score: logos.map(l => l.score).filter(v => v != null).length
+            ? Math.min(...logos.map(l => l.score).filter(v => v != null)) : null,
+        reason: altered.length
+            ? `${altered.length} de ${logos.length} logotipo(s) no conservan su diseño: ${altered.map(l => l.label).join(', ')}.`
+            : null
+    };
+};
+
 // Un rostro por debajo de esto ya no es la misma cara.
 const MIN_FACE_CONSISTENCY = 6;
 
@@ -750,6 +1008,17 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     // que hacía que una escena con una cara fantasma pasara con 8/10.
     const people = buildPeopleReport(semantics, analysis);
 
+    // Control de marca de cerca. Sólo actúa si el análisis declaró dónde están
+    // los logotipos: sin regiones no se afirma haber mirado ninguno.
+    const brand = await checkBrandFidelity({
+        originalBuffer, frames,
+        regions: Array.isArray(analysis?.brandRegions) ? analysis.brandRegions : []
+    });
+    // Un logotipo alterado ES `brandAltered`. Se une a lo que dijo el control
+    // general en vez de sustituirlo: el general ve el logotipo grande de un
+    // pendón, el de marca ve el estampado pequeño de una camiseta.
+    if (brand?.state === 'failed') flags.brandAltered = true;
+
     const issues = [...new Set(semantics.flatMap(s => s.issues))].slice(0, 6);
     if (people?.verdict === 'failed' && people.reason) issues.unshift(people.reason);
 
@@ -804,6 +1073,7 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         lifeChange: life.score,
         ...flags,
         people,
+        brand,
         text: worstText != null ? { keptRatio: worstText, samples: textChecks.slice(0, 2) } : null,
         issues,
         frames: results.map(({ at, position, frameUrl, structural, semantic }) => ({
@@ -817,7 +1087,9 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
             ? null
             : (people?.verdict === 'failed'
                 ? people.reason
-                : (disqualifying
+                : (brand?.state === 'failed'
+                    ? brand.reason
+                    : disqualifying
                     ? 'El clip alteró la marca o el texto de la fotografía.'
                     : `La fidelidad quedó en ${Number(score.toFixed(1))}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`))
     };

@@ -88,6 +88,47 @@ export interface PeopleFidelity {
     framesChecked?: number;
 }
 
+/**
+ * Un logotipo comprobado de cerca (v4.715). El recorte se compara a resolución
+ * NATIVA, no dentro de la comparación de escena completa: ahí un estampado de
+ * camiseta llega con las letras a 9 px y no lo lee ningún modelo.
+ */
+export interface BrandLogoCheck {
+    label: string;
+    region?: { label?: string; x: number; y: number; w: number; h: number };
+    framesChecked: number;
+    /** Parecido del recorte al original, 0-1. Determinista (sharp). */
+    structuralScore: number | null;
+    /** Estabilidad del recorte entre fotogramas del propio clip, 0-1. */
+    temporalScore: number | null;
+    /** Nota del logotipo, 0-10. */
+    score: number | null;
+    method: string;
+    sameDesign: boolean | null;
+    inventedGlyphs: boolean | null;
+    geometryBroken: boolean | null;
+    colorChanged: boolean | null;
+    textKeptRatio: number | null;
+    textOriginal: string | null;
+    textRendered: string | null;
+    comparisonUrl: string | null;
+    issues: string[];
+    altered: boolean;
+    /** `vision` cuando decidió el modelo; `metrics` cuando no hubo modelo. */
+    decidedBy?: 'vision' | 'metrics';
+    metricsWarn?: boolean;
+}
+
+export interface BrandFidelity {
+    state: 'ok' | 'failed' | 'unavailable';
+    label: string;
+    logos: BrandLogoCheck[];
+    alteredCount?: number;
+    total?: number;
+    score?: number | null;
+    reason?: string | null;
+}
+
 export interface FidelityReport {
     /** Nivel de vida de la escena, 0-100. `null` si no se pudo juzgar. */
     lifeScore?: number | null;
@@ -114,6 +155,7 @@ export interface FidelityReport {
     colorShift?: boolean;
     anatomyErrors?: boolean;
     people?: PeopleFidelity | null;
+    brand?: BrandFidelity | null;
 }
 
 export interface SceneAnalysis {
@@ -133,6 +175,8 @@ export interface SceneAnalysis {
     /** Por qué se acotó. Se muestra: una escena más quieta sin motivo parece un fallo. */
     intensityReason?: string | null;
     hasBrand: boolean;
+    /** Dónde vive cada marca, normalizado 0-1. Es lo que permite mirarla de cerca. */
+    brandRegions?: { label?: string; x: number; y: number; w: number; h: number }[];
     hasText: boolean;
     hasFoodOrLiquid: boolean;
     hasNature: boolean;

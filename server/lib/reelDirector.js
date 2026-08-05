@@ -47,6 +47,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "occludedPeople": boolean,
   "subjects": ["una descripción corta EN INGLÉS por persona visible, máximo 8"],
   "hasBrand": boolean,
+  "brandRegions": [{ "label": "qué es", "x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0 }],
   "hasText": boolean,
   "hasFoodOrLiquid": boolean,
   "hasNature": boolean,
@@ -65,6 +66,7 @@ Reglas:
 - "occludedPeople" es true si alguna persona está parcialmente tapada por otra, por un objeto o por el borde del encuadre. Es el dato más delicado: lo que la fotografía oculta es lo que un modelo generativo tiende a completar inventando.
 - "subjects": una descripción corta y distintiva por persona, en inglés, en el orden en que se leen de izquierda a derecha, para poder identificarlas sin ambigüedad: "the woman in the red vest on the left", "the man in the blue shirt behind her". Máximo 8; si hay más personas, describe las 8 más visibles. Lista vacía si no hay personas.
 - "hasBrand" es true si hay logotipos, marcas, uniformes institucionales o packaging identificable.
+- "brandRegions" es DÓNDE está cada logotipo, emblema, escudo o texto institucional que se vea, en coordenadas NORMALIZADAS de 0 a 1 sobre la fotografía completa: "x" e "y" son la esquina superior izquierda, "w" y "h" el ancho y el alto. Incluye los estampados en camisetas y chaquetas (también los de la espalda), los de gorras, las credenciales, los pendones y el material impreso. Sé generoso con el recuadro: es mejor que sobre un poco de tela alrededor a que se corte una letra. Máximo 6, las más grandes y legibles. Lista vacía si no hay ninguno.
 - "hasText" es true si hay texto legible de cualquier tipo.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
 - "weight" es cuánto tiempo merece la escena: 1.0 es lo normal, 1.4 si tiene mucho que mostrar, 0.7 si es simple.
@@ -131,6 +133,22 @@ const sanitizeAnalysis = (raw, index) => ({
         ? raw.subjects.filter(s => typeof s === 'string' && s.trim()).slice(0, 8).map(s => s.slice(0, 120))
         : [],
     hasBrand: bool(raw?.hasBrand),
+    // Dónde vive cada marca, en coordenadas normalizadas (v4.715). Es lo que
+    // permite MIRAR el logotipo de cerca en el control de fidelidad: la
+    // comparación de escena completa lo reduce tres veces y a ese tamaño no se
+    // lee, que es exactamente por qué una escena con el logo destrozado pasaba
+    // con la marca «sin alterar».
+    brandRegions: Array.isArray(raw?.brandRegions)
+        ? raw.brandRegions
+            .map(r => ({
+                label: String(r?.label || 'Marca').slice(0, 60),
+                x: clampNum(r?.x, 0, 1, null), y: clampNum(r?.y, 0, 1, null),
+                w: clampNum(r?.w, 0, 1, null), h: clampNum(r?.h, 0, 1, null)
+            }))
+            // Un recuadro sin medidas o degenerado no sirve para recortar nada.
+            .filter(r => r.x != null && r.y != null && r.w > 0.005 && r.h > 0.005)
+            .slice(0, 6)
+        : [],
     hasText: bool(raw?.hasText),
     hasFoodOrLiquid: bool(raw?.hasFoodOrLiquid),
     hasNature: bool(raw?.hasNature),
@@ -155,6 +173,7 @@ const neutralAnalysis = (index, reason = null) => ({
     subject: 'abstract',
     hasPeople: false, hasBrand: false, hasText: false,
     personCount: 0, peopleDensity: 'none', occludedPeople: false, subjects: [],
+    brandRegions: [],
     hasFoodOrLiquid: false, hasNature: false,
     shotSize: 'medium', energy: 3, narrativeRole: 'development', weight: 1,
     motionHint: null, suggestedStyle: null,

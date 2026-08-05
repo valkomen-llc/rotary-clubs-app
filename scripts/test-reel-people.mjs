@@ -22,7 +22,7 @@
  *   npm run test:reels:people
  */
 
-import { buildPeopleReport } from '../server/lib/reelQuality.js';
+import { buildPeopleReport, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
 import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS } from '../server/lib/reelSpec.js';
 
 let pass = 0, fail = 0;
@@ -176,6 +176,30 @@ process.env.REEL_PEOPLE_NEGATIVE_PROMPT = 'off';
 check('se puede apagar por entorno, sin desplegar',
     buildSceneNegativePrompt({ analysis: peopleAnalysis }) === null);
 delete process.env.REEL_PEOPLE_NEGATIVE_PROMPT;
+
+
+console.log('\n── Marca: la intensidad cede ante el logotipo ──');
+
+// Jerarquía declarada: la fidelidad de la marca manda sobre la intensidad de la
+// animación, nunca al revés. Un logotipo estampado sobre una persona es el caso
+// de riesgo — la tela se mueve con el cuerpo—; uno en un pendón quieto, no.
+check('marca sobre personas → como mucho «natural»',
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true }, requested: 'expresivo' }).intensity === 'natural');
+check('marca SIN personas (pendón) no acota',
+    resolveSceneIntensity({ analysis: { hasPeople: false, hasBrand: true }, requested: 'expresivo' }).intensity === 'expresivo');
+check('personas sin marca no acota por marca',
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2 }, requested: 'expresivo' }).intensity === 'expresivo');
+// Las condiciones se combinan quedándose con la MÁS restrictiva.
+check('marca + caras tapadas gana la más estricta',
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true, occludedPeople: true }, requested: 'expresivo' }).intensity === 'sutil');
+check('acotar por marca dice por qué',
+    /logotipo/i.test(resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true }, requested: 'expresivo' }).reason || ''));
+
+// Los umbrales del control de marca son deliberadamente laxos porque el recorte
+// se toma en coordenadas FIJAS y la persona se mueve: con modelo de visión
+// decide el modelo, y estos sólo deciden cuando no lo hay.
+check('los umbrales de marca están declarados',
+    typeof BRAND_MIN_STRUCTURE === 'number' && typeof BRAND_MIN_TEMPORAL === 'number');
 
 console.log(`\n${pass} correctas, ${fail} fallidas\n`);
 process.exit(fail ? 1 : 0);
