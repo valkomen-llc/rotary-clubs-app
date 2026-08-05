@@ -23,6 +23,7 @@
 // nunca da acceso al panel administrativo de la plataforma.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
@@ -33,7 +34,7 @@ import {
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { openLoginModal } from '../lib/loginModal';
-import { forgetSession, rememberProfile, emitSessionChange } from '../lib/siteSession';
+import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } from '../lib/siteSession';
 import { FORM_STATE_META, fmtDateTime, type FormCard, type FormState } from '../lib/projectForms';
 import { inputCls, BLUE } from '../components/project-forms/FormFields';
 import ProjectFormView from '../components/project-forms/ProjectFormView';
@@ -123,6 +124,10 @@ const MiProyecto = () => {
     const [openForm, setOpenForm] = useState<string | null>(
         () => new URLSearchParams(window.location.search).get('form')
     );
+    // El otro panel de esta misma persona, si tiene esa sesión abierta.
+    const sessions = useSiteSessions();
+    const otherPanel = sessions.find(x => x.realm === 'attendee') || null;
+
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
 
     // ── Sesión ───────────────────────────────────────────────────────
@@ -245,9 +250,20 @@ const MiProyecto = () => {
                             </span>
                         )}
                     </div>
-                    <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
-                        <LogOut size={14} /> Salir
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Una sola persona puede llevar los dos roles. El
+                            enlace aparece SÓLO si esa otra sesión existe: no se
+                            ofrece un panel al que no se puede entrar. */}
+                        {otherPanel && (
+                            <Link to={otherPanel.path}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
+                                <LayoutDashboard size={14} /> {otherPanel.menu}
+                            </Link>
+                        )}
+                        <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
+                            <LogOut size={14} /> Salir
+                        </button>
+                    </div>
                 </div>
 
                 {/* ── A qué feria postula ──────────────────────────────

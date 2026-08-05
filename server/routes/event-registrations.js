@@ -56,6 +56,9 @@ router.post('/admin/registrations/:id/message', authMiddleware, json, admin.send
 router.post('/portal/login', json, attendee.login);
 router.post('/portal/forgot', json, attendee.forgotPassword);
 router.post('/portal/reset', json, attendee.resetPassword);
+// Entrada automática al volver de la pasarela o desde otro dispositivo: se
+// canjea la propiedad de la inscripción por una sesión, sin pedir la clave.
+router.post('/portal/claim', json, attendee.claimSession);
 router.post('/portal/verify', json, attendee.verifyEmail);
 router.get('/portal/me', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getPortalData);

@@ -47,6 +47,8 @@ import { COUNTRIES } from '../lib/countryPhones';
 import { DEPARTAMENTOS_COLOMBIA } from '../lib/colombiaGeo';
 import { localeOf } from '../components/EventRegistrationCta';
 import { openLoginModal, onLoginSuccess } from '../lib/loginModal';
+import { emitSessionChange } from '../lib/siteSession';
+import { ATTENDEE_TOKEN_KEY } from './MiInscripcion';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 // Mismos componentes que usa Postular Proyecto — no una copia parecida.
 import { Field, PhoneField, StepProgress, controlCls } from '../components/forms/FairField';
@@ -103,7 +105,7 @@ interface Registration {
     accessToken?: string;
     pricing?: Record<string, any>;
     /** Cuenta de Asistente al Evento a la que quedó vinculada la inscripción. */
-    account?: { email: string; portalPath: string } | null;
+    account?: { email: string; portalPath: string; token?: string } | null;
 }
 
 type Answers = Record<string, any>;
@@ -124,6 +126,21 @@ const storageKey = (eventRef: string, categoryKey: string) =>
  * inscribirse: el panel del club primero, porque es el caso que motiva esto.
  */
 const IDENTITY_TOKEN_KEYS = ['feria_portal_token', 'evento_asistente_token', 'rotary_token'];
+
+/**
+ * Deja abierta la sesión del Asistente al Evento (v4.710).
+ *
+ * El token lo emite el SERVIDOR: aquí sólo se guarda y se avisa, que es lo que
+ * hace que el encabezado muestre el avatar y que `/mi-inscripcion` deje de
+ * pedir el ingreso. Sin este paso el encabezado y la ruta protegida decían
+ * cosas distintas sobre la misma persona.
+ */
+const openAttendeeSession = (token?: string | null) => {
+    if (!token) return false;
+    localStorage.setItem(ATTENDEE_TOKEN_KEY, token);
+    emitSessionChange();
+    return true;
+};
 const currentIdentityToken = (): string => {
     for (const key of IDENTITY_TOKEN_KEYS) {
         const value = localStorage.getItem(key);
@@ -476,6 +493,21 @@ const RegistroEvento = () => {
             .then(r => r.json())
             .then(data => { if (!data?.error) setRegistration({ ...data, accessToken: returningToken }); })
             .catch(() => { /* la pantalla sigue usable */ });
+
+        // Se vuelve de la pasarela, quizá en otro dispositivo o tras cerrar la
+        // pestaña: si este navegador no tiene sesión de asistente, se canjea la
+        // propiedad de la inscripción por una. Sin esto, «Ir a mi inscripción»
+        // manda al formulario de ingreso a quien acaba de pagar.
+        if (returningToken && !localStorage.getItem(ATTENDEE_TOKEN_KEY)) {
+            fetch(`${API}/event-registrations/portal/claim`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ registrationId: returningId, accessToken: returningToken }),
+            })
+                .then(r => r.json())
+                .then(body => { if (openAttendeeSession(body?.token)) setAttendeeSessionOpen(true); })
+                .catch(() => { /* podrá entrar con su correo y contraseña */ });
+        }
     }, [returningId, returningToken, paymentCancelled]);
 
     const category = useMemo(
@@ -500,6 +532,13 @@ const RegistroEvento = () => {
      * dónde salió el nombre, no cuál es, así que no se envía ni se guarda.
      */
     const [clubNotListed, setClubNotListed] = useState(false);
+
+    /**
+     * ¿Quedó abierta la sesión del asistente? Decide el TEXTO del recuadro
+     * final, no el acceso: eso lo verifica el servidor en cada petición.
+     */
+    const [attendeeSessionOpen, setAttendeeSessionOpen] = useState(
+        () => Boolean(localStorage.getItem(ATTENDEE_TOKEN_KEY)));
 
     /**
      * Con qué nace el formulario de la categoría elegida. Sólo rellena lo que
@@ -728,6 +767,10 @@ const RegistroEvento = () => {
 
             localStorage.removeItem(storageKey(eventRef, category.key));
             setCredentials({ password: '', passwordConfirm: '' });
+            // La inscripción ABRE la sesión del asistente (v4.710). El servidor
+            // acaba de comprobar la credencial —la creó o la verificó—, así que
+            // pedir el ingreso a continuación era pedir dos veces lo mismo.
+            if (openAttendeeSession(data?.account?.token)) setAttendeeSessionOpen(true);
             setRegistration(data);
             if (Number(data.chargeAmount) > 0) await startPayment(data.id, data.accessToken);
         } catch (err: any) {
@@ -857,16 +900,21 @@ const RegistroEvento = () => {
                             Presenta este código el día del evento para recoger tu escarapela.
                         </p>
 
-                        {/* Acceso al panel del asistente: la cuenta se creó con
-                            la inscripción, así que ya puede entrar con el mismo
-                            correo y la contraseña que acaba de elegir. */}
+                        {/* Acceso al panel del asistente. La inscripción ya
+                            dejó la sesión abierta (v4.710), así que el botón
+                            entra directo; el correo se nombra para la próxima
+                            vez, no para volver a entrar ahora. */}
                         <div className="mx-auto mt-7 max-w-md rounded-xl border border-slate-200 bg-slate-50 p-5 text-left">
                             <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
                                 <LayoutDashboard size={16} className="text-slate-400" /> Tu panel de asistente
                             </p>
                             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500">
-                                Con <strong>{registration!.email}</strong> y la contraseña que creaste puedes
-                                consultar cuando quieras el estado de tu inscripción, tu código y tu comprobante.
+                                {attendeeSessionOpen
+                                    ? <>Ya estás dentro: entra cuando quieras a consultar el estado de tu inscripción,
+                                        tu código y tu comprobante. La próxima vez, con <strong>{registration!.email}</strong> y
+                                        la contraseña que creaste.</>
+                                    : <>Con <strong>{registration!.email}</strong> y la contraseña que creaste puedes
+                                        consultar cuando quieras el estado de tu inscripción, tu código y tu comprobante.</>}
                             </p>
                             <Link to={ATTENDEE_PATH}
                                 className="mt-3 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
