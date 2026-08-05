@@ -30,6 +30,8 @@ export interface FormField {
     showIf?: { key: string; in?: string[]; notIn?: string[]; equals?: unknown };
     /** De qué catálogo salen las opciones (v4.708). */
     catalog?: 'countries' | 'departments' | 'districts' | 'clubs';
+    /** Rótulo alternativo para cuando ese catálogo no aplica. */
+    altLabel?: string;
     /** De qué respuesta depende ese catálogo. */
     dependsOn?: string;
 }
@@ -42,6 +44,8 @@ export interface FormGroup {
     key: string;
     label: string;
     fields: FormField[];
+    /** Columnas del bloque. Lo decide el grupo, no el paso. */
+    columns?: 2 | 3;
 }
 
 export interface FormStep {
