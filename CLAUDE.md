@@ -2328,6 +2328,40 @@ comparten un solo criterio para decidir cómo se abren: `ctaTarget` en
   distingue el registro nacional del internacional.
 - **Los enlaces del menú con bandera `external` NO pasan por aquí**: ahí el
   administrador eligió a propósito, y su decisión manda.
+
+### El ASPECTO de esos botones (v4.719)
+
+`src/lib/ctaStyles.ts` es la otra mitad: `ctaTarget` decide cómo se ABREN,
+`CTA_SOLID` / `CTA_SOFT` cómo se VEN. Lo usan el encabezado (`Navbar.tsx`), la
+ficha pública de un evento (`EventRegistrationCta.tsx`) y la vista previa del
+panel (`EventCtaManager.tsx`).
+
+- **Se comparte la PIEL, no la geometría.** Fondo, color de letra y hover salen
+  del módulo; el alto y los márgenes los pone cada sitio, porque el botón del
+  encabezado se ajusta a su texto y el de la ficha ocupa el ancho de la columna.
+  Meter la geometría ahí obligaría a uno de los dos a pelearse con lo que hereda.
+- **El motivo es que se separaban.** Hasta v4.718 «Registro CADRE» era un
+  contorno azul marino escrito a mano en la ficha, y «Postular Proyecto» una
+  píldora azul claro escrita a mano en el encabezado: la misma acción —entrar a
+  un formulario de inscripción— se veía de dos maneras y nada obligaba a que se
+  parecieran. Al agregar un botón de esta familia, tomar la piel de aquí.
+- **La vista previa del panel lee la MISMA fuente.** Pintada aparte enseñaría un
+  botón que no es el que ve el visitante, que es peor que no tener vista previa.
+- **Un botón apagado se pinta SIN hover** (`ctaSkin(skin, false)`). Reaccionar al
+  cursor es la promesa de que algo va a pasar al pulsarlo.
+- **`bg-rotary-blue` NO admite el modificador de opacidad.** Es una clase escrita
+  a mano en `index.css` (`@layer utilities`), no un color del tema, así que
+  Tailwind no genera `hover:bg-rotary-blue/90` —ni `/10`— y la regla **no existe**:
+  el botón se queda sin ese estilo en silencio, sin error ni aviso. Se comprobó
+  sobre el CSS compilado. `CTA_SOLID` usa `hover:bg-rotary-navy`, que sí genera.
+  **Quedan ~21 usos de las variantes muertas por el resto del panel** (14 de
+  `/90` y 7 de `/10`); no se tocaron porque cambian el aspecto de muchas
+  pantallas. Al escribir una clase de estas, buscarla en
+  `dist/assets/index-*.css`: es la única forma de saber si llegó.
+- Pruebas: `npm run test:cta` (21 casos). **Sin base, credenciales ni red.**
+  Comprueban dos cosas que no se ven mirando una pantalla: que nadie repita las
+  clases a mano y que cada clase **exista en el CSS compilado** (por eso el
+  bloque final se salta si no hay `dist/`).
 - **El botón del encabezado que apunta al registro de un evento sigue al
   IDIOMA ACTIVO** (v4.660), igual que los de la ficha. Antes llevaba el texto y
   la categoría que se escribieron una vez, así que en Español mostraba
