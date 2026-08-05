@@ -273,6 +273,12 @@ export const mapRegistration = (row) => row && ({
     city: row.city,
     district: row.district,
     documentNumber: row.documentNumber,
+    department: row.department,
+    fairRole: row.fairRole,
+    fairRoleOther: row.fairRoleOther,
+    // Se conserva lo que guardaron las inscripciones anteriores a v4.708: el
+    // formulario ya no pregunta el cargo dentro de Rotary, pero el panel sigue
+    // mostrando el de quien lo respondió.
     rotaryRole: row.rotaryRole,
     language: row.language,
     dietary: row.dietary,

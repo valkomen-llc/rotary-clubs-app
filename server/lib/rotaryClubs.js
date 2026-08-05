@@ -188,6 +188,24 @@ export const CLUBS_BY_DISTRICT_NUMBER = {
 };
 
 /**
+ * El catálogo tal como lo consume un formulario: distrito con sus clubes
+ * dentro (v4.708). Los clubes viven DENTRO de cada distrito y no en un mapa
+ * aparte con el nombre como llave, por la misma razón que en la convocatoria:
+ * renombrar un distrito no puede dejar su lista huérfana.
+ *
+ * Lo consume la inscripción a eventos. La convocatoria de proyectos sigue
+ * usando `seedDistrictClubs` sobre SUS distritos, que el administrador edita.
+ */
+export const DISTRICT_CATALOG = Object.keys(CLUBS_BY_DISTRICT_NUMBER)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map(numero => ({
+        value: String(numero),
+        label: `Distrito ${numero}`,
+        clubs: [...CLUBS_BY_DISTRICT_NUMBER[numero]],
+    }));
+
+/**
  * El número de distrito que nombra un texto, o null. Cuatro dígitos: es lo
  * único estable entre «Rotary Distrito 4271», «Distrito 4271» y «D-4271».
  */

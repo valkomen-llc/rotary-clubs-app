@@ -24,6 +24,7 @@ import {
     SYSTEM_TAGS, SYSTEM_TAG_KEYS, normalizeTag, statusMeta,
     CATEGORY_BLUEPRINTS, CURRENCIES, AUDIENCES, buildFormSchema,
     normalizeCtaConfig, defaultCtaButtons, resolveCtaButtons, categoryWindow,
+    FAIR_ROLES, ROTARY_ROLES,
 } from '../lib/eventRegistrationSpec.js';
 import {
     clean, isEmail, parseJson, loadEvent, ensureEdition, updateEdition,
@@ -815,6 +816,19 @@ export const sendMessage = async (req, res) => {
 
 // ── Exportación ──────────────────────────────────────────────────────
 
+/** El rol en la feria, con «Otro» resuelto a lo que la persona escribió. */
+const fairRoleLabel = (r) => {
+    const key = r.fairRole || r.answers?.fairRole || '';
+    if (!key) return '';
+    const other = r.fairRoleOther || r.answers?.fairRoleOther || '';
+    if (key === 'otro') return other || 'Otro';
+    return FAIR_ROLES.find(o => o.value === key)?.label || key;
+};
+
+/** El cargo dentro de Rotary de una inscripción anterior a v4.708. */
+const rotaryRoleLabel = (key) =>
+    (key ? (ROTARY_ROLES.find(o => o.value === key)?.label || key) : '');
+
 const EXPORT_COLUMNS = [
     ['Código', r => r.registrationCode || r.publicRef],
     ['Categoría', r => r.categoryLabel],
@@ -825,10 +839,15 @@ const EXPORT_COLUMNS = [
     ['Documento', r => r.documentNumber],
     ['País', r => r.country],
     ['Ciudad', r => r.city],
-    ['Departamento', r => r.answers?.department || ''],
-    ['Club', r => r.clubName],
+    ['Departamento', r => r.department || r.answers?.department || ''],
     ['Distrito', r => r.district],
-    ['Cargo', r => r.rotaryRole],
+    ['Club', r => r.clubName],
+    // El rol EN LA FERIA y el cargo dentro de Rotary son dos columnas, no una
+    // renombrada: las inscripciones anteriores a v4.708 respondieron el cargo
+    // y las nuevas responden el rol. Fundirlas mezclaría dos preguntas
+    // distintas en la misma celda.
+    ['Rol en la feria', r => fairRoleLabel(r)],
+    ['Cargo en Rotary', r => rotaryRoleLabel(r.rotaryRole)],
     ['Idioma', r => r.language],
     ['Alimentación', r => r.dietary],
     ['Acompañantes', r => r.companionsCount],

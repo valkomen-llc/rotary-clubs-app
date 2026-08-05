@@ -1449,13 +1449,85 @@ está escrito aparte a propósito.
   evento importan `Field`, `PhoneField` y `StepProgress` del mismo módulo. No
   duplicar estos controles: el formulario del evento es dinámico (los campos los
   define el servidor) y `DynamicField` sólo TRADUCE cada campo a esas piezas.
-- **País y Departamento son campos de TEXTO LLANO** (v4.656, pedido del
-  cliente). Tenían un `<datalist>` de sugerencias y el navegador lo desplegaba
-  encima del formulario al hacer clic: parecía un selector obligatorio con un
-  catálogo corto, cuando en realidad admitían cualquier valor. No reintroducir
-  la lista. Si algún día hay que restringir de verdad los valores, es un
-  `select` con validación en el servidor —no un `datalist`, que sugiere sin
-  restringir y confunde las dos cosas.
+- **Nunca un `<datalist>`** (v4.656, pedido del cliente). País y Departamento
+  tenían uno de sugerencias y el navegador lo desplegaba encima del formulario
+  al hacer clic: parecía un selector obligatorio con un catálogo corto, cuando
+  en realidad admitían cualquier valor. La conclusión que quedó escrita es que
+  **si hay que ofrecer una lista, es un `select`**; un `datalist` sugiere sin
+  restringir y confunde las dos cosas. Desde v4.708 esos campos SÍ son `select`
+  cuando hay catálogo — ver la sección siguiente—, que es exactamente lo que
+  esa conclusión decía que había que hacer.
+
+### Ubicación y datos rotarios del asistente (v4.708)
+
+El paso 1 pide, además de los datos básicos, dos bloques: **Ubicación** (país,
+departamento/estado/provincia, ciudad) y **Tu club en Rotary** (distrito, club,
+rol en la feria). Van en las tres categorías.
+
+- **Lo que decide la forma de los campos es el PAÍS DECLARADO, no el idioma ni
+  la audiencia.** Con Colombia, el departamento, el distrito y el club salen de
+  listas; con cualquier otro país, los tres son texto libre. El idioma habría
+  sido el criterio equivocado y el propio cliente lo señaló: un rotario
+  colombiano puede leer el sitio en inglés y un extranjero en español. La
+  audiencia tampoco sirve —un colombiano puede inscribirse por el registro
+  internacional—. Lo que sí decide la audiencia es **con qué nace** el
+  formulario: el nacional trae Colombia puesta (`defaultAnswersFor`), porque
+  hacer buscar «Colombia» en doscientos países a quien seguro es de aquí es
+  trabajo para todos los inscritos.
+- **`catalog` + `dependsOn` en el campo, `optionsForField` para resolverlo.** Un
+  campo declara de qué catálogo salen sus opciones y de qué respuesta depende
+  ese catálogo; una sola función devuelve la lista o `null`. `null` y `[]` son
+  cosas distintas: `[]` es «hay catálogo y está vacío». Está espejado en
+  `src/lib/eventRegistrationSpec.ts` — al tocar uno, tocar el otro.
+- **Los catálogos van donde ya tienen su fuente de verdad.** Los distritos con
+  sus clubes los manda el SERVIDOR en la respuesta de la configuración, porque
+  `rotaryClubs.js` (v4.707) es su única verdad y copiarla al bundle daría dos
+  listas que se separan en silencio. Los países y los departamentos de Colombia
+  los pone el NAVEGADOR, que ya los lleva para el selector telefónico y para
+  Postular Proyecto: mandarlos desde el servidor sería duplicar en la respuesta
+  lo que el bundle carga de todos modos.
+- **La lista ayuda a escribir; NO cierra los valores aceptados.** El servidor
+  valida departamento, distrito y club como texto. Un catálogo se queda viejo
+  solo —clubes nuevos, fusiones, cambios de nombre— y esta es una inscripción
+  que se PAGA: rechazar a quien no figure sería perderlo. Por eso el club
+  termina en «Mi club no está en la lista», va de última y cuesta un clic extra.
+  La única lista que sí es cerrada es la del rol en la feria, que es nuestra.
+- **Lo que SÍ se rechaza es un club del catálogo de OTRO distrito.** No es un
+  club que falte: es una pareja distrito-club que se contradice. Sin falso
+  positivo posible —un club que figure en los dos pasa por la primera
+  condición—. Misma regla que la postulación (v4.706).
+- **El distrito va ANTES que el club**, porque es lo que decide qué clubes se
+  ofrecen. Cambiar de distrito descarta el club, y cambiar de país descarta el
+  departamento: el anterior ya no describe nada.
+- **La lista de distritos es la COLOMBIANA y por eso también depende del país.**
+  Ofrecer dos distritos a quien vive en Miami es ofrecerle una lista en la que
+  no está. Una edición que traiga su propio catálogo declara a qué país
+  corresponde (`catalogs.districtsCountry`).
+- **`fairRole` NO es `rotaryRole` renombrado.** El cargo dice qué es esa persona
+  en su club todo el año; el rol dice qué va a hacer DURANTE el evento, que es
+  lo que necesita la logística. Por eso la clave es nueva: escribir uno donde
+  estaba el otro convertiría «Tesorero» en un papel en la feria que nadie
+  declaró. `rotaryRole` sigue exportado para rotular lo que respondieron las
+  inscripciones anteriores, y su columna **no se vacía al reenviar** el
+  formulario — misma regla que `language` en v4.655.
+- **Un campo retirado sigue viéndose en la ficha.** `RETIRED_LABELS` en
+  `EventRegistrationsManager.tsx` le pone nombre a lo que ya no está en el
+  formulario (`rotaryRole`, `residenceCountry`, `language`); sin eso la ficha
+  mostraba la clave cruda como si fuera la pregunta. Al retirar un campo,
+  agregarlo ahí.
+- **`department` y `fairRole` son columnas promovidas**, como ya lo eran ciudad
+  y distrito: son los ejes por los que el comité segmenta y un filtro sobre el
+  JSON no se indexa. Al agregar una columna, ampliar también
+  `OWNED_REGISTRATION_COLUMNS` en el ensure — esa lista **no es un número de
+  versión**: si no se amplía, la comprobación rápida da la columna por presente
+  y no se crea.
+- **Los `groups` del paso son ADITIVOS.** `FormStep.fields` sigue trayendo todo
+  aplanado y en orden, así que un navegador con el bundle anterior dibuja el
+  mismo formulario sin los subtítulos, en vez de quedarse sin los campos nuevos.
+- Pruebas: `npm run test:event-form` (61 casos). **No necesitan base,
+  credenciales ni red**: prueban el CRITERIO —composición del formulario,
+  resolución de catálogos, validación y valores por defecto—, separado de la
+  orquestación.
 
 ## Postulación de Proyectos — ediciones (v4.683)
 

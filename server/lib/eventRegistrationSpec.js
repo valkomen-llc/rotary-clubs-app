@@ -15,6 +15,10 @@
 // haya hecho.
 // ════════════════════════════════════════════════════════════════════
 
+// El catálogo de clubes por distrito tiene UNA fuente de verdad desde v4.707 y
+// es la misma que alimenta la postulación de proyectos.
+import { DISTRICT_CATALOG } from './rotaryClubs.js';
+
 // ── Monedas ──────────────────────────────────────────────────────────
 
 /** Monedas que Stripe cobra sin decimales: el importe va tal cual. */
@@ -163,7 +167,13 @@ const LANGUAGES = [
     { value: 'other', label: 'Otro' },
 ];
 
-const ROTARY_ROLES = [
+/**
+ * Cargo dentro de Rotary. Desde v4.708 el formulario NO lo pregunta —lo
+ * reemplazó `FAIR_ROLES`, que es otra pregunta—, pero se conserva exportado
+ * porque el panel tiene que seguir rotulando lo que respondieron las
+ * inscripciones anteriores.
+ */
+export const ROTARY_ROLES = [
     { value: 'socio', label: 'Socio de club' },
     { value: 'presidente', label: 'Presidente de club' },
     { value: 'secretario', label: 'Secretario de club' },
@@ -174,6 +184,39 @@ const ROTARY_ROLES = [
     { value: 'presidente_comite', label: 'Presidente de comité' },
     { value: 'rotaract', label: 'Rotaract' },
     { value: 'invitado', label: 'Invitado / no rotario' },
+    { value: 'otro', label: 'Otro' },
+];
+
+/**
+ * Rol DENTRO DE LA FERIA (v4.708).
+ *
+ * Reemplaza a `rotaryRole` («Cargo dentro de Rotary») en el formulario. No es
+ * un cambio de rótulo: son dos preguntas distintas. El cargo dice qué es esa
+ * persona en su club durante todo el año; esto dice qué va a hacer DURANTE el
+ * evento, que es lo que necesita la logística —cuántos expositores hay, cuánta
+ * prensa, cuánto personal— y lo que el cargo nunca respondió.
+ *
+ * Por eso la clave es nueva y no se reutiliza la vieja: una inscripción
+ * anterior guardó un cargo, no un rol de feria, y escribir uno donde estaba el
+ * otro convertiría «Tesorero» en un papel en la feria que nadie declaró. Las
+ * inscripciones ya enviadas conservan su `rotaryRole` y el panel lo sigue
+ * mostrando.
+ */
+export const FAIR_ROLES = [
+    { value: 'visitante_rotario', label: 'Visitante Rotario' },
+    { value: 'visitante_no_rotario', label: 'Visitante No Rotario' },
+    { value: 'expositor', label: 'Expositor' },
+    { value: 'patrocinador', label: 'Patrocinador (Sponsor)' },
+    { value: 'stand', label: 'Exhibidor (stand)' },
+    { value: 'conferencista', label: 'Conferencista' },
+    { value: 'panelista', label: 'Panelista' },
+    { value: 'invitado_especial', label: 'Invitado Especial' },
+    { value: 'autoridad_rotaria', label: 'Autoridad Rotaria' },
+    { value: 'comite_organizador', label: 'Comité Organizador' },
+    { value: 'prensa', label: 'Prensa / Medios' },
+    { value: 'cadre', label: 'CADRE' },
+    { value: 'staff', label: 'Staff' },
+    { value: 'voluntario', label: 'Voluntario' },
     { value: 'otro', label: 'Otro' },
 ];
 
@@ -209,15 +252,57 @@ export const CORE_PERSONAL_FIELDS = [
         { value: 'otro', label: 'Otro' },
     ] },
     { key: 'documentNumber', label: 'Número de documento o pasaporte', type: 'text', required: true, max: 60, placeholder: 'Sin puntos ni espacios' },
-    { key: 'country', label: 'País', type: 'country', required: true, max: 120, column: 'country', placeholder: 'Escribe tu país' },
+];
+
+/**
+ * Ubicación del asistente (v4.708).
+ *
+ * `catalog` dice de qué lista salen las opciones y `dependsOn` de qué respuesta
+ * depende esa lista. Los tres campos son de TEXTO para el servidor: lo que el
+ * catálogo hace es ofrecer una lista cuando la hay, no cerrar los valores
+ * aceptados. Es la misma decisión que se tomó con el club en v4.706 y por el
+ * mismo motivo: un catálogo se queda viejo solo y esta es una inscripción que
+ * se paga, así que rechazar un valor que no figure sería perder al asistente.
+ */
+export const CORE_LOCATION_FIELDS = [
+    {
+        key: 'country', label: 'País', type: 'country', required: true, max: 120,
+        column: 'country', placeholder: 'Escribe tu país', catalog: 'countries',
+    },
+    {
+        key: 'department', label: 'Departamento / Estado / Provincia', type: 'text',
+        required: true, max: 120, catalog: 'departments', dependsOn: 'country',
+        placeholder: 'Departamento, estado o provincia',
+    },
     { key: 'city', label: 'Ciudad', type: 'text', required: true, max: 120, placeholder: 'Ciudad de residencia' },
 ];
 
-/** Datos rotarios: comunes, con el club obligatorio según la categoría. */
+/**
+ * Datos rotarios: comunes, con el club obligatorio según la categoría.
+ *
+ * El DISTRITO va primero porque es lo que decide qué clubes se ofrecen a
+ * continuación: al revés habría que volver atrás. Es el mismo orden que
+ * Postular Proyecto adoptó en v4.706.
+ */
 export const CORE_ROTARY_FIELDS = [
-    { key: 'clubName', label: 'Club rotario', type: 'text', required: true, max: 200, column: 'clubName', placeholder: 'Nombre del club al que perteneces' },
-    { key: 'district', label: 'Distrito', type: 'text', required: true, max: 40, help: 'Por ejemplo: 4281', placeholder: '4281' },
-    { key: 'rotaryRole', label: 'Cargo dentro de Rotary', type: 'select', required: true, options: ROTARY_ROLES },
+    {
+        key: 'district', label: 'Distrito Rotario', type: 'text', required: true, max: 60,
+        catalog: 'districts', dependsOn: 'country',
+        help: 'Distrito al que pertenece tu club.', placeholder: 'Por ejemplo: 4281 o District 6960',
+    },
+    {
+        key: 'clubName', label: 'Club Rotario', type: 'text', required: true, max: 200,
+        column: 'clubName', catalog: 'clubs', dependsOn: 'district',
+        placeholder: 'Nombre del club al que perteneces',
+    },
+    {
+        key: 'fairRole', label: 'Rol dentro de la feria', type: 'select', required: true,
+        options: FAIR_ROLES, help: 'Qué papel vas a desempeñar durante el evento.',
+    },
+    {
+        key: 'fairRoleOther', label: '¿Cuál es tu rol?', type: 'text', required: true, max: 120,
+        placeholder: 'Describe tu rol durante la feria', showIf: { key: 'fairRole', in: ['otro'] },
+    },
 ];
 
 /** Necesidades y aceptación: cierran el formulario en todas las categorías. */
@@ -349,9 +434,15 @@ export const validateCredentials = ({ password, passwordConfirm } = {}) => {
     return { ok: Object.keys(errors).length === 0, errors };
 };
 
-/** Campos que sólo ve la audiencia internacional. */
+/**
+ * Campos que sólo ve la audiencia internacional.
+ *
+ * v4.708 — `residenceCountry` («País de residencia») se retiró: desde que el
+ * país está en el paso 1 era la MISMA pregunta hecha dos veces en el mismo
+ * formulario. Las inscripciones anteriores conservan su valor en `answers`;
+ * simplemente ya no se pide ni se valida.
+ */
 export const INTERNATIONAL_FIELDS = [
-    { key: 'residenceCountry', label: 'País de residencia', type: 'country', required: true, max: 120 },
     { key: 'arrivalDate', label: 'Fecha estimada de llegada', type: 'date', required: true },
     { key: 'departureDate', label: 'Fecha estimada de salida', type: 'date', required: true },
     { key: 'lodging', label: 'Hospedaje previsto', type: 'select', required: true, options: [
@@ -368,10 +459,15 @@ export const INTERNATIONAL_FIELDS = [
     { key: 'emergencyRelation', label: 'Contacto de emergencia — parentesco', type: 'text', required: false, max: 80, placeholder: 'Cónyuge, hijo, amigo…' },
 ];
 
-/** Campos que sólo ve la audiencia nacional. */
-export const NATIONAL_FIELDS = [
-    { key: 'department', label: 'Departamento', type: 'text', required: true, max: 120 },
-];
+/**
+ * Campos que sólo ve la audiencia nacional.
+ *
+ * v4.708 — `department` pasó a `CORE_LOCATION_FIELDS`: ahora se le pregunta a
+ * TODO el mundo, con lista en Colombia y texto libre fuera. Esta lista queda
+ * vacía a propósito, y el paso que la contenía deja de dibujarse en vez de
+ * mostrarse en blanco.
+ */
+export const NATIONAL_FIELDS = [];
 
 /** Campos que sólo ven los CADRES. */
 export const CADRE_FIELDS = [
@@ -397,11 +493,22 @@ export const CADRE_FIELDS = [
 ];
 
 export const AUDIENCES = [
-    { key: 'international', label: 'Internacional', extraFields: INTERNATIONAL_FIELDS },
-    { key: 'national', label: 'Nacional', extraFields: NATIONAL_FIELDS },
-    { key: 'cadre', label: 'CADRES', extraFields: CADRE_FIELDS },
-    { key: 'general', label: 'General', extraFields: [] },
+    // `extraLabel` rotula el paso propio de la audiencia. Desde v4.708 los
+    // datos rotarios viven en el paso 1, así que llamar «Información rotaria»
+    // a un paso que pide fechas de vuelo y hospedaje sería mentir.
+    { key: 'international', label: 'Internacional', extraFields: INTERNATIONAL_FIELDS, extraLabel: 'Viaje y estadía' },
+    { key: 'national', label: 'Nacional', extraFields: NATIONAL_FIELDS, extraLabel: 'Información adicional' },
+    { key: 'cadre', label: 'CADRES', extraFields: CADRE_FIELDS, extraLabel: 'Experiencia técnica' },
+    { key: 'general', label: 'General', extraFields: [], extraLabel: 'Información adicional' },
 ];
+
+/**
+ * El país cuyo catálogo de divisiones conocemos. Se compara con la respuesta
+ * de `country`, no con la audiencia: un colombiano puede inscribirse por el
+ * registro internacional y un extranjero por el nacional, y en los dos casos
+ * lo que decide qué lista se ofrece es dónde vive, no por qué puerta entró.
+ */
+export const COUNTRY_WITH_DIVISIONS = 'Colombia';
 
 export const AUDIENCE_BY_CATEGORY = {
     rotario_internacional: 'international',
@@ -433,10 +540,32 @@ export const buildFormSchema = (category) => {
     const rotaryFields = CORE_ROTARY_FIELDS.map(f =>
         f.key === 'clubName' || f.key === 'district' ? { ...f, required: requireClub } : f);
 
-    const steps = [
-        { key: 'personal', label: 'Datos personales', fields: [...CORE_PERSONAL_FIELDS] },
-        { key: 'rotary', label: 'Información rotaria', fields: [...rotaryFields, ...audienceFields(audience)] },
+    // v4.708 — Ubicación y datos rotarios entran al paso 1, agrupados. Los
+    // `groups` son ADITIVOS: `fields` sigue trayendo todo aplanado y en orden,
+    // así que un navegador con el bundle anterior dibuja el mismo formulario
+    // sin los subtítulos, en vez de quedarse sin los campos nuevos.
+    const personalGroups = [
+        { key: 'basic', label: '', fields: [...CORE_PERSONAL_FIELDS] },
+        { key: 'location', label: 'Ubicación', fields: [...CORE_LOCATION_FIELDS] },
+        { key: 'rotary', label: 'Tu club en Rotary', fields: rotaryFields },
     ];
+
+    const steps = [
+        {
+            key: 'personal', label: 'Datos personales',
+            groups: personalGroups,
+            fields: personalGroups.flatMap(g => g.fields),
+        },
+    ];
+
+    // El paso propio de la audiencia sólo existe si tiene algo que preguntar:
+    // el nacional se quedó sin campos al mover el departamento, y un paso en
+    // blanco es un clic que no pide nada.
+    const audienceExtra = audienceFields(audience);
+    if (audienceExtra.length) {
+        const meta = AUDIENCES.find(a => a.key === audience);
+        steps.push({ key: 'rotary', label: meta?.extraLabel || 'Información adicional', fields: [...audienceExtra] });
+    }
 
     if (extra.length) {
         steps.push({ key: 'extra', label: category?.extraFieldsLabel || 'Información adicional', fields: extra });
@@ -444,6 +573,117 @@ export const buildFormSchema = (category) => {
 
     steps.push({ key: 'needs', label: 'Necesidades y condiciones', fields: [...CORE_NEEDS_FIELDS, TERMS_FIELD] });
     return { audience, steps };
+};
+
+/**
+ * Con qué nace el formulario de una categoría (v4.708).
+ *
+ * El registro nacional trae Colombia puesta porque es de quién es: obligar a
+ * buscarla en una lista de doscientos países sería trabajo para todos y cada
+ * uno de los inscritos. En las demás audiencias no se presume nada — presumir
+ * el país es justo lo que este cambio vino a corregir.
+ */
+export const defaultAnswersFor = (category, settings = {}) =>
+    (audienceOfCategory(category, settings) === 'national'
+        ? { country: COUNTRY_WITH_DIVISIONS }
+        : {});
+
+// ── Catálogos rotarios del formulario (v4.708) ───────────────────────
+//
+// Viajan en la respuesta de la configuración, no escritos en el navegador: el
+// catálogo de clubes ya tiene una fuente de verdad (`rotaryClubs.js`, v4.707) y
+// copiarlo al bundle daría dos listas que se separan en silencio. Son ~130
+// nombres: unos 3 kB, frente a la certeza de que club y distrito significan lo
+// mismo en la postulación de un proyecto y en la inscripción al evento.
+
+/**
+ * Los distritos con lista de clubes que se le ofrecen a esta edición.
+ *
+ * Cada evento puede traer los suyos en `settings.rotaryCatalog.districts`, con
+ * la misma forma `{ value, label, clubs }`. Sin eso se usa el catálogo del
+ * sitio. Una edición que declare una lista VACÍA está diciendo «que se escriba
+ * a mano», y se respeta — misma distinción entre `undefined` y `[]` que rige la
+ * siembra de clubes de la convocatoria.
+ */
+export const rotaryCatalogFor = (settings = {}) => {
+    const raw = settings?.rotaryCatalog?.districts;
+    const source = Array.isArray(raw) ? raw : DISTRICT_CATALOG;
+    return source
+        .map(d => ({
+            value: String(d?.value ?? d?.label ?? '').trim(),
+            label: String(d?.label ?? d?.value ?? '').trim(),
+            clubs: Array.isArray(d?.clubs) ? d.clubs.map(c => String(c || '').trim()).filter(Boolean) : [],
+        }))
+        .filter(d => d.value && d.label);
+};
+
+/**
+ * Las opciones de un campo, dadas las respuestas actuales.
+ *
+ * Es UNA función y la usan el servidor y el navegador (a través del espejo de
+ * `src/lib/eventRegistrationSpec.ts`). Devuelve `null` cuando el campo no tiene
+ * lista en este contexto —el país no es Colombia, el distrito no tiene
+ * catálogo—, y entonces el campo es de texto libre. `null` y `[]` significan
+ * cosas distintas: `[]` es «hay catálogo y está vacío».
+ */
+export const optionsForField = (field, answers = {}, catalogs = {}) => {
+    if (!field?.catalog) return Array.isArray(field?.options) ? field.options : null;
+
+    if (field.catalog === 'districts') {
+        // El catálogo de distritos es el COLOMBIANO. Fuera de Colombia hay
+        // miles y el asistente escribe el suyo —«District 6960»,
+        // «Distrito 2203»—: ofrecerle una lista de dos sería ofrecerle una
+        // lista en la que no está. Una edición que traiga su propio catálogo
+        // declara a qué país corresponde.
+        const country = String(answers[field.dependsOn || 'country'] || '').trim();
+        const own = catalogs.districtsCountry || COUNTRY_WITH_DIVISIONS;
+        if (country.toLowerCase() !== own.toLowerCase()) return null;
+        const districts = catalogs.districts || [];
+        return districts.length ? districts.map(d => ({ value: d.value, label: d.label })) : null;
+    }
+
+    if (field.catalog === 'clubs') {
+        // Sin distrito elegido todavía no hay nada que ofrecer: se escribe a
+        // mano hasta que lo haya, en vez de mostrar un desplegable vacío.
+        const chosen = String(answers[field.dependsOn || 'district'] || '').trim();
+        if (!chosen) return null;
+        const district = (catalogs.districts || []).find(d => d.value === chosen || d.label === chosen);
+        return district && district.clubs.length
+            ? district.clubs.map(c => ({ value: c, label: c }))
+            : null;
+    }
+
+    if (field.catalog === 'departments') {
+        const country = String(answers[field.dependsOn || 'country'] || '').trim();
+        if (country.toLowerCase() !== COUNTRY_WITH_DIVISIONS.toLowerCase()) return null;
+        const list = catalogs.departments || [];
+        return list.length ? list.map(d => ({ value: d, label: d })) : null;
+    }
+
+    // `countries` lo resuelve el navegador con la lista que YA lleva para el
+    // selector de teléfono. Mandarla desde el servidor sería duplicar 200
+    // nombres que el bundle carga de todos modos.
+    return null;
+};
+
+/**
+ * ¿El club escrito pertenece al catálogo de OTRO distrito?
+ *
+ * Es la única incoherencia que se rechaza. Un club que no figure en ninguna
+ * lista se acepta —los catálogos se quedan viejos y esta inscripción se paga—,
+ * pero un club que es de otro distrito no es un club que falte: es una pareja
+ * distrito-club que se contradice. Misma regla que la postulación (v4.706).
+ */
+export const clubContradictsDistrict = (district, clubName, catalogs = {}) => {
+    const club = String(clubName || '').trim().toLowerCase();
+    const chosen = String(district || '').trim();
+    if (!club || !chosen) return false;
+
+    const districts = catalogs.districts || [];
+    const own = districts.find(d => d.value === chosen || d.label === chosen);
+    // Si figura en el catálogo del distrito elegido, no hay nada que discutir.
+    if (own?.clubs.some(c => c.toLowerCase() === club)) return false;
+    return districts.some(d => d !== own && d.clubs.some(c => c.toLowerCase() === club));
 };
 
 /** Todos los campos de una categoría, aplanados, para validar. */
@@ -465,7 +705,7 @@ export const isFieldVisible = (field, answers) => {
  * Valida las respuestas contra el formulario de la categoría.
  * Devuelve `{ ok, errors: { campo: mensaje } }`. El servidor la corre siempre.
  */
-export const validateAnswers = (category, answers = {}) => {
+export const validateAnswers = (category, answers = {}, settings = {}) => {
     const errors = {};
     for (const field of flattenFields(category)) {
         if (!isFieldVisible(field, answers)) continue;
@@ -491,10 +731,23 @@ export const validateAnswers = (category, answers = {}) => {
         if (field.max && String(raw).length > field.max) {
             errors[field.key] = `Máximo ${field.max} caracteres.`;
         }
-        if (field.type === 'select' && Array.isArray(field.options)
+        // Un `select` con catálogo dependiente NO se valida contra la lista: la
+        // lista es una ayuda para escribir, no el conjunto de valores válidos.
+        // Cerrarla aquí rechazaría a un club nuevo o a un distrito de fuera de
+        // Colombia, que es justo a quien este formulario tiene que aceptar.
+        if (field.type === 'select' && !field.catalog && Array.isArray(field.options)
             && !field.options.some(o => o.value === raw)) {
             errors[field.key] = 'Elige una de las opciones.';
         }
+    }
+
+    // Distrito y club tienen que contarse la misma historia. Un club que no
+    // figure en ningún catálogo se acepta —el catálogo se queda viejo solo—;
+    // uno que figure en el catálogo de OTRO distrito es una contradicción.
+    if (!errors.clubName && clubContradictsDistrict(answers.district, answers.clubName, {
+        districts: rotaryCatalogFor(settings),
+    })) {
+        errors.clubName = 'Ese club figura en otro distrito. Revisa el distrito que elegiste.';
     }
 
     // Coherencia de fechas de viaje: sólo aplica si vinieron las dos.

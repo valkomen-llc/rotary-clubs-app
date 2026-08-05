@@ -36,8 +36,15 @@ import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import {
     money, validateStep, isFieldVisible, validateCredentials,
+    optionsForField, CLUB_NOT_LISTED,
     type FormField, type FormStep, type PublicCategory, type Companion,
+    type FormCatalogs,
 } from '../lib/eventRegistrationSpec';
+// Las dos listas que el navegador YA lleva: los países del selector telefónico
+// y los departamentos de Colombia que usa Postular Proyecto. Mandarlas desde el
+// servidor sería duplicar en la respuesta lo que el bundle carga de todos modos.
+import { COUNTRIES } from '../lib/countryPhones';
+import { DEPARTAMENTOS_COLOMBIA } from '../lib/colombiaGeo';
 import { localeOf } from '../components/EventRegistrationCta';
 import { openLoginModal, onLoginSuccess } from '../lib/loginModal';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
@@ -74,6 +81,8 @@ interface RegistrationConfig {
     identity?: Identity | null;
     /** Datos del perfil para precargar el formulario. */
     prefill?: Record<string, string> | null;
+    /** Catálogos que sólo el servidor conoce: distritos con sus clubes. */
+    catalogs?: { districts?: { value: string; label: string; clubs: string[] }[] };
 }
 
 interface Registration {
@@ -152,11 +161,16 @@ const FIELD_ICONS: Record<string, any> = {
 const isWide = (field: FormField) =>
     field.type === 'textarea' || field.type === 'multiselect' || field.type === 'checkbox';
 
-const DynamicField = ({ field, value, error, onChange }: {
+const DynamicField = ({ field, value, error, onChange, answers, catalogs, onClear }: {
     field: FormField;
     value: any;
     error?: string;
     onChange: (value: any) => void;
+    /** Las respuestas actuales: un catálogo dependiente se resuelve con ellas. */
+    answers: Answers;
+    catalogs: FormCatalogs;
+    /** Vuelve a la lista tras haber marcado «no está en la lista». */
+    onClear?: () => void;
 }) => {
     const invalid = Boolean(error);
     const common = {
@@ -243,25 +257,60 @@ const DynamicField = ({ field, value, error, onChange }: {
 
     const handle = (e: any) => onChange(e.target.value);
 
-    // v4.656 — País y Departamento son campos de texto llanos. Antes traían una
-    // lista de sugerencias (`<datalist>`), y el navegador la desplegaba encima
-    // del formulario en cuanto se hacía clic: parecía un selector obligatorio
-    // con una lista corta, cuando en realidad se podía escribir cualquier país.
-    // Un campo de texto es más simple y no promete una lista cerrada que no
-    // existe. El servidor nunca validó contra esa lista, así que no cambia nada
-    // de lo que se acepta.
+    // ── Catálogos (v4.708) ───────────────────────────────────────────
+    //
+    // `optionsForField` devuelve la lista cuando la hay y `null` cuando en
+    // este contexto no la hay: un país sin catálogo de divisiones, un distrito
+    // de fuera de Colombia, un club cuyo distrito todavía no se ha elegido.
+    // La MISMA casilla es desplegable o texto según eso, para que el campo no
+    // se mueva de sitio ni cambie de tamaño al elegir el país.
+    //
+    // Hasta v4.656 esto se intentó con un `<datalist>` y el cliente lo
+    // rechazó: sugería sin restringir y confundía las dos cosas. La conclusión
+    // que quedó escrita fue que si hay lista, es un `select`. Esto es eso.
+    // `onClear` sólo llega cuando la persona marcó «no está en la lista»: es
+    // la señal de que pidió escribirlo a mano, aunque haya catálogo.
+    const catalogOptions = onClear ? null : optionsForField(field, answers, catalogs);
+
+    if (catalogOptions) {
+        // El club se ofrece con salida: un catálogo se queda viejo solo
+        // —clubes nuevos, fusiones, cambios de nombre— y esta inscripción se
+        // paga, así que dejar fuera a quien no figure sería perderlo. La
+        // opción va de ÚLTIMA y cuesta un clic extra, de modo que quien sí
+        // está en la lista la usa. Misma regla que la postulación (v4.706).
+        const escapable = field.catalog === 'clubs';
+        return (
+            <div className={isWide(field) ? 'sm:col-span-2' : undefined}>
+                <Field
+                    {...common} as="select"
+                    options={escapable
+                        ? [...catalogOptions, { value: CLUB_NOT_LISTED, label: 'Mi club no está en la lista' }]
+                        : catalogOptions}
+                    onChange={(e: any) => onChange(e.target.value)}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className={isWide(field) ? 'sm:col-span-2' : undefined}>
             {field.type === 'textarea' ? (
                 <Field {...common} as="textarea" rows={3} onChange={handle} />
             ) : field.type === 'select' ? (
                 <Field {...common} as="select" options={field.options || []} onChange={handle} />
-            ) : field.type === 'country' ? (
-                <Field {...common} onChange={handle}
-                    placeholder={field.placeholder || 'Escribe tu país'} />
             ) : (
                 <Field {...common} onChange={handle}
                     type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'} />
+            )}
+            {/* La vuelta atrás tiene que ser explícita: volver a elegir el
+                MISMO distrito no dispara nada, así que sin este botón quien se
+                equivocara al marcar «no está en la lista» se quedaría
+                escribiendo a mano. */}
+            {onClear && (
+                <button type="button" onClick={onClear}
+                    className="mt-1.5 text-[13px] font-semibold text-blue-700 hover:underline">
+                    Elegir de la lista
+                </button>
             )}
         </div>
     );
@@ -432,6 +481,46 @@ const RegistroEvento = () => {
         () => config?.categories.find(c => c.key === categoryKey) || null,
         [config, categoryKey]);
 
+    // ── Catálogos del formulario (v4.708) ────────────────────────────
+    //
+    // Los distritos con sus clubes vienen del servidor, que es donde tienen su
+    // fuente de verdad; los países y los departamentos los pone el navegador,
+    // que ya los lleva. Los clubes viven DENTRO de cada distrito y no en un
+    // mapa aparte con el nombre como llave: renombrar un distrito no puede
+    // dejar su lista huérfana.
+    const catalogs = useMemo<FormCatalogs>(() => ({
+        districts: config?.catalogs?.districts || [],
+        departments: DEPARTAMENTOS_COLOMBIA,
+        countries: COUNTRIES.map(c => c.name),
+    }), [config?.catalogs?.districts]);
+
+    /**
+     * Marcó «Mi club no está en la lista». Es estado DE LA PANTALLA: dice de
+     * dónde salió el nombre, no cuál es, así que no se envía ni se guarda.
+     */
+    const [clubNotListed, setClubNotListed] = useState(false);
+
+    /**
+     * Con qué nace el formulario de la categoría elegida. Sólo rellena lo que
+     * esté VACÍO: un borrador a medias o lo que la persona ya escribió manda
+     * sobre el valor por defecto, igual que la precarga del perfil.
+     */
+    useEffect(() => {
+        const defaults = (category as any)?.defaults;
+        if (!defaults || !Object.keys(defaults).length) return;
+        setAnswers(prev => {
+            let changed = false;
+            const next = { ...prev };
+            for (const [key, value] of Object.entries(defaults as Record<string, string>)) {
+                if (next[key] === undefined || next[key] === null || next[key] === '') {
+                    next[key] = value;
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [category]);
+
     // ── Retomar un borrador guardado ─────────────────────────────────
     useEffect(() => {
         if (!category || !eventRef || returningId) return;
@@ -497,7 +586,26 @@ const RegistroEvento = () => {
 
     // ── Navegación ───────────────────────────────────────────────────
     const setAnswer = (key: string, value: any) => {
-        setAnswers(prev => ({ ...prev, [key]: value }));
+        // «Mi club no está en la lista» no es un club: es la decisión de
+        // escribirlo a mano. No entra en las respuestas.
+        if (key === 'clubName' && value === CLUB_NOT_LISTED) {
+            setClubNotListed(true);
+            setAnswers(prev => ({ ...prev, clubName: '' }));
+            return;
+        }
+        setAnswers(prev => {
+            const next = { ...prev, [key]: value };
+            // Cambiar de distrito descarta el club: el que estaba elegido era
+            // del catálogo anterior y ahí ya no significa nada. Se retira
+            // también la marca de «no está en la lista», porque el catálogo
+            // nuevo puede tenerlo.
+            if (key === 'district' && prev.district !== value) next.clubName = '';
+            // Y cambiar de país descarta el departamento por lo mismo: el de
+            // Colombia no es un estado de Brasil.
+            if (key === 'country' && prev.country !== value) next.department = '';
+            return next;
+        });
+        if (key === 'district') setClubNotListed(false);
         setFieldErrors(prev => {
             if (!prev[key]) return prev;
             const next = { ...prev };
@@ -914,13 +1022,35 @@ const RegistroEvento = () => {
                             <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-9">
                                 <StepProgress step={stepIndex + 1} total={steps.length} title={currentStep.label} />
                                 <div className="grid gap-5 sm:grid-cols-2">
-                                    {currentStep.fields
-                                        .filter(f => isFieldVisible(f, answers))
-                                        .map(f => (
-                                            <DynamicField key={f.key} field={f}
-                                                value={answers[f.key]} error={fieldErrors[f.key]}
-                                                onChange={v => setAnswer(f.key, v)} />
-                                        ))}
+                                    {/* v4.708 — Los pasos traen `groups` con un
+                                        subtítulo por bloque (Ubicación, Tu club
+                                        en Rotary). Es aditivo: un paso sin
+                                        grupos se dibuja como siempre. */}
+                                    {(currentStep.groups?.length
+                                        ? currentStep.groups
+                                        : [{ key: currentStep.key, label: '', fields: currentStep.fields }]
+                                    ).map(group => {
+                                        const visible = group.fields.filter(f => isFieldVisible(f, answers));
+                                        if (!visible.length) return null;
+                                        return (
+                                            <div key={group.key} className="contents">
+                                                {group.label && (
+                                                    <h3 className="sm:col-span-2 mt-2 border-b border-slate-200 pb-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                                                        {group.label}
+                                                    </h3>
+                                                )}
+                                                {visible.map(f => (
+                                                    <DynamicField key={f.key} field={f}
+                                                        value={answers[f.key]} error={fieldErrors[f.key]}
+                                                        answers={answers} catalogs={catalogs}
+                                                        onChange={v => setAnswer(f.key, v)}
+                                                        onClear={f.key === 'clubName' && clubNotListed
+                                                            ? () => setClubNotListed(false)
+                                                            : undefined} />
+                                                ))}
+                                            </div>
+                                        );
+                                    })}
 
                                     {/* ── Caso 1: ya tiene sesión ──────────
                                         El servidor reconoció el token del
