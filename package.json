@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.718.0",
-  "cache_bust": "2026-08-05k (Ya se pueden agregar contactos a la sede: el normalizador de LECTURA corria tambien sobre el borrador y descartaba la fila recien creada.)",
+  "version": "4.719.0",
+  "cache_bust": "2026-08-05l (El boton Registro CADRE toma los mismos colores que Postular Proyecto; los dos salen del mismo modulo.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -25,7 +25,8 @@
     "test:reels:people": "node scripts/test-reel-people.mjs",
     "test:clubes": "node scripts/test-rotary-clubs.mjs",
     "test:event-form": "node scripts/test-event-form.mjs",
-    "test:event-venue": "node scripts/test-event-venue.mjs"
+    "test:event-venue": "node scripts/test-event-venue.mjs",
+    "test:cta": "node scripts/test-cta-styles.mjs"
   },
   "engines": {
     "node": "22.x"

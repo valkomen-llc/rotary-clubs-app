@@ -25,6 +25,7 @@ import {
     Plus, RefreshCw, Save, Trash2,
 } from 'lucide-react';
 import { money } from '../../../lib/eventRegistrationSpec';
+import { CTA_SOFT, ctaSkin } from '../../../lib/ctaStyles';
 import type { AdminCategory } from './EventCategoriesManager';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -168,11 +169,14 @@ const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, o
                                         <p className="text-xs font-semibold text-red-600">No vería ningún botón.</p>
                                     ) : (
                                         <div className="space-y-1.5">
+                                            {/* Los colores salen de la MISMA fuente que la ficha pública
+                                                (v4.719): pintados a mano aquí, la vista previa acabaría
+                                                enseñando un botón que no es el que ve el visitante. */}
                                             {visibles.map((b: any) => (
                                                 <div key={b.key}
                                                     className={`rounded-lg px-3 py-2 text-center text-xs font-bold ${b.role === 'primary'
                                                         ? 'bg-[#D57D2C] text-white'
-                                                        : 'border-2 border-[#1B2B4D] text-[#1B2B4D]'} ${b.available ? '' : 'opacity-45'}`}>
+                                                        : ctaSkin(CTA_SOFT, false)} ${b.available ? '' : 'opacity-45'}`}>
                                                     {b.label}
                                                     {b.price > 0 && (
                                                         <span className="ml-1 font-normal">· {money(b.price, b.currency)}</span>

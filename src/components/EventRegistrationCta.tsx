@@ -27,6 +27,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { money } from '../lib/eventRegistrationSpec';
+import { CTA_SOFT, ctaSkin } from '../lib/ctaStyles';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -130,9 +131,16 @@ const Button = ({ button, eventRef, variant }: {
     variant: 'primary' | 'secondary';
 }) => {
     const base = 'w-full block text-center rounded-full font-bold transition-colors';
-    const style = variant === 'primary'
-        ? `${base} bg-[#D57D2C] hover:bg-[#c46f23] text-white text-[15px] py-3`
-        : `${base} border-2 border-[#1B2B4D] text-[#1B2B4D] hover:bg-[#1B2B4D] hover:text-white text-[14px] py-2.5`;
+    // La GEOMETRÍA es de la ficha —el botón ocupa el ancho de la columna—, pero
+    // los COLORES del secundario salen de `ctaStyles.ts`, que es de donde los
+    // toma «Postular Proyecto» en el encabezado (v4.719). Es la misma acción
+    // vista desde otro sitio y tiene que verse igual; hasta v4.718 era un
+    // contorno azul marino escrito a mano aquí.
+    const shape = variant === 'primary' ? 'text-[15px] py-3' : 'text-sm py-2.5';
+    const skinOf = (interactive: boolean) => (variant === 'primary'
+        ? `bg-[#D57D2C] text-white${interactive ? ' hover:bg-[#c46f23]' : ''}`
+        : ctaSkin(CTA_SOFT, interactive));
+    const style = (interactive: boolean) => `${base} ${shape} ${skinOf(interactive)}`;
 
     // Categoría cerrada o agotada, pero con mensaje del administrador: se
     // muestra apagada y explicada, nunca como un botón que no lleva a ningún
@@ -140,7 +148,7 @@ const Button = ({ button, eventRef, variant }: {
     if (!button.available) {
         return (
             <div className="w-full">
-                <span className={`${style} cursor-not-allowed opacity-45`} aria-disabled="true">
+                <span className={`${style(false)} cursor-not-allowed opacity-45`} aria-disabled="true">
                     {button.label}
                 </span>
                 {button.unavailableMessage && (
@@ -154,7 +162,7 @@ const Button = ({ button, eventRef, variant }: {
 
     return (
         <div className="w-full">
-            <Link to={`/eventos/${eventRef}${button.href}`} className={style}>
+            <Link to={`/eventos/${eventRef}${button.href}`} className={style(true)}>
                 {button.label}
             </Link>
             {button.price > 0 && (

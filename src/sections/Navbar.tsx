@@ -11,6 +11,7 @@ import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
 import { hasEditableHome } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, ctaTarget, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
+import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../lib/ctaStyles';
 // Tercera identidad del sitio: quien consulta su inscripción a un evento.
 import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 // El mismo resolvedor que usa la ficha del evento: el idioma activo decide
@@ -70,10 +71,9 @@ const Navbar = () => {
   // sólo un ícono, y los rotarios no reconocían que ahí se iniciaba sesión.
   // Duplicar estas clases otra vez volvería a permitir que se separen.
   const CTA_SHAPE = 'items-center justify-center gap-2 font-bold text-sm px-5 py-2.5 rounded-full transition-colors';
-  const CTA_CLASSES = [
-    'bg-rotary-blue text-white hover:bg-rotary-blue/90',
-    'bg-sky-100 text-rotary-blue hover:bg-sky-200',
-  ];
+  // Los colores salen de `ctaStyles.ts` (v4.719): la misma pareja la usa la
+  // ficha de un evento, y escritos aquí a mano se separaban en silencio.
+  const CTA_CLASSES = [ctaSkin(CTA_SOLID), ctaSkin(CTA_SOFT)];
   const HEADER_CTA_DEFAULTS = headerCtaDefaults((club as any)?.type)
     .map((def, i) => ({ ...def, cls: CTA_CLASSES[i] }));
   const headerCtasCfg = Array.isArray((club as any)?.headerCtas) ? (club as any).headerCtas : [];

@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.718.0 | 2026-08-05 (Ya se pueden agregar contactos a la sede)
-// Cache bust: 2026-08-05k
+// UI V4.719.0 | 2026-08-05 (El botón de Registro CADRE, igual que Postular Proyecto)
+// Cache bust: 2026-08-05l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.719.0',
+        title: 'El botón de Registro CADRE ya se ve como los demás 🔵',
+        description: 'En la ficha de un evento, el botón secundario —«Registro CADRE»— se pintaba con un contorno azul marino que no existía en ninguna otra parte del sitio, mientras que «Postular Proyecto», que hace exactamente lo mismo (llevar a un formulario de inscripción), es una píldora azul claro con la letra azul. La misma acción se veía de dos maneras según desde dónde se mirara. Ahora los dos botones toman sus colores del MISMO sitio, así que no se pueden volver a separar: cambiar uno cambia el otro. Lo único que no se comparte es el tamaño, porque el del encabezado se ajusta a su texto y el de la ficha ocupa el ancho de la columna. El botón principal del evento sigue naranja, que es el acento de la ficha. De paso se corrigió un detalle que no se veía venir: el botón azul lleno del encabezado —«Regístrarse»— tenía escrita una instrucción de color para el momento en que se le pasa el cursor por encima que en realidad no generaba ninguna regla, así que no reaccionaba al cursor. Se cambió por una que sí funciona y ahora se oscurece, como cualquier botón. Y una categoría cerrada o agotada se sigue viendo apagada, pero ya no cambia de color al pasarle el cursor: reaccionar al cursor es la promesa de que algo va a pasar al pulsarla.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'ficha publica', 'botones', 'encabezado'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: '«Registro CADRE» usa los mismos colores que «Postular Proyecto».' },
+            { type: 'fixed', text: 'El botón azul del encabezado ya se oscurece al pasarle el cursor.' },
+            { type: 'fixed', text: 'Un botón de categoría cerrada ya no reacciona al cursor.' },
+            { type: 'added', text: 'Los colores de los botones viven en un solo sitio y hay prueba que lo comprueba.' },
+        ]
+    },
     {
         version: '4.718.0',
         title: 'Ya se pueden agregar los contactos de la sede \u270d\ufe0f',
