@@ -2263,6 +2263,30 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
   `server/middleware/auth.js`): el cliente decide qué pinta, el servidor qué
   responde. Si cambia una lista, cambiar la otra.
 
+### La inscripción ABRE la sesión (v4.710)
+
+- **Terminar la inscripción deja la sesión abierta.** Hasta v4.709 el envío
+  creaba la cuenta, comprobaba la contraseña y devolvía el correo y la ruta del
+  panel —pero NINGÚN token—, así que «Ir a mi inscripción» llevaba al formulario
+  de ingreso a quien acababa de crear su contraseña dos pasos antes. El
+  encabezado, mientras tanto, mostraba el avatar porque leía OTRA identidad: dos
+  verdades sobre la misma persona. La emite `issueAttendeeSession`, en el
+  servidor, que es quien acaba de comprobar la credencial.
+- **`POST /portal/claim` es para cuando el token no está en ESTE navegador**:
+  se pagó desde otro dispositivo, se cerró la pestaña, se vuelve de Stripe sobre
+  una sesión que nunca se abrió. La prueba de propiedad es el `accessToken` de
+  la inscripción —el mismo secreto que ya permite leerla sin sesión
+  (`GET /:id?t=`), así que no amplía lo que un enlace filtrado deja ver— o el
+  `stripeSessionId`. Es el mismo mecanismo que el panel del club estrenó en su
+  día. **Un borrador no abre sesión**: sólo una inscripción enviada.
+- **Un canje rechazado no crea nada.** La cuenta se crea al abrir la sesión, no
+  al mirar la inscripción.
+- **El token NO viaja en la URL.** En el camino normal va en el cuerpo de la
+  respuesta del envío; el canje existe para el camino en que sólo hay URL.
+- **Los dos paneles se enlazan entre sí**, y el enlace aparece SÓLO si esa otra
+  sesión existe: ofrecer un panel al que no se puede entrar es peor que no
+  ofrecerlo. Sale de `useSiteSessions`, la misma fuente del encabezado.
+
 ### La sesión se VE en el encabezado (v4.693)
 
 `src/lib/siteSession.ts` es lo que el `Navbar` consulta para saber quién está

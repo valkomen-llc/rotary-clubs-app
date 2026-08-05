@@ -47,6 +47,7 @@ import store, {
 import {
     ensureAttendeeAccount, ensurePendingAccountFor, linkRegistrationToAccount,
     attachOrphanRegistrations, sendVerificationEmail, ATTENDEE_PATH,
+    issueAttendeeSession,
     identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
@@ -679,9 +680,19 @@ const saveRegistration = async (req, res, mode) => {
         ...toPublicRegistration(row),
         accessToken: row.accessToken,
         companions: await listCompanions(row.id),
-        // Con qué cuenta y en qué ruta va a consultar su inscripción. La
-        // calcula el servidor para que el navegador no invente el destino.
-        account: account ? { email: account.email, portalPath: ATTENDEE_PATH } : null,
+        /**
+         * Con qué cuenta, en qué ruta y CON QUÉ SESIÓN va a consultar su
+         * inscripción (v4.710).
+         *
+         * El token es lo que faltaba: hasta ahora se devolvía el correo y la
+         * ruta, pero ninguna sesión, así que quien acababa de registrarse y
+         * pagar se encontraba el formulario de ingreso al pulsar «Ir a mi
+         * inscripción» —habiendo creado la contraseña dos pasos antes—. Lo
+         * emite el servidor, que es quien acaba de comprobar la credencial.
+         */
+        account: account
+            ? { email: account.email, portalPath: ATTENDEE_PATH, ...(await issueAttendeeSession(account)) }
+            : null,
     });
 };
 

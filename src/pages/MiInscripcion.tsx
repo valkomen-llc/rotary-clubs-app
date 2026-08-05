@@ -23,6 +23,7 @@
 // único del encabezado con `openLoginModal()`.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
 import {
@@ -32,7 +33,7 @@ import {
 } from 'lucide-react';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { openLoginModal } from '../lib/loginModal';
-import { forgetSession, rememberProfile, emitSessionChange } from '../lib/siteSession';
+import { forgetSession, rememberProfile, emitSessionChange, useSiteSessions } from '../lib/siteSession';
 import { qrToSvg } from '../lib/qrcode';
 import { money, statusMeta } from '../lib/eventRegistrationSpec';
 import { Field } from '../components/forms/FairField';
@@ -152,6 +153,10 @@ const MiInscripcion = () => {
         () => new URLSearchParams(window.location.search).get('inscripcion'));
     const [detail, setDetail] = useState<RegistrationView | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
+
+    // El otro panel de esta misma persona, si tiene esa sesión abierta.
+    const sessions = useSiteSessions();
+    const otherPanel = sessions.find(x => x.realm === 'portal') || null;
 
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
     const verifyToken = useMemo(() => new URLSearchParams(window.location.search).get('verificar'), []);
@@ -281,9 +286,20 @@ const MiInscripcion = () => {
                             <ShieldCheck size={12} /> {data.roleLabel}
                         </span>
                     </div>
-                    <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
-                        <LogOut size={14} /> Salir
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Una sola persona puede llevar los dos roles. El
+                            enlace aparece SÓLO si esa otra sesión existe: no se
+                            ofrece un panel al que no se puede entrar. */}
+                        {otherPanel && (
+                            <Link to={otherPanel.path}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
+                                <LayoutDashboard size={14} /> {otherPanel.menu}
+                            </Link>
+                        )}
+                        <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20">
+                            <LogOut size={14} /> Salir
+                        </button>
+                    </div>
                 </div>
             </header>
 

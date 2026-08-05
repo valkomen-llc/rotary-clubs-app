@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.709.0 | 2026-08-05 (Ubicación y Tu club en Rotary, en una sola línea de tres columnas)
-// Cache bust: 2026-08-05b
+// UI V4.710.0 | 2026-08-05 (La inscripción abre la sesión del asistente: «Ir a mi inscripción» entra directo)
+// Cache bust: 2026-08-05c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.710.0',
+        title: 'Terminar la inscripción ya te deja dentro \ud83d\udd13',
+        description: 'Quien terminaba de inscribirse a un evento —llenaba el formulario, creaba su contraseña y pagaba— pulsaba «Ir a mi inscripción» y se encontraba con el formulario de ingreso, pidiéndole la contraseña que acababa de crear dos pasos antes. Y el encabezado, mientras tanto, mostraba su avatar: dos afirmaciones contradictorias sobre la misma persona en la misma pantalla. La causa no era el encabezado ni la ruta: era que la inscripción NUNCA abría la sesión. El servidor creaba la cuenta, comprobaba la contraseña y devolvía el correo y la dirección del panel, pero ninguna sesión, así que el navegador no tenía con qué entrar y la ruta protegida hacía lo correcto al pedir el ingreso. A partir de esta versión, el envío del formulario devuelve la sesión —la emite el servidor, que es quien acaba de comprobar la credencial— y el botón entra directo al panel. Se resolvió también el camino de vuelta desde la pasarela de pagos: si se paga desde otro dispositivo, se cierra la pestaña o se vuelve a un navegador que nunca tuvo la sesión, el sistema la canjea solo a partir de la propiedad de la inscripción, sin volver a pedir la contraseña. Esa prueba es el mismo secreto que ya permitía leer la inscripción desde el enlace de confirmación, así que no se abre nada nuevo; y un borrador sin enviar no abre sesión. Por último, quien tiene los dos roles ahora pasa de un panel al otro con un enlace en el encabezado de cada uno: desde «Mi inscripción» a «Mi Proyecto» y al revés, sin escribir la contraseña otra vez. El enlace aparece sólo si esa otra sesión existe, para no ofrecer un panel al que no se puede entrar.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'acceso', 'sesiones', 'pagos'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Terminar la inscripción abre la sesión del asistente: «Ir a mi inscripción» entra directo, sin volver a pedir la contraseña.' },
+            { type: 'added', text: 'Al volver de la pasarela se canjea la sesión aunque el pago se haya hecho en otro dispositivo o se haya cerrado la pestaña.' },
+            { type: 'added', text: 'Quien tiene los dos roles pasa de «Mi inscripción» a «Mi Proyecto» y al revés desde el encabezado de cada panel.' },
+        ]
+    },
     {
         version: '4.709.0',
         title: 'Ubicación y club, en una sola línea \ud83d\udccf',

@@ -40,7 +40,7 @@ import {
     listCompanions, listHistory, listMessages, listPayments,
 } from '../lib/eventRegistrationStore.js';
 
-console.log('[eventAttendeeController] v4.655.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos.');
+console.log('[eventAttendeeController] v4.710.0 cargado — rol "Asistente al Evento": cuenta propia por correo, panel de sólo lectura de su inscripción y auditoría de ingresos. La inscripción ABRE la sesión (issueAttendeeSession) y /portal/claim la canjea al volver de la pasarela desde otro dispositivo.');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rotary_secret_key_2026';
 /** Audiencia propia: un token de plataforma o del panel del club no sirve aquí. */
@@ -588,6 +588,84 @@ export const describeAttendeeSession = async (account) => {
 };
 
 /**
+ * Abre la sesión del asistente para una cuenta ya resuelta (v4.710).
+ *
+ * Es lo que faltaba: la inscripción creaba la cuenta y devolvía el correo,
+ * pero NINGÚN token, así que quien acababa de registrarse y pagar encontraba
+ * el formulario de ingreso al pulsar «Ir a mi inscripción». El encabezado sí
+ * lo mostraba dentro porque leía OTRA identidad (la del panel del club, si la
+ * tenía): dos verdades sobre lo mismo.
+ *
+ * No comprueba credenciales a propósito: la comprueba quien la llama, y sólo
+ * hay dos formas de llegar aquí —acabar de crear la cuenta con su contraseña,
+ * o demostrar la propiedad de la inscripción—.
+ */
+export const issueAttendeeSession = async (account, { remember = true } = {}) => {
+    if (!account) return null;
+    return { token: signToken(account, { remember }), email: account.email, ...(await describeAttendeeSession(account)) };
+};
+
+/**
+ * POST /portal/claim — entrada automática al volver de la pasarela.
+ *
+ * Existe para los casos en que el token del envío no está en ESTE navegador:
+ * se pagó desde otro dispositivo, se cerró la pestaña, o se vuelve de Stripe
+ * sobre una sesión que nunca se abrió. Se canjea la prueba de propiedad de la
+ * inscripción por una sesión, sin volver a pedir la contraseña.
+ *
+ * La prueba es el `accessToken` de la inscripción —el mismo secreto que ya
+ * permite leerla sin sesión (`GET /:id?t=`), así que no amplía lo que un
+ * enlace filtrado deja ver— o el identificador de sesión de Stripe. Es el
+ * mismo mecanismo que el panel del club estrenó en su día.
+ *
+ * Un borrador NO abre sesión: sólo una inscripción enviada.
+ */
+export const claimSession = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const registrationId = clean(req.body?.registrationId, 60);
+        const accessToken = clean(req.body?.accessToken, 60);
+        const sessionId = clean(req.body?.sessionId, 200);
+        if (!registrationId || (!accessToken && !sessionId)) {
+            return res.status(400).json({ error: 'Faltan datos de la inscripción.' });
+        }
+
+        const { rows } = await db.query(
+            'SELECT * FROM "EventRegistration" WHERE id = $1 LIMIT 1', [registrationId]);
+        const registration = rows[0];
+        if (!registration) return res.status(404).json({ error: 'Inscripción no encontrada.' });
+
+        const proves = (accessToken && registration.accessToken === accessToken)
+            || (sessionId && registration.stripeSessionId === sessionId);
+        if (!proves) return res.status(403).json({ error: 'Esos datos no corresponden a esta inscripción.' });
+        if (!registration.submittedAt) {
+            return res.status(409).json({ error: 'Termina de enviar el formulario para consultar tu inscripción.' });
+        }
+
+        // La cuenta es la que ya quedó atada a la inscripción. Si la fila es
+        // anterior a que se crearan cuentas, se crea ahora sin contraseña
+        // utilizable: el acceso lo estrena por «Olvidé mi contraseña».
+        let account = null;
+        if (registration.accountId) {
+            const found = await db.query(
+                'SELECT * FROM "EventAttendeeAccount" WHERE id = $1 LIMIT 1', [registration.accountId]);
+            account = found.rows[0] || null;
+        }
+        if (!account) {
+            account = await ensurePendingAccountFor(registration);
+            if (account) await linkRegistrationToAccount(registration.id, account.id);
+        }
+        if (!account) return res.status(500).json({ error: 'No pudimos abrir tu panel.' });
+
+        await auditLogin(req, { accountId: account.id, email: account.email, outcome: 'claim' });
+        return res.json(await issueAttendeeSession(account));
+    } catch (error) {
+        console.error('[event-attendee] claimSession:', error);
+        return res.status(500).json({ error: 'No pudimos abrir tu panel.' });
+    }
+};
+
+/**
  * Comprueba credenciales contra la identidad del asistente.
  * Mismo resultado para correo inexistente y contraseña incorrecta: no se
  * revela qué correos están registrados.
@@ -984,6 +1062,8 @@ export default {
     requireAttendeePermission,
     authenticateAttendee,
     describeAttendeeSession,
+    issueAttendeeSession,
+    claimSession,
     ensureAttendeeAccount,
     ensurePendingAccountFor,
     linkRegistrationToAccount,
