@@ -148,6 +148,12 @@ export interface ExpansionReport {
     ok?: boolean;
     failed?: boolean;
     reason?: string;
+    /**
+     * Qué le pasa a la foto si nadie interviene. Va aparte del motivo porque es
+     * la CONSECUENCIA: «demasiado apaisada» no le dice a nadie que va a perder
+     * a las personas de los bordes.
+     */
+    consequence?: string | null;
     orientation?: string;
     grows?: 'vertical' | 'horizontal';
     growth?: number;

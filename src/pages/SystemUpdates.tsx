@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.713.0 | 2026-08-05 (El puente busca la inscripción por correo: una inscripción sin vincular también aparece)
+// UI V4.714.0 | 2026-08-05 (Expansión de fotos apaisadas y rechazo visible)
 // Cache bust: 2026-08-05f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.714.0',
+        title: 'Las fotografías apaisadas se expanden en vez de recortarse 🖼️',
+        description: 'Al generar un Reel vertical a partir de fotografías horizontales, el resultado recortaba la imagen por el centro y desaparecían las personas de los extremos. El módulo sí tiene expansión generativa —completa arriba y abajo en lugar de recortar—, pero estaba puesta para actuar sólo hasta un crecimiento de 3,2 veces la altura, y una foto apaisada de móvil necesita algo más de 4. Las tres fotos del caso reportado quedaban justo por encima del límite: la adaptación se rechazaba y el montaje encuadraba al centro. Peor todavía, ese rechazo se anotaba internamente y no se mostraba en ninguna parte, así que no había forma de saber por qué la foto había perdido los bordes. Ahora la expansión llega hasta 4,5 veces —cubre la foto apaisada de móvil y de cámara— y, cuando de verdad no puede, lo dice con todas las letras y explica qué va a pasar con la fotografía.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Las fotos apaisadas se recortaban al centro: ahora se expanden y conservan todo su ancho.' },
+            { type: 'fixed', text: 'El rechazo de la adaptación se guardaba y no se mostraba: ahora aparece en la escena, con su consecuencia.' },
+            { type: 'improved', text: 'Una adaptación imposible queda además anotada en el proceso del Reel, no sólo en la escena.' },
+            { type: 'improved', text: 'Se muestra qué porcentaje del cuadro final es lienzo generado, para poder decidir con el número delante.' }
+        ],
+        details: [
+            'Medido con las tres fotografías reportadas: necesitaban crecer 3,95, 4,04 y 4,09 veces su altura, y el límite estaba en 3,2. Una foto 16:9 exacta daba 3,16 y pasaba por muy poco, así que en la práctica cualquier foto más ancha que 16:9 se recortaba.',
+            'El coste está dicho: en una foto muy apaisada el original ocupa la cuarta parte del alto final y el resto es contenido generado. Se muestra el porcentaje porque la decisión entre perder los bordes o generar buena parte del cuadro es del usuario.',
+            'Una panorámica de verdad —más ancha que 2,5 a 1— se sigue rechazando: a partir de ahí el resultado deja de ser coherente. Lo que cambia es dónde está ese punto, no el criterio.',
+            'El estilo «Fotográfico — sin IA» sigue siendo una fotografía con desplazamiento de encuadre, a propósito: garantiza la identidad pero no anima la escena. Para que las personas cobren vida hay que elegir cualquier otro estilo.'
+        ]
+    },
     {
         version: '4.713.0',
         title: 'Una inscripción sin vincular también aparece en el menú \ud83d\udd0e',

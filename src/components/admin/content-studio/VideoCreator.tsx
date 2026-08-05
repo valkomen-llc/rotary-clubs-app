@@ -1733,8 +1733,26 @@ const SceneRow: React.FC<{
                                 ` · ${Math.round(scene.expansionReport.generatedFraction * 100)} % de lienzo nuevo`}
                         </p>
                     )}
-                    {scene.expansionReport?.failed && scene.expansionReport.reason && (
-                        <p className="text-[10px] font-bold text-amber-700 mt-1">{scene.expansionReport.reason}</p>
+                    {/* Una adaptación RECHAZADA se dice con su consecuencia, no
+                        sólo con su motivo. «La imagen es demasiado apaisada» no
+                        le explica a nadie que va a perder a las personas de los
+                        bordes; hasta v4.713 ni siquiera se llegaba a pintar,
+                        porque el rechazo no traía la marca `failed` y este
+                        bloque no lo veía: el aviso se escribía en la base y no
+                        lo leía nadie. */}
+                    {scene.expansionReport?.failed && (scene.expansionReport.reason || scene.expansionReport.consequence) && (
+                        <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50/70 p-2">
+                            <p className="text-[10px] font-black text-amber-800 uppercase tracking-wide flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                La fotografía no se pudo llevar al formato vertical
+                            </p>
+                            {scene.expansionReport.consequence && (
+                                <p className="text-[10px] font-bold text-amber-900 mt-1">{scene.expansionReport.consequence}</p>
+                            )}
+                            {scene.expansionReport.reason && (
+                                <p className="text-[10px] text-amber-800 mt-1 leading-relaxed">{scene.expansionReport.reason}</p>
+                            )}
+                        </div>
                     )}
 
                     {/* Fidelidad. Tres estados y se nombra CÓMO se comprobó: la
