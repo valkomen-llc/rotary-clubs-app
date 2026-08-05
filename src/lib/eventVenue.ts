@@ -88,6 +88,37 @@ export const normalizeWebsite = (raw: unknown): string => {
 export const websiteLabel = (url: string): string =>
     String(url || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
 
+/**
+ * La sede TAL COMO SE ESTÁ EDITANDO (v4.718).
+ *
+ * `normalizeVenue` es el contrato de LECTURA: descarta el contacto vacío y
+ * completa el esquema del sitio web, que es justo lo que hay que hacer antes
+ * de publicar. Pero aplicado al borrador hace imposible escribir: el contacto
+ * recién agregado —que nace vacío— desaparecía en el mismo render en que se
+ * creaba, y el sitio web se convertía en `https://w/` en cuanto se tecleaba la
+ * primera letra.
+ *
+ * Esta versión sólo da forma: no descarta nada ni completa direcciones. Lo que
+ * se guarde se limpia al leerlo, que es donde corresponde.
+ */
+export const draftVenue = (raw: any): EventVenue => {
+    const contacts = Array.isArray(raw?.contacts) ? raw.contacts : [];
+    return {
+        name: String(raw?.name ?? ''),
+        address: String(raw?.address ?? ''),
+        image: String(raw?.image ?? ''),
+        website: String(raw?.website ?? ''),
+        mapUrl: String(raw?.mapUrl ?? raw?.map ?? ''),
+        contacts: contacts.slice(0, 6).map((c: any) => ({
+            name: String(c?.name ?? ''),
+            role: String(c?.role ?? ''),
+            email: String(c?.email ?? ''),
+            phone: String(c?.phone ?? ''),
+            mobile: String(c?.mobile ?? ''),
+        })),
+    };
+};
+
 export const normalizeVenue = (raw: any): EventVenue => {
     const contacts = Array.isArray(raw?.contacts) ? raw.contacts : [];
     return {

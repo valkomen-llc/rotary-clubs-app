@@ -1481,8 +1481,20 @@ del lugar, nombre, dirección, sitio web, personas de contacto y mapa.
 - **Se pega lo que Google da.** El administrador copia el `<iframe>` completo y
   del texto se extrae el `src`; también vale la dirección suelta. Pedirle que
   recorte el atributo a mano es pedirle que edite HTML.
-- **El mapa se normaliza al SALIR de la casilla, no en cada pulsación.**
-  Normalizar mientras escribe borraría el texto a mitad de pegarlo.
+- **El borrador NO es el contrato de lectura** (v4.718, `draftVenue` frente a
+  `normalizeVenue`). Es el fallo que rompió «Agregar contacto»: la limpieza de
+  lectura descarta el contacto vacío y le completa el `https://` al sitio web
+  —lo correcto antes de publicar—, pero aplicada al borrador hace imposible
+  escribir. Un contacto recién agregado nace vacío por definición: se creaba y
+  se descartaba en el mismo render. Y el sitio web se convertía en `https://w/`
+  con la primera pulsación. El editor trabaja sobre `draftVenue`, que sólo da
+  forma; se limpia al leer.
+- **El mapa y el sitio web se normalizan al SALIR de la casilla, no en cada
+  pulsación.** Normalizar mientras se escribe borra el texto a mitad de pegarlo.
+- **Probar el EDITOR, no sólo la ficha.** v4.717 verificó cómo se ve la sede en
+  la página pública y no cómo se carga desde el panel: por eso el defecto llegó
+  a producción. `editor-sede` monta el componente a pelo —sin el resto del
+  panel— y lo maneja en un navegador.
 - **Cada pieza se dibuja sólo si está** (`venueHasContent`). Una sede con foto y
   sin contactos no deja un hueco donde iban los contactos, y un evento sin sede
   configurada se ve exactamente como antes.
