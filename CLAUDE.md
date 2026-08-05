@@ -1454,6 +1454,47 @@ Registro Nacional lo reconoce y no le pide una segunda credencial.
   ramas de `handleLogin`** — se escapó la del panel del club y el formulario no
   se enteraba hasta recargar.
 
+### La sede del evento (v4.717)
+
+La ficha pública muestra, bajo la ubicación, dónde se realiza el evento: foto
+del lugar, nombre, dirección, sitio web, personas de contacto y mapa.
+
+| Archivo | Qué es |
+|---|---|
+| `src/lib/eventVenue.ts` | El criterio: forma, normalización y qué mapa se acepta |
+| `src/components/EventVenueCard.tsx` | El bloque en la ficha pública |
+| `src/components/admin/events/EventVenueEditor.tsx` | La pestaña «Sede» del panel |
+
+- **Vive en `CalendarEvent.metadata.venue`**, la columna `Json` que ya existe.
+  No se agrega una columna a Prisma: eso obligaría a sincronizar la base, que
+  es justo lo que la sección de base de datos de este archivo manda evitar.
+- **Es POR EVENTO, no escrito en el código.** El único mapa que había era el de
+  la Conferencia LATIR, con la dirección dentro de `EventoDetalle.tsx` y detrás
+  de un `if` por id de evento: servía para ese evento y para ninguno más, y no
+  se podía cambiar sin desplegar. Ese bloque se conserva; el nuevo no lo
+  sustituye porque sus datos siguen sin estar en la base.
+- **Sólo se admiten mapas de GOOGLE** (`normalizeMapUrl`). Es un `<iframe>` que
+  se dibuja en una página pública: aceptar cualquier dirección convertiría un
+  campo de texto del panel en un hueco por donde meter cualquier cosa en el
+  sitio. Se rechazan otro dominio, `http`, `javascript:`, `data:` y una URL de
+  Google que no sea un mapa.
+- **Se pega lo que Google da.** El administrador copia el `<iframe>` completo y
+  del texto se extrae el `src`; también vale la dirección suelta. Pedirle que
+  recorte el atributo a mano es pedirle que edite HTML.
+- **El mapa se normaliza al SALIR de la casilla, no en cada pulsación.**
+  Normalizar mientras escribe borraría el texto a mitad de pegarlo.
+- **Cada pieza se dibuja sólo si está** (`venueHasContent`). Una sede con foto y
+  sin contactos no deja un hueco donde iban los contactos, y un evento sin sede
+  configurada se ve exactamente como antes.
+- **Correo y teléfonos van con su enlace** (`mailto:`, `tel:`). Esto se mira
+  sobre todo desde el móvil, donde copiar un número es trabajo.
+- **La casilla de la foto ofrece las DOS vías** —subir o elegir de la Biblioteca
+  Multimedia—, que es la regla del sitio desde v4.700.
+- Pruebas: `npm run test:event-venue` (35 casos). **No necesitan base,
+  credenciales ni red**: prueban el CRITERIO —qué mapa se acepta, cómo se
+  normaliza el sitio web, qué contacto se descarta y cuándo se dibuja la sede—,
+  separado de cómo se pinta.
+
 ### Dirección pública de un evento (v4.658)
 
 Un evento se abre igual con su **id interno** que con su **slug**: el endpoint
