@@ -17,6 +17,7 @@ import { ATTENDEE_TOKEN_KEY } from '../pages/MiInscripcion';
 // qué registro se ofrece (regla durable del módulo, v4.652).
 import { useEventCta } from '../components/EventRegistrationCta';
 import { useProjectFairLink } from '../lib/useProjectFairLink';
+import { useAttendeeLink } from '../lib/useAttendeeLink';
 import { onOpenLoginModal, emitLoginSuccess } from '../lib/loginModal';
 // Las tres identidades del sitio, tal como las ve el encabezado (v4.693).
 import { useSiteSessions, closeAllSessions, initialsOf } from '../lib/siteSession';
@@ -189,6 +190,10 @@ const Navbar = () => {
   // cualquiera de ellas.
   const sessions = useSiteSessions();
   const portalSession = sessions.find(s => s.realm === 'portal') || null;
+  // Quien ya tenía una sesión abierta de ANTES de v4.711 no pasó por el
+  // ingreso que abre las dos identidades. Se le descubre la del evento por su
+  // correo, sin pedirle que cierre sesión y vuelva a entrar.
+  useAttendeeLink(sessions.length > 0 && !sessions.some(s => s.realm === 'attendee'));
   const attendeeSession = sessions.find(s => s.realm === 'attendee') || null;
   // La de la plataforma manda si existe; si no, la primera que haya.
   const primarySession = sessions[0] || null;

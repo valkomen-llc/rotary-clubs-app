@@ -226,7 +226,7 @@ const MiProyecto = () => {
         const accept = (t: string) => { localStorage.setItem(TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <PortalReset token={resetToken} onToken={accept} />
-            : <PortalSignIn notice={notice} />;
+            : <PortalSignIn notice={notice} hadSession={Boolean(token)} />;
     }
 
     const forms = data.forms || [];
@@ -499,9 +499,13 @@ const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) 
 // distintos con reglas distintas. Ahora hay un solo acceso —el del ícono del
 // encabezado—, que resuelve por sí mismo si esas credenciales son de un
 // administrador del sitio o de un Gestor de Proyectos.
-const PortalSignIn = ({ notice }: { notice: any }) => {
+const PortalSignIn = ({ notice, hadSession }: { notice: any; hadSession?: boolean }) => {
+    // Con sesión abierta y una carga fallida, el problema NO es el ingreso:
+    // decirlo evita mandar a escribir otra vez unas credenciales correctas.
+    const failed = Boolean(hadSession && notice?.kind === 'error');
     // Se abre solo al llegar: quien entra a /mi-proyecto viene a entrar.
     useEffect(() => {
+        if (failed) return;
         openLoginModal({
             next: PROJECT_FAIR_PORTAL_PATH,
             reason: notice?.text || 'Ingresa con el correo y la contraseña que registraste al inscribir tu proyecto.',
@@ -520,7 +524,7 @@ const PortalSignIn = ({ notice }: { notice: any }) => {
                     </div>
                     <h1 className="text-xl font-bold text-slate-900">Ingresa a tu panel</h1>
                     <p className="mt-1.5 text-sm text-slate-500">
-                        Con el correo y la contraseña que registraste al inscribir tu proyecto.
+                        {failed ? notice.text : 'Con el correo y la contraseña que registraste al inscribir tu proyecto.'}
                     </p>
 
                     {notice?.text && (

@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.711.0 | 2026-08-05 (Un ingreso abre las dos identidades: proyecto y asistencia al evento, en paneles separados)
-// Cache bust: 2026-08-05d
+// UI V4.712.0 | 2026-08-05 (El encabezado descubre el panel del evento sin volver a entrar)
+// Cache bust: 2026-08-05e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.712.0',
+        title: 'El otro panel aparece solo, sin volver a entrar \ud83c\udf09',
+        description: 'La versión anterior hizo que un ingreso abriera las dos identidades —proyecto y asistencia al evento— cuando una misma persona tiene las dos. Pero eso ocurría SÓLO al ingresar: quien ya tenía la sesión de su proyecto abierta de antes seguía sin ver «Mi Inscripción al Evento», y para descubrirla habría tenido que cerrar sesión y volver a entrar. Eso no es algo que se le pueda pedir a nadie, ni algo que nadie adivine. Ahora el encabezado le pregunta al servidor, por el correo de la sesión que ya tiene, si esa persona tiene además una inscripción enviada; si la tiene, el panel del evento aparece en el menú al instante. Se consulta una sola vez y sólo cuando hace falta, así que no añade trabajo a cada visita. La identidad la da el token, verificado en el servidor: nunca se abre la sesión de otro correo, y quien no tiene inscripción sencillamente no ve la entrada. Se corrigió además algo que hacía muy difícil entender qué pasaba: cuando un panel no lograba cargar —porque el servidor devolvía un error, no porque faltara la sesión— la pantalla mostraba igualmente «Ingresa a tu panel» y abría el formulario de ingreso, de modo que la persona escribía otra vez unas credenciales que estaban bien y volvía a lo mismo. Ahora, si la sesión existe y lo que falló fue la carga, se dice qué falló y no se pide ingresar.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'sesiones', 'gestion de proyectos', 'asistente al evento', 'panel'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'El encabezado descubre el panel del evento a partir de la sesión ya abierta, sin volver a entrar.' },
+            { type: 'fixed', text: 'Un panel que falla al cargar dice por qué, en vez de aparentar que no hay sesión y pedir credenciales que ya son correctas.' },
+        ]
+    },
     {
         version: '4.711.0',
         title: 'Tu proyecto y tu asistencia al evento, los dos en el menú \ud83e\uddf7',

@@ -2234,6 +2234,21 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
   redirección y las demás viajan en `sessions` para que el navegador guarde su
   token. **`sessions` es aditivo**: el nivel superior conserva la forma de
   siempre, así que un navegador con el bundle anterior entra igual.
+- **Y se DESCUBREN entre sí sin volver a entrar** (v4.712,
+  `useAttendeeLink` + `POST /event-registrations/portal/link`). Abrir las dos
+  identidades al ingresar no alcanza: quien ya tenía una sesión de antes
+  seguiría sin ver el otro panel, y cerrar sesión para descubrirlo no es algo
+  que nadie adivine. El puente pregunta por el CORREO de la sesión que ya hay
+  —token verificado en el servidor— y sólo emite la del mismo correo. Es el
+  simétrico de `/project-fair/portal/link` y respeta su misma regla: la sesión
+  que hubiera guardada sólo se retira si es de ESE correo. Se consulta una vez
+  por carga y sólo si falta.
+- **Un borrador no cuenta como inscripción** para el puente: sólo una enviada.
+- **Un panel que falla al cargar DICE por qué** (v4.712). `PortalSignIn`
+  descartaba el motivo y pintaba «Ingresa a tu panel» con el texto de siempre,
+  así que un 404 o un 500 se veía idéntico a «no hay sesión» y mandaba a
+  escribir otra vez unas credenciales correctas. Con sesión abierta y carga
+  fallida se muestra el error y NO se abre el formulario de ingreso.
 - **Los paneles siguen SEPARADOS y así se quedan.** Lo que se unifica es el
   ingreso, no los datos: cada identidad conserva su audiencia, su token y sus
   permisos, y el token de uno no abre el otro. Al agregar una identidad,

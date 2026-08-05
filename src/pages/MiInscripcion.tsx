@@ -264,7 +264,7 @@ const MiInscripcion = () => {
         const accept = (t: string) => { localStorage.setItem(ATTENDEE_TOKEN_KEY, t); emitSessionChange(); setToken(t); };
         return resetToken
             ? <AttendeeReset token={resetToken} onToken={accept} />
-            : <AttendeeSignIn notice={notice} />;
+            : <AttendeeSignIn notice={notice} hadSession={Boolean(token)} />;
     }
 
     const registrations = data.registrations || [];
@@ -573,9 +573,13 @@ const RegistrationDetail = ({ registration, loading, onBack }: {
 
 // ── Sin sesión ───────────────────────────────────────────────────────
 
-const AttendeeSignIn = ({ notice }: { notice: any }) => {
+const AttendeeSignIn = ({ notice, hadSession }: { notice: any; hadSession?: boolean }) => {
+    // Con sesión abierta y una carga fallida, el problema NO es el ingreso:
+    // decirlo evita mandar a escribir otra vez unas credenciales correctas.
+    const failed = Boolean(hadSession && notice?.kind === 'error');
     // Se abre solo al llegar: quien entra a /mi-inscripcion viene a entrar.
     useEffect(() => {
+        if (failed) return;
         openLoginModal({
             next: ATTENDEE_PATH,
             reason: notice?.text || 'Ingresa con el correo y la contraseña que creaste al inscribirte.',
@@ -594,7 +598,7 @@ const AttendeeSignIn = ({ notice }: { notice: any }) => {
                     </div>
                     <h1 className="text-xl font-bold text-slate-900">Consulta tu inscripción</h1>
                     <p className="mt-1.5 text-sm text-slate-500">
-                        Con el correo y la contraseña que creaste al inscribirte al evento.
+                        {failed ? notice.text : 'Con el correo y la contraseña que creaste al inscribirte al evento.'}
                     </p>
 
                     {notice?.text && (
