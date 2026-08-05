@@ -666,6 +666,48 @@ export const claimSession = async (req, res) => {
 };
 
 /**
+ * POST /portal/link — puente entre CUALQUIER sesión del sitio y la del evento.
+ *
+ * Es el simétrico de `/project-fair/portal/link`, y existe por lo mismo: un
+ * rotario que paga la postulación de su proyecto y además su asistencia al
+ * evento tiene las dos cosas con el MISMO correo. `resolveSession` abre las
+ * dos desde v4.711, pero sólo al ingresar: quien ya tenía la sesión del
+ * proyecto abierta de antes seguiría sin ver su panel del evento hasta volver
+ * a entrar. Esto lo resuelve sin pedirle nada.
+ *
+ * La identidad la da el token que trae el navegador, verificado en el
+ * SERVIDOR (firma + audiencia): sólo se emite la sesión del asistente para el
+ * MISMO correo que ya venía autenticado, nunca para otro.
+ */
+export const linkFromIdentity = async (req, res) => {
+    try {
+        await ensureEventRegistrationSchema();
+        const identity = await identityFromRequest(req).catch(() => null);
+        const email = String(identity?.email || '').trim().toLowerCase();
+        // El correo viaja también en la respuesta negativa: el navegador lo
+        // necesita para saber si la sesión de asistente que tenga guardada es
+        // de ESTA persona o de otra. Misma regla que v4.693.
+        if (!isEmail(email)) return res.json({ hasRegistration: false, email: null });
+
+        const account = await findAccountByEmail(email);
+        if (!account) return res.json({ hasRegistration: false, email });
+
+        // Sólo con una inscripción ENVIADA: un borrador no abre panel.
+        const { rows } = await db.query(
+            `SELECT 1 FROM "EventRegistration"
+              WHERE "accountId" = $1 AND "submittedAt" IS NOT NULL LIMIT 1`, [account.id]);
+        if (!rows.length) return res.json({ hasRegistration: false, email });
+
+        return res.json({ hasRegistration: true, ...(await issueAttendeeSession(account)) });
+    } catch (error) {
+        console.error('[event-attendee] linkFromIdentity:', error);
+        // Nunca rompe la pantalla que lo consulta: sin puente, la persona
+        // entra por el formulario de ingreso de siempre.
+        return res.json({ hasRegistration: false, email: null });
+    }
+};
+
+/**
  * Comprueba credenciales contra la identidad del asistente.
  * Mismo resultado para correo inexistente y contraseña incorrecta: no se
  * revela qué correos están registrados.
@@ -1064,6 +1106,7 @@ export default {
     describeAttendeeSession,
     issueAttendeeSession,
     claimSession,
+    linkFromIdentity,
     ensureAttendeeAccount,
     ensurePendingAccountFor,
     linkRegistrationToAccount,

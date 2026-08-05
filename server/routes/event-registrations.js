@@ -59,6 +59,9 @@ router.post('/portal/reset', json, attendee.resetPassword);
 // Entrada automática al volver de la pasarela o desde otro dispositivo: se
 // canjea la propiedad de la inscripción por una sesión, sin pedir la clave.
 router.post('/portal/claim', json, attendee.claimSession);
+// Puente desde otra sesión del sitio: quien ya entró como Gestor de Proyectos
+// descubre su panel del evento sin volver a escribir la contraseña.
+router.post('/portal/link', json, attendee.linkFromIdentity);
 router.post('/portal/verify', json, attendee.verifyEmail);
 router.get('/portal/me', attendeeAuth,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.VIEW_OWN_REGISTRATION), attendee.getPortalData);

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.711.0",
-  "cache_bust": "2026-08-05d (Un ingreso abre TODAS las identidades que coincidan: quien tiene proyecto y asistencia al evento ve los dos paneles en el menu del avatar, separados. Corregidos dos identificadores que dejaban el panel en blanco.)",
+  "version": "4.712.0",
+  "cache_bust": "2026-08-05e (El encabezado descubre el panel del evento a partir de la sesion que ya estaba abierta, sin volver a entrar. Y un panel que falla dice por que, en vez de aparentar que no hay sesion.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
