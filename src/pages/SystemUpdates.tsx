@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.712.0 | 2026-08-05 (El encabezado descubre el panel del evento sin volver a entrar)
-// Cache bust: 2026-08-05e
+// UI V4.713.0 | 2026-08-05 (El puente busca la inscripción por correo: una inscripción sin vincular también aparece)
+// Cache bust: 2026-08-05f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.713.0',
+        title: 'Una inscripción sin vincular también aparece en el menú \ud83d\udd0e',
+        description: 'El puente que descubre el panel del evento desde la sesión que ya está abierta preguntaba por la CUENTA: buscaba inscripciones atadas al identificador de cuenta de esa persona. El problema es que una inscripción anterior a que existieran las cuentas de asistente —o una cuyo vínculo no llegara a escribirse— tiene ese campo vacío, y entonces quedaba invisible para su propio dueño para siempre, por mucho que hubiera pagado. Ahora la búsqueda es por CORREO, que es el dato que de verdad identifica a la persona en los dos módulos, y cuando encuentra una inscripción enviada sin vincular la ata a su cuenta en ese momento: aparece en el menú y, de paso, queda arreglada para siempre. Si el correo todavía no tenía cuenta de asistente, se crea sin contraseña propia —se entra por esta misma vía o por «Olvidé mi contraseña»— y nunca se duplica: un correo, una cuenta. Un borrador sin enviar sigue sin contar, y sigue sin abrirse jamás la sesión de un correo distinto al de la sesión que ya se tiene.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'sesiones', 'asistente al evento', 'gestion de proyectos'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Una inscripción enviada sin vincular a su cuenta ya aparece en el menú, y queda atada al descubrirla.' },
+            { type: 'changed', text: 'El puente busca por correo, no por identificador de cuenta.' },
+        ]
+    },
     {
         version: '4.712.0',
         title: 'El otro panel aparece solo, sin volver a entrar \ud83c\udf09',

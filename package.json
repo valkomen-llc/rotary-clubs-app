@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.712.0",
-  "cache_bust": "2026-08-05e (El encabezado descubre el panel del evento a partir de la sesion que ya estaba abierta, sin volver a entrar. Y un panel que falla dice por que, en vez de aparentar que no hay sesion.)",
+  "version": "4.713.0",
+  "cache_bust": "2026-08-05f (El puente busca la inscripcion por CORREO, no por cuenta: una inscripcion enviada sin vincular tambien aparece, y queda atada a su cuenta.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

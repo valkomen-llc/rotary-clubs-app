@@ -689,14 +689,24 @@ export const linkFromIdentity = async (req, res) => {
         // de ESTA persona o de otra. Misma regla que v4.693.
         if (!isEmail(email)) return res.json({ hasRegistration: false, email: null });
 
-        const account = await findAccountByEmail(email);
-        if (!account) return res.json({ hasRegistration: false, email });
-
-        // Sólo con una inscripción ENVIADA: un borrador no abre panel.
+        // ¿Hay una inscripción ENVIADA con este correo? Se pregunta por el
+        // CORREO y no por la cuenta, a propósito: una inscripción anterior a
+        // que existieran las cuentas —o una cuyo vínculo no llegó a
+        // escribirse— tiene `accountId` en NULL y quedaría invisible para su
+        // dueño para siempre. Un borrador no cuenta.
         const { rows } = await db.query(
-            `SELECT 1 FROM "EventRegistration"
-              WHERE "accountId" = $1 AND "submittedAt" IS NOT NULL LIMIT 1`, [account.id]);
+            `SELECT id, "accountId" FROM "EventRegistration"
+              WHERE lower(email) = $1 AND "submittedAt" IS NOT NULL
+              ORDER BY "createdAt" DESC LIMIT 1`, [email]);
         if (!rows.length) return res.json({ hasRegistration: false, email });
+
+        // La cuenta es la del correo; si no existe todavía, se crea sin
+        // contraseña utilizable —se entra por esta misma vía o por «Olvidé mi
+        // contraseña»— y se le atan las inscripciones huérfanas de ese correo.
+        let account = await findAccountByEmail(email);
+        if (!account) account = await ensurePendingAccountFor({ email, firstName: identity?.name, lastName: null, phone: null });
+        if (!account) return res.json({ hasRegistration: false, email });
+        if (!rows[0].accountId) await attachOrphanRegistrations(account);
 
         return res.json({ hasRegistration: true, ...(await issueAttendeeSession(account)) });
     } catch (error) {

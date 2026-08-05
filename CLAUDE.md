@@ -2243,6 +2243,11 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
   simétrico de `/project-fair/portal/link` y respeta su misma regla: la sesión
   que hubiera guardada sólo se retira si es de ESE correo. Se consulta una vez
   por carga y sólo si falta.
+- **El puente busca por CORREO, no por `accountId`** (v4.713). Una inscripción
+  anterior a que existieran las cuentas —o una cuyo vínculo no llegara a
+  escribirse— tiene `accountId` en NULL y quedaba invisible para su propio
+  dueño para siempre. Al encontrarla se le ata la cuenta ahí mismo
+  (`attachOrphanRegistrations`), así que se arregla sola.
 - **Un borrador no cuenta como inscripción** para el puente: sólo una enviada.
 - **Un panel que falla al cargar DICE por qué** (v4.712). `PortalSignIn`
   descartaba el motivo y pintaba «Ingresa a tu panel» con el texto de siempre,
