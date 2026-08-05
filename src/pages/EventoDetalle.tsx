@@ -6,6 +6,8 @@ import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
 import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/EventRegistrationCta';
 import MediaGallery from '../components/MediaGallery';
+import EventVenueCard from '../components/EventVenueCard';
+import { normalizeVenue } from '../lib/eventVenue';
 import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import { useSEO } from '../hooks/useSEO';
@@ -171,8 +173,6 @@ const EventoDetalle = () => {
         return new Date(dateStr).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     };
 
-    const coverImage = event ? (event.image || typeImages[event.type] || defaultImage) : defaultImage;
-
     if (loading) {
         return (
             <div className="min-h-screen bg-white">
@@ -205,7 +205,6 @@ const EventoDetalle = () => {
         : [];
 
     const hasImages = event.images && event.images.length > 0;
-    const hasCover = !!(event.image || (event.images && event.images[0]));
     const coverImg = event.image || (event.images && event.images[0]) || null;
 
     return (
@@ -327,6 +326,15 @@ const EventoDetalle = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* La sede: foto, sitio web, contactos y mapa. Sale de
+                            `metadata.venue`, que se edita por evento desde el
+                            panel — no está escrita en el código, al contrario
+                            que el mapa de LATIR que hay debajo. */}
+                        <EventVenueCard
+                            venue={normalizeVenue((event as any)?.metadata?.venue)}
+                            fallbackName={event.location || ''}
+                        />
 
                         {/* Mapa de la sede de la Conferencia LATIR: la dirección está
                             escrita en el código, así que sigue siendo sólo de ese evento. */}

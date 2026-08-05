@@ -4,13 +4,14 @@ import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
     MapPin, Clock, Image, Image as ImageIcon, Loader2, X, Upload, Code, Eye, EyeOff,
     ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw,
-    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2, Sparkles,
-    CalendarDays, LayoutGrid
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2,
+    CalendarDays
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
 import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
+import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import { useAuth } from '../../hooks/useAuth';
 
 interface CalendarEvent {
@@ -48,7 +49,7 @@ export const slugify = (value: string) =>
         .slice(0, 120);
 
 /** Pestañas del editor de un evento. */
-type EventTab = 'info' | 'media' | 'html' | 'social' | 'metadata' | 'registro';
+type EventTab = 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro';
 
 const EVENT_TYPES = [
     { value: 'meeting', label: 'Reunión' },
@@ -1128,7 +1129,7 @@ const EventsManagement = () => {
                                                 {/* v4.603 — La pestaña del panel de inscripción estaba
                                                     reservada al evento de la Conferencia LATIR; ahora
                                                     cualquier evento de cualquier sitio puede tener el suyo. */}
-                                                {(['info', 'media', 'html', 'social', 'metadata', 'registro'] as const).map(tab => (
+                                                {(['info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as const).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
@@ -1143,6 +1144,7 @@ const EventsManagement = () => {
                                                             media: '🖼️ Multimedia',
                                                             html: '</> HTML',
                                                             social: '🚀 Social',
+                                                            sede: '🏨 Sede',
                                                             metadata: '🎟️ Panel de inscripción',
                                                             registro: '💳 Registro',
                                                         }[tab as string]}
@@ -1259,6 +1261,16 @@ const EventsManagement = () => {
                                                 )}
 
                                                 {/* ── Tab: Panel de inscripción (barra lateral del evento) ── */}
+                                                {getTab(event.id) === 'sede' && (
+                                                    <div className="p-6">
+                                                        <EventVenueEditor
+                                                            venue={event.metadata?.venue}
+                                                            onChange={venue => updateEventField(
+                                                                event.id, 'metadata', { ...event.metadata, venue })}
+                                                        />
+                                                    </div>
+                                                )}
+
                                                 {getTab(event.id) === 'metadata' && (
                                                     <div className="space-y-5">
                                                         <p className="text-sm text-gray-500">

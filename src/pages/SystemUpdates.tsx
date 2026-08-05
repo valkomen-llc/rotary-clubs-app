@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.716.0 | 2026-08-05 (Movimiento continuo y ritmo de fotogramas real)
-// Cache bust: 2026-08-05f
+// UI V4.717.0 | 2026-08-05 (La ficha del evento muestra la sede: foto, sitio web, contactos y mapa)
+// Cache bust: 2026-08-05j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.717.0',
+        title: 'La ficha del evento ya muestra la sede \ud83c\udfe8',
+        description: 'Debajo de la ubicación del evento aparece ahora la sede con cara y con nombre: una foto del lugar, su nombre y dirección, el enlace a su sitio web, las personas de contacto —con su cargo, su correo y sus teléfonos— y el mapa incrustado. El correo abre el programa de correo y los teléfonos se pueden marcar directamente desde el móvil, que es donde la mayoría va a mirar esto. Todo se edita por evento desde la nueva pestaña «Sede» del panel, sin tocar código: hasta ahora el único mapa del sitio era el de la Conferencia LATIR, con la dirección escrita dentro del programa y detrás de una condición por identificador de evento, así que servía para ese evento y para ninguno más. El mapa se pega tal como Google lo entrega —el código completo que da «Compartir → Insertar un mapa»— y el sistema se queda sólo con la dirección; también se acepta pegar la dirección suelta. Sólo se admiten mapas de Google: es un recuadro incrustado en una página pública, y aceptar cualquier dirección convertiría un campo del panel en un hueco por donde meter cualquier cosa en el sitio. El sitio web se puede escribir sin «https://» y se completa solo. La casilla de la foto ofrece las dos vías de siempre, subir un archivo o elegir uno de la Biblioteca Multimedia. Y cada pieza se dibuja sólo si está: una sede con foto y sin contactos no deja un hueco donde iban los contactos, y un evento sin sede configurada se ve exactamente como antes.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'ficha publica', 'sede', 'panel'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'La ficha del evento muestra la sede bajo la ubicación: foto, nombre, dirección, sitio web, contactos y mapa.' },
+            { type: 'added', text: 'Pestaña «Sede» en el panel del evento, con la foto subible o tomada de la Biblioteca Multimedia.' },
+            { type: 'added', text: 'El mapa se pega como lo da Google —el código completo o la dirección— y sólo se admiten mapas de Google.' },
+        ]
+    },
     {
         version: '4.716.0',
         title: 'Las escenas dejan de verse congeladas y a saltos 🎞️',
