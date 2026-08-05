@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.715
+## Creador de Reels IA — v4.716
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -198,7 +198,7 @@ en `config` sin que el servidor los leyera.
 | `src/components/admin/content-studio/SceneBrandCheck.tsx` | Fidelidad de identidad visual por escena |
 | `src/lib/reelSpec.ts` | Espejo mínimo: tipos y cálculo de la línea de tiempo |
 
-Pruebas: `npm run test:reels:people` (48 casos). **No necesitan base, credenciales
+Pruebas: `npm run test:reels:people` (58 casos). **No necesitan base, credenciales
 ni red**: prueban el CRITERIO —`buildPeopleReport`, `resolveSceneIntensity` y el
 presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 `seoRules.js` vive aparte de `seoAudit.js`.
@@ -676,6 +676,29 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
   La tela se mueve con el cuerpo y cada acción pedida es una ocasión más de que
   el motor redibuje el estampado. Es la jerarquía declarada: la fidelidad de la
   marca manda sobre la intensidad de la animación, nunca al revés.
+- **La CONTINUIDAD, no la amplitud, es lo que separa un vídeo de una secuencia
+  de poses** (v4.716). Los clips se veían «congelados y por fotogramas», y las
+  dos cosas eran el mismo defecto: un movimiento pequeño pero INTERMITENTE deja
+  una imagen quieta en la que los pocos cambios aparecen como saltos. Las
+  cláusulas de `MOTION_INTENSITY` decían «now and then one of them blinks»;
+  ahora afirman que algo está siempre en marcha y que cada gesto enlaza con el
+  siguiente. **Al tocar estas cláusulas, comprobar que sigan pidiendo
+  continuidad** — subir el número de acciones no arregla la intermitencia, y
+  además reintroduce el efecto acelerado de v4.704.
+- **La OCLUSIÓN acota a «Natural», nunca a «sutil»** (corregido en v4.716).
+  Bajar a «sutil` por una cara tapada fue una sobrecorrección de v4.705: en una
+  fotografía de grupo institucional SIEMPRE hay alguien parcialmente detrás de
+  otro, así que la condición se cumplía en la práctica siempre y las tres
+  escenas salían en el nivel más quieto. Era además el lever equivocado — lo que
+  el motor no debe completar se pide con la cláusula de oclusión del prompt, que
+  es una instrucción concreta y en positivo, no apagando el movimiento entero.
+  `sutil` queda para la multitud real (`dense`), donde dos personas sí pueden
+  fundirse en una.
+- **El montaje adopta los fps REALES de los clips** (`resolveEditFps`). Forzar
+  30 sobre clips de 24 no interpola: DUPLICA fotogramas, y en patrón irregular.
+  Sobre contenido con poco movimiento eso se percibe como tirón. Si los tres
+  coinciden se usa su ritmo; si difieren se toma el mayor —subir duplica, pero
+  bajar TIRA fotogramas y eso se ve siempre—; sin medida no se adivina.
 - **`ScenePeopleCheck` es un componente compartido**, no una copia en cada
   pantalla: lo usan el Creador y la Biblioteca, y duplicarlo los dejaría
   separarse en silencio.

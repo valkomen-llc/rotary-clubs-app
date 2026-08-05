@@ -23,7 +23,8 @@
  */
 
 import { buildPeopleReport, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
-import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS } from '../server/lib/reelSpec.js';
+import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS, MOTION_INTENSITY } from '../server/lib/reelSpec.js';
+import { resolveEditFps } from '../server/lib/reelRenderProviders.js';
 
 let pass = 0, fail = 0;
 const check = (name, cond, extra = '') => {
@@ -102,8 +103,12 @@ const occluded = { hasPeople: true, personCount: 4, occludedPeople: true };
 const group = { hasPeople: true, personCount: 3, peopleDensity: 'sparse' };
 const solo = { hasPeople: true, personCount: 1, peopleDensity: 'sparse' };
 
-check('caras tapadas → «sutil»',
-    resolveSceneIntensity({ analysis: occluded, requested: 'expresivo' }).intensity === 'sutil');
+// La oclusión acota a «Natural», no a «sutil» (cambiado en v4.716: en una foto
+// de grupo institucional siempre hay alguien tapado, así que bajar a «sutil»
+// congelaba todas las escenas). Lo que el motor no debe completar se pide con
+// la cláusula de oclusión del prompt, que es directa y en positivo.
+check('caras tapadas → «natural», no «sutil»',
+    resolveSceneIntensity({ analysis: occluded, requested: 'expresivo' }).intensity === 'natural');
 check('grupo denso → «sutil»',
     resolveSceneIntensity({ analysis: dense, requested: 'expresivo' }).intensity === 'sutil');
 check('tres personas → como mucho «natural»',
@@ -190,8 +195,10 @@ check('marca SIN personas (pendón) no acota',
 check('personas sin marca no acota por marca',
     resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2 }, requested: 'expresivo' }).intensity === 'expresivo');
 // Las condiciones se combinan quedándose con la MÁS restrictiva.
+// Marca y oclusión acotan las dos a «Natural»: la más estricta gana, y ninguna
+// de las dos justifica por sí sola el nivel más quieto.
 check('marca + caras tapadas gana la más estricta',
-    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true, occludedPeople: true }, requested: 'expresivo' }).intensity === 'sutil');
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true, occludedPeople: true }, requested: 'expresivo' }).intensity === 'natural');
 check('acotar por marca dice por qué',
     /logotipo/i.test(resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 2, hasBrand: true }, requested: 'expresivo' }).reason || ''));
 
@@ -200,6 +207,44 @@ check('acotar por marca dice por qué',
 // decide el modelo, y estos sólo deciden cuando no lo hay.
 check('los umbrales de marca están declarados',
     typeof BRAND_MIN_STRUCTURE === 'number' && typeof BRAND_MIN_TEMPORAL === 'number');
+
+
+console.log('\n── Naturalidad: continuidad y ritmo de fotogramas ──');
+
+// La oclusión ya NO baja a «sutil» (v4.716). En una foto de grupo institucional
+// casi siempre hay alguien parcialmente detrás de otro, así que esa condición se
+// cumplía SIEMPRE y todas las escenas salían en el nivel más quieto: es la causa
+// de que los clips se vieran congelados.
+check('alguien tapado ya no fuerza «sutil»',
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 5, occludedPeople: true }, requested: 'natural' }).intensity === 'natural');
+// «sutil» queda para la multitud de verdad, donde dos personas pueden fundirse.
+check('la multitud apretada sí baja a «sutil»',
+    resolveSceneIntensity({ analysis: { hasPeople: true, personCount: 13, peopleDensity: 'dense' }, requested: 'natural' }).intensity === 'sutil');
+
+// Lo que separa un vídeo de una secuencia de poses es la CONTINUIDAD, no la
+// amplitud: un movimiento pequeño pero a ratos se lee como fotogramas sueltos.
+for (const [id, level] of Object.entries(MOTION_INTENSITY)) {
+    check(`«${id}» pide movimiento continuo`,
+        /never stops|without pause|overlap|flows into the next/i.test(level.clause), level.clause.slice(0, 60));
+}
+const anyPrompt = buildScenePrompt({
+    style: 'documental', durationSec: 5, intensity: 'natural',
+    analysis: { hasPeople: true, personCount: 3 }
+});
+check('el prompt afirma continuidad de movimiento',
+    /continuous film|flows into the next/i.test(anyPrompt));
+
+// Forzar 30 fps sobre clips de 24 DUPLICA fotogramas en patrón irregular, y eso
+// se percibe como saltos. Si los clips coinciden, se adopta su ritmo.
+const withFps = (fps) => ({ quality: { measured: { fps } } });
+check('tres clips a 24 fps → el montaje va a 24',
+    resolveEditFps([withFps(24), withFps(24), withFps(24)]) === 24);
+check('ritmos distintos → se toma el mayor, nunca se tiran fotogramas',
+    resolveEditFps([withFps(24), withFps(30), withFps(25)]) === 30);
+check('sin medida no se adivina: queda el valor por defecto',
+    resolveEditFps([{}, {}, {}]) === 30);
+check('un fps imposible se descarta',
+    resolveEditFps([withFps(0.5), withFps(0.5), withFps(0.5)]) === 30);
 
 console.log(`\n${pass} correctas, ${fail} fallidas\n`);
 process.exit(fail ? 1 : 0);
