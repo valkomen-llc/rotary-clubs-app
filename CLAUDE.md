@@ -2340,6 +2340,13 @@ panel (`EventCtaManager.tsx`).
   del módulo; el alto y los márgenes los pone cada sitio, porque el botón del
   encabezado se ajusta a su texto y el de la ficha ocupa el ancho de la columna.
   Meter la geometría ahí obligaría a uno de los dos a pelearse con lo que hereda.
+- **Dentro de la ficha, los dos botones MIDEN lo mismo** (v4.719.1: `text-[15px]
+  py-3` para los dos, 46,5 px de alto medidos en el navegador). El secundario
+  venía más bajo y con letra más chica, y esa diferencia no dice nada: los dos
+  llevan a un formulario de inscripción y el CADRE es el registro de un rol del
+  propio evento, no un trámite menor. Lo que distingue al principal es el COLOR,
+  que ya basta. Esto es geometría DE LA FICHA y por eso vive ahí, no en
+  `ctaStyles.ts`.
 - **El motivo es que se separaban.** Hasta v4.718 «Registro CADRE» era un
   contorno azul marino escrito a mano en la ficha, y «Postular Proyecto» una
   píldora azul claro escrita a mano en el encabezado: la misma acción —entrar a
