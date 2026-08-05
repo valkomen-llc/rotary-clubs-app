@@ -14,7 +14,7 @@ const out = await build({
     bundle: true, write: false, format: 'esm', platform: 'neutral',
 });
 const mod = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
-const { normalizeVenue, normalizeMapUrl, normalizeWebsite, websiteLabel, venueHasContent, telHref } = mod;
+const { normalizeVenue, draftVenue, normalizeMapUrl, normalizeWebsite, websiteLabel, venueHasContent, telHref } = mod;
 
 let ok = 0; const malos = [];
 const check = (n, c, e = '') => {
@@ -82,6 +82,25 @@ check('y el sitio web también', venue.website === 'https://www.sonestavalledupa
 const muchos = normalizeVenue({ contacts: Array.from({ length: 12 }, (_, i) => ({ name: `C${i}` })) });
 check('no se guardan más de seis contactos', muchos.contacts.length === 6, String(muchos.contacts.length));
 
+grupo('El BORRADOR no es el contrato de lectura');
+// Es el fallo de v4.717: normalizar el borrador descartaba el contacto recién
+// agregado en el mismo render en que se creaba, y era imposible agregarlo.
+const conVacio = { contacts: [{ name: '', role: '', email: '', phone: '', mobile: '' }] };
+check('al leer, un contacto vacío se descarta',
+    normalizeVenue(conVacio).contacts.length === 0);
+check('pero al EDITAR se conserva: es la fila que se acaba de agregar',
+    draftVenue(conVacio).contacts.length === 1);
+check('el borrador no completa el esquema del sitio web',
+    draftVenue({ website: 'w' }).website === 'w', draftVenue({ website: 'w' }).website);
+check('al leer sí lo completa', normalizeVenue({ website: 'w' }).website === 'https://w/');
+check('el borrador no toca el mapa a medio pegar',
+    draftVenue({ mapUrl: '<iframe src=' }).mapUrl === '<iframe src=');
+check('el borrador tampoco recorta lo que se escribe',
+    draftVenue({ name: '  Sonesta ' }).name === '  Sonesta ');
+check('y sigue topando en seis contactos',
+    draftVenue({ contacts: Array.from({ length: 9 }, () => ({})) }).contacts.length === 6);
+check('un borrador sin datos no rompe', draftVenue(undefined).contacts.length === 0);
+
 grupo('Cuándo se dibuja la sede');
 check('sin nada, no se dibuja', venueHasContent(normalizeVenue({})) === false);
 check('sin nada tampoco con datos vacíos',
@@ -107,6 +126,11 @@ check('un contacts que no es lista no rompe',
 const card = readFileSync('src/components/EventVenueCard.tsx', 'utf8');
 check('la ficha no se dibuja si la sede está vacía', card.includes('venueHasContent'));
 check('y el mapa va con referrerPolicy', card.includes('strict-origin-when-cross-origin'));
+
+// El editor NO puede normalizar el borrador: es lo que rompió agregar contactos.
+const editor = readFileSync('src/components/admin/events/EventVenueEditor.tsx', 'utf8');
+check('el editor trabaja sobre el borrador', editor.includes('draftVenue(raw)'));
+check('y NO normaliza en cada render', !editor.includes('normalizeVenue(raw)'));
 
 console.log(`\n${ok}/${ok + malos.length} comprobaciones OK`);
 if (malos.length) { console.log(malos.map(m => `  - ${m}`).join('\n')); process.exit(1); }

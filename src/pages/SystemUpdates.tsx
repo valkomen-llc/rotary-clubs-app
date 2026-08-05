@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.717.0 | 2026-08-05 (La ficha del evento muestra la sede: foto, sitio web, contactos y mapa)
-// Cache bust: 2026-08-05j
+// UI V4.718.0 | 2026-08-05 (Ya se pueden agregar contactos a la sede)
+// Cache bust: 2026-08-05k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.718.0',
+        title: 'Ya se pueden agregar los contactos de la sede \u270d\ufe0f',
+        description: 'El botón «Agregar contacto» de la pestaña Sede no hacía nada visible: se pulsaba y no aparecía ninguna fila donde escribir. La fila sí se creaba —el fallo estaba un paso después—. El módulo tiene una función que limpia la sede antes de publicarla: descarta los contactos que quedaron vacíos y le completa el «https://» al sitio web, que es exactamente lo que hay que hacer al mostrarla. El problema es que esa misma limpieza se estaba aplicando también MIENTRAS se editaba, y un contacto recién agregado nace vacío por definición: se creaba y se descartaba en el mismo instante, así que era imposible llegar a escribir en él. El mismo defecto afectaba al sitio web, que al teclearse letra a letra se convertía en «https://w/» con la primera pulsación. Ahora se distingue lo que se está escribiendo de lo que se publica: mientras se edita no se descarta ni se completa nada, y la limpieza ocurre al leer la sede, que es donde corresponde. El sitio web se completa al salir de la casilla, igual que ya hacía el mapa. Se agregó además una prueba que maneja el editor de verdad en un navegador —agregar, escribir, agregar un segundo, quitar uno, teclear el sitio web y pegar el mapa—, porque este fallo existía justamente por haber probado sólo cómo se ve la sede en la página pública y no cómo se carga desde el panel.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'sede', 'panel'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El botón «Agregar contacto» de la sede ya crea la fila y deja escribir en ella.' },
+            { type: 'fixed', text: 'El sitio web de la sede ya no se transforma mientras se escribe; se completa al salir de la casilla.' },
+            { type: 'added', text: 'Prueba que maneja el editor de la sede en un navegador real.' },
+        ]
+    },
     {
         version: '4.717.0',
         title: 'La ficha del evento ya muestra la sede \ud83c\udfe8',

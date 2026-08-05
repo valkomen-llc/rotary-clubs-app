@@ -15,7 +15,7 @@ import { Building2, Globe, Loader2, MapPin, Plus, Trash2, Users } from 'lucide-r
 import ImageSourceOverlay from '../ImageSourceOverlay';
 import MediaPicker from '../content-studio/MediaPicker';
 import {
-    emptyContact, normalizeMapUrl, normalizeVenue,
+    draftVenue, emptyContact, normalizeMapUrl, normalizeWebsite,
     type EventVenue, type VenueContact,
 } from '../../../lib/eventVenue';
 
@@ -30,7 +30,10 @@ interface Props {
 }
 
 const EventVenueEditor: React.FC<Props> = ({ venue: raw, onChange }) => {
-    const venue = normalizeVenue(raw);
+    // El BORRADOR, no la versión normalizada: normalizar aquí descartaba el
+    // contacto recién agregado —nace vacío— en el mismo render, y destrozaba
+    // el sitio web mientras se escribía.
+    const venue = draftVenue(raw);
     // Lo que el administrador tiene ESCRITO en la casilla del mapa, que puede
     // ser el `<iframe>` entero recién pegado de Google. Se conserva tal cual
     // mientras escribe y sólo se normaliza al guardar: normalizar en cada
@@ -127,8 +130,12 @@ const EventVenueEditor: React.FC<Props> = ({ venue: raw, onChange }) => {
                     <label className={label} htmlFor="venue-web">
                         <Globe className="mr-1 inline h-3 w-3" /> Sitio web
                     </label>
+                    {/* Se completa el esquema al SALIR de la casilla: hacerlo
+                        en cada pulsación convertía la primera letra en
+                        `https://w/`. */}
                     <input id="venue-web" className={input} value={venue.website}
                         onChange={e => set({ website: e.target.value })}
+                        onBlur={e => set({ website: normalizeWebsite(e.target.value) })}
                         placeholder="https://www.sonestavalledupar.com/" />
                 </div>
             </div>

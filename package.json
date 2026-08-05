@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.717.0",
-  "cache_bust": "2026-08-05j (La ficha del evento muestra la SEDE bajo la ubicacion: foto, sitio web, contactos y mapa, editables por evento desde la pestana Sede del panel.)",
+  "version": "4.718.0",
+  "cache_bust": "2026-08-05k (Ya se pueden agregar contactos a la sede: el normalizador de LECTURA corria tambien sobre el borrador y descartaba la fila recien creada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
