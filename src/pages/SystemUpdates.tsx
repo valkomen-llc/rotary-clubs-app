@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.714.0 | 2026-08-05 (Expansión de fotos apaisadas y rechazo visible)
+// UI V4.715.0 | 2026-08-05 (Fidelidad de identidad visual: los logotipos se miran de cerca)
 // Cache bust: 2026-08-05f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.715.0',
+        title: 'Los logotipos de Rotary dejan de deformarse sin que nadie se entere 🛡️',
+        description: 'En los Reels aparecían estampados de camiseta con las letras alteradas y el engranaje deshecho, y la escena pasaba el control con la marca marcada como intacta. La causa no era el criterio del control sino su resolución: la comparación que se le enseñaba al sistema reduce la escena completa a 640 píxeles de alto, así que un estampado de espalda llegaba con las letras a nueve píxeles. A ese tamaño no se lee. Ahora, cuando el análisis detecta un logotipo, guarda dónde está exactamente y el control recorta esa región —en la fotografía y en cada fotograma del clip— y la compara ampliada, no reducida. Medido sobre un logotipo destrozado: la comparación de escena completa apenas baja de 1,000 a 0,988, y el recorte de la región cae a 0,717. Una escena con la marca alterada vuelve a generarse sola, que es lo que ya hacía el sistema y no llegaba a dispararse nunca.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'reels', 'ia', 'fix'],
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Los logotipos deformados pasaban el control: se comparaban a un tamaño en el que no se leen.' },
+            { type: 'added', text: 'Bloque «Fidelidad de identidad visual» por escena, con el recorte ampliado que se comparó.' },
+            { type: 'added', text: 'Se comprueba también que el logotipo no cambie entre fotogramas, que es el efecto de derretimiento.' },
+            { type: 'improved', text: 'Con logotipos sobre personas, el movimiento se limita solo: la marca manda sobre la animación.' }
+        ],
+        details: [
+            'El análisis ahora guarda la ubicación de cada logotipo, emblema o texto institucional, incluidos los estampados de espalda y las credenciales.',
+            'Se comprueba el diseño, la tipografía, los colores, la geometría del símbolo y el texto, y se muestra qué decía el original frente a qué dice el clip.',
+            'El recorte se toma en coordenadas fijas mientras la persona se mueve, así que las mediciones automáticas no deciden solas cuando hay modelo de visión disponible: hacerlo mandaría a regenerar escenas correctas.',
+            'No se pega el logotipo original sobre el vídeo. Esa técnica está descartada en la plataforma desde hace tiempo porque el resultado se ve como un montaje pegado encima, y además exigiría decodificar el vídeo entero. El sistema mide y manda a regenerar; no retoca el archivo.'
+        ]
+    },
     {
         version: '4.714.0',
         title: 'Las fotografías apaisadas se expanden en vez de recortarse 🖼️',

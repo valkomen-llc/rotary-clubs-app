@@ -29,6 +29,7 @@ import {
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
 import ScenePeopleCheck from './ScenePeopleCheck';
+import SceneBrandCheck from './SceneBrandCheck';
 import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
 import {
@@ -1813,6 +1814,11 @@ const SceneRow: React.FC<{
                                 persona inventada puede estar perfectamente
                                 dibujada, así que la nota general no la ve. */}
                             <ScenePeopleCheck people={scene.fidelity.people} />
+                            {/* Los logotipos, mirados de cerca. El control general
+                                reduce la escena tres veces y a esa escala un estampado
+                                de camiseta es ilegible — por eso su veredicto sobre la
+                                marca no servía. */}
+                            <SceneBrandCheck brand={scene.fidelity.brand} />
                             {/* Por qué esta escena se anima menos que las otras.
                                 Sin decirlo, una escena más quieta se lee como
                                 un fallo del motor. */}

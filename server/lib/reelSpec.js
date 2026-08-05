@@ -821,6 +821,15 @@ export const resolveSceneIntensity = ({
     const dense = analysis?.peopleDensity === 'dense' || (count != null && count >= 6);
     const occluded = analysis?.occludedPeople === true;
 
+    // Una marca ESTAMPADA SOBRE UNA PERSONA es el caso de riesgo: la tela se
+    // mueve con el cuerpo y cada movimiento pedido es una ocasión más de que el
+    // motor redibuje el logotipo en vez de plegarlo. Un logotipo en un pendón
+    // quieto no corre ese riesgo, por eso la condición es marca Y personas.
+    //
+    // Es la jerarquía declarada: la fidelidad de la marca manda sobre la
+    // intensidad de la animación, nunca al revés.
+    const brandOnPeople = Boolean(analysis?.hasBrand) && Boolean(analysis?.hasPeople);
+
     let cap = null;
     let reason = null;
     if (occluded) {
@@ -832,6 +841,9 @@ export const resolveSceneIntensity = ({
     } else if (count != null && count >= 3) {
         cap = 'natural';
         reason = 'Hay un grupo de personas: la intensidad se limita a «Natural» para conservar cada rostro.';
+    } else if (brandOnPeople) {
+        cap = 'natural';
+        reason = 'Hay logotipos estampados sobre las personas: la intensidad se limita a «Natural» para que la tela se pliegue sin redibujar la marca.';
     }
 
     if (!cap) return { intensity: asked, requested: asked, strictPeople: true, reason: null };

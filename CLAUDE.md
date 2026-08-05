@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.714
+## Creador de Reels IA — v4.715
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -195,9 +195,10 @@ en `config` sin que el servidor los leyera.
 | `src/components/admin/content-studio/VideoCreator.tsx` | Preparación, progreso y previsualización |
 | `src/components/admin/content-studio/ReelLibrary.tsx` | La Biblioteca de Reels: listado, ficha, edición y duplicado |
 | `src/components/admin/content-studio/ReelUsagePanel.tsx` | Panel de auditoría del consumo |
+| `src/components/admin/content-studio/SceneBrandCheck.tsx` | Fidelidad de identidad visual por escena |
 | `src/lib/reelSpec.ts` | Espejo mínimo: tipos y cálculo de la línea de tiempo |
 
-Pruebas: `npm run test:reels:people` (42 casos). **No necesitan base, credenciales
+Pruebas: `npm run test:reels:people` (48 casos). **No necesitan base, credenciales
 ni red**: prueban el CRITERIO —`buildPeopleReport`, `resolveSceneIntensity` y el
 presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 `seoRules.js` vive aparte de `seoAudit.js`.
@@ -638,6 +639,43 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
   mostraba como porcentaje (`score * 100`) y decía «800 %». Es la misma clase de
   error que el `score: 1` del 2.5D en v4.676: la escala está escrita en
   `minFidelityScore: 7`, no hay que deducirla.
+- **Un logotipo no se puede juzgar en la comparación de escena completa**
+  (v4.715). `buildComparisonImage` reduce a 640 px de alto: un fotograma de
+  1080×1920 se achica 3×, y el estampado de la espalda de una camiseta —unos
+  230×140 px— llega con 77×47 px y las letras a **9 px**. A ese tamaño no las lee
+  ningún modelo, y encima se recomprime a JPEG. Por eso `brandAltered` contestaba
+  `false` con el logotipo visiblemente destrozado: **no era un error de criterio
+  del modelo, es que no se le estaba enseñando el logotipo**, y la regeneración
+  por marca alterada —que ya existía— no llegaba a dispararse nunca.
+- **La región de la marca se recorta y se compara a RESOLUCIÓN NATIVA**
+  (`checkBrandFidelity`). Medido con un logotipo destrozado: la escena completa
+  baja de 1,000 a **0,988** —invisible, ningún umbral lo distingue del ruido— y
+  el recorte de la región cae a **0,717**. La señal se amplifica ~23× porque
+  sobre la escena el logotipo es el 1 % de los píxeles y recortado es el 100 %.
+  **Al añadir una comprobación de detalle, recortar primero.**
+- **El análisis publica DÓNDE está cada marca** (`brandRegions`, normalizado
+  0-1). Sin coordenadas no hay recorte posible, y sin recorte no hay
+  comprobación. Salen de la misma llamada de visión que ya mira la foto: no
+  cuesta una llamada más.
+- **El recorte se toma en coordenadas FIJAS y la persona SE MUEVE.** Es la
+  limitación de este control y decide quién manda: la huella perceptual del
+  recorte no distingue «el logotipo se movió» de «el logotipo cambió», así que
+  **con modelo de visión decide el modelo** y las señales deterministas sólo
+  deciden solas cuando no lo hay. Hacerlas decidir siempre mandaría a regenerar
+  escenas correctas — el error que ya costó dos rondas de créditos en v4.675.
+- **Se comprueba también la consistencia TEMPORAL del logotipo**, comparando el
+  recorte entre fotogramas del propio clip. Un logotipo que se redibuja de un
+  fotograma a otro es el «derretimiento», y se detecta sin el original.
+- **NO se reproyecta el logotipo original sobre los fotogramas.** Es composite, y
+  la regla #1 del sitio lo prohíbe —el equipo lo rechazó dos veces con las
+  palabras «se ve overlay / montaje»—. Además exigiría decodificar el video,
+  seguir la tela con flujo óptico y volver a codificar, dentro de una función de
+  120 s y 250 MB que ya empaqueta FFmpeg. Este control **mide y manda a
+  regenerar; no retoca el archivo**. No reintroducirlo como idea nueva.
+- **Una marca sobre una PERSONA acota la intensidad; sobre un pendón quieto no.**
+  La tela se mueve con el cuerpo y cada acción pedida es una ocasión más de que
+  el motor redibuje el estampado. Es la jerarquía declarada: la fidelidad de la
+  marca manda sobre la intensidad de la animación, nunca al revés.
 - **`ScenePeopleCheck` es un componente compartido**, no una copia en cada
   pantalla: lo usan el Creador y la Biblioteca, y duplicarlo los dejaría
   separarse en silencio.

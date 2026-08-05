@@ -28,6 +28,7 @@ import type { Reel } from '../../../lib/reelSpec';
 import { isTerminal, formatEta } from '../../../lib/reelSpec';
 import ReelUsagePanel from './ReelUsagePanel';
 import ScenePeopleCheck from './ScenePeopleCheck';
+import SceneBrandCheck from './SceneBrandCheck';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = (): Record<string, string> => ({
@@ -375,6 +376,7 @@ const ReelDetail: React.FC<{
                                             </div>
                                         )}
                                         <ScenePeopleCheck people={sc.fidelity?.people} />
+                                        <SceneBrandCheck brand={sc.fidelity?.brand} />
                                         {sc.sourceImageUrl && (
                                             <a href={sc.sourceImageUrl} target="_blank" rel="noreferrer"
                                                className="text-[10px] font-bold text-indigo-600 hover:underline block">
