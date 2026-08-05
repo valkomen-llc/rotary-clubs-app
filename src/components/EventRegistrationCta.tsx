@@ -130,17 +130,22 @@ const Button = ({ button, eventRef, variant }: {
     eventRef: string;
     variant: 'primary' | 'secondary';
 }) => {
-    const base = 'w-full block text-center rounded-full font-bold transition-colors';
     // La GEOMETRÍA es de la ficha —el botón ocupa el ancho de la columna—, pero
     // los COLORES del secundario salen de `ctaStyles.ts`, que es de donde los
     // toma «Postular Proyecto» en el encabezado (v4.719). Es la misma acción
     // vista desde otro sitio y tiene que verse igual; hasta v4.718 era un
     // contorno azul marino escrito a mano aquí.
-    const shape = variant === 'primary' ? 'text-[15px] py-3' : 'text-sm py-2.5';
+    //
+    // Los DOS botones tienen el mismo alto y la misma letra (v4.719.1). El
+    // secundario venía más bajo y con letra más chica, y esa diferencia no dice
+    // nada: los dos llevan a un formulario de inscripción y ninguno es un
+    // trámite menor que el otro —el CADRE es el registro de un rol del propio
+    // evento—. Lo que distingue al principal es el COLOR, que ya basta.
+    const base = 'w-full block text-center rounded-full font-bold transition-colors text-[15px] py-3';
     const skinOf = (interactive: boolean) => (variant === 'primary'
         ? `bg-[#D57D2C] text-white${interactive ? ' hover:bg-[#c46f23]' : ''}`
         : ctaSkin(CTA_SOFT, interactive));
-    const style = (interactive: boolean) => `${base} ${shape} ${skinOf(interactive)}`;
+    const style = (interactive: boolean) => `${base} ${skinOf(interactive)}`;
 
     // Categoría cerrada o agotada, pero con mensaje del administrador: se
     // muestra apagada y explicada, nunca como un botón que no lleva a ningún

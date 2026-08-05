@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.719.0 | 2026-08-05 (El botón de Registro CADRE, igual que Postular Proyecto)
-// Cache bust: 2026-08-05l
+// UI V4.719.1 | 2026-08-05 (Los dos botones de la ficha del evento miden lo mismo)
+// Cache bust: 2026-08-05m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.719.1',
+        title: 'Los dos botones de inscripción miden lo mismo 📏',
+        description: 'En la ficha del evento, «Registro CADRE» quedaba visiblemente más bajo que «Registro Rotarios Nacionales» y con la letra un punto más chica. Esa diferencia de tamaño no dice nada útil: los dos botones llevan a un formulario de inscripción y el registro CADRE es el de un rol del propio evento, no un trámite menor. Ahora los dos tienen el mismo alto y la misma letra de 15 px, y lo que distingue al principal es el color, que ya basta para saber cuál es cuál. Medido en un navegador: 46,5 px de alto los dos.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'ficha publica', 'botones'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: '«Registro CADRE» tiene el mismo alto y la misma letra (15 px) que el botón principal.' },
+        ]
+    },
     {
         version: '4.719.0',
         title: 'El botón de Registro CADRE ya se ve como los demás 🔵',

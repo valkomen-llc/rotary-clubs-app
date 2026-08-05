@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.719.0",
-  "cache_bust": "2026-08-05l (El boton Registro CADRE toma los mismos colores que Postular Proyecto; los dos salen del mismo modulo.)",
+  "version": "4.719.1",
+  "cache_bust": "2026-08-05m (Los dos botones de inscripcion de la ficha del evento miden lo mismo: 15px y mismo alto.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
