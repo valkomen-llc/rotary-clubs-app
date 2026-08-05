@@ -375,34 +375,38 @@ const Navbar = () => {
 
       const target = afterLogin || data.redirect || '/';
 
-      if (data.realm === 'portal') {
-        // Gestor de Proyectos: identidad del módulo, token en su propia llave.
-        localStorage.setItem(PORTAL_TOKEN_KEY, data.token);
-        setJustLinked(true);
-        emitLoginSuccess({ realm: 'portal' });
-        closeLoginModal();
-        navigate(target);
-        return;
+      // TODAS las identidades que abren esas credenciales (v4.711). Un mismo
+      // rotario puede tener proyecto Y asistencia al evento: se guardan las dos
+      // sesiones, cada una en su llave, y el encabezado ofrece los dos paneles.
+      // `sessions` es aditivo — un servidor anterior no lo manda y entonces se
+      // usa la identidad de primer nivel, que es lo que había.
+      const abiertas: any[] = Array.isArray(data.sessions) && data.sessions.length
+        ? data.sessions
+        : [data];
+
+      let entroEnPlataforma = false;
+      for (const s of abiertas) {
+        if (s.realm === 'portal') {
+          localStorage.setItem(PORTAL_TOKEN_KEY, s.token);
+          setJustLinked(true);
+        } else if (s.realm === 'attendee') {
+          localStorage.setItem(ATTENDEE_TOKEN_KEY, s.token);
+        } else {
+          login(s.token, s.user);
+          entroEnPlataforma = true;
+        }
+        emitLoginSuccess({ realm: s.realm });
       }
 
-      if (data.realm === 'attendee') {
-        // Asistente al Evento: su propia identidad y su propia llave. No se
-        // toca la sesión de la plataforma ni la del panel del club.
-        localStorage.setItem(ATTENDEE_TOKEN_KEY, data.token);
-        emitLoginSuccess({ realm: 'attendee' });
-        closeLoginModal();
-        navigate(target);
-        return;
-      }
-
-      login(data.token, data.user);
-      emitLoginSuccess({ realm: 'platform' });
       closeLoginModal();
-      // Un administrador del sitio puede además haber postulado un proyecto.
-      // Se guarda su acceso al panel del club para ofrecérselo en el menú, sin
-      // sacarlo de su panel de control.
-      void tryProjectFairLogin().then(setJustLinked);
-      if (data.warning) { navigate('/'); return; }
+
+      if (entroEnPlataforma) {
+        // Un administrador del sitio puede además haber postulado un proyecto
+        // con OTRAS credenciales. Se consulta por su correo, sin sacarlo de su
+        // panel de control.
+        void tryProjectFairLogin().then(ok => setJustLinked(prev => prev || ok));
+        if (data.warning) { navigate('/'); return; }
+      }
       navigate(target);
     } catch (err: any) {
       setError(err.message);

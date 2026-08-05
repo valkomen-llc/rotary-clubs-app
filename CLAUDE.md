@@ -2226,6 +2226,22 @@ agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`.
 
 **Reglas durables:**
 
+- **Un ingreso abre TODAS las identidades que coincidan** (v4.711). Hasta
+  v4.710 `resolveSession` devolvía la PRIMERA y se detenía: un rotario que paga
+  la postulación de su proyecto y además su asistencia al evento sólo veía uno
+  de los dos paneles, porque el otro no tenía sesión emitida. Ahora se prueban
+  las tres y se abren las que correspondan; la primera manda para la
+  redirección y las demás viajan en `sessions` para que el navegador guarde su
+  token. **`sessions` es aditivo**: el nivel superior conserva la forma de
+  siempre, así que un navegador con el bundle anterior entra igual.
+- **Los paneles siguen SEPARADOS y así se quedan.** Lo que se unifica es el
+  ingreso, no los datos: cada identidad conserva su audiencia, su token y sus
+  permisos, y el token de uno no abre el otro. Al agregar una identidad,
+  agregarla a la sonda de `resolveSession`, no fundirla con otra.
+- **El rótulo del menú es «Mi Inscripción al Evento», no «Mi Inscripción».**
+  En el panel del proyecto también hay una inscripción —la de la postulación—,
+  y en un menú que puede ofrecer las dos a la vez el nombre tiene que decir de
+  cuál se trata.
 - **La redirección es comodidad, no seguridad.** Toda ruta restringida se
   protege también en el servidor. `authMiddleware` exige la audiencia
   `rotary-platform`; `requireSiteAdmin` exige rol administrativo. Ambos en

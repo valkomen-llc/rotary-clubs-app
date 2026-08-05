@@ -43,7 +43,10 @@ const AUDIENCE: Record<Realm, string> = {
 export const REALM_META: Record<Realm, { role: string; menu: string; path: string }> = {
     platform: { role: 'Administrador del sitio', menu: 'Panel de Control', path: '/admin/dashboard' },
     portal: { role: 'Gestor de Proyectos', menu: 'Mi Proyecto', path: '/mi-proyecto' },
-    attendee: { role: 'Asistente al Evento', menu: 'Mi Inscripción', path: '/mi-inscripcion' },
+    // «Mi Inscripción» a secas se confundía con la inscripción del PROYECTO,
+    // que en su panel también se llama así. En un menú que puede ofrecer los
+    // dos a la vez, el rótulo tiene que decir de cuál se trata.
+    attendee: { role: 'Asistente al Evento', menu: 'Mi Inscripción al Evento', path: '/mi-inscripcion' },
 };
 
 /** Nombre y organización que se muestran en el menú del avatar. */

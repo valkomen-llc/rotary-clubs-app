@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.710.0 | 2026-08-05 (La inscripción abre la sesión del asistente: «Ir a mi inscripción» entra directo)
-// Cache bust: 2026-08-05c
+// UI V4.711.0 | 2026-08-05 (Un ingreso abre las dos identidades: proyecto y asistencia al evento, en paneles separados)
+// Cache bust: 2026-08-05d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.711.0',
+        title: 'Tu proyecto y tu asistencia al evento, los dos en el menú \ud83e\uddf7',
+        description: 'Un rotario colombiano puede pagar la postulación de su proyecto y, con la misma cuenta, pagar su asistencia al evento. Hasta ahora, al iniciar sesión sólo se le abría uno de los dos: el ingreso probaba las identidades en orden y se detenía en la primera que coincidía, así que el otro panel no aparecía en ninguna parte —no porque no existiera, sino porque nadie había emitido su sesión—. Ahora un solo ingreso abre TODAS las identidades que esas credenciales abran, y el menú del avatar ofrece «Mi Proyecto» y «Mi Inscripción al Evento» según lo que cada persona tenga. Quien sólo tiene una sigue viendo una. Los paneles siguen siendo SEPARADOS y así se quedan: cada uno con su identidad, su audiencia y sus permisos, y el token de uno no abre el otro —está comprobado—. Lo que se unifica es el ingreso, no los datos. Además, desde el encabezado de cada panel se salta al otro sin volver a escribir la contraseña. El rótulo del menú dice «Mi Inscripción al Evento» y no «Mi Inscripción» a secas porque en el panel del proyecto también hay una inscripción —la de la postulación—, y en un menú que puede ofrecer las dos a la vez el nombre tiene que decir de cuál se trata. Se corrigieron también dos pantallas del panel administrativo que quedaban EN BLANCO al abrirlas: Mission Control y Mission Control VIP usaban un ícono sin importarlo, algo que el compilado no detecta y que sólo revienta al pintar.',
+        date: new Date().toISOString(),
+        tags: ['acceso', 'sesiones', 'gestion de proyectos', 'asistente al evento', 'panel'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Un solo ingreso abre todas las identidades que coincidan: proyecto y asistencia al evento a la vez.' },
+            { type: 'added', text: 'El menú del avatar ofrece «Mi Proyecto» y «Mi Inscripción al Evento» según lo que cada persona tenga.' },
+            { type: 'changed', text: 'Los paneles siguen separados: el token de uno no abre el otro.' },
+            { type: 'fixed', text: 'Mission Control y Mission Control VIP ya no quedan en blanco al abrirse.' },
+        ]
+    },
     {
         version: '4.710.0',
         title: 'Terminar la inscripción ya te deja dentro \ud83d\udd13',
