@@ -27,6 +27,17 @@ const authHeaders = () => ({
 
 const PAGE_SIZE = 50;
 
+/**
+ * Campos que el formulario ya no pide y que las inscripciones anteriores sí
+ * respondieron. Se rotulan para que la ficha siga siendo legible: el dato está
+ * guardado y borrarlo del historial no es una opción.
+ */
+const RETIRED_LABELS: Record<string, string> = {
+    rotaryRole: 'Cargo dentro de Rotary',      // hasta v4.707
+    residenceCountry: 'País de residencia',    // hasta v4.707
+    language: 'Idioma',                        // hasta v4.654
+};
+
 interface Registration {
     id: string;
     publicRef: string;
@@ -215,7 +226,10 @@ const DetailSheet = ({ registrationId, statuses, onClose, onChanged }: {
                 return `${field.label}::${option?.label ?? ''}`;
             }
         }
-        return `${key}::`;
+        // Un campo RETIRADO ya no está en el formulario, pero sigue guardado en
+        // las inscripciones que lo respondieron. Sin esto la ficha mostraba la
+        // clave cruda («rotaryRole») como si fuera la pregunta.
+        return `${RETIRED_LABELS[key] || key}::`;
     };
 
     return (

@@ -60,6 +60,10 @@ const OWNED_TABLES = [
 const OWNED_REGISTRATION_COLUMNS = [
     'registrationCode', 'accessToken', 'categoryId', 'categoryKey', 'audience',
     'answers', 'pricing', 'tags', 'companionsCount', 'submittedAt', 'accountId',
+    // v4.708. Esta lista NO es un número de versión: enumera los objetos
+    // reales del archivo, y si no se amplía al agregar uno nuevo la
+    // comprobación rápida lo dará por presente y la columna no se creará.
+    'department', 'fairRole', 'fairRoleOther',
 ];
 
 // Columnas de `EventAttendeeAccount` añadidas después de crear la tabla.
@@ -206,6 +210,13 @@ export const ensureEventRegistrationSchema = async () => {
         ['district', 'VARCHAR(40)'],
         ['documentNumber', 'VARCHAR(60)'],
         ['rotaryRole', 'VARCHAR(60)'],
+        // v4.708 — Ejes de segmentación del comité organizador: de qué
+        // departamento viene la gente y qué papel desempeña en la feria.
+        // Promovidos a columna por lo mismo que ciudad y distrito: un filtro
+        // sobre el JSON no se indexa.
+        ['department', 'VARCHAR(120)'],
+        ['fairRole', 'VARCHAR(60)'],
+        ['fairRoleOther', 'VARCHAR(120)'],
         ['language', 'VARCHAR(20)'],
         ['dietary', 'VARCHAR(40)'],
         // Dinero: se congela la foto del cobro al crear la inscripción
@@ -245,6 +256,10 @@ export const ensureEventRegistrationSchema = async () => {
     await index('EventRegistration_session_idx', 'ON "EventRegistration" ("stripeSessionId")');
     await index('EventRegistration_email_idx', 'ON "EventRegistration" (email)');
     await index('EventRegistration_category_idx', 'ON "EventRegistration" ("eventId", "categoryKey")');
+    // El comité filtra por rol en la feria para armar la logística (cuántos
+    // expositores, cuánta prensa, cuánto personal): es una consulta de tablero,
+    // no una búsqueda ocasional.
+    await index('EventRegistration_fairrole_idx', 'ON "EventRegistration" ("eventId", "fairRole")');
     await index('EventRegistration_intent_idx', 'ON "EventRegistration" ("stripePaymentIntentId")');
     // El panel del asistente filtra SIEMPRE por esta columna: es el índice que
     // sostiene el aislamiento de datos, no una optimización cualquiera.

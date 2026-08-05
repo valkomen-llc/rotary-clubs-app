@@ -28,12 +28,27 @@ export interface FormField {
     placeholder?: string;
     options?: FieldOption[];
     showIf?: { key: string; in?: string[]; notIn?: string[]; equals?: unknown };
+    /** De qué catálogo salen las opciones (v4.708). */
+    catalog?: 'countries' | 'departments' | 'districts' | 'clubs';
+    /** De qué respuesta depende ese catálogo. */
+    dependsOn?: string;
+}
+
+/**
+ * Subtítulo dentro de un paso (v4.708). Es ADITIVO: `FormStep.fields` sigue
+ * trayendo todo aplanado, así que un paso sin `groups` se dibuja como siempre.
+ */
+export interface FormGroup {
+    key: string;
+    label: string;
+    fields: FormField[];
 }
 
 export interface FormStep {
     key: string;
     label: string;
     fields: FormField[];
+    groups?: FormGroup[];
 }
 
 export interface FormSchema {
@@ -217,6 +232,80 @@ export const validateStep = (
     }
     return errors;
 };
+
+// ── Catálogos del formulario (v4.708) ────────────────────────────────
+//
+// Espejo de `optionsForField` del servidor. Aquí decide QUÉ SE PINTA; el
+// servidor no valida contra estas listas a propósito (un catálogo se queda
+// viejo solo y esta es una inscripción que se paga), salvo la incoherencia de
+// un club que pertenece al catálogo de otro distrito.
+
+/** El único país cuyo catálogo de divisiones conocemos. */
+export const COUNTRY_WITH_DIVISIONS = 'Colombia';
+
+export interface DistrictCatalog { value: string; label: string; clubs: string[] }
+
+export interface FormCatalogs {
+    /** Distritos con sus clubes. Los manda el servidor con la configuración. */
+    districts?: DistrictCatalog[];
+    /** País al que corresponde ese catálogo de distritos. */
+    districtsCountry?: string;
+    /** Departamentos de Colombia. Los pone el navegador: ya los lleva. */
+    departments?: string[];
+    /** Países. Los pone el navegador: ya los lleva para el selector telefónico. */
+    countries?: string[];
+}
+
+/**
+ * Las opciones de un campo dadas las respuestas actuales, o `null` si en este
+ * contexto no hay lista y el campo es de texto libre. `null` y `[]` son cosas
+ * distintas: `[]` significa «hay catálogo y está vacío».
+ */
+export const optionsForField = (
+    field: FormField,
+    answers: Record<string, unknown>,
+    catalogs: FormCatalogs = {},
+): FieldOption[] | null => {
+    if (!field.catalog) return field.options ?? null;
+
+    if (field.catalog === 'countries') {
+        const list = catalogs.countries || [];
+        return list.length ? list.map(c => ({ value: c, label: c })) : null;
+    }
+
+    if (field.catalog === 'districts') {
+        // El catálogo de distritos es el colombiano: fuera de Colombia el
+        // asistente escribe el suyo, porque hay miles y no está en la lista.
+        const country = String(answers[field.dependsOn || 'country'] ?? '').trim();
+        const own = catalogs.districtsCountry || COUNTRY_WITH_DIVISIONS;
+        if (country.toLowerCase() !== own.toLowerCase()) return null;
+        const list = catalogs.districts || [];
+        return list.length ? list.map(d => ({ value: d.value, label: d.label })) : null;
+    }
+
+    if (field.catalog === 'clubs') {
+        // Sin distrito elegido no hay nada que ofrecer todavía: se escribe a
+        // mano hasta que lo haya, en vez de un desplegable vacío.
+        const chosen = String(answers[field.dependsOn || 'district'] ?? '').trim();
+        if (!chosen) return null;
+        const district = (catalogs.districts || []).find(d => d.value === chosen || d.label === chosen);
+        return district && district.clubs.length
+            ? district.clubs.map(c => ({ value: c, label: c }))
+            : null;
+    }
+
+    if (field.catalog === 'departments') {
+        const country = String(answers[field.dependsOn || 'country'] ?? '').trim();
+        if (country.toLowerCase() !== COUNTRY_WITH_DIVISIONS.toLowerCase()) return null;
+        const list = catalogs.departments || [];
+        return list.length ? list.map(d => ({ value: d, label: d })) : null;
+    }
+
+    return null;
+};
+
+/** Valor con el que el desplegable de club ofrece escribirlo a mano. */
+export const CLUB_NOT_LISTED = '__otro__';
 
 // ── Credenciales del asistente ───────────────────────────────────────
 // Espejo de `validateCredentials` del servidor (eventRegistrationSpec.js).

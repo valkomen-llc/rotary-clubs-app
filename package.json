@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.707.0",
-  "cache_bust": "2026-08-04 (Cargado el catalogo de clubes de los distritos 4271 (59 clubes) y 4281 (74), con mayuscula inicial y tildes. El desplegable de Club Rotario aparece solo al elegir el distrito, sin cargar nada a mano. Es una semilla: en cuanto el administrador guarde su propia lista desde la pestana Convocatoria, la suya manda y la semilla no vuelve a entrar.)",
+  "version": "4.708.0",
+  "cache_bust": "2026-08-05 (El paso 1 del registro al evento pide ubicacion (pais, departamento, ciudad) y datos rotarios (distrito, club, rol EN LA FERIA) en las tres categorias. Con Colombia son listas; fuera de Colombia, texto libre. El cargo dentro de Rotary se retira: se reemplaza por el rol en la feria.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -23,7 +23,8 @@
     "test:assets": "node scripts/test-audience-assets.mjs",
     "test:seo": "node scripts/test-seo.mjs",
     "test:reels:people": "node scripts/test-reel-people.mjs",
-    "test:clubes": "node scripts/test-rotary-clubs.mjs"
+    "test:clubes": "node scripts/test-rotary-clubs.mjs",
+    "test:event-form": "node scripts/test-event-form.mjs"
   },
   "engines": {
     "node": "22.x"

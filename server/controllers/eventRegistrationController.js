@@ -36,6 +36,7 @@ import {
     COMPANION_FIELDS, randomCodeSuffix, tariffVersionOf,
     resolveAudienceHint, resolveCtaButtons, normalizeCtaConfig,
     validateCredentials, PASSWORD_MIN, accountLinkingFor, audienceOfCategory,
+    rotaryCatalogFor, defaultAnswersFor,
 } from '../lib/eventRegistrationSpec.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -49,7 +50,7 @@ import {
     identityFromRequest, prefillForIdentity, linkAttendeeAccountTo,
 } from './eventAttendeeController.js';
 
-console.log('[eventRegistrationController] v4.694.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma, País y Departamento son texto llano, y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña; la audiencia de la categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara.');
+console.log('[eventRegistrationController] v4.708.0 cargado — inscripciones por categoría; el botón principal de la ficha lo decide el IDIOMA activo del sitio (es-CO → nacional, resto → internacional), CADRES siempre visible, formulario bloqueado por categoría, acompañantes, multimoneda y pago por Stripe. El formulario ya no pide el idioma y crea la cuenta de Asistente al Evento con la que se consulta la inscripción. El esquema se comprueba con 2 consultas en vez de ejecutar 62 sentencias en cada arranque en frío. Quien ya tiene cuenta (Gestor de Proyectos) se inscribe al Registro Nacional con esa misma sesión, sin crear otra contraseña; la audiencia de la categoría se deduce del botón que lleva a ella o de su clave cuando la categoría no la declara. El paso 1 pide ubicación y datos rotarios, con listas cuando el país declarado es Colombia y texto libre fuera; el rol EN LA FERIA reemplaza al cargo dentro de Rotary.');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -103,6 +104,13 @@ const decorateCategory = async (eventId, category, edition) => {
         soldOut: remaining !== null && remaining <= 0,
         open: window.open && !(remaining !== null && remaining <= 0),
         closedReason: window.reason,
+        /**
+         * Con qué nace el formulario de ESTA categoría (v4.708). Va por
+         * categoría y no una sola vez en la respuesta porque se puede llegar
+         * al asistente sin categoría fijada y elegirla dentro: los valores por
+         * defecto son los de la que se elija, no los de la primera.
+         */
+        defaults: defaultAnswersFor(category, edition?.settings),
         // Lo que realmente cobrará la pasarela, para poder avisarlo antes de
         // que la persona llene el formulario.
         charge: {
@@ -246,6 +254,14 @@ export const getPublicRegistrationConfig = async (req, res) => {
                 organization: identity.organization || identityPrefill?.clubName || null,
             } : null,
             prefill: identityPrefill || null,
+            /**
+             * Catálogos del formulario (v4.708). Van aquí y no escritos en el
+             * navegador porque los clubes por distrito ya tienen una fuente de
+             * verdad (`rotaryClubs.js`) y copiarla al bundle daría dos listas
+             * que se separan en silencio. Los países y los departamentos de
+             * Colombia los resuelve el navegador con las listas que YA lleva.
+             */
+            catalogs: { districts: rotaryCatalogFor(edition.settings) },
             /** La categoría que quedó fijada por el botón, si se entró por uno. */
             lockedCategory: requested || null,
             event: {
@@ -351,7 +367,7 @@ const saveRegistration = async (req, res, mode) => {
 
     // ── Validación (sólo al enviar; el borrador se guarda como venga) ──
     if (mode === 'submit') {
-        const { ok, errors } = validateAnswers(category, answers);
+        const { ok, errors } = validateAnswers(category, answers, edition.settings);
         if (!ok) {
             return res.status(400).json({ error: 'Revisa los campos marcados.', fieldErrors: errors });
         }
@@ -557,7 +573,18 @@ const saveRegistration = async (req, res, mode) => {
         city: clean(answers.city, 120),
         district: clean(answers.district, 40),
         documentNumber: clean(answers.documentNumber, 60),
-        rotaryRole: clean(answers.rotaryRole, 60),
+        // v4.708 — El departamento y el rol en la feria se promueven a columna
+        // por lo mismo que ya lo estaban la ciudad y el distrito: son ejes de
+        // segmentación del comité (cuántos expositores, cuánta prensa, de qué
+        // departamentos viene la gente) y leerlos del JSON en cada filtro sale
+        // caro y no se puede indexar.
+        department: clean(answers.department, 120),
+        fairRole: clean(answers.fairRole, 60),
+        fairRoleOther: clean(answers.fairRoleOther, 120),
+        // El cargo dentro de Rotary dejó de pedirse en v4.708. La columna
+        // conserva lo que hubiera guardado una inscripción anterior en vez de
+        // vaciarse al reenviar el formulario — misma regla que `language`.
+        rotaryRole: clean(answers.rotaryRole, 60) || existing?.rotaryRole || null,
         // v4.655 — El formulario ya no pide el idioma. La columna se conserva
         // con lo que hubiera guardado una inscripción anterior en vez de
         // vaciarse al reenviar el formulario.

@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.707.0 | 2026-08-04 (Catálogo de clubes de los distritos 4271 y 4281)
-// Cache bust: 2026-08-03l
+// UI V4.708.0 | 2026-08-05 (Registro al evento: ubicación y datos rotarios en el paso 1, con listas en Colombia y texto libre fuera)
+// Cache bust: 2026-08-05
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.708.0',
+        title: 'El registro al evento ya pregunta de dónde vienes y qué vas a hacer en la feria \ud83c\udfab',
+        description: 'El paso «Datos personales» del registro al evento ahora pide, además de los datos básicos, dos bloques nuevos: Ubicación (País, Departamento / Estado / Provincia y Ciudad) y Tu club en Rotary (Distrito Rotario, Club Rotario y Rol dentro de la feria). Aplica a las tres categorías —Nacional, Internacional y CADRES—, con el mismo aspecto que ya tiene Postular Proyecto. Lo importante es que los campos se comportan según DÓNDE VIVE la persona, no según el idioma en que esté leyendo el sitio: quien declara Colombia elige su departamento de una lista, su distrito entre el 4271 y el 4281, y su club de la lista de ese distrito —sólo los de ese distrito, cargados al elegirlo—; quien declara cualquier otro país escribe los tres a mano, porque fuera de Colombia hay miles de distritos y cientos de clubes por distrito, imposibles de mantener en un catálogo. Se decidió así, y no por el idioma, porque un rotario colombiano puede estar navegando el sitio en inglés y un extranjero en español: preguntarle a la persona dónde vive y creerle es lo único que funciona en los dos casos. El registro nacional, eso sí, viene con Colombia ya puesta, para no hacer buscar en una lista de doscientos países a quien seguro es de aquí. El listado de clubes conserva la salida «Mi club no está en la lista»: un catálogo se queda viejo solo —clubes nuevos, fusiones, cambios de nombre— y esta es una inscripción que se paga, así que dejar fuera a quien no figure sería perderlo. Lo único que sí se rechaza es elegir un club que pertenece al catálogo de OTRO distrito, porque eso no es un club que falte sino una contradicción. Cambiar de distrito descarta el club elegido, y cambiar de país descarta el departamento, porque el anterior ya no significa nada. Además, «Cargo dentro de Rotary» se retira y lo reemplaza «Rol dentro de la feria», con quince opciones —Visitante Rotario, Visitante No Rotario, Expositor, Patrocinador, Exhibidor, Conferencista, Panelista, Invitado Especial, Autoridad Rotaria, Comité Organizador, Prensa, CADRE, Staff, Voluntario y Otro, que abre un campo para escribirlo—. No es un cambio de rótulo: el cargo decía qué es esa persona en su club todo el año y el rol dice qué va a hacer durante el evento, que es lo que necesita la logística y lo que el cargo nunca respondió. Las inscripciones anteriores conservan el cargo que respondieron y la ficha lo sigue mostrando con su nombre. También se retiró «País de residencia» del formulario internacional: desde que el país está en el paso 1 era la misma pregunta hecha dos veces. El departamento y el rol en la feria salen en la exportación y quedan como columnas propias, para que el comité pueda segmentar por procedencia y por papel en el evento.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'formularios', 'feria-de-proyectos', 'internacionalizacion'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Ubicación (país, departamento y ciudad) y datos rotarios (distrito, club y rol en la feria) en el paso 1 de las tres categorías.' },
+            { type: 'added', text: 'Con Colombia: departamento, distrito y club salen de listas; el club se carga al elegir el distrito y muestra sólo los de ese distrito.' },
+            { type: 'added', text: 'Fuera de Colombia: departamento, distrito y club se escriben libremente.' },
+            { type: 'changed', text: '«Rol dentro de la feria» (15 opciones) reemplaza a «Cargo dentro de Rotary». Las inscripciones anteriores conservan su respuesta.' },
+            { type: 'removed', text: '«País de residencia» del formulario internacional: era la misma pregunta que «País».' },
+            { type: 'added', text: 'Departamento y rol en la feria quedan como columnas propias y salen en la exportación.' },
+        ]
+    },
     {
         version: '4.707.0',
         title: 'Ya están cargados los clubes de los distritos 4271 y 4281 \ud83d\udccb',
