@@ -36,7 +36,7 @@ import {
     type Composition,
 } from './designApi';
 import {
-    formatOf, applyVariables, duplicateNode, uid, isText, isImage,
+    formatOf, applyVariables, resolveVariables, duplicateNode, uid, isText, isImage,
     HISTORY_STEPS, PALETTE,
     type DesignDocument, type DesignNode, type TextNode,
 } from '../../../lib/designSpec';
@@ -247,6 +247,38 @@ const DesignStudio: React.FC = () => {
     }, [liveVars]);
 
     // ── Componer ───────────────────────────────────────────────────
+    // Marcar un elemento como campo del formulario público. Es lo que faltaba:
+    // hasta v4.722 las variables sólo existían si el diseño venía de una
+    // plantilla del catálogo, así que un texto agregado a mano nunca podía ser
+    // editable y —peor— corregir a mano el texto de una plantilla lo
+    // desvinculaba y lo sacaba del formulario sin avisar.
+    //
+    // Un texto marcado pasa a SER esa variable (`{{mensaje}}`), que es
+    // exactamente cómo lo declaran las plantillas del catálogo: así reutiliza
+    // toda la maquinaria que ya existe —`applyVariables`, `bakeFrozen`,
+    // `buildPublicFields`— sin inventar un segundo concepto.
+    //
+    // Va DESPUÉS de `liveVars` a propósito: está en su array de dependencias y
+    // ese array se evalúa al renderizar, así que declararlo antes da un
+    // ReferenceError de zona muerta — pantalla en blanco, no un aviso. Es el
+    // mismo tropiezo que `uploadImage` con `runCompose` en v4.720.1.
+    const setPublicKey = useCallback((id: string, key: string | null) => {
+        commit({
+            ...doc,
+            nodes: doc.nodes.map(n => {
+                if (n.id !== id) return n;
+                if (isImage(n)) return { ...n, srcVar: key } as DesignNode;
+                if (!isText(n)) return n;
+                if (!key) return { ...n, srcText: null } as DesignNode;
+                const srcText = `{{${key}}}`;
+                // Se resuelve en el acto con lo que ya hay cargado, para que el
+                // lienzo no quede en blanco al marcarlo.
+                const text = resolveVariables(srcText, liveVars) || n.text;
+                return { ...n, srcText, text } as DesignNode;
+            }),
+        });
+    }, [commit, doc, liveVars]);
+
     const runCompose = useCallback(async (opts: { skipAI: boolean; tpl?: string }) => {
         setGenerating(true);
         try {
@@ -618,6 +650,8 @@ const DesignStudio: React.FC = () => {
                     onAddImage={() => setPickerTarget('capa')}
                     onUploadImage={f => uploadImage(f, 'capa')}
                     onReplaceImage={id => setPickerTarget(id)}
+                    assignable={catalog?.assignable || []}
+                    onSetPublicKey={setPublicKey}
                     onUploadReplacement={(id, f) => {
                         if (!f) return;
                         // Se sube y se escribe en ESE nodo, sin tocar la

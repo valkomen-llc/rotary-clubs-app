@@ -367,6 +367,42 @@ check('desbloquearlos es EXPLÍCITO, nunca por defecto',
 check('el administrador puede bloquear uno editable',
     !P.buildPublicFields(docPub, { locked: ['anios'] }).some(f => f.key === 'anios'));
 
+grupo('Marcar un elemento a mano lo vuelve un campo público');
+
+// El caso que reportó el cliente: un diseño armado a mano —sin plantilla— no
+// tenía NINGUNA variable, así que su formulario público salía vacío y no había
+// forma de arreglarlo desde el editor. Marcar un nodo le pone la variable.
+const aMano = { format: 'post_1_1', background: '#fff', nodes: [
+    { id: 'fondo', type: 'image', src: 'https://x.s3.amazonaws.com/base.png', srcVar: null },
+    { id: 'texto', type: 'text', text: 'Escrito a mano', srcText: null },
+] };
+check('un diseño hecho a mano no tiene campos', P.buildPublicFields(aMano).length === 0);
+
+// Marcar = poner la variable, que es como lo declaran las plantillas.
+const marcado = { ...aMano, nodes: [
+    { ...aMano.nodes[0], srcVar: 'imagen' },
+    { ...aMano.nodes[1], srcText: '{{club}}' },
+] };
+const camposMarcados = P.buildPublicFields(marcado);
+check('al marcarlos aparecen como campos',
+    camposMarcados.map(f => f.key).sort().join(',') === 'club,imagen', camposMarcados.map(f => f.key).join(','));
+check('con el tipo que corresponde a cada uno',
+    camposMarcados.find(f => f.key === 'imagen')?.type === 'image'
+    && camposMarcados.find(f => f.key === 'club')?.type === 'text');
+check('y el portal los resuelve con lo que escriba la persona',
+    P.applyPublicValues(marcado, { club: 'Club Rotario Pasto' }).nodes.find(n => n.id === 'texto').text === 'Club Rotario Pasto');
+
+// Sólo se pueden asignar las NO institucionales: el gobernador y el logotipo
+// no se ofrecen ni marcándolos a mano.
+check('el catálogo de claves asignables excluye lo institucional',
+    !P.ASSIGNABLE_FIELDS.some(f => P.isInstitutional(f.key)),
+    P.ASSIGNABLE_FIELDS.map(f => f.key).join(','));
+check('cada clave asignable dice a qué tipo de nodo le sirve',
+    P.ASSIGNABLE_FIELDS.every(f => f.forNode === 'text' || f.forNode === 'image'));
+check('la fotografía es la única de imagen',
+    P.ASSIGNABLE_FIELDS.filter(f => f.forNode === 'image').map(f => f.key).join(',') === 'imagen');
+check('y trae etiqueta legible', P.ASSIGNABLE_FIELDS.every(f => f.label && f.label !== f.key));
+
 grupo('Portal público: lo que llega de afuera');
 
 const san = P.sanitizeValues(

@@ -17,7 +17,18 @@ import {
     isText, isImage, isShape, isGradient, FONTS, PALETTE,
     type DesignNode, type TextNode, type ImageNode, type ShapeNode,
 } from '../../../lib/designSpec';
-import type { ElementGroup, ElementItem } from './designApi';
+import type { ElementGroup, ElementItem, AssignableField } from './designApi';
+
+// La clave pública de un nodo: para un texto es la variable que ocupa TODO su
+// contenido (`{{mensaje}}`); para una imagen, su `srcVar`. Se lee del propio
+// nodo en vez de guardarse aparte — dos verdades sobre lo mismo se contradicen
+// en cuanto alguien edita el texto.
+const SOLA_VARIABLE = /^\s*\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}\s*$/;
+const publicKeyOf = (n: DesignNode): string | null => {
+    if (isImage(n)) return n.srcVar || null;
+    if (isText(n)) return SOLA_VARIABLE.exec(n.srcText || '')?.[1] || null;
+    return null;
+};
 
 interface Props {
     nodes: DesignNode[];
@@ -38,6 +49,10 @@ interface Props {
     onReplaceImage: (id: string) => void;
     onUploadReplacement: (id: string, file: File | undefined) => void;
     uploading: boolean;
+    /** Las claves que se pueden asignar a mano, del catálogo del servidor. */
+    assignable: AssignableField[];
+    /** Marca (o desmarca) un nodo como campo del formulario público. */
+    onSetPublicKey: (id: string, key: string | null) => void;
 }
 
 const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1';
@@ -61,7 +76,9 @@ const nodeLabel = (n: DesignNode) => n.name || (isText(n) ? (n.text.slice(0, 22)
 const DesignInspector: React.FC<Props> = ({
     nodes, selectedIds, elements, onSelect, onPatch, onReorder, onDelete, onDuplicate, onAddElement, onAddText,
     onAddImage, onUploadImage, onReplaceImage, onUploadReplacement, uploading,
+    assignable, onSetPublicKey,
 }) => {
+    const assignableFor = (kind: 'text' | 'image') => assignable.filter(f => f.forNode === kind);
     const [tab, setTab] = useState<'props' | 'layers' | 'elements'>('props');
     const node = selectedIds.length === 1 ? nodes.find(n => n.id === selectedIds[0]) || null : null;
 
@@ -230,6 +247,37 @@ const DesignInspector: React.FC<Props> = ({
                             onChange={v => patch({ opacity: v / 100 })} />
                         <Slider label="Rotación" suffix="°" value={node.rotation} min={0} max={359} step={1}
                             onChange={v => patch({ rotation: v })} />
+
+                        {/* ── Editable en el portal público ────────────────
+                            Marcar un elemento acá es lo que lo convierte en un
+                            campo del formulario público. Hasta v4.722 no
+                            existía: los campos sólo aparecían si el diseño venía
+                            de una plantilla del catálogo, así que un texto
+                            agregado a mano nunca era editable y corregir a mano
+                            el de una plantilla lo sacaba del formulario en
+                            silencio. */}
+                        {(isText(node) || isImage(node)) && (
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                <span className={lbl}>Editable en el portal público</span>
+                                <select
+                                    className={inp}
+                                    value={publicKeyOf(node) || ''}
+                                    onChange={e => onSetPublicKey(node.id, e.target.value || null)}
+                                >
+                                    <option value="">No — queda fijo en la pieza</option>
+                                    {assignableFor(isImage(node) ? 'image' : 'text').map(f => (
+                                        <option key={f.key} value={f.key}>{f.label}</option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-[10px] text-gray-400 leading-relaxed">
+                                    {publicKeyOf(node)
+                                        ? 'Quien abra el enlace público va a poder cambiarlo. El resto del diseño no.'
+                                        : isText(node)
+                                            ? 'Al marcarlo, el texto de este elemento lo escribe quien use el enlace.'
+                                            : 'Al marcarlo, la imagen la sube quien use el enlace.'}
+                                </p>
+                            </div>
+                        )}
                     </>
                 ))}
 

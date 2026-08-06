@@ -56,6 +56,20 @@ export const FIELD_SPECS = {
 
 export const isInstitutional = (key) => !!FIELD_SPECS[key]?.institutional;
 
+// Las claves que el administrador puede asignar A MANO desde el editor, con la
+// etiqueta y el tipo de nodo al que le sirven. Es lo que alimenta el selector
+// «Editable en el portal» de Propiedades.
+//
+// Hace falta porque hasta v4.722 los campos SÓLO existían si el diseño venía de
+// una plantilla del catálogo: un texto agregado a mano nunca era editable, y
+// —peor— corregir a mano el texto de una plantilla lo desvinculaba de su
+// variable y lo sacaba del formulario sin avisar. Quien arma un diseño desde
+// cero no tenía forma de publicarlo con campos.
+export const ASSIGNABLE_FIELDS = Object.entries(FIELD_SPECS)
+    .filter(([, s]) => !s.institutional)
+    .map(([key, s]) => ({ key, label: s.label, type: s.type, forNode: s.type === 'image' ? 'image' : 'text' }))
+    .sort((a, b) => (FIELD_SPECS[a.key].order || 999) - (FIELD_SPECS[b.key].order || 999));
+
 // ─── Qué variables usa un documento ────────────────────────────────────
 export const variablesOf = (document) => {
     const found = new Set();

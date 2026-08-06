@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.722.0",
-  "cache_bust": "2026-08-06e (Motor de Composicion: KIE arma la imagen con la foto integrada y la plataforma sigue dibujando el texto nitido.)",
+  "version": "4.722.1",
+  "cache_bust": "2026-08-06f (Se puede marcar cualquier texto o imagen como campo editable del portal publico.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
