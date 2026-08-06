@@ -13,6 +13,7 @@ import {
     getCatalog, findClubs, getBranding, putFoundation, compose, improve,
     listProjects, saveProject, updateProject, deleteProject,
     listPublications, publish, setPublished, deletePublication, previewPublication,
+    startBackdrop, syncBackdrop,
 } from '../controllers/designStudioController.js';
 
 const router = express.Router();
@@ -24,6 +25,11 @@ router.get('/clubs/:id/branding', authMiddleware, getBranding);
 router.put('/clubs/:id/foundation', authMiddleware, putFoundation);
 
 router.post('/compose', authMiddleware, compose);
+
+// Composición con IA: crear las tareas y sondearlas. Asíncrono porque una
+// composición tarda 20-60 s y la función corta a los 120.
+router.post('/backdrop', authMiddleware, startBackdrop);
+router.get('/backdrop/:taskId', authMiddleware, syncBackdrop);
 router.post('/improve', authMiddleware, improve);
 
 // Publicar es lo que expone un diseño a Internet sin sesión, así que va detrás

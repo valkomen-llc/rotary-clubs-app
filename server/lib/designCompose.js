@@ -1,0 +1,315 @@
+// ════════════════════════════════════════════════════════════════════
+// Plantillas IA — Motor de Composición (el CRITERIO)
+// v4.722.0
+//
+// PURO: sin base, sin red, sin IA, sin DOM. Decide qué se le pide al modelo de
+// imagen, con qué variantes y qué se acepta de vuelta. La orquestación —hablar
+// con KIE, sondear, subir a S3— vive en `designBackdrop.js`.
+//
+// ── EL REPARTO: LA IA HACE LA IMAGEN, NOSOTROS HACEMOS EL TEXTO ─────
+//
+// Ésta es la decisión de fondo del módulo y conviene entender por qué es así,
+// porque el pedido original planteaba que el modelo compusiera la pieza ENTERA,
+// texto incluido.
+//
+// Los modelos generativos de imagen no escriben texto de forma fiable. Un
+// párrafo de felicitación en español, el nombre propio de un club y el nombre
+// del Gobernador salen deformados o mal escritos con frecuencia alta. Y una vez
+// que salen mal **no hay salida limpia**: corregirlos encima es exactamente el
+// composite que el equipo rechazó dos veces («se ve overlay / montaje»,
+// v4.323-v4.324) y el enmascarado grande que producía mosaico (v4.317-v4.320).
+// Quedaría entre publicar una pieza con el club mal escrito o volver a un
+// camino ya descartado.
+//
+// Así que el reparto es por CAPACIDAD, no por gusto:
+//
+//   · KIE hace lo que un modelo generativo hace bien: construir una imagen
+//     —fondo institucional, textura, curvas— e INTEGRAR la fotografía del club
+//     dentro de esa imagen, armonizando luz, color y bordes. Eso es lo que hoy
+//     no se puede lograr con una composición declarada, y es exactamente el
+//     «que no se vea pegada» del pedido.
+//   · Nuestro motor hace lo que sabe hacer exacto: el nombre del club, el
+//     mensaje, el logotipo y la firma del Gobernador, nítidos y sin errores.
+//
+// No es un composite de los prohibidos: el modelo no devuelve una fotografía
+// que retoquemos, devuelve el LIENZO sobre el que se compone. Dibujar
+// tipografía sobre un fondo es diseño gráfico normal, y es lo que este módulo
+// ya hacía — sólo que ahora el fondo también puede venir del modelo.
+//
+// ── LO QUE NO SE LE PIDE AL MODELO ──────────────────────────────────
+//
+// Nada de texto. Va en `negative_prompt`, en su propio campo y no pegado al
+// positivo: la regla del sitio es escribir en positivo porque el modelo se
+// obsesiona con lo prohibido cuando la prohibición está DENTRO de la
+// descripción de la escena; en un campo aparte la lee como lo que es (misma
+// solución que el Creador de Reels en v4.705).
+// ════════════════════════════════════════════════════════════════════
+
+import { formatOf } from './designSpec.js';
+
+// ─── Modelo ────────────────────────────────────────────────────────────
+//
+// Configurable por entorno, como todos los modelos de KIE: renombran los ids y
+// no se puede depender de que el default siga existiendo (regla del Generador
+// de Outros).
+export const COMPOSE_MODEL = () => process.env.DESIGN_COMPOSE_MODEL || 'google/nano-banana-edit';
+export const MAX_VARIANTS = 4;
+export const DEFAULT_VARIANTS = 1;
+
+// ─── Planes de variante ────────────────────────────────────────────────
+//
+// Cada variante es una DISTRIBUCIÓN distinta, no una semilla distinta: pedirle
+// cuatro veces lo mismo al modelo da cuatro versiones parecidas y no ayuda a
+// elegir. Lo que cambia es dónde manda la fotografía y qué zona queda limpia
+// para el texto — que es lo que de verdad cambia el aspecto de la pieza.
+//
+// `clear` describe, en positivo, la región que tiene que quedar tranquila
+// porque ahí va a ir la tipografía. El modelo no sabe qué va a escribir nadie:
+// lo único que se le puede pedir es superficie legible.
+export const VARIANT_PLANS = [
+    {
+        id: 'foto_superior',
+        label: 'Fotografía arriba',
+        summary: 'La foto ocupa la mitad superior y el texto respira abajo.',
+        photo: 'the photograph fills the upper half of the square, edge to edge',
+        clear: 'the lower half is a calm, even surface with plenty of room to read',
+        textZone: { y: 0.5, h: 0.5 },
+    },
+    {
+        id: 'foto_lateral',
+        label: 'Fotografía a un lado',
+        summary: 'La foto toma el lado derecho; el texto queda en columna a la izquierda.',
+        photo: 'the photograph fills the right side of the square, softly rounded on its inner edge',
+        clear: 'the left third is a calm, even surface with plenty of room to read',
+        textZone: { y: 0.15, h: 0.7 },
+    },
+    {
+        id: 'foto_circular',
+        label: 'Fotografía en círculo',
+        summary: 'La foto entra en un óvalo generoso, centrada arriba.',
+        photo: 'the photograph sits inside a generous soft-edged oval in the upper area, blending into the background',
+        clear: 'everything below the oval is a calm, even surface with plenty of room to read',
+        textZone: { y: 0.55, h: 0.4 },
+    },
+    {
+        id: 'foto_fondo',
+        label: 'Fotografía de fondo',
+        summary: 'La foto es el fondo entero, atenuada hacia abajo para que el texto se lea.',
+        photo: 'the photograph fills the whole square as the background, its lower area easing into a soft, light field',
+        clear: 'the lower two thirds read as a light, even field where dark text is comfortable',
+        textZone: { y: 0.42, h: 0.5 },
+    },
+];
+
+export const planById = (id) => VARIANT_PLANS.find(p => p.id === id) || VARIANT_PLANS[0];
+
+/** Los planes que se van a usar en esta generación. Se toman EN ORDEN, no al
+ *  azar: con una sola variante tiene que salir siempre la misma y no una
+ *  ruleta — el usuario que regenera espera una alternativa, no un sorteo. */
+export const plansFor = (count) => VARIANT_PLANS.slice(0, Math.max(1, Math.min(MAX_VARIANTS, count || DEFAULT_VARIANTS)));
+
+// ─── Configuración de composición de una plantilla ─────────────────────
+//
+// Es lo que el administrador define una vez: la imagen base institucional, el
+// prompt maestro y cuántas variantes se generan. Vive con la plantilla y con la
+// publicación, no en el código, para que una plantilla nueva sea sólo datos.
+export const COMPOSITION_DEFAULTS = {
+    enabled: false,
+    baseImageUrl: null,
+    masterPrompt: '',
+    variants: DEFAULT_VARIANTS,
+    // Cuántas variantes ve el público. Por defecto una: el portal es anónimo y
+    // cada variante es una llamada al modelo que alguien paga.
+    publicVariants: DEFAULT_VARIANTS,
+    style: 'institucional',
+};
+
+export const normalizeComposition = (raw) => {
+    const c = raw && typeof raw === 'object' ? raw : {};
+    const clampVariants = (v, fb) => {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) ? Math.max(1, Math.min(MAX_VARIANTS, n)) : fb;
+    };
+    return {
+        enabled: !!c.enabled,
+        baseImageUrl: typeof c.baseImageUrl === 'string' && c.baseImageUrl.trim() ? c.baseImageUrl.trim() : null,
+        masterPrompt: String(c.masterPrompt || '').slice(0, 1200).trim(),
+        variants: clampVariants(c.variants, DEFAULT_VARIANTS),
+        publicVariants: clampVariants(c.publicVariants, DEFAULT_VARIANTS),
+        style: String(c.style || 'institucional').slice(0, 40),
+    };
+};
+
+// ─── El prompt ─────────────────────────────────────────────────────────
+//
+// Corto y en positivo, como todo prompt del sitio. Describe la pieza que se
+// quiere, no la lista de lo que no. Se arma en capas para que se pueda leer:
+//
+//   1. Qué es (una lámina institucional cuadrada).
+//   2. Qué hacer con las dos imágenes que se mandan.
+//   3. Dónde va la fotografía y qué zona queda limpia (el plan de variante).
+//   4. Lo que el administrador quiera agregar (prompt maestro).
+//
+// El presupuesto es real: `nano-banana` recorta prompts largos y lo primero que
+// se pierde es el final. Por eso el plan va ANTES del prompt maestro y el
+// maestro se acota.
+export const PROMPT_MAX_CHARS = 1400;
+
+// Lo único que NO puede aparecer, y va en su propio campo.
+export const NEGATIVE_PROMPT =
+    'text, letters, words, typography, captions, watermark, signature, logo, emblem, numbers, '
+    + 'distorted faces, extra people, duplicated people, warped hands, harsh shadows, heavy vignette, cluttered collage';
+
+const STYLE_CLAUSES = {
+    institucional: 'The mood is calm and institutional: soft light, generous white space, understated elegance.',
+    calido: 'The mood is warm and human: soft daylight, gentle warmth in the tones, welcoming.',
+    festivo: 'The mood is celebratory but restrained: light and airy, a subtle sense of occasion.',
+    sobrio: 'The mood is sober and formal: restrained palette, quiet surfaces, nothing decorative.',
+};
+
+export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = null, hasBase = false }) => {
+    const c = normalizeComposition(composition);
+    const p = plan || VARIANT_PLANS[0];
+
+    const partes = [];
+
+    // 1. Qué es.
+    partes.push('A square 1:1 institutional layout background for a Rotary club piece.');
+
+    // 2. Las dos imágenes. El orden importa: el modelo entiende «la primera» y
+    //    «la segunda» mejor que nombres inventados.
+    if (hasBase && photo) {
+        partes.push('The first image is the brand canvas: keep its texture, its curves and its colours exactly as they are, and build on top of it.');
+        partes.push('The second image is a real photograph of the club members. Place it into the canvas so it belongs there: follow the curves of the canvas, ease its edges into the surface, and match the light so the two read as one piece.');
+    } else if (photo) {
+        partes.push('The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
+    } else if (hasBase) {
+        partes.push('The image is the brand canvas: keep its texture, its curves and its colours, and extend it into a complete square layout.');
+    }
+
+    // 3. Dónde va y qué queda limpio.
+    partes.push(`${cap(p.photo)}, and ${p.clear}.`);
+
+    // La gente de la foto es el motivo por el que existe la pieza.
+    if (photo) {
+        partes.push('Everyone in the photograph stays in the frame, whole and recognisable, with their faces and their clothing exactly as they are.');
+    }
+
+    // 4. Paleta y estilo.
+    const cols = [palette.primary, palette.accent].filter(Boolean);
+    if (cols.length) partes.push(`The palette leans on ${cols.join(' and ')} with plenty of white.`);
+    partes.push(STYLE_CLAUSES[c.style] || STYLE_CLAUSES.institucional);
+
+    // 5. Lo del administrador, al final y acotado.
+    if (c.masterPrompt) partes.push(c.masterPrompt);
+
+    const full = partes.join(' ');
+    if (full.length <= PROMPT_MAX_CHARS) return { prompt: full, dropped: [] };
+
+    // Se recorta por el final —el prompt maestro primero, después el estilo—,
+    // nunca la parte que sostiene la composición. Y se DICE lo que se dejó
+    // fuera: un recorte silencioso convierte «lo pedimos» en una afirmación
+    // falsa (misma regla que el prompt de escena del Creador de Reels).
+    const dropped = [];
+    const sinMaestro = partes.slice(0, c.masterPrompt ? -1 : partes.length);
+    if (c.masterPrompt) dropped.push('prompt maestro');
+    let out = sinMaestro.join(' ');
+    if (out.length > PROMPT_MAX_CHARS) {
+        out = out.slice(0, PROMPT_MAX_CHARS).replace(/\s+\S*$/, '');
+        dropped.push('cola del prompt');
+    }
+    return { prompt: out, dropped };
+};
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// ─── El nodo que devuelve la composición ───────────────────────────────
+//
+// El fondo generado entra como un nodo de imagen AL FONDO de la pila, bloqueado
+// y con `role: 'backdrop'`. Todo lo demás —el texto, el logotipo, la firma— se
+// sigue dibujando encima con nuestro motor, nítido.
+//
+// Se marca con `role` y no por posición: el usuario puede reordenar capas, y
+// una regeneración tiene que encontrar el fondo anterior para reemplazarlo, no
+// para acumular fondos.
+export const BACKDROP_ROLE = 'backdrop';
+
+export const backdropNode = (url, { id = 'fondo_ia' } = {}) => ({
+    id,
+    type: 'image',
+    name: 'Fondo generado',
+    role: BACKDROP_ROLE,
+    src: url,
+    srcVar: null,
+    fit: 'cover',
+    x: 0, y: 0, w: 1, h: 1,
+    rotation: 0, opacity: 1,
+    radius: 0,
+    locked: true,
+});
+
+/** Mete el fondo al pie de la pila, reemplazando el anterior si lo había.
+ *  También apaga el nodo de la fotografía original: la foto YA está dentro del
+ *  fondo generado, y dejarla encima la mostraría dos veces. */
+export const withBackdrop = (document, url) => {
+    const nodes = (document?.nodes || [])
+        .filter(n => n.role !== BACKDROP_ROLE)
+        .map(n => (n.type === 'image' && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: true } : n));
+    return { ...document, nodes: [backdropNode(url), ...nodes] };
+};
+
+/** Quitar el fondo generado devuelve la pieza a la composición declarada, con
+ *  su fotografía visible otra vez. Es la vuelta atrás, y tiene que existir: una
+ *  generación que no gusta no puede dejar la pieza peor que antes. */
+export const withoutBackdrop = (document) => ({
+    ...document,
+    nodes: (document?.nodes || [])
+        .filter(n => n.role !== BACKDROP_ROLE)
+        .map(n => (n.type === 'image' && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: false } : n)),
+});
+
+export const hasBackdrop = (document) => (document?.nodes || []).some(n => n.role === BACKDROP_ROLE);
+
+// ─── Qué se acepta de vuelta ───────────────────────────────────────────
+//
+// El modelo puede devolver algo de otra proporción o directamente fallar. Se
+// comprueba lo que se puede comprobar sin decodificar de más: que sea una
+// imagen, que tenga la proporción del formato y que no sea diminuta.
+//
+// **No se comprueba que no tenga texto.** Detectarlo exigiría OCR —decenas de
+// MB en una función que ya empaqueta FFmpeg— y aun así sería poco fiable. Lo
+// que se hace es pedirlo por `negative_prompt` y dejar la decisión a la vista:
+// el usuario ve la variante antes de usarla. No afirmar en la interfaz que se
+// verifica algo que no se verifica.
+export const ASPECT_TOLERANCE = 0.04;
+export const MIN_SIDE = 512;
+
+export const validateBackdrop = ({ width, height, format }) => {
+    const fmt = formatOf(format);
+    const problemas = [];
+    if (!width || !height) return { ok: false, problemas: ['No se pudieron leer las medidas de la imagen generada.'] };
+    if (Math.min(width, height) < MIN_SIDE) problemas.push(`La imagen generada mide ${width}×${height}: es chica para el formato.`);
+    const objetivo = fmt.width / fmt.height;
+    const real = width / height;
+    if (Math.abs(real - objetivo) / objetivo > ASPECT_TOLERANCE) {
+        problemas.push(`El modelo devolvió una proporción ${real.toFixed(2)} en vez de ${objetivo.toFixed(2)}; se va a encuadrar al formato.`);
+    }
+    return { ok: problemas.length === 0, problemas, width, height };
+};
+
+/** La proporción que se le pide a KIE, derivada del formato. */
+export const aspectFor = (format) => {
+    const fmt = formatOf(format);
+    const g = (a, b) => (b ? g(b, a % b) : a);
+    const d = g(fmt.width, fmt.height) || 1;
+    return `${fmt.width / d}:${fmt.height / d}`;
+};
+
+export default {
+    COMPOSE_MODEL, MAX_VARIANTS, DEFAULT_VARIANTS,
+    VARIANT_PLANS, planById, plansFor,
+    COMPOSITION_DEFAULTS, normalizeComposition,
+    buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS,
+    BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
+    validateBackdrop, aspectFor,
+};

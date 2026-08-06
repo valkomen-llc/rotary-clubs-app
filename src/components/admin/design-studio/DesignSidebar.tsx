@@ -41,6 +41,10 @@ interface Props {
     generating: boolean;
     onGenerate: () => void;
     missing: string[];
+    /** Bloque que se agrega al final del panel (la Composición con IA). Va por
+     *  props y no importado acá para que el sidebar no dependa de un módulo que
+     *  sólo usa el estudio. */
+    extra?: React.ReactNode;
 }
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -58,7 +62,7 @@ const Section: React.FC<{ n: number; title: string; icon: React.ReactNode; child
 const DesignSidebar: React.FC<Props> = ({
     catalog, templateId, onTemplate, club, onClub, branding,
     years, onYears, message, onMessage, copy, photo, onPickPhoto, onUploadPhoto, uploading, onClearPhoto,
-    generating, onGenerate, missing,
+    generating, onGenerate, missing, extra,
 }) => {
     const [term, setTerm] = useState('');
     const [hits, setHits] = useState<ClubHit[]>([]);
@@ -291,6 +295,8 @@ const DesignSidebar: React.FC<Props> = ({
                     Lo que subas queda guardado en la Biblioteca Multimedia, así que se puede reutilizar.
                 </p>
             </Section>
+
+            {extra}
         </aside>
     );
 };

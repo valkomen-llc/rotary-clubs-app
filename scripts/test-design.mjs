@@ -25,6 +25,7 @@ import { ELEMENTS, elementById, elementToNode } from '../server/lib/designElemen
 import { validateMessage, trimToLimit, TONES } from '../server/lib/designAI.js';
 import * as P from '../server/lib/designPublish.js';
 import * as PH from '../server/lib/designPhoto.js';
+import * as CO from '../server/lib/designCompose.js';
 
 // Las fechas rotarias se importan del CRITERIO, no de `designBranding.js`: ese
 // archivo importa la base de datos y arrastrarlo acá obligaría a tener Prisma
@@ -467,6 +468,94 @@ check('el hueco de la foto sale del propio documento',
     PH.photoSlotOf(docPub, 1080, 1080)?.nodeId === 'foto');
 check('y una plantilla sin foto devuelve null',
     PH.photoSlotOf({ nodes: [{ type: 'text', id: 't' }] }, 1080, 1080) === null);
+
+// ════════════════════════════════════════════════════════════════════
+grupo('Composición con IA: el reparto y el prompt');
+
+check('viene APAGADA por defecto', CO.normalizeComposition({}).enabled === false);
+check('el número de variantes se acota', CO.normalizeComposition({ variants: 99 }).variants === CO.MAX_VARIANTS);
+check('y nunca baja de 1', CO.normalizeComposition({ variants: 0 }).variants === 1);
+check('un valor no numérico cae al de por defecto',
+    CO.normalizeComposition({ variants: 'muchas' }).variants === CO.DEFAULT_VARIANTS);
+check('el público arranca en 1 variante', CO.normalizeComposition({}).publicVariants === 1);
+check('el prompt maestro tiene tope', CO.normalizeComposition({ masterPrompt: 'x'.repeat(5000) }).masterPrompt.length <= 1200);
+
+check('hay cuatro planes de variante y no se repiten',
+    CO.VARIANT_PLANS.length === 4 && new Set(CO.VARIANT_PLANS.map(p => p.id)).size === 4);
+check('cada plan dice dónde va la foto y qué queda limpio',
+    CO.VARIANT_PLANS.every(p => p.photo && p.clear && p.label));
+check('pedir una variante devuelve siempre la MISMA, no una ruleta',
+    CO.plansFor(1)[0].id === CO.plansFor(1)[0].id && CO.plansFor(1).length === 1);
+check('pedir más de las que hay no rompe', CO.plansFor(99).length === CO.MAX_VARIANTS);
+
+const pr = CO.buildBackdropPrompt({
+    composition: { enabled: true, masterPrompt: 'Keep it serene.', style: 'institucional' },
+    plan: CO.VARIANT_PLANS[0],
+    palette: { primary: '#17458F', accent: '#F7A81B' },
+    photo: { url: 'x' }, hasBase: true,
+});
+check('el prompt nombra las dos imágenes en orden', /first image/.test(pr.prompt) && /second image/.test(pr.prompt));
+check('pide que no se pierda a nadie de la foto', /everyone in the photograph/i.test(pr.prompt));
+check('describe la zona limpia para el texto', /room to read/i.test(pr.prompt));
+check('lleva la paleta del club', /17458F/i.test(pr.prompt));
+check('incluye el prompt maestro', /Keep it serene/.test(pr.prompt));
+check('cabe en el presupuesto', pr.prompt.length <= CO.PROMPT_MAX_CHARS, String(pr.prompt.length));
+check('y no dejó nada fuera', pr.dropped.length === 0);
+
+// La regla del sitio: en positivo. Lo prohibido va en su propio campo.
+check('el prompt NO enumera prohibiciones', !/\bno\b|\bwithout\b|\bavoid\b|\bdon't\b/i.test(pr.prompt), pr.prompt.slice(0, 120));
+check('el texto se prohíbe en el prompt NEGATIVO', /text/.test(CO.NEGATIVE_PROMPT) && /letters/.test(CO.NEGATIVE_PROMPT));
+check('y también los logotipos y las marcas de agua',
+    /logo/.test(CO.NEGATIVE_PROMPT) && /watermark/.test(CO.NEGATIVE_PROMPT));
+
+const promptLargo = CO.buildBackdropPrompt({
+    composition: { enabled: true, masterPrompt: 'y '.repeat(900), style: 'institucional' },
+    plan: CO.VARIANT_PLANS[1], photo: { url: 'x' }, hasBase: true,
+});
+check('un prompt maestro enorme se recorta', promptLargo.prompt.length <= CO.PROMPT_MAX_CHARS, String(promptLargo.prompt.length));
+check('y se DICE lo que se dejó fuera', promptLargo.dropped.includes('prompt maestro'));
+check('lo que sostiene la composición sobrevive al recorte', /second image/.test(promptLargo.prompt));
+
+check('sin base, el prompt pide construir el lienzo',
+    /build a clean institutional canvas/i.test(
+        CO.buildBackdropPrompt({ composition: {}, plan: CO.VARIANT_PLANS[0], photo: { url: 'x' }, hasBase: false }).prompt));
+
+grupo('Composición con IA: el fondo dentro del documento');
+
+const conFoto = { format: 'post_1_1', background: '#fff', nodes: [
+    { id: 'foto', type: 'image', srcVar: 'imagen', src: 'f.jpg', hidden: false },
+    { id: 'titulo', type: 'text', text: 'Hola' },
+] };
+const conFondo = CO.withBackdrop(conFoto, 'https://x/fondo.png');
+check('el fondo entra AL PIE de la pila', conFondo.nodes[0].role === CO.BACKDROP_ROLE);
+check('y viene bloqueado', conFondo.nodes[0].locked === true);
+check('la fotografía original se OCULTA (ya está dentro del fondo)',
+    conFondo.nodes.find(n => n.id === 'foto').hidden === true);
+check('el texto sigue estando, para dibujarse encima',
+    conFondo.nodes.some(n => n.id === 'titulo'));
+check('componer dos veces no acumula fondos',
+    CO.withBackdrop(conFondo, 'https://x/otro.png').nodes.filter(n => n.role === CO.BACKDROP_ROLE).length === 1);
+check('el fondo nuevo reemplaza al anterior',
+    CO.withBackdrop(conFondo, 'https://x/otro.png').nodes[0].src === 'https://x/otro.png');
+
+const sinFondo = CO.withoutBackdrop(conFondo);
+check('quitarlo devuelve la pieza a su composición declarada',
+    !CO.hasBackdrop(sinFondo) && sinFondo.nodes.find(n => n.id === 'foto').hidden === false);
+check('hasBackdrop distingue los dos estados', CO.hasBackdrop(conFondo) && !CO.hasBackdrop(conFoto));
+
+grupo('Composición con IA: qué se acepta de vuelta');
+
+check('una imagen del tamaño y la proporción pedidos pasa',
+    CO.validateBackdrop({ width: 1080, height: 1080, format: 'post_1_1' }).ok);
+check('una de otra proporción se avisa, no se rechaza en silencio',
+    CO.validateBackdrop({ width: 1600, height: 900, format: 'post_1_1' }).problemas.some(p => /proporción/.test(p)));
+check('una diminuta se avisa',
+    CO.validateBackdrop({ width: 128, height: 128, format: 'post_1_1' }).problemas.some(p => /chica/.test(p)));
+check('sin medidas no se inventa un veredicto',
+    !CO.validateBackdrop({ width: 0, height: 0, format: 'post_1_1' }).ok);
+check('la proporción que se le pide a KIE sale del formato', CO.aspectFor('post_1_1') === '1:1');
+check('y de un formato apaisado sale 16:9', CO.aspectFor('post_16_9') === '16:9');
+check('el modelo es configurable por entorno', typeof CO.COMPOSE_MODEL() === 'string' && CO.COMPOSE_MODEL().length > 0);
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

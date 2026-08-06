@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.721.1 | 2026-08-06 (Plantillas IA volvió a funcionar: una comilla rompía el módulo)
-// Cache bust: 2026-08-06d
+// UI V4.722.0 | 2026-08-06 (Motor de Composición: KIE arma la imagen, la plataforma el texto)
+// Cache bust: 2026-08-06e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.722.0',
+        title: 'Plantillas IA compone la pieza con inteligencia artificial 🎨✨',
+        description: 'La plantilla dejó de ser un conjunto de capas fijas. Ahora el administrador puede cargar una imagen base institucional —la textura con las curvas del Distrito—, escribir un prompt maestro y activar la composición con IA: al pulsar «Componer», el modelo recibe esa imagen base junto con la fotografía del club y devuelve una pieza integrada, donde la foto no se ve pegada dentro de un recuadro sino que forma parte del diseño, con la luz y los bordes armonizados. Se generan varias distribuciones distintas para elegir —la foto arriba, a un lado, en óvalo o de fondo— y la cantidad se configura desde el panel: cuántas ve el administrador y cuántas el visitante del portal público, porque cada una cuesta una llamada al modelo. Hay una decisión importante detrás y conviene saberla: el modelo arma la IMAGEN, pero el nombre del club, el mensaje, el logotipo y la firma del Gobernador los sigue dibujando la plataforma, nítidos. Los modelos generativos escriben el texto con errores —nombres de club mal escritos, párrafos deformados— y una felicitación firmada por el Gobernador no puede salir así; corregirlo encima sería el montaje que el equipo ya rechazó dos veces. Así que cada uno hace lo que sabe hacer: la IA la imagen, la plataforma la tipografía. El fondo generado se puede quitar en cualquier momento y la pieza vuelve a su composición de siempre.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'IA', 'KIE', 'composicion', 'diseño'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Composición con IA: imagen base + fotografía del club → pieza integrada.' },
+            { type: 'added', text: 'Imagen base y prompt maestro configurables por plantilla, desde el panel.' },
+            { type: 'added', text: 'Cuatro distribuciones distintas para elegir; la cantidad se configura.' },
+            { type: 'added', text: 'Variantes separadas para el panel y para el portal público (cada una se paga).' },
+            { type: 'added', text: 'El fondo generado se quita y la pieza vuelve a su composición declarada.' },
+        ]
+    },
     {
         version: '4.721.1',
         title: 'Plantillas IA volvió a funcionar 🔧',

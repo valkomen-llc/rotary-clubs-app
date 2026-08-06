@@ -159,16 +159,32 @@ export const checkTaskStatus = async (taskId) => {
 // (used by Kling video and many newer image models) AND `image_size` (used by older
 // image models) so whichever the chosen model understands is honoured; KIE silently
 // ignores unknown fields. Same for image_url vs image_urls (we send the array form).
-export const createKieImageTask = async ({ model, prompt, imageUrl, aspectRatio = '2:3', outputFormat = 'png' }) => {
+// v4.722 — `imageUrls` (plural) para COMPOSICIÓN: los modelos de edición aceptan
+// varias imágenes de referencia, y las Plantillas IA mandan dos —el fondo
+// institucional y la fotografía del club— para que el modelo las integre en una
+// sola pieza. `negativePrompt` viaja en su propio campo, no pegado al positivo:
+// misma regla que el Creador de Reels (v4.705), donde meterlo en el prompt
+// consumía presupuesto y hacía que el modelo se obsesionara con lo prohibido.
+//
+// El camino de UNA imagen queda EXACTAMENTE como estaba. Lo usan el Generador de
+// Publicaciones y la Expansión de Lienzo del Creador de Reels, y ninguno de los
+// dos se puede regresionar por una función nueva — al tocar el envío, mirar los
+// dos sitios (regla del sitio).
+export const createKieImageTask = async ({ model, prompt, imageUrl, imageUrls = null, negativePrompt = null, aspectRatio = '2:3', outputFormat = 'png' }) => {
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) throw new Error('KIE_API_KEY no configurada');
 
+    const varias = Array.isArray(imageUrls) && imageUrls.length > 0;
     const requestBody = {
         model,
         input: {
             prompt,
-            image_urls: [imageUrl],
-            image_url: imageUrl,
+            ...(varias
+                // Con varias imágenes NO se manda `image_url` singular: el modelo
+                // se quedaría con esa sola y la composición perdería el fondo.
+                ? { image_urls: imageUrls }
+                : { image_urls: [imageUrl], image_url: imageUrl }),
+            ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
             image_size: aspectRatio,
             aspect_ratio: aspectRatio,
             output_format: outputFormat

@@ -30,6 +30,8 @@ import { formatOf } from '../lib/designSpec.js';
 import { sanitizeValues, applyPublicValues, bakeFrozen } from '../lib/designPublish.js';
 import { photoSlotOf, adaptPhoto } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
+import { startComposition, syncComposition } from '../lib/designBackdrop.js';
+import { normalizeComposition } from '../lib/designCompose.js';
 
 console.log('[designPublicController] v4.721.0 cargado — Portal público de Plantillas IA (sin autenticación).');
 
@@ -58,6 +60,9 @@ const publicShape = (row) => ({
         row.frozen || {}
     ),
     fields: row.fields || [],
+    // El portal necesita saber si esta plantilla compone con IA y cuántas
+    // variantes le tocan. No se manda el prompt maestro: es configuración.
+    composition: (() => { const c = normalizeComposition(row.composition); return { enabled: c.enabled, variants: c.publicVariants }; })(),
 });
 
 // ── GET /api/public/design/:slug ──────────────────────────────────────
@@ -184,6 +189,86 @@ export const publicPhoto = async (req, res) => {
     }
 };
 
+// ── POST /api/public/design/:slug/backdrop ────────────────────────────
+//
+// Composición con IA en el portal público. Sólo existe si el operador la
+// encendió para ESA plantilla, y conviene entender qué implica encenderla:
+//
+//   **La fotografía anónima deja de ser efímera.** KIE necesita una URL que
+//   pueda descargar, así que la foto hay que subirla a nuestro almacenamiento
+//   antes de mandarla. Es lo contrario de lo que hace `/photo`, que devuelve un
+//   data URL justamente para no alojar contenido de terceros. No es un descuido
+//   de este endpoint: es el precio de la composición generativa, y por eso está
+//   apagada por defecto y el panel lo advierte al encenderla.
+//
+// Se sube a un prefijo aparte (`public-tmp/`) para que se pueda vaciar con una
+// regla de ciclo de vida del bucket sin tocar la Biblioteca Multimedia.
+export const publicBackdrop = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const row = await rowOrNull(req.params.slug);
+        if (!row) return res.status(404).json({ error: 'Esta plantilla no existe o no está publicada.' });
+
+        const comp = normalizeComposition(row.composition);
+        if (!comp.enabled) return res.status(400).json({ error: 'Esta plantilla no tiene la composición con IA activada.' });
+
+        const dataUrl = String(req.body?.photo || '');
+        if (!dataUrl.startsWith('data:image/')) return res.status(400).json({ error: 'Hace falta la fotografía para componer.' });
+
+        const photoUrl = await storeTempPhoto(dataUrl, row.slug);
+        const r = await startComposition({
+            composition: comp,
+            format: row.format,
+            photoUrl,
+            palette: row.frozen?.palette || {},
+            // En el portal manda `publicVariants`, no `variants`: el panel puede
+            // explorar cuatro; una visita anónima gasta lo que el operador dijo.
+            variants: comp.publicVariants,
+        });
+        if (!r.variants.some(v => v.taskId)) {
+            return res.status(502).json({ error: r.variants[0]?.error || 'No se pudo iniciar la composición.' });
+        }
+        res.json({ variants: r.variants.map(v => ({ planId: v.planId, label: v.label, summary: v.summary, taskId: v.taskId, error: v.error })) });
+    } catch (e) {
+        console.error('[designPublic] backdrop:', e);
+        res.status(500).json({ error: e.message || 'No se pudo componer la pieza' });
+    }
+};
+
+// ── GET /api/public/design/:slug/backdrop/:taskId ─────────────────────
+export const publicBackdropSync = async (req, res) => {
+    try {
+        const row = await rowOrNull(req.params.slug);
+        if (!row) return res.status(404).json({ error: 'Esta plantilla no existe o no está publicada.' });
+        res.json(await syncComposition({ taskId: req.params.taskId, format: row.format, clubId: row.clubId }));
+    } catch (e) {
+        console.error('[designPublic] backdropSync:', e);
+        res.status(500).json({ error: e.message || 'No se pudo consultar la composición' });
+    }
+};
+
+const storeTempPhoto = async (dataUrl, slug) => {
+    const m = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+    if (!m) throw new Error('La fotografía no tiene un formato reconocible.');
+    const buffer = Buffer.from(m[2], 'base64');
+    const ext = m[1].split('/')[1].replace('jpeg', 'jpg');
+
+    const aws = await import('@aws-sdk/client-s3');
+    const mod = aws.default || aws;
+    const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+    const client = new mod.S3Client({
+        region: process.env.AWS_REGION || 'us-east-1',
+        credentials: {
+            accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+        },
+    });
+    const key = `public-tmp/designs/${slug}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    await client.send(new mod.PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: m[1] }));
+    const encoded = key.split('/').map(encodeURIComponent).join('/');
+    return `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encoded}`;
+};
+
 // ── POST /api/public/design/:slug/used ────────────────────────────────
 // Contador de uso. Es lo único que el portal escribe, y a propósito no guarda
 // nada de quien lo usó: es un número para saber si el enlace sirve, no
@@ -198,4 +283,4 @@ export const markUsed = async (req, res) => {
     }
 };
 
-export default { getPublicTemplate, renderPublic, publicMessage, publicPhoto, markUsed };
+export default { getPublicTemplate, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, markUsed };

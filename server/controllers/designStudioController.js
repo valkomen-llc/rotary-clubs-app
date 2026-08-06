@@ -30,6 +30,8 @@ import { elementsByCategory } from '../lib/designElements.js';
 import { searchClubs, brandingForClub, saveFoundationDate, yearsSince, rotaryPeriod } from '../lib/designBranding.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl } from '../lib/designPublish.js';
+import { startComposition, syncComposition } from '../lib/designBackdrop.js';
+import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
 console.log('[designStudioController] v4.720.0 cargado — Plantillas IA. Grafo de escena compartido entre editor y exportación; el archivo se compone en el navegador.');
 
@@ -58,6 +60,7 @@ export const getCatalog = async (_req, res) => {
             templates: availableTemplates().map(t => ({
                 id: t.id, name: t.name, category: t.category, format: t.format,
                 requires: t.requires || [], summary: t.summary || '',
+                composition: normalizeComposition(t.composition),
             })),
             elements: elementsByCategory(),
             tones: Object.entries(TONES).map(([id, t]) => ({ id, label: t.label })),
@@ -65,6 +68,10 @@ export const getCatalog = async (_req, res) => {
             fonts: FONTS,
             variables: VARIABLES,
             limits: LIMITS,
+            // Los planes de variante y el tope viven en el criterio; la pantalla
+            // los PIDE en vez de repetirlos, o se separan en silencio.
+            variantPlans: VARIANT_PLANS.map(p => ({ id: p.id, label: p.label, summary: p.summary })),
+            maxVariants: MAX_VARIANTS,
         });
     } catch (e) { fail(res, e); }
 };
@@ -272,6 +279,40 @@ export const deleteProject = async (req, res) => {
     } catch (e) { fail(res, e, 500, 'No se pudo eliminar el diseño'); }
 };
 
+// ── Composición con IA ────────────────────────────────────────────────
+//
+// KIE construye la IMAGEN —fondo institucional con la fotografía integrada— y
+// nuestro motor sigue pintando el texto, el logotipo y la firma encima. El
+// reparto y su porqué están en la cabecera de `designCompose.js`.
+//
+// Es asíncrono: se crean las tareas y se devuelven los ids. Esperar dentro de
+// la petición agota los 120 s de la función.
+
+// ── POST /api/design-studio/backdrop ──────────────────────────────────
+export const startBackdrop = async (req, res) => {
+    try {
+        const { composition, format = 'post_1_1', photoUrl = null, palette = {}, variants = null } = req.body || {};
+        const r = await startComposition({ composition, format, photoUrl, palette, variants });
+        // Si NINGUNA variante arrancó, es un fallo: devolver 200 con cuatro
+        // errores adentro haría que la pantalla se quede esperando.
+        if (!r.variants.some(v => v.taskId)) {
+            return res.status(502).json({ error: r.variants[0]?.error || 'Ninguna variante pudo iniciarse.', variants: r.variants });
+        }
+        res.json(r);
+    } catch (e) { fail(res, e, 400, e.message); }
+};
+
+// ── GET /api/design-studio/backdrop/:taskId ───────────────────────────
+export const syncBackdrop = async (req, res) => {
+    try {
+        res.json(await syncComposition({
+            taskId: req.params.taskId,
+            format: req.query.format || 'post_1_1',
+            clubId: scopeClubId(req),
+        }));
+    } catch (e) { fail(res, e, 500, e.message); }
+};
+
 // ── Publicaciones ─────────────────────────────────────────────────────
 //
 // Publicar CONGELA: se guarda el documento tal como quedó en el editor, no una
@@ -283,6 +324,7 @@ const pubShape = (r, origin = '') => ({
     id: r.id, slug: r.slug, name: r.name, intro: r.intro || '',
     category: r.category, format: r.format,
     fields: r.fields || [], frozen: r.frozen || {},
+    composition: normalizeComposition(r.composition),
     published: r.published, uses: r.uses,
     url: publicUrl(r.slug, origin),
     createdAt: r.createdAt, updatedAt: r.updatedAt,
@@ -327,12 +369,13 @@ export const publish = async (req, res) => {
 
         const { rows } = await db.query(
             `INSERT INTO "DesignPublicTemplate"
-                (slug, name, intro, category, format, document, fields, frozen, published, "clubId", "projectId", "createdBy", "updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,NOW())
+                (slug, name, intro, category, format, document, fields, frozen, composition, published, "clubId", "projectId", "createdBy", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$12,true,$9,$10,$11,NOW())
              ON CONFLICT (slug) DO UPDATE SET
                 name = EXCLUDED.name, intro = EXCLUDED.intro, category = EXCLUDED.category,
                 format = EXCLUDED.format, document = EXCLUDED.document, fields = EXCLUDED.fields,
-                frozen = EXCLUDED.frozen, published = true, "updatedAt" = NOW()
+                frozen = EXCLUDED.frozen, composition = EXCLUDED.composition,
+                published = true, "updatedAt" = NOW()
              -- Sólo el dueño del slug lo puede volver a publicar: sin esta
              -- condición, otro sitio de la plataforma podría pisar una
              -- dirección pública ajena con su propio diseño.
@@ -340,7 +383,8 @@ export const publish = async (req, res) => {
              RETURNING *`,
             [pub.slug, pub.name, pub.intro, pub.category, pub.format,
              JSON.stringify(doc), JSON.stringify(pub.fields), JSON.stringify(pub.frozen),
-             clubId, projectId, req.user?.id || null]
+             clubId, projectId, req.user?.id || null,
+             JSON.stringify(normalizeComposition(settings.composition))]
         );
         if (!rows[0]) return res.status(409).json({ error: `La dirección «${pub.slug}» ya la usa otro sitio. Elegí otra.` });
 
@@ -398,6 +442,7 @@ export const previewPublication = async (req, res) => {
 
 export default {
     getCatalog, findClubs, getBranding, putFoundation, compose, improve,
+    startBackdrop, syncBackdrop,
     listProjects, saveProject, updateProject, deleteProject,
     listPublications, publish, setPublished, deletePublication, previewPublication,
 };

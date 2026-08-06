@@ -68,6 +68,18 @@ export const TEMPLATES = [
         // de generar, no después.
         requires: ['club', 'anios', 'imagen'],
         summary: 'La fotografía del club ocupa la mitad superior. Ideal cuando hay una buena foto de grupo.',
+        // Composición con IA (v4.722). Viene APAGADA: encenderla gasta créditos
+        // por pieza y manda la fotografía a un proveedor externo, así que es una
+        // decisión del operador, no un valor por defecto. El administrador
+        // carga su imagen base y su prompt maestro desde el panel.
+        composition: {
+            enabled: false,
+            baseImageUrl: null,
+            masterPrompt: 'Keep the piece serene and institutional, in the visual language of Rotary stationery.',
+            variants: 4,
+            publicVariants: 1,
+            style: 'institucional',
+        },
         nodes: [
             { id: 'foto', type: 'image', name: 'Fotografía del club', role: 'foto', src: '{{imagen}}', fit: 'cover', x: 0, y: 0, w: 1, h: 0.47 },
             { id: 'corte_oro', type: 'shape', name: 'Filo dorado', shape: 'wave', fill: goldFill, x: -0.02, y: 0.40, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
