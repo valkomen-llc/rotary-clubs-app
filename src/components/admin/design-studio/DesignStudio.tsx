@@ -29,9 +29,11 @@ import DesignCanvas from './DesignCanvas';
 import DesignSidebar from './DesignSidebar';
 import DesignInspector from './DesignInspector';
 import PublishDialog from './PublishDialog';
+import CompositionPanel from './CompositionPanel';
 import {
     fetchCatalog, compose, listDesigns, createDesign, updateDesign, deleteDesign, uploadToLibrary,
     type Catalog, type ClubHit, type Branding, type DesignCopy, type SavedDesign, type ElementItem,
+    type Composition,
 } from './designApi';
 import {
     formatOf, applyVariables, duplicateNode, uid, isText, isImage,
@@ -71,12 +73,17 @@ const DesignStudio: React.FC = () => {
     // A QUÉ se le está poniendo la imagen. Un solo `MediaPicker` por pantalla y
     // un campo que dice dónde va lo elegido — es el `pickerField` que pide la
     // regla de v4.700, no un selector por casilla.
-    const [pickerTarget, setPickerTarget] = useState<'foto' | 'capa' | string | null>(null);
+    const [pickerTarget, setPickerTarget] = useState<'foto' | 'capa' | 'base' | string | null>(null);
     const [saved, setSaved] = useState<SavedDesign[]>([]);
     const [showSaved, setShowSaved] = useState(false);
     const [currentId, setCurrentId] = useState<string | null>(null);
     const [exportOpen, setExportOpen] = useState(false);
     const [publishOpen, setPublishOpen] = useState(false);
+    // La composición con IA sale de la plantilla elegida y el administrador la
+    // ajusta acá. Se guarda con el diseño y viaja a la publicación.
+    const [composition, setComposition] = useState<Composition>({
+        enabled: false, baseImageUrl: null, masterPrompt: '', variants: 1, publicVariants: 1, style: 'institucional',
+    });
 
     const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -280,13 +287,14 @@ const DesignStudio: React.FC = () => {
     // Va DESPUÉS de `runCompose` a propósito: al estar en su array de
     // dependencias, ponerlo antes daría un ReferenceError de zona muerta al
     // renderizar, y eso es una pantalla en blanco, no un aviso.
-    const uploadImage = useCallback(async (file: File | undefined, target: 'foto' | 'capa') => {
+    const uploadImage = useCallback(async (file: File | undefined, target: 'foto' | 'capa' | 'base') => {
         if (!file) return;
         if (!file.type.startsWith('image/')) { toast.error('Ese archivo no es una imagen.'); return; }
         setUploading(true);
         try {
             const { url } = await uploadToLibrary(file, club?.id || null);
             if (target === 'capa') { addImageNode(url); return; }
+            if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
             setPhoto(url);
             const hasPhotoNode = doc.nodes.some(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto'));
             if (doc.nodes.length && !hasPhotoNode) runCompose({ skipAI: true });
@@ -303,8 +311,42 @@ const DesignStudio: React.FC = () => {
     // conservar (mensaje, foto, años), que es lo que costó trabajo.
     const changeTemplate = useCallback((id: string) => {
         setTemplateId(id);
+        // Cada plantilla trae su propia configuración de composición. Se adopta
+        // al elegirla, no se arrastra la de la anterior: el prompt maestro de
+        // una plantilla no describe a otra.
+        const c = catalog?.templates?.find(t => t.id === id)?.composition;
+        if (c) setComposition(c);
         if (doc.nodes.length) runCompose({ skipAI: true, tpl: id });
-    }, [doc.nodes.length, runCompose]);
+    }, [doc.nodes.length, runCompose, catalog]);
+
+    // ── Fondo generado por IA ──────────────────────────────────────
+    // El fondo entra AL PIE de la pila y oculta el nodo de la fotografía: la
+    // foto ya está dentro de la imagen generada y dejarla encima la mostraría
+    // dos veces. Se marca con `role` para poder reemplazarlo o quitarlo.
+    const applyBackdrop = useCallback((url: string) => {
+        const nodes = doc.nodes
+            .filter(n => n.role !== 'backdrop')
+            .map(n => (isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: true } : n));
+        const fondo: DesignNode = {
+            id: 'fondo_ia', type: 'image', name: 'Fondo generado', role: 'backdrop',
+            src: url, srcVar: null, fit: 'cover',
+            x: 0, y: 0, w: 1, h: 1, rotation: 0, opacity: 1, radius: 0, locked: true,
+        } as DesignNode;
+        commit({ ...doc, nodes: [fondo, ...nodes] });
+        setSelectedIds([]);
+        toast.success('Fondo aplicado. El texto se sigue dibujando encima, nítido.');
+    }, [commit, doc]);
+
+    const removeBackdrop = useCallback(() => {
+        commit({
+            ...doc,
+            nodes: doc.nodes
+                .filter(n => n.role !== 'backdrop')
+                .map(n => (isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: false } : n)),
+        });
+    }, [commit, doc]);
+
+    const hasBackdrop = useMemo(() => doc.nodes.some(n => n.role === 'backdrop'), [doc.nodes]);
 
     // ── Teclado ────────────────────────────────────────────────────
     useEffect(() => {
@@ -383,6 +425,7 @@ const DesignStudio: React.FC = () => {
                 title, templateId, category: 'aniversario',
                 document: doc, variables: liveVars, branding: branding || {}, copy: copy || {},
                 subjectClubId: club?.id || null, imageUrl: media.url, mediaId: media.id,
+                composition,
             };
             const row = currentId ? await updateDesign(currentId, body) : await createDesign(body);
             setCurrentId(row.id);
@@ -519,6 +562,22 @@ const DesignStudio: React.FC = () => {
                     generating={generating}
                     onGenerate={() => runCompose({ skipAI: false })}
                     missing={missing}
+                    extra={
+                        <CompositionPanel
+                            composition={composition}
+                            onChange={setComposition}
+                            photoUrl={photo}
+                            format={doc.format}
+                            palette={{ primary: branding?.primary, accent: branding?.accent }}
+                            maxVariants={catalog?.maxVariants || 4}
+                            hasBackdrop={hasBackdrop}
+                            onApply={applyBackdrop}
+                            onRemove={removeBackdrop}
+                            onPickBase={() => setPickerTarget('base')}
+                            onUploadBase={f => uploadImage(f, 'base')}
+                            uploading={uploading}
+                        />
+                    }
                 />
 
                 <main ref={viewportRef} className="flex-1 min-w-0 overflow-auto bg-gray-200/70 flex items-center justify-center p-8">
@@ -584,6 +643,7 @@ const DesignStudio: React.FC = () => {
                         gobernador: branding?.governor || '',
                         periodo: branding?.period || '',
                     }}
+                    composition={composition}
                     onClose={() => setPublishOpen(false)}
                     onPublished={() => { /* el diálogo muestra el enlace */ }}
                 />
@@ -605,6 +665,8 @@ const DesignStudio: React.FC = () => {
                         setPickerTarget(null);
                         if (!url) return;
                         if (target === 'capa') { addImageNode(url); return; }
+            if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
+                        if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); return; }
                         if (target && target !== 'foto') {
                             // Reemplazar la imagen de un nodo concreto desde
                             // Propiedades: `target` es su id.

@@ -24,9 +24,11 @@ export async function ensureDesignSchema() {
         `SELECT to_regclass('public."DesignProject"') IS NOT NULL AS tabla,
                 to_regclass('public."DesignPublicTemplate"') IS NOT NULL AS publica,
                 EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'DesignPublicTemplate' AND column_name = 'composition') AS comp_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col`
     );
-    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.copy_col) { _ready = true; return; }
+    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.copy_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "DesignProject" (
@@ -105,6 +107,10 @@ export async function ensureDesignSchema() {
             -- gobernador, periodo. Es la firma de la pieza.
             frozen JSONB NOT NULL DEFAULT '{}'::jsonb,
 
+            -- Composición con IA (v4.722): si esta plantilla publicada manda su
+            -- pieza a KIE, con qué prompt maestro y cuántas variantes.
+            composition JSONB NOT NULL DEFAULT '{}'::jsonb,
+
             published BOOLEAN NOT NULL DEFAULT false,
             "clubId" TEXT,
             "projectId" TEXT,
@@ -116,6 +122,8 @@ export async function ensureDesignSchema() {
     `);
     // El slug es la dirección pública: único en toda la plataforma, porque
     // /plantillas/aniversario no puede llevar a dos piezas distintas.
+    // Aditiva: una instalación anterior a v4.722 se completa sola.
+    await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS composition JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "DesignPublicTemplate_slug_key" ON "DesignPublicTemplate" (slug);`);
     await db.query(`CREATE INDEX IF NOT EXISTS "DesignPublicTemplate_club_idx" ON "DesignPublicTemplate" ("clubId", "updatedAt" DESC);`);
 

@@ -1880,7 +1880,7 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
 
-Pruebas: `npm run test:design` (158 casos, **sin base, credenciales ni red**) y
+Pruebas: `npm run test:design` (197 casos, **sin base, credenciales ni red**) y
 `npm run test:design:render` (43 casos: monta el editor, el panel completo Y el
 portal público en un navegador, compara la vista previa con la exportación píxel
 a píxel y ejercita el arrastre, la subida y el formulario público; pide `npm i
@@ -2120,6 +2120,69 @@ completa un formulario y descarga su pieza.
   traductor del sitio, lo que lo volvía irreconocible—. Para citar un
   identificador dentro de SQL, escribirlo sin adornos.
 
+### Motor de Composición con IA (v4.722)
+
+La plantilla puede mandar su pieza a KIE para que el modelo ARME la imagen —el
+fondo institucional con la fotografía del club integrada— en vez de encajar la
+foto en un recuadro.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/designCompose.js` | El CRITERIO. **Puro**: prompt, planes de variante, validación |
+| `server/lib/designBackdrop.js` | La orquestación: KIE, sondeo, S3 |
+| `src/components/admin/design-studio/CompositionPanel.tsx` | La configuración y las variantes |
+
+- **La IA hace la IMAGEN; la plataforma hace el TEXTO.** Es el reparto que
+  define el módulo y no es una preferencia estética: los modelos generativos no
+  escriben texto de forma fiable, y un párrafo en español, el nombre propio de
+  un club y el del Gobernador salen deformados con frecuencia alta. Peor: una
+  vez que salen mal **no hay salida limpia**, porque corregirlos encima es el
+  composite que el equipo rechazó dos veces (v4.323-v4.324) y el enmascarado
+  grande que producía mosaico (v4.317-v4.320). El pedido original planteaba que
+  el modelo compusiera la pieza entera; se acotó a propósito.
+- **No es un composite de los prohibidos.** El modelo no devuelve una fotografía
+  que retoquemos: devuelve el LIENZO sobre el que se compone. Dibujar tipografía
+  sobre un fondo es diseño gráfico normal, y es lo que el módulo ya hacía — sólo
+  que ahora el fondo también puede venir del modelo.
+- **Cada variante es una DISTRIBUCIÓN, no una semilla.** Pedirle cuatro veces lo
+  mismo al modelo da cuatro versiones parecidas y no ayuda a elegir. Lo que
+  cambia entre variantes es dónde manda la fotografía y qué zona queda limpia
+  para el texto (`VARIANT_PLANS`). Se toman EN ORDEN, no al azar: con una sola
+  variante tiene que salir siempre la misma, no una ruleta.
+- **Lo prohibido va en `negative_prompt`, no pegado al positivo.** Misma regla y
+  mismo motivo que el Creador de Reels (v4.705): dentro de la descripción de la
+  escena, el modelo se obsesiona con lo prohibido; en su campo lo lee como lo
+  que es. `createKieImageTask` acepta ahora `imageUrls` (plural) y
+  `negativePrompt`; **el camino de UNA imagen quedó intacto** porque lo usan el
+  Generador de Publicaciones y la Expansión de Lienzo.
+- **El fondo entra AL PIE de la pila y OCULTA el nodo de la fotografía.** La foto
+  ya está dentro de la imagen generada; dejarla encima la mostraría dos veces.
+  Se marca con `role: 'backdrop'` y no por posición, porque el usuario puede
+  reordenar capas y una regeneración tiene que encontrar el fondo anterior para
+  reemplazarlo, no para acumular.
+- **Quitar el fondo devuelve la pieza a su composición declarada**, con su
+  fotografía visible. Una generación que no gusta no puede dejar la pieza peor
+  que antes.
+- **No se comprueba que la imagen generada no tenga texto.** Detectarlo exigiría
+  OCR —decenas de MB en una función que ya empaqueta FFmpeg— y sería poco
+  fiable. Se pide por `negative_prompt` y la decisión queda a la vista: el
+  usuario ve la variante antes de usarla. No afirmar en la interfaz que se
+  verifica algo que no se verifica.
+- **Viene APAGADA.** Encenderla gasta créditos por pieza y manda la fotografía a
+  un proveedor externo: es una decisión del operador, no un valor por defecto.
+- **En el portal público, componer obliga a GUARDAR la foto anónima.** KIE
+  necesita una URL que pueda descargar, así que la fotografía deja de ser
+  efímera y se sube a `public-tmp/` —lo contrario de lo que hace `/photo`—. No
+  es un descuido: es el precio de la composición generativa, y el panel lo
+  advierte al encenderla. El prefijo está aparte para poder vaciarlo con una
+  regla de ciclo de vida sin tocar la Biblioteca Multimedia.
+- **`variants` y `publicVariants` son dos números distintos.** El panel puede
+  explorar cuatro; una visita anónima gasta lo que el operador dijo (1 por
+  defecto).
+- **El prompt tiene presupuesto y se recorta con orden**: primero el prompt
+  maestro, después la cola. Lo que sostiene la composición —las dos imágenes y
+  el plan— no se toca, y lo que se deja fuera se anota en consola.
+
 **Sintaxis del servidor: `npm run check:syntax`.** Corre en `prebuild` y rompe
 el despliegue. Es la TERCERA causa de módulo caído, y no la ven ni el typecheck
 ni `check:hooks`:
@@ -2141,6 +2204,13 @@ ni `check:hooks`:
 **Sigue sin cubrirse** el error de importación en tiempo de ejecución —importar
 un símbolo que el módulo no exporta— porque comprobarlo exigiría ejecutar los
 módulos, y eso arrastra la base de datos.
+
+**Variables de entorno del Motor de Composición:**
+
+| Variable | Para qué |
+|---|---|
+| `DESIGN_COMPOSE_MODEL` | Modelo de KIE para componer (default `google/nano-banana-edit`). KIE renombra ids; se corrige sin desplegar |
+| `KIE_API_KEY` | La misma credencial que ya usa el resto del sitio |
 
 **Pendientes conocidos:** los formatos 4:5, 9:16 y 16:9 están **declarados con
 `available:false`** — la arquitectura ya los soporta (los nodos son fracciones),

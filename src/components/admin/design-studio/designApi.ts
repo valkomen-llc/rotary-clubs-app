@@ -36,6 +36,7 @@ const request = async <T,>(path: string, init: RequestInit = {}): Promise<T> => 
 export interface TemplateSummary {
     id: string; name: string; category: string; format: string;
     requires: string[]; summary: string; available?: boolean;
+    composition?: Composition;
 }
 export interface CategoryEntry { id: string; label: string; icon: string; templates: TemplateSummary[] }
 export interface ElementItem { id: string; label: string; category: string; defaultFill: string; ratio: number; path?: string; shape?: string }
@@ -69,6 +70,8 @@ export interface Catalog {
     palette: Record<string, string>;
     fonts: { id: string; label: string; stack: string }[];
     limits: Record<string, number>;
+    variantPlans: { id: string; label: string; summary: string }[];
+    maxVariants: number;
 }
 
 export interface ComposeResult {
@@ -120,6 +123,33 @@ export const updateDesign = (id: string, body: Record<string, unknown>) =>
 
 export const deleteDesign = (id: string) => request<{ ok: true }>(`/projects/${id}`, { method: 'DELETE' });
 
+// ─── Composición con IA ────────────────────────────────────────────────
+
+export interface Composition {
+    enabled: boolean;
+    baseImageUrl: string | null;
+    masterPrompt: string;
+    variants: number;
+    publicVariants: number;
+    style: string;
+}
+
+export interface BackdropVariant {
+    planId: string; label: string; summary: string;
+    taskId: string | null; error: string | null;
+}
+
+export const startBackdrop = (body: {
+    composition: Composition; format: string; photoUrl: string | null;
+    palette: Record<string, string | undefined>; variants?: number;
+}) => request<{ model: string; aspect: string; variants: BackdropVariant[] }>('/backdrop', {
+    method: 'POST', body: JSON.stringify(body),
+});
+
+export const syncBackdrop = (taskId: string, format: string) =>
+    request<{ status: 'pending' | 'ready' | 'failed'; url?: string; width?: number; height?: number; notes?: string[]; error?: string }>(
+        `/backdrop/${encodeURIComponent(taskId)}?format=${encodeURIComponent(format)}`);
+
 // ─── Publicaciones ─────────────────────────────────────────────────────
 
 export interface PublicField {
@@ -131,7 +161,7 @@ export interface PublicField {
 export interface Publication {
     id: string; slug: string; name: string; intro: string;
     category: string; format: string;
-    fields: PublicField[]; frozen: Record<string, string>;
+    fields: PublicField[]; frozen: Record<string, string>; composition: Composition;
     published: boolean; uses: number; url: string;
     createdAt: string; updatedAt: string;
 }

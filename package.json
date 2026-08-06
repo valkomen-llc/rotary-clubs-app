@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.721.1",
-  "cache_bust": "2026-08-06d (Corregido: una comilla invertida dentro del SQL rompia el modulo entero. Barrera de sintaxis en prebuild.)",
+  "version": "4.722.0",
+  "cache_bust": "2026-08-06e (Motor de Composicion: KIE arma la imagen con la foto integrada y la plataforma sigue dibujando el texto nitido.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

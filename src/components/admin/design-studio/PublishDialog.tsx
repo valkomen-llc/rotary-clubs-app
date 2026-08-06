@@ -21,12 +21,15 @@ import React, { useEffect, useState } from 'react';
 import { X, Globe2, Loader2, Copy, Check, Lock, ExternalLink, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DesignDocument } from '../../../lib/designSpec';
-import { previewPublication, publishDesign, type PublicField, type Publication } from './designApi';
+import { previewPublication, publishDesign, type PublicField, type Publication, type Composition } from './designApi';
 
 interface Props {
     document: DesignDocument;
     defaultName: string;
     frozen: Record<string, string>;
+    /** La composición con IA viaja a la publicación: el portal público la
+     *  necesita para saber si compone y con cuántas variantes. */
+    composition: Composition;
     onClose: () => void;
     onPublished: (p: Publication) => void;
 }
@@ -36,7 +39,7 @@ const slugify = (raw: string) => raw.toLowerCase().normalize('NFD').replace(/[̀
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
-const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, onClose, onPublished }) => {
+const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, composition, onClose, onPublished }) => {
     const [name, setName] = useState(defaultName);
     const [slug, setSlug] = useState(slugify(defaultName));
     const [intro, setIntro] = useState('');
@@ -68,7 +71,7 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, on
         try {
             const p = await publishDesign({
                 document: doc, name, slug, category: 'aniversario',
-                settings: { locked, intro, frozen },
+                settings: { locked, intro, frozen, composition },
             });
             setResult(p);
             onPublished(p);
