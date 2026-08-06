@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.722.1 | 2026-08-06 (Marcar cualquier elemento como campo del portal público)
-// Cache bust: 2026-08-06f
+// UI V4.722.2 | 2026-08-06 (El portal explica cuando no hay campos)
+// Cache bust: 2026-08-06g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.722.2',
+        title: 'El portal público explica cuándo una pieza no tiene campos 💬',
+        description: 'Si una plantilla se publica sin ningún elemento marcado como editable, el portal mostraba sólo los botones de descarga, sin formulario y sin decir por qué — parecía roto. Ahora lo explica: la pieza es fija, se descarga tal cual, y si esperabas poder escribir el nombre de tu club o subir una foto hay que avisarle a quien compartió el enlace, porque los campos se marcan al publicar. Se agregaron además dos botones que faltaban en Propiedades: «Enviar al fondo» y «Traer al frente». Sirven para el caso concreto de usar un fondo propio con una plantilla: hasta ahora había que subir la imagen y bajarla con la flecha de a un paso por vez, y en la plantilla clásica —que tiene doce capas— eran doce clics.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'editor'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'El portal dice qué pasa cuando la pieza no tiene campos para completar.' },
+            { type: 'added', text: '«Enviar al fondo» y «Traer al frente» en Propiedades.' },
+        ]
+    },
     {
         version: '4.722.1',
         title: 'Ya se puede elegir qué completa la gente en el portal público ✍️',

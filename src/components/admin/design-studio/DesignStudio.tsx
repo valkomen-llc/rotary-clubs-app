@@ -166,6 +166,15 @@ const DesignStudio: React.FC = () => {
         commit({ ...doc, nodes });
     }, [commit, doc]);
 
+    // Al fondo o al frente de una vez. Con la plantilla clásica —doce capas—,
+    // poner una imagen de fondo con las flechas de a un paso son doce clics.
+    const sendTo = useCallback((id: string, where: 'back' | 'front') => {
+        const n = doc.nodes.find(x => x.id === id);
+        if (!n) return;
+        const resto = doc.nodes.filter(x => x.id !== id);
+        commit({ ...doc, nodes: where === 'back' ? [n, ...resto] : [...resto, n] });
+    }, [commit, doc]);
+
     const alignSelection = useCallback((axis: 'x' | 'y') => {
         if (!selectedIds.length) return;
         commit({
@@ -652,6 +661,7 @@ const DesignStudio: React.FC = () => {
                     onReplaceImage={id => setPickerTarget(id)}
                     assignable={catalog?.assignable || []}
                     onSetPublicKey={setPublicKey}
+                    onSendTo={sendTo}
                     onUploadReplacement={(id, f) => {
                         if (!f) return;
                         // Se sube y se escribe en ESE nodo, sin tocar la

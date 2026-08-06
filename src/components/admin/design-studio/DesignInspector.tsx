@@ -12,6 +12,7 @@ import {
     Layers, SlidersHorizontal, Shapes, Eye, EyeOff, Lock, Unlock,
     ChevronUp, ChevronDown, Type, Image as ImageIcon, Square, Trash2,
     AlignLeft, AlignCenter, AlignRight, Copy, Upload, Images, Loader2,
+    SendToBack, BringToFront,
 } from 'lucide-react';
 import {
     isText, isImage, isShape, isGradient, FONTS, PALETTE,
@@ -37,6 +38,9 @@ interface Props {
     onSelect: (ids: string[]) => void;
     onPatch: (id: string, patch: Partial<DesignNode>) => void;
     onReorder: (id: string, dir: -1 | 1) => void;
+    /** Al fondo o al frente de una vez. Con una plantilla de doce capas, subir
+     *  una imagen de fondo un paso a la vez son doce clics. */
+    onSendTo: (id: string, where: 'back' | 'front') => void;
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
     onAddElement: (el: ElementItem) => void;
@@ -76,7 +80,7 @@ const nodeLabel = (n: DesignNode) => n.name || (isText(n) ? (n.text.slice(0, 22)
 const DesignInspector: React.FC<Props> = ({
     nodes, selectedIds, elements, onSelect, onPatch, onReorder, onDelete, onDuplicate, onAddElement, onAddText,
     onAddImage, onUploadImage, onReplaceImage, onUploadReplacement, uploading,
-    assignable, onSetPublicKey,
+    assignable, onSetPublicKey, onSendTo,
 }) => {
     const assignableFor = (kind: 'text' | 'image') => assignable.filter(f => f.forNode === kind);
     const [tab, setTab] = useState<'props' | 'layers' | 'elements'>('props');
@@ -114,6 +118,8 @@ const DesignInspector: React.FC<Props> = ({
                                 <button onClick={() => patch({ locked: !node.locked })} className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title={node.locked ? 'Desbloquear' : 'Bloquear'}>
                                     {node.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                                 </button>
+                                <button onClick={() => onSendTo(node.id, 'back')} className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Enviar al fondo"><SendToBack className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => onSendTo(node.id, 'front')} className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Traer al frente"><BringToFront className="w-3.5 h-3.5" /></button>
                                 <button onClick={() => onDelete(node.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                             </div>
                         </div>
