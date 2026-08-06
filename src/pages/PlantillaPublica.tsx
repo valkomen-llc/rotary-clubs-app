@@ -82,7 +82,11 @@ const PlantillaPublica: React.FC = () => {
     const stageRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!slug) return;
+        // Sin slug —alguien entró a `/plantillas` a secas— no hay nada que
+        // pedir. Se dice, en vez de dejar la pantalla girando: la aplicación no
+        // tiene ruta comodín, así que una dirección incompleta se ve como una
+        // página en blanco y nadie entiende por qué.
+        if (!slug) { setLoadError('SIN_SLUG'); return; }
         fetch(`${API}/public/design/${encodeURIComponent(slug)}`, { cache: 'no-store' })
             .then(async r => {
                 const d = await r.json().catch(() => null);
@@ -203,14 +207,21 @@ const PlantillaPublica: React.FC = () => {
     );
 
     if (loadError) {
+        const sinSlug = loadError === 'SIN_SLUG';
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
                 <div className="max-w-sm text-center">
                     <div className="w-12 h-12 mx-auto rounded-2xl bg-gray-200 flex items-center justify-center mb-4">
                         <AlertTriangle className="w-6 h-6 text-gray-500" />
                     </div>
-                    <h1 className="text-lg font-black text-gray-800 mb-1">Esta plantilla no está disponible</h1>
-                    <p className="text-sm text-gray-500">{loadError}</p>
+                    <h1 className="text-lg font-black text-gray-800 mb-1">
+                        {sinSlug ? 'Falta el nombre de la plantilla' : 'Esta plantilla no está disponible'}
+                    </h1>
+                    <p className="text-sm text-gray-500">
+                        {sinSlug
+                            ? 'Esta dirección necesita el enlace completo, del tipo /plantillas/aniversario. Pedíselo a quien te lo compartió.'
+                            : loadError}
+                    </p>
                 </div>
             </div>
         );

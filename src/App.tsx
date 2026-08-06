@@ -565,6 +565,10 @@ function App() {
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />
                 <Route path="/plantillas/:slug" element={<PlantillaPublica />} />
+                {/* Sin slug la ruta no casaba con nada y, como la aplicación no
+                    tiene ruta comodín, la página quedaba EN BLANCO. Se declara
+                    para poder explicar que falta el enlace completo. */}
+                <Route path="/plantillas" element={<PlantillaPublica />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />

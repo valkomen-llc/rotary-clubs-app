@@ -2111,6 +2111,36 @@ completa un formulario y descarga su pieza.
   competir utilidades con las páginas reales del club por sus términos de marca.
 - **`DesignPublicTemplate` vive fuera de Prisma**, como `DesignProject`, y queda
   protegida por `scripts/db-push-guard.mjs`.
+- **NUNCA una comilla invertida dentro de un `db.query(\`…\`)`** (v4.721.1). El
+  SQL vive en un template literal, así que una palabra citada con comillas
+  invertidas dentro de un comentario del SQL **lo cierra a mitad** y el archivo
+  deja de parsear. Pasó en `ensureDesignSchema.js` y el módulo **nunca funcionó
+  en producción desde v4.720.0**: el controlador lo importa, así que toda la API
+  respondía 500 con el mensaje del parser —traducido al español por el propio
+  traductor del sitio, lo que lo volvía irreconocible—. Para citar un
+  identificador dentro de SQL, escribirlo sin adornos.
+
+**Sintaxis del servidor: `npm run check:syntax`.** Corre en `prebuild` y rompe
+el despliegue. Es la TERCERA causa de módulo caído, y no la ven ni el typecheck
+ni `check:hooks`:
+
+- El frontend lo compila Vite, así que un archivo que no parsea rompe el build y
+  se ve. **El servidor no pasa por ningún compilador**: las rutas se importan de
+  forma perezosa en tiempo de ejecución, así que un error de sintaxis viaja
+  intacto a producción y sólo aparece cuando alguien usa esa pantalla.
+- El typecheck sólo mira `src` (`include: ["src"]`), y los archivos del servidor
+  son `.js` fuera de ese alcance.
+- Las pruebas del módulo tampoco lo vieron: las puras importan el criterio y las
+  de navegador simulan la API, así que **ninguna importaba `ensureDesignSchema`**.
+- Ojo al comprobar a mano: `node --check` sobre una copia en `/tmp` la trata
+  como CommonJS —no hay `package.json` con `"type": "module"`— y **puede dar por
+  bueno un archivo que como ESM falla**. Comprobar siempre en su ruta real.
+- Va en paralelo: en serie son ~7 s sobre 225 archivos, y un paso de prebuild
+  que cuesta siete segundos termina desactivándose. Con concurrencia, ~3 s.
+
+**Sigue sin cubrirse** el error de importación en tiempo de ejecución —importar
+un símbolo que el módulo no exporta— porque comprobarlo exigiría ejecutar los
+módulos, y eso arrastra la base de datos.
 
 **Pendientes conocidos:** los formatos 4:5, 9:16 y 16:9 están **declarados con
 `available:false`** — la arquitectura ya los soporta (los nodos son fracciones),
