@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — acceso a la API
-// v4.720.0
+// v4.723.0
 //
 // En un solo sitio para que las pantallas no repitan la cabecera de
 // autorización ni el manejo de error. El error del servidor se propaga TEXTUAL,
@@ -63,6 +63,9 @@ export interface AssignableField {
     key: string; label: string; type: string;
     /** A qué tipo de nodo le sirve: un campo de imagen no va en un texto. */
     forNode: 'text' | 'image';
+    /** La CLASE por defecto de ese dato (`logo`, `foto`, `texto_largo`…). Es lo
+     *  que decide cómo se adapta una imagen, y por eso viaja con la clave. */
+    kind?: string;
 }
 
 export interface Catalog {
@@ -163,6 +166,10 @@ export interface PublicField {
     key: string; type: 'text' | 'textarea' | 'number' | 'image';
     label: string; placeholder: string; help: string;
     maxChars: number | null; required: boolean; ai: boolean;
+    /** Qué CLASE de dato es. `type` dice qué control se dibuja; `kind` dice cómo
+     *  se trata —un logotipo no se recorta, una fotografía sí—. */
+    kind?: string; accept?: string | null; defaultValue?: string;
+    image?: { fit: string; trim: boolean; transparent: boolean; crop: boolean; safeArea: number } | null;
 }
 
 export interface Publication {

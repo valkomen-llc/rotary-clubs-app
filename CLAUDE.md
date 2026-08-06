@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.722
+## Plantillas IA (Generador de Diseños) — v4.723
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -1869,6 +1869,7 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | Archivo | Qué es |
 |---|---|
 | `server/lib/designSpec.js` | El CRITERIO. **Puro**: sin base, sin red, sin IA, sin DOM |
+| `server/lib/designFields.js` | Los CAMPOS VINCULADOS: qué declara un nodo y cómo se adapta cada clase |
 | `server/lib/designTemplates.js` | El catálogo de plantillas (datos, no código) |
 | `server/lib/designElements.js` | Biblioteca de elementos decorativos (trazos SVG) |
 | `server/lib/designAI.js` | Redacción del mensaje y «✨ Mejorar con IA» |
@@ -1876,6 +1877,7 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `server/lib/ensureDesignSchema.js` | Crea `DesignProject` en runtime |
 | `server/controllers/designStudioController.js` | API |
 | `src/lib/designSpec.ts` | Espejo del criterio en el navegador |
+| `src/lib/designFields.ts` | Espejo de los campos vinculados |
 | `src/lib/designRender.ts` | Composición a canvas y exportación PNG/JPG/PDF |
 | `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
@@ -2171,6 +2173,92 @@ completa un formulario y descarga su pieza.
   respondía 500 con el mensaje del parser —traducido al español por el propio
   traductor del sitio, lo que lo volvía irreconocible—. Para citar un
   identificador dentro de SQL, escribirlo sin adornos.
+
+### Campos vinculados (v4.723)
+
+Una plantilla es **parametrizable**: el administrador coloca un elemento y
+declara ahí mismo qué dato es. El formulario del portal público se arma con esas
+declaraciones, así que una plantilla nueva no necesita un formulario nuevo. El
+primer campo implementado es el **logotipo del club**, con el comportamiento del
+Generador de Pendones.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/designFields.js` | El CRITERIO. **Puro y sin importaciones**: clases de campo, normalización de la clave y reglas de adaptación por clase |
+| `src/lib/designFields.ts` | Espejo en el navegador: lo que el editor necesita para ofrecer la sección |
+
+- **La CLAVE no se guarda dos veces.** Un campo vinculado no tiene `key` propia:
+  la clave sigue siendo `srcVar` (imagen) o el marcador de `srcText` (texto), y
+  se deriva con `fieldKeyOf`. `node.field` lleva sólo la CONFIGURACIÓN
+  —etiqueta, ayuda, obligatorio, visible, valor por defecto, reglas de la
+  imagen—. Guardar la clave también ahí es lo cómodo y es la trampa que el
+  módulo ya evitó una vez (`publicKeyOf`): dos verdades sobre lo mismo se
+  contradicen en cuanto alguien edita el texto del nodo, y entonces el
+  formulario ofrece un campo que ningún nodo consume.
+- **`field` va enumerado en `normalizeNode`.** Ese normalizador RECONSTRUYE el
+  nodo, así que lo que no se enumere se pierde al guardar y al publicar, en
+  silencio. Al agregar una propiedad al nodo, agregarla ahí.
+- **El catálogo cerrado de `VARIABLES` sigue cerrado, y ahora se entiende por
+  qué.** Son las variables que la PLATAFORMA resuelve sola (club, distrito,
+  gobernador, periodo): una clave inventada ahí no la resuelve nadie y termina
+  impresa. Un campo **declarado** es otra cosa: lo resuelve la persona que llena
+  el formulario, y la declaración es lo que lo hace resoluble. Por eso
+  `buildPublicFields` admite `FIELD_SPECS[key] || declared.has(key)`, y una
+  clave sin catálogo **y** sin declaración se sigue descartando. Es lo que hace
+  cierta la escalabilidad: agregar un campo es marcarlo en la pantalla.
+- **Lo que declara el nodo MANDA sobre el catálogo.** `FIELD_SPECS` pasó a ser
+  el valor por defecto. Alcanzaba con dos plantillas de aniversario y deja de
+  alcanzar en cuanto la misma variable significa cosas distintas en dos piezas.
+- **`visible: false` NO es `locked`.** El primero es del DISEÑO («este dato lo
+  fijo yo») y se congela con su `defaultValue` al publicar; el segundo es la
+  misma decisión tomada en el momento de publicar. Sin congelar el apagado, el
+  nodo se publicaría con el marcador sin resolver.
+- **UN LOGOTIPO NO ES UNA FOTOGRAFÍA, y tratarlos igual fue el defecto
+  concreto.** Hasta v4.722 el portal mandaba TODA imagen por el camino de la
+  fotografía: hueco de la foto, encuadre `cover` con recorte por atención y
+  salida **JPEG**. Un escudo llegaba recortado por los bordes y con la
+  transparencia rellena. Medido con un escudo de 600×600 con márgenes
+  transparentes y el hueco real del logotipo (302×104 px): por el camino viejo
+  salía **JPEG 1080×508 sin canal alfa**; por el nuevo, **PNG 104×104, alfa
+  vivo, proporción 1,000 y `keptFraction: 1`**. El `kind` es lo que separa las
+  dos recetas, y por eso está DECLARADO y no deducido del nombre del campo.
+- **El hueco sale del nodo que consume ESA clave** (`slotFor`), no siempre del
+  de la fotografía. Era la otra mitad del mismo defecto: `photoSlotOf` buscaba
+  el nodo de la foto pasara lo que pasara, así que un escudo se adaptaba a
+  1080×508. `photoSlotOf` se conserva, hoy implementado sobre `slotFor`.
+- **`trim` es lo que hace el pendón desde su primera versión.** Un PNG del Brand
+  Center trae márgenes vacíos; sin quitarlos el escudo ocupa la mitad de su
+  recuadro. Puede fallar con una imagen sin borde uniforme (sharp lanza), así
+  que se reintenta sin él: un logotipo sin recortar sirve, ninguno no.
+- **A un código QR NO se le recorta el margen.** Es su zona de silencio y sin
+  ella no escanea. Es el ejemplo de por qué las reglas son por clase y no una
+  sola receta «para imágenes».
+- **El margen interno se calcula sobre la PROPIA imagen escalada, no sobre el
+  recuadro.** Medido: con el recuadro, un escudo cuadrado salía de 112×104
+  —proporción 1,08— porque el margen horizontal y el vertical eran distintos.
+  Los píxeles no se estiraban, pero el nodo dibuja con `contain` sobre la
+  proporción de la imagen, así que el margen visible quedaba desparejo.
+- **NO se borra lo que nadie puede llenar** (`fillable` en `applyPublicValues`,
+  en los dos espejos). Un marcador que el formulario no ofrece y que tampoco
+  quedó congelado se resolvía contra un diccionario vacío: el texto desaparecía
+  y nadie podía escribirlo. Es lo que dejaba una pieza publicada con el pie
+  institucional y hueco todo lo demás. Lo que SÍ se ofrece se sigue vaciando
+  hasta que la persona escriba — mostrar el nombre del club con el que se
+  diseñó es el defecto opuesto.
+- **Poner una imagen de ejemplo NO es desvincular.** `patchNode` ponía
+  `srcVar: null` al reemplazar la imagen de un nodo desde Propiedades, así que
+  quien marcaba el logotipo y después cambiaba la imagen para ver cómo quedaba
+  publicaba la plantilla **sin ese campo**. Desvincular tiene su propio control.
+- **Editar el texto a mano sí desvincula, y ahora también borra la
+  declaración**: sin marcador ningún campo consume ese nodo, y dejar la
+  configuración colgando daría un campo declarado que no pinta nada. Para
+  cambiar lo que se ve sin perder el campo está el «valor por defecto».
+- **Lo institucional sigue bloqueado POR OMISIÓN.** Declararlo en el nodo no lo
+  abre: en un portal sin autenticación, la firma del Distrito sólo se suelta a
+  propósito, al publicar.
+- Pruebas: las de `npm run test:design` (criterio, incluido que los dos espejos
+  den lo mismo) y cuatro de `npm run test:design:render` sobre la sección de
+  Propiedades. **Al tocar `designFields.js`, tocar `designFields.ts`.**
 
 ### Motor de Composición con IA (v4.722)
 

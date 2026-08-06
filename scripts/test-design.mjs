@@ -26,6 +26,7 @@ import { validateMessage, trimToLimit, TONES } from '../server/lib/designAI.js';
 import * as P from '../server/lib/designPublish.js';
 import * as PH from '../server/lib/designPhoto.js';
 import * as CO from '../server/lib/designCompose.js';
+import * as F from '../server/lib/designFields.js';
 
 // Las fechas rotarias se importan del CRITERIO, no de `designBranding.js`: ese
 // archivo importa la base de datos y arrastrarlo acá obligaría a tener Prisma
@@ -39,6 +40,16 @@ const bundle = await build({
     bundle: true, write: false, format: 'esm', platform: 'neutral',
 });
 const C = await import(`data:text/javascript,${encodeURIComponent(bundle.outputFiles[0].text)}`);
+
+// El espejo de los CAMPOS VINCULADOS va aparte porque el editor lo importa
+// aparte: `designSpec.ts` sólo toma de él un tipo, y un tipo no viaja al
+// bundle. Sin cargarlo acá, las dos mitades del criterio de los campos podrían
+// separarse sin que nada lo dijera.
+const bundleF = await build({
+    entryPoints: ['src/lib/designFields.ts'],
+    bundle: true, write: false, format: 'esm', platform: 'neutral',
+});
+const CF = await import(`data:text/javascript,${encodeURIComponent(bundleF.outputFiles[0].text)}`);
 
 let ok = 0; const malos = [];
 const check = (n, cond, extra = '') => {
@@ -702,6 +713,239 @@ check('sin medidas no se inventa un veredicto',
 check('la proporción que se le pide a KIE sale del formato', CO.aspectFor('post_1_1') === '1:1');
 check('y de un formato apaisado sale 16:9', CO.aspectFor('post_16_9') === '16:9');
 check('el modelo es configurable por entorno', typeof CO.COMPOSE_MODEL() === 'string' && CO.COMPOSE_MODEL().length > 0);
+
+// ════════════════════════════════════════════════════════════════════
+// CAMPOS VINCULADOS (v4.723)
+//
+// El pedido: que el administrador declare las zonas editables de una plantilla
+// y que el formulario público se arme SOLO a partir de eso. Lo que se prueba
+// acá es el criterio de esa declaración —dónde vive la clave, qué se admite,
+// qué formulario sale— y, sobre todo, que un LOGOTIPO no se trate como una
+// fotografía: es el defecto concreto que este trabajo corrige.
+// ════════════════════════════════════════════════════════════════════
+grupo('Campos vinculados: la clave se DERIVA del nodo');
+
+check('una imagen declara su clave en srcVar',
+    F.fieldKeyOf({ type: 'image', srcVar: 'logo' }) === 'logo');
+check('un texto sólo declara campo si la variable ocupa TODO el contenido',
+    F.fieldKeyOf({ type: 'text', srcText: '{{mensaje}}' }) === 'mensaje');
+// `Al {{club}}` es una frase con un dato adentro. Dejar que el público
+// reescriba la frase entera rompería la redacción de la pieza.
+check('una frase con una variable adentro NO es un campo',
+    F.fieldKeyOf({ type: 'text', srcText: 'Al {{club}}' }) === null);
+check('un texto escrito a mano no declara nada',
+    F.fieldKeyOf({ type: 'text', srcText: null }) === null);
+check('una forma no puede ser campo', F.fieldKeyOf({ type: 'shape' }) === null);
+
+grupo('Campos vinculados: el nombre interno');
+
+check('se normaliza a minúsculas sin tildes ni espacios',
+    F.normalizeKey('Presidente Entrante') === 'presidente_entrante');
+check('no puede empezar por un número', F.normalizeKey('2026 sede') === 'sede');
+check('se acota a 32 caracteres', F.normalizeKey('a'.repeat(80)).length === 32);
+check('uno vacío se rechaza con motivo', !F.validateKey('   ').ok && !!F.validateKey('   ').error);
+check('uno demasiado corto también', !F.validateKey('ab').ok);
+check('uno válido vuelve normalizado', F.validateKey(' Sede Del Evento ').key === 'sede_del_evento');
+
+grupo('Campos vinculados: la declaración');
+
+const decl = F.normalizeField({ label: 'Logo', required: true, kind: 'logo' }, { key: 'logo', nodeType: 'image' });
+check('una declaración vacía no existe', F.normalizeField(null, { key: 'logo' }) === null);
+check('lo declarado se conserva', decl.label === 'Logo' && decl.required === true);
+check('visible por omisión: un campo marcado existe para llenarse', decl.visible === true);
+check('apagarlo es explícito',
+    F.normalizeField({ visible: false }, { key: 'logo', nodeType: 'image' }).visible === false);
+check('la etiqueta se acota', F.normalizeField({ label: 'x'.repeat(300) }, { key: 'club' }).label.length === F.FIELD_LIMITS.label);
+check('la clase por defecto de una imagen es fotografía',
+    F.normalizeField({}, { key: 'sede', nodeType: 'image' }).kind === 'foto');
+check('la del logotipo sale de su clave',
+    F.normalizeField({}, { key: 'logo', nodeType: 'image' }).kind === 'logo');
+check('una clase inventada cae en la que le toca por defecto',
+    F.normalizeField({ kind: 'inventada' }, { key: 'logo', nodeType: 'image' }).kind === 'logo');
+check('el margen interno se acota', F.normalizeField({ image: { safeArea: 9 } }, { key: 'logo', nodeType: 'image' }).image.safeArea === 0.25);
+
+grupo('Campos vinculados: un LOGOTIPO no es una fotografía');
+
+const rLogo = F.imageRulesFor('logo');
+const rFoto = F.imageRulesFor('foto');
+// Es la diferencia que motiva todo esto: con las reglas de la fotografía, el
+// escudo del club llegaba recortado y sin transparencia.
+check('el logotipo NO se recorta', rLogo.crop === false && rLogo.fit === 'contain');
+check('la fotografía SÍ', rFoto.crop === true && rFoto.fit === 'cover');
+check('el logotipo conserva la transparencia', rLogo.transparent === true);
+check('la fotografía no la necesita', rFoto.transparent === false);
+check('al logotipo se le quitan los bordes vacíos, como en el pendón', rLogo.trim === true);
+// El margen blanco de un QR es su zona de silencio: recortarlo deja un código
+// que no escanea.
+check('a un código QR NO se le recorta el margen', F.imageRulesFor('qr').trim === false);
+check('y tampoco se recorta el código', F.imageRulesFor('qr').crop === false);
+
+grupo('Campos vinculados: el formulario se DERIVA de la declaración');
+
+const docCampos = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'logo', srcVar: 'logo', field: { kind: 'logo', label: 'El escudo de tu club', required: true } },
+        { type: 'text', id: 'saludo', text: 'Al Club X', srcText: 'Al {{club}}' },
+        { type: 'text', id: 'sede', text: 'Sede', srcText: '{{sede_del_evento}}', field: { kind: 'texto', label: 'Sede', maxChars: 40 } },
+        { type: 'text', id: 'oculto', text: 'x', srcText: '{{lema_local}}', field: { visible: false, defaultValue: 'Servir para transformar vidas' } },
+    ],
+});
+// `normalizeDocument` RECONSTRUYE cada nodo: si `field` no estuviera enumerado
+// en `normalizeNode`, la declaración se perdería al guardar y al publicar, en
+// silencio.
+check('la declaración sobrevive a normalizar el documento', !!docCampos.nodes[0].field);
+const camposDoc = P.buildPublicFields(docCampos);
+const porClave = Object.fromEntries(camposDoc.map(f => [f.key, f]));
+check('el logotipo es un campo del formulario', !!porClave.logo);
+check('con la etiqueta que declaró el nodo, no la del catálogo', porClave.logo.label === 'El escudo de tu club');
+check('y con su clase, que es la que decide cómo se adapta', porClave.logo.kind === 'logo');
+check('el formulario dice qué archivos ofrecer', /png/.test(porClave.logo.accept || ''));
+check('obligatorio si el nodo lo declara', porClave.logo.required === true);
+check('el nombre del club sigue saliendo del catálogo', porClave.club?.label === 'Nombre del club');
+// Es el requisito de escalabilidad del pedido: un campo que el catálogo no
+// conoce entra igual porque el nodo lo declara. Sin esto, agregar un campo
+// exigiría tocar código.
+check('una clave NUEVA declarada por el diseñador entra en el formulario', !!porClave.sede_del_evento);
+check('con su etiqueta y su tope propios',
+    porClave.sede_del_evento.label === 'Sede' && porClave.sede_del_evento.maxChars === 40);
+check('una clave sin catálogo y SIN declaración no entra',
+    !P.buildPublicFields(S.normalizeDocument({ nodes: [{ type: 'text', srcText: '{{inventada}}' }] })).some(f => f.key === 'inventada'));
+check('un campo apagado NO sale en el formulario', !porClave.lema_local);
+check('lo institucional sigue bloqueado por omisión',
+    !P.buildPublicFields(S.normalizeDocument({ nodes: [{ type: 'text', srcText: '{{gobernador}}' }] })).some(f => f.key === 'gobernador'));
+
+grupo('Campos vinculados: qué se congela al publicar');
+
+const pubCampos = P.buildPublication({ document: docCampos, name: 'Aniversario', slug: 'aniversario-x' });
+// Apagar un campo significa «este dato lo fijo yo». Sin congelarlo con su valor
+// por defecto, el nodo se publicaría con el marcador sin resolver.
+check('un campo apagado se congela con su valor por defecto',
+    pubCampos.frozen.lema_local === 'Servir para transformar vidas');
+check('un campo visible NO se congela', pubCampos.frozen.logo === undefined);
+// El escudo con el que diseñó el administrador no puede viajar dentro de la
+// plantilla publicada: cada club vería el de otro.
+check('la imagen de ejemplo del panel se vacía al publicar',
+    P.stripPublicDefaults({ nodes: [{ type: 'image', srcVar: 'logo', src: 'https://x/escudo.png' }] },
+        [{ key: 'logo' }]).nodes[0].src === null);
+
+grupo('Campos vinculados: no se borra lo que nadie puede llenar');
+
+// El defecto que dejaba la pieza publicada casi vacía: un marcador que el
+// formulario no ofrece Y que tampoco quedó congelado se resolvía contra un
+// diccionario vacío, así que el texto desaparecía y nadie podía escribirlo.
+const docHuerfano = { nodes: [
+    { type: 'text', id: 'saludo', srcText: 'Al {{club}}', text: 'Al Club Rotario Cali' },
+    { type: 'text', id: 'lema', srcText: '{{lema_interno}}', text: 'Servir para transformar vidas' },
+    { type: 'image', id: 'sello', srcVar: 'sello_local', src: 'https://x/sello.png' },
+] };
+const sinLlenables = P.applyPublicValues(docHuerfano, {}, {});
+check('sin la lista, todo se re-resuelve (comportamiento de siempre)',
+    sinLlenables.nodes.find(n => n.id === 'lema').text === '');
+const conLlenables = P.applyPublicValues(docHuerfano, {}, {}, ['club']);
+check('un marcador que NO se ofrece conserva lo que se publicó',
+    conLlenables.nodes.find(n => n.id === 'lema').text === 'Servir para transformar vidas');
+check('y una imagen que nadie puede cambiar tampoco se vacía',
+    conLlenables.nodes.find(n => n.id === 'sello').src === 'https://x/sello.png');
+// Lo que SÍ se ofrece sigue vaciándose hasta que la persona escriba: mostrar el
+// nombre del club con el que se diseñó sería el defecto opuesto.
+check('lo que sí se ofrece se vacía hasta que lo escriban',
+    conLlenables.nodes.find(n => n.id === 'saludo').text === 'Al');
+check('y se llena con lo que escriban',
+    P.applyPublicValues(docHuerfano, { club: 'Club Rotario Pasto' }, {}, ['club'])
+        .nodes.find(n => n.id === 'saludo').text === 'Al Club Rotario Pasto');
+// El espejo del navegador tiene que decidir lo mismo: la vista previa del
+// portal es la que se descarga.
+const espejoConLlenables = C.applyPublicValues(docHuerfano.nodes, {}, ['club']);
+check('el espejo del navegador aplica la misma regla',
+    espejoConLlenables.find(n => n.id === 'lema').text === 'Servir para transformar vidas'
+    && espejoConLlenables.find(n => n.id === 'saludo').text === 'Al');
+check('y sin la lista se comporta como el servidor',
+    C.applyPublicValues(docHuerfano.nodes, {}).find(n => n.id === 'lema').text
+    === sinLlenables.nodes.find(n => n.id === 'lema').text);
+
+grupo('Campos vinculados: el hueco de CADA campo');
+
+const fmt1080 = { w: 1080, h: 1080 };
+const docHuecos = { nodes: [
+    { type: 'image', id: 'foto', srcVar: 'imagen', x: 0, y: 0, w: 1, h: 0.47, fit: 'cover' },
+    { type: 'image', id: 'logo', srcVar: 'logo', x: 0.068, y: 0.055, w: 0.28, h: 0.096, fit: 'contain' },
+] };
+const huecoLogo = PH.slotFor(docHuecos, 'logo', fmt1080.w, fmt1080.h);
+const huecoFoto = PH.slotFor(docHuecos, 'imagen', fmt1080.w, fmt1080.h);
+// El defecto de fondo: el portal resolvía SIEMPRE el hueco de la fotografía, así
+// que un escudo se adaptaba a 1080×508 con recorte. Ahora sale del nodo que
+// consume esa clave.
+check('el hueco del logotipo es el del nodo del logotipo',
+    huecoLogo.width === 302 && huecoLogo.height === 104, JSON.stringify(huecoLogo));
+check('y no el de la fotografía', huecoFoto.width === 1080 && huecoFoto.height === 508);
+check('cada uno trae su encuadre', huecoLogo.fit === 'contain' && huecoFoto.fit === 'cover');
+check('una clave sin nodo no inventa un hueco', PH.slotFor(docHuecos, 'sello', 1080, 1080) === null);
+check('photoSlotOf sigue devolviendo el de la fotografía',
+    PH.photoSlotOf(docHuecos, 1080, 1080).nodeId === 'foto');
+
+grupo('Campos vinculados: el plan del logotipo no recorta');
+
+const planL = PH.planLogo({ width: 800, height: 300, targetWidth: 302, targetHeight: 104 });
+// Un logotipo entra ENTERO por definición: no hay banda que se pierda, por
+// desproporcionado que sea respecto de su recuadro.
+check('un logotipo apaisado entra entero igual', planL.action === 'keep' && planL.keptFraction === 1);
+check('y no se avisa de ningún recorte', planL.notes.every(n => !/recort/i.test(n.consequence)));
+const planChico = PH.planLogo({ width: 90, height: 30, targetWidth: 604, targetHeight: 208 });
+check('un logotipo diminuto SÍ se avisa', planChico.notes.some(n => /borroso/.test(n.consequence)));
+check('y se dice dónde conseguir uno mejor', planChico.notes.some(n => /Brand Center/.test(n.consequence)));
+// La fotografía conserva su propio criterio: ahí el recorte sí existe y hay que
+// decirlo.
+check('la fotografía sigue avisando del recorte cuando es grande',
+    PH.planPhoto({ width: 3000, height: 600, targetWidth: 1080, targetHeight: 508 }).notes.some(n => /recort/i.test(n.consequence)));
+check('y sigue diciendo que recorta, no que conserva',
+    PH.planPhoto({ width: 3000, height: 600, targetWidth: 1080, targetHeight: 508 }).action === 'crop');
+
+grupo('Campos vinculados: las plantillas del catálogo los declaran');
+
+const tplFoto = templateById('aniversario_foto');
+const nodoLogo = tplFoto.nodes.find(n => n.id === 'logo');
+check('la plantilla de aniversario declara su logotipo', nodoLogo.field?.kind === 'logo');
+check('y su fotografía como fotografía',
+    tplFoto.nodes.find(n => n.id === 'foto').field?.kind === 'foto');
+const compiladoCampos = S.compileTemplate({
+    template: tplFoto, variables: { anios: '49' }, branding: { clubName: 'X' }, keepSlots: true,
+});
+// Es lo que hace que el formulario público salga completo desde el catálogo,
+// sin que nadie marque nada a mano.
+check('la declaración sobrevive a compilar la plantilla',
+    compiladoCampos.nodes.find(n => n.id === 'logo').field?.kind === 'logo');
+const camposTpl = P.buildPublicFields({ nodes: compiladoCampos.nodes });
+check('y el formulario derivado trae el logotipo con sus reglas',
+    camposTpl.find(f => f.key === 'logo')?.image?.crop === false);
+check('y la fotografía con las suyas',
+    camposTpl.find(f => f.key === 'imagen')?.image?.crop === true);
+
+grupo('Campos vinculados: el espejo del navegador dice lo mismo');
+
+// Duplicado a propósito —el servidor decide qué acepta, el navegador qué
+// pinta—, así que lo que hay que comprobar es que las FUNCIONES coincidan.
+check('las clases de campo son las mismas',
+    JSON.stringify(Object.keys(F.FIELD_KINDS)) === JSON.stringify(Object.keys(CF.FIELD_KINDS)));
+const clavesRaras = ['Presidente Entrante', '2026 sede', 'Ñandú del Valle', '  ', 'a'.repeat(80), 'sede-del-evento'];
+check('normalizar un nombre interno da lo mismo en los dos lados',
+    clavesRaras.every(k => F.normalizeKey(k) === CF.normalizeKey(k)));
+check('validar también',
+    clavesRaras.every(k => JSON.stringify(F.validateKey(k)) === JSON.stringify(CF.validateKey(k))));
+const nodosRaros = [
+    { type: 'image', srcVar: 'logo' }, { type: 'text', srcText: '{{mensaje}}' },
+    { type: 'text', srcText: 'Al {{club}}' }, { type: 'shape' },
+];
+check('leer la clave de un nodo da lo mismo',
+    nodosRaros.every(n => F.fieldKeyOf(n) === CF.fieldKeyOf(n)));
+check('la clase por defecto también',
+    ['logo', 'imagen', 'mensaje', 'sede'].every(k =>
+        F.defaultKindFor(k, 'text') === CF.defaultKindFor(k, 'text')
+        && F.defaultKindFor(k, 'image') === CF.defaultKindFor(k, 'image')));
+check('y las reglas de imagen de cada clase',
+    Object.keys(F.FIELD_KINDS).filter(k => F.isImageKind(k)).every(k =>
+        JSON.stringify(F.FIELD_KINDS[k].image) === JSON.stringify(CF.FIELD_KINDS[k].image)));
+check('un campo recién marcado nace visible y con las reglas de su clase',
+    CF.newField('logo', 'image').visible === true && CF.newField('logo', 'image').image.crop === false);
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

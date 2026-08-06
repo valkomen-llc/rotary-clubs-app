@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.720.0
+// v4.723.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -40,6 +40,7 @@ import {
     HISTORY_STEPS, PALETTE,
     type DesignDocument, type DesignNode, type TextNode,
 } from '../../../lib/designSpec';
+import { newField, type LinkedField } from '../../../lib/designFields';
 import { exportDocument, exportToFile, type ExportFormat } from '../../../lib/designRender';
 
 const EMPTY_DOC: DesignDocument = { format: 'post_1_1', background: PALETTE.white, nodes: [] };
@@ -138,7 +139,12 @@ const DesignStudio: React.FC = () => {
                 // ahí, cambiar «los años» en el panel ya no lo pisa. Sin esta
                 // regla, el usuario corrige el título y el siguiente cambio de
                 // variable se lo borra sin avisar.
-                const unlink = isText(n) && 'text' in patch ? { srcText: null } : {};
+                // Y con la variable se va su declaración: sin marcador, ningún
+                // campo del formulario consume ya este nodo, y dejar la
+                // configuración colgando daría un campo declarado que no pinta
+                // nada. Para cambiar lo que se ve sin perder el campo está el
+                // «valor por defecto».
+                const unlink = isText(n) && 'text' in patch ? { srcText: null, field: null } : {};
                 return { ...n, ...patch, ...unlink } as DesignNode;
             }),
         });
@@ -276,17 +282,40 @@ const DesignStudio: React.FC = () => {
             ...doc,
             nodes: doc.nodes.map(n => {
                 if (n.id !== id) return n;
-                if (isImage(n)) return { ...n, srcVar: key } as DesignNode;
+                // La declaración nace con la clave y muere con ella: un nodo sin
+                // campo no puede llevar la configuración de un campo, o al
+                // volver a marcarlo aparecería la de la vez anterior.
+                const field = key ? (n.field || newField(key, isImage(n) ? 'image' : 'text')) : null;
+                if (isImage(n)) return { ...n, srcVar: key, field } as DesignNode;
                 if (!isText(n)) return n;
-                if (!key) return { ...n, srcText: null } as DesignNode;
+                if (!key) return { ...n, srcText: null, field: null } as DesignNode;
                 const srcText = `{{${key}}}`;
                 // Se resuelve en el acto con lo que ya hay cargado, para que el
                 // lienzo no quede en blanco al marcarlo.
                 const text = resolveVariables(srcText, liveVars) || n.text;
-                return { ...n, srcText, text } as DesignNode;
+                return { ...n, srcText, text, field } as DesignNode;
             }),
         });
     }, [commit, doc, liveVars]);
+
+    // La CONFIGURACIÓN del campo, no su clave. Cambiar la clase reinicia las
+    // reglas de la imagen: las de un logotipo y las de una fotografía son
+    // opuestas —una no recorta y conserva transparencia, la otra recorta al
+    // encuadre— y arrastrar las anteriores dejaría un campo que dice una cosa y
+    // hace otra.
+    const setNodeField = useCallback((id: string, p: Partial<LinkedField>) => {
+        commit({
+            ...doc,
+            nodes: doc.nodes.map(n => {
+                if (n.id !== id || !n.field) return n;
+                const kindChanged = p.kind && p.kind !== n.field.kind;
+                const base = kindChanged
+                    ? { ...n.field, ...newField(p.kind as string, isImage(n) ? 'image' : 'text'), label: n.field.label, help: n.field.help, required: n.field.required, visible: n.field.visible, defaultValue: n.field.defaultValue }
+                    : n.field;
+                return { ...n, field: { ...base, ...p } } as DesignNode;
+            }),
+        });
+    }, [commit, doc]);
 
     const runCompose = useCallback(async (opts: { skipAI: boolean; tpl?: string }) => {
         setGenerating(true);
@@ -662,12 +691,14 @@ const DesignStudio: React.FC = () => {
                     assignable={catalog?.assignable || []}
                     onSetPublicKey={setPublicKey}
                     onSendTo={sendTo}
+                    onSetField={setNodeField}
                     onUploadReplacement={(id, f) => {
                         if (!f) return;
                         // Se sube y se escribe en ESE nodo, sin tocar la
-                        // fotografía de la plantilla.
+                        // fotografía de la plantilla ni su campo vinculado —ver
+                        // la nota del `MediaPicker` más abajo—.
                         uploadToLibrary(f, club?.id || null)
-                            .then(({ url }) => patchNode(id, { src: url, srcVar: null } as Partial<DesignNode>))
+                            .then(({ url }) => patchNode(id, { src: url } as Partial<DesignNode>))
                             .catch(e => toast.error(e instanceof Error ? e.message : 'No se pudo subir la imagen'));
                     }}
                     uploading={uploading}
@@ -709,12 +740,20 @@ const DesignStudio: React.FC = () => {
                         setPickerTarget(null);
                         if (!url) return;
                         if (target === 'capa') { addImageNode(url); return; }
-            if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
-                        if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); return; }
+                        if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
                         if (target && target !== 'foto') {
                             // Reemplazar la imagen de un nodo concreto desde
                             // Propiedades: `target` es su id.
-                            patchNode(target, { src: url, srcVar: null } as Partial<DesignNode>);
+                            //
+                            // NO se toca `srcVar`. Hasta v4.722 se ponía en
+                            // `null` «para desligarlo», y eso borraba el campo
+                            // vinculado del nodo sin decirlo: quien marcaba el
+                            // logotipo como campo público y después cambiaba la
+                            // imagen de ejemplo para ver cómo quedaba, publicaba
+                            // la plantilla sin ese campo. Poner una imagen de
+                            // ejemplo no es desvincular; desvincular tiene su
+                            // propio control.
+                            patchNode(target, { src: url } as Partial<DesignNode>);
                             return;
                         }
                         setPhoto(url);

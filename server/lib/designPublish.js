@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — publicación y portal público
-// v4.721.0
+// v4.723.0
 //
 // PURO: sin base, sin red, sin IA, sin DOM. Define qué significa publicar una
 // plantilla, qué formulario le sale al público y qué puede tocar.
@@ -30,6 +30,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { VARIABLES, variablesUsedIn, resolveVariables, LIMITS } from './designSpec.js';
+import { FIELD_KINDS, declarationsOf, defaultKindFor, isImageKind } from './designFields.js';
 
 // ─── Qué es cada variable en un formulario público ─────────────────────
 //
@@ -67,7 +68,9 @@ export const isInstitutional = (key) => !!FIELD_SPECS[key]?.institutional;
 
 // Las claves que el administrador puede asignar A MANO desde el editor, con la
 // etiqueta y el tipo de nodo al que le sirven. Es lo que alimenta el selector
-// «Editable en el portal» de Propiedades.
+// «Campo vinculado» de Propiedades. No es la lista COMPLETA de lo que se puede
+// declarar —desde v4.723 se admite una clave propia, escrita en la pantalla—,
+// sino el atajo para los datos que la plataforma ya conoce.
 //
 // Hace falta porque hasta v4.722 los campos SÓLO existían si el diseño venía de
 // una plantilla del catálogo: un texto agregado a mano nunca era editable, y
@@ -76,7 +79,11 @@ export const isInstitutional = (key) => !!FIELD_SPECS[key]?.institutional;
 // cero no tenía forma de publicarlo con campos.
 export const ASSIGNABLE_FIELDS = Object.entries(FIELD_SPECS)
     .filter(([, s]) => !s.institutional)
-    .map(([key, s]) => ({ key, label: s.label, type: s.type, forNode: s.type === 'image' ? 'image' : 'text' }))
+    .map(([key, s]) => ({
+        key, label: s.label, type: s.type,
+        forNode: s.type === 'image' ? 'image' : 'text',
+        kind: defaultKindFor(key, s.type === 'image' ? 'image' : 'text'),
+    }))
     .sort((a, b) => (FIELD_SPECS[a.key].order || 999) - (FIELD_SPECS[b.key].order || 999));
 
 // ─── Qué variables usa un documento ────────────────────────────────────
@@ -98,28 +105,74 @@ export const variablesOf = (document) => {
 // propósito (`unlock`), no al revés — un valor por defecto permisivo en un
 // portal sin autenticación es la clase de error que no se descubre hasta que
 // alguien lo usa mal.
+//
+// ── LO QUE DECLARA EL NODO MANDA SOBRE EL CATÁLOGO ──────────────────
+//
+// Hasta v4.722 el formulario salía ENTERO del catálogo: `FIELD_SPECS` decidía
+// la etiqueta, la ayuda y si el campo era obligatorio, iguales para todas las
+// plantillas. Eso alcanzaba con dos plantillas de aniversario y deja de
+// alcanzar en cuanto la misma variable significa cosas distintas en dos piezas
+// —«Fecha» es la del aniversario en una y la de la reunión en otra—.
+//
+// Ahora el catálogo es el VALOR POR DEFECTO y la declaración del nodo
+// (`node.field`) lo pisa campo por campo. Y una clave DECLARADA que el catálogo
+// no conoce entra igual: es lo que permite agregar un campo nuevo marcándolo en
+// la pantalla, sin tocar código, que es el requisito de escalabilidad del
+// pedido.
+//
+// `visible: false` NO produce campo: el dato existe en la pieza pero lo fija
+// quien publica, con su valor por defecto. Es distinto de `locked`, que es la
+// misma decisión tomada en el momento de publicar.
 export const buildPublicFields = (document, { locked = [], unlock = [], labels = {} } = {}) => {
     const lockedSet = new Set(locked);
     const unlockSet = new Set(unlock);
+    const declared = declarationsOf(document);
 
     return variablesOf(document)
-        .filter(key => FIELD_SPECS[key])
+        // Resoluble: o está en el catálogo, o algún nodo la declara. Una clave
+        // que no cumple ninguna de las dos no la puede llenar nadie.
+        .filter(key => FIELD_SPECS[key] || declared.has(key))
         .filter(key => !lockedSet.has(key))
+        .filter(key => declared.get(key)?.visible !== false)
+        // Lo institucional sigue bloqueado POR OMISIÓN. Declararlo en el nodo no
+        // lo abre: en un portal sin autenticación, la firma del Distrito sólo se
+        // suelta a propósito, al publicar.
         .filter(key => !isInstitutional(key) || unlockSet.has(key))
-        .map(key => {
-            const spec = FIELD_SPECS[key];
-            return {
-                key,
-                type: spec.type,
-                label: labels[key] || spec.label || VARIABLES[key]?.label || key,
-                placeholder: spec.placeholder || '',
-                help: spec.help || '',
-                maxChars: spec.maxChars || null,
-                required: !!spec.required,
-                ai: !!spec.ai,
-            };
-        })
-        .sort((a, b) => (FIELD_SPECS[a.key].order || 999) - (FIELD_SPECS[b.key].order || 999));
+        .map(key => fieldFor(key, declared.get(key), labels[key]))
+        .sort((a, b) => a.order - b.order);
+};
+
+// Un campo del formulario, resuelto: catálogo + declaración del nodo.
+export const fieldFor = (key, decl, labelOverride) => {
+    const spec = FIELD_SPECS[key] || {};
+    const kind = decl?.kind || spec.kind || defaultKindFor(key, spec.type === 'image' ? 'image' : 'text');
+    const kindSpec = FIELD_KINDS[kind] || FIELD_KINDS.texto;
+    const type = spec.type || kindSpec.input;
+
+    return {
+        key,
+        // `type` es qué control dibuja el formulario; `kind` es QUÉ CLASE de
+        // dato es, y es lo que decide cómo se adapta una imagen. Un logotipo y
+        // una fotografía comparten `type: 'image'` y no se tratan igual.
+        type,
+        kind,
+        label: labelOverride || decl?.label || spec.label || VARIABLES[key]?.label || key,
+        placeholder: decl?.placeholder || spec.placeholder || '',
+        help: decl?.help || spec.help || kindSpec.help || '',
+        maxChars: (type === 'image' ? null : (decl?.maxChars || spec.maxChars || kindSpec.maxChars || null)),
+        required: decl ? !!decl.required : !!spec.required,
+        ai: !!spec.ai,
+        // Qué archivos ofrece el selector. No es una validación —el servidor
+        // comprueba el tipo real de todos modos— sino no hacerle elegir un PDF
+        // a quien va a subir un escudo.
+        accept: type === 'image' ? (kindSpec.accept || 'image/*') : null,
+        defaultValue: decl?.defaultValue || '',
+        // Las reglas de adaptación viajan con el campo para que el portal pueda
+        // decirlas ANTES de que alguien suba el archivo, en vez de que se
+        // enteren por el resultado.
+        image: type === 'image' ? { ...(FIELD_KINDS[kind]?.image || FIELD_KINDS.foto.image), ...(decl?.image || {}) } : null,
+        order: spec.order || (isImageKind(kind) ? 5 : 500),
+    };
 };
 
 // ─── Los valores que llegan del público ────────────────────────────────
@@ -146,8 +199,10 @@ export const sanitizeValues = (raw, fields) => {
             if (v && !isAcceptableImage(v)) { errors.push(`La imagen de «${field.label}» no tiene un origen aceptado.`); continue; }
         } else {
             v = v.replace(/\s+\n/g, '\n').trim();
+            // El tope sale del campo, no de un número escrito acá: un campo
+            // declarado puede pedir más o menos que el del catálogo.
+            if (field.type === 'number') v = v.replace(/\D/g, '');
             if (field.maxChars && v.length > field.maxChars) v = v.slice(0, field.maxChars);
-            if (field.type === 'number') v = v.replace(/\D/g, '').slice(0, 3);
         }
         values[key] = v;
     }
@@ -230,17 +285,25 @@ export const bakeFrozen = (document, frozen = {}) => {
 // la garantía estructural de la que habla la cabecera. Los congelados ganan
 // siempre sobre lo que llegue de afuera, aunque `sanitizeValues` ya lo hubiera
 // descartado — dos cierres sobre lo mismo, a propósito.
-export const applyPublicValues = (document, values = {}, frozen = {}) => {
+// `fillable` son las claves que el formulario OFRECE. Espejo de la misma regla
+// en `src/lib/designSpec.ts`: **no se borra lo que nadie puede llenar**. Un
+// marcador que ni se ofrece ni quedó congelado se resolvía contra un
+// diccionario vacío y dejaba el nodo en blanco, en una pieza que nadie podía
+// corregir después. Sin `fillable` se conserva el comportamiento de siempre.
+export const applyPublicValues = (document, values = {}, frozen = {}, fillable = null) => {
     const all = { ...values, ...frozen };
     const missing = new Set();
+    const puede = fillable ? new Set(fillable) : null;
+    const resoluble = (key) => !puede || puede.has(key) || all[key] !== undefined;
 
     const nodes = [];
     for (const node of document?.nodes || []) {
-        if (node.requiresVar) {
+        if (node.requiresVar && resoluble(node.requiresVar)) {
             const v = all[node.requiresVar];
             if (v === undefined || v === null || String(v).trim() === '') { missing.add(node.requiresVar); continue; }
         }
         if (node.type === 'text' && node.srcText) {
+            if (!variablesUsedIn(node.srcText).every(resoluble)) { nodes.push(node); continue; }
             const r = resolveVariables(node.srcText, all);
             r.missing.forEach(m => missing.add(m));
             if (node.dropIfEmpty && (r.missing.length || !r.text)) continue;
@@ -248,6 +311,7 @@ export const applyPublicValues = (document, values = {}, frozen = {}) => {
             continue;
         }
         if (node.type === 'image' && node.srcVar) {
+            if (!resoluble(node.srcVar)) { nodes.push(node); continue; }
             const v = all[node.srcVar];
             if (!v) { missing.add(node.srcVar); if (node.dropIfEmpty) continue; nodes.push({ ...node, src: null }); continue; }
             nodes.push({ ...node, src: String(v) });
@@ -317,14 +381,20 @@ export const buildPublication = ({ document, name, slug, category = 'aniversario
     if (!check.ok) throw new Error(check.error);
 
     const fields = buildPublicFields(document, settings);
+    const declared = declarationsOf(document);
     // Lo que el público NO llena queda congelado con el valor con el que se
     // publicó. Se guarda explícito para que la pieza pública no dependa de
     // volver a consultar el club: un enlace compartido tiene que seguir
     // funcionando igual dentro de un año.
+    //
+    // Un campo declarado `visible: false` se congela con SU valor por defecto:
+    // apagarlo significa «este dato lo fijo yo», y sin esta línea el nodo
+    // quedaría con el marcador sin resolver, que es el hueco que el módulo
+    // existe para no dejar.
     const frozen = {};
     for (const key of variablesOf(document)) {
         if (fields.some(f => f.key === key)) continue;
-        const v = settings.frozen?.[key];
+        const v = settings.frozen?.[key] ?? declared.get(key)?.defaultValue;
         if (v !== undefined && v !== null && String(v) !== '') frozen[key] = String(v);
     }
 
@@ -342,7 +412,7 @@ export const buildPublication = ({ document, name, slug, category = 'aniversario
 };
 
 export default {
-    FIELD_SPECS, isInstitutional, variablesOf, buildPublicFields,
+    FIELD_SPECS, ASSIGNABLE_FIELDS, isInstitutional, variablesOf, buildPublicFields, fieldFor,
     sanitizeValues, isAcceptableImage, bakeFrozen, applyPublicValues,
     stripPublicDefaults, slugify, validateSlug, publicUrl, buildPublication,
 };

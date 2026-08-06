@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.721.0
+// v4.723.0
 //
 // Sirve una plantilla publicada a cualquiera con el enlace, SIN sesión. Es el
 // mismo patrón del Generador de Pendones, y por eso conviene decir en qué se
@@ -28,12 +28,12 @@ import db from '../lib/db.js';
 import { ensureDesignSchema } from '../lib/ensureDesignSchema.js';
 import { formatOf } from '../lib/designSpec.js';
 import { sanitizeValues, applyPublicValues, bakeFrozen } from '../lib/designPublish.js';
-import { photoSlotOf, adaptPhoto } from '../lib/designPhoto.js';
+import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { normalizeComposition } from '../lib/designCompose.js';
 
-console.log('[designPublicController] v4.721.0 cargado — Portal público de Plantillas IA (sin autenticación).');
+console.log('[designPublicController] v4.723.0 cargado — Portal público de Plantillas IA (sin autenticación). Cada campo se adapta por su clase.');
 
 const rowOrNull = async (slug) => {
     const { rows } = await db.query(
@@ -157,6 +157,20 @@ export const publicMessage = async (req, res) => {
 // cualquier persona sin identificar convierte el bucket en un depósito abierto
 // y nos deja alojando contenido de terceros. La imagen vive en la sesión del
 // navegador y viaja al canvas al exportar.
+// ── QUÉ CAMPO ES DECIDE CÓMO SE ADAPTA ────────────────────────────────
+//
+// Hasta v4.722 este endpoint atendía a TODA imagen con la receta de la
+// fotografía: el hueco de la foto, encuadre `cover` con recorte por atención y
+// salida JPEG. Con un solo campo de imagen por plantilla no se notaba; en
+// cuanto el logotipo pasó a ser un campo público (v4.722.3) el resultado fue
+// exactamente lo que el pedido prohíbe — el escudo llegaba recortado por los
+// bordes, deformado respecto de su recuadro y con la transparencia rellena de
+// negro por el JPEG.
+//
+// El `key` que manda el formulario es lo que arregla eso: con él se resuelve el
+// hueco de ESE nodo y la receta de ESA clase de campo. Sin `key` se conserva el
+// comportamiento anterior, para que un navegador con el bundle viejo siga
+// subiendo su fotografía.
 export const publicPhoto = async (req, res) => {
     try {
         await ensureDesignSchema();
@@ -166,15 +180,27 @@ export const publicPhoto = async (req, res) => {
         if (!/^image\//.test(req.file.mimetype || '')) return res.status(400).json({ error: 'Ese archivo no es una imagen.' });
 
         const fmt = formatOf(row.format);
-        const slot = photoSlotOf(row.document, fmt.width, fmt.height)
+        const fields = row.fields || [];
+        // Sólo se atiende un campo DECLARADO en la publicación. Es el mismo
+        // cierre que `sanitizeValues`: lo que no está en el formulario no
+        // existe, y una clave inventada no puede elegir a qué nodo apunta.
+        const key = String(req.body?.key || '').slice(0, 32);
+        const field = fields.find(f => f.key === key && f.type === 'image') || null;
+        if (key && !field) return res.status(400).json({ error: 'Esa plantilla no tiene un campo de imagen con ese nombre.' });
+
+        const slotKey = field?.key || 'imagen';
+        const slot = slotFor(row.document, slotKey, fmt.width, fmt.height)
             || { width: fmt.width, height: fmt.height, fit: 'cover' };
 
-        const out = await adaptPhoto(req.file.buffer, {
-            targetWidth: slot.width, targetHeight: slot.height, fit: slot.fit,
+        const rules = field?.image || { fit: slot.fit, crop: true, transparent: false, trim: false, safeArea: 0 };
+        const out = await adaptForField(req.file.buffer, {
+            targetWidth: slot.width, targetHeight: slot.height,
+            rules: { ...rules, fit: rules.fit || slot.fit },
         });
 
         res.json({
             dataUrl: `data:${out.contentType};base64,${out.buffer.toString('base64')}`,
+            key: slotKey,
             width: out.width,
             height: out.height,
             // Los avisos se DEVUELVEN, no se guardan para nosotros: si el

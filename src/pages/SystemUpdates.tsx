@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.722.3 | 2026-08-06 (El logotipo del club es un campo publico)
-// Cache bust: 2026-08-06h
+// UI V4.723.0 | 2026-08-06 (Campos vinculados: el logotipo del club, primero)
+// Cache bust: 2026-08-06i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.723.0',
+        title: 'Las plantillas ya declaran qué completa cada club 🔗',
+        description: 'Una plantilla dejó de ser un diseño con unos pocos datos fijos y pasó a ser una plantilla parametrizable: el administrador coloca un elemento donde va —un logotipo, una fotografía, un nombre, una fecha— y declara ahí mismo qué dato es, cómo se llama en el formulario, si es obligatorio y si se muestra o queda fijo. El formulario del enlace público se arma solo con eso, así que una plantilla nueva no necesita un formulario nuevo ni tocar nada por dentro. El primero es el LOGOTIPO DEL CLUB, y funciona como en el Generador de Pendones: el club sube su escudo y entra exactamente en el sitio, el tamaño y la proporción que dejó configurados el diseñador, sin que nadie tenga que recortarlo ni moverlo. Eso último no salía bien hasta ahora, y vale la pena decir por qué: el portal trataba TODA imagen como si fuera una fotografía, así que el escudo se recortaba por los bordes para llenar el espacio de la foto y se guardaba en un formato que no conserva la transparencia — el fondo transparente salía relleno. Ahora cada campo declara su clase y cada clase tiene sus reglas: un logotipo entra completo, conserva la transparencia, se le quitan los márgenes vacíos del archivo del Brand Center y nunca se recorta; una fotografía sí se recorta, porque es lo que la hace llenar la banda. Medido con un escudo real: antes salía en 1080×508 recortado y sin transparencia; ahora en 104×104, entero y con su fondo transparente intacto. Se pueden declarar además campos que la plataforma no conocía —una sede, un presidente entrante, un código QR, una firma, un sello— escribiendo su nombre en la pantalla, sin programar nada. Y se corrigieron dos cosas que se llevaban por delante el trabajo del diseñador: cambiar la imagen de ejemplo de un elemento ya no borra el campo que se le había marcado, y una plantilla publicada ya no aparece con los textos en blanco cuando alguno de sus datos no está en el formulario.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'campos', 'logotipo'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Sección «Campo vinculado» en Propiedades: tipo, etiqueta, ayuda, obligatorio, visible y valor por defecto.' },
+            { type: 'added', text: 'El logotipo del club se adapta como logotipo: entra completo, sin recorte y con la transparencia intacta.' },
+            { type: 'added', text: 'Campos propios (sede, presidente entrante, QR, firma, sello) sin tocar código.' },
+            { type: 'added', text: 'Posición y tamaño en porcentaje, escritos a mano además de arrastrando.' },
+            { type: 'fixed', text: 'Cambiar la imagen de ejemplo ya no borra el campo marcado en ese elemento.' },
+            { type: 'fixed', text: 'Una pieza publicada ya no sale con los textos en blanco cuando un dato no está en el formulario.' },
+        ]
+    },
     {
         version: '4.722.3',
         title: 'El portal de aniversarios pide logo, nombre, años y foto del club 🎂',

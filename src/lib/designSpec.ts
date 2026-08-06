@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — espejo del criterio en el navegador
-// v4.720.0
+// v4.723.0
 //
 // Espejo de `server/lib/designSpec.js`. Está duplicado a propósito, igual que
 // `ADMIN_ROLES` y que `NATIONAL_LANGS`: el servidor decide qué acepta y guarda,
@@ -14,6 +14,8 @@
 // el reparto del texto en líneas y los tipos. Lo que decide el servidor —qué
 // plantillas hay, qué variables existen, qué se guarda— no se copia.
 // ════════════════════════════════════════════════════════════════════
+
+import type { LinkedField } from './designFields';
 
 export interface DesignFormat {
     id: string; label: string; ratio: string;
@@ -66,6 +68,14 @@ export interface BaseNode {
     requiresVar?: string | null;
     /** El nodo desaparece si su PROPIA variable viene vacía. */
     dropIfEmpty?: boolean;
+    /** La CONFIGURACIÓN del campo vinculado que este nodo expone al formulario
+     *  público: etiqueta, ayuda, obligatorio, visible, valor por defecto y —si
+     *  es imagen— cómo se adapta lo que suban.
+     *
+     *  La CLAVE no está acá: es `srcVar` (imagen) o el marcador de `srcText`
+     *  (texto), y se deriva con `fieldKeyOf`. Guardarla dos veces se contradice
+     *  en cuanto alguien edita el texto del nodo. */
+    field?: LinkedField | null;
 }
 
 export interface TextNode extends BaseNode {
@@ -273,6 +283,12 @@ export const verticalOffset = (node: TextNode, layout: TextLayout, boxH: number)
 
 const VAR_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
+export const variablesUsedIn = (text?: string | null): string[] => {
+    const found = new Set<string>();
+    for (const m of String(text ?? '').matchAll(VAR_RE)) found.add(m[1]);
+    return [...found];
+};
+
 export const resolveVariables = (text: string, vars: Record<string, string>): string =>
     String(text ?? '')
         .replace(VAR_RE, (_m, name: string) => {
@@ -311,23 +327,40 @@ export const applyVariables = (nodes: DesignNode[], vars: Record<string, string>
 //
 // Espejo de `applyPublicValues` en `server/lib/designPublish.js`. Si cambia
 // uno, cambiar el otro.
-export const applyPublicValues = (nodes: DesignNode[], vars: Record<string, string>): DesignNode[] => {
+// `fillable` son las claves que el formulario OFRECE. Sin ella —el camino de
+// siempre— se re-resuelve todo, y ahí está el defecto que dejaba la pieza en
+// blanco: un nodo cuyo marcador no lo ofrece el formulario ni quedó congelado
+// al publicar se resolvía contra un diccionario vacío, así que su texto
+// desaparecía y nadie podía escribirlo. La pieza salía con el pie institucional
+// y hueco todo lo demás.
+//
+// La regla es corta: **no se borra lo que nadie puede llenar**. Un marcador que
+// el formulario no ofrece deja el nodo tal como se publicó.
+export const applyPublicValues = (
+    nodes: DesignNode[],
+    vars: Record<string, string>,
+    fillable?: string[],
+): DesignNode[] => {
     const tiene = (key?: string | null) => {
         if (!key) return false;
         const v = vars[key];
         return v !== undefined && v !== null && String(v).trim() !== '';
     };
+    const puedeLlenarse = fillable ? new Set(fillable) : null;
+    const resoluble = (key: string) => !puedeLlenarse || puedeLlenarse.has(key) || vars[key] !== undefined;
 
     const out: DesignNode[] = [];
     for (const n of nodes) {
-        if (n.requiresVar && !tiene(n.requiresVar)) continue;
+        if (n.requiresVar && !tiene(n.requiresVar) && resoluble(n.requiresVar)) continue;
         if (isText(n) && n.srcText) {
+            if (!variablesUsedIn(n.srcText).every(resoluble)) { out.push(n); continue; }
             const text = resolveVariables(n.srcText, vars);
             if (n.dropIfEmpty && !text) continue;
             out.push(text === n.text ? n : { ...n, text });
             continue;
         }
         if (isImage(n) && n.srcVar) {
+            if (!resoluble(n.srcVar)) { out.push(n); continue; }
             const src = vars[n.srcVar] || null;
             if (!src && n.dropIfEmpty) continue;
             out.push(src === n.src ? n : { ...n, src });
