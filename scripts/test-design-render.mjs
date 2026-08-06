@@ -309,8 +309,12 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     const selector = page.locator('aside').last().locator('select').last();
     const opciones = await selector.locator('option').allInnerTexts();
     check('el selector ofrece las claves asignables', opciones.length > 1, opciones.join(' | '));
-    check('y NO ofrece las institucionales',
-        !opciones.some(o => /Gobernador|Distrito|Periodo|Logotipo/i.test(o)), opciones.join(' | '));
+    // La firma del Distrito no se puede ceder a quien abra el enlace. El
+    // logotipo SÍ se ofrece: es el del club que cumple años (v4.722.3).
+    check('y NO ofrece la firma del Distrito',
+        !opciones.some(o => /Gobernador|Distrito|Periodo rotario/i.test(o)), opciones.join(' | '));
+    check('pero sí el logotipo del club',
+        opciones.some(o => /Logotipo del club/i.test(o)), opciones.join(' | '));
 
     await selector.selectOption({ label: 'Fotografía del club' }).catch(() => {});
     await page.waitForTimeout(300);
@@ -334,15 +338,21 @@ console.log('\nEl portal público');
 {
     const { buildPublication, bakeFrozen } = await import('../server/lib/designPublish.js');
 
+    // `keepSlots: true`, igual que el estudio: el club con el que se diseña
+    // puede no tener escudo cargado, y si el hueco se borra al compilar el
+    // formulario público se queda sin el campo del logotipo (v4.722.3).
     const compiled = compileTemplate({
         template: templateById('aniversario_foto'),
         variables: {},
         branding: { district: '4281', governor: 'Fabio Enrique Véjar Montañez', period: '2026-2027' },
+        keepSlots: true,
     });
     const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
     const frozen = { distrito: '4281', gobernador: 'Fabio Enrique Véjar Montañez', periodo: '2026-2027' };
     const pub = buildPublication({ document: doc, name: 'Aniversario de Club', slug: 'aniversario', settings: { frozen } });
-    const RESP = { slug: pub.slug, name: pub.name, intro: '', category: 'aniversario', format: pub.format, document: bakeFrozen(doc, frozen), fields: pub.fields };
+    // `pub.document`, no `doc`: es lo que de verdad se guarda en la fila, con
+    // los valores de ejemplo del panel ya vaciados en los campos públicos.
+    const RESP = { slug: pub.slug, name: pub.name, intro: '', category: 'aniversario', format: pub.format, document: bakeFrozen(pub.document, frozen), fields: pub.fields };
 
     const entry = `
 import React from 'react';
@@ -379,8 +389,11 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
 
     // El formulario sale de las variables, no de una lista escrita a mano.
+    // Los cuatro datos que pidió el cliente, los mismos del Generador de
+    // Pendones: logotipo, nombre, años y fotografía del club (v4.722.3).
     check('el formulario se derivó de las variables',
-        ['Nombre del club', 'Años que cumple', 'Mensaje', 'Fotografía'].every(l => txt.includes(l)));
+        ['Logotipo del club', 'Nombre del club', 'Años que cumple', 'Mensaje', 'Fotografía'].every(l => txt.includes(l)),
+        txt.slice(0, 300));
     check('ofrece escribir el mensaje con IA', /Generar mensaje con IA/.test(txt));
     check('ofrece arrastrar la fotografía', /Arrastrá una foto/.test(txt));
     check('ofrece descargar y compartir', /Descargar PNG/.test(txt) && /Compartir/.test(txt));
@@ -398,7 +411,19 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // estar—. Lo que no puede existir es un campo para cambiarlo.
     const etiquetas = await page.locator('#root label').allInnerTexts();
     check('y no hay ningún campo para cambiarla',
-        !etiquetas.some(l => /Gobernador|Distrito|Periodo|Logotipo/i.test(l)), etiquetas.join(' | '));
+        !etiquetas.some(l => /Gobernador|Distrito|Periodo rotario/i.test(l)), etiquetas.join(' | '));
+
+    // El logotipo es del CLUB, así que sí se puede subir; y mientras no se
+    // suba, ni él ni la placa blanca que lo respalda se dibujan. Sin esto la
+    // pieza salía con un rectángulo blanco vacío flotando sobre la fotografía.
+    check('el logotipo del club SÍ se puede subir',
+        etiquetas.some(l => /Logotipo del club/i.test(l)), etiquetas.join(' | '));
+    check('sin logotipo, su nodo no se dibuja',
+        await page.locator('[data-node="logo"]').count() === 0);
+    check('y la placa blanca de contraste tampoco',
+        await page.locator('[data-node="placa_logo"]').count() === 0);
+    check('el resto de la pieza sí se dibuja',
+        await page.locator('[data-node="saludo"]').count() === 1);
 
     // La vista previa es local e instantánea.
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');

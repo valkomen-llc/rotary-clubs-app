@@ -190,7 +190,7 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
                                         <div key={k} className="flex items-center gap-2 text-[11px]">
                                             <span className="text-gray-500 w-24 shrink-0">{k}</span>
                                             <span className="text-gray-700 truncate">
-                                                {k === 'logo' ? (frozen[k] ? 'imagen cargada' : '— sin valor —') : (frozen[k] || '— sin valor —')}
+                                                {/^(https?:|data:)/.test(frozen[k] || '') ? 'imagen cargada' : (frozen[k] || '— sin valor —')}
                                             </span>
                                         </div>
                                     ))}

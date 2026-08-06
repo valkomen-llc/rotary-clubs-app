@@ -310,7 +310,20 @@ export const normalizeDocument = (raw) => {
 // Un nodo con `dropIfEmpty` cuya variable no se resolvió NO se dibuja. Es lo que
 // permite que la misma plantilla sirva con y sin fotografía del club: sin foto,
 // el marco de la foto simplemente no existe, en vez de dejar un rectángulo gris.
-export const compileTemplate = ({ template, variables = {}, branding = {} } = {}) => {
+//
+// ── `keepSlots`: NO BORRAR EL HUECO QUE ALGUIEN VA A LLENAR DESPUÉS ──
+//
+// Borrar el nodo es correcto cuando lo que se compila es la pieza FINAL. En el
+// editor no: ahí el documento se va a publicar, y el formulario público se
+// deriva de las variables que los nodos usan (`variablesOf`). Un hueco borrado
+// no tiene variable, así que no genera campo — y entonces nadie puede llenarlo
+// nunca. Fue exactamente lo que dejó el portal de aniversarios sin el campo del
+// logotipo: el club con el que se diseñó no tenía escudo cargado, el nodo se
+// borró al compilar y la plantilla se publicó sin esa mitad del formulario.
+//
+// Con `keepSlots` el hueco sobrevive con `src: null` y la decisión de dibujarlo
+// se toma al PINTAR, donde ya se sabe si tiene contenido (`visibleNodes`).
+export const compileTemplate = ({ template, variables = {}, branding = {}, keepSlots = false } = {}) => {
     if (!template) throw new Error('compileTemplate: falta la plantilla');
     const vars = { ...defaultVariables(branding), ...variables };
     const missing = new Set();
@@ -322,12 +335,12 @@ export const compileTemplate = ({ template, variables = {}, branding = {} } = {}
         // nodos de cualquier tipo, incluidos los que no llevan variables.
         if (node.requiresVar) {
             const v = vars[node.requiresVar];
-            if (v === undefined || v === null || String(v).trim() === '') { missing.add(node.requiresVar); continue; }
+            if (v === undefined || v === null || String(v).trim() === '') { missing.add(node.requiresVar); if (!keepSlots) continue; }
         }
         if (node.type === 'text') {
             const r = resolveVariables(node.text, vars);
             r.missing.forEach(m => missing.add(m));
-            if (node.dropIfEmpty && (r.missing.length > 0 || !r.text)) continue;
+            if (node.dropIfEmpty && (r.missing.length > 0 || !r.text) && !keepSlots) continue;
             // Se guarda el texto de plantilla ANTES de sustituir: es lo que
             // deja al editor volver a resolverlo sin pedir nada al servidor.
             if (variablesUsedIn(node.text).length) node.srcText = node.text;
@@ -337,7 +350,7 @@ export const compileTemplate = ({ template, variables = {}, branding = {} } = {}
             if (key) {
                 node.srcVar = key;
                 const v = vars[key];
-                if (!v) { missing.add(key); if (node.dropIfEmpty) continue; node.src = null; }
+                if (!v) { missing.add(key); if (node.dropIfEmpty && !keepSlots) continue; node.src = null; }
                 else node.src = String(v);
             }
         }
@@ -351,6 +364,45 @@ export const compileTemplate = ({ template, variables = {}, branding = {} } = {}
         nodes,
         missing: [...missing],
     };
+};
+
+// ─── Qué nodos se DIBUJAN ──────────────────────────────────────────────
+//
+// Con `keepSlots` el documento conserva los huecos vacíos, así que la decisión
+// de pintarlos pasa acá. Y tiene que estar en UN solo sitio: la vista previa del
+// editor, la exportación y el portal público leen la misma lista, y ésa es toda
+// la promesa del módulo —lo que se ve es el archivo—. Si cada uno decidiera por
+// su cuenta, un hueco visible en pantalla saldría o no saldría en el PNG según
+// quién lo dibujara.
+//
+// La regla es la del catálogo, evaluada sobre el estado real del documento:
+//
+//   · `dropIfEmpty` — el nodo desaparece si su propio contenido está vacío.
+//   · `requiresVar` — un nodo DECORATIVO desaparece si el nodo atado a esa
+//     variable no existe o está vacío. Es la placa blanca que sólo tiene
+//     sentido detrás del logotipo: sola es un rectángulo flotando.
+const nodeHasContent = (node) => node.type === 'image'
+    ? !!node.src
+    : node.type === 'text' ? String(node.text || '').trim() !== '' : true;
+
+// `slots: true` es el modo EDITOR: un hueco vacío se sigue viendo, porque es
+// donde el administrador va a poner algo y sin verlo no lo puede seleccionar.
+// Lo que se cae igual es el nodo DECORATIVO que dependía de él —la placa blanca
+// sola no se puede llenar con nada, sólo estorba—.
+export const visibleNodes = (nodes = [], { slots = false } = {}) => {
+    const satisfied = new Map();
+    for (const n of nodes) {
+        const key = n.type === 'image' ? n.srcVar : null;
+        if (!key) continue;
+        satisfied.set(key, (satisfied.get(key) || false) || nodeHasContent(n));
+    }
+
+    return nodes.filter(n => {
+        if (n.hidden) return false;
+        if (n.requiresVar && !satisfied.get(n.requiresVar)) return false;
+        if (n.dropIfEmpty && !nodeHasContent(n) && !slots) return false;
+        return true;
+    });
 };
 
 // Los colores de marca del club sustituyen los de la plantilla SÓLO donde la
@@ -517,7 +569,7 @@ export default {
     TEMPLATE_CATEGORIES, VARIABLES, VARIABLE_IDS,
     resolveVariables, variablesUsedIn,
     NODE_TYPES, normalizeNode, normalizeColor, normalizeGradient,
-    normalizeDocument, compileTemplate, defaultVariables,
+    normalizeDocument, compileTemplate, defaultVariables, visibleNodes,
     wrapText, layoutText, shapePath,
     parseFoundation, yearsSince, rotaryPeriod,
     SAFE_AREA, MARGIN, SNAP_PX, LIMITS, MAX_NODES,

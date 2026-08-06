@@ -38,7 +38,7 @@ import {
     Share2, AlertTriangle, Check,
 } from 'lucide-react';
 import DesignCanvas from '../components/admin/design-studio/DesignCanvas';
-import { applyVariables, formatOf, type DesignDocument } from '../lib/designSpec';
+import { applyPublicValues, formatOf, type DesignDocument } from '../lib/designSpec';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -112,9 +112,14 @@ const PlantillaPublica: React.FC = () => {
     }, [tpl]);
 
     // Sustitución local: instantánea, sin ida y vuelta al servidor.
+    //
+    // `applyPublicValues`, no `applyVariables`: acá un nodo sin valor se QUITA.
+    // En el editor un hueco vacío es donde el administrador va a poner algo; en
+    // el portal es un defecto impreso —la placa blanca del logotipo flotando
+    // sobre la foto— en una pieza que nadie puede corregir después.
     const doc = useMemo<DesignDocument | null>(() => {
         if (!tpl) return null;
-        return { ...tpl.document, nodes: applyVariables(tpl.document.nodes, values) };
+        return { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values) };
     }, [tpl, values]);
 
     const set = useCallback((key: string, v: string) => {

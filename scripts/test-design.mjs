@@ -137,6 +137,39 @@ check('pero la curva del pie sigue estando',
     sinLogo.nodes.some(n => n.id === 'pie_azul'));
 check('y lo que falta se reporta', sinLogo.missing.includes('logo'));
 
+// `keepSlots` es lo contrario, y hace falta cuando el documento se va a
+// PUBLICAR: un hueco borrado no tiene variable, así que `variablesOf` no lo ve,
+// el formulario público no genera su campo y nadie puede llenarlo nunca. Fue lo
+// que dejó al portal de aniversarios sin el campo del logotipo (v4.722.3).
+const conHueco = S.compileTemplate({ template: tpl, variables: { anios: '49' }, branding: { clubName: 'X' }, keepSlots: true });
+check('con `keepSlots` el hueco del logotipo sobrevive',
+    conHueco.nodes.some(n => n.id === 'logo'));
+check('y sigue atado a su variable, que es lo que genera el campo',
+    conHueco.nodes.find(n => n.id === 'logo')?.srcVar === 'logo');
+check('pero vacío', conHueco.nodes.find(n => n.id === 'logo')?.src === null);
+check('y la placa que depende de él también sobrevive',
+    conHueco.nodes.some(n => n.id === 'placa_logo'));
+
+// Dibujarlo o no se decide al PINTAR, con la misma regla en los tres lectores
+// —vista previa, exportación y portal—. Es lo que sostiene que lo que se ve sea
+// el archivo.
+const pintados = S.visibleNodes(conHueco.nodes).map(n => n.id);
+check('al pintar, el hueco vacío no se dibuja', !pintados.includes('logo'));
+check('ni la placa blanca que sólo existía para respaldarlo', !pintados.includes('placa_logo'));
+check('el resto de la pieza sí', pintados.includes('saludo') && pintados.includes('pie_azul'));
+check('en modo EDITOR el hueco se ve, para poder seleccionarlo',
+    S.visibleNodes(conHueco.nodes, { slots: true }).some(n => n.id === 'logo'));
+check('pero la placa suelta no, porque no se puede llenar con nada',
+    !S.visibleNodes(conHueco.nodes, { slots: true }).some(n => n.id === 'placa_logo'));
+check('con el logotipo puesto se dibujan los dos',
+    (() => {
+        const llenos = conHueco.nodes.map(n => n.id === 'logo' ? { ...n, src: 'https://x/l.png' } : n);
+        const ids = S.visibleNodes(llenos).map(n => n.id);
+        return ids.includes('logo') && ids.includes('placa_logo');
+    })());
+check('un nodo oculto a mano tampoco se dibuja',
+    !S.visibleNodes([{ id: 'z', type: 'shape', hidden: true }]).some(n => n.id === 'z'));
+
 check('el compilador se queja si no le dan plantilla',
     (() => { try { S.compileTemplate({}); return false; } catch { return true; } })());
 
@@ -239,6 +272,19 @@ const mismoLayout = casos.every(c => {
 });
 check('layoutText reparte las líneas igual en los dos lados', mismoLayout);
 
+// `visibleNodes` decide qué se dibuja en la vista previa, en la exportación y
+// en el portal. Que los dos lados coincidan es lo que sostiene el WYSIWYG.
+const paraVer = [
+    { id: 'placa', type: 'shape', requiresVar: 'logo' },
+    { id: 'logo', type: 'image', src: null, srcVar: 'logo', dropIfEmpty: true },
+    { id: 'foto', type: 'image', src: null, srcVar: 'imagen' },
+    { id: 'oculto', type: 'shape', hidden: true },
+];
+check('visibleNodes decide LO MISMO en los dos lados',
+    S.visibleNodes(paraVer).map(n => n.id).join(',') === C.visibleNodes(paraVer).map(n => n.id).join(',')
+    && S.visibleNodes(paraVer, { slots: true }).map(n => n.id).join(',') === C.visibleNodes(paraVer, { slots: true }).map(n => n.id).join(','),
+    `${S.visibleNodes(paraVer).map(n => n.id).join(',')} / ${C.visibleNodes(paraVer).map(n => n.id).join(',')}`);
+
 check('resolveVariables coincide en el texto resultante',
     S.resolveVariables('Al {{club}} de {{ciudad}}', { club: 'A' }).text === C.resolveVariables('Al {{club}} de {{ciudad}}', { club: 'A' }));
 
@@ -255,6 +301,35 @@ check('un nodo atado a una variable se repinta', despues[0].text === '¡Felices 
 check('un nodo editado a mano NO se pisa', despues[1].text === 'Escrito a mano');
 check('la imagen sigue a su variable', despues[2].src === 'nuevo.jpg');
 check('un nodo sin cambios conserva su identidad (no repinta de más)', despues[1] === vivos[1]);
+
+// El portal público resuelve las variables en el navegador, así que la regla
+// de `requiresVar`/`dropIfEmpty` tiene que existir de este lado o la pieza sale
+// con la placa blanca del logotipo flotando vacía sobre la fotografía.
+const conPlaca = [
+    { id: 'placa', type: 'shape', requiresVar: 'logo' },
+    { id: 'logo', type: 'image', src: null, srcVar: 'logo', dropIfEmpty: true },
+    { id: 'foto', type: 'image', src: null, srcVar: 'imagen' },
+    { id: 'saludo', type: 'text', text: '', srcText: 'Al {{club}}' },
+];
+const sinDatos = C.applyPublicValues(conPlaca, {});
+check('sin logotipo, el nodo del logotipo NO se dibuja en el portal',
+    !sinDatos.some(n => n.id === 'logo'));
+check('y su placa de contraste tampoco', !sinDatos.some(n => n.id === 'placa'));
+check('la fotografía sin `dropIfEmpty` se conserva como hueco',
+    sinDatos.some(n => n.id === 'foto'));
+
+const conDatos = C.applyPublicValues(conPlaca, { logo: 'e.png', club: 'Club Rotario Pasto' });
+check('con logotipo vuelven los dos',
+    conDatos.some(n => n.id === 'logo') && conDatos.some(n => n.id === 'placa'));
+check('y el texto se resuelve igual que en el editor',
+    conDatos.find(n => n.id === 'saludo').text === 'Al Club Rotario Pasto');
+check('un valor en blanco cuenta como ausente',
+    !C.applyPublicValues(conPlaca, { logo: '   ' }).some(n => n.id === 'placa'));
+
+// El editor NO puede quitar nodos: un hueco vacío es donde el administrador va
+// a poner algo, y sin verlo no lo puede seleccionar.
+check('en el editor, en cambio, no se quita nada',
+    C.applyVariables(conPlaca, {}).length === conPlaca.length);
 
 check('duplicar desplaza la copia', (() => {
     const d = C.duplicateNode({ id: 'x', type: 'shape', x: 0.1, y: 0.1, w: 0.2, h: 0.2, rotation: 0, opacity: 1, locked: true });
@@ -345,27 +420,38 @@ check('encuentra todas las variables del documento',
     P.variablesOf(docPub).join(','));
 
 const campos = P.buildPublicFields(docPub);
+// Los cuatro datos que pidió el cliente, en el mismo orden en que se completan
+// en el Generador de Pendones: logotipo, nombre, años y fotografía.
 check('el formulario ofrece exactamente lo editable',
-    campos.map(f => f.key).join(',') === 'club,anios,mensaje,imagen',
+    campos.map(f => f.key).join(',') === 'logo,club,anios,mensaje,imagen',
     campos.map(f => f.key).join(','));
 check('cada campo trae su tipo',
     campos.find(f => f.key === 'mensaje')?.type === 'textarea'
     && campos.find(f => f.key === 'imagen')?.type === 'image'
+    && campos.find(f => f.key === 'logo')?.type === 'image'
     && campos.find(f => f.key === 'anios')?.type === 'number');
 check('el mensaje se marca como asistible por IA', campos.find(f => f.key === 'mensaje')?.ai === true);
 check('el nombre del club es obligatorio', campos.find(f => f.key === 'club')?.required === true);
-check('los campos salen en un orden estable', campos[0].key === 'club');
+check('los campos salen en un orden estable', campos[0].key === 'logo');
+
+// El logotipo es del CLUB que cumple años, no del Distrito: es un campo
+// público, como en el Generador de Pendones. La firma del Distrito es el pie.
+check('el logotipo SÍ es un campo público', campos.some(f => f.key === 'logo'));
+check('y no está marcado como institucional', !P.isInstitutional('logo'));
 
 // Lo institucional NO se ofrece: es la firma de la pieza.
-check('el logotipo NO es un campo público', !campos.some(f => f.key === 'logo'));
-check('el gobernador tampoco', !campos.some(f => f.key === 'gobernador'));
+check('el gobernador no es un campo público', !campos.some(f => f.key === 'gobernador'));
 check('el distrito tampoco', !campos.some(f => f.key === 'distrito'));
 check('están marcados como institucionales',
-    ['logo', 'gobernador', 'distrito', 'periodo'].every(P.isInstitutional));
+    ['gobernador', 'distrito', 'periodo'].every(P.isInstitutional));
 check('desbloquearlos es EXPLÍCITO, nunca por defecto',
     P.buildPublicFields(docPub, { unlock: ['gobernador'] }).some(f => f.key === 'gobernador'));
 check('el administrador puede bloquear uno editable',
     !P.buildPublicFields(docPub, { locked: ['anios'] }).some(f => f.key === 'anios'));
+// Una pieza del propio Distrito sí quiere el logotipo fijo: se bloquea al
+// publicar, que es una decisión por publicación y no una regla del catálogo.
+check('y también puede congelar el logotipo si la pieza es del Distrito',
+    !P.buildPublicFields(docPub, { locked: ['logo'] }).some(f => f.key === 'logo'));
 
 grupo('Marcar un elemento a mano lo vuelve un campo público');
 
@@ -399,23 +485,27 @@ check('el catálogo de claves asignables excluye lo institucional',
     P.ASSIGNABLE_FIELDS.map(f => f.key).join(','));
 check('cada clave asignable dice a qué tipo de nodo le sirve',
     P.ASSIGNABLE_FIELDS.every(f => f.forNode === 'text' || f.forNode === 'image'));
-check('la fotografía es la única de imagen',
-    P.ASSIGNABLE_FIELDS.filter(f => f.forNode === 'image').map(f => f.key).join(',') === 'imagen');
+check('las de imagen son el logotipo y la fotografía',
+    P.ASSIGNABLE_FIELDS.filter(f => f.forNode === 'image').map(f => f.key).join(',') === 'logo,imagen',
+    P.ASSIGNABLE_FIELDS.filter(f => f.forNode === 'image').map(f => f.key).join(','));
 check('y trae etiqueta legible', P.ASSIGNABLE_FIELDS.every(f => f.label && f.label !== f.key));
 
 grupo('Portal público: lo que llega de afuera');
 
 const san = P.sanitizeValues(
-    { club: 'Club Rotario Pasto', mensaje: '  hola  ', logo: 'https://malo/x.png', gobernador: 'Yo Mismo', anios: '49a' },
+    { club: 'Club Rotario Pasto', mensaje: '  hola  ', logo: 'https://ok.s3.amazonaws.com/escudo.png', gobernador: 'Yo Mismo', periodo: '9999-9999', anios: '49a' },
     campos
 );
 check('acepta lo declarado', san.values.club === 'Club Rotario Pasto');
 check('recorta espacios', san.values.mensaje === 'hola');
 check('deja los años en dígitos', san.values.anios === '49');
-check('DESCARTA el logotipo', !('logo' in san.values));
+check('acepta el logotipo del club', san.values.logo === 'https://ok.s3.amazonaws.com/escudo.png');
 check('DESCARTA al gobernador', !('gobernador' in san.values));
+check('DESCARTA el periodo rotario', !('periodo' in san.values));
 check('y reporta lo descartado en vez de callarlo',
-    san.rejected.includes('logo') && san.rejected.includes('gobernador'), san.rejected.join(','));
+    san.rejected.includes('gobernador') && san.rejected.includes('periodo'), san.rejected.join(','));
+check('un logotipo de origen ajeno se rechaza con motivo',
+    P.sanitizeValues({ logo: 'https://cualquiera.test/x.png' }, campos).errors.length > 0);
 check('un campo obligatorio vacío se reporta',
     !P.sanitizeValues({ mensaje: 'x' }, campos).ok);
 check('el texto se acota al máximo del campo',
@@ -440,7 +530,9 @@ const atacado = P.applyPublicValues(
 );
 check('el fondo no se puede cambiar', atacado.background === docPub.background);
 check('no se pueden quitar nodos', atacado.nodes.length >= docPub.nodes.filter(n => !n.dropIfEmpty).length);
-check('el logotipo sigue siendo el de la plantilla',
+// Con el logotipo BLOQUEADO —una pieza del propio Distrito— lo congelado gana
+// sobre lo que llegue, aunque `sanitizeValues` ya lo hubiera descartado.
+check('un valor congelado gana sobre el que llega de afuera',
     atacado.nodes.find(n => n.id === 'logo')?.src === 'https://ok.amazonaws.com/l.png');
 check('la firma del gobernador sobrevive',
     /Fabio/.test(atacado.nodes.find(n => n.id === 'firma')?.text || ''));
@@ -477,10 +569,28 @@ const publicacion = P.buildPublication({
     document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
     settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
 });
-check('la publicación trae su formulario derivado', publicacion.fields.length === 4);
+check('la publicación trae su formulario derivado', publicacion.fields.length === 5, String(publicacion.fields.length));
 check('y congela lo institucional con su valor',
     publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
 check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));
+check('y el logotipo tampoco queda congelado: lo sube cada club',
+    !('logo' in publicacion.frozen), JSON.stringify(Object.keys(publicacion.frozen)));
+
+// El escudo con el que el administrador DISEÑÓ no puede viajar dentro de la
+// plantilla publicada: cada club que abra el enlace vería el de otro.
+const conEjemplo = {
+    ...docPub,
+    nodes: docPub.nodes.map(n => n.id === 'logo' ? { ...n, src: 'https://ok.s3.amazonaws.com/escudo-del-admin.png' } : n),
+};
+const limpio = P.buildPublication({ document: conEjemplo, name: 'Aniversario', slug: 'aniversario-2' });
+check('el documento publicado sale sin el valor de ejemplo del panel',
+    limpio.document.nodes.find(n => n.id === 'logo')?.src === null,
+    String(limpio.document.nodes.find(n => n.id === 'logo')?.src));
+check('pero el nodo sigue atado a su variable',
+    limpio.document.nodes.find(n => n.id === 'logo')?.srcVar === 'logo');
+check('y un campo BLOQUEADO conserva el suyo, porque lo congela la publicación',
+    P.stripPublicDefaults(conEjemplo, P.buildPublicFields(conEjemplo, { locked: ['logo'] }))
+        .nodes.find(n => n.id === 'logo')?.src === 'https://ok.s3.amazonaws.com/escudo-del-admin.png');
 check('un slug inválido impide publicar',
     (() => { try { P.buildPublication({ document: docPub, name: 'x', slug: 'admin' }); return false; } catch { return true; } })());
 

@@ -27,7 +27,7 @@
 
 import {
     formatOf, fontStack, isText, isImage, isShape, isGradient,
-    layoutFor, verticalOffset, shapePath,
+    layoutFor, verticalOffset, shapePath, visibleNodes,
     type DesignDocument, type TextNode, type ImageNode, type ShapeNode, type Fill,
 } from './designSpec';
 
@@ -230,7 +230,10 @@ export const renderDocumentToCanvas = async (doc: DesignDocument, opts: RenderOp
 
     // Las imágenes se piden TODAS de una vez, antes de dibujar nada: en serie,
     // una pieza con foto y dos logotipos encadenaría tres viajes de red.
-    const visible = doc.nodes.filter(n => !n.hidden && n.opacity > 0);
+    // `visibleNodes` es la MISMA regla que aplica la vista previa: un hueco sin
+    // contenido y el nodo decorativo que dependía de él no se dibujan. Aplicarla
+    // sólo acá dejaría la exportación distinta de lo que se ve en pantalla.
+    const visible = visibleNodes(doc.nodes).filter(n => n.opacity > 0);
     const sources = [...new Set(visible.filter(isImage).map(n => n.src).filter(Boolean) as string[])];
     const loaded = new Map<string, HTMLImageElement>();
     await Promise.all(sources.map(async src => {

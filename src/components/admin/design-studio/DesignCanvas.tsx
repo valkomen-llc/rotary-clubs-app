@@ -32,7 +32,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     formatOf, fontStack, isText, isImage, isGradient,
-    layoutFor, verticalOffset, shapePath,
+    layoutFor, verticalOffset, shapePath, visibleNodes,
     SAFE_AREA, MARGIN, SNAP_PX,
     type DesignDocument, type DesignNode, type ImageNode, type ShapeNode, type Fill,
 } from '../../../lib/designSpec';
@@ -362,7 +362,10 @@ const DesignCanvas: React.FC<Props> = ({
                 style={{ width: W, height: H, transform: `scale(${zoom})`, background: doc.background, overflow: 'hidden' }}
                 onPointerDown={() => interactive && onSelect?.([])}
             >
-                {doc.nodes.map(renderNode)}
+                {/* La MISMA regla que aplica el exportador. `slots` sólo en el
+                    editor: ahí un hueco vacío se tiene que ver para poder
+                    seleccionarlo y llenarlo; en el portal y en el archivo, no. */}
+                {visibleNodes(doc.nodes, { slots: interactive }).map(renderNode)}
 
                 {/* Guías: se dibujan DENTRO del lienzo y no se exportan nunca —
                     el exportador lee `doc.nodes`, y esto no es un nodo. */}
