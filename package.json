@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.720.1",
-  "cache_bust": "2026-08-06b (Plantillas IA: la casilla de imagen deja SUBIR ademas de elegir de la Biblioteca, y una imagen se puede agregar como capa.)",
+  "version": "4.721.0",
+  "cache_bust": "2026-08-06c (Portal publico de Plantillas IA: enlace sin sesion, formulario derivado de las variables y foto que se adapta sola.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.720.1 | 2026-08-06 (La casilla de imagen de Plantillas IA deja subir)
-// Cache bust: 2026-08-06b
+// UI V4.721.0 | 2026-08-06 (Portal público de Plantillas IA)
+// Cache bust: 2026-08-06c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.721.0',
+        title: 'Plantillas IA ahora tiene portal público: un enlace y listo 🔗',
+        description: 'El módulo se separó en dos experiencias. En el panel, el administrador diseña la plantilla, elige qué puede completar la gente y pulsa «Publicar»: eso genera una dirección como clubplatform.org/plantillas/aniversario. Cualquiera con ese enlace entra sin cuenta, sin contraseña y sin pertenecer al sistema, completa un formulario corto —nombre del club, años, mensaje y fotografía—, ve la pieza armarse mientras escribe y la descarga en PNG o la comparte directo a WhatsApp desde el móvil. La fotografía se adapta sola: se endereza si venía acostada del teléfono y se recorta al espacio de la plantilla eligiendo la zona con contenido en vez del centro; si el recorte va a llevarse una parte grande o si la imagen es chica para el tamaño, se avisa con lo que va a pasar, para que quien la subió decida. El mensaje lo escribe la IA con los datos del formulario y hay cinco botones para ajustarlo. Lo importante de cómo está hecho: el formulario público NO está escrito en ninguna parte, se deriva de las variables que la plantilla usa de verdad, así que la próxima plantilla —bienvenida a socios, cambio de junta, reconocimiento— va a tener su formulario sin programar nada. Y el diseño no se puede tocar desde afuera: el portal sólo acepta valores de campos declarados, así que mover un elemento, cambiar un color o quitar el logotipo del Distrito no está «escondido en la pantalla», es que no existe la forma de pedirlo. La firma del Gobernador viaja ya impresa dentro de la pieza.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'IA', 'sin login', 'aniversario'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Portal público en /plantillas/:direccion, sin cuenta ni sesión.' },
+            { type: 'added', text: 'Botón «Publicar» en el editor, con vista previa del formulario público.' },
+            { type: 'added', text: 'El formulario se deriva de las variables: una plantilla nueva no necesita programación.' },
+            { type: 'added', text: 'La fotografía se endereza y se adapta sola, avisando lo que se va a recortar.' },
+            { type: 'added', text: 'Mensaje con IA y cinco tonos, también en el portal público.' },
+            { type: 'added', text: 'Descargar PNG y Compartir (abre WhatsApp directo en el móvil).' },
+        ]
+    },
     {
         version: '4.720.1',
         title: 'En Plantillas IA ya se puede subir la imagen, no sólo elegirla 📤',

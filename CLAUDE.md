@@ -1880,11 +1880,11 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
 
-Pruebas: `npm run test:design` (101 casos, **sin base, credenciales ni red**) y
-`npm run test:design:render` (29 casos: monta el editor Y el panel completo en
-un navegador, compara la vista previa con la exportación píxel a píxel y
-ejercita el arrastre y la subida de una imagen; pide `npm i --no-save playwright
-esbuild` y **se salta solo** si no están).
+Pruebas: `npm run test:design` (158 casos, **sin base, credenciales ni red**) y
+`npm run test:design:render` (43 casos: monta el editor, el panel completo Y el
+portal público en un navegador, compara la vista previa con la exportación píxel
+a píxel y ejercita el arrastre, la subida y el formulario público; pide `npm i
+--no-save playwright esbuild` y **se salta solo** si no están).
 
 **Reglas durables:**
 
@@ -2037,12 +2037,90 @@ esbuild` y **se salta solo** si no están).
 - **`DesignProject` vive fuera de Prisma**, como manda la sección de base de
   datos de este archivo, y queda protegida por `scripts/db-push-guard.mjs`.
 
+### El portal público (v4.721)
+
+El módulo son DOS experiencias: el panel donde se diseña y publica, y una
+página pública —`/plantillas/:slug`, sin sesión— donde cualquiera con el enlace
+completa un formulario y descarga su pieza.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/designPublish.js` | El CRITERIO de publicación. **Puro**: qué formulario sale, qué se congela, qué se acepta |
+| `server/lib/designPhoto.js` | Adaptación de la fotografía que sube el público |
+| `server/controllers/designPublicController.js` | La API sin autenticación |
+| `src/pages/PlantillaPublica.tsx` | La página pública |
+| `src/components/admin/design-studio/PublishDialog.tsx` | Publicar, con vista previa del formulario |
+
+- **El formulario NO se escribe: se DERIVA** (`buildPublicFields`). Sale de las
+  variables que el documento realmente usa (`srcText`, `srcVar`, `requiresVar`),
+  no de una lista en paralelo. Una lista aparte se separa del diseño en cuanto
+  alguien agrega un `{{presidente}}`: el campo no aparecería y el marcador
+  quedaría sin resolver. Es lo que hace que una plantilla nueva **no necesite un
+  formulario nuevo**, que es el requisito de escalabilidad del pedido.
+- **La seguridad es ESTRUCTURAL, no una pantalla que esconde controles.** El
+  endpoint público sólo acepta un diccionario de valores de campos declarados;
+  `applyPublicValues` toma los nodos GUARDADOS y les sustituye texto e
+  imágenes. Un color, una posición o una capa nueva **no se pueden ni expresar**
+  en esa petición. Esconder botones no sirve: quien conoce el endpoint se los
+  saltea.
+- **Lo institucional está bloqueado POR OMISIÓN y se desbloquea a propósito**
+  (`unlock`), nunca al revés. Un valor por defecto permisivo en un portal sin
+  autenticación es la clase de error que no se descubre hasta que alguien lo usa
+  mal. Logotipo, distrito, gobernador y periodo son la firma de la pieza.
+- **`bakeFrozen` no es `resolveVariables`, y ésa es toda su razón de ser.**
+  Sustituye SÓLO las claves congeladas y **deja intactos** los marcadores que el
+  formulario va a llenar; `resolveVariables` los borraría por no tener valor.
+  Gracias a eso la firma viaja ya impresa dentro del nodo —no como un dato que
+  el navegador pueda cambiar— y la vista previa del portal es **local e
+  instantánea**: el navegador sólo resuelve los pocos marcadores del formulario,
+  con el mismo `applyVariables` del editor. Sin esto haría falta una petición
+  por pulsación.
+- **Publicar CONGELA.** Se guarda el documento compilado, no una referencia al
+  catálogo del código. Si apuntara a `designTemplates.js`, tocar ese archivo en
+  un despliegue cambiaría piezas cuyo enlace ya está circulando por WhatsApp.
+- **Despublicar NO borra.** El enlace deja de responder pero la fila se
+  conserva, porque volver a publicar tiene que devolver la MISMA dirección: un
+  enlace ya compartido no se puede reasignar. El `ON CONFLICT (slug)` lleva
+  `WHERE clubId IS NOT DISTINCT FROM` para que otro sitio no pise una dirección
+  pública ajena.
+- **La subida pública devuelve un DATA URL, no una URL de S3.** Mismo criterio
+  que el logo público del Generador de Pendones: guardar en nuestro
+  almacenamiento lo que sube cualquiera sin identificar convierte el bucket en
+  un depósito abierto y nos deja alojando contenido de terceros.
+- **El recorte usa la estrategia de ATENCIÓN de sharp, y eso NO es detección de
+  rostros.** Elige la región de mayor entropía y contraste en vez del centro
+  geométrico; en la práctica suele conservar a las personas porque una cara
+  tiene más detalle que una pared, pero es una consecuencia, no una garantía, y
+  **no se enuncia como si lo fuera**. No hay detector de rostros en la
+  plataforma y agregarlo son decenas de MB en una función que ya empaqueta
+  FFmpeg dentro del tope de 250 MB.
+- **No hay outpainting en el portal público.** `canvasExpansion.js` existe y
+  funciona, pero engancharlo a un portal sin autenticación significa gastar
+  créditos por visita anónima y mandar la fotografía de un tercero a un
+  proveedor externo. Las dos cosas necesitan una decisión del operador, no un
+  valor por defecto. Cuando el recorte va a llevarse los bordes se AVISA con
+  motivo y consecuencia, igual que en el Creador de Reels.
+- **`rotate()` sin argumentos aplica la orientación EXIF.** Sin eso una foto de
+  móvil entra acostada y el usuario cree que el módulo la rotó.
+- **`DesignCanvas` se reutiliza en modo NO interactivo** para la vista previa
+  pública. Escribir un segundo componente de vista previa reintroduciría la
+  duplicación de maquetación que este módulo existe para evitar.
+- **`/plantillas` está en `PRIVATE_PREFIXES`.** Abierto y no indexado son cosas
+  distintas: es una herramienta que se abre desde un enlace compartido, no
+  contenido del sitio, e indexar un `/plantillas/x` por publicación haría
+  competir utilidades con las páginas reales del club por sus términos de marca.
+- **`DesignPublicTemplate` vive fuera de Prisma**, como `DesignProject`, y queda
+  protegida por `scripts/db-push-guard.mjs`.
+
 **Pendientes conocidos:** los formatos 4:5, 9:16 y 16:9 están **declarados con
 `available:false`** — la arquitectura ya los soporta (los nodos son fracciones),
 falta ajustar las plantillas a cada proporción y probarlas. La exportación a
 **SVG no está**: la pieza lleva fotografías, así que un SVG sería un ráster
 envuelto en XML, que no es lo que alguien espera al pedir SVG. Agrupar capas y
-la selección por marco tampoco: hoy la multiselección es con Shift+clic.
+la selección por marco tampoco: hoy la multiselección es con Shift+clic. Y el
+**portal público no tiene freno de abuso**: la subida está acotada en tamaño y
+la IA por plantilla, pero no hay límite por dirección IP; con un enlace muy
+difundido conviene ponerlo antes que después.
 
 ## Generador de Pendones
 
@@ -2095,8 +2173,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 31 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `DesignProject`, `EventRegistration`, `EventAttendeeAccount`,
+Las 32 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EventRegistration`,
+`EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,

@@ -21,13 +21,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Download, Save, Loader2,
     Trash2, Copy, Grid3x3, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
-    Sparkles, FolderOpen, FileImage, FileType2, ImageDown,
+    Sparkles, FolderOpen, FileImage, FileType2, ImageDown, Globe2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MediaPicker from '../content-studio/MediaPicker';
 import DesignCanvas from './DesignCanvas';
 import DesignSidebar from './DesignSidebar';
 import DesignInspector from './DesignInspector';
+import PublishDialog from './PublishDialog';
 import {
     fetchCatalog, compose, listDesigns, createDesign, updateDesign, deleteDesign, uploadToLibrary,
     type Catalog, type ClubHit, type Branding, type DesignCopy, type SavedDesign, type ElementItem,
@@ -75,6 +76,7 @@ const DesignStudio: React.FC = () => {
     const [showSaved, setShowSaved] = useState(false);
     const [currentId, setCurrentId] = useState<string | null>(null);
     const [exportOpen, setExportOpen] = useState(false);
+    const [publishOpen, setPublishOpen] = useState(false);
 
     const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -441,6 +443,11 @@ const DesignStudio: React.FC = () => {
                     className="flex items-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-indigo-400 disabled:opacity-40 rounded-lg px-3 py-2 text-gray-700 transition-colors">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
                 </button>
+                <button onClick={() => setPublishOpen(true)} disabled={!doc.nodes.length}
+                    className="flex items-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-indigo-400 disabled:opacity-40 rounded-lg px-3 py-2 text-gray-700 transition-colors"
+                    title="Generar un enlace público para que cualquiera arme su pieza con esta plantilla">
+                    <Globe2 className="w-4 h-4" /> Publicar
+                </button>
                 <div className="relative">
                     <button onClick={() => setExportOpen(o => !o)} disabled={exporting || !doc.nodes.length}
                         className="flex items-center gap-1.5 text-xs font-black bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg px-3.5 py-2 transition-colors">
@@ -563,6 +570,24 @@ const DesignStudio: React.FC = () => {
                     uploading={uploading}
                 />
             </div>
+
+            {publishOpen && (
+                <PublishDialog
+                    document={doc}
+                    defaultName={title}
+                    // Lo institucional se congela con lo que hay AHORA: son los
+                    // datos del club elegido, y el enlace público tiene que
+                    // seguir mostrándolos aunque nadie vuelva a consultarlo.
+                    frozen={{
+                        logo: branding?.logo || '',
+                        distrito: branding?.district || '',
+                        gobernador: branding?.governor || '',
+                        periodo: branding?.period || '',
+                    }}
+                    onClose={() => setPublishOpen(false)}
+                    onPublished={() => { /* el diálogo muestra el enlace */ }}
+                />
+            )}
 
             {/* UN SOLO MediaPicker por pantalla; `pickerTarget` dice a dónde va
                 lo elegido. La otra vía —subir— la resuelve `uploadImage`, y las

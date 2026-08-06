@@ -294,6 +294,100 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     await page.close();
 }
 
+// ════════════════════════════════════════════════════════════════════
+// El PORTAL PÚBLICO
+//
+// Que arranque sin sesión, que el formulario salga DERIVADO de las variables,
+// que la vista previa se repinte al escribir, que la firma institucional esté
+// horneada y —lo más importante— que NO haya ni una herramienta de edición a
+// la vista. Lo que el pedido prohíbe mostrarle al público se comprueba acá.
+console.log('\nEl portal público');
+{
+    const { buildPublication, bakeFrozen } = await import('../server/lib/designPublish.js');
+
+    const compiled = compileTemplate({
+        template: templateById('aniversario_foto'),
+        variables: {},
+        branding: { district: '4281', governor: 'Fabio Enrique Véjar Montañez', period: '2026-2027' },
+    });
+    const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
+    const frozen = { distrito: '4281', gobernador: 'Fabio Enrique Véjar Montañez', periodo: '2026-2027' };
+    const pub = buildPublication({ document: doc, name: 'Aniversario de Club', slug: 'aniversario', settings: { frozen } });
+    const RESP = { slug: pub.slug, name: pub.name, intro: '', category: 'aniversario', format: pub.format, document: bakeFrozen(doc, frozen), fields: pub.fields };
+
+    const entry = `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import PlantillaPublica from './src/pages/PlantillaPublica';
+window.go = () => createRoot(document.getElementById('root')).render(
+  React.createElement(MemoryRouter, { initialEntries: ['/plantillas/aniversario'] },
+    React.createElement(Routes, null,
+      React.createElement(Route, { path: '/plantillas/:slug', element: React.createElement(PlantillaPublica) }))));
+`;
+    const portal = await build({
+        stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
+        bundle: true, write: false, format: 'iife', platform: 'browser',
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        external: ['jspdf'], jsx: 'automatic',
+    });
+
+    const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    const fallos = [];
+    page.on('pageerror', e => fallos.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
+
+    await page.route('**/api/**', r => r.fulfill({ json: {} }));
+    await page.route('**/api/public/design/aniversario', r => r.fulfill({ json: RESP }));
+    await page.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: portal.outputFiles[0].text });
+    await page.evaluate(() => window.go());
+    await page.waitForTimeout(900);
+
+    const txt = await page.locator('#root').innerText();
+    check('el portal se pinta sin sesión', (await page.locator('#root').innerHTML()).length > 500);
+    check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
+
+    // El formulario sale de las variables, no de una lista escrita a mano.
+    check('el formulario se derivó de las variables',
+        ['Nombre del club', 'Años que cumple', 'Mensaje', 'Fotografía'].every(l => txt.includes(l)));
+    check('ofrece escribir el mensaje con IA', /Generar mensaje con IA/.test(txt));
+    check('ofrece arrastrar la fotografía', /Arrastrá una foto/.test(txt));
+    check('ofrece descargar y compartir', /Descargar PNG/.test(txt) && /Compartir/.test(txt));
+
+    // Lo que el pedido prohíbe mostrar.
+    check('NO hay capas, propiedades ni elementos a la vista',
+        !/Capas|Propiedades|Elementos|Agregar texto|Deshacer|Rehacer/.test(txt), txt.slice(0, 160));
+    check('no hay tiradores de redimensión', await page.locator('[style*="nw-resize"]').count() === 0);
+
+    // La firma institucional viaja horneada dentro del nodo.
+    const firma = await page.locator('[data-node="firma"]').innerText().catch(() => '');
+    check('la firma del Gobernador está impresa en la pieza', /Véjar/.test(firma), firma.slice(0, 60));
+    // Se comprueba sobre las ETIQUETAS del formulario, no sobre el texto de la
+    // página: la pieza SÍ dice «Gobernador» —es la firma, y ahí tiene que
+    // estar—. Lo que no puede existir es un campo para cambiarlo.
+    const etiquetas = await page.locator('#root label').allInnerTexts();
+    check('y no hay ningún campo para cambiarla',
+        !etiquetas.some(l => /Gobernador|Distrito|Periodo|Logotipo/i.test(l)), etiquetas.join(' | '));
+
+    // La vista previa es local e instantánea.
+    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    await page.waitForTimeout(300);
+    check('la vista previa se repinta mientras se escribe',
+        /Club Rotario Pasto/.test(await page.locator('[data-node="saludo"]').innerText().catch(() => '')));
+
+    // El campo obligatorio gobierna la descarga.
+    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('');
+    await page.waitForTimeout(250);
+    check('sin el club no se puede descargar', await page.getByRole('button', { name: /Descargar PNG/ }).isDisabled());
+    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    await page.waitForTimeout(250);
+    check('y con el club sí', !(await page.getByRole('button', { name: /Descargar PNG/ }).isDisabled()));
+    check('el portal no lanzó errores', fallos.length === 0, fallos.join(' | '));
+    await page.close();
+}
+
 check('el editor no lanzó ningún error', errores.length === 0, errores.join(' | '));
 await browser.close();
 

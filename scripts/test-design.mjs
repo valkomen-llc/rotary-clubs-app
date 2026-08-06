@@ -23,6 +23,8 @@ import * as S from '../server/lib/designSpec.js';
 import { TEMPLATES, templateById, catalog, availableTemplates } from '../server/lib/designTemplates.js';
 import { ELEMENTS, elementById, elementToNode } from '../server/lib/designElements.js';
 import { validateMessage, trimToLimit, TONES } from '../server/lib/designAI.js';
+import * as P from '../server/lib/designPublish.js';
+import * as PH from '../server/lib/designPhoto.js';
 
 // Las fechas rotarias se importan del CRITERIO, no de `designBranding.js`: ese
 // archivo importa la base de datos y arrastrarlo acá obligaría a tener Prisma
@@ -330,6 +332,141 @@ check('un año futuro no devuelve un negativo', yearsSince(2100, new Date(Date.U
 check('el periodo rotario arranca en julio',
     rotaryPeriod(new Date(Date.UTC(2026, 6, 1))) === '2026-2027'
     && rotaryPeriod(new Date(Date.UTC(2026, 5, 30))) === '2025-2026');
+
+// ════════════════════════════════════════════════════════════════════
+grupo('Portal público: el formulario se DERIVA de las variables');
+
+const docPub = { format: 'post_1_1', background: '#fff', nodes: compilado.nodes };
+
+check('encuentra todas las variables del documento',
+    ['club', 'anios', 'mensaje', 'imagen', 'logo', 'gobernador', 'distrito', 'periodo']
+        .every(v => P.variablesOf(docPub).includes(v)),
+    P.variablesOf(docPub).join(','));
+
+const campos = P.buildPublicFields(docPub);
+check('el formulario ofrece exactamente lo editable',
+    campos.map(f => f.key).join(',') === 'club,anios,mensaje,imagen',
+    campos.map(f => f.key).join(','));
+check('cada campo trae su tipo',
+    campos.find(f => f.key === 'mensaje')?.type === 'textarea'
+    && campos.find(f => f.key === 'imagen')?.type === 'image'
+    && campos.find(f => f.key === 'anios')?.type === 'number');
+check('el mensaje se marca como asistible por IA', campos.find(f => f.key === 'mensaje')?.ai === true);
+check('el nombre del club es obligatorio', campos.find(f => f.key === 'club')?.required === true);
+check('los campos salen en un orden estable', campos[0].key === 'club');
+
+// Lo institucional NO se ofrece: es la firma de la pieza.
+check('el logotipo NO es un campo público', !campos.some(f => f.key === 'logo'));
+check('el gobernador tampoco', !campos.some(f => f.key === 'gobernador'));
+check('el distrito tampoco', !campos.some(f => f.key === 'distrito'));
+check('están marcados como institucionales',
+    ['logo', 'gobernador', 'distrito', 'periodo'].every(P.isInstitutional));
+check('desbloquearlos es EXPLÍCITO, nunca por defecto',
+    P.buildPublicFields(docPub, { unlock: ['gobernador'] }).some(f => f.key === 'gobernador'));
+check('el administrador puede bloquear uno editable',
+    !P.buildPublicFields(docPub, { locked: ['anios'] }).some(f => f.key === 'anios'));
+
+grupo('Portal público: lo que llega de afuera');
+
+const san = P.sanitizeValues(
+    { club: 'Club Rotario Pasto', mensaje: '  hola  ', logo: 'https://malo/x.png', gobernador: 'Yo Mismo', anios: '49a' },
+    campos
+);
+check('acepta lo declarado', san.values.club === 'Club Rotario Pasto');
+check('recorta espacios', san.values.mensaje === 'hola');
+check('deja los años en dígitos', san.values.anios === '49');
+check('DESCARTA el logotipo', !('logo' in san.values));
+check('DESCARTA al gobernador', !('gobernador' in san.values));
+check('y reporta lo descartado en vez de callarlo',
+    san.rejected.includes('logo') && san.rejected.includes('gobernador'), san.rejected.join(','));
+check('un campo obligatorio vacío se reporta',
+    !P.sanitizeValues({ mensaje: 'x' }, campos).ok);
+check('el texto se acota al máximo del campo',
+    P.sanitizeValues({ club: 'x'.repeat(500) }, campos).values.club.length <= 90);
+
+check('una imagen de nuestro almacenamiento pasa', P.isAcceptableImage('https://b.s3.amazonaws.com/a.jpg'));
+check('un data URL de imagen pasa', P.isAcceptableImage('data:image/png;base64,AAA'));
+check('un host cualquiera NO pasa', !P.isAcceptableImage('https://cualquiera.test/a.jpg'));
+check('http sin cifrar NO pasa', !P.isAcceptableImage('http://b.s3.amazonaws.com/a.jpg'));
+check('un javascript: NO pasa', !P.isAcceptableImage('javascript:alert(1)'));
+check('y una imagen de origen ajeno se rechaza con motivo',
+    P.sanitizeValues({ imagen: 'https://cualquiera.test/a.jpg' }, campos).errors.length > 0);
+
+grupo('Portal público: no hay forma de tocar el diseño');
+
+// Ésta es la comprobación central de la promesa: aunque llegue todo lo que
+// se le ocurra a alguien, el documento resultante conserva sus nodos.
+const atacado = P.applyPublicValues(
+    docPub,
+    P.sanitizeValues({ club: 'X', mensaje: 'Y', nodes: [], background: '#000', logo: 'https://evil/x.png' }, campos).values,
+    { logo: 'https://ok.amazonaws.com/l.png', gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027' }
+);
+check('el fondo no se puede cambiar', atacado.background === docPub.background);
+check('no se pueden quitar nodos', atacado.nodes.length >= docPub.nodes.filter(n => !n.dropIfEmpty).length);
+check('el logotipo sigue siendo el de la plantilla',
+    atacado.nodes.find(n => n.id === 'logo')?.src === 'https://ok.amazonaws.com/l.png');
+check('la firma del gobernador sobrevive',
+    /Fabio/.test(atacado.nodes.find(n => n.id === 'firma')?.text || ''));
+check('los colores de la plantilla no cambian',
+    atacado.nodes.find(n => n.id === 'titulo')?.color === docPub.nodes.find(n => n.id === 'titulo')?.color);
+
+grupo('Portal público: hornear lo institucional');
+
+const horneado = P.bakeFrozen(docPub, { gobernador: 'Fabio Véjar', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' });
+const firma = horneado.nodes.find(n => n.id === 'firma');
+check('la firma queda resuelta y sin marcadores', /Fabio Véjar/.test(firma.text) && !/\{\{/.test(firma.text), firma.text);
+check('y deja de depender de variables', firma.srcText === null);
+check('el logotipo queda fijo',
+    horneado.nodes.find(n => n.id === 'logo')?.src === 'https://ok.amazonaws.com/l.png');
+check('y deja de seguir a una variable',
+    horneado.nodes.find(n => n.id === 'logo')?.srcVar === null);
+// Éste es todo el motivo de que `bakeFrozen` no sea `resolveVariables`.
+const tituloH = horneado.nodes.find(n => n.id === 'titulo');
+check('lo que llena el público SIGUE siendo un marcador', /\{\{\s*anios\s*\}\}/.test(tituloH.srcText || ''), String(tituloH.srcText));
+check('y el nodo del saludo también', /\{\{\s*club\s*\}\}/.test(horneado.nodes.find(n => n.id === 'saludo')?.srcText || ''));
+
+grupo('Portal público: la dirección');
+
+check('normaliza a minúsculas y guiones', P.slugify('Aniversario de Club!') === 'aniversario-de-club');
+check('quita las tildes', P.slugify('Felicitación') === 'felicitacion');
+check('una dirección vacía se rechaza', !P.validateSlug('  ').ok);
+check('una demasiado corta también', !P.validateSlug('ab').ok);
+check('las palabras reservadas del sitio se rechazan',
+    !P.validateSlug('admin').ok && !P.validateSlug('api').ok && !P.validateSlug('plantillas').ok);
+check('y el rechazo dice por qué', /reservada/.test(P.validateSlug('admin').error || ''));
+check('una válida pasa', P.validateSlug('aniversario-4281').ok);
+
+const publicacion = P.buildPublication({
+    document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
+    settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
+});
+check('la publicación trae su formulario derivado', publicacion.fields.length === 4);
+check('y congela lo institucional con su valor',
+    publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
+check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));
+check('un slug inválido impide publicar',
+    (() => { try { P.buildPublication({ document: docPub, name: 'x', slug: 'admin' }); return false; } catch { return true; } })());
+
+grupo('La fotografía se adapta sola');
+
+check('una foto ya en formato NO se toca',
+    PH.planPhoto({ width: 1000, height: 1000, targetWidth: 1080, targetHeight: 1080 }).action === 'keep');
+check('una apaisada se recorta',
+    PH.planPhoto({ width: 1600, height: 900, targetWidth: 1080, targetHeight: 1080 }).action === 'crop');
+check('y se avisa cuánto se va a perder',
+    PH.planPhoto({ width: 2400, height: 900, targetWidth: 1080, targetHeight: 1080 }).notes.some(n => /recortar/.test(n.consequence)));
+check('el aviso dice la CONSECUENCIA, no sólo el motivo',
+    PH.planPhoto({ width: 2400, height: 900, targetWidth: 1080, targetHeight: 1080 }).notes.every(n => n.reason && n.consequence));
+check('una foto chica avisa que se va a ver borrosa',
+    PH.planPhoto({ width: 400, height: 400, targetWidth: 1080, targetHeight: 1080 }).notes.some(n => /borrosa/.test(n.consequence)));
+check('una foto grande y en formato no genera ningún aviso',
+    PH.planPhoto({ width: 2000, height: 2000, targetWidth: 1080, targetHeight: 1080 }).notes.length === 0);
+check('sin medidas no inventa un plan',
+    !PH.planPhoto({ width: 0, height: 0, targetWidth: 1080, targetHeight: 1080 }).ok);
+check('el hueco de la foto sale del propio documento',
+    PH.photoSlotOf(docPub, 1080, 1080)?.nodeId === 'foto');
+check('y una plantilla sin foto devuelve null',
+    PH.photoSlotOf({ nodes: [{ type: 'text', id: 't' }] }, 1080, 1080) === null);
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

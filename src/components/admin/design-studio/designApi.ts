@@ -120,6 +120,42 @@ export const updateDesign = (id: string, body: Record<string, unknown>) =>
 
 export const deleteDesign = (id: string) => request<{ ok: true }>(`/projects/${id}`, { method: 'DELETE' });
 
+// ─── Publicaciones ─────────────────────────────────────────────────────
+
+export interface PublicField {
+    key: string; type: 'text' | 'textarea' | 'number' | 'image';
+    label: string; placeholder: string; help: string;
+    maxChars: number | null; required: boolean; ai: boolean;
+}
+
+export interface Publication {
+    id: string; slug: string; name: string; intro: string;
+    category: string; format: string;
+    fields: PublicField[]; frozen: Record<string, string>;
+    published: boolean; uses: number; url: string;
+    createdAt: string; updatedAt: string;
+}
+
+export const listPublications = () => request<Publication[]>('/publications');
+
+/** Qué formulario le saldría al público con este documento, SIN publicar nada.
+ *  Es lo que deja ver la consecuencia de los bloqueos antes de compartir. */
+export const previewPublication = (document: DesignDocument, settings: Record<string, unknown> = {}) =>
+    request<{ variables: string[]; fields: PublicField[]; institutional: string[] }>('/publications/preview', {
+        method: 'POST', body: JSON.stringify({ document, settings }),
+    });
+
+export const publishDesign = (body: {
+    document: DesignDocument; name: string; slug: string;
+    category?: string; settings?: Record<string, unknown>; projectId?: string | null;
+}) => request<Publication>('/publications', { method: 'POST', body: JSON.stringify(body) });
+
+export const setPublished = (id: string, published: boolean) =>
+    request<Publication>(`/publications/${id}`, { method: 'PUT', body: JSON.stringify({ published }) });
+
+export const deletePublication = (id: string) =>
+    request<{ ok: true }>(`/publications/${id}`, { method: 'DELETE' });
+
 // ─── Biblioteca Multimedia ─────────────────────────────────────────────
 //
 // El archivo se sube por el endpoint que YA registra en `Media`. Duplicar la

@@ -22,10 +22,11 @@ export async function ensureDesignSchema() {
 
     const { rows } = await db.query(
         `SELECT to_regclass('public."DesignProject"') IS NOT NULL AS tabla,
+                to_regclass('public."DesignPublicTemplate"') IS NOT NULL AS publica,
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col`
     );
-    if (rows[0]?.tabla && rows[0]?.copy_col) { _ready = true; return; }
+    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.copy_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "DesignProject" (
@@ -80,6 +81,43 @@ export async function ensureDesignSchema() {
 
     await db.query(`CREATE INDEX IF NOT EXISTS "DesignProject_club_idx" ON "DesignProject" ("clubId", "updatedAt" DESC);`);
     await db.query(`CREATE INDEX IF NOT EXISTS "DesignProject_subject_idx" ON "DesignProject" ("subjectClubId");`);
+
+    // ── La plantilla PUBLICADA que consume el portal público ──────────
+    //
+    // Guarda el documento COMPILADO, no una referencia al catálogo del código:
+    // publicar es CONGELAR. Si apuntara a `designTemplates.js`, tocar ese
+    // archivo en un despliegue cambiaría piezas cuyo enlace ya se está
+    // compartiendo por WhatsApp.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "DesignPublicTemplate" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            slug TEXT NOT NULL,
+            name TEXT NOT NULL,
+            intro TEXT,
+            category TEXT NOT NULL DEFAULT 'aniversario',
+            format TEXT NOT NULL DEFAULT 'post_1_1',
+
+            -- El grafo de escena tal como quedó en el editor.
+            document JSONB NOT NULL DEFAULT '{}'::jsonb,
+            -- El formulario derivado de las variables que el documento usa.
+            fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+            -- Lo que el público NO llena y queda fijo: logotipo, distrito,
+            -- gobernador, periodo. Es la firma de la pieza.
+            frozen JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+            published BOOLEAN NOT NULL DEFAULT false,
+            "clubId" TEXT,
+            "projectId" TEXT,
+            "createdBy" TEXT,
+            uses INTEGER NOT NULL DEFAULT 0,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
+    // El slug es la dirección pública: único en toda la plataforma, porque
+    // /plantillas/aniversario no puede llevar a dos piezas distintas.
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "DesignPublicTemplate_slug_key" ON "DesignPublicTemplate" (slug);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "DesignPublicTemplate_club_idx" ON "DesignPublicTemplate" ("clubId", "updatedAt" DESC);`);
 
     _ready = true;
 }
