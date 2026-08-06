@@ -55,7 +55,7 @@ export async function ensureDesignSchema() {
             branding JSONB NOT NULL DEFAULT '{}'::jsonb,
 
             -- Material de publicación (título, hashtags, CTA, alt). Distinto
-            -- del mensaje IMPRESO, que vive dentro de `document`.
+            -- del mensaje IMPRESO, que vive dentro de la columna document.
             copy JSONB NOT NULL DEFAULT '{}'::jsonb,
 
             -- Resultado exportado, cuando se guarda en la Biblioteca.

@@ -1,13 +1,13 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.721.0",
-  "cache_bust": "2026-08-06c (Portal publico de Plantillas IA: enlace sin sesion, formulario derivado de las variables y foto que se adapta sola.)",
+  "version": "4.721.1",
+  "cache_bust": "2026-08-06d (Corregido: una comilla invertida dentro del SQL rompia el modulo entero. Barrera de sintaxis en prebuild.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-hooks.mjs",
+    "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs",
     "check:hooks": "node scripts/check-hooks.mjs",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
     "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma",
@@ -28,7 +28,8 @@
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:design": "node scripts/test-design.mjs",
-    "test:design:render": "node scripts/test-design-render.mjs"
+    "test:design:render": "node scripts/test-design-render.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs"
   },
   "engines": {
     "node": "22.x"

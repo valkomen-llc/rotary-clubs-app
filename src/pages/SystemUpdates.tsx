@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.721.0 | 2026-08-06 (Portal público de Plantillas IA)
-// Cache bust: 2026-08-06c
+// UI V4.721.1 | 2026-08-06 (Plantillas IA volvió a funcionar: una comilla rompía el módulo)
+// Cache bust: 2026-08-06d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.721.1',
+        title: 'Plantillas IA volvió a funcionar 🔧',
+        description: 'El módulo no funcionaba desde que se estrenó: la lista de plantillas salía vacía y al pulsar «Guardar» aparecía un aviso incomprensible («Falta ) después de la lista de argumentos»). La causa era de una sola letra. El archivo que crea las tablas del módulo lleva las sentencias SQL dentro de un bloque de texto delimitado por comillas invertidas, y dentro de un comentario de ese SQL había una palabra escrita también entre comillas invertidas: esa comilla cerró el bloque a mitad y dejó el archivo sin poder leerse. Como el resto del módulo lo importa, TODA su API respondía con error, y el mensaje que se veía era el del lector de código —traducido al español por el propio traductor del sitio, lo que lo volvía aún más difícil de ubicar—. Se corrigió, y para que no vuelva a pasar se agregó una comprobación que revisa los 272 archivos del servidor antes de cada despliegue y lo detiene si alguno no se puede leer. Hacía falta: el código del panel pasa por un compilador que avisa de estos errores, pero el del servidor no pasaba por ninguno, así que un error así viajaba entero a producción y sólo aparecía cuando alguien usaba esa pantalla. De paso, entrar a /plantillas sin el nombre de la plantilla ya no deja la página en blanco: explica que falta el enlace completo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'correccion', 'despliegue'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Plantillas IA responde otra vez: se carga el catálogo y se puede guardar.' },
+            { type: 'added', text: 'Comprobación de sintaxis del servidor antes de cada despliegue (272 archivos, 3 s).' },
+            { type: 'fixed', text: '/plantillas sin nombre ya no queda en blanco.' },
+        ]
+    },
     {
         version: '4.721.0',
         title: 'Plantillas IA ahora tiene portal público: un enlace y listo 🔗',
