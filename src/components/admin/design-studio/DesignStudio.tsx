@@ -66,7 +66,11 @@ const DesignStudio: React.FC = () => {
     const [generating, setGenerating] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [pickerOpen, setPickerOpen] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    // A QUÉ se le está poniendo la imagen. Un solo `MediaPicker` por pantalla y
+    // un campo que dice dónde va lo elegido — es el `pickerField` que pide la
+    // regla de v4.700, no un selector por casilla.
+    const [pickerTarget, setPickerTarget] = useState<'foto' | 'capa' | string | null>(null);
     const [saved, setSaved] = useState<SavedDesign[]>([]);
     const [showSaved, setShowSaved] = useState(false);
     const [currentId, setCurrentId] = useState<string | null>(null);
@@ -176,6 +180,25 @@ const DesignStudio: React.FC = () => {
         setSelectedIds([node.id]);
     }, [commit, doc]);
 
+    // Una imagen suelta como CAPA. Es distinto de la fotografía de la
+    // plantilla: aquélla llena un recuadro que la plantilla ya definió; ésta la
+    // agrega el usuario donde quiere, la coloca y la BLOQUEA para que no se le
+    // mueva mientras edita el resto. Nace sin `srcVar`, así que ninguna variable
+    // la pisa.
+    const addImageNode = useCallback((url: string) => {
+        const node: DesignNode = {
+            id: uid('img'), type: 'image', name: 'Imagen',
+            x: 0.28, y: 0.30, w: 0.44, h: 0.44,
+            rotation: 0, opacity: 1,
+            src: url, srcVar: null, fit: 'contain', radius: 0,
+        } as DesignNode;
+        // Si el documento está vacío, la imagen sola no da una pieza: se crea un
+        // lienzo mínimo para que haya dónde ponerla.
+        commit(doc.nodes.length ? { ...doc, nodes: [...doc.nodes, node] } : { ...doc, nodes: [node] });
+        setSelectedIds([node.id]);
+        toast.success('Imagen agregada como capa. Podés colocarla y bloquearla desde Propiedades.');
+    }, [commit, doc]);
+
     const addElement = useCallback((el: ElementItem) => {
         const size = 0.22;
         const node: DesignNode = {
@@ -247,6 +270,32 @@ const DesignStudio: React.FC = () => {
         }
     }, [templateId, club, years, message, photo]);
 
+    // Subir un archivo del disco. Va por `/api/media/upload`, que es el camino
+    // que YA registra en la Biblioteca Multimedia: así la imagen queda guardada
+    // y reutilizable, en vez de vivir sólo dentro de esta pieza — que era
+    // justamente el retroceso que había que evitar.
+    //
+    // Va DESPUÉS de `runCompose` a propósito: al estar en su array de
+    // dependencias, ponerlo antes daría un ReferenceError de zona muerta al
+    // renderizar, y eso es una pantalla en blanco, no un aviso.
+    const uploadImage = useCallback(async (file: File | undefined, target: 'foto' | 'capa') => {
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { toast.error('Ese archivo no es una imagen.'); return; }
+        setUploading(true);
+        try {
+            const { url } = await uploadToLibrary(file, club?.id || null);
+            if (target === 'capa') { addImageNode(url); return; }
+            setPhoto(url);
+            const hasPhotoNode = doc.nodes.some(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto'));
+            if (doc.nodes.length && !hasPhotoNode) runCompose({ skipAI: true });
+            toast.success('Imagen subida y guardada en la Biblioteca.');
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo subir la imagen');
+        } finally {
+            setUploading(false);
+        }
+    }, [club, doc.nodes, runCompose, addImageNode]);
+
     // Cambiar de plantilla RECOMPONE, y eso descarta lo que se haya movido a
     // mano — es inevitable: el layout es otro. Se conserva lo que sí se puede
     // conservar (mensaje, foto, años), que es lo que costó trabajo.
@@ -301,7 +350,12 @@ const DesignStudio: React.FC = () => {
 
     // ── Exportar y guardar ─────────────────────────────────────────
     const title = useMemo(
-        () => `${catalog?.templates.find(t => t.id === templateId)?.name || 'Diseño'}${club ? ` · ${club.name}` : ''}`,
+        // `?.` en CADA eslabón. El `?.` sólo en `catalog` cortaba si la respuesta
+        // llegaba sin `templates` —una versión anterior de la API, un error
+        // devuelto como objeto— y entonces el `.find` reventaba el árbol entero:
+        // panel en blanco, no un aviso. Es la misma clase de fallo que
+        // `ClipboardList` en `AdminLayout.tsx`.
+        () => `${catalog?.templates?.find(t => t.id === templateId)?.name || 'Diseño'}${club ? ` · ${club.name}` : ''}`,
         [catalog, templateId, club]
     );
 
@@ -451,7 +505,9 @@ const DesignStudio: React.FC = () => {
                     onMessage={setMessage}
                     copy={copy}
                     photo={photo}
-                    onPhoto={() => setPickerOpen(true)}
+                    onPickPhoto={() => setPickerTarget('foto')}
+                    onUploadPhoto={f => uploadImage(f, 'foto')}
+                    uploading={uploading}
                     onClearPhoto={() => setPhoto(null)}
                     generating={generating}
                     onGenerate={() => runCompose({ skipAI: false })}
@@ -493,26 +549,49 @@ const DesignStudio: React.FC = () => {
                     onDuplicate={duplicate}
                     onAddElement={addElement}
                     onAddText={addText}
+                    onAddImage={() => setPickerTarget('capa')}
+                    onUploadImage={f => uploadImage(f, 'capa')}
+                    onReplaceImage={id => setPickerTarget(id)}
+                    onUploadReplacement={(id, f) => {
+                        if (!f) return;
+                        // Se sube y se escribe en ESE nodo, sin tocar la
+                        // fotografía de la plantilla.
+                        uploadToLibrary(f, club?.id || null)
+                            .then(({ url }) => patchNode(id, { src: url, srcVar: null } as Partial<DesignNode>))
+                            .catch(e => toast.error(e instanceof Error ? e.message : 'No se pudo subir la imagen'));
+                    }}
+                    uploading={uploading}
                 />
             </div>
 
-            {/* Las dos vías de siempre: subir o elegir de la Biblioteca (v4.700). */}
-            {pickerOpen && (
+            {/* UN SOLO MediaPicker por pantalla; `pickerTarget` dice a dónde va
+                lo elegido. La otra vía —subir— la resuelve `uploadImage`, y las
+                dos se ofrecen juntas en cada casilla, como manda la regla de
+                v4.700: sin la de subir, poner una imagen obligaba a irse hasta
+                la Biblioteca, cargarla allá y volver. */}
+            {pickerTarget && (
                 <MediaPicker
-                    isOpen={pickerOpen}
-                    onClose={() => setPickerOpen(false)}
+                    isOpen={!!pickerTarget}
+                    onClose={() => setPickerTarget(null)}
                     maxSelection={1}
                     onSelect={items => {
                         const url = items?.[0]?.url;
-                        if (url) {
-                            setPhoto(url);
-                            // Si la plantilla trae un nodo de foto que se descartó
-                            // por no haber imagen, hay que recomponer: el nodo no
-                            // existe y `applyVariables` no puede resucitarlo.
-                            const hasPhotoNode = doc.nodes.some(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto'));
-                            if (doc.nodes.length && !hasPhotoNode) runCompose({ skipAI: true });
+                        const target = pickerTarget;
+                        setPickerTarget(null);
+                        if (!url) return;
+                        if (target === 'capa') { addImageNode(url); return; }
+                        if (target && target !== 'foto') {
+                            // Reemplazar la imagen de un nodo concreto desde
+                            // Propiedades: `target` es su id.
+                            patchNode(target, { src: url, srcVar: null } as Partial<DesignNode>);
+                            return;
                         }
-                        setPickerOpen(false);
+                        setPhoto(url);
+                        // Si la plantilla trae un nodo de foto que se descartó
+                        // por no haber imagen, hay que recomponer: el nodo no
+                        // existe y `applyVariables` no puede resucitarlo.
+                        const hasPhotoNode = doc.nodes.some(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto'));
+                        if (doc.nodes.length && !hasPhotoNode) runCompose({ skipAI: true });
                     }}
                 />
             )}

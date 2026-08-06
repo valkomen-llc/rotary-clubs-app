@@ -209,6 +209,91 @@ for (const tpl of availableTemplates()) {
     await page.close();
 }
 
+// ════════════════════════════════════════════════════════════════════
+// El PANEL entero: que arranque y que las dos vías de imagen estén
+//
+// Se monta `DesignStudio` completo con la API simulada. Dos motivos:
+//
+//   1. Un ReferenceError de zona muerta o un hook fuera de sitio no los ve el
+//      typecheck y dejan el panel EN BLANCO. Montarlo es la única comprobación.
+//   2. La casilla de imagen tiene que ofrecer SIEMPRE las dos vías —subir y
+//      Biblioteca— como manda la regla de v4.700. Se estrenó con una sola, y
+//      con sólo «Biblioteca» poner una imagen obliga a irse hasta allá,
+//      cargarla y volver: el retroceso que la regla existe para evitar.
+console.log('\nEl panel completo');
+{
+    const entry = `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import DesignStudio from './src/components/admin/design-studio/DesignStudio';
+window.go = () => createRoot(document.getElementById('root')).render(React.createElement(DesignStudio));
+`;
+    const panel = await build({
+        stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
+        bundle: true, write: false, format: 'iife', platform: 'browser',
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        external: ['jspdf'], jsx: 'automatic',
+    });
+
+    const CATALOGO = {
+        formats: [{ id: 'post_1_1', label: 'Post cuadrado', ratio: '1:1', width: 1080, height: 1080, available: true, networks: ['Instagram'] }],
+        availableFormats: ['post_1_1'],
+        categories: [{ id: 'aniversario', label: 'Aniversario', icon: 'PartyPopper' }],
+        catalog: [{ id: 'aniversario', label: 'Aniversario', icon: 'PartyPopper', templates: availableTemplates().map(t => ({ id: t.id, name: t.name, format: t.format, available: true, requires: t.requires || [], summary: t.summary || '' })) }],
+        templates: availableTemplates().map(t => ({ id: t.id, name: t.name, category: t.category, format: t.format, requires: t.requires || [], summary: t.summary || '' })),
+        elements: [{ id: 'celebracion', label: 'Celebración', items: [{ id: 'estrellas', label: 'Estrellas', category: 'celebracion', defaultFill: '#F7A81B', ratio: 1, path: 'M50 6 L58 30 L83 30 Z' }] }],
+        tones: [{ id: 'emotivo', label: 'Más emotivo' }],
+        palette: {}, fonts: [], variables: {}, limits: {},
+    };
+
+    const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+    const fallos = [];
+    page.on('pageerror', e => fallos.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
+
+    // El comodín va PRIMERO: Playwright resuelve la última ruta registrada
+    // antes que las anteriores.
+    await page.route('**/api/**', r => r.fulfill({ json: {} }));
+    await page.route('**/api/design-studio/projects', r => r.fulfill({ json: [] }));
+    await page.route('**/api/design-studio/catalog', r => r.fulfill({ json: CATALOGO }));
+
+    // Hace falta un ORIGEN real: sobre `about:blank` un fetch a `/api/…` no
+    // tiene base contra la que resolver y falla antes de salir — con lo cual la
+    // prueba pasaría sin haber ejercitado nada.
+    await page.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: panel.outputFiles[0].text });
+    await page.evaluate(() => window.go());
+    await page.waitForTimeout(1200);
+
+    const texto = await page.locator('#root').innerText();
+    check('el panel se pinta', (await page.locator('#root').innerHTML()).length > 500);
+    check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
+    check('la casilla de fotografía ofrece SUBIR', /Subir/.test(texto));
+    check('la casilla de fotografía ofrece la BIBLIOTECA', /Biblioteca/.test(texto));
+    check('hay un campo de archivo en la casilla', await page.locator('input[type=file]').count() >= 1);
+
+    await page.getByText('Capas', { exact: true }).click();
+    await page.waitForTimeout(250);
+    const capas = await page.locator('aside').last().innerText();
+    check('Capas ofrece subir una imagen como capa', /Subir imagen/.test(capas));
+    check('Capas ofrece tomarla de la Biblioteca', /Biblioteca/.test(capas));
+    check('y dice que se puede bloquear', /bloquea/i.test(capas));
+
+    // Subir de verdad: tiene que llamar al endpoint que registra en `Media` y
+    // dejar la capa puesta.
+    let llamado = false;
+    await page.route('**/api/media/upload', r => { llamado = true; return r.fulfill({ json: { id: 'm1', url: 'https://ejemplo.test/subida.png' } }); });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.locator('input[type=file]').nth(1).setInputFiles({ name: 'sello.png', mimeType: 'image/png', buffer: png });
+    await page.waitForTimeout(900);
+    check('subir llama a /api/media/upload (queda en la Biblioteca)', llamado);
+    check('la imagen subida entra como capa', /Imagen/.test(await page.locator('aside').last().innerText()));
+    check('y se dibuja en el lienzo', await page.locator('img[src*="subida.png"], img[src*="banner-image"]').count() > 0);
+    check('subir no lanzó errores', fallos.length === 0, fallos.join(' | '));
+    await page.close();
+}
+
 check('el editor no lanzó ningún error', errores.length === 0, errores.join(' | '));
 await browser.close();
 

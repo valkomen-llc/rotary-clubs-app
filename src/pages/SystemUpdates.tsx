@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.720.0 | 2026-08-06 (Plantillas IA: generador de diseños institucionales)
-// Cache bust: 2026-08-06a
+// UI V4.720.1 | 2026-08-06 (La casilla de imagen de Plantillas IA deja subir)
+// Cache bust: 2026-08-06b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.720.1',
+        title: 'En Plantillas IA ya se puede subir la imagen, no sólo elegirla 📤',
+        description: 'El botón de la casilla de fotografía abría directamente la Biblioteca Multimedia, así que para usar una imagen que no estaba cargada había que salir del módulo, irse hasta la Biblioteca, subirla allá y recién entonces volver a seleccionarla. Ahora la casilla ofrece las dos vías, que es la regla de la plataforma desde hace tiempo y que en el estreno del módulo quedó a medias: «Subir» toma el archivo del computador y «Biblioteca» abre la que ya está cargada. Lo que se sube queda guardado en la Biblioteca Multimedia igual, así que se puede reutilizar en otras piezas. Se agregó además lo que hacía falta para el caso concreto que motivó el pedido: en el panel de Capas hay «Subir imagen» y «Biblioteca», y la imagen entra como una capa propia que se coloca donde uno quiera y se bloquea con el candado para que no se mueva mientras se edita el resto. Y una capa de imagen ya seleccionada se puede reemplazar desde Propiedades, también por las dos vías. De paso se corrigió un fallo que no se veía venir: si la respuesta del catálogo llegaba incompleta —una versión anterior de la aplicación, un error devuelto como objeto—, el panel entero quedaba en blanco en vez de mostrarse vacío.',
+        date: new Date().toISOString(),
+        tags: ['content studio', 'plantillas', 'imagenes', 'biblioteca'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'La casilla de fotografía ofrece «Subir» además de «Biblioteca».' },
+            { type: 'added', text: 'En Capas: subir o elegir una imagen y agregarla como capa bloqueable.' },
+            { type: 'added', text: 'Reemplazar la imagen de una capa desde Propiedades, por las dos vías.' },
+            { type: 'fixed', text: 'Un catálogo incompleto ya no deja el panel en blanco.' },
+        ]
+    },
     {
         version: '4.720.0',
         title: 'Plantillas IA: un Canva institucional dentro de la plataforma 🎨',
