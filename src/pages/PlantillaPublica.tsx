@@ -249,6 +249,21 @@ const PlantillaPublica: React.FC = () => {
             <div className="flex-1 flex flex-col lg:flex-row max-w-6xl w-full mx-auto">
                 {/* ── Formulario ───────────────────────────────────── */}
                 <div className="w-full lg:w-[400px] shrink-0 p-5 space-y-5">
+                    {/* Sin campos no hay nada que completar, y una columna con
+                        sólo dos botones no explica por qué. Se dice: para quien
+                        usa el enlace es una pieza fija, y para quien lo publicó
+                        es la pista de que le faltó marcar los campos. */}
+                    {tpl.fields.length === 0 && (
+                        <div className="rounded-xl border border-gray-200 bg-white p-4">
+                            <p className="text-sm font-bold text-gray-800 mb-1">Esta pieza no tiene datos para completar</p>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                Descargala tal como está. Si esperabas poder escribir el nombre de tu club o subir una
+                                foto, avisale a quien te compartió el enlace: los campos se marcan al publicar la
+                                plantilla.
+                            </p>
+                        </div>
+                    )}
+
                     {tpl.fields.map(field => {
                         if (field.type === 'image') {
                             const v = values[field.key];
