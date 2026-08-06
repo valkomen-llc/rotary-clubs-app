@@ -1880,8 +1880,8 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
 
-Pruebas: `npm run test:design` (197 casos, **sin base, credenciales ni red**) y
-`npm run test:design:render` (43 casos: monta el editor, el panel completo Y el
+Pruebas: `npm run test:design` (205 casos, **sin base, credenciales ni red**) y
+`npm run test:design:render` (47 casos: monta el editor, el panel completo Y el
 portal público en un navegador, compara la vista previa con la exportación píxel
 a píxel y ejercita el arrastre, la subida y el formulario público; pide `npm i
 --no-save playwright esbuild` y **se salta solo** si no están).
@@ -2057,6 +2057,25 @@ completa un formulario y descarga su pieza.
   alguien agrega un `{{presidente}}`: el campo no aparecería y el marcador
   quedaría sin resolver. Es lo que hace que una plantilla nueva **no necesite un
   formulario nuevo**, que es el requisito de escalabilidad del pedido.
+- **Marcar un elemento es lo que lo vuelve un campo** (v4.722.1,
+  `ASSIGNABLE_FIELDS` + el selector de Propiedades). Derivar el formulario de
+  las variables es correcto, pero al estrenarlo **no había forma de crear una
+  variable desde el editor**: los campos sólo existían si el diseño venía del
+  catálogo, así que un diseño hecho a mano no se podía publicar con formulario
+  —y corregir a mano el texto de una plantilla lo desvinculaba (`srcText: null`)
+  y lo sacaba del formulario en silencio—. Marcar un texto lo convierte en
+  `{{clave}}`, que es como lo declaran las plantillas: reutiliza
+  `applyVariables`, `bakeFrozen` y `buildPublicFields` sin inventar un segundo
+  concepto. **Al agregar una forma de declarar algo, comprobar que exista la
+  forma de declararlo desde la pantalla**, no sólo desde los datos de fábrica.
+- **Lo institucional NO es asignable a mano.** `ASSIGNABLE_FIELDS` filtra por
+  `institutional`, así que el selector no ofrece logotipo, distrito, gobernador
+  ni periodo. Es el mismo cierre que `buildPublicFields`, en el otro extremo.
+- **Publicar sin campos se AVISA, no se bloquea.** Una pieza fija que todos
+  descargan igual —una campaña, un aviso— es legítima, y decidirlo es del
+  administrador. Lo que sí hace falta es decir dónde se marcan los campos:
+  bloquear sin explicar dejaba un callejón sin salida, que fue justo lo que se
+  reportó.
 - **La seguridad es ESTRUCTURAL, no una pantalla que esconde controles.** El
   endpoint público sólo acepta un diccionario de valores de campos declarados;
   `applyPublicValues` toma los nodos GUARDADOS y les sustituye texto e

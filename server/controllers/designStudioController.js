@@ -29,7 +29,7 @@ import { catalog, templateById, availableTemplates } from '../lib/designTemplate
 import { elementsByCategory } from '../lib/designElements.js';
 import { searchClubs, brandingForClub, saveFoundationDate, yearsSince, rotaryPeriod } from '../lib/designBranding.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
-import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl } from '../lib/designPublish.js';
+import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl, ASSIGNABLE_FIELDS } from '../lib/designPublish.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
@@ -67,6 +67,11 @@ export const getCatalog = async (_req, res) => {
             palette: PALETTE,
             fonts: FONTS,
             variables: VARIABLES,
+            // Las claves que el administrador puede asignar a mano desde
+            // Propiedades para convertir un elemento en campo del formulario
+            // público. Sin esto, un diseño hecho a mano no se puede publicar
+            // con campos.
+            assignable: ASSIGNABLE_FIELDS,
             limits: LIMITS,
             // Los planes de variante y el tope viven en el criterio; la pantalla
             // los PIDE en vez de repetirlos, o se separan en silencio.

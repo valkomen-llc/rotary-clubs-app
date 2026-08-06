@@ -59,6 +59,12 @@ export interface DesignCopy {
     degraded?: boolean; note?: string; limit?: number;
 }
 
+export interface AssignableField {
+    key: string; label: string; type: string;
+    /** A qué tipo de nodo le sirve: un campo de imagen no va en un texto. */
+    forNode: 'text' | 'image';
+}
+
 export interface Catalog {
     formats: { id: string; label: string; ratio: string; width: number; height: number; available: boolean; networks: string[] }[];
     availableFormats: string[];
@@ -69,6 +75,7 @@ export interface Catalog {
     tones: { id: string; label: string }[];
     palette: Record<string, string>;
     fonts: { id: string; label: string; stack: string }[];
+    assignable: AssignableField[];
     limits: Record<string, number>;
     variantPlans: { id: string; label: string; summary: string }[];
     maxVariants: number;

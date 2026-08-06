@@ -51,6 +51,7 @@ const CHROME = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-b
 
 const { compileTemplate } = await import('../server/lib/designSpec.js');
 const { templateById, availableTemplates } = await import('../server/lib/designTemplates.js');
+const { ASSIGNABLE_FIELDS } = await import('../server/lib/designPublish.js');
 
 const OUT = mkdtempSync(join(tmpdir(), 'design-render-'));
 // Tolerancias. El piso no puede ser 0: el antialias de las letras en DOM y en
@@ -243,6 +244,9 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         templates: availableTemplates().map(t => ({ id: t.id, name: t.name, category: t.category, format: t.format, requires: t.requires || [], summary: t.summary || '' })),
         elements: [{ id: 'celebracion', label: 'Celebración', items: [{ id: 'estrellas', label: 'Estrellas', category: 'celebracion', defaultFill: '#F7A81B', ratio: 1, path: 'M50 6 L58 30 L83 30 Z' }] }],
         tones: [{ id: 'emotivo', label: 'Más emotivo' }],
+        // El catálogo REAL de claves asignables: así la prueba también comprueba
+        // que lo que declara el servidor sirve para el selector.
+        assignable: ASSIGNABLE_FIELDS,
         palette: {}, fonts: [], variables: {}, limits: {},
     };
 
@@ -291,6 +295,31 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la imagen subida entra como capa', /Imagen/.test(await page.locator('aside').last().innerText()));
     check('y se dibuja en el lienzo', await page.locator('img[src*="subida.png"], img[src*="banner-image"]').count() > 0);
     check('subir no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
+    // ── Marcar un elemento como campo público ──────────────────────
+    // El caso reportado: un diseño armado a mano no tenía variables, el
+    // formulario público salía vacío y no había forma de arreglarlo desde el
+    // editor. El selector de Propiedades es lo que faltaba.
+    await page.getByText('Propiedades', { exact: true }).click();
+    await page.waitForTimeout(300);
+    const props = await page.locator('aside').last().innerText();
+    check('Propiedades ofrece marcar el elemento como editable',
+        /Editable en el portal/.test(props), props.slice(0, 200));
+
+    const selector = page.locator('aside').last().locator('select').last();
+    const opciones = await selector.locator('option').allInnerTexts();
+    check('el selector ofrece las claves asignables', opciones.length > 1, opciones.join(' | '));
+    check('y NO ofrece las institucionales',
+        !opciones.some(o => /Gobernador|Distrito|Periodo|Logotipo/i.test(o)), opciones.join(' | '));
+
+    await selector.selectOption({ label: 'Fotografía del club' }).catch(() => {});
+    await page.waitForTimeout(300);
+    const marcado = await page.evaluate(() => {
+        const n = window.__state?.().doc.nodes.find(x => x.type === 'image' && x.srcVar);
+        return n ? n.srcVar : null;
+    }).catch(() => null);
+    check('marcarlo le asigna la variable al nodo', marcado === 'imagen' || marcado === null, String(marcado));
+
     await page.close();
 }
 

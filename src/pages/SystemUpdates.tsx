@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.722.0 | 2026-08-06 (Motor de Composición: KIE arma la imagen, la plataforma el texto)
-// Cache bust: 2026-08-06e
+// UI V4.722.1 | 2026-08-06 (Marcar cualquier elemento como campo del portal público)
+// Cache bust: 2026-08-06f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.722.1',
+        title: 'Ya se puede elegir qué completa la gente en el portal público ✍️',
+        description: 'Al intentar publicar una plantilla aparecía «este diseño no tiene ninguna variable editable» y el botón quedaba deshabilitado, sin salida. El aviso era cierto pero el problema estaba antes: no existía ninguna forma de marcar un elemento como editable. Los campos del formulario público sólo aparecían si el diseño venía de una de las dos plantillas de fábrica, así que un diseño armado a mano nunca se podía publicar con campos — y peor, corregir a mano el texto de una plantilla lo sacaba del formulario sin avisar. Ahora, al seleccionar cualquier texto o imagen, en Propiedades hay un selector «Editable en el portal público» donde se elige qué dato es: nombre del club, mensaje, años, fecha, ciudad, presidente o fotografía. Lo que se marque aparece como campo en el formulario; lo demás queda fijo en la pieza. Los datos institucionales —logotipo, distrito, gobernador y periodo— no se pueden marcar, a propósito: son la firma. Y publicar sin ningún campo ya no se bloquea: se avisa qué va a pasar (todos descargan la misma pieza) y explica dónde marcarlos, pero la decisión es de quien publica; una pieza fija de campaña es un caso legítimo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'correccion'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Selector «Editable en el portal público» en Propiedades de cada texto e imagen.' },
+            { type: 'fixed', text: 'Publicar ya no se bloquea cuando no hay campos: avisa y explica dónde marcarlos.' },
+            { type: 'fixed', text: 'Un diseño hecho a mano ya se puede publicar con formulario.' },
+        ]
+    },
     {
         version: '4.722.0',
         title: 'Plantillas IA compone la pieza con inteligencia artificial 🎨✨',

@@ -143,10 +143,19 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
                                 El público va a completar {loading && <Loader2 className="w-3 h-3 animate-spin inline ml-1" />}
                             </p>
                             {fields.length === 0 && !loading ? (
+                                // Se AVISA, no se bloquea: publicar una pieza fija
+                                // —una campaña, un aviso institucional que todos
+                                // descargan igual— es legítimo, y decidirlo es del
+                                // administrador. Lo que sí hay que hacer es decirle
+                                // dónde se marcan los campos, porque no es evidente.
                                 <p className="flex gap-1.5 text-[11px] text-amber-700">
                                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                    Este diseño no tiene ninguna variable editable, así que el formulario saldría vacío
-                                    y todos generarían la misma pieza.
+                                    <span>
+                                        Ningún elemento está marcado como editable, así que el formulario saldrá vacío y
+                                        todos van a descargar la misma pieza. Si querés que puedan completar algo,
+                                        seleccioná ese texto o esa imagen en la mesa de trabajo y en{' '}
+                                        <strong>Propiedades → Editable en el portal público</strong> elegí qué dato es.
+                                    </span>
                                 </p>
                             ) : (
                                 <div className="space-y-1">
@@ -192,7 +201,7 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
                             </div>
                         )}
 
-                        <button onClick={publicar} disabled={saving || !slug || fields.length === 0}
+                        <button onClick={publicar} disabled={saving || !slug}
                             className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg py-2.5 transition-colors">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe2 className="w-4 h-4" />}
                             {saving ? 'Publicando…' : 'Publicar'}
