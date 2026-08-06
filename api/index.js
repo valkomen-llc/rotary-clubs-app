@@ -204,6 +204,10 @@ const getProjectFair = async () => _projectFair || (({ default: _projectFair } =
 // catch-all del frontend y se quedaba colgado.
 let _eventRegistrations;
 const getEventRegistrations = async () => _eventRegistrations || (({ default: _eventRegistrations } = await import('../server/routes/event-registrations.js')), _eventRegistrations);
+// v4.720 — Plantillas IA. Perezoso como el resto: el catálogo y el compilador
+// sólo se cargan cuando alguien abre el módulo.
+let _designStudio;
+const getDesignStudio = async () => _designStudio || (({ default: _designStudio } = await import('../server/routes/design-studio.js')), _designStudio);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -213,6 +217,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/email-accounts', emailAccountsRoutes);
 app.use('/api/banner', bannerRoutes);
+app.use('/api/design-studio', async (req, res, next) => { try { return (await getDesignStudio())(req, res, next); } catch (e) { console.error('API Error [design-studio]:', e); res.status(500).json({ error: e.message }); } });
 
 
 app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });

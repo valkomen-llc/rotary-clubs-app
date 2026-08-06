@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Video, 
@@ -9,7 +9,8 @@ import {
     Trophy,
     Image as ImageIcon,
     Flag,
-    Clapperboard
+    Clapperboard,
+    Palette
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator from '../../components/admin/content-studio/VideoCreator';
@@ -21,10 +22,13 @@ import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
 import BannerTemplateManager from '../../components/admin/content-studio/BannerTemplateManager';
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
+import DesignStudio from '../../components/admin/design-studio/DesignStudio';
 
 const ContentStudio: React.FC = () => {
-    const [activeTab, setActiveTab] = useState('create');
-
+    // v4.720: se quitó `activeTab`. Las pestañas son NO controladas
+    // (`defaultValue`), así que nadie leía ese estado — sólo se escribía. Era
+    // uno de los identificadores sin usar que arrastra el proyecto; al tocar
+    // este archivo se deja sin errores propios, como manda la regla del sitio.
     return (
         <AdminLayout>
             <div className="flex flex-col gap-8">
@@ -49,7 +53,7 @@ const ContentStudio: React.FC = () => {
                 </div>
 
                 {/* Main Content Areas */}
-                <Tabs defaultValue="create" className="w-full" onValueChange={setActiveTab}>
+                <Tabs defaultValue="create" className="w-full">
                     <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100 overflow-x-auto flex-nowrap scrollbar-hide">
                         <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Sparkles className="w-4 h-4" />
@@ -62,6 +66,10 @@ const ContentStudio: React.FC = () => {
                         <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Clapperboard className="w-4 h-4" />
                             Generador de Outros IA
+                        </TabsTrigger>
+                        <TabsTrigger value="plantillas" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                            <Palette className="w-4 h-4" />
+                            Plantillas IA
                         </TabsTrigger>
                         <TabsTrigger value="pendones" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Flag className="w-4 h-4" />
@@ -91,6 +99,13 @@ const ContentStudio: React.FC = () => {
 
                     <TabsContent value="outros" className="mt-0 focus-visible:outline-none">
                         <OutroGenerator />
+                    </TabsContent>
+
+                    {/* v4.720 — Plantillas IA. Va antes de Pendones porque es el
+                        generador de piezas del día a día; el pendón es una pieza
+                        anual de gran formato. */}
+                    <TabsContent value="plantillas" className="mt-0 focus-visible:outline-none">
+                        <DesignStudio />
                     </TabsContent>
 
                     <TabsContent value="pendones" className="mt-0 focus-visible:outline-none">
