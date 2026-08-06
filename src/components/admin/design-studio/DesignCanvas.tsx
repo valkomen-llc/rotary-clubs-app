@@ -43,12 +43,17 @@ const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 interface Props {
     doc: DesignDocument;
-    selectedIds: string[];
+    selectedIds?: string[];
     zoom: number;
     showGuides?: boolean;
-    onSelect: (ids: string[]) => void;
+    /** El portal público lo usa en SÓLO LECTURA: misma vista previa, sin
+     *  selección, sin tiradores y sin arrastre. Reutilizarlo es lo que impide
+     *  que aparezca un segundo camino de maquetación — la duplicación que este
+     *  módulo existe para evitar. */
+    interactive?: boolean;
+    onSelect?: (ids: string[]) => void;
     /** Cambio en curso (arrastre): no entra en el historial hasta soltar. */
-    onNodesChange: (nodes: DesignNode[], commit: boolean) => void;
+    onNodesChange?: (nodes: DesignNode[], commit: boolean) => void;
 }
 
 interface DragState {
@@ -66,7 +71,9 @@ const cssFill = (fill: Fill): string => {
     return fill.type === 'radial' ? `radial-gradient(circle, ${stops})` : `linear-gradient(${(fill.angle || 0) + 90}deg, ${stops})`;
 };
 
-const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = true, onSelect, onNodesChange }) => {
+const DesignCanvas: React.FC<Props> = ({
+    doc, selectedIds = [], zoom, showGuides = true, interactive = true, onSelect, onNodesChange,
+}) => {
     const fmt = formatOf(doc.format);
     const W = fmt.width, H = fmt.height;
 
@@ -201,7 +208,7 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
             });
 
             setGuides({ v: hitsV, h: hitsH });
-            onNodesChange(next, false);
+            onNodesChange?.(next, false);
         };
 
         const onUp = () => {
@@ -210,7 +217,7 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
             setGuides({ v: [], h: [] });
             // Sólo al soltar entra en el historial: si cada píxel del arrastre
             // fuera un paso, deshacer una vez retrocedería un píxel.
-            onNodesChange(doc.nodes, true);
+            onNodesChange?.(doc.nodes, true);
         };
 
         window.addEventListener('pointermove', onMove);
@@ -231,15 +238,15 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
     };
 
     const startMove = (node: DesignNode) => (e: React.PointerEvent) => {
-        if (node.locked) return;
+        if (!interactive || node.locked) return;
         e.stopPropagation();
         const multi = e.shiftKey || e.metaKey || e.ctrlKey;
         if (multi) {
-            onSelect(selectedIds.includes(node.id) ? selectedIds.filter(i => i !== node.id) : [...selectedIds, node.id]);
+            onSelect?.(selectedIds.includes(node.id) ? selectedIds.filter(i => i !== node.id) : [...selectedIds, node.id]);
             return;
         }
         const ids = selectedIds.includes(node.id) && selectedIds.length > 1 ? selectedIds : [node.id];
-        if (ids.length === 1) onSelect([node.id]);
+        if (ids.length === 1) onSelect?.([node.id]);
         drag.current = { mode: 'move', startX: e.clientX, startY: e.clientY, base: captureBase(ids), ids };
         setDragging(true);
     };
@@ -274,7 +281,7 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
             left: node.x * W, top: node.y * H, width: node.w * W, height: node.h * H,
             opacity: node.opacity,
             transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
-            cursor: node.locked ? 'default' : 'move',
+            cursor: !interactive || node.locked ? 'default' : 'move',
             // Los tiradores se dibujan en una capa aparte: si el nodo capturara
             // el puntero sobre ellos, no se podría redimensionar.
             pointerEvents: 'auto',
@@ -353,13 +360,13 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
                 ref={stageRef}
                 className="absolute top-0 left-0 origin-top-left shadow-2xl"
                 style={{ width: W, height: H, transform: `scale(${zoom})`, background: doc.background, overflow: 'hidden' }}
-                onPointerDown={() => onSelect([])}
+                onPointerDown={() => interactive && onSelect?.([])}
             >
                 {doc.nodes.map(renderNode)}
 
                 {/* Guías: se dibujan DENTRO del lienzo y no se exportan nunca —
                     el exportador lee `doc.nodes`, y esto no es un nodo. */}
-                {showGuides && (
+                {interactive && showGuides && (
                     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                         <div style={{ position: 'absolute', left: MARGIN * W, top: MARGIN * H, right: MARGIN * W, bottom: MARGIN * H, border: '1px dashed rgba(99,102,241,0.35)' }} />
                         <div style={{ position: 'absolute', left: SAFE_AREA * W, top: SAFE_AREA * H, right: SAFE_AREA * W, bottom: SAFE_AREA * H, border: '1px dashed rgba(236,72,153,0.25)' }} />
@@ -377,7 +384,7 @@ const DesignCanvas: React.FC<Props> = ({ doc, selectedIds, zoom, showGuides = tr
                 para que su grosor no crezca con el zoom: un tirador de 8 px que
                 al 200 % mide 16 se vuelve impreciso justo cuando se está
                 afinando. */}
-            {bounds && (
+            {interactive && bounds && (
                 <div className="absolute pointer-events-none" style={{
                     left: bounds.x * W * zoom, top: bounds.y * H * zoom,
                     width: bounds.w * W * zoom, height: bounds.h * H * zoom,

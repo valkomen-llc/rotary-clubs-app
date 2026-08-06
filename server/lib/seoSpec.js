@@ -108,6 +108,12 @@ export const PRIVATE_PREFIXES = [
     '/donacion/exito', '/donacion/cancelada', '/mi-proyecto', '/mi-inscripcion',
     '/mi-capacitacion', '/informe', '/preview', '/system-updates',
     '/registro-feria', '/feria-proyectos', '/inscribir-proyecto',
+    // v4.721 — El portal público de Plantillas IA. Es abierto a propósito, pero
+    // no es CONTENIDO del sitio: es una herramienta que se abre desde un enlace
+    // compartido. Indexar un `/plantillas/aniversario` por cada publicación
+    // haría competir utilidades con las páginas reales del club por sus propios
+    // términos de marca. Abierto y no indexado son cosas distintas.
+    '/plantillas',
 ];
 
 export function isPrivatePath(pathname = '/') {

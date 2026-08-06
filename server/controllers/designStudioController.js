@@ -29,6 +29,7 @@ import { catalog, templateById, availableTemplates } from '../lib/designTemplate
 import { elementsByCategory } from '../lib/designElements.js';
 import { searchClubs, brandingForClub, saveFoundationDate, yearsSince, rotaryPeriod } from '../lib/designBranding.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
+import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl } from '../lib/designPublish.js';
 
 console.log('[designStudioController] v4.720.0 cargado — Plantillas IA. Grafo de escena compartido entre editor y exportación; el archivo se compone en el navegador.');
 
@@ -271,7 +272,132 @@ export const deleteProject = async (req, res) => {
     } catch (e) { fail(res, e, 500, 'No se pudo eliminar el diseño'); }
 };
 
+// ── Publicaciones ─────────────────────────────────────────────────────
+//
+// Publicar CONGELA: se guarda el documento tal como quedó en el editor, no una
+// referencia al catálogo del código. Si apuntara al catálogo, tocar
+// `designTemplates.js` en un despliegue cambiaría piezas cuyo enlace ya está
+// circulando por WhatsApp.
+
+const pubShape = (r, origin = '') => ({
+    id: r.id, slug: r.slug, name: r.name, intro: r.intro || '',
+    category: r.category, format: r.format,
+    fields: r.fields || [], frozen: r.frozen || {},
+    published: r.published, uses: r.uses,
+    url: publicUrl(r.slug, origin),
+    createdAt: r.createdAt, updatedAt: r.updatedAt,
+});
+
+const originOf = (req) => {
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host') || '';
+    return host ? `${proto}://${host}` : '';
+};
+
+// ── GET /api/design-studio/publications ───────────────────────────────
+export const listPublications = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const clubId = scopeClubId(req);
+        const { rows } = await db.query(
+            `SELECT * FROM "DesignPublicTemplate" WHERE "clubId" IS NOT DISTINCT FROM $1 ORDER BY "updatedAt" DESC LIMIT 60`,
+            [clubId]
+        );
+        res.json(rows.map(r => pubShape(r, originOf(req))));
+    } catch (e) { fail(res, e, 500, 'No se pudieron cargar las publicaciones'); }
+};
+
+// ── POST /api/design-studio/publications ──────────────────────────────
+export const publish = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const clubId = scopeClubId(req);
+        const { document, name, slug, category = 'aniversario', settings = {}, projectId = null } = req.body || {};
+
+        const doc = normalizeDocument(document);
+        if (!doc.nodes.length) return res.status(400).json({ error: 'No hay nada que publicar: el diseño está vacío.' });
+
+        // `buildPublication` valida el slug y deriva el formulario de las
+        // variables que el documento REALMENTE usa. Nadie escribe la lista de
+        // campos a mano — es lo que hace que una plantilla nueva no necesite un
+        // formulario nuevo.
+        let pub;
+        try { pub = buildPublication({ document: doc, name, slug, category, settings }); }
+        catch (e) { return res.status(400).json({ error: e.message }); }
+
+        const { rows } = await db.query(
+            `INSERT INTO "DesignPublicTemplate"
+                (slug, name, intro, category, format, document, fields, frozen, published, "clubId", "projectId", "createdBy", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,NOW())
+             ON CONFLICT (slug) DO UPDATE SET
+                name = EXCLUDED.name, intro = EXCLUDED.intro, category = EXCLUDED.category,
+                format = EXCLUDED.format, document = EXCLUDED.document, fields = EXCLUDED.fields,
+                frozen = EXCLUDED.frozen, published = true, "updatedAt" = NOW()
+             -- Sólo el dueño del slug lo puede volver a publicar: sin esta
+             -- condición, otro sitio de la plataforma podría pisar una
+             -- dirección pública ajena con su propio diseño.
+             WHERE "DesignPublicTemplate"."clubId" IS NOT DISTINCT FROM $9
+             RETURNING *`,
+            [pub.slug, pub.name, pub.intro, pub.category, pub.format,
+             JSON.stringify(doc), JSON.stringify(pub.fields), JSON.stringify(pub.frozen),
+             clubId, projectId, req.user?.id || null]
+        );
+        if (!rows[0]) return res.status(409).json({ error: `La dirección «${pub.slug}» ya la usa otro sitio. Elegí otra.` });
+
+        res.status(201).json(pubShape(rows[0], originOf(req)));
+    } catch (e) { fail(res, e, 500, 'No se pudo publicar'); }
+};
+
+// ── PUT /api/design-studio/publications/:id ───────────────────────────
+// Encender y apagar. Despublicar NO borra: el enlace deja de responder pero la
+// configuración se conserva, porque volver a publicarlo tiene que devolver la
+// MISMA dirección — un enlace ya compartido no se puede reasignar.
+export const setPublished = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const clubId = scopeClubId(req);
+        const { rows } = await db.query(
+            `UPDATE "DesignPublicTemplate" SET published = $3, "updatedAt" = NOW()
+              WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2 RETURNING *`,
+            [req.params.id, clubId, req.body?.published !== false]
+        );
+        if (!rows[0]) return res.status(404).json({ error: 'Publicación no encontrada' });
+        res.json(pubShape(rows[0], originOf(req)));
+    } catch (e) { fail(res, e, 500, 'No se pudo cambiar la publicación'); }
+};
+
+// ── DELETE /api/design-studio/publications/:id ────────────────────────
+export const deletePublication = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const clubId = scopeClubId(req);
+        const { rowCount } = await db.query(
+            `DELETE FROM "DesignPublicTemplate" WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2`,
+            [req.params.id, clubId]
+        );
+        if (!rowCount) return res.status(404).json({ error: 'Publicación no encontrada' });
+        res.json({ ok: true });
+    } catch (e) { fail(res, e, 500, 'No se pudo eliminar la publicación'); }
+};
+
+// ── POST /api/design-studio/publications/preview ──────────────────────
+// Qué formulario le saldría al público con este documento, sin publicar nada.
+// Es lo que deja al administrador VER la consecuencia de sus bloqueos antes de
+// compartir el enlace.
+export const previewPublication = async (req, res) => {
+    try {
+        const doc = normalizeDocument(req.body?.document);
+        const settings = req.body?.settings || {};
+        res.json({
+            variables: variablesOf(doc),
+            fields: buildPublicFields(doc, settings),
+            institutional: variablesOf(doc).filter(isInstitutional),
+        });
+    } catch (e) { fail(res, e, 400, e.message); }
+};
+
 export default {
     getCatalog, findClubs, getBranding, putFoundation, compose, improve,
     listProjects, saveProject, updateProject, deleteProject,
+    listPublications, publish, setPublished, deletePublication, previewPublication,
 };

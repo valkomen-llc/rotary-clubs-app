@@ -264,6 +264,24 @@ router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) =>
     }
 });
 
+// ── Plantillas IA — portal PÚBLICO (sin login) ────────────────────────
+//
+// Mismo patrón que el generador de pendones: cualquiera con el enlace genera su
+// pieza. La diferencia importante es que acá el público SÓLO manda valores de
+// variables declaradas; el diseño viene de la publicación guardada y no se
+// puede tocar desde la petición. Ver la cabecera de `designPublicController.js`.
+import { getPublicTemplate as getPublicDesign, renderPublic, publicMessage, publicPhoto, markUsed }
+    from '../controllers/designPublicController.js';
+// 12 MB: una foto de móvil moderna entra holgada y un archivo mayor es casi
+// siempre un error (o alguien probando el límite). Se procesa en memoria y no
+// se guarda: la respuesta es un data URL.
+const designPhotoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
+router.get('/design/:slug', getPublicDesign);
+router.post('/design/:slug/render', renderPublic);
+router.post('/design/:slug/message', publicMessage);
+router.post('/design/:slug/photo', designPhotoUpload.single('file'), publicPhoto);
+router.post('/design/:slug/used', markUsed);
+
 // ── Calendario de Capacitaciones y Soporte — herramienta PÚBLICA (sin login) ──
 // El usuario busca su sitio, valida suscripción, reserva y gestiona su cita con
 // un enlace mágico (publicToken). Mismo patrón público que el generador de pendones.

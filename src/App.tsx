@@ -118,6 +118,9 @@ const AppLogin = React.lazy(() => import('./pages/AppLogin'));
 const ComingSoon = React.lazy(() => import('./pages/ComingSoon'));
 
 const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
+// v4.721 — Portal público de Plantillas IA. Perezosa como el resto de las
+// páginas públicas (regla de rendimiento de v4.659).
+const PlantillaPublica = React.lazy(() => import('./pages/PlantillaPublica'));
 const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
 const MiProyecto = React.lazy(() => import('./pages/MiProyecto'));
 const MiInscripcion = React.lazy(() => import('./pages/MiInscripcion'));
@@ -410,7 +413,9 @@ const ProjectFormRedirect = () => {
 
 // Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion'];
+// El portal público no lleva los avisos del sitio: es una herramienta que se
+// abre desde un enlace compartido, no una página del sitio del club.
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -559,6 +564,7 @@ function App() {
 
                 {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
                 <Route path="/generador-pendones" element={<GeneradorPendones />} />
+                <Route path="/plantillas/:slug" element={<PlantillaPublica />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />
