@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — publicar al portal público
-// v4.721.0
+// v4.723.0
 //
 // Publicar es exponer un diseño a Internet sin sesión. Por eso esta pantalla
 // hace dos cosas antes de dejar hacerlo:
@@ -161,8 +161,14 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
                                 <div className="space-y-1">
                                     {fields.map(f => (
                                         <div key={f.key} className="flex items-center gap-2 text-xs">
-                                            <span className="font-semibold text-gray-700 flex-1">{f.label}</span>
-                                            <span className="text-[10px] text-gray-400">{f.type}</span>
+                                            <span className="font-semibold text-gray-700 flex-1 truncate">
+                                                {f.label}
+                                                {f.required && <span className="text-red-500" title="Obligatorio"> *</span>}
+                                            </span>
+                                            {/* La CLASE, no el control: «logo» y «foto» se dibujan los
+                                                dos como una casilla de imagen y no se tratan igual, y
+                                                quien publica tiene que poder ver cuál eligió. */}
+                                            <span className="text-[10px] text-gray-400">{f.kind || f.type}</span>
                                             <button onClick={() => toggleLock(f.key)}
                                                 className="text-[10px] font-bold text-gray-400 hover:text-indigo-600 transition-colors" title="Congelar este campo">
                                                 bloquear

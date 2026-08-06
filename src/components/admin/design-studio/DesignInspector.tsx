@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — capas, propiedades y biblioteca de elementos (derecha)
-// v4.720.0
+// v4.723.0
 //
 // Tres pestañas sobre la MISMA selección. Está a la derecha, y no dentro de la
 // mesa de trabajo, por la razón de siempre: un panel flotante sobre el lienzo
@@ -18,18 +18,17 @@ import {
     isText, isImage, isShape, isGradient, FONTS, PALETTE,
     type DesignNode, type TextNode, type ImageNode, type ShapeNode,
 } from '../../../lib/designSpec';
+import {
+    fieldKeyOf, kindsForNode, validateKey, FIELD_KINDS, FIELD_LIMITS,
+    type LinkedField,
+} from '../../../lib/designFields';
 import type { ElementGroup, ElementItem, AssignableField } from './designApi';
 
-// La clave pública de un nodo: para un texto es la variable que ocupa TODO su
-// contenido (`{{mensaje}}`); para una imagen, su `srcVar`. Se lee del propio
-// nodo en vez de guardarse aparte — dos verdades sobre lo mismo se contradicen
-// en cuanto alguien edita el texto.
-const SOLA_VARIABLE = /^\s*\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}\s*$/;
-const publicKeyOf = (n: DesignNode): string | null => {
-    if (isImage(n)) return n.srcVar || null;
-    if (isText(n)) return SOLA_VARIABLE.exec(n.srcText || '')?.[1] || null;
-    return null;
-};
+// La clave pública de un nodo se DERIVA del nodo, no se guarda aparte: para un
+// texto es la variable que ocupa todo su contenido (`{{mensaje}}`), para una
+// imagen su `srcVar`. Dos verdades sobre lo mismo se contradicen en cuanto
+// alguien edita el texto.
+const publicKeyOf = (n: DesignNode): string | null => fieldKeyOf(n as never);
 
 interface Props {
     nodes: DesignNode[];
@@ -57,6 +56,10 @@ interface Props {
     assignable: AssignableField[];
     /** Marca (o desmarca) un nodo como campo del formulario público. */
     onSetPublicKey: (id: string, key: string | null) => void;
+    /** Cambia la CONFIGURACIÓN del campo vinculado de un nodo (etiqueta, ayuda,
+     *  obligatorio, visible, valor por defecto, reglas de la imagen). La clave
+     *  no se toca acá: eso es `onSetPublicKey`. */
+    onSetField: (id: string, patch: Partial<LinkedField>) => void;
 }
 
 const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1';
@@ -80,10 +83,16 @@ const nodeLabel = (n: DesignNode) => n.name || (isText(n) ? (n.text.slice(0, 22)
 const DesignInspector: React.FC<Props> = ({
     nodes, selectedIds, elements, onSelect, onPatch, onReorder, onDelete, onDuplicate, onAddElement, onAddText,
     onAddImage, onUploadImage, onReplaceImage, onUploadReplacement, uploading,
-    assignable, onSetPublicKey, onSendTo,
+    assignable, onSetPublicKey, onSetField, onSendTo,
 }) => {
     const assignableFor = (kind: 'text' | 'image') => assignable.filter(f => f.forNode === kind);
     const [tab, setTab] = useState<'props' | 'layers' | 'elements'>('props');
+    // El nombre interno de un campo propio se escribe acá y se normaliza al
+    // confirmarlo. Normalizarlo en cada pulsación haría imposible escribir un
+    // guion bajo — el mismo tropiezo que costó una corrección en el editor de
+    // la sede de un evento (v4.718).
+    const [customKey, setCustomKey] = useState('');
+    const [customOpen, setCustomOpen] = useState(false);
     const node = selectedIds.length === 1 ? nodes.find(n => n.id === selectedIds[0]) || null : null;
 
     const patch = (p: Partial<DesignNode>) => { if (node) onPatch(node.id, p); };
@@ -254,36 +263,185 @@ const DesignInspector: React.FC<Props> = ({
                         <Slider label="Rotación" suffix="°" value={node.rotation} min={0} max={359} step={1}
                             onChange={v => patch({ rotation: v })} />
 
-                        {/* ── Editable en el portal público ────────────────
+                        {/* ── Posición y tamaño ────────────────────────────
+                            En porcentaje del lienzo, que es como están guardados
+                            (fracciones): así el mismo diseño sirve en cualquier
+                            formato. Se escriben a mano además de arrastrarse
+                            porque colocar un logotipo EXACTAMENTE donde va —que
+                            es lo que hace repetible una plantilla— con el ratón
+                            es cuestión de suerte. */}
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                            {([
+                                ['x', 'X', node.x], ['y', 'Y', node.y],
+                                ['w', 'Ancho', node.w], ['h', 'Alto', node.h],
+                            ] as const).map(([k, label, value]) => (
+                                <Row key={k} label={`${label} (%)`}>
+                                    <input type="number" className={inp} step={0.1}
+                                        value={Math.round(value * 1000) / 10}
+                                        onChange={e => {
+                                            const v = parseFloat(e.target.value);
+                                            if (Number.isFinite(v)) patch({ [k]: v / 100 } as Partial<DesignNode>);
+                                        }} />
+                                </Row>
+                            ))}
+                        </div>
+
+                        {/* ── Campo vinculado ──────────────────────────────
                             Marcar un elemento acá es lo que lo convierte en un
-                            campo del formulario público. Hasta v4.722 no
-                            existía: los campos sólo aparecían si el diseño venía
-                            de una plantilla del catálogo, así que un texto
-                            agregado a mano nunca era editable y corregir a mano
-                            el de una plantilla lo sacaba del formulario en
-                            silencio. */}
-                        {(isText(node) || isImage(node)) && (
-                            <div className="mt-4 pt-4 border-t border-gray-100">
-                                <span className={lbl}>Editable en el portal público</span>
-                                <select
-                                    className={inp}
-                                    value={publicKeyOf(node) || ''}
-                                    onChange={e => onSetPublicKey(node.id, e.target.value || null)}
-                                >
-                                    <option value="">No — queda fijo en la pieza</option>
-                                    {assignableFor(isImage(node) ? 'image' : 'text').map(f => (
-                                        <option key={f.key} value={f.key}>{f.label}</option>
-                                    ))}
-                                </select>
-                                <p className="mt-1 text-[10px] text-gray-400 leading-relaxed">
-                                    {publicKeyOf(node)
-                                        ? 'Quien abra el enlace público va a poder cambiarlo. El resto del diseño no.'
-                                        : isText(node)
-                                            ? 'Al marcarlo, el texto de este elemento lo escribe quien use el enlace.'
-                                            : 'Al marcarlo, la imagen la sube quien use el enlace.'}
-                                </p>
-                            </div>
-                        )}
+                            campo del formulario público, y lo que declara CÓMO
+                            se comporta: su etiqueta, si es obligatorio y —en una
+                            imagen— si se puede recortar o no.
+                            Esa última decisión no es un detalle: con las reglas
+                            de una fotografía, un escudo de club entra recortado
+                            por los bordes y sin transparencia. */}
+                        {(isText(node) || isImage(node)) && (() => {
+                            const key = publicKeyOf(node);
+                            const forNode = isImage(node) ? 'image' : 'text';
+                            const field = (node.field || null) as LinkedField | null;
+                            const kind = field?.kind || '';
+                            const kindSpec = FIELD_KINDS[kind];
+                            const setField = (p: Partial<LinkedField>) => onSetField(node.id, p);
+
+                            return (
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <span className={lbl}>Campo vinculado</span>
+                                    <select
+                                        className={inp}
+                                        value={key && !assignableFor(forNode).some(f => f.key === key) ? '__custom__' : (key || '')}
+                                        onChange={e => {
+                                            const v = e.target.value;
+                                            if (v === '__custom__') { setCustomOpen(true); setCustomKey(''); return; }
+                                            setCustomOpen(false);
+                                            onSetPublicKey(node.id, v || null);
+                                        }}
+                                    >
+                                        <option value="">No — queda fijo en la pieza</option>
+                                        {assignableFor(forNode).map(f => (
+                                            <option key={f.key} value={f.key}>{f.label}</option>
+                                        ))}
+                                        <option value="__custom__">Otro campo…</option>
+                                    </select>
+
+                                    {/* Nombre interno propio. Es lo que vuelve
+                                        escalable el sistema: un campo que el
+                                        catálogo no conoce se declara acá y el
+                                        formulario público lo ofrece solo, sin
+                                        tocar código. */}
+                                    {(customOpen || (key && !assignableFor(forNode).some(f => f.key === key))) && (
+                                        <div className="mt-2">
+                                            <span className={lbl}>Nombre interno</span>
+                                            <div className="flex gap-1">
+                                                <input className={`${inp} font-mono`} placeholder="presidente_entrante"
+                                                    value={customOpen ? customKey : (key || '')}
+                                                    onFocus={() => { setCustomOpen(true); setCustomKey(key || ''); }}
+                                                    onChange={e => setCustomKey(e.target.value)}
+                                                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                                    onBlur={() => {
+                                                        const check = validateKey(customKey);
+                                                        if (!check.ok) return;
+                                                        setCustomOpen(false);
+                                                        onSetPublicKey(node.id, check.key);
+                                                    }} />
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-gray-400">
+                                                Es la etiqueta interna del dato, en minúsculas y sin espacios. Dentro de la pieza
+                                                viaja como <code className="font-mono">{`{{${customOpen ? (validateKey(customKey).key || 'clave') : key}}}`}</code>.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {!key && (
+                                        <p className="mt-1 text-[10px] text-gray-400 leading-relaxed">
+                                            {isText(node)
+                                                ? 'Al marcarlo, el texto de este elemento lo escribe quien use el enlace público.'
+                                                : 'Al marcarlo, la imagen la sube quien use el enlace público.'}
+                                        </p>
+                                    )}
+
+                                    {key && field && (
+                                        <div className="mt-3 space-y-3">
+                                            <Row label="Tipo de campo">
+                                                <select className={inp} value={kind}
+                                                    onChange={e => setField({ kind: e.target.value })}>
+                                                    {kindsForNode(forNode).map(k => (
+                                                        <option key={k.id} value={k.id}>{k.label}</option>
+                                                    ))}
+                                                </select>
+                                            </Row>
+                                            <Row label="Etiqueta visible">
+                                                <input className={inp} maxLength={FIELD_LIMITS.label}
+                                                    placeholder={assignableFor(forNode).find(f => f.key === key)?.label || 'Cómo se llama en el formulario'}
+                                                    value={field.label}
+                                                    onChange={e => setField({ label: e.target.value })} />
+                                            </Row>
+                                            <Row label="Descripción / ayuda">
+                                                <input className={inp} maxLength={FIELD_LIMITS.help}
+                                                    placeholder={kindSpec?.help || 'Qué tiene que subir o escribir'}
+                                                    value={field.help}
+                                                    onChange={e => setField({ help: e.target.value })} />
+                                            </Row>
+                                            <Row label={isImage(node) ? 'Imagen por defecto (URL)' : 'Valor por defecto'}>
+                                                <input className={inp} maxLength={FIELD_LIMITS.value}
+                                                    value={field.defaultValue}
+                                                    onChange={e => setField({ defaultValue: e.target.value })} />
+                                            </Row>
+
+                                            <label className="flex items-start gap-1.5 text-xs text-gray-600">
+                                                <input type="checkbox" className="mt-0.5" checked={field.required}
+                                                    onChange={e => setField({ required: e.target.checked })} />
+                                                <span>Obligatorio
+                                                    <span className="block text-[10px] text-gray-400">Sin este dato no se puede descargar la pieza.</span>
+                                                </span>
+                                            </label>
+                                            <label className="flex items-start gap-1.5 text-xs text-gray-600">
+                                                <input type="checkbox" className="mt-0.5" checked={field.visible}
+                                                    onChange={e => setField({ visible: e.target.checked })} />
+                                                <span>Visible en el formulario público
+                                                    <span className="block text-[10px] text-gray-400">
+                                                        Apagado, el dato queda fijo con el valor por defecto y nadie lo ve como campo.
+                                                    </span>
+                                                </span>
+                                            </label>
+
+                                            {/* Cómo se adapta la imagen que suban.
+                                                Es la diferencia entre un escudo
+                                                que entra completo y uno recortado. */}
+                                            {isImage(node) && field.image && (
+                                                <div className="rounded-lg bg-gray-50 border border-gray-200 p-2.5 space-y-2">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Ajuste automático</p>
+                                                    <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                                                        <input type="checkbox" className="mt-0.5" checked={field.image.crop === false}
+                                                            onChange={e => setField({ image: { ...field.image!, crop: !e.target.checked, fit: e.target.checked ? 'contain' : 'cover', transparent: e.target.checked } })} />
+                                                        <span>Entrar completa, sin recortar
+                                                            <span className="block text-[10px] text-gray-400">
+                                                                Obligatorio para un logotipo: se conserva la proporción y la transparencia.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                    <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                                                        <input type="checkbox" className="mt-0.5" checked={!!field.image.trim}
+                                                            onChange={e => setField({ image: { ...field.image!, trim: e.target.checked } })} />
+                                                        <span>Recortar los bordes vacíos
+                                                            <span className="block text-[10px] text-gray-400">
+                                                                Un PNG del Brand Center trae márgenes: sin esto el escudo ocupa la mitad del recuadro.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                    <Slider label="Margen interno" suffix="%" value={(field.image.safeArea || 0) * 100}
+                                                        min={0} max={25} step={0.5}
+                                                        onChange={v => setField({ image: { ...field.image!, safeArea: v / 100 } })} />
+                                                </div>
+                                            )}
+
+                                            <p className="text-[10px] text-gray-400 leading-relaxed">
+                                                Quien abra el enlace público sólo puede cambiar esto. La posición, el tamaño, los
+                                                colores y el resto del diseño no se pueden tocar desde el portal.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </>
                 ))}
 

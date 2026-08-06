@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el CRITERIO del motor de diseño
-// v4.720.0
+// v4.723.0
 //
 // Este archivo es PURO: sin base, sin red, sin IA, sin DOM. Define qué es una
 // plantilla, qué es un nodo, cómo se resuelven las variables y cómo se reparte
@@ -39,6 +39,11 @@
 // las pide acá y pinta una por una. Si el navegador repartiera por su cuenta,
 // un título de dos líneas en pantalla podría salir de tres en el archivo.
 // ════════════════════════════════════════════════════════════════════
+
+// La configuración de los CAMPOS VINCULADOS vive aparte, en `designFields.js`,
+// y la importación va en un solo sentido: de acá hacia allá nunca, o los dos
+// archivos que sostienen el criterio quedarían en un ciclo.
+import { normalizeField, fieldKeyOf } from './designFields.js';
 
 // ─── Formatos ──────────────────────────────────────────────────────────
 //
@@ -211,6 +216,32 @@ export const normalizeNode = (raw, index = 0) => {
         // rectángulo blanco vacío flotando sobre la foto — detectado en la
         // primera prueba de render, no en el código.
         requiresVar: raw?.requiresVar ? String(raw.requiresVar).slice(0, 40) : null,
+        // ── CAMPO VINCULADO ─────────────────────────────────────────
+        //
+        // La CONFIGURACIÓN del campo que este nodo expone al formulario
+        // público: etiqueta, ayuda, obligatorio, visible, valor por defecto y
+        // —si es una imagen— cómo se adapta lo que suban. La CLAVE no está acá:
+        // sigue siendo `srcVar` (imagen) o el marcador de `srcText` (texto), y
+        // se deriva con `fieldKeyOf`. Guardarla dos veces se contradice en
+        // cuanto alguien edita el texto del nodo.
+        //
+        // Sin esta línea la declaración no sobrevivía a guardar ni a publicar:
+        // este normalizador RECONSTRUYE el nodo, así que todo lo que no se
+        // enumere acá se pierde en silencio.
+        // El `text` de una plantilla del catálogo lleva el marcador y todavía no
+        // hay `srcText` —lo escribe `compileTemplate` después—, así que sirve de
+        // respaldo para deducir la clase por defecto del campo.
+        field: normalizeField(raw?.field, {
+            key: fieldKeyOf({
+                type,
+                // En una plantilla del catálogo la clave todavía vive dentro de
+                // `src`/`text` —`srcVar` y `srcText` los escribe `compileTemplate`
+                // después—, así que se miran los dos sitios.
+                srcVar: raw?.srcVar || (typeof raw?.src === 'string' ? variablesUsedIn(raw.src)[0] : null),
+                srcText: raw?.srcText || raw?.text,
+            }),
+            nodeType: type,
+        }),
     };
     if (type === 'text') {
         return {

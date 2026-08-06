@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el catálogo
-// v4.720.0
+// v4.723.0
 //
 // Una plantilla es DATO, no código: una lista de nodos en coordenadas
 // normalizadas con `{{variables}}` dentro de los textos. Agregar una plantilla
@@ -81,7 +81,14 @@ export const TEMPLATES = [
             style: 'institucional',
         },
         nodes: [
-            { id: 'foto', type: 'image', name: 'Fotografía del club', role: 'foto', src: '{{imagen}}', fit: 'cover', x: 0, y: 0, w: 1, h: 0.47 },
+            {
+                id: 'foto', type: 'image', name: 'Fotografía del club', role: 'foto', src: '{{imagen}}', fit: 'cover',
+                x: 0, y: 0, w: 1, h: 0.47,
+                // Campo vinculado: qué le sale al público y cómo se adapta lo
+                // que suba. Una fotografía SÍ se recorta al encuadre —es lo que
+                // la hace llenar la banda— y sale en JPEG.
+                field: { kind: 'foto', label: 'Fotografía del club' },
+            },
             { id: 'corte_oro', type: 'shape', name: 'Filo dorado', shape: 'wave', fill: goldFill, x: -0.02, y: 0.40, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
             { id: 'corte_blanco', type: 'shape', name: 'Corte', shape: 'wave', fill: PALETTE.white, x: -0.02, y: 0.4165, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
 
@@ -89,7 +96,24 @@ export const TEMPLATES = [
             // fotografía: sin logotipo es un rectángulo blanco vacío. Por eso
             // declara su dependencia en vez de dibujarse siempre.
             { id: 'placa_logo', type: 'shape', name: 'Placa del logo', shape: 'rect', fill: PALETTE.white, radius: 0.02, x: 0.05, y: 0.042, w: 0.315, h: 0.122, role: 'decoracion', requiresVar: 'logo' },
-            { id: 'logo', type: 'image', name: 'Logotipo', role: 'logo', src: '{{logo}}', fit: 'contain', dropIfEmpty: true, x: 0.068, y: 0.055, w: 0.28, h: 0.096 },
+            {
+                id: 'logo', type: 'image', name: 'Logotipo', role: 'logo', src: '{{logo}}', fit: 'contain',
+                dropIfEmpty: true, x: 0.068, y: 0.055, w: 0.28, h: 0.096,
+                // EL PRIMER CAMPO VINCULADO, y el que define el patrón. Un
+                // logotipo NO se recorta y conserva su transparencia: con las
+                // reglas de la fotografía —encuadre `cover`, recorte por
+                // atención, salida JPEG— el escudo del club llegaba cortado por
+                // los bordes y con el fondo transparente relleno de negro.
+                //
+                // `trim` es lo mismo que hace el Generador de Pendones desde su
+                // primera versión: un PNG del Brand Center trae márgenes vacíos
+                // y sin quitarlos el escudo ocupa la mitad de su recuadro.
+                //
+                // No es obligatorio a propósito: el nodo declara `dropIfEmpty`,
+                // así que la pieza sale bien sin logotipo. Quien quiera exigirlo
+                // lo marca al publicar.
+                field: { kind: 'logo', label: 'Logotipo del club', required: false },
+            },
 
             {
                 id: 'saludo', type: 'text', name: 'Saludo', text: 'Al {{club}}',
@@ -103,6 +127,7 @@ export const TEMPLATES = [
             },
             {
                 id: 'mensaje', type: 'text', name: 'Mensaje', role: 'mensaje', text: '{{mensaje}}',
+                field: { kind: 'texto_largo', label: 'Mensaje' },
                 x: 0.10, y: 0.725, w: 0.80, h: 0.115,
                 fontSize: 0.0272, fontWeight: 400, color: PALETTE.ink, align: 'center', lineHeight: 1.38, minFontSize: 0.0175,
             },
@@ -128,7 +153,13 @@ export const TEMPLATES = [
             // La tarjeta del Distrito tampoco lleva curva arriba, sólo abajo.
             { id: 'filo_superior', type: 'shape', name: 'Filo superior', shape: 'rect', fill: goldFill, x: 0, y: 0, w: 1, h: 0.014, role: 'decoracion', locked: true },
 
-            { id: 'logo', type: 'image', name: 'Logotipo', role: 'logo', src: '{{logo}}', fit: 'contain', dropIfEmpty: true, x: 0.07, y: 0.06, w: 0.28, h: 0.10 },
+            {
+                id: 'logo', type: 'image', name: 'Logotipo', role: 'logo', src: '{{logo}}', fit: 'contain',
+                dropIfEmpty: true, x: 0.07, y: 0.06, w: 0.28, h: 0.10,
+                // Mismo campo vinculado que en la plantilla con fotografía: las
+                // reglas del logotipo son del DATO, no del diseño.
+                field: { kind: 'logo', label: 'Logotipo del club', required: false },
+            },
             // Termina en 0,245 y el saludo empieza en 0,285: no se tocan. Antes
             // ocupaba hasta 0,32 y se le montaba encima al nombre del club.
             { id: 'confeti', type: 'icon', name: 'Confeti', shape: 'rect', fill: PALETTE.gold, x: 0.735, y: 0.055, w: 0.19, h: 0.19, opacity: 0.55, role: 'decoracion', path: null },
@@ -146,6 +177,7 @@ export const TEMPLATES = [
             { id: 'filete', type: 'shape', name: 'Filete', shape: 'rect', fill: goldFill, radius: 0.004, x: 0.41, y: 0.556, w: 0.18, h: 0.006, role: 'decoracion' },
             {
                 id: 'mensaje', type: 'text', name: 'Mensaje', role: 'mensaje', text: '{{mensaje}}',
+                field: { kind: 'texto_largo', label: 'Mensaje' },
                 x: 0.115, y: 0.595, w: 0.77, h: 0.155,
                 fontSize: 0.0295, fontWeight: 400, color: PALETTE.ink, align: 'center', valign: 'middle', lineHeight: 1.42, minFontSize: 0.018,
             },

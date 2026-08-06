@@ -303,8 +303,8 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     await page.getByText('Propiedades', { exact: true }).click();
     await page.waitForTimeout(300);
     const props = await page.locator('aside').last().innerText();
-    check('Propiedades ofrece marcar el elemento como editable',
-        /Editable en el portal/.test(props), props.slice(0, 200));
+    check('Propiedades ofrece marcar el elemento como campo vinculado',
+        /Campo vinculado/.test(props), props.slice(0, 200));
 
     const selector = page.locator('aside').last().locator('select').last();
     const opciones = await selector.locator('option').allInnerTexts();
@@ -323,6 +323,25 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         return n ? n.srcVar : null;
     }).catch(() => null);
     check('marcarlo le asigna la variable al nodo', marcado === 'imagen' || marcado === null, String(marcado));
+
+    // ── La CONFIGURACIÓN del campo (v4.723) ───────────────────────
+    //
+    // Marcarlo no alcanza: el pedido pide declarar etiqueta, obligatoriedad,
+    // visibilidad y —en una imagen— cómo se adapta lo que suban. Sin esos
+    // controles, el logotipo se seguiría tratando como una fotografía.
+    const conCampo = await page.locator('aside').last().innerText();
+    check('marcado, aparece la configuración del campo',
+        /Tipo de campo/.test(conCampo) && /Etiqueta visible/.test(conCampo), conCampo.slice(0, 300));
+    check('se puede declarar obligatorio y ocultarlo del formulario',
+        /Obligatorio/.test(conCampo) && /Visible en el formulario público/.test(conCampo));
+    check('y en una imagen, cómo se ajusta lo que suban',
+        /Ajuste automático/.test(conCampo) && /sin recortar/.test(conCampo), conCampo.slice(0, 400));
+    const declarado = await page.evaluate(() => {
+        const n = window.__state?.().doc.nodes.find(x => x.type === 'image' && x.srcVar);
+        return n?.field || null;
+    }).catch(() => null);
+    check('la declaración queda guardada en el nodo, no en una lista aparte',
+        declarado === null || (!!declarado.kind && declarado.visible === true), JSON.stringify(declarado));
 
     await page.close();
 }
@@ -395,7 +414,10 @@ window.go = () => createRoot(document.getElementById('root')).render(
         ['Logotipo del club', 'Nombre del club', 'Años que cumple', 'Mensaje', 'Fotografía'].every(l => txt.includes(l)),
         txt.slice(0, 300));
     check('ofrece escribir el mensaje con IA', /Generar mensaje con IA/.test(txt));
-    check('ofrece arrastrar la fotografía', /Arrastrá una foto/.test(txt));
+    // El texto dice «el archivo», no «una foto»: la misma casilla sirve para el
+    // logotipo, una firma o un sello, y llamarla «foto» confunde en el campo que
+    // pide el escudo del club.
+    check('ofrece arrastrar el archivo', /Arrastrá el archivo/.test(txt));
     check('ofrece descargar y compartir', /Descargar PNG/.test(txt) && /Compartir/.test(txt));
 
     // Lo que el pedido prohíbe mostrar.

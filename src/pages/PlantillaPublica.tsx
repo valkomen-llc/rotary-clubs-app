@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.721.0
+// v4.723.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -47,6 +47,11 @@ interface PublicField {
     key: string; type: 'text' | 'textarea' | 'number' | 'image';
     label: string; placeholder: string; help: string;
     maxChars: number | null; required: boolean; ai: boolean;
+    /** Qué CLASE de dato es. Un logotipo y una fotografía comparten
+     *  `type: 'image'` y no se tratan igual: el servidor lo usa para elegir la
+     *  receta de adaptación y acá decide qué archivos ofrece el selector.
+     *  Puede faltar en una plantilla publicada antes de v4.723. */
+    kind?: string; accept?: string | null; defaultValue?: string;
 }
 interface PublicTemplate {
     slug: string; name: string; intro: string; category: string; format: string;
@@ -73,10 +78,17 @@ const PlantillaPublica: React.FC = () => {
     const [tpl, setTpl] = useState<PublicTemplate | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [values, setValues] = useState<Record<string, string>>({});
-    const [photoNotes, setPhotoNotes] = useState<PhotoNote[]>([]);
-    const [busy, setBusy] = useState<'foto' | 'ia' | 'descarga' | 'compartir' | null>(null);
+    // Los avisos son POR CAMPO. Con una sola lista, subir el logotipo borraba
+    // los avisos de la fotografía y —peor— los del logotipo se pintaban también
+    // debajo de la foto: dos campos de imagen distintos compartiendo un mismo
+    // renglón de advertencias no dicen nada de ninguno.
+    const [photoNotes, setPhotoNotes] = useState<Record<string, PhotoNote[]>>({});
+    // Cuál campo está subiendo. Con un solo indicador, subir una imagen dejaba
+    // girando el de todas.
+    const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+    const [busy, setBusy] = useState<'ia' | 'descarga' | 'compartir' | null>(null);
     const [aiNote, setAiNote] = useState<string | null>(null);
-    const [dragOver, setDragOver] = useState(false);
+    const [dragOver, setDragOver] = useState<string | null>(null);
     const [zoom, setZoom] = useState(0.42);
     const [done, setDone] = useState(false);
     const stageRef = useRef<HTMLDivElement>(null);
@@ -93,7 +105,16 @@ const PlantillaPublica: React.FC = () => {
                 if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
                 return d as PublicTemplate;
             })
-            .then(setTpl)
+            .then(t => {
+                setTpl(t);
+                // El valor por defecto que declaró quien publicó: el formulario
+                // arranca con él en vez de vacío. Es lo que permite publicar una
+                // plantilla que ya se ve completa y que sólo haya que cambiar lo
+                // que cambia de un club a otro.
+                const iniciales: Record<string, string> = {};
+                for (const f of t.fields || []) if (f.defaultValue) iniciales[f.key] = f.defaultValue;
+                if (Object.keys(iniciales).length) setValues(iniciales);
+            })
             .catch(e => setLoadError(e instanceof Error ? e.message : 'No se pudo cargar la plantilla.'));
     }, [slug]);
 
@@ -119,20 +140,37 @@ const PlantillaPublica: React.FC = () => {
     // sobre la foto— en una pieza que nadie puede corregir después.
     const doc = useMemo<DesignDocument | null>(() => {
         if (!tpl) return null;
-        return { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values) };
+        // Las claves del formulario viajan aparte: son las únicas que esta
+        // pantalla puede llenar. Un marcador que no se ofrece —ni se congeló al
+        // publicar— deja el nodo tal como se publicó, en vez de resolverse
+        // contra un diccionario vacío y quedar en blanco. Sin esto, una
+        // plantilla publicada con un dato al que nadie llega salía con el pie
+        // institucional y hueco todo lo demás.
+        const llenables = (tpl.fields || []).map(f => f.key);
+        return { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values, llenables) };
     }, [tpl, values]);
 
     const set = useCallback((key: string, v: string) => {
         setValues(prev => (prev[key] === v ? prev : { ...prev, [key]: v }));
     }, []);
 
-    const subirFoto = useCallback(async (file: File | undefined, key: string) => {
+    // La CLAVE del campo viaja con el archivo, y es lo que hace que un logotipo
+    // se trate como un logotipo: con ella el servidor resuelve el recuadro de
+    // ESE nodo y la receta de ESA clase de campo —sin recorte y conservando la
+    // transparencia para un escudo, recorte al encuadre para una fotografía—.
+    // Sin ella, toda imagen entraba por el camino de la fotografía.
+    const subirImagen = useCallback(async (file: File | undefined, key: string) => {
         if (!file || !slug) return;
-        if (!file.type.startsWith('image/')) { setPhotoNotes([{ level: 'warn', reason: 'Ese archivo no es una imagen.', consequence: 'Probá con un JPG o un PNG.' }]); return; }
-        setBusy('foto'); setPhotoNotes([]);
+        const aviso = (reason: string, consequence: string) =>
+            setPhotoNotes(prev => ({ ...prev, [key]: [{ level: 'warn', reason, consequence }] }));
+
+        if (!file.type.startsWith('image/')) { aviso('Ese archivo no es una imagen.', 'Probá con un JPG o un PNG.'); return; }
+        setUploadingKey(key);
+        setPhotoNotes(prev => ({ ...prev, [key]: [] }));
         try {
             const form = new FormData();
             form.append('file', file);
+            form.append('key', key);
             const r = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/photo`, { method: 'POST', body: form });
             const d = await r.json().catch(() => null);
             if (!r.ok) throw new Error(d?.error || 'No se pudo procesar la imagen.');
@@ -140,10 +178,10 @@ const PlantillaPublica: React.FC = () => {
             // Los avisos del recorte se MUESTRAN: si se va a perder a las
             // personas de los bordes, quien subió la foto es el único que puede
             // decidir subir otra.
-            setPhotoNotes(d.notes || []);
+            setPhotoNotes(prev => ({ ...prev, [key]: d.notes || [] }));
         } catch (e) {
-            setPhotoNotes([{ level: 'warn', reason: e instanceof Error ? e.message : 'No se pudo procesar la imagen.', consequence: 'Probá con otra fotografía.' }]);
-        } finally { setBusy(null); }
+            aviso(e instanceof Error ? e.message : 'No se pudo procesar la imagen.', 'Probá con otro archivo.');
+        } finally { setUploadingKey(null); }
     }, [slug, set]);
 
     const escribirIA = useCallback(async (tone: string | null) => {
@@ -272,13 +310,23 @@ const PlantillaPublica: React.FC = () => {
                     {tpl.fields.map(field => {
                         if (field.type === 'image') {
                             const v = values[field.key];
+                            const subiendo = uploadingKey === field.key;
+                            const notas = photoNotes[field.key] || [];
+                            // Un logotipo se PREVISUALIZA entero y sobre un fondo
+                            // a cuadros: con `object-cover` —lo correcto para una
+                            // fotografía— el escudo se ve recortado en la casilla
+                            // aunque en la pieza entre completo, y eso hace creer
+                            // que el sistema lo recortó.
+                            const entera = field.kind ? field.kind !== 'foto' : field.key === 'logo';
                             return (
                                 <div key={field.key}>
-                                    <label className="block text-xs font-black text-gray-700 mb-1.5">{field.label}</label>
+                                    <label className="block text-xs font-black text-gray-700 mb-1.5">
+                                        {field.label}{field.required && <span className="text-red-500"> *</span>}
+                                    </label>
                                     {v ? (
-                                        <div className="relative rounded-xl overflow-hidden border border-gray-200">
-                                            <img src={v} alt="" className="w-full h-40 object-cover" />
-                                            <button onClick={() => { set(field.key, ''); setPhotoNotes([]); }}
+                                        <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                                            <img src={v} alt="" className={`w-full h-40 ${entera ? 'object-contain p-3' : 'object-cover'}`} />
+                                            <button onClick={() => { set(field.key, ''); setPhotoNotes(prev => ({ ...prev, [field.key]: [] })); }}
                                                 className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 shadow" title="Quitar">
                                                 <X className="w-4 h-4 text-gray-700" />
                                             </button>
@@ -287,22 +335,22 @@ const PlantillaPublica: React.FC = () => {
                                         // Arrastrar y soltar, además del clic. En un escritorio es
                                         // el gesto natural y el pedido lo nombra explícitamente.
                                         <label
-                                            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                                            onDragLeave={() => setDragOver(false)}
-                                            onDrop={e => { e.preventDefault(); setDragOver(false); subirFoto(e.dataTransfer.files?.[0], field.key); }}
-                                            className={`flex flex-col items-center justify-center gap-2 h-40 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50/40'}`}>
-                                            {busy === 'foto'
+                                            onDragOver={e => { e.preventDefault(); setDragOver(field.key); }}
+                                            onDragLeave={() => setDragOver(null)}
+                                            onDrop={e => { e.preventDefault(); setDragOver(null); subirImagen(e.dataTransfer.files?.[0], field.key); }}
+                                            className={`flex flex-col items-center justify-center gap-2 h-40 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${dragOver === field.key ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50/40'}`}>
+                                            {subiendo
                                                 ? <Loader2 className="w-6 h-6 animate-spin text-blue-700" />
                                                 : <Upload className="w-6 h-6 text-gray-400" />}
                                             <span className="text-xs font-semibold text-gray-600">
-                                                {busy === 'foto' ? 'Adaptando la imagen…' : 'Arrastrá una foto o hacé clic'}
+                                                {subiendo ? 'Adaptando la imagen…' : 'Arrastrá el archivo o hacé clic'}
                                             </span>
-                                            <input type="file" accept="image/*" className="hidden" disabled={busy === 'foto'}
-                                                onChange={e => { subirFoto(e.target.files?.[0], field.key); e.target.value = ''; }} />
+                                            <input type="file" accept={field.accept || 'image/*'} className="hidden" disabled={subiendo}
+                                                onChange={e => { subirImagen(e.target.files?.[0], field.key); e.target.value = ''; }} />
                                         </label>
                                     )}
                                     {field.help && <p className="mt-1 text-[11px] text-gray-400">{field.help}</p>}
-                                    {photoNotes.map((n, i) => (
+                                    {notas.map((n, i) => (
                                         <p key={i} className="mt-2 flex gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
                                             <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                                             <span><strong>{n.reason}</strong> {n.consequence}</span>
@@ -364,13 +412,13 @@ const PlantillaPublica: React.FC = () => {
                     })}
 
                     <div className="pt-2 space-y-2">
-                        <button onClick={descargar} disabled={!!busy || faltantes.length > 0}
+                        <button onClick={descargar} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
                             className="w-full flex items-center justify-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold rounded-lg px-4 py-3 transition-colors">
                             {busy === 'descarga' ? <Loader2 className="w-4 h-4 animate-spin" />
                                 : done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
                             {busy === 'descarga' ? 'Generando…' : done ? '¡Listo!' : 'Descargar PNG'}
                         </button>
-                        <button onClick={compartir} disabled={!!busy || faltantes.length > 0}
+                        <button onClick={compartir} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
                             className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-300 disabled:opacity-50 text-gray-700 text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors">
                             {busy === 'compartir' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
                             Compartir
