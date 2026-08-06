@@ -1860,6 +1860,155 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
+## Plantillas IA (Generador de Diseños) — v4.720
+
+Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
+de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
+por **aniversario de club** en **1:1 (1080×1080)**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/designSpec.js` | El CRITERIO. **Puro**: sin base, sin red, sin IA, sin DOM |
+| `server/lib/designTemplates.js` | El catálogo de plantillas (datos, no código) |
+| `server/lib/designElements.js` | Biblioteca de elementos decorativos (trazos SVG) |
+| `server/lib/designAI.js` | Redacción del mensaje y «✨ Mejorar con IA» |
+| `server/lib/designBranding.js` | Club → identidad visual y contexto real |
+| `server/lib/ensureDesignSchema.js` | Crea `DesignProject` en runtime |
+| `server/controllers/designStudioController.js` | API |
+| `src/lib/designSpec.ts` | Espejo del criterio en el navegador |
+| `src/lib/designRender.ts` | Composición a canvas y exportación PNG/JPG/PDF |
+| `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
+| `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
+
+Pruebas: `npm run test:design` (101 casos, **sin base, credenciales ni red**) y
+`npm run test:design:render` (17 casos, monta el editor en un navegador; pide
+`npm i --no-save playwright esbuild` y **se salta solo** si no están).
+
+**Reglas durables:**
+
+- **UN SOLO GRAFO DE ESCENA.** La plantilla compila a una lista plana de nodos
+  en coordenadas NORMALIZADAS (0-1 del lienzo) y el editor y el exportador leen
+  la MISMA lista. El Generador de Pendones escribe su maquetación dos veces
+  —`BannerPreview.tsx` en DOM con cqw/cqh y `bannerRender.ts` en canvas— y
+  funciona porque tiene tres elementos fijos; con capas arbitrarias esa
+  duplicación es insostenible: cada tipo de nodo habría que escribirlo dos veces
+  y toda discrepancia se ve como «la vista previa no es lo que descargué». **No
+  agregar un segundo camino de maquetación.**
+- **El texto NO lo reparte el navegador.** Cada nodo se pinta línea por línea
+  con el reparto que devuelve `layoutFor`. Dejar que CSS ajuste el texto sería
+  más corto de escribir y rompería el WYSIWYG: el algoritmo de saltos de línea
+  de CSS no es el del canvas, así que un título de dos líneas en pantalla puede
+  salir de tres en el archivo.
+- **`layoutText` recibe el medidor INYECTADO.** En el navegador es un contexto
+  2D; en las pruebas, un medidor de ancho fijo por carácter. Sin esa inyección
+  el reparto de líneas sólo se podría probar con un navegador, y en la práctica
+  no se probaría.
+- **El canvas usa el modelo de CAJA DE LÍNEA de CSS, no `textBaseline:'top'`.**
+  CSS centra los glifos en la caja con «medio interlineado»; `'top'` los apoya
+  contra el borde. Medido comparando la vista previa con la exportación del
+  MISMO documento: la diferencia era el **4,44 %** de los píxeles, concentrada
+  exactamente en las bandas de texto. Replicando el medio interlineado con
+  `fontBoundingBoxAscent/Descent` bajó a **1,02 %** —el antialias de las letras—
+  y el corrimiento vertical óptimo pasó a 0 px. **El alto de contenido no es
+  `fontSize`**: son las métricas de la fuente.
+- **`verticalOffset` se REDONDEA a entero.** Con `valign: 'middle'` el
+  desplazamiento es fraccionario y el DOM y el canvas no redondean igual: dejaba
+  la exportación 1 px por encima de la vista previa.
+- **El mismo string `d` para el DOM y para el canvas** (`shapePath`). El
+  navegador lo pinta en un `<path>` y el exportador en un `Path2D`. No hay dos
+  dibujos, hay uno.
+- **La escena se pinta a tamaño NOMINAL y el zoom es un `transform: scale()`.**
+  Todo el cálculo interno ocurre en píxeles del formato, que son los mismos que
+  usa el exportador con `scale: 1`. El zoom sólo participa al convertir el
+  puntero.
+- **Una variable sin resolver NO se imprime.** `resolveVariables` la deja vacía
+  y la reporta en `missing`; la pantalla la pide. Un `{{club}}` impreso en una
+  pieza firmada por el Gobernador es peor que un hueco. Misma regla que
+  `journeyEngine.js` con los parámetros de una plantilla de WhatsApp.
+- **`dropIfEmpty` y `requiresVar` no son lo mismo.** El primero descarta un nodo
+  cuya PROPIA variable falta; el segundo descarta un nodo DECORATIVO que depende
+  de otra. La placa blanca que da contraste al logotipo sobre la fotografía no
+  tiene variable propia: sin `requiresVar` se dibujaba igual y salía un
+  rectángulo blanco vacío flotando sobre la foto. Lo destapó la primera prueba
+  de render, no el código.
+- **Las variables se aplican EN VIVO; no se recompila** (`applyVariables`).
+  Recompilar en cada cambio se llevaría por delante todo lo que el usuario haya
+  movido. Por eso el compilador guarda `srcText` (el texto antes de sustituir) y
+  `srcVar` en cada nodo. Se vuelve al servidor sólo al cambiar de plantilla o al
+  pedir otro mensaje: las dos veces el usuario pide una pieza nueva a propósito.
+- **Editar un texto a mano lo DESLIGA de su variable** (`srcText: null`). Sin
+  esa regla, el usuario corrige el título y el siguiente cambio de variable se
+  lo borra sin avisar. Mismo criterio que `putAuto` respetando las traducciones
+  manuales.
+- **`autoFit` no es un lujo.** El nombre de un club va de «Cali» a «Cali San
+  Fernando del Valle»: con tamaño fijo, uno se ve enano y el otro se desborda
+  fuera de la pieza. Si ni con el mínimo entra, se AVISA (`overflow`) en vez de
+  recortar: perder contenido en silencio es peor.
+- **La fecha de fundación NO está en `Club` y no se deduce de `createdAt`**, que
+  es cuándo se creó el SITIO. Un club de 1974 daría «¡Felices 1 años!», firmado
+  por el Gobernador. Vive en `Setting` con la llave `club_foundation_date`,
+  donde ya viven los logos de Rotaract/Interact — **no** como columna de Prisma,
+  por el orden de despliegue que documenta la regla de `logo_intl` (v4.699).
+  Si no está, se pide en la pantalla y se guarda para el año siguiente.
+- **`yearsSince` y `rotaryPeriod` reciben `today` como PARÁMETRO** y viven en
+  `designSpec.js`, no en `designBranding.js`: ese archivo importa la base, así
+  que probar «cuántos años cumple un club de 1977» exigiría Prisma generado y
+  una conexión. Una función que consulta el reloj por dentro no se puede probar.
+- **El modelo ESCRIBE; el código DECIDE si sirve.** `validateMessage` comprueba
+  largo, hashtags, enlaces y marcadores sin resolver, y REINTENTA devolviéndole
+  al modelo la regla concreta que rompió. Pedirle «hacelo más corto» sin decirle
+  cuánto no corrige nada. Misma regla que `templateComposer.js` y `seoAI.js`.
+- **El mensaje IMPRESO no es el copy de la publicación.** Uno va dentro de la
+  pieza y el otro debajo: un texto con hashtags o «link en la bio» dibujado
+  sobre una imagen se lee como un error. Salen de la misma llamada porque el
+  modelo ya tiene el contexto, pero son campos distintos — igual que el guion de
+  la voz y el copy en el Creador de Reels.
+- **La IA no inventa noticias.** Ciudad, distrito y proyectos salen de la base y
+  entran al prompt. **Noticias externas no**: no hay proveedor conectado y un
+  modelo al que se le pide «contame las novedades del club» las inventa. Es la
+  regla 3 de `institutionalVoice.js`, y un aniversario firmado por el Gobernador
+  es la peor pieza para estrenar un dato falso.
+- **No hay ninguna rueda de Rotary en la biblioteca de elementos.** El emblema
+  es marca registrada, con proporciones, colores y zona de resguardo propias, y
+  se reproduce desde el Brand Center. Un engranaje «parecido» es justo lo que el
+  Distrito no puede publicar. Entra como IMAGEN —el logotipo del club—, igual
+  que en el Generador de Pendones. Lo comprueba `test:design`.
+- **La regla #1 del sitio no aplica acá, y conviene saber por qué.** «No
+  postprocesar el output del modelo» prohíbe retocar lo que devuelve un motor
+  generativo. Acá no hay output que retocar: la pieza ES la composición,
+  declarada nodo por nodo por el usuario. Es edición declarada, como el montaje
+  del Creador de Reels. La FOTOGRAFÍA sí viaja intacta: se encuadra y se recorta
+  al recuadro, sin filtros ni corrección de color.
+- **El archivo se compone en el NAVEGADOR, no en el servidor.** Un canvas de
+  servidor son ~40 MB de binarios nativos en una función que ya empaqueta FFmpeg
+  dentro del tope de 250 MB, y —sobre todo— obligaría a escribir el mismo dibujo
+  por segunda vez, que es la duplicación que este módulo existe para evitar.
+- **`Media` es el ARCHIVO; `DesignProject` es la FICHA.** Se sube por
+  `/api/media/upload`, que es el camino que ya registra en la Biblioteca
+  Multimedia. Duplicar la lógica de S3 daría dos caminos que se separan en
+  silencio — el problema que arrastra `sendCampaign` en el CRM.
+- **El espejo `src/lib/designSpec.ts` está duplicado A PROPÓSITO**, igual que
+  `ADMIN_ROLES` y `NATIONAL_LANGS`. Si cambia uno, cambiar el otro: lo comprueba
+  `test:design`, que carga los dos y compara **las salidas de las funciones**,
+  no sólo las constantes. Que `shapePath` y `layoutText` den lo mismo es lo que
+  sostiene el WYSIWYG.
+- **Las 16 categorías se declaran aunque estén vacías.** Una categoría sin
+  plantillas se muestra como «Próximamente»; esconderla haría creer que el
+  sistema es sólo el aniversario. Mismo criterio que los motores con
+  `available:false` del Generador de Publicaciones.
+- **Agregar una plantilla es agregar DATOS.** Una entrada en `TEMPLATES` con su
+  lista de nodos. No se toca el compilador, ni el editor, ni el exportador, ni
+  el modelo de datos.
+- **`DesignProject` vive fuera de Prisma**, como manda la sección de base de
+  datos de este archivo, y queda protegida por `scripts/db-push-guard.mjs`.
+
+**Pendientes conocidos:** los formatos 4:5, 9:16 y 16:9 están **declarados con
+`available:false`** — la arquitectura ya los soporta (los nodos son fracciones),
+falta ajustar las plantillas a cada proporción y probarlas. La exportación a
+**SVG no está**: la pieza lleva fotografías, así que un SVG sería un ráster
+envuelto en XML, que no es lo que alguien espera al pedir SVG. Agrupar capas y
+la selección por marco tampoco: hoy la multiselección es con Shift+clic.
+
 ## Generador de Pendones
 
 Módulo: configurador en el admin (`src/components/admin/content-studio/BannerTemplateManager.tsx`, pestaña "Pendones" de Content Studio) + generador público (`src/pages/GeneradorPendones.tsx`, ruta `/generador-pendones`) + motor de render/PDF (`src/lib/bannerRender.ts`, preview `src/components/BannerPreview.tsx`) + backend (`server/controllers/bannerTemplateController.js`).
@@ -1911,8 +2060,8 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 30 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `EventRegistration`, `EventAttendeeAccount`,
+Las 31 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `DesignProject`, `EventRegistration`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,

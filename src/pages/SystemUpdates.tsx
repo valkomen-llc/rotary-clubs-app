@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.719.1 | 2026-08-05 (Los dos botones de la ficha del evento miden lo mismo)
-// Cache bust: 2026-08-05m
+// UI V4.720.0 | 2026-08-06 (Plantillas IA: generador de diseños institucionales)
+// Cache bust: 2026-08-06a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.720.0',
+        title: 'Plantillas IA: un Canva institucional dentro de la plataforma 🎨',
+        description: 'Nueva pestaña en Content Studio para crear piezas gráficas listas para publicar. La primera plantilla es la felicitación por aniversario de un club, en formato cuadrado 1080×1080 —el que sirve para Instagram, Facebook, LinkedIn, WhatsApp y X—, y viene en dos variantes: con la fotografía del club o la tarjeta clásica del Distrito. El flujo es el del Generador de Pendones, ampliado: se elige la plantilla, se busca el club por nombre, ciudad o distrito, y el sistema trae solo su nombre oficial, su ciudad, su distrito, su logotipo, sus colores y el nombre del Gobernador. La IA escribe el mensaje con esos datos reales y con los proyectos del club, y hay diez botones para ajustarlo sin volver a escribirlo: más emotivo, más formal, más corto, más protocolario, bilingüe. Desde ahí se edita como en Canva: mover, redimensionar, rotar, duplicar, bloquear, ordenar capas, alinear, con guías, área segura, zoom, deshacer y rehacer. Se descarga en PNG, JPG o PDF y se guarda en la Biblioteca Multimedia con un clic. Dos decisiones que se notan: lo que se ve en pantalla ES el archivo que se descarga —hay una prueba automática que compara las dos imágenes píxel a píxel—, y el texto se achica solo si el nombre del club es largo, en vez de salirse de la pieza. La arquitectura admite cientos de plantillas más: las 16 categorías del plan (nuevo presidente, reconocimiento, evento, obituario, día mundial…) ya están declaradas y agregar una es agregar datos, no tocar el editor.',
+        date: new Date().toISOString(),
+        tags: ['content studio', 'plantillas', 'IA', 'diseño', 'aniversario'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Pestaña «Plantillas IA» en Content Studio.' },
+            { type: 'added', text: 'Aniversario de club en 1:1, con fotografía o clásico.' },
+            { type: 'added', text: 'Buscador de clubes que trae logotipo, ciudad, distrito, colores y Gobernador.' },
+            { type: 'added', text: 'Mensaje escrito con IA y diez tonos para ajustarlo.' },
+            { type: 'added', text: 'Editor visual: mover, redimensionar, rotar, capas, guías, zoom, deshacer.' },
+            { type: 'added', text: 'Descarga en PNG, JPG y PDF, y guardado en la Biblioteca Multimedia.' },
+            { type: 'added', text: 'La fecha de fundación del club se guarda para el año que viene.' },
+        ]
+    },
     {
         version: '4.719.1',
         title: 'Los dos botones de inscripción miden lo mismo 📏',
