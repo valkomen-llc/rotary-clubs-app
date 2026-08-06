@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.720.0 cargado — Plantillas IA. Grafo de escena compartido entre editor y exportación; el archivo se compone en el navegador.');
+console.log('[designStudioController] v4.722.3 cargado — Plantillas IA. Grafo de escena compartido entre editor y exportación; el archivo se compone en el navegador.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -158,7 +158,12 @@ export const compose = async (req, res) => {
             ...Object.fromEntries(Object.entries(overrides).filter(([k, v]) => k in VARIABLES && v !== undefined && v !== null && v !== '')),
         };
 
-        const compiled = compileTemplate({ template, variables, branding: branding || {} });
+        // `keepSlots`: lo que sale de acá va al EDITOR y de ahí a publicarse. Un
+        // hueco borrado no tiene variable, así que no genera campo público y
+        // nadie puede llenarlo nunca — es lo que dejó al portal de aniversarios
+        // sin el campo del logotipo cuando el club no tenía escudo cargado. El
+        // hueco vacío no se dibuja igual: eso lo decide `visibleNodes` al pintar.
+        const compiled = compileTemplate({ template, variables, branding: branding || {}, keepSlots: true });
 
         res.json({
             templateId: template.id,
@@ -386,8 +391,10 @@ export const publish = async (req, res) => {
              -- dirección pública ajena con su propio diseño.
              WHERE "DesignPublicTemplate"."clubId" IS NOT DISTINCT FROM $9
              RETURNING *`,
+            // `pub.document`, no `doc`: es el mismo diseño con los valores de
+            // ejemplo del panel vaciados en los campos que el público llena.
             [pub.slug, pub.name, pub.intro, pub.category, pub.format,
-             JSON.stringify(doc), JSON.stringify(pub.fields), JSON.stringify(pub.frozen),
+             JSON.stringify(pub.document), JSON.stringify(pub.fields), JSON.stringify(pub.frozen),
              clubId, projectId, req.user?.id || null,
              JSON.stringify(normalizeComposition(settings.composition))]
         );

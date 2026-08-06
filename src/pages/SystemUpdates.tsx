@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.722.2 | 2026-08-06 (El portal explica cuando no hay campos)
-// Cache bust: 2026-08-06g
+// UI V4.722.3 | 2026-08-06 (El logotipo del club es un campo publico)
+// Cache bust: 2026-08-06h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.722.3',
+        title: 'El portal de aniversarios pide logo, nombre, años y foto del club 🎂',
+        description: 'El enlace público de «Aniversario de clubes» abría sin formulario: no había dónde escribir el nombre del club, ni cuántos años cumple, ni subir su logotipo o su fotografía. Eran dos errores encadenados. El primero: el logotipo estaba clasificado como dato institucional, es decir no editable — y está mal, porque en esa pieza el logotipo es el DEL CLUB QUE CUMPLE AÑOS; la firma del Distrito es la curva azul del pie con el nombre del Gobernador, que sigue fija y sin campo. El segundo, el que dejaba el formulario vacío del todo: al armar el diseño, si el club con el que se estaba trabajando no tenía escudo cargado, el hueco del logotipo se borraba directamente del diseño, y un hueco borrado no genera campo — nadie podía llenarlo nunca. Ahora el hueco sobrevive aunque esté vacío, y la decisión de dibujarlo se toma al pintar: mientras no haya logotipo no se ve ni él ni la placa blanca que existe sólo para darle contraste sobre la foto. El portal público queda con los mismos cuatro datos del Generador de Pendones: logotipo del club, nombre, años que cumple y fotografía. Y el escudo con el que se diseñó ya no viaja dentro de la plantilla publicada: cada club sube el suyo. Quien necesite una pieza del propio Distrito, con el logotipo fijo, lo bloquea al publicar.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'correccion'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El logotipo del club vuelve a ser un campo que cada club completa.' },
+            { type: 'fixed', text: 'El formulario público ya no sale vacío cuando el diseño se armó sin logotipo.' },
+            { type: 'fixed', text: 'La pieza sin logotipo ya no muestra la placa blanca vacía sobre la fotografía.' },
+            { type: 'changed', text: 'El logotipo del panel no se publica: la plantilla sale con el hueco.' },
+        ]
+    },
     {
         version: '4.722.2',
         title: 'El portal público explica cuándo una pieza no tiene campos 💬',

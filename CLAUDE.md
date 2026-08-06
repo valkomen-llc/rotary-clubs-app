@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.720
+## Plantillas IA (Generador de Diseños) — v4.722
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2069,8 +2069,41 @@ completa un formulario y descarga su pieza.
   concepto. **Al agregar una forma de declarar algo, comprobar que exista la
   forma de declararlo desde la pantalla**, no sólo desde los datos de fábrica.
 - **Lo institucional NO es asignable a mano.** `ASSIGNABLE_FIELDS` filtra por
-  `institutional`, así que el selector no ofrece logotipo, distrito, gobernador
-  ni periodo. Es el mismo cierre que `buildPublicFields`, en el otro extremo.
+  `institutional`, así que el selector no ofrece distrito, gobernador ni
+  periodo. Es el mismo cierre que `buildPublicFields`, en el otro extremo.
+- **«Institucional» es la firma del DISTRITO, y el logotipo del club no lo es**
+  (v4.722.3). Estaba marcado así y era un error de clasificación con
+  consecuencia directa: en la pieza de aniversario el logotipo es el del CLUB
+  QUE CUMPLE AÑOS —el mismo dato que el Generador de Pendones le pide a
+  cualquiera—, mientras que la firma del Distrito es la curva azul del pie con
+  el nombre del Gobernador. Marcarlo institucional dejaba a cada club con el
+  escudo de otro y sin forma de cambiarlo. Quien necesite una pieza del propio
+  Distrito lo **bloquea al publicar**: eso es una decisión por publicación, no
+  una regla del catálogo. Al clasificar un campo, preguntar de quién es el dato,
+  no dónde está dibujado.
+- **Un hueco BORRADO no genera campo, así que el editor compila con
+  `keepSlots`** (v4.722.3). Es la otra mitad del mismo defecto y la más cara: el
+  formulario público se deriva de las variables que los nodos usan, y
+  `compileTemplate` borraba el nodo cuyo `dropIfEmpty` no se resolvía. Si el
+  club con el que se diseñaba no tenía escudo cargado, el hueco del logotipo
+  desaparecía del documento, se publicaba sin esa variable y **nadie podía
+  llenarlo nunca**. Borrar está bien para la pieza FINAL; para un documento que
+  se va a publicar, no. El estudio compila con `keepSlots: true` y el hueco
+  sobrevive vacío.
+- **Qué se dibuja lo decide `visibleNodes`, en UN solo sitio.** Con los huecos
+  vivos dentro del documento, la vista previa, la exportación y el portal tienen
+  que aplicar la MISMA regla o lo que se ve deja de ser el archivo — que es toda
+  la promesa del módulo. `slots: true` es el modo editor: un hueco vacío se ve
+  para poder seleccionarlo y llenarlo. El nodo decorativo con `requiresVar` se
+  cae igual en los dos modos: la placa blanca sola no se puede llenar con nada.
+  Está espejado en `src/lib/designSpec.ts` y lo comprueba `test:design`
+  comparando las salidas.
+- **Lo que el público llena NO se publica con el valor del panel**
+  (`stripPublicDefaults`). El escudo con el que el administrador diseñó está en
+  el `src` del nodo, y guardarlo tal cual lo mete dentro de la plantilla
+  publicada: cada club que abra el enlace vería el de otro. Sólo se vacían las
+  claves que el formulario ofrece; una bloqueada la vuelve a llenar
+  `bakeFrozen`.
 - **Publicar sin campos se AVISA, no se bloquea.** Una pieza fija que todos
   descargan igual —una campaña, un aviso— es legítima, y decidirlo es del
   administrador. Lo que sí hace falta es decir dónde se marcan los campos:

@@ -35,9 +35,17 @@ import { VARIABLES, variablesUsedIn, resolveVariables, LIMITS } from './designSp
 //
 // `institutional: true` significa que el valor lo fija la plantilla y el
 // público NO lo ve ni lo cambia. No es una preferencia: el nombre del
-// Gobernador, el distrito y el logotipo son la firma de la pieza, y una
+// Gobernador, el distrito y el periodo son la FIRMA del Distrito, y una
 // felicitación institucional que cualquiera pueda re-firmar no es publicable.
+//
+// El LOGOTIPO no es eso, y hasta v4.722.2 estaba mal clasificado acá. En la
+// pieza de aniversario el logotipo es el **del club que cumple años** —el
+// mismo dato que el Generador de Pendones le pide a cualquiera que entre—, y
+// la firma del Distrito es la curva azul del pie con el nombre del Gobernador.
+// Marcarlo institucional dejaba el portal público sin la mitad de su
+// formulario: cada club veía el escudo de OTRO club, sin forma de cambiarlo.
 export const FIELD_SPECS = {
+    logo: { order: 5, type: 'image', label: 'Logotipo del club', help: 'El escudo de tu club. Si no lo subís, la pieza sale sin él.' },
     club: { order: 10, type: 'text', label: 'Nombre del club', placeholder: 'Rotary Club Bogotá Centro', maxChars: 90, required: true },
     anios: { order: 20, type: 'number', label: 'Años que cumple', placeholder: '49', maxChars: 3 },
     fecha: { order: 30, type: 'text', label: 'Fecha', placeholder: '4 de agosto', maxChars: 40 },
@@ -47,8 +55,9 @@ export const FIELD_SPECS = {
     mensaje: { order: 70, type: 'textarea', label: 'Mensaje', placeholder: 'El texto que va impreso en la pieza', maxChars: LIMITS.message, ai: true },
     imagen: { order: 80, type: 'image', label: 'Fotografía del club', help: 'Se adapta sola al espacio de la plantilla.' },
 
-    // Institucionales: los fija la plantilla publicada.
-    logo: { order: 90, type: 'image', label: 'Logotipo', institutional: true },
+    // Institucionales: los fija la plantilla publicada. Quien quiera congelar
+    // además el logotipo —una pieza del propio Distrito, no de un club— lo
+    // bloquea al publicar; eso es una decisión por publicación, no una regla.
     distrito: { order: 91, type: 'text', label: 'Distrito', institutional: true },
     gobernador: { order: 92, type: 'text', label: 'Gobernador', institutional: true },
     periodo: { order: 93, type: 'text', label: 'Periodo rotario', institutional: true },
@@ -250,6 +259,29 @@ export const applyPublicValues = (document, values = {}, frozen = {}) => {
     return { ...document, nodes, missing: [...missing] };
 };
 
+// ─── Lo que el público llena NO se publica con el valor del panel ──────
+//
+// En el editor, un nodo de imagen atado a `{{logo}}` tiene en `src` el escudo
+// del club del administrador: `applyVariables` se lo puso al pintarlo. Si ese
+// documento se guarda tal cual, el logotipo de ESE club queda dentro de la
+// plantilla publicada y viaja a cualquiera que abra el enlace.
+//
+// Con el logotipo institucional el problema no existía —quedaba congelado a
+// propósito—. Desde que es un campo público hay que vaciarlo: lo que se publica
+// es el hueco, no el ejemplo con el que se diseñó. Sólo se vacían las claves que
+// el formulario ofrece; una bloqueada la vuelve a llenar `bakeFrozen`.
+export const stripPublicDefaults = (document, fields = []) => {
+    const publicKeys = new Set(fields.map(f => f.key));
+    if (!publicKeys.size) return document;
+
+    const nodes = (document?.nodes || []).map(node =>
+        node.type === 'image' && node.srcVar && publicKeys.has(node.srcVar) && node.src
+            ? { ...node, src: null }
+            : node
+    );
+    return { ...document, nodes };
+};
+
 // ─── La dirección pública ──────────────────────────────────────────────
 //
 // El slug es lo que se comparte por WhatsApp. Se normaliza duro —sin tildes,
@@ -301,6 +333,8 @@ export const buildPublication = ({ document, name, slug, category = 'aniversario
         name: String(name || 'Plantilla').slice(0, 120),
         category,
         format: document?.format || 'post_1_1',
+        // El documento que se GUARDA, sin los valores de ejemplo del panel.
+        document: stripPublicDefaults(document, fields),
         fields,
         frozen,
         intro: String(settings.intro || '').slice(0, 400),
@@ -310,5 +344,5 @@ export const buildPublication = ({ document, name, slug, category = 'aniversario
 export default {
     FIELD_SPECS, isInstitutional, variablesOf, buildPublicFields,
     sanitizeValues, isAcceptableImage, bakeFrozen, applyPublicValues,
-    slugify, validateSlug, publicUrl, buildPublication,
+    stripPublicDefaults, slugify, validateSlug, publicUrl, buildPublication,
 };

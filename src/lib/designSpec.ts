@@ -61,6 +61,11 @@ export interface BaseNode {
     locked?: boolean;
     hidden?: boolean;
     role?: string | null;
+    /** Un nodo DECORATIVO que sólo tiene sentido si otra variable tiene valor
+     *  (la placa blanca que da contraste al logotipo). Ver `applyPublicValues`. */
+    requiresVar?: string | null;
+    /** El nodo desaparece si su PROPIA variable viene vacía. */
+    dropIfEmpty?: boolean;
 }
 
 export interface TextNode extends BaseNode {
@@ -289,6 +294,77 @@ export const applyVariables = (nodes: DesignNode[], vars: Record<string, string>
         }
         return n;
     });
+
+// ─── Lo mismo, pero para el PORTAL PÚBLICO ─────────────────────────────
+//
+// `applyVariables` nunca quita un nodo, y eso es correcto en el editor: un
+// hueco vacío es donde el administrador va a poner algo, y verlo es la única
+// forma de seleccionarlo. En el portal público es exactamente al revés — quien
+// entra no puede seleccionar nada, así que un nodo sin valor no es un hueco
+// editable: es un defecto impreso en la pieza que se va a descargar.
+//
+// Concretamente: sin logotipo, la plantilla de aniversario dejaba la PLACA
+// BLANCA que existe sólo para darle contraste, flotando vacía sobre la
+// fotografía. Es el mismo `requiresVar` que ya resolvía eso en el servidor
+// (`compileTemplate` y `applyPublicValues`), traído acá porque la vista previa
+// del portal se arma en el navegador y no pasa por ninguno de los dos.
+//
+// Espejo de `applyPublicValues` en `server/lib/designPublish.js`. Si cambia
+// uno, cambiar el otro.
+export const applyPublicValues = (nodes: DesignNode[], vars: Record<string, string>): DesignNode[] => {
+    const tiene = (key?: string | null) => {
+        if (!key) return false;
+        const v = vars[key];
+        return v !== undefined && v !== null && String(v).trim() !== '';
+    };
+
+    const out: DesignNode[] = [];
+    for (const n of nodes) {
+        if (n.requiresVar && !tiene(n.requiresVar)) continue;
+        if (isText(n) && n.srcText) {
+            const text = resolveVariables(n.srcText, vars);
+            if (n.dropIfEmpty && !text) continue;
+            out.push(text === n.text ? n : { ...n, text });
+            continue;
+        }
+        if (isImage(n) && n.srcVar) {
+            const src = vars[n.srcVar] || null;
+            if (!src && n.dropIfEmpty) continue;
+            out.push(src === n.src ? n : { ...n, src });
+            continue;
+        }
+        out.push(n);
+    }
+    return out;
+};
+
+// ─── Qué nodos se DIBUJAN ──────────────────────────────────────────────
+//
+// El documento conserva los huecos vacíos —hace falta para que el formulario
+// público pueda derivar sus campos—, así que la decisión de pintarlos se toma
+// acá. Y en UN solo sitio: la vista previa del editor, la exportación y el
+// portal público llaman a esta función, que es lo que sostiene que lo que se ve
+// sea el archivo. Espejo de `visibleNodes` en `server/lib/designSpec.js`.
+const nodeHasContent = (n: DesignNode): boolean =>
+    isImage(n) ? !!n.src : isText(n) ? String(n.text || '').trim() !== '' : true;
+
+// `slots: true` es el modo EDITOR: un hueco vacío se sigue viendo, porque es
+// donde el administrador va a poner algo y sin verlo no lo puede seleccionar.
+// Lo que se cae igual es el nodo DECORATIVO que dependía de él —la placa blanca
+// sola no se puede llenar con nada, sólo estorba—.
+export const visibleNodes = (nodes: DesignNode[], { slots = false } = {}): DesignNode[] => {
+    const satisfied = new Map<string, boolean>();
+    for (const n of nodes) {
+        if (!isImage(n) || !n.srcVar) continue;
+        satisfied.set(n.srcVar, (satisfied.get(n.srcVar) || false) || nodeHasContent(n));
+    }
+    return nodes.filter(n => {
+        if (n.hidden) return false;
+        if (n.requiresVar && !satisfied.get(n.requiresVar)) return false;
+        if (n.dropIfEmpty && !nodeHasContent(n) && !slots) return false;
+        return true;
+    });
+};
 
 export const uid = (prefix = 'n'): string => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 

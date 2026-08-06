@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.722.2",
-  "cache_bust": "2026-08-06g (El portal dice cuando no hay campos; enviar al fondo y traer al frente en un clic.)",
+  "version": "4.722.3",
+  "cache_bust": "2026-08-06h (El logotipo del club es un campo publico: el portal pide logo, nombre, anos y foto.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
