@@ -11,7 +11,7 @@ import React, { useState } from 'react';
 import {
     Layers, SlidersHorizontal, Shapes, Eye, EyeOff, Lock, Unlock,
     ChevronUp, ChevronDown, Type, Image as ImageIcon, Square, Trash2,
-    AlignLeft, AlignCenter, AlignRight, Copy,
+    AlignLeft, AlignCenter, AlignRight, Copy, Upload, Images, Loader2,
 } from 'lucide-react';
 import {
     isText, isImage, isShape, isGradient, FONTS, PALETTE,
@@ -30,6 +30,14 @@ interface Props {
     onDuplicate: (id: string) => void;
     onAddElement: (el: ElementItem) => void;
     onAddText: () => void;
+    /** Agregar una imagen como capa nueva, eligiéndola de la Biblioteca. */
+    onAddImage: () => void;
+    /** Lo mismo, subiendo un archivo del disco. Las DOS vías, siempre (v4.700). */
+    onUploadImage: (file: File | undefined) => void;
+    /** Cambiar la imagen de un nodo que ya existe, desde la Biblioteca. */
+    onReplaceImage: (id: string) => void;
+    onUploadReplacement: (id: string, file: File | undefined) => void;
+    uploading: boolean;
 }
 
 const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1';
@@ -52,6 +60,7 @@ const nodeLabel = (n: DesignNode) => n.name || (isText(n) ? (n.text.slice(0, 22)
 
 const DesignInspector: React.FC<Props> = ({
     nodes, selectedIds, elements, onSelect, onPatch, onReorder, onDelete, onDuplicate, onAddElement, onAddText,
+    onAddImage, onUploadImage, onReplaceImage, onUploadReplacement, uploading,
 }) => {
     const [tab, setTab] = useState<'props' | 'layers' | 'elements'>('props');
     const node = selectedIds.length === 1 ? nodes.find(n => n.id === selectedIds[0]) || null : null;
@@ -161,6 +170,20 @@ const DesignInspector: React.FC<Props> = ({
                             const im = node as ImageNode;
                             return (
                                 <>
+                                    {/* Cambiar la imagen de ESTA capa, por las dos vías. */}
+                                    <Row label="Imagen">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <label className="flex items-center justify-center gap-1.5 text-[11px] font-semibold border border-gray-300 hover:border-indigo-400 rounded-md px-2 py-1.5 text-gray-700 cursor-pointer transition-colors">
+                                                {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Subir
+                                                <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                                                    onChange={e => { onUploadReplacement(node.id, e.target.files?.[0]); e.target.value = ''; }} />
+                                            </label>
+                                            <button onClick={() => onReplaceImage(node.id)}
+                                                className="flex items-center justify-center gap-1.5 text-[11px] font-semibold border border-gray-300 hover:border-indigo-400 rounded-md px-2 py-1.5 text-gray-700 transition-colors">
+                                                <Images className="w-3 h-3" /> Biblioteca
+                                            </button>
+                                        </div>
+                                    </Row>
                                     <Row label="Encuadre">
                                         <select className={inp} value={im.fit} onChange={e => patch({ fit: e.target.value as ImageNode['fit'] } as Partial<DesignNode>)}>
                                             <option value="cover">Llenar (recorta)</option>
@@ -213,9 +236,27 @@ const DesignInspector: React.FC<Props> = ({
                 {/* ── Capas ────────────────────────────────────────── */}
                 {tab === 'layers' && (
                     <>
-                        <button onClick={onAddText} className="w-full mb-3 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 transition-colors">
+                        <button onClick={onAddText} className="w-full mb-2 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 transition-colors">
                             + Agregar texto
                         </button>
+                        {/* Una imagen como CAPA propia: se coloca donde se
+                            quiera y se bloquea, que es lo que hace falta para
+                            fijar un sello o una firma dentro de la plantilla.
+                            Las dos vías, como en todas las casillas del panel. */}
+                        <div className="grid grid-cols-2 gap-2 mb-1">
+                            <label className="flex items-center justify-center gap-1.5 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 cursor-pointer transition-colors">
+                                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                {uploading ? 'Subiendo…' : 'Subir imagen'}
+                                <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                                    onChange={e => { onUploadImage(e.target.files?.[0]); e.target.value = ''; }} />
+                            </label>
+                            <button onClick={onAddImage} className="flex items-center justify-center gap-1.5 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 transition-colors">
+                                <Images className="w-3.5 h-3.5" /> Biblioteca
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mb-3">
+                            La imagen entra como capa: colocala y bloqueala con el candado para que no se mueva.
+                        </p>
                         <p className="text-[10px] text-gray-400 mb-2">Arriba en la lista = adelante en la pieza.</p>
                         <div className="space-y-1">
                             {[...nodes].reverse().map(n => (

@@ -14,9 +14,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Search, Sparkles, Loader2, ImagePlus, Building2, LayoutTemplate,
-    Wand2, CalendarClock, Check, AlertTriangle, X,
+    Wand2, CalendarClock, Check, AlertTriangle, X, Upload, Images,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ImageSourceOverlay from '../ImageSourceOverlay';
 import type { Catalog, ClubHit, Branding, DesignCopy, TemplateSummary } from './designApi';
 import { searchClubs, fetchBranding, saveFoundation, improve } from './designApi';
 
@@ -33,7 +34,9 @@ interface Props {
     onMessage: (v: string) => void;
     copy: DesignCopy | null;
     photo: string | null;
-    onPhoto: () => void;
+    onPickPhoto: () => void;
+    onUploadPhoto: (file: File | undefined) => void;
+    uploading: boolean;
     onClearPhoto: () => void;
     generating: boolean;
     onGenerate: () => void;
@@ -54,7 +57,7 @@ const Section: React.FC<{ n: number; title: string; icon: React.ReactNode; child
 
 const DesignSidebar: React.FC<Props> = ({
     catalog, templateId, onTemplate, club, onClub, branding,
-    years, onYears, message, onMessage, copy, photo, onPhoto, onClearPhoto,
+    years, onYears, message, onMessage, copy, photo, onPickPhoto, onUploadPhoto, uploading, onClearPhoto,
     generating, onGenerate, missing,
 }) => {
     const [term, setTerm] = useState('');
@@ -118,8 +121,10 @@ const DesignSidebar: React.FC<Props> = ({
         finally { setImproving(null); }
     };
 
+    // `?.` en cada eslabón y respaldo a lista vacía: una respuesta inesperada
+    // del catálogo tiene que dejar la pantalla vacía, no en blanco.
     const byCategory = catalog?.catalog || [];
-    const current = catalog?.templates.find(t => t.id === templateId) || null;
+    const current = catalog?.templates?.find(t => t.id === templateId) || null;
     const needsPhoto = (current?.requires || []).includes('imagen');
 
     return (
@@ -127,7 +132,7 @@ const DesignSidebar: React.FC<Props> = ({
             {/* ── 1. Plantilla ─────────────────────────────────────── */}
             <Section n={1} title="Plantilla" icon={<LayoutTemplate className="w-4 h-4" />}>
                 {byCategory.map(cat => {
-                    const usable = cat.templates.filter(t => t.available);
+                    const usable = (cat.templates || []).filter(t => t.available);
                     return (
                         <div key={cat.id} className="mb-3">
                             <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">
@@ -247,9 +252,16 @@ const DesignSidebar: React.FC<Props> = ({
             {/* ── Fotografía ───────────────────────────────────────── */}
             <Section n={4} title={needsPhoto ? 'Fotografía del club' : 'Fotografía (opcional)'} icon={<ImagePlus className="w-4 h-4" />}>
                 {photo ? (
-                    <div className="relative rounded-lg overflow-hidden border border-gray-200">
+                    // Con vista previa, las dos vías van en el velo al pasar el
+                    // ratón — el componente compartido de v4.700.
+                    <div className="relative group rounded-lg overflow-hidden border border-gray-200">
                         <img src={photo} alt="" className="w-full h-28 object-cover" />
-                        <button onClick={onClearPhoto} className="absolute top-1.5 right-1.5 bg-white/90 hover:bg-white rounded-full p-1 shadow" title="Quitar">
+                        <ImageSourceOverlay
+                            rounded="rounded-lg"
+                            onUpload={e => onUploadPhoto(e.target.files?.[0])}
+                            onPickFromLibrary={onPickPhoto}
+                        />
+                        <button onClick={onClearPhoto} className="absolute top-1.5 right-1.5 z-10 bg-white/90 hover:bg-white rounded-full p-1 shadow" title="Quitar">
                             <X className="w-3.5 h-3.5 text-gray-700" />
                         </button>
                     </div>
@@ -258,12 +270,26 @@ const DesignSidebar: React.FC<Props> = ({
                         {needsPhoto ? 'Esta plantilla lleva una fotografía.' : 'Esta plantilla no la necesita.'}
                     </div>
                 )}
-                {/* Las dos vías, subir o elegir de la Biblioteca, es la regla del
-                    sitio desde v4.700: sin la segunda, reutilizar una foto ya
-                    cargada obliga a descargarla y volver a subirla. */}
-                <button onClick={onPhoto} className="mt-2 w-full text-sm font-semibold border border-gray-300 hover:border-indigo-400 rounded-lg px-3 py-2 text-gray-700 transition-colors">
-                    {photo ? 'Cambiar imagen' : 'Subir o elegir de la Biblioteca'}
-                </button>
+                {/* Sin vista previa NO sirve el velo: no hay nada sobre lo que
+                    pasar el ratón. Las dos vías van como dos botones, porque la
+                    regla de v4.700 es que las DOS estén siempre — y con una sola
+                    («Biblioteca») poner una imagen obliga a irse hasta allá,
+                    cargarla y volver, que es exactamente el retroceso que la
+                    regla existe para evitar. */}
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                    <label className="flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/50 rounded-lg px-2 py-2 text-gray-700 cursor-pointer transition-colors">
+                        {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        {uploading ? 'Subiendo…' : 'Subir'}
+                        <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                            onChange={e => { onUploadPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                    <button onClick={onPickPhoto} className="flex items-center justify-center gap-1.5 text-xs font-semibold border border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/50 rounded-lg px-2 py-2 text-gray-700 transition-colors">
+                        <Images className="w-3.5 h-3.5" /> Biblioteca
+                    </button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-gray-400">
+                    Lo que subas queda guardado en la Biblioteca Multimedia, así que se puede reutilizar.
+                </p>
             </Section>
         </aside>
     );

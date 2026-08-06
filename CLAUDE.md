@@ -1881,8 +1881,10 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
 
 Pruebas: `npm run test:design` (101 casos, **sin base, credenciales ni red**) y
-`npm run test:design:render` (17 casos, monta el editor en un navegador; pide
-`npm i --no-save playwright esbuild` y **se salta solo** si no están).
+`npm run test:design:render` (29 casos: monta el editor Y el panel completo en
+un navegador, compara la vista previa con la exportación píxel a píxel y
+ejercita el arrastre y la subida de una imagen; pide `npm i --no-save playwright
+esbuild` y **se salta solo** si no están).
 
 **Reglas durables:**
 
@@ -1987,6 +1989,39 @@ Pruebas: `npm run test:design` (101 casos, **sin base, credenciales ni red**) y
   `/api/media/upload`, que es el camino que ya registra en la Biblioteca
   Multimedia. Duplicar la lógica de S3 daría dos caminos que se separan en
   silencio — el problema que arrastra `sendCampaign` en el CRM.
+- **Toda casilla de imagen ofrece las DOS vías, y el módulo se estrenó con una**
+  (v4.720.1). La regla de v4.700 ya lo decía y el código hasta la citaba en un
+  comentario: el botón abría el `MediaPicker` y nada más. Con sólo «Biblioteca»,
+  usar una imagen que no estuviera cargada obligaba a salir del módulo, subirla
+  allá y volver — el retroceso exacto que la regla existe para evitar. **Al
+  agregar una casilla, comprobar que las dos vías estén de verdad**, no que el
+  comentario lo diga. Con vista previa va `ImageSourceOverlay` (velo al pasar el
+  ratón); **sin vista previa no sirve** —no hay nada sobre lo que pasar el
+  ratón— y van dos botones.
+- **Una imagen puede entrar como CAPA, no sólo en el hueco de la plantilla.**
+  Son dos cosas distintas: la fotografía de la plantilla llena un recuadro que
+  la plantilla definió y sigue a la variable `imagen`; una capa la coloca el
+  usuario donde quiere y se BLOQUEA con el candado. Nace con `srcVar: null`,
+  así que ninguna variable la pisa después.
+- **UN solo `MediaPicker` por pantalla**, con `pickerTarget` diciendo a dónde va
+  lo elegido (`'foto'`, `'capa'` o el id de un nodo). Es el `pickerField` que
+  pide la regla de v4.700; uno por casilla los deja separarse.
+- **`?.` en CADA eslabón de la respuesta del catálogo.** `catalog?.templates
+  .find(…)` corta en `catalog` pero revienta si la respuesta llega sin
+  `templates` —una versión anterior de la API, un error devuelto como objeto—,
+  y eso es el panel EN BLANCO, no un aviso. Misma clase de fallo que
+  `ClipboardList` en `AdminLayout.tsx`. Lo destapó la prueba del panel, no el
+  typecheck.
+- **Un `useCallback` que dependa de otro tiene que ir DESPUÉS.** El array de
+  dependencias se evalúa al renderizar, así que referenciar un `const` declarado
+  más abajo da un ReferenceError de zona muerta: pantalla en blanco. Pasó con
+  `uploadImage` y `runCompose`. El typecheck no lo ve.
+- **El arnés del navegador necesita un ORIGEN real.** Sobre `about:blank` un
+  `fetch('/api/…')` no tiene base contra la que resolver y falla antes de salir,
+  así que la prueba pasa sin haber ejercitado nada — y así se escapó el fallo
+  del catálogo en la primera vuelta. Se sirve desde `http://localhost/` con la
+  ruta interceptada. Ojo también con el orden: **Playwright resuelve la última
+  ruta registrada primero**, así que el comodín `**/api/**` va PRIMERO.
 - **El espejo `src/lib/designSpec.ts` está duplicado A PROPÓSITO**, igual que
   `ADMIN_ROLES` y `NATIONAL_LANGS`. Si cambia uno, cambiar el otro: lo comprueba
   `test:design`, que carga los dos y compara **las salidas de las funciones**,
