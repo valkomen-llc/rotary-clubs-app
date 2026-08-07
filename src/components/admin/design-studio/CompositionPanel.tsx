@@ -46,6 +46,10 @@ interface Props {
     onPickBase: () => void;
     onUploadBase: (file: File | undefined) => void;
     uploading: boolean;
+    /** El número de paso, que lo decide el panel que lo ordena. Estaba escrito a
+     *  mano acá y quedó DUPLICADO al agregar la Cabecera en v4.724: dos secciones
+     *  numeradas «5» en la misma columna. Un orden se decide en un solo sitio. */
+    step?: number;
 }
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -53,7 +57,7 @@ const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400
 
 const CompositionPanel: React.FC<Props> = ({
     composition, onChange, photoUrl, format, palette, maxVariants,
-    hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading,
+    hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading, step = 6,
 }) => {
     const [running, setRunning] = useState(false);
     const [variants, setVariants] = useState<VariantResult[]>([]);
@@ -110,7 +114,7 @@ const CompositionPanel: React.FC<Props> = ({
     return (
         <section className="mb-6 border-t border-gray-100 pt-5">
             <div className="flex items-center gap-2 mb-1">
-                <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">5</span>
+                <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">{step}</span>
                 <Sparkles className="w-4 h-4 text-gray-500" />
                 <h3 className="text-sm font-black text-gray-800 flex-1">Composición con IA</h3>
                 <label className="flex items-center gap-1.5 text-[11px] font-bold text-gray-600 cursor-pointer">

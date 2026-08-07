@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.724.0 | 2026-08-06 (Cabecera del logo del club, como en el pendon)
-// Cache bust: 2026-08-06j
+// UI V4.724.1 | 2026-08-07 (Numeracion de los pasos y aviso de volver a publicar)
+// Cache bust: 2026-08-07a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.724.1',
+        title: 'El panel de Plantillas IA dice cuándo hay que volver a publicar 🔁',
+        description: 'Dos correcciones sobre la Cabecera que se estrenó ayer. La primera se veía: al agregar el paso 3 quedaron dos secciones numeradas «5» —la Fotografía y la Composición con IA—, porque el número de la Composición estaba escrito a mano dentro de su propio componente en vez de decidirlo el panel que las ordena. Ahora los pasos van del 1 al 6 sin repetirse, y hay una prueba de navegador que lo comprueba: no lo veía ni el typecheck ni ninguna prueba de criterio, había que mirar la pantalla. La segunda es la que importa para el uso diario: configurar el logotipo en el panel NO cambia los enlaces que ya se compartieron, porque publicar congela el diseño a propósito —un enlace que circula por WhatsApp no puede cambiar porque alguien tocó algo—. Eso no lo decía ninguna pantalla, así que se ajustaba el logo, se abría el enlace, no pasaba nada y no había forma de saber por qué. Ahora el panel lo avisa. Y si el logotipo del diseño está fijo en vez de ser un campo del portal, también lo dice y explica dónde marcarlo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'correccion', 'portal publico'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'Los pasos del panel ya no repiten el número 5.' },
+            { type: 'added', text: 'La Cabecera avisa que hay que volver a publicar para que el cambio llegue al enlace.' },
+            { type: 'added', text: 'Y avisa si el logotipo está fijo en vez de ser un campo del portal.' },
+        ]
+    },
     {
         version: '4.724.0',
         title: 'La Cabecera del logo del club llegó a Plantillas IA 🪪',

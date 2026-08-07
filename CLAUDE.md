@@ -2305,7 +2305,18 @@ traído al panel de Plantillas IA como paso 3
   de aniversarios sin la mitad de su formulario (v4.722.3).
 - **Poner el logotipo de ejemplo no desvincula**: la subida escribe `src` y no
   toca `srcVar`. Misma regla que v4.723 y por el mismo motivo.
-- Pruebas: 15 casos de criterio en `npm run test:design` y 11 de navegador en
+- **El número de paso lo decide el panel que ORDENA, no cada sección.**
+  `CompositionPanel` lo llevaba escrito a mano y al agregar la Cabecera en
+  v4.724 quedaron DOS secciones con el «5». No lo ve el typecheck ni una prueba
+  de criterio: hay que mirar la pantalla, y por eso la comprobación es de
+  navegador (`los pasos del panel no repiten número`).
+- **Configurar el logotipo NO cambia los enlaces ya compartidos, y el panel lo
+  DICE.** Publicar congela el diseño a propósito; sin ese aviso, el
+  administrador ajusta el logo, abre el enlace, no ve ningún cambio y no tiene
+  cómo saber por qué. Y si el logotipo del diseño está fijo en vez de ser campo
+  del portal (`srcVar !== 'logo'`), también se dice: desde el panel las dos
+  situaciones se ven idénticas.
+- Pruebas: 15 casos de criterio en `npm run test:design` y 13 de navegador en
   `npm run test:design:render` sobre el panel — incluida la paridad de
   `frameScaleOf`, `scaledBox` y `resetBox` entre los dos espejos.
 

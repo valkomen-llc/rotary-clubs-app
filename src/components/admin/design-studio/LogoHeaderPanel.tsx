@@ -30,7 +30,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import React from 'react';
-import { Image as ImageIcon, Upload, Images, X, RotateCcw, Plus } from 'lucide-react';
+import { Image as ImageIcon, Upload, Images, X, RotateCcw, Plus, Info } from 'lucide-react';
 import ImageSourceOverlay from '../ImageSourceOverlay';
 import { frameScaleOf, scaledBox, resetBox } from '../../../lib/designFields';
 import type { DesignNode, ImageNode } from '../../../lib/designSpec';
@@ -89,6 +89,11 @@ const LogoHeaderPanel: React.FC<Props> = ({
     }
 
     const scale = frameScaleOf(node);
+    // Que el recuadro exista no significa que el público lo pueda llenar: lo que
+    // lo convierte en campo es su CLAVE (`srcVar`). Un logotipo colocado como
+    // capa suelta se ve igual acá y en el portal no se puede tocar — y esa
+    // diferencia hay que decirla, porque desde el panel no se ve.
+    const esCampoPublico = node.srcVar === 'logo';
     const patchBox = (box: { x: number; y: number; w: number; h: number }) =>
         onPatch(node.id, box as Partial<DesignNode>);
 
@@ -173,6 +178,31 @@ const LogoHeaderPanel: React.FC<Props> = ({
                 público</strong> desde el enlace: lo que manda es una imagen, no un diseño, así que cae exactamente
                 en este recuadro. También podés arrastrarlo en la mesa de trabajo.
             </p>
+
+            {/* El circuito no se cierra solo, y callarlo es el defecto: publicar
+                CONGELA el diseño, así que un enlace ya compartido sigue mostrando
+                lo que se publicó aquella vez. Sin esta línea, el administrador
+                ajusta el logotipo, mira el enlace, no ve ningún cambio y no tiene
+                cómo saber por qué. */}
+            {esCampoPublico ? (
+                <p className="mt-1.5 flex gap-1.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <span>
+                        Para que el cambio llegue al enlace público hay que volver a <strong>Publicar</strong>:
+                        una plantilla publicada queda congelada tal como estaba, así que los enlaces ya
+                        compartidos no cambian solos.
+                    </span>
+                </p>
+            ) : (
+                <p className="mt-1.5 flex gap-1.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <span>
+                        Este logotipo está <strong>fijo</strong>: quien use el enlace público no lo va a poder
+                        cambiar. Para que sí pueda, seleccionalo en la mesa de trabajo y en{' '}
+                        <strong>Propiedades → Campo vinculado</strong> elegí «Logotipo del club».
+                    </span>
+                </p>
+            )}
             <p className="mt-1.5 text-[10px] text-gray-400 leading-relaxed">
                 La firma del Distrito —el Gobernador y el periodo, sobre la curva azul del pie— es otra cosa y
                 no se toca desde el portal.

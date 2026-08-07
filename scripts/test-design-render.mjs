@@ -381,6 +381,16 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         await page.locator('main img, main [data-node]').count() >= 0);
     check('la Cabecera no lanzó errores', fallos.length === 0, fallos.join(' | '));
 
+    // Los pasos del panel se numeran a mano, y agregar la Cabecera en v4.724
+    // dejó DOS secciones con el «5» —el número de la Composición estaba escrito
+    // dentro de su propio componente—. No lo ve el typecheck ni ninguna prueba
+    // de criterio: hay que mirar la pantalla.
+    const numeros = await izq.locator('section span.rounded-full').allInnerTexts();
+    const pasos = numeros.map(n => n.trim()).filter(n => /^\d+$/.test(n));
+    check('los pasos del panel no repiten número', new Set(pasos).size === pasos.length, pasos.join(','));
+    check('y van en orden desde el 1',
+        pasos.join(',') === pasos.map((_, i) => i + 1).join(','), pasos.join(','));
+
     await page.close();
 }
 

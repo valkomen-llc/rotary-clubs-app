@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.724.0",
-  "cache_bust": "2026-08-06j (Cabecera del logo del club en Plantillas IA, como en el pendon.)",
+  "version": "4.724.1",
+  "cache_bust": "2026-08-07a (Numeracion de los pasos del panel y aviso de volver a publicar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
