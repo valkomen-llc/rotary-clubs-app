@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la mesa de trabajo
-// v4.720.0
+// v4.725.0
 //
 // Seleccionar, mover, redimensionar, rotar, alinear y ordenar capas. Es la
 // mitad visible del módulo; la otra es `designRender.ts`, que dibuja LOS MISMOS
@@ -41,6 +41,11 @@ import { displayUrl } from '../../../lib/designRender';
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
+/** Un hueco que todavía no tiene contenido, con su etiqueta. En fracciones del
+ *  lienzo, igual que un nodo — pero NO es un nodo, y ésa es toda la diferencia:
+ *  no se exporta. */
+export interface SlotHint { id: string; x: number; y: number; w: number; h: number; label: string }
+
 interface Props {
     doc: DesignDocument;
     selectedIds?: string[];
@@ -51,6 +56,13 @@ interface Props {
      *  que aparezca un segundo camino de maquetación — la duplicación que este
      *  módulo existe para evitar. */
     interactive?: boolean;
+    /** Recuadros que marcan DÓNDE va a caer un dato que todavía está vacío.
+     *
+     *  No son nodos y por eso no se exportan nunca: el exportador lee
+     *  `doc.nodes` y esto se dibuja aparte, igual que los márgenes y el área
+     *  segura. Es lo que permite que el portal público enseñe el sitio del
+     *  logotipo sin meterlo en el archivo que se descarga. */
+    hints?: SlotHint[];
     onSelect?: (ids: string[]) => void;
     /** Cambio en curso (arrastre): no entra en el historial hasta soltar. */
     onNodesChange?: (nodes: DesignNode[], commit: boolean) => void;
@@ -72,7 +84,7 @@ const cssFill = (fill: Fill): string => {
 };
 
 const DesignCanvas: React.FC<Props> = ({
-    doc, selectedIds = [], zoom, showGuides = true, interactive = true, onSelect, onNodesChange,
+    doc, selectedIds = [], zoom, showGuides = true, interactive = true, hints, onSelect, onNodesChange,
 }) => {
     const fmt = formatOf(doc.format);
     const W = fmt.width, H = fmt.height;
@@ -375,6 +387,40 @@ const DesignCanvas: React.FC<Props> = ({
                         <div style={{ position: 'absolute', left: SAFE_AREA * W, top: SAFE_AREA * H, right: SAFE_AREA * W, bottom: SAFE_AREA * H, border: '1px dashed rgba(236,72,153,0.25)' }} />
                     </div>
                 )}
+                {/* Los huecos vacíos, marcados. Van DENTRO del lienzo para
+                    caer en el sitio exacto, y aun así fuera del archivo: el
+                    exportador dibuja `doc.nodes` y esto no lo es. Sin ellos, el
+                    portal público muestra una pieza en blanco y quien la abre no
+                    tiene forma de saber dónde va a quedar su logotipo. */}
+                {hints && hints.length > 0 && (
+                    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                        {hints.map(h => (
+                            <div key={h.id} data-hint={h.id}
+                                style={{
+                                    position: 'absolute',
+                                    left: h.x * W, top: h.y * H, width: h.w * W, height: h.h * H,
+                                    border: `${Math.max(2, W * 0.002)}px dashed rgba(99,102,241,0.55)`,
+                                    borderRadius: W * 0.008,
+                                    background: 'rgba(99,102,241,0.06)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    textAlign: 'center', padding: W * 0.006,
+                                }}>
+                                <span style={{
+                                    // Proporcional al lienzo, no en píxeles de
+                                    // pantalla: el lienzo se escala con el zoom
+                                    // y un tamaño fijo se vería enorme o
+                                    // ilegible según cuánto se haya alejado.
+                                    fontFamily: fontStack('sans'),
+                                    fontSize: Math.min(W * 0.022, h.h * H * 0.34),
+                                    fontWeight: 700, color: 'rgba(67,56,202,0.85)', lineHeight: 1.15,
+                                }}>
+                                    {h.label}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {dragging && (
                     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                         {guides.v.map((g, i) => <div key={`v${i}`} style={{ position: 'absolute', left: g * W, top: 0, bottom: 0, borderLeft: `${1 / zoom}px solid #ec4899` }} />)}

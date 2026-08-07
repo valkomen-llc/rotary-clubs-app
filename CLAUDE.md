@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.724
+## Plantillas IA (Generador de Diseños) — v4.725
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2260,6 +2260,35 @@ Generador de Pendones.
 - Pruebas: las de `npm run test:design` (criterio, incluido que los dos espejos
   den lo mismo) y cuatro de `npm run test:design:render` sobre la sección de
   Propiedades. **Al tocar `designFields.js`, tocar `designFields.ts`.**
+
+### Dónde va a caer cada dato (v4.725)
+
+El portal público marca con un recuadro punteado los huecos de imagen que
+todavía están vacíos.
+
+- **Un hueco de imagen vacío no deja NADA en la pieza.** El nodo declara
+  `dropIfEmpty`, así que desaparece. En el editor está bien —el administrador lo
+  selecciona y lo llena—, pero en el portal deja un lienzo en blanco y quien
+  abre el enlace no sabe dónde va a quedar su logotipo ni de qué tamaño. Subía
+  a ciegas.
+- **La marca NO es un nodo, y ésa es toda la diferencia.** El exportador dibuja
+  `doc.nodes`; esto se dibuja aparte, como los márgenes y el área segura. Por
+  eso no entra en el archivo. Lo comprueba una prueba de navegador que verifica
+  que el elemento no lleva `data-node`.
+- **Sale del documento PUBLICADO**, no del resuelto: `applyPublicValues` ya
+  quitó el nodo vacío, así que a esa altura no queda nada de dónde sacar la
+  posición.
+- **Si se muestran recuadros, la leyenda lo dice.** La promesa del módulo es que
+  la vista previa ES el archivo; con guías a la vista deja de ser literal, y eso
+  no se puede decir a medias. Con todo lleno vuelve el texto de siempre.
+- **NO se muestra el logotipo con el que diseñó el administrador.** Sería la
+  forma cómoda de enseñar «cómo queda», y es exactamente el defecto de v4.722.3:
+  cada club vería el escudo de otro. La marca dice el sitio y el tamaño, que es
+  lo que hacía falta, sin afirmar nada falso sobre el contenido.
+- **Se marcan TODOS los huecos de imagen vacíos**, no sólo el logotipo: la
+  fotografía tiene el mismo problema y la misma solución. Los de TEXTO no —un
+  texto vacío deja su hueco visible en la composición y marcarlo llenaría la
+  pieza de recuadros.
 
 ### La Cabecera del logotipo (v4.724)
 
