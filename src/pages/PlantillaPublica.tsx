@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.723.0
+// v4.725.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -37,8 +37,8 @@ import {
     Download, Loader2, Sparkles, Upload, Image as ImageIcon, X,
     Share2, AlertTriangle, Check,
 } from 'lucide-react';
-import DesignCanvas from '../components/admin/design-studio/DesignCanvas';
-import { applyPublicValues, formatOf, type DesignDocument } from '../lib/designSpec';
+import DesignCanvas, { type SlotHint } from '../components/admin/design-studio/DesignCanvas';
+import { applyPublicValues, formatOf, isImage, type DesignDocument } from '../lib/designSpec';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -148,6 +148,31 @@ const PlantillaPublica: React.FC = () => {
         // institucional y hueco todo lo demás.
         const llenables = (tpl.fields || []).map(f => f.key);
         return { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values, llenables) };
+    }, [tpl, values]);
+
+    // ── Dónde va a caer cada dato que todavía falta ────────────────
+    //
+    // Un hueco de imagen vacío no deja NADA en la pieza: el nodo declara
+    // `dropIfEmpty`, así que desaparece. En el editor eso está bien —el
+    // administrador lo selecciona y lo llena—, pero acá deja una pieza en
+    // blanco y quien la abre no tiene forma de saber dónde va a quedar su
+    // logotipo ni de qué tamaño.
+    //
+    // Se marcan con un recuadro punteado. Sale del documento PUBLICADO, que
+    // conserva el hueco con su posición y su tamaño exactos, y **no es un
+    // nodo**: no entra en el archivo que se descarga. Es la misma clase de
+    // dibujo que los márgenes y el área segura del editor.
+    const hints = useMemo<SlotHint[]>(() => {
+        if (!tpl) return [];
+        const porClave = new Map((tpl.fields || []).filter(f => f.type === 'image').map(f => [f.key, f]));
+        const out: SlotHint[] = [];
+        for (const n of tpl.document?.nodes || []) {
+            if (!isImage(n) || !n.srcVar) continue;
+            const campo = porClave.get(n.srcVar);
+            if (!campo || values[n.srcVar]?.trim()) continue;
+            out.push({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, label: campo.label });
+        }
+        return out;
     }, [tpl, values]);
 
     const set = useCallback((key: string, v: string) => {
@@ -439,11 +464,17 @@ const PlantillaPublica: React.FC = () => {
                             {/* El MISMO componente del editor, sin herramientas.
                                 Es lo que garantiza que esta vista previa sea la
                                 pieza que se descarga. */}
-                            <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} />
+                            <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} hints={hints} />
                         </div>
+                        {/* La promesa del módulo es que la vista previa ES el
+                            archivo. Con los recuadros a la vista deja de ser
+                            literal, así que se dice — callarlo sería peor que no
+                            mostrarlos. */}
                         <p className="mt-3 text-center text-[11px] text-gray-400 flex items-center justify-center gap-1.5">
                             <ImageIcon className="w-3.5 h-3.5" />
-                            Se actualiza mientras escribís. Es exactamente lo que vas a descargar.
+                            {hints.length > 0
+                                ? 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'
+                                : 'Se actualiza mientras escribís. Es exactamente lo que vas a descargar.'}
                         </p>
                     </div>
                 </div>

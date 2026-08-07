@@ -495,6 +495,59 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('el resto de la pieza sí se dibuja',
         await page.locator('[data-node="saludo"]').count() === 1);
 
+    // ── Dónde va a caer el logotipo (v4.725) ──────────────────────
+    //
+    // Un hueco de imagen vacío no deja NADA en la pieza, así que quien abre el
+    // enlace veía un lienzo en blanco sin saber dónde va a quedar su logotipo.
+    // Se marca con un recuadro punteado — que NO es un nodo y por eso no entra
+    // en el archivo.
+    const marcas = page.locator('[data-hint]');
+    check('el hueco del logotipo se marca en la vista previa', await marcas.count() >= 1, String(await marcas.count()));
+    // Se marcan TODOS los huecos de imagen vacíos, no sólo el logotipo: la
+    // fotografía tiene el mismo problema y la misma solución.
+    const textosMarcas = await marcas.allInnerTexts();
+    check('se marca cada hueco de imagen vacío', textosMarcas.length >= 2, textosMarcas.join(' | '));
+    check('y cada uno dice de qué dato se trata',
+        textosMarcas.some(t => /Logotipo del club/i.test(t)) && textosMarcas.some(t => /Fotograf/i.test(t)),
+        textosMarcas.join(' | '));
+    check('el recuadro del logotipo cae donde la plantilla lo pone', await page.evaluate(() => {
+        const h = [...document.querySelectorAll('[data-hint]')]
+            .find(el => /Logotipo/i.test(el.textContent || ''));
+        if (!h) return false;
+        const r = h.getBoundingClientRect();
+        const stage = h.closest('div[style*="scale"]')?.getBoundingClientRect();
+        // Arriba a la izquierda, y ocupando una franja, no la pieza entera.
+        return !!stage && r.top < stage.top + stage.height * 0.3
+            && r.left < stage.left + stage.width * 0.4
+            && r.width < stage.width * 0.6;
+    }));
+    // La promesa del módulo es que la vista previa ES el archivo. Con recuadros
+    // a la vista deja de ser literal, y callarlo sería peor que no mostrarlos.
+    check('y se dice que los recuadros no se descargan',
+        /no se descargan/i.test(await page.locator('#root').innerText()));
+
+    // Lo que de verdad importa: que NO viaje al archivo. El exportador dibuja
+    // `doc.nodes`, y una marca no es un nodo.
+    check('la marca no es un nodo del documento', await page.evaluate(() => {
+        const h = document.querySelector('[data-hint]');
+        return !!h && !h.hasAttribute('data-node');
+    }));
+
+    // Y la otra mitad: en cuanto hay logotipo, el recuadro deja sitio a la
+    // imagen de verdad. Una marca que se quedara puesta sería peor que ninguna.
+    const pngHint = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.route('**/api/public/design/aniversario/photo', r => r.fulfill({
+        json: { dataUrl: `data:image/png;base64,${pngHint.toString('base64')}`, key: 'logo', width: 104, height: 104, notes: [] },
+    }));
+    const casillas = page.locator('input[type=file]');
+    await casillas.first().setInputFiles({ name: 'escudo.png', mimeType: 'image/png', buffer: pngHint });
+    await page.waitForTimeout(900);
+    const restantes = await page.locator('[data-hint]').allInnerTexts();
+    check('al subir la imagen, su recuadro desaparece',
+        restantes.length < textosMarcas.length, `${textosMarcas.length} → ${restantes.length}`);
+    check('y el nodo de esa imagen sí se dibuja',
+        await page.locator('[data-node="logo"], [data-node="foto"]').count() >= 1);
+
     // La vista previa es local e instantánea.
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
     await page.waitForTimeout(300);

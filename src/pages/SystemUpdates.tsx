@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.724.1 | 2026-08-07 (Numeracion de los pasos y aviso de volver a publicar)
-// Cache bust: 2026-08-07a
+// UI V4.725.0 | 2026-08-07 (El portal marca donde va cada imagen)
+// Cache bust: 2026-08-07b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.725.0',
+        title: 'El enlace público ya muestra dónde va a quedar tu logo 🔲',
+        description: 'Quien abría el enlace de una plantilla veía la pieza casi en blanco: el espacio del logotipo y el de la fotografía no dejan NADA dibujado mientras están vacíos, así que no había forma de saber dónde iba a caer el escudo del club ni de qué tamaño iba a quedar. Se subía a ciegas y recién ahí aparecía. Ahora cada hueco vacío se marca con un recuadro punteado que dice qué dato va ahí —«Logotipo del club», «Fotografía del club»—, en la posición y el tamaño exactos que dejó configurados quien armó la plantilla. Al subir la imagen, el recuadro deja sitio a la imagen de verdad. Un detalle que importa: esos recuadros NO se descargan. Son una guía, igual que los márgenes y el área segura del editor, y el archivo sale limpio — la leyenda debajo de la vista previa lo dice mientras haya recuadros a la vista, porque la promesa de este módulo es que lo que ves es exactamente el archivo y no se puede decir eso a medias. Tampoco se muestra el logo con el que el administrador diseñó: cada club vería el escudo de otro, que es justamente el defecto que se corrigió en la 4.722.3.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'logotipo'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Los huecos de imagen vacíos se marcan en la vista previa del portal, con su etiqueta.' },
+            { type: 'added', text: 'El recuadro desaparece en cuanto se sube la imagen.' },
+            { type: 'changed', text: 'La leyenda aclara que los recuadros no se descargan.' },
+        ]
+    },
     {
         version: '4.724.1',
         title: 'El panel de Plantillas IA dice cuándo hay que volver a publicar 🔁',
