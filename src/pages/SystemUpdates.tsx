@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.725.0 | 2026-08-07 (El portal marca donde va cada imagen)
-// Cache bust: 2026-08-07b
+// UI V4.726.0 | 2026-08-07 (El portal muestra la imagen de ejemplo)
+// Cache bust: 2026-08-07c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.726.0',
+        title: 'El enlace público muestra el logo de ejemplo, para ver cómo queda 👁️',
+        description: 'Ayer el portal empezó a marcar con un recuadro punteado dónde va cada imagen. Faltaba lo otro: ver la imagen con la que se diseñó, para hacerse una idea de cómo va a quedar la pieza antes de subir la propia. Ahora se dibuja dentro del recuadro, atenuada y con el rótulo «ejemplo · subí el tuyo». Hay una separación importante detrás y conviene conocerla, porque es lo que hace que esto sea seguro. La imagen de ejemplo NO se guarda dentro del diseño publicado: el espacio del logotipo sigue vacío. El ejemplo viaja aparte, como un dato del campo, y sólo se usa para dibujar la guía. La consecuencia práctica es la que importa: si alguien descarga la pieza sin subir su logotipo, el archivo sale sin ningún logotipo — nunca con el del club que se usó para diseñar. Ese era exactamente el defecto que se corrigió en la 4.722.3 y no se reintrodujo. La leyenda debajo de la vista previa lo dice con todas las letras mientras haya ejemplos a la vista: «Las imágenes atenuadas son un ejemplo de cómo va a quedar: no son las tuyas y no se descargan». Y un hueco que no tiene ejemplo —una fotografía que nadie cargó al diseñar— no dice «ejemplo», porque sería rotular algo que no está.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'logotipo'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La imagen con la que se diseñó se muestra atenuada dentro del recuadro, como ejemplo.' },
+            { type: 'added', text: 'La leyenda aclara que el ejemplo no es tuyo y no se descarga.' },
+            { type: 'changed', text: 'El ejemplo viaja como dato del campo: el diseño publicado sigue con el espacio vacío.' },
+        ]
+    },
     {
         version: '4.725.0',
         title: 'El enlace público ya muestra dónde va a quedar tu logo 🔲',

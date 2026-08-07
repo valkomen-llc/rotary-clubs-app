@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.725.0
+// v4.726.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -52,6 +52,10 @@ interface PublicField {
      *  receta de adaptación y acá decide qué archivos ofrece el selector.
      *  Puede faltar en una plantilla publicada antes de v4.723. */
     kind?: string; accept?: string | null; defaultValue?: string;
+    /** La imagen con la que se diseñó la plantilla, SÓLO como ilustración. No
+     *  es un valor: se dibuja atenuada dentro de la guía y jamás en el archivo.
+     *  Puede faltar en una plantilla publicada antes de v4.726. */
+    sample?: string | null;
 }
 interface PublicTemplate {
     slug: string; name: string; intro: string; category: string; format: string;
@@ -170,7 +174,7 @@ const PlantillaPublica: React.FC = () => {
             if (!isImage(n) || !n.srcVar) continue;
             const campo = porClave.get(n.srcVar);
             if (!campo || values[n.srcVar]?.trim()) continue;
-            out.push({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, label: campo.label });
+            out.push({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, label: campo.label, sample: campo.sample || null });
         }
         return out;
     }, [tpl, values]);
@@ -472,9 +476,16 @@ const PlantillaPublica: React.FC = () => {
                             mostrarlos. */}
                         <p className="mt-3 text-center text-[11px] text-gray-400 flex items-center justify-center gap-1.5">
                             <ImageIcon className="w-3.5 h-3.5" />
-                            {hints.length > 0
-                                ? 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'
-                                : 'Se actualiza mientras escribís. Es exactamente lo que vas a descargar.'}
+                            {hints.length === 0
+                                ? 'Se actualiza mientras escribís. Es exactamente lo que vas a descargar.'
+                                : hints.some(h => h.sample)
+                                    // Con una imagen de ejemplo a la vista hay
+                                    // que decir DOS cosas, no una: que no es la
+                                    // suya y que no se descarga. Cualquiera de
+                                    // las dos sola deja a alguien creyendo que
+                                    // su pieza ya tiene ese logotipo.
+                                    ? 'Las imágenes atenuadas son un ejemplo de cómo va a quedar: no son las tuyas y no se descargan.'
+                                    : 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'}
                         </p>
                     </div>
                 </div>

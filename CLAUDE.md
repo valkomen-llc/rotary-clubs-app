@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.725
+## Plantillas IA (Generador de Diseños) — v4.726
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2281,10 +2281,22 @@ todavía están vacíos.
 - **Si se muestran recuadros, la leyenda lo dice.** La promesa del módulo es que
   la vista previa ES el archivo; con guías a la vista deja de ser literal, y eso
   no se puede decir a medias. Con todo lleno vuelve el texto de siempre.
-- **NO se muestra el logotipo con el que diseñó el administrador.** Sería la
-  forma cómoda de enseñar «cómo queda», y es exactamente el defecto de v4.722.3:
-  cada club vería el escudo de otro. La marca dice el sitio y el tamaño, que es
-  lo que hacía falta, sin afirmar nada falso sobre el contenido.
+- **El EJEMPLO es del CAMPO, no del NODO** (v4.726, `withSamples`). El
+  administrador diseña con una imagen puesta y quien abre el enlace quiere ver
+  cómo va a quedar: las dos cosas son ciertas y la separación es lo que las hace
+  compatibles. Dejar esa imagen en el `src` del NODO es el defecto de v4.722.3
+  —la pieza se dibuja con ella, se EXPORTA con ella, y un club que descargue sin
+  subir nada se lleva el escudo de otro—; `stripPublicDefaults` la sigue
+  vaciando. Guardarla como `sample` del CAMPO es otra cosa: se dibuja DENTRO del
+  recuadro de la guía, atenuada y rotulada «ejemplo», y no llega al archivo por
+  ninguna vía. **Si algún día hace falta en el documento, la respuesta sigue
+  siendo no.**
+- **Un `src` de origen no aceptado no se publica ni como ejemplo**
+  (`isAcceptableImage`): termina en un `<img>` de una página pública.
+- **Con un ejemplo a la vista hay que decir DOS cosas**, no una: que no es la
+  suya y que no se descarga. Cualquiera de las dos sola deja a alguien creyendo
+  que su pieza ya tiene ese logotipo. Y un hueco SIN ejemplo no dice «ejemplo»
+  —sería rotular algo que no está—.
 - **Se marcan TODOS los huecos de imagen vacíos**, no sólo el logotipo: la
   fotografía tiene el mismo problema y la misma solución. Los de TEXTO no —un
   texto vacío deja su hueco visible en la composición y marcarlo llenaría la

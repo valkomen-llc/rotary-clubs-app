@@ -411,7 +411,13 @@ console.log('\nEl portal público');
     const compiled = compileTemplate({
         template: templateById('aniversario_foto'),
         variables: {},
-        branding: { district: '4281', governor: 'Fabio Enrique Véjar Montañez', period: '2026-2027' },
+        // Con logotipo: es lo que deja al campo su imagen de EJEMPLO, y hace
+        // falta para comprobar que el ejemplo se ve en la guía y aun así el nodo
+        // publicado queda vacío.
+        branding: {
+            district: '4281', governor: 'Fabio Enrique Véjar Montañez', period: '2026-2027',
+            logo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        },
         keepSlots: true,
     });
     const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
@@ -531,6 +537,41 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('la marca no es un nodo del documento', await page.evaluate(() => {
         const h = document.querySelector('[data-hint]');
         return !!h && !h.hasAttribute('data-node');
+    }));
+
+    // ── La imagen de EJEMPLO (v4.726) ─────────────────────────────
+    //
+    // El administrador diseña con un logotipo puesto y quien abre el enlace
+    // quiere ver cómo va a quedar. Se dibuja DENTRO de la guía, atenuado y
+    // rotulado — no como contenido del nodo, que sigue vacío.
+    check('el ejemplo se dibuja dentro de la guía',
+        await page.locator('[data-hint] [data-hint-sample]').count() >= 1);
+    check('y se rotula como ejemplo, para que no se confunda con el propio', await page.evaluate(() => {
+        const h = [...document.querySelectorAll('[data-hint]')]
+            .find(el => el.querySelector('[data-hint-sample]'));
+        return !!h && /ejemplo/i.test(h.textContent || '');
+    }));
+    // Y el hueco SIN ejemplo —la fotografía, que el club no cargó— no dice
+    // «ejemplo»: sería rotular algo que no está.
+    check('un hueco sin ejemplo no lo menciona', await page.evaluate(() => {
+        const h = [...document.querySelectorAll('[data-hint]')]
+            .find(el => !el.querySelector('[data-hint-sample]'));
+        return !!h && !/ejemplo/i.test(h.textContent || '');
+    }));
+    check('va atenuado, no a plena opacidad', await page.evaluate(() => {
+        const img = document.querySelector('[data-hint] [data-hint-sample]');
+        return !!img && parseFloat(getComputedStyle(img).opacity) < 0.7;
+    }));
+    check('la leyenda dice que el ejemplo no es tuyo y no se descarga',
+        /no son las tuyas y no se descargan/i.test(await page.locator('#root').innerText()));
+
+    // Lo que de verdad importa, otra vez: el NODO del logotipo sigue vacío, así
+    // que el archivo no lleva el escudo del administrador.
+    check('el nodo del logotipo sigue sin dibujarse',
+        await page.locator('[data-node="logo"]').count() === 0);
+    check('y el ejemplo no es un nodo', await page.evaluate(() => {
+        const img = document.querySelector('[data-hint-sample]');
+        return !!img && !img.closest('[data-node]');
     }));
 
     // Y la otra mitad: en cuanto hay logotipo, el recuadro deja sitio a la
