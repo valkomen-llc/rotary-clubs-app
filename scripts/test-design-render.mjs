@@ -343,6 +343,44 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la declaración queda guardada en el nodo, no en una lista aparte',
         declarado === null || (!!declarado.kind && declarado.visible === true), JSON.stringify(declarado));
 
+    // ── La Cabecera: el logotipo del club (v4.724) ────────────────
+    //
+    // Es el bloque del Generador de Pendones traído al panel. Va al FINAL del
+    // bloque a propósito: agrega un nodo al documento y antes se comprueban
+    // cosas que buscan «la imagen con srcVar».
+    const izq = page.locator('aside').first();
+    const panelIzq = await izq.innerText();
+    check('el panel ofrece la Cabecera del logotipo', /Cabecera \(logo del club\)/.test(panelIzq), panelIzq.slice(0, 400));
+    // El documento arranca vacío: se OFRECE crear el hueco en vez de esconder la
+    // sección, o nadie se entera de que puede ponerlo.
+    check('sin espacio para el logotipo, lo ofrece crear', /Agregar el logotipo del club/.test(panelIzq));
+
+    await izq.getByText('Agregar el logotipo del club').click();
+    await page.waitForTimeout(400);
+    const conLogo = await izq.innerText();
+    check('agregarlo deja el control de tamaño a la vista', /Tamaño del logo \(100%\)/.test(conLogo), conLogo.slice(0, 500));
+    check('y los dos de posición', /Posición horizontal/.test(conLogo) && /Posición vertical/.test(conLogo));
+    check('y el de volver atrás', /Restablecer posición y tamaño/.test(conLogo));
+    // La promesa concreta del pedido, escrita donde se toma la decisión.
+    check('dice que la posición y el tamaño se aplican al logo del público',
+        /se aplican igual al logo que suba el público/.test(conLogo));
+    check('la Cabecera ofrece las DOS vías de imagen',
+        /Subir/.test(conLogo) && /Biblioteca/.test(conLogo));
+
+    // El control de tamaño tiene que mover el ancho DEL NODO: si guardara una
+    // escala aparte, arrastrar el logotipo en la mesa de trabajo la
+    // contradiría.
+    const rangos = izq.locator('input[type=range]');
+    check('hay tres controles deslizantes en la Cabecera', await rangos.count() >= 3, String(await rangos.count()));
+    await rangos.first().fill('2');
+    await page.waitForTimeout(300);
+    const alDoble = await izq.innerText();
+    check('mover el tamaño repinta la etiqueta con la escala real',
+        /Tamaño del logo \(200%\)/.test(alDoble), alDoble.slice(0, 500));
+    check('el logotipo se dibuja en la mesa de trabajo',
+        await page.locator('main img, main [data-node]').count() >= 0);
+    check('la Cabecera no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
     await page.close();
 }
 

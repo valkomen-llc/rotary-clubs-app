@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.723.0 cargado — Plantillas IA. Campos vinculados: el formulario público se deriva de lo que declara cada nodo.');
+console.log('[designStudioController] v4.724.0 cargado — Plantillas IA. Cabecera del logotipo: el recuadro que edita el panel es el que hereda el logo del público.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que

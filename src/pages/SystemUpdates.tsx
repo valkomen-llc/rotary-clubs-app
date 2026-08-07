@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.723.0 | 2026-08-06 (Campos vinculados: el logotipo del club, primero)
-// Cache bust: 2026-08-06i
+// UI V4.724.0 | 2026-08-06 (Cabecera del logo del club, como en el pendon)
+// Cache bust: 2026-08-06j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.724.0',
+        title: 'La Cabecera del logo del club llegó a Plantillas IA 🪪',
+        description: 'El Generador de Pendones tiene un bloque «Cabecera (logo del club + distrito)» donde se sube el logotipo y se fija su tamaño y su posición, con la promesa de que el logo que suba el público cae exactamente ahí. Ese bloque ahora también está en Plantillas IA, en el panel de configuración, como paso 3. Antes la función existía pero estaba escondida: para colocar el logotipo había que saber que se selecciona en la mesa de trabajo y se abre Propiedades — y quien viene del pendón no tenía por qué saberlo. Ahora está a la vista: la miniatura del logo con «Subir» y «Biblioteca», «Quitar logo», un atajo para usar el del club elegido, y tres controles deslizantes — tamaño, posición horizontal y posición vertical — más un «Restablecer posición y tamaño» que devuelve el logotipo al sitio donde lo dejó la plantilla. Si el diseño todavía no tiene un espacio para el logotipo, el panel lo dice y ofrece crearlo de un clic, ya marcado como campo del portal público. Hay una diferencia con el pendón que conviene conocer: acá el tamaño no se guarda por separado, se lee del propio recuadro. Es lo que permite que arrastrar el logotipo en la mesa de trabajo y moverlo con los deslizantes sean la misma cosa y no se contradigan; el «100 %» siempre significa «como lo dejó la plantilla». Y agrandar el logo lo hace crecer desde su centro, así que no se corre de sitio cada vez que se ajusta el tamaño.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'logotipo', 'pendones', 'editor'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Bloque «Cabecera (logo del club)» en el panel, con las dos vías de imagen.' },
+            { type: 'added', text: 'Tamaño y posición del logotipo con deslizantes, y «Restablecer posición y tamaño».' },
+            { type: 'added', text: 'Atajo para usar el logotipo del club elegido.' },
+            { type: 'added', text: 'Si el diseño no tiene espacio para el logotipo, se ofrece crearlo ya marcado como campo público.' },
+        ]
+    },
     {
         version: '4.723.0',
         title: 'Las plantillas ya declaran qué completa cada club 🔗',

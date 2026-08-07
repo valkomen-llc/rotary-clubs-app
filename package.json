@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.723.0",
-  "cache_bust": "2026-08-06i (Campos vinculados: el logotipo del club es el primero, con su propia adaptacion.)",
+  "version": "4.724.0",
+  "cache_bust": "2026-08-06j (Cabecera del logo del club en Plantillas IA, como en el pendon.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

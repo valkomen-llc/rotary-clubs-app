@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — panel de configuración (izquierda)
-// v4.720.0
+// v4.724.0
 //
 // Los tres pasos del pedido: elegir plantilla, elegir club, escribir el
 // mensaje. Es el mismo reparto del Generador de Pendones —configuración a la
@@ -14,10 +14,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Search, Sparkles, Loader2, ImagePlus, Building2, LayoutTemplate,
-    Wand2, CalendarClock, Check, AlertTriangle, X, Upload, Images,
+    Wand2, CalendarClock, Check, AlertTriangle, X, Upload, Images, ImageIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageSourceOverlay from '../ImageSourceOverlay';
+import LogoHeaderPanel from './LogoHeaderPanel';
 import type { Catalog, ClubHit, Branding, DesignCopy, TemplateSummary } from './designApi';
 import { searchClubs, fetchBranding, saveFoundation, improve } from './designApi';
 
@@ -41,11 +42,17 @@ interface Props {
     generating: boolean;
     onGenerate: () => void;
     missing: string[];
+    /** La Cabecera: el recuadro del logotipo del club dentro del documento. Va
+     *  por props —el nodo y sus manejadores— porque el documento vive en el
+     *  estudio; el panel sólo lo edita. */
+    logo: LogoHeaderProps;
     /** Bloque que se agrega al final del panel (la Composición con IA). Va por
      *  props y no importado acá para que el sidebar no dependa de un módulo que
      *  sólo usa el estudio. */
     extra?: React.ReactNode;
 }
+
+type LogoHeaderProps = React.ComponentProps<typeof LogoHeaderPanel>;
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const Section: React.FC<{ n: number; title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ n, title, icon, children }) => (
@@ -62,7 +69,7 @@ const Section: React.FC<{ n: number; title: string; icon: React.ReactNode; child
 const DesignSidebar: React.FC<Props> = ({
     catalog, templateId, onTemplate, club, onClub, branding,
     years, onYears, message, onMessage, copy, photo, onPickPhoto, onUploadPhoto, uploading, onClearPhoto,
-    generating, onGenerate, missing, extra,
+    generating, onGenerate, missing, logo, extra,
 }) => {
     const [term, setTerm] = useState('');
     const [hits, setHits] = useState<ClubHit[]>([]);
@@ -220,8 +227,18 @@ const DesignSidebar: React.FC<Props> = ({
                 </div>
             </Section>
 
-            {/* ── 3. Mensaje ───────────────────────────────────────── */}
-            <Section n={3} title="Mensaje" icon={<Sparkles className="w-4 h-4" />}>
+            {/* ── 3. Cabecera ──────────────────────────────────────────
+                El bloque del Generador de Pendones. Va DESPUÉS del club porque
+                el logotipo del club elegido es lo que se ofrece de un clic, y
+                ANTES del mensaje porque es configuración de la pieza —se decide
+                una vez y queda fija—, mientras que el mensaje cambia en cada
+                publicación. */}
+            <Section n={3} title="Cabecera (logo del club)" icon={<ImageIcon className="w-4 h-4" />}>
+                <LogoHeaderPanel {...logo} />
+            </Section>
+
+            {/* ── 4. Mensaje ───────────────────────────────────────── */}
+            <Section n={4} title="Mensaje" icon={<Sparkles className="w-4 h-4" />}>
                 <button onClick={onGenerate} disabled={generating || !club}
                     className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold rounded-lg px-4 py-2.5 transition-colors">
                     {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
@@ -254,7 +271,7 @@ const DesignSidebar: React.FC<Props> = ({
             </Section>
 
             {/* ── Fotografía ───────────────────────────────────────── */}
-            <Section n={4} title={needsPhoto ? 'Fotografía del club' : 'Fotografía (opcional)'} icon={<ImagePlus className="w-4 h-4" />}>
+            <Section n={5} title={needsPhoto ? 'Fotografía del club' : 'Fotografía (opcional)'} icon={<ImagePlus className="w-4 h-4" />}>
                 {photo ? (
                     // Con vista previa, las dos vías van en el velo al pasar el
                     // ratón — el componente compartido de v4.700.
