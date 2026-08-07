@@ -863,6 +863,52 @@ check('y sin la lista se comporta como el servidor',
     C.applyPublicValues(docHuerfano.nodes, {}).find(n => n.id === 'lema').text
     === sinLlenables.nodes.find(n => n.id === 'lema').text);
 
+grupo('El EJEMPLO viaja con el campo, no con el nodo');
+
+// El administrador diseña con una imagen puesta y quien abre el enlace quiere
+// ver cómo va a quedar. Las dos cosas son ciertas, y la separación es lo que
+// las hace compatibles: el NODO se publica vacío —si no, la pieza se exporta
+// con el escudo de otro club, el defecto de v4.722.3— y el ejemplo viaja como
+// dato del CAMPO, para dibujarlo en la guía.
+const docEjemplo = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'logo', srcVar: 'logo', src: 'https://x.amazonaws.com/escudo-cali-norte.png', field: { kind: 'logo' } },
+        { type: 'image', id: 'foto', srcVar: 'imagen', src: 'https://x.amazonaws.com/grupo.jpg', field: { kind: 'foto' } },
+        { type: 'text', id: 'saludo', text: 'Al Club X', srcText: 'Al {{club}}' },
+    ],
+});
+const pubEjemplo = P.buildPublication({ document: docEjemplo, name: 'Aniversario', slug: 'aniversario-ej' });
+const campoLogo = pubEjemplo.fields.find(f => f.key === 'logo');
+const nodoLogoPub = pubEjemplo.document.nodes.find(n => n.id === 'logo');
+
+check('el campo lleva la imagen de ejemplo', campoLogo.sample === 'https://x.amazonaws.com/escudo-cali-norte.png');
+// Ésta es la comprobación que importa: el nodo publicado sigue vacío, así que
+// la pieza NO se dibuja ni se exporta con el escudo del administrador.
+check('el NODO publicado sigue vacío', nodoLogoPub.src === null);
+check('cada campo de imagen trae el suyo',
+    pubEjemplo.fields.find(f => f.key === 'imagen')?.sample === 'https://x.amazonaws.com/grupo.jpg');
+check('un campo de texto no lleva ejemplo de imagen',
+    pubEjemplo.fields.find(f => f.key === 'club')?.sample === undefined);
+// Un `src` de origen desconocido no se publica ni como ejemplo: termina en un
+// `<img>` de una página pública.
+const docRaro = S.normalizeDocument({
+    nodes: [{ type: 'image', id: 'logo', srcVar: 'logo', src: 'https://sitio-cualquiera.test/x.png', field: { kind: 'logo' } }],
+});
+check('un origen no aceptado no se publica como ejemplo',
+    P.buildPublication({ document: docRaro, name: 'X', slug: 'x-ej' }).fields.find(f => f.key === 'logo')?.sample === undefined);
+// Y la pieza que se descarga sin subir nada no lleva el ejemplo por ninguna vía.
+const resuelto = P.applyPublicValues(pubEjemplo.document, {}, {}, pubEjemplo.fields.map(f => f.key));
+check('sin subir nada, el logotipo resuelto sigue SIN imagen',
+    resuelto.nodes.find(n => n.id === 'logo')?.src === null,
+    String(resuelto.nodes.find(n => n.id === 'logo')?.src));
+check('y con `dropIfEmpty` desaparece del todo, como en la plantilla real',
+    !P.applyPublicValues(
+        P.buildPublication({
+            document: S.normalizeDocument({ nodes: [{ type: 'image', id: 'logo', srcVar: 'logo', dropIfEmpty: true, src: 'https://x.amazonaws.com/e.png', field: { kind: 'logo' } }] }),
+            name: 'X', slug: 'x-drop',
+        }).document, {}, {}, ['logo'],
+    ).nodes.some(n => n.id === 'logo'));
+
 grupo('Campos vinculados: el hueco de CADA campo');
 
 const fmt1080 = { w: 1080, h: 1080 };

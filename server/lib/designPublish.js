@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — publicación y portal público
-// v4.723.0
+// v4.726.0
 //
 // PURO: sin base, sin red, sin IA, sin DOM. Define qué significa publicar una
 // plantilla, qué formulario le sale al público y qué puede tocar.
@@ -405,10 +405,39 @@ export const buildPublication = ({ document, name, slug, category = 'aniversario
         format: document?.format || 'post_1_1',
         // El documento que se GUARDA, sin los valores de ejemplo del panel.
         document: stripPublicDefaults(document, fields),
-        fields,
+        fields: withSamples(fields, document),
         frozen,
         intro: String(settings.intro || '').slice(0, 400),
     };
+};
+
+// ─── El EJEMPLO es del CAMPO, no del NODO ──────────────────────────────
+//
+// El administrador diseña con una imagen puesta —el escudo de algún club— y
+// quien abre el enlace quiere ver cómo va a quedar la pieza antes de subir la
+// suya. Las dos cosas son ciertas y parecen contradictorias, así que conviene
+// separar bien qué es cada una:
+//
+//   · Dejar esa imagen en `src` del NODO es el defecto de v4.722.3: la pieza se
+//     dibuja con ella, se EXPORTA con ella, y un club que descargue sin subir
+//     nada se lleva el escudo de otro. `stripPublicDefaults` la sigue vaciando y
+//     eso no cambia.
+//   · Guardarla como `sample` del CAMPO es otra cosa: es una ilustración de
+//     dónde y cómo va a caer el archivo. El portal la dibuja DENTRO del recuadro
+//     de la guía —que no es un nodo y no se exporta—, atenuada y rotulada como
+//     ejemplo. En el archivo descargado no está.
+//
+// Por eso el ejemplo viaja acá y no ahí. Si algún día se necesita en el
+// documento, la respuesta sigue siendo no.
+const withSamples = (fields, document) => {
+    const porClave = new Map();
+    for (const node of document?.nodes || []) {
+        if (node?.type !== 'image' || !node.srcVar || porClave.has(node.srcVar)) continue;
+        if (node.src && isAcceptableImage(node.src)) porClave.set(node.srcVar, String(node.src));
+    }
+    return fields.map(f => (f.type === 'image' && porClave.has(f.key)
+        ? { ...f, sample: porClave.get(f.key) }
+        : f));
 };
 
 export default {

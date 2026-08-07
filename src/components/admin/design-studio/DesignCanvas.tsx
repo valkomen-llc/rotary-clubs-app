@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la mesa de trabajo
-// v4.725.0
+// v4.726.0
 //
 // Seleccionar, mover, redimensionar, rotar, alinear y ordenar capas. Es la
 // mitad visible del módulo; la otra es `designRender.ts`, que dibuja LOS MISMOS
@@ -44,7 +44,13 @@ const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 /** Un hueco que todavía no tiene contenido, con su etiqueta. En fracciones del
  *  lienzo, igual que un nodo — pero NO es un nodo, y ésa es toda la diferencia:
  *  no se exporta. */
-export interface SlotHint { id: string; x: number; y: number; w: number; h: number; label: string }
+export interface SlotHint {
+    id: string; x: number; y: number; w: number; h: number; label: string;
+    /** La imagen con la que se diseñó, SÓLO como ilustración: se dibuja dentro
+     *  de la guía, atenuada y rotulada como ejemplo. No es el contenido del
+     *  nodo —ése sigue vacío— y por lo tanto no se exporta. */
+    sample?: string | null;
+}
 
 interface Props {
     doc: DesignDocument;
@@ -404,17 +410,46 @@ const DesignCanvas: React.FC<Props> = ({
                                     background: 'rgba(99,102,241,0.06)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     textAlign: 'center', padding: W * 0.006,
+                                    overflow: 'hidden',
                                 }}>
+                                {/* La imagen con la que se diseñó, como
+                                    ILUSTRACIÓN. Va atenuada y con el rótulo
+                                    encima para que no se confunda con la propia:
+                                    quien mira tiene que entender que ése no es
+                                    su logotipo. Se encuadra con `contain`, que
+                                    es como lo va a encuadrar el nodo. */}
+                                {h.sample && (
+                                    <img src={h.sample} alt="" data-hint-sample=""
+                                        style={{
+                                            position: 'absolute', inset: h.h * H * 0.06,
+                                            width: 'auto', height: 'auto',
+                                            maxWidth: `calc(100% - ${h.h * H * 0.12}px)`,
+                                            maxHeight: `calc(100% - ${h.h * H * 0.12}px)`,
+                                            margin: 'auto',
+                                            objectFit: 'contain', opacity: 0.4,
+                                        }} />
+                                )}
                                 <span style={{
                                     // Proporcional al lienzo, no en píxeles de
                                     // pantalla: el lienzo se escala con el zoom
                                     // y un tamaño fijo se vería enorme o
                                     // ilegible según cuánto se haya alejado.
+                                    position: 'relative',
                                     fontFamily: fontStack('sans'),
-                                    fontSize: Math.min(W * 0.022, h.h * H * 0.34),
-                                    fontWeight: 700, color: 'rgba(67,56,202,0.85)', lineHeight: 1.15,
+                                    fontSize: Math.min(W * 0.022, h.h * H * 0.28),
+                                    fontWeight: 700, color: 'rgba(67,56,202,0.9)', lineHeight: 1.15,
+                                    // Sobre la imagen atenuada el texto necesita
+                                    // su propio respaldo o deja de leerse.
+                                    background: h.sample ? 'rgba(255,255,255,0.82)' : undefined,
+                                    borderRadius: h.sample ? W * 0.004 : undefined,
+                                    padding: h.sample ? `${W * 0.003}px ${W * 0.006}px` : undefined,
                                 }}>
                                     {h.label}
+                                    {h.sample && (
+                                        <span style={{ display: 'block', fontWeight: 600, fontSize: '0.72em', opacity: 0.75 }}>
+                                            ejemplo · subí el tuyo
+                                        </span>
+                                    )}
                                 </span>
                             </div>
                         ))}
