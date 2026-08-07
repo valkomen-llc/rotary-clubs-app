@@ -691,6 +691,7 @@ const DesignStudio: React.FC = () => {
                     }}
                     extra={
                         <CompositionPanel
+                            step={6}
                             composition={composition}
                             onChange={setComposition}
                             photoUrl={photo}
