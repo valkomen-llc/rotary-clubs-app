@@ -920,6 +920,65 @@ check('y el formulario derivado trae el logotipo con sus reglas',
 check('y la fotografía con las suyas',
     camposTpl.find(f => f.key === 'imagen')?.image?.crop === true);
 
+grupo('Cabecera: el recuadro de referencia del logotipo');
+
+// El bloque «Cabecera» del Generador de Pendones, traído al panel. Lo que se
+// prueba es la parte con criterio: que el tamaño tenga UNA sola verdad.
+const nodoLogo2 = S.normalizeNode({
+    type: 'image', id: 'logo', srcVar: 'logo',
+    x: 0.068, y: 0.055, w: 0.28, h: 0.096,
+    field: { kind: 'logo' },
+});
+// El recuadro de la plantilla se guarda al normalizar: es la constante que
+// responde «¿el 100 % de qué?». Sin ella, el control de tamaño tendría que
+// inventarse una referencia en cada montaje.
+check('el recuadro de referencia sale de la propia declaración',
+    nodoLogo2.field.image.frame.w === 0.28 && nodoLogo2.field.image.frame.x === 0.068);
+check('recién declarado, está al 100 %', F.frameScaleOf(nodoLogo2) === 1);
+
+// La escala se DERIVA del ancho actual: no se guarda, justamente para que no
+// pueda contradecir al nodo cuando alguien lo arrastra o lo redimensiona.
+const agrandado = { ...nodoLogo2, ...F.scaledBox(nodoLogo2, 2) };
+check('al doble, el ancho es el doble del recuadro', Math.abs(agrandado.w - 0.56) < 1e-9);
+check('y la escala derivada lo dice', Math.abs(F.frameScaleOf(agrandado) - 2) < 1e-9);
+check('la proporción del recuadro se conserva',
+    Math.abs((agrandado.w / agrandado.h) - (0.28 / 0.096)) < 1e-9);
+// Desde el CENTRO: agrandar un logotipo colocado a ojo no puede moverlo de
+// sitio, o cada ajuste de tamaño obligaría a recolocarlo.
+check('crece desde el centro, no desde la esquina',
+    Math.abs((agrandado.x + agrandado.w / 2) - (nodoLogo2.x + nodoLogo2.w / 2)) < 1e-9
+    && Math.abs((agrandado.y + agrandado.h / 2) - (nodoLogo2.y + nodoLogo2.h / 2)) < 1e-9);
+check('escalar dos veces seguidas es estable',
+    Math.abs(F.frameScaleOf({ ...agrandado, ...F.scaledBox(agrandado, 0.5) }) - 0.5) < 1e-9);
+check('la escala se acota', F.scaledBox(nodoLogo2, 999).w <= 0.28 * 4 + 1e-9);
+
+// Mover NO cambia el tamaño, y por eso la escala no se toca: son dos ejes
+// distintos y confundirlos es lo que produce el «se me movió al agrandarlo».
+const movido = { ...nodoLogo2, x: 0.6, y: 0.4 };
+check('mover no cambia la escala', F.frameScaleOf(movido) === 1);
+
+const vuelto = F.resetBox(agrandado);
+check('restablecer devuelve al recuadro de la plantilla',
+    vuelto.x === 0.068 && vuelto.y === 0.055 && vuelto.w === 0.28 && vuelto.h === 0.096);
+check('un nodo sin recuadro no inventa uno', F.resetBox({ x: 0, y: 0, w: 1, h: 1 }) === null);
+check('y su escala es 1, no un error', F.frameScaleOf({ x: 0, y: 0, w: 1, h: 1 }) === 1);
+
+// El recuadro sobrevive a guardar: `normalizeNode` reconstruye el nodo, así que
+// lo que no se enumere se pierde en silencio.
+const reNormalizado = S.normalizeNode({ ...agrandado });
+check('el recuadro sobrevive a guardar y volver a normalizar',
+    reNormalizado.field.image.frame.w === 0.28,
+    JSON.stringify(reNormalizado.field?.image?.frame));
+check('y la escala guardada se sigue derivando igual',
+    Math.abs(F.frameScaleOf(reNormalizado) - 2) < 1e-9);
+
+// Las plantillas del catálogo lo traen puesto sin escribir nada.
+const logoTpl = S.compileTemplate({
+    template: templateById('aniversario_foto'), variables: {}, branding: {}, keepSlots: true,
+}).nodes.find(n => n.id === 'logo');
+check('la plantilla de aniversario trae su recuadro de referencia',
+    logoTpl.field?.image?.frame?.w === 0.28);
+
 grupo('Campos vinculados: el espejo del navegador dice lo mismo');
 
 // Duplicado a propósito —el servidor decide qué acepta, el navegador qué
@@ -946,6 +1005,18 @@ check('y las reglas de imagen de cada clase',
         JSON.stringify(F.FIELD_KINDS[k].image) === JSON.stringify(CF.FIELD_KINDS[k].image)));
 check('un campo recién marcado nace visible y con las reglas de su clase',
     CF.newField('logo', 'image').visible === true && CF.newField('logo', 'image').image.crop === false);
+const casosFrame = [
+    { x: 0.068, y: 0.055, w: 0.28, h: 0.096, field: { image: { frame: { x: 0.068, y: 0.055, w: 0.28, h: 0.096 } } } },
+    { x: 0.5, y: 0.5, w: 0.1, h: 0.4, field: { image: { frame: { x: 0.2, y: 0.2, w: 0.2, h: 0.2 } } } },
+    { x: 0, y: 0, w: 1, h: 1 },
+];
+check('la escala del recuadro se deriva igual en los dos lados',
+    casosFrame.every(n => F.frameScaleOf(n) === CF.frameScaleOf(n)));
+check('el recuadro escalado también',
+    casosFrame.every(n => [0.5, 1, 2.5, 99].every(sc =>
+        JSON.stringify(F.scaledBox(n, sc)) === JSON.stringify(CF.scaledBox(n, sc)))));
+check('y restablecer devuelve lo mismo',
+    casosFrame.every(n => JSON.stringify(F.resetBox(n)) === JSON.stringify(CF.resetBox(n))));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

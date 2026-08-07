@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el CRITERIO del motor de diseño
-// v4.723.0
+// v4.724.0
 //
 // Este archivo es PURO: sin base, sin red, sin IA, sin DOM. Define qué es una
 // plantilla, qué es un nodo, cómo se resuelven las variables y cómo se reparte
@@ -241,6 +241,15 @@ export const normalizeNode = (raw, index = 0) => {
                 srcText: raw?.srcText || raw?.text,
             }),
             nodeType: type,
+            // El recuadro con el que el elemento nace es el de referencia del
+            // panel de la cabecera: lo que significa «100 %» y a lo que vuelve
+            // «Restablecer». Se toma de la propia declaración, así que una
+            // plantilla del catálogo lo trae puesto sin escribir nada.
+            box: {
+                x: clamp01(raw?.x, NODE_DEFAULTS.x), y: clamp01(raw?.y, NODE_DEFAULTS.y),
+                w: Math.max(0.01, clamp01(raw?.w, NODE_DEFAULTS.w)),
+                h: Math.max(0.005, clamp01(raw?.h, NODE_DEFAULTS.h)),
+            },
         }),
     };
     if (type === 'text') {

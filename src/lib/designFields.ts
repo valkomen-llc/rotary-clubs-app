@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — CAMPOS VINCULADOS · espejo en el navegador
-// v4.723.0
+// v4.724.0
 //
 // Espejo de `server/lib/designFields.js`. Está duplicado a propósito, igual que
 // `designSpec.ts` y que `ADMIN_ROLES`: el servidor decide qué acepta y guarda,
@@ -14,12 +14,19 @@
 // cómo se adapta una imagen— no se copia.
 // ════════════════════════════════════════════════════════════════════
 
+export interface Box { x: number; y: number; w: number; h: number }
+
 export interface ImageRules {
     fit: 'cover' | 'contain';
     trim: boolean;
     transparent: boolean;
     crop: boolean;
     safeArea: number;
+    /** El RECUADRO de referencia: dónde y de qué tamaño dejó el elemento la
+     *  plantilla. No es una segunda verdad sobre el tamaño actual —ése es
+     *  `x/y/w/h` del nodo—: es la constante que responde «¿el 100 % de qué?» y
+     *  la que deja volver atrás. */
+    frame?: Box | null;
 }
 
 export interface FieldKind {
@@ -152,7 +159,44 @@ export const fieldKeyOf = (node: { type?: string; srcVar?: string | null; srcTex
     return null;
 };
 
+// ─── El recuadro de referencia ─────────────────────────────────────────
+//
+// Espejo de las mismas funciones en `server/lib/designFields.js`. Lo usa el
+// panel de la Cabecera: es lo que hace que «Tamaño del logo (100 %)» signifique
+// siempre lo mismo y que «Restablecer» tenga a dónde volver.
+
+interface WithFrame { x: number; y: number; w: number; h: number; field?: { image?: ImageRules | null } | null }
+
+/** A qué escala está el elemento respecto del recuadro de la plantilla. Se
+ *  DERIVA del ancho actual; no se guarda, justamente para que no pueda
+ *  contradecir al nodo. */
+export const frameScaleOf = (node: WithFrame | null): number => {
+    const frame = node?.field?.image?.frame;
+    if (!frame?.w || !node?.w) return 1;
+    return node.w / frame.w;
+};
+
+/** El recuadro que le toca a una escala dada, creciendo desde su CENTRO actual:
+ *  agrandar un logotipo colocado a ojo no puede moverlo de sitio. */
+export const scaledBox = (node: WithFrame, scale: number): Box => {
+    const frame = node?.field?.image?.frame;
+    if (!frame?.w || !frame?.h) return { x: node.x, y: node.y, w: node.w, h: node.h };
+    const s = Math.min(4, Math.max(0.1, Number(scale) || 1));
+    const w = frame.w * s;
+    const h = frame.h * s;
+    const cx = node.x + node.w / 2;
+    const cy = node.y + node.h / 2;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+};
+
+/** Volver al recuadro de la plantilla, posición y tamaño. */
+export const resetBox = (node: WithFrame): Box | null => {
+    const frame = node?.field?.image?.frame;
+    return frame ? { x: frame.x, y: frame.y, w: frame.w, h: frame.h } : null;
+};
+
 export default {
     FIELD_KINDS, KIND_IDS, isImageKind, kindsForNode, defaultKindFor,
     normalizeKey, validateKey, newField, fieldKeyOf, FIELD_LIMITS,
+    frameScaleOf, scaledBox, resetBox,
 };

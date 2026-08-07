@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.723.0
+// v4.724.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -38,7 +38,7 @@ import {
 import {
     formatOf, applyVariables, resolveVariables, duplicateNode, uid, isText, isImage,
     HISTORY_STEPS, PALETTE,
-    type DesignDocument, type DesignNode, type TextNode,
+    type DesignDocument, type DesignNode, type TextNode, type ImageNode,
 } from '../../../lib/designSpec';
 import { newField, type LinkedField } from '../../../lib/designFields';
 import { exportDocument, exportToFile, type ExportFormat } from '../../../lib/designRender';
@@ -357,7 +357,7 @@ const DesignStudio: React.FC = () => {
     // Va DESPUÉS de `runCompose` a propósito: al estar en su array de
     // dependencias, ponerlo antes daría un ReferenceError de zona muerta al
     // renderizar, y eso es una pantalla en blanco, no un aviso.
-    const uploadImage = useCallback(async (file: File | undefined, target: 'foto' | 'capa' | 'base') => {
+    const uploadImage = useCallback(async (file: File | undefined, target: 'foto' | 'capa' | 'base' | 'logo') => {
         if (!file) return;
         if (!file.type.startsWith('image/')) { toast.error('Ese archivo no es una imagen.'); return; }
         setUploading(true);
@@ -365,6 +365,19 @@ const DesignStudio: React.FC = () => {
             const { url } = await uploadToLibrary(file, club?.id || null);
             if (target === 'capa') { addImageNode(url); return; }
             if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
+            if (target === 'logo') {
+                // El nodo se busca acá adentro y no con `logoNode`, que se
+                // declara más abajo: referenciarlo en el array de dependencias
+                // daría un ReferenceError de zona muerta al renderizar, y eso es
+                // una pantalla en blanco, no un aviso (regla del sitio).
+                const n = doc.nodes.find(x => isImage(x) && (x.srcVar === 'logo' || x.role === 'logo'));
+                if (!n) { toast.error('Este diseño no tiene un espacio para el logotipo.'); return; }
+                // NO se toca `srcVar`: poner el logotipo de ejemplo no es
+                // desvincular el campo del portal público.
+                patchNode(n.id, { src: url } as Partial<DesignNode>);
+                toast.success('Logotipo cargado y guardado en la Biblioteca.');
+                return;
+            }
             setPhoto(url);
             const hasPhotoNode = doc.nodes.some(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto'));
             if (doc.nodes.length && !hasPhotoNode) runCompose({ skipAI: true });
@@ -374,7 +387,7 @@ const DesignStudio: React.FC = () => {
         } finally {
             setUploading(false);
         }
-    }, [club, doc.nodes, runCompose, addImageNode]);
+    }, [club, doc.nodes, runCompose, addImageNode, patchNode]);
 
     // Cambiar de plantilla RECOMPONE, y eso descarta lo que se haya movido a
     // mano — es inevitable: el layout es otro. Se conserva lo que sí se puede
@@ -417,6 +430,38 @@ const DesignStudio: React.FC = () => {
     }, [commit, doc]);
 
     const hasBackdrop = useMemo(() => doc.nodes.some(n => n.role === 'backdrop'), [doc.nodes]);
+
+    // ── La Cabecera ────────────────────────────────────────────────
+    //
+    // El nodo del logotipo se busca por su CLAVE (`srcVar === 'logo'`), que es
+    // lo que lo ata al campo del portal público, y sólo después por `role` —el
+    // respaldo para los diseños guardados antes de que la clave viajara ahí—.
+    // Al revés se elegiría un nodo decorativo con el rol puesto y el panel
+    // editaría un recuadro que nadie llena.
+    const logoNode = useMemo(
+        () => (doc.nodes.find(n => isImage(n) && n.srcVar === 'logo')
+            || doc.nodes.find(n => isImage(n) && n.role === 'logo')
+            || null) as ImageNode | null,
+        [doc.nodes]
+    );
+
+    // Crear el hueco en un diseño que no lo tiene. Nace YA marcado como campo
+    // del portal —con su recuadro de referencia—, porque un hueco de logotipo
+    // que no es campo no lo puede llenar nadie: es exactamente el defecto que
+    // dejó al portal de aniversarios sin la mitad de su formulario.
+    const addLogoNode = useCallback(() => {
+        const box = { x: 0.068, y: 0.055, w: 0.28, h: 0.096 };
+        const field = newField('logo', 'image');
+        const node: DesignNode = {
+            id: uid('logo'), type: 'image', name: 'Logotipo del club', role: 'logo',
+            src: branding?.logo || null, srcVar: 'logo', fit: 'contain', radius: 0,
+            dropIfEmpty: true, rotation: 0, opacity: 1, ...box,
+            field: { ...field, image: { ...field.image!, frame: box } },
+        } as DesignNode;
+        commit({ ...doc, nodes: [...doc.nodes, node] });
+        setSelectedIds([node.id]);
+        toast.success('Listo. Colocalo y ajustá su tamaño; quien use el enlace público sube el suyo ahí.');
+    }, [commit, doc, branding]);
 
     // ── Teclado ────────────────────────────────────────────────────
     useEffect(() => {
@@ -632,6 +677,18 @@ const DesignStudio: React.FC = () => {
                     generating={generating}
                     onGenerate={() => runCompose({ skipAI: false })}
                     missing={missing}
+                    logo={{
+                        node: logoNode,
+                        onPatch: patchNode,
+                        // La subida escribe en ESE nodo y NO toca `srcVar`: poner
+                        // el logotipo de ejemplo no es desvincular el campo.
+                        onUpload: f => uploadImage(f, 'logo'),
+                        onPickFromLibrary: () => setPickerTarget('logo'),
+                        onClear: id => patchNode(id, { src: null } as Partial<DesignNode>),
+                        onAdd: addLogoNode,
+                        uploading,
+                        clubLogo: branding?.logo || null,
+                    }}
                     extra={
                         <CompositionPanel
                             composition={composition}
@@ -741,6 +798,11 @@ const DesignStudio: React.FC = () => {
                         if (!url) return;
                         if (target === 'capa') { addImageNode(url); return; }
                         if (target === 'base') { setComposition(c => ({ ...c, baseImageUrl: url })); toast.success('Imagen base cargada.'); return; }
+                        if (target === 'logo') {
+                            if (!logoNode) { toast.error('Este diseño no tiene un espacio para el logotipo.'); return; }
+                            patchNode(logoNode.id, { src: url } as Partial<DesignNode>);
+                            return;
+                        }
                         if (target && target !== 'foto') {
                             // Reemplazar la imagen de un nodo concreto desde
                             // Propiedades: `target` es su id.

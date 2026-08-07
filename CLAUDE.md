@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.723
+## Plantillas IA (Generador de Diseños) — v4.724
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -1881,6 +1881,7 @@ por **aniversario de club** en **1:1 (1080×1080)**.
 | `src/lib/designRender.ts` | Composición a canvas y exportación PNG/JPG/PDF |
 | `src/components/admin/design-studio/DesignCanvas.tsx` | La mesa de trabajo |
 | `src/components/admin/design-studio/DesignStudio.tsx` | Los tres paneles y el estado |
+| `src/components/admin/design-studio/LogoHeaderPanel.tsx` | La Cabecera: el recuadro del logotipo del club |
 
 Pruebas: `npm run test:design` (205 casos, **sin base, credenciales ni red**) y
 `npm run test:design:render` (47 casos: monta el editor, el panel completo Y el
@@ -2259,6 +2260,54 @@ Generador de Pendones.
 - Pruebas: las de `npm run test:design` (criterio, incluido que los dos espejos
   den lo mismo) y cuatro de `npm run test:design:render` sobre la sección de
   Propiedades. **Al tocar `designFields.js`, tocar `designFields.ts`.**
+
+### La Cabecera del logotipo (v4.724)
+
+El bloque «Cabecera (logo del club + distrito)» del Generador de Pendones,
+traído al panel de Plantillas IA como paso 3
+(`LogoHeaderPanel.tsx`).
+
+- **Hacía falta por USO, no por motor.** Desde v4.723 el logotipo ya era un
+  campo vinculado y su recuadro ya se heredaba; lo que no había era dónde
+  verlo. Para colocarlo había que saber que se selecciona en la mesa de trabajo
+  y se abre Propiedades — y quien viene del pendón no tiene por qué saberlo. Al
+  traer una función de otro módulo, traer también **dónde estaba**.
+- **La promesa «se aplica igual al logo que suba el público» ya es cierta por
+  construcción**, y conviene saber por qué: lo que el portal manda es una
+  IMAGEN, no un nodo. El recuadro vive en el documento publicado y no se puede
+  expresar en esa petición. Este panel edita ESE recuadro.
+- **El tamaño tiene UNA sola verdad y por eso se DERIVA** (`frameScaleOf`). El
+  pendón guarda un `logo.scale` aparte porque su recuadro está escrito en el
+  código; acá el recuadro ES el nodo, así que guardar además una escala se
+  contradiría en cuanto alguien arrastra el logotipo en la mesa de trabajo — y
+  arrastrarlo es justamente lo que este módulo permite. Lo que sí se guarda es
+  `field.image.frame`, el recuadro que declaró la plantilla: no es el tamaño
+  actual, es la **constante** que responde «¿el 100 % de qué?» y a la que
+  vuelve «Restablecer». Sin ella, el control tendría que inventarse una
+  referencia en cada montaje y el mismo logotipo se vería al 100 % antes y
+  después de agrandarlo.
+- **El recuadro sale de la propia declaración del nodo**, así que una plantilla
+  del catálogo lo trae puesto sin escribir nada. Lo escribe `normalizeNode`
+  pasándole el `box`; como ese normalizador RECONSTRUYE el nodo, sin esa línea
+  se perdería al guardar.
+- **Agrandar crece desde el CENTRO** (`scaledBox`), no desde la esquina. Con la
+  esquina, cada ajuste de tamaño mueve el logotipo y obliga a recolocarlo.
+- **Mover y redimensionar son ejes distintos**: los deslizantes de posición
+  escriben `x`/`y` y no tocan la escala. Confundirlos produce el «se me movió al
+  agrandarlo».
+- **El nodo se busca por su CLAVE** (`srcVar === 'logo'`) y sólo después por
+  `role` —el respaldo para los diseños guardados antes de que la clave viajara
+  ahí—. Al revés se elegiría un nodo decorativo con el rol puesto y el panel
+  editaría un recuadro que nadie llena.
+- **Un diseño sin hueco de logotipo lo OFRECE crear**, no esconde la sección. Y
+  el hueco nace ya marcado como campo del portal: un hueco de logotipo que no es
+  campo no lo puede llenar nadie — es exactamente el defecto que dejó al portal
+  de aniversarios sin la mitad de su formulario (v4.722.3).
+- **Poner el logotipo de ejemplo no desvincula**: la subida escribe `src` y no
+  toca `srcVar`. Misma regla que v4.723 y por el mismo motivo.
+- Pruebas: 15 casos de criterio en `npm run test:design` y 11 de navegador en
+  `npm run test:design:render` sobre el panel — incluida la paridad de
+  `frameScaleOf`, `scaledBox` y `resetBox` entre los dos espejos.
 
 ### Motor de Composición con IA (v4.722)
 

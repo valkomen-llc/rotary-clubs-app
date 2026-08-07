@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — CAMPOS VINCULADOS
-// v4.723.0
+// v4.724.0
 //
 // PURO: sin base, sin red, sin IA, sin DOM. Define qué es un campo vinculado,
 // cómo se declara, cómo se normaliza y —lo que de verdad decide el resultado—
@@ -158,7 +158,56 @@ export const validateKey = (raw) => {
 // existiera. La declaración AGREGA control, no lo exige.
 export const FIELD_LIMITS = { label: 60, help: 160, placeholder: 60, value: 600 };
 
-export const normalizeField = (raw, { key = null, nodeType = 'text' } = {}) => {
+// El recuadro de referencia, en fracciones del lienzo. Se acota igual que un
+// nodo: lo que se guarda tiene que poder dibujarse.
+const clampFrame = (n, fb) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return fb;
+    return Math.min(1.5, Math.max(-0.5, v));
+};
+export const normalizeFrame = (box) => {
+    if (!box || typeof box !== 'object') return null;
+    return {
+        x: clampFrame(box.x, 0), y: clampFrame(box.y, 0),
+        w: Math.max(0.01, clampFrame(box.w, 0.2)),
+        h: Math.max(0.005, clampFrame(box.h, 0.1)),
+    };
+};
+
+/** A qué escala está el elemento respecto del recuadro que declaró la
+ *  plantilla. 1 = tal como se diseñó. Se DERIVA del ancho actual; no se guarda,
+ *  justamente para que no pueda contradecir al nodo. */
+export const frameScaleOf = (node) => {
+    const frame = node?.field?.image?.frame;
+    if (!frame?.w || !node?.w) return 1;
+    return node.w / frame.w;
+};
+
+/** El recuadro que le toca al elemento a una escala dada, creciendo desde su
+ *  CENTRO actual. Desde el centro y no desde la esquina porque agrandar un
+ *  logotipo colocado a ojo no puede moverlo de sitio: si creciera hacia la
+ *  derecha y hacia abajo, cada ajuste de tamaño obligaría a recolocarlo. */
+export const scaledBox = (node, scale) => {
+    const frame = node?.field?.image?.frame;
+    if (!frame?.w || !frame?.h) return { x: node.x, y: node.y, w: node.w, h: node.h };
+    const s = Math.min(4, Math.max(0.1, Number(scale) || 1));
+    const w = frame.w * s;
+    const h = frame.h * s;
+    const cx = node.x + node.w / 2;
+    const cy = node.y + node.h / 2;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+};
+
+/** Volver al recuadro de la plantilla: posición y tamaño. Es lo que hace
+ *  «Restablecer posiciones» en el Generador de Pendones, y hace falta por el
+ *  mismo motivo — colocar a mano es fácil de arruinar y sin vuelta atrás nadie
+ *  se anima a probar. */
+export const resetBox = (node) => {
+    const frame = node?.field?.image?.frame;
+    return frame ? { x: frame.x, y: frame.y, w: frame.w, h: frame.h } : null;
+};
+
+export const normalizeField = (raw, { key = null, nodeType = 'text', box = null } = {}) => {
     if (!raw || typeof raw !== 'object') return null;
     const kind = KIND_IDS.includes(raw.kind) ? raw.kind : defaultKindFor(key, nodeType);
     const spec = FIELD_KINDS[kind];
@@ -192,6 +241,15 @@ export const normalizeField = (raw, { key = null, nodeType = 'text' } = {}) => {
             // aplica al adaptar la imagen, no al dibujarla, y por eso no hay que
             // tocar los dos renderizadores —el DOM y el canvas— para sostenerlo.
             safeArea: Math.min(0.25, Math.max(0, Number.isFinite(+img.safeArea) ? +img.safeArea : spec.image.safeArea)),
+            // El RECUADRO de referencia: dónde y de qué tamaño dejó el elemento
+            // la plantilla. No es una segunda verdad sobre el tamaño actual —ése
+            // es y sigue siendo `x/y/w/h` del nodo—: es la constante que
+            // responde «¿el 100 % de qué?» y la que deja volver atrás.
+            //
+            // Sin ella, el control de tamaño del panel tendría que inventarse
+            // una referencia en cada montaje y el mismo logotipo se vería al
+            // 100 % antes y después de agrandarlo.
+            frame: normalizeFrame(img.frame || box),
         };
     } else {
         field.maxChars = Math.min(2000, Math.max(1, Number.isFinite(+raw.maxChars) ? +raw.maxChars : spec.maxChars || 90));
@@ -249,5 +307,6 @@ export const isDeclared = (key, declarations) => !!declarations?.get(key);
 export default {
     FIELD_KINDS, KIND_IDS, isImageKind, defaultKindFor,
     normalizeKey, validateKey, normalizeField, imageRulesFor,
+    normalizeFrame, frameScaleOf, scaledBox, resetBox,
     fieldKeyOf, declarationsOf, isDeclared, FIELD_LIMITS,
 };
