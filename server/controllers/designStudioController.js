@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.734.0 cargado — Plantillas IA. La composición respeta la franja donde se imprime el texto.');
+console.log('[designStudioController] v4.735.0 cargado — Plantillas IA. La composición se guarda con el diseño y viaja al enlace público.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -224,7 +224,7 @@ export const saveProject = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
-        const { title, templateId, category, document, variables = {}, branding = {}, copy = {}, subjectClubId = null, imageUrl = null, mediaId = null, thumbUrl = null } = req.body || {};
+        const { title, templateId, category, document, variables = {}, branding = {}, copy = {}, subjectClubId = null, imageUrl = null, mediaId = null, thumbUrl = null, composition = null } = req.body || {};
 
         // Todo lo que llega del navegador pasa por el normalizador. Es la única
         // puerta: un nodo con `w: "mucho"` no puede llegar al renderizador.
@@ -233,8 +233,8 @@ export const saveProject = async (req, res) => {
         const { rows } = await db.query(
             `INSERT INTO "DesignProject"
                 (title, "clubId", "subjectClubId", "userId", "userEmail", "templateId", category, format,
-                 document, variables, branding, copy, "imageUrl", "mediaId", "thumbUrl", status, "updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$16,$15,NOW())
+                 document, variables, branding, copy, "imageUrl", "mediaId", "thumbUrl", composition, status, "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$16,$17,$15,NOW())
              RETURNING *`,
             [
                 String(title || 'Diseño sin título').slice(0, 160), clubId, subjectClubId || null,
@@ -242,6 +242,7 @@ export const saveProject = async (req, res) => {
                 String(templateId || 'aniversario_foto'), String(category || 'aniversario'), doc.format,
                 JSON.stringify(doc), JSON.stringify(variables), JSON.stringify(branding), JSON.stringify(copy),
                 imageUrl, mediaId, imageUrl ? 'exported' : 'draft', thumbUrl,
+                JSON.stringify(normalizeComposition(composition)),
             ]
         );
         res.status(201).json(rowToProject(rows[0]));
@@ -253,7 +254,7 @@ export const updateProject = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
-        const { title, document, variables, copy, imageUrl, mediaId, thumbUrl } = req.body || {};
+        const { title, document, variables, copy, imageUrl, mediaId, thumbUrl, composition } = req.body || {};
         const doc = document ? normalizeDocument(document) : null;
 
         // El aislamiento va en el WHERE, no en una comprobación posterior:
@@ -270,6 +271,10 @@ export const updateProject = async (req, res) => {
                 -- forma de imagen, y vive en la ficha: no es un archivo de la
                 -- Biblioteca Multimedia. Ver la cabecera de save en el estudio.
                 "thumbUrl" = COALESCE($9, "thumbUrl"),
+                -- La Composición con IA de este diseño. Se guarda acá y desde acá
+                -- viaja al enlace público: sin esto se encendía, se guardaba y
+                -- el sitio público seguía sin componer nada.
+                composition = COALESCE($10::jsonb, composition),
                 status = CASE WHEN $7 IS NOT NULL THEN 'exported' ELSE status END,
                 "updatedAt" = NOW()
               WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2
@@ -281,6 +286,7 @@ export const updateProject = async (req, res) => {
                 variables ? JSON.stringify(variables) : null,
                 copy ? JSON.stringify(copy) : null,
                 imageUrl || null, mediaId || null, thumbUrl || null,
+                composition ? JSON.stringify(normalizeComposition(composition)) : null,
             ]
         );
         if (!rows[0]) return res.status(404).json({ error: 'Diseño no encontrado' });
@@ -289,7 +295,7 @@ export const updateProject = async (req, res) => {
         // acaba de guardar. `publication` viaja en la respuesta para que la
         // pantalla pueda DECIRLO: un enlace que cambia en silencio es tan
         // confuso como uno que no cambia.
-        const { row: pub, note } = await refreshPublication(rows[0].id, rows[0].document, clubId, rows[0].title);
+        const { row: pub, note } = await refreshPublication(rows[0].id, rows[0].document, clubId, rows[0].title, rows[0].composition);
         res.json({
             ...rowToProject(rows[0]),
             publication: pub ? { slug: pub.slug, url: publicUrl(pub.slug, originOf(req)), published: pub.published } : null,
@@ -397,7 +403,7 @@ const publicationFor = async (projectId, clubId, title) => {
     return { row: adoptada[0] || null, note: null };
 };
 
-const refreshPublication = async (projectId, doc, clubId, title) => {
+const refreshPublication = async (projectId, doc, clubId, title, composition = null) => {
     if (!projectId || !doc?.nodes?.length) return { row: null, note: null };
     const { row, note } = await publicationFor(projectId, clubId, title);
     if (!row) return { row: null, note };
@@ -425,7 +431,13 @@ const refreshPublication = async (projectId, doc, clubId, title) => {
     const { rows: upd } = await db.query(
         `UPDATE "DesignPublicTemplate" SET
             document = $2::jsonb, fields = $3::jsonb, frozen = $4::jsonb,
-            intro = $6, settings = $7::jsonb, format = $5, "updatedAt" = NOW()
+            intro = $6, settings = $7::jsonb, format = $5,
+            -- La Composición con IA también sigue al diseño. Es la columna que
+            -- lee el portal para saber si compone: sin actualizarla acá, el
+            -- administrador la encendía, guardaba, y el enlace público seguía
+            -- entregando la pieza sin componer, sin nada que lo explicara.
+            composition = COALESCE($8::jsonb, composition),
+            "updatedAt" = NOW()
           WHERE id = $1
           RETURNING *`,
         [row.id, JSON.stringify(pub.document), JSON.stringify(pub.fields),
@@ -433,7 +445,8 @@ const refreshPublication = async (projectId, doc, clubId, title) => {
          // Los ajustes deducidos se GUARDAN: así la fila deja de ser una
          // publicación heredada y el siguiente guardado no tiene que deducir
          // nada. La deducción se hace una vez, no en cada guardado.
-         JSON.stringify(settingsForRefresh(row))]
+         JSON.stringify(settingsForRefresh(row)),
+         composition ? JSON.stringify(normalizeComposition(composition)) : null]
     );
     return { row: upd[0] || null, note: null };
 };

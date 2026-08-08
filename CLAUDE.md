@@ -2579,6 +2579,21 @@ foto en un recuadro.
   verifica algo que no se verifica.
 - **Viene APAGADA.** Encenderla gasta créditos por pieza y manda la fotografía a
   un proveedor externo: es una decisión del operador, no un valor por defecto.
+- **La configuración se GUARDA con el diseño y viaja al enlace** (v4.735,
+  columna `composition` en `DesignProject`). Hasta v4.734 el navegador la
+  mandaba al guardar y el servidor la **descartaba** —no había dónde ponerla—,
+  con dos consecuencias mudas: al reabrir el diseño la composición volvía
+  apagada, y el portal público nunca se enteraba de que esa plantilla componía,
+  así que entregaba la fotografía encajada en su recuadro. Se reportó como «lo
+  enciendo, guardo y veo todo igual». Al agregar un ajuste al panel, comprobar
+  que exista la columna que lo guarda: el `req.body` acepta cualquier campo y
+  descartarlo no da error.
+- **`refreshPublication` actualiza también `composition`.** Es la columna que
+  lee el portal para decidir si compone; sin ella el enlace se refresca con el
+  documento nuevo y la composición vieja.
+- **Que la pantalla MANDE el ajuste se comprueba en el navegador.** Desde el
+  servidor no se ve qué manda el panel, y una columna nueva sin nadie que la
+  llene se ve igual que la función entera sin hacer.
 - **En el portal público, componer obliga a GUARDAR la foto anónima.** KIE
   necesita una URL que pueda descargar, así que la fotografía deja de ser
   efímera y se sube a `public-tmp/` —lo contrario de lo que hace `/photo`—. No

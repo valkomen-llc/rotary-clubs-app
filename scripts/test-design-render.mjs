@@ -552,6 +552,18 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('guardar no declara un archivo de la Biblioteca',
         !cuerpoGuardado?.imageUrl && !cuerpoGuardado?.mediaId);
 
+    // La Composición con IA se guarda CON el diseño. Hasta v4.734 el navegador
+    // la mandaba y el servidor la descartaba —no había columna—, así que se
+    // encendía, se guardaba, y tanto el editor al reabrir como el enlace
+    // público seguían sin ella. Se comprueba acá porque es lo que sale por el
+    // cable: desde el servidor no se ve qué manda la pantalla.
+    check('guardar manda la configuración de composición',
+        !!cuerpoGuardado?.composition && cuerpoGuardado.composition.enabled === true,
+        JSON.stringify(cuerpoGuardado?.composition));
+    check('y con ella la imagen base elegida',
+        typeof cuerpoGuardado?.composition?.baseImageUrl === 'string'
+        && cuerpoGuardado.composition.baseImageUrl.length > 0);
+
     // Pero la vía explícita sigue existiendo: quitarla dejaría al
     // administrador sin forma de mandar la pieza a la Biblioteca.
     await page.getByRole('button', { name: /Descargar/ }).first().click();
