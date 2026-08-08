@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.727
+## Plantillas IA (Generador de Diseños) — v4.728
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2039,6 +2039,41 @@ a píxel y ejercita el arrastre, la subida y el formulario público; pide `npm i
   el modelo de datos.
 - **`DesignProject` vive fuera de Prisma**, como manda la sección de base de
   datos de este archivo, y queda protegida por `scripts/db-push-guard.mjs`.
+
+### Escribir el texto (v4.728)
+
+- **El doble clic sobre un texto abre un editor EN EL LIENZO.** Faltaba lo más
+  básico de un editor: el texto sólo se cambiaba desde la casilla del panel
+  derecho, y quien hace el gesto natural —doble clic sobre la pieza— no
+  encontraba nada.
+- **Mientras se escribe, el reparto de líneas lo hace el NAVEGADOR.** Es la
+  única excepción a la regla de `layoutFor`, y es acotada a propósito: eso es un
+  campo de entrada, no el dibujo. Al confirmar desaparece y el nodo vuelve a
+  pintarse con el reparto propio, que es el que sostiene el WYSIWYG. **No
+  convertirlo en el camino de render.**
+- **El borrador vive en el componente, no en el documento.** Teclear no puede
+  llenar el historial de un paso por letra — misma razón por la que el arrastre
+  sólo confirma al soltar.
+- **Escribir en el lienzo pasa por `patchNode`**, igual que escribir en el
+  panel: es el mismo gesto y tiene que DESLIGAR de la variable igual. Por eso
+  hay un `onEditText` propio y no se usa `onNodesChange`, que no aplica esa
+  regla.
+- **Agregar un texto o un elemento lleva a Propiedades.** Quedarse en la lista de
+  capas dejaba un «Escribí acá» seleccionado y ninguna herramienta a la vista —
+  que es exactamente como se reportó el defecto.
+- **Sólo tipografías del SISTEMA** (once). Una fuente web habría que cargarla
+  antes de exportar, y el exportador dibuja en un canvas del navegador: si no
+  llegó, el archivo sale con otra letra y la vista previa deja de ser el
+  archivo. Antes que una tipografía más, que lo que se ve sea lo que se baja.
+- **Los colores institucionales van como muestras, no sólo en el selector.**
+  Acertar el azul de Rotary con el selector del sistema es cuestión de suerte y
+  una pieza del Distrito con un azul aproximado se nota.
+- **No se agregaron subrayado ni sombra de texto**, que serían lo siguiente:
+  obligan a escribir el mismo efecto en los DOS renderizadores —DOM y canvas— y
+  cualquier diferencia se ve como «la vista previa no es lo que descargué», que
+  es la avería que este módulo está construido para no tener. Si se agregan, la
+  prueba de paridad de píxeles de `test:design:render` es la que tiene que
+  decidir.
 
 ### El portal público (v4.721)
 

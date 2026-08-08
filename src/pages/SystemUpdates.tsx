@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.727.0 | 2026-08-08 (El ejemplo se ve limpio, sin texto encima)
-// Cache bust: 2026-08-08a
+// UI V4.728.0 | 2026-08-08 (Doble clic para escribir; 11 tipografias)
+// Cache bust: 2026-08-08b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.728.0',
+        title: 'Ya se escribe directo sobre la pieza, con doble clic ✍️',
+        description: 'Faltaba lo más básico de un editor: hacer doble clic sobre un texto y escribir ahí mismo. No existía — el texto sólo se podía cambiar desde una casilla del panel derecho, y para peor, al agregar un texto nuevo la pestaña se quedaba en «Capas», así que quedaba un «Escribí acá» seleccionado en la pieza y ninguna herramienta a la vista. Ahora doble clic sobre cualquier texto abre un editor encima, con su misma tipografía y tamaño, donde se escribe y se pega normalmente; Enter hace salto de línea y Escape confirma. Y agregar un texto o un elemento lleva directo a Propiedades, que es donde están sus controles. Se ampliaron además las herramientas: las tipografías pasaron de tres a once —Arial, la del sistema, Verdana, Tahoma, Trebuchet, Impact para titulares, Georgia, Times, Palatino, Garamond y monoespaciada— y se agregaron los colores institucionales a un clic: el azul y el dorado oficiales de Rotary, más los tonos de apoyo del Distrito. Acertar el azul de Rotary con el selector de color del sistema era cuestión de suerte, y una pieza con un azul aproximado se nota. El selector libre sigue estando para todo lo demás, junto con grosor, tamaño, interlineado, espaciado, alineación, mayúsculas, cursiva, opacidad y rotación. Una aclaración sobre por qué no hay más tipografías: sólo se ofrecen las del sistema. Una fuente de internet habría que descargarla antes de exportar, y si no llegó a tiempo el archivo sale con otra letra distinta de la que se vio en pantalla — y la promesa de este módulo es que lo que ves es exactamente lo que se descarga.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'editor', 'tipografia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Doble clic sobre un texto para escribir y pegar directamente en la pieza.' },
+            { type: 'added', text: 'Once tipografías en vez de tres.' },
+            { type: 'added', text: 'Colores institucionales de Rotary y del Distrito, a un clic.' },
+            { type: 'fixed', text: 'Agregar un texto o un elemento abre Propiedades, con sus herramientas a la vista.' },
+        ]
+    },
     {
         version: '4.727.0',
         title: 'El logo de ejemplo se ve limpio, como en el generador de pendones 🧼',

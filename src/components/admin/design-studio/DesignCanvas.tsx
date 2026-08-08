@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la mesa de trabajo
-// v4.727.0
+// v4.728.0
 //
 // Seleccionar, mover, redimensionar, rotar, alinear y ordenar capas. Es la
 // mitad visible del módulo; la otra es `designRender.ts`, que dibuja LOS MISMOS
@@ -70,6 +70,14 @@ interface Props {
      *  logotipo sin meterlo en el archivo que se descarga. */
     hints?: SlotHint[];
     onSelect?: (ids: string[]) => void;
+    /** Confirmar el texto escrito EN EL LIENZO (doble clic sobre un texto).
+     *
+     *  Va por su propio manejador y no por `onNodesChange` porque escribir a
+     *  mano tiene una consecuencia que el arrastre no tiene: DESLIGA el nodo de
+     *  su variable. Esa regla vive en `patchNode`, en el estudio, y editar acá
+     *  tiene que pasar por ella o el editor del lienzo y el del panel harían
+     *  cosas distintas con el mismo gesto. */
+    onEditText?: (id: string, text: string) => void;
     /** Cambio en curso (arrastre): no entra en el historial hasta soltar. */
     onNodesChange?: (nodes: DesignNode[], commit: boolean) => void;
 }
@@ -90,7 +98,7 @@ const cssFill = (fill: Fill): string => {
 };
 
 const DesignCanvas: React.FC<Props> = ({
-    doc, selectedIds = [], zoom, showGuides = true, interactive = true, hints, onSelect, onNodesChange,
+    doc, selectedIds = [], zoom, showGuides = true, interactive = true, hints, onSelect, onNodesChange, onEditText,
 }) => {
     const fmt = formatOf(doc.format);
     const W = fmt.width, H = fmt.height;
@@ -99,6 +107,29 @@ const DesignCanvas: React.FC<Props> = ({
     const drag = useRef<DragState | null>(null);
     const [dragging, setDragging] = useState(false);
     const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+    // Edición EN EL LIENZO: qué nodo se está escribiendo y qué lleva escrito.
+    // El borrador vive acá y no en el documento para que teclear no llene el
+    // historial de un paso por letra —la misma razón por la que el arrastre
+    // sólo confirma al soltar—.
+    const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+    const editRef = useRef<HTMLTextAreaElement>(null);
+
+    // Al entrar en edición, el foco y todo el texto seleccionado: lo primero que
+    // hace cualquiera con un «Escribí acá» es reemplazarlo entero.
+    useEffect(() => {
+        if (!editing) return;
+        const el = editRef.current;
+        if (!el) return;
+        el.focus();
+        el.select();
+    }, [editing?.id]);
+
+    const commitEdit = useCallback(() => {
+        setEditing(cur => {
+            if (cur) onEditText?.(cur.id, cur.text);
+            return null;
+        });
+    }, [onEditText]);
 
     const nodeById = useMemo(() => new Map(doc.nodes.map(n => [n.id, n])), [doc.nodes]);
     const selected = useMemo(() => selectedIds.map(id => nodeById.get(id)).filter(Boolean) as DesignNode[], [selectedIds, nodeById]);
@@ -309,7 +340,10 @@ const DesignCanvas: React.FC<Props> = ({
             const layout = layoutFor(node, W, H);
             const top = verticalOffset(node, layout, node.h * H);
             return (
-                <div key={node.id} style={style} onPointerDown={startMove(node)} data-node={node.id}>
+                <div key={node.id} style={style} onPointerDown={startMove(node)} data-node={node.id}
+                    onDoubleClick={interactive && !node.locked
+                        ? e => { e.stopPropagation(); setEditing({ id: node.id, text: node.text }); }
+                        : undefined}>
                     <div style={{
                         position: 'absolute', left: 0, right: 0, top,
                         fontFamily: fontStack(node.fontFamily), fontWeight: node.fontWeight,
@@ -452,6 +486,60 @@ const DesignCanvas: React.FC<Props> = ({
                         ))}
                     </div>
                 )}
+
+                {/* ── Escribir EN EL LIENZO ────────────────────────
+                    Un `textarea` colocado exactamente sobre el nodo, con su
+                    misma tipografía, tamaño, color y alineación. Es lo que
+                    faltaba: sin esto, el texto sólo se podía cambiar desde la
+                    casilla del panel derecho, y quien hace doble clic sobre la
+                    pieza —que es el gesto de cualquier editor— no encontraba
+                    nada.
+
+                    Mientras se escribe, el reparto de líneas lo hace el
+                    NAVEGADOR, no `layoutFor`. Es una excepción acotada y a
+                    propósito: esto es un campo de entrada, no el dibujo. Al
+                    confirmar desaparece y el nodo vuelve a pintarse con el
+                    reparto propio, que es el que sostiene el WYSIWYG. */}
+                {editing && (() => {
+                    const n = nodeById.get(editing.id);
+                    if (!n || !isText(n)) return null;
+                    const layout = layoutFor(n, W, H);
+                    return (
+                        <textarea
+                            ref={editRef}
+                            data-editing={n.id}
+                            value={editing.text}
+                            onChange={e => setEditing({ id: n.id, text: e.target.value })}
+                            onBlur={commitEdit}
+                            onPointerDown={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                                e.stopPropagation();
+                                // Escape y Ctrl/Cmd+Enter confirman. Enter a
+                                // secas hace salto de línea: un título de dos
+                                // renglones es lo más común que se escribe acá.
+                                if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === 'Enter')) {
+                                    e.preventDefault();
+                                    (e.target as HTMLTextAreaElement).blur();
+                                }
+                            }}
+                            style={{
+                                position: 'absolute',
+                                left: n.x * W, top: n.y * H, width: n.w * W, height: n.h * H,
+                                fontFamily: fontStack(n.fontFamily), fontWeight: n.fontWeight,
+                                fontStyle: n.italic ? 'italic' : 'normal',
+                                fontSize: layout.fontSize,
+                                lineHeight: `${layout.fontSize * n.lineHeight}px`,
+                                color: n.color, textAlign: n.align,
+                                letterSpacing: n.letterSpacing ? n.letterSpacing * W : undefined,
+                                textTransform: n.uppercase ? 'uppercase' : 'none',
+                                background: 'rgba(255,255,255,0.9)',
+                                border: `${Math.max(2, W * 0.002)}px solid #6366f1`,
+                                borderRadius: W * 0.004,
+                                outline: 'none', resize: 'none', overflow: 'hidden',
+                                padding: 0, margin: 0,
+                            }} />
+                    );
+                })()}
 
                 {dragging && (
                     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>

@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el CRITERIO del motor de diseño
-// v4.724.0
+// v4.728.0
 //
 // Este archivo es PURO: sin base, sin red, sin IA, sin DOM. Define qué es una
 // plantilla, qué es un nodo, cómo se resuelven las variables y cómo se reparte
@@ -88,8 +88,21 @@ export const PALETTE = {
 export const GOLD_GRADIENT = ['#B07E1F', '#F2CE6B', '#C9962F', '#F7E4A8', '#B8842A'];
 
 export const FONTS = [
+    // Sólo tipografías del SISTEMA, con su cadena de respaldo. Una fuente web
+    // habría que cargarla antes de exportar, y el exportador dibuja en un canvas
+    // del navegador: si la fuente no llegó, el archivo sale con otra y la vista
+    // previa deja de ser el archivo. Es la misma cautela que con todo lo demás
+    // acá — antes que una tipografía más, que lo que se ve sea lo que se baja.
     { id: 'sans', label: 'Institucional (Arial)', stack: 'Arial, Helvetica, sans-serif' },
+    { id: 'system', label: 'Del sistema', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
+    { id: 'verdana', label: 'Verdana', stack: 'Verdana, Geneva, sans-serif' },
+    { id: 'tahoma', label: 'Tahoma', stack: 'Tahoma, Geneva, sans-serif' },
+    { id: 'trebuchet', label: 'Trebuchet', stack: '"Trebuchet MS", "Lucida Grande", sans-serif' },
+    { id: 'impact', label: 'Impact (titulares)', stack: 'Impact, "Arial Black", sans-serif' },
     { id: 'serif', label: 'Serif', stack: 'Georgia, "Times New Roman", serif' },
+    { id: 'times', label: 'Times', stack: '"Times New Roman", Times, serif' },
+    { id: 'palatino', label: 'Palatino', stack: '"Palatino Linotype", "Book Antiqua", Palatino, serif' },
+    { id: 'garamond', label: 'Garamond', stack: 'Garamond, "Times New Roman", serif' },
     { id: 'mono', label: 'Monoespaciada', stack: '"Courier New", monospace' },
 ];
 export const fontStack = (id) => (FONTS.find(f => f.id === id) || FONTS[0]).stack;
