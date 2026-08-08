@@ -909,6 +909,52 @@ check('y con `dropIfEmpty` desaparece del todo, como en la plantilla real',
         }).document, {}, {}, ['logo'],
     ).nodes.some(n => n.id === 'logo'));
 
+grupo('El enlace público sigue al diseño');
+
+// Lo reportado: se agrega un texto, se guarda, y el enlace público sigue
+// mostrando la versión vieja. La publicación guarda una COPIA del documento —eso
+// no cambia, y es lo que impide que un despliegue toque un enlace que ya
+// circula— pero esa copia ahora se rehace cuando el administrador guarda.
+//
+// Lo que hace posible rehacerla sin volver a preguntar nada son los AJUSTES con
+// los que se publicó: qué quedó bloqueado, qué se congeló, el texto de
+// introducción.
+const docV1 = S.normalizeDocument({
+    nodes: [
+        { type: 'text', id: 'saludo', text: 'Al Club X', srcText: 'Al {{club}}' },
+        { type: 'text', id: 'firma', text: 'Gob. Fabio', srcText: '{{gobernador}}' },
+    ],
+});
+const ajustes = { locked: [], frozen: { gobernador: 'Fabio Enrique Véjar Montañez' }, intro: 'Completá y descargá' };
+const pubV1 = P.buildPublication({ document: docV1, name: 'Aniversario', slug: 'aniv-vivo', settings: ajustes });
+check('la publicación arranca con los campos del documento',
+    pubV1.fields.some(f => f.key === 'club'));
+check('y congela lo institucional', pubV1.frozen.gobernador === 'Fabio Enrique Véjar Montañez');
+
+// El administrador agrega un texto y guarda. Rehacer la publicación con los
+// MISMOS ajustes tiene que traer el elemento nuevo y conservar todo lo demás.
+const docV2 = S.normalizeDocument({
+    nodes: [
+        ...docV1.nodes,
+        { type: 'text', id: 'nuevo', text: 'Gobernador, Distrito 4281', srcText: null },
+    ],
+});
+const pubV2 = P.buildPublication({ document: docV2, name: pubV1.name, slug: pubV1.slug, settings: ajustes });
+check('el elemento agregado llega a la publicación',
+    pubV2.document.nodes.some(n => n.id === 'nuevo'));
+check('la dirección pública NO cambia', pubV2.slug === pubV1.slug);
+check('el texto de introducción se conserva', pubV2.intro === 'Completá y descargá');
+check('y lo congelado sigue congelado', pubV2.frozen.gobernador === 'Fabio Enrique Véjar Montañez');
+check('el formulario se recalcula con el documento nuevo',
+    pubV2.fields.some(f => f.key === 'club') && !pubV2.fields.some(f => f.key === 'gobernador'));
+
+// Un bloqueo hecho al publicar también sobrevive: sin guardar los ajustes, cada
+// guardado devolvería al público un campo que se había cerrado a propósito.
+const conBloqueo = { ...ajustes, locked: ['club'] };
+const pubBloqueada = P.buildPublication({ document: docV2, name: 'X', slug: 'aniv-bloq', settings: conBloqueo });
+check('un campo bloqueado al publicar sigue bloqueado al rehacer',
+    !pubBloqueada.fields.some(f => f.key === 'club'));
+
 grupo('Campos vinculados: el hueco de CADA campo');
 
 const fmt1080 = { w: 1080, h: 1080 };

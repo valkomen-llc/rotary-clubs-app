@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.728.0 | 2026-08-08 (Doble clic para escribir; 11 tipografias)
-// Cache bust: 2026-08-08b
+// UI V4.729.0 | 2026-08-08 (Guardar actualiza el enlace publico)
+// Cache bust: 2026-08-08c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.729.0',
+        title: 'Guardar el diseño ya actualiza su enlace público 🔗',
+        description: 'Hasta ahora, agregar un texto al diseño y guardarlo no cambiaba nada en el enlace público: había que acordarse de volver a Publicar, y el enlace seguía mostrando una versión vieja sin decirlo. Ahora, si el diseño ya tiene enlace, guardarlo lo actualiza: lo que se ve en el editor es lo que va a ver cualquiera que abra el enlace. El aviso al guardar lo dice —«El enlace público ya muestra estos cambios»— y en la barra superior aparece un botón «En vivo» que lleva al enlace, así se sabe de un vistazo que ese diseño está publicado. Vale la pena entender qué cambió y qué NO, porque el comportamiento anterior existía por una razón: la publicación sigue guardando una COPIA del diseño, no una referencia a las plantillas del sistema. Eso protegía —y sigue protegiendo— de que una actualización de la plataforma cambie una pieza cuyo enlace ya está circulando por WhatsApp. Lo que cambió es que esa copia se refresca cuando VOS guardás tu propio diseño, que no es un cambio a tus espaldas: es exactamente lo que pediste al pulsar Guardar. Se rehace con los mismos ajustes con los que se publicó: la dirección no cambia, los campos bloqueados siguen bloqueados, lo congelado sigue congelado y el texto de introducción se conserva. Sólo se recalcula el formulario público, por si el cambio agregó o quitó campos.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'editor'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Guardar un diseño publicado actualiza su enlace público automáticamente.' },
+            { type: 'added', text: 'Botón «En vivo» en la barra, que lleva al enlace del diseño abierto.' },
+            { type: 'changed', text: 'La dirección, los bloqueos y lo congelado se conservan al actualizar.' },
+        ]
+    },
     {
         version: '4.728.0',
         title: 'Ya se escribe directo sobre la pieza, con doble clic ✍️',

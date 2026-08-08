@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.728.0
+// v4.729.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -80,6 +80,10 @@ const DesignStudio: React.FC = () => {
     const [currentId, setCurrentId] = useState<string | null>(null);
     const [exportOpen, setExportOpen] = useState(false);
     const [publishOpen, setPublishOpen] = useState(false);
+    // El enlace público de este diseño, si lo tiene. Guardar lo actualiza, y la
+    // barra lo muestra: un enlace que se refresca en silencio confunde tanto
+    // como uno que se queda viejo.
+    const [publicUrl, setPublicUrl] = useState<string | null>(null);
     // La composición con IA sale de la plantilla elegida y el administrador la
     // ajusta acá. Se guarda con el diseño y viaja a la publicación.
     const [composition, setComposition] = useState<Composition>({
@@ -545,7 +549,15 @@ const DesignStudio: React.FC = () => {
             const row = currentId ? await updateDesign(currentId, body) : await createDesign(body);
             setCurrentId(row.id);
             setSaved(await listDesigns());
-            toast.success('Guardado en la Biblioteca Multimedia y en tus diseños.');
+            // El servidor refresca la publicación atada a este diseño y devuelve
+            // cuál es. Se DICE: el usuario acaba de cambiar lo que ve cualquiera
+            // que tenga el enlace.
+            if (row.publication?.url) {
+                setPublicUrl(row.publication.url);
+                toast.success('Guardado. El enlace público ya muestra estos cambios.');
+            } else {
+                toast.success('Guardado en la Biblioteca Multimedia y en tus diseños.');
+            }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar');
         } finally {
@@ -558,6 +570,9 @@ const DesignStudio: React.FC = () => {
         setMessage(d.variables?.mensaje || ''); setYears(d.variables?.anios || '');
         setPhoto(d.variables?.imagen || null); setCopy(d.copy || null);
         setPast([]); setFuture([]); setSelectedIds([]); setShowSaved(false);
+        // Si ese diseño ya tiene enlace, la barra lo muestra desde el primer
+        // momento: es lo que explica por qué guardar va a cambiar el enlace.
+        setPublicUrl(d.publication?.url || null);
         toast.success('Diseño abierto.');
     };
 
@@ -601,10 +616,17 @@ const DesignStudio: React.FC = () => {
                     className="flex items-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-indigo-400 disabled:opacity-40 rounded-lg px-3 py-2 text-gray-700 transition-colors">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
                 </button>
+                {publicUrl && (
+                    <a href={publicUrl} target="_blank" rel="noreferrer"
+                        className="flex items-center gap-1.5 text-xs font-bold text-green-700 bg-green-50 border border-green-200 hover:border-green-400 rounded-lg px-2.5 py-2 transition-colors"
+                        title={`Enlace público: ${publicUrl}`}>
+                        <Globe2 className="w-3.5 h-3.5" /> En vivo
+                    </a>
+                )}
                 <button onClick={() => setPublishOpen(true)} disabled={!doc.nodes.length}
                     className="flex items-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-indigo-400 disabled:opacity-40 rounded-lg px-3 py-2 text-gray-700 transition-colors"
-                    title="Generar un enlace público para que cualquiera arme su pieza con esta plantilla">
-                    <Globe2 className="w-4 h-4" /> Publicar
+                    title={publicUrl ? "Cambiar la dirección o los campos del enlace público" : "Generar un enlace público para que cualquiera arme su pieza con esta plantilla"}>
+                    <Globe2 className="w-4 h-4" /> {publicUrl ? "Publicación" : "Publicar"}
                 </button>
                 <div className="relative">
                     <button onClick={() => setExportOpen(o => !o)} disabled={exporting || !doc.nodes.length}
@@ -770,6 +792,7 @@ const DesignStudio: React.FC = () => {
             {publishOpen && (
                 <PublishDialog
                     document={doc}
+                    projectId={currentId}
                     defaultName={title}
                     // Lo institucional se congela con lo que hay AHORA: son los
                     // datos del club elegido, y el enlace público tiene que
@@ -782,7 +805,7 @@ const DesignStudio: React.FC = () => {
                     }}
                     composition={composition}
                     onClose={() => setPublishOpen(false)}
-                    onPublished={() => { /* el diálogo muestra el enlace */ }}
+                    onPublished={p => setPublicUrl(p.url)}
                 />
             )}
 

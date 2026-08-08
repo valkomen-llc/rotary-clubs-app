@@ -26,9 +26,14 @@ export async function ensureDesignSchema() {
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignPublicTemplate' AND column_name = 'composition') AS comp_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'DesignPublicTemplate' AND column_name = 'settings') AS settings_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col`
     );
-    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.copy_col) { _ready = true; return; }
+    // Esta lista NO es un número de versión: enumera los objetos reales del
+    // archivo. Al agregar una columna hay que agregarla acá o la comprobación
+    // rápida la da por presente y no se crea nunca (regla del sitio).
+    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.settings_col && rows[0]?.copy_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "DesignProject" (
@@ -111,6 +116,12 @@ export async function ensureDesignSchema() {
             -- pieza a KIE, con qué prompt maestro y cuántas variantes.
             composition JSONB NOT NULL DEFAULT '{}'::jsonb,
 
+            -- Con qué opciones se publicó: qué campos quedaron bloqueados, qué
+            -- se congeló y con qué texto de introducción. Se guarda para poder
+            -- REPUBLICAR con el mismo criterio cuando el diseño cambia, sin
+            -- volver a preguntar nada.
+            settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+
             published BOOLEAN NOT NULL DEFAULT false,
             "clubId" TEXT,
             "projectId" TEXT,
@@ -124,6 +135,10 @@ export async function ensureDesignSchema() {
     // /plantillas/aniversario no puede llevar a dos piezas distintas.
     // Aditiva: una instalación anterior a v4.722 se completa sola.
     await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS composition JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
+    await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
+    // El enlace público se refresca al guardar el diseño, así que hace falta
+    // encontrar la publicación por su proyecto en cada guardado.
+    await db.query(`CREATE INDEX IF NOT EXISTS "DesignPublicTemplate_project_idx" ON "DesignPublicTemplate" ("projectId");`).catch(() => {});
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "DesignPublicTemplate_slug_key" ON "DesignPublicTemplate" (slug);`);
     await db.query(`CREATE INDEX IF NOT EXISTS "DesignPublicTemplate_club_idx" ON "DesignPublicTemplate" ("clubId", "updatedAt" DESC);`);
 
