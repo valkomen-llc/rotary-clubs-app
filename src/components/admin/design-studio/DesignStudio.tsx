@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.733.0
+// v4.736.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -32,8 +32,9 @@ import PublishDialog from './PublishDialog';
 import CompositionPanel from './CompositionPanel';
 import {
     fetchCatalog, compose, listDesigns, createDesign, updateDesign, deleteDesign, uploadToLibrary,
+    listPublications, linkPublication,
     type Catalog, type ClubHit, type Branding, type DesignCopy, type SavedDesign, type ElementItem,
-    type Composition,
+    type Composition, type Publication,
 } from './designApi';
 import {
     formatOf, applyVariables, resolveVariables, duplicateNode, uid, isText, isImage,
@@ -85,6 +86,12 @@ const DesignStudio: React.FC = () => {
     // barra lo muestra: un enlace que se refresca en silencio confunde tanto
     // como uno que se queda viejo.
     const [publicUrl, setPublicUrl] = useState<string | null>(null);
+    // Las plantillas ya publicadas de este sitio, para poder ATAR este diseño a
+    // una cuando el vínculo no se pudo adoptar solo. Sin esta salida, un sitio
+    // con varios diseños y una publicación heredada queda en un callejón:
+    // guardar no cambia nunca el enlace y no hay forma de arreglarlo.
+    const [linkOptions, setLinkOptions] = useState<Publication[] | null>(null);
+    const [linking, setLinking] = useState(false);
     // La composición con IA sale de la plantilla elegida y el administrador la
     // ajusta acá. Se guarda con el diseño y viaja a la publicación.
     const [composition, setComposition] = useState<Composition>({
@@ -640,7 +647,14 @@ const DesignStudio: React.FC = () => {
                 // Cuando el servidor sabe POR QUÉ no tocó ningún enlace, se
                 // dice. Callarlo deja al usuario mirando un sitio público que
                 // no cambia, sin nada que explique la diferencia.
-                if (row.publicationNote) toast.warning(row.publicationNote, { duration: 8000 });
+                if (row.publicationNote) {
+                    toast.warning(row.publicationNote, { duration: 8000 });
+                    // Y se OFRECE la salida, no sólo el aviso: se traen las
+                    // plantillas publicadas del sitio para elegir cuál es ésta.
+                    listPublications()
+                        .then(ps => { if (ps.length) setLinkOptions(ps); })
+                        .catch(() => { /* el aviso ya se dio */ });
+                }
             }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar');
@@ -662,6 +676,22 @@ const DesignStudio: React.FC = () => {
         // momento: es lo que explica por qué guardar va a cambiar el enlace.
         setPublicUrl(d.publication?.url || null);
         toast.success('Diseño abierto.');
+    };
+
+    // Atar este diseño a una plantilla ya publicada. El servidor la refresca en
+    // el acto: vincular sin actualizar dejaría el enlace igual y parecería que
+    // no funcionó.
+    const vincular = async (publicationId: string) => {
+        if (!currentId) return;
+        setLinking(true);
+        try {
+            const p = await linkPublication(currentId, publicationId);
+            setPublicUrl(p.url);
+            setLinkOptions(null);
+            setSaved(await listDesigns());
+            toast.success('Enlace vinculado. Ya muestra este diseño, y a partir de ahora sigue tus cambios.');
+        } catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo vincular'); }
+        finally { setLinking(false); }
     };
 
     const removeSaved = async (id: string) => {
@@ -893,6 +923,42 @@ const DesignStudio: React.FC = () => {
                     uploading={uploading}
                 />
             </div>
+
+            {/* ── Elegir a qué enlace público pertenece este diseño ──
+                No se adopta solo cuando el sitio tiene varios diseños y varias
+                publicaciones heredadas: atar el diseño al enlace equivocado le
+                cambiaría a alguien una pieza que ya circula. Se OFRECE elegir,
+                que es el par de «Vincular evento» en Postulaciones — avisar sin
+                dar salida deja un callejón. */}
+            {linkOptions && (
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setLinkOptions(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+                            <Globe2 className="w-4 h-4 text-indigo-600" />
+                            <h3 className="text-sm font-black text-gray-900 flex-1">¿Cuál es el enlace de este diseño?</h3>
+                        </div>
+                        <div className="p-5">
+                            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                                Este diseño todavía no está atado a ninguno, así que guardar no cambia nada en el sitio público.
+                                Elegí cuál le corresponde: se actualiza en el acto y a partir de ahí sigue tus cambios.
+                            </p>
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                                {linkOptions.map(p => (
+                                    <button key={p.id} onClick={() => vincular(p.id)} disabled={linking}
+                                        className="w-full text-left border border-gray-200 hover:border-indigo-400 disabled:opacity-50 rounded-lg px-3 py-2 transition-colors">
+                                        <span className="block text-sm font-bold text-gray-800">{p.name}</span>
+                                        <span className="block text-[11px] text-gray-400 font-mono truncate">/plantillas/{p.slug}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={() => setLinkOptions(null)}
+                                className="mt-3 w-full text-xs font-bold text-gray-500 hover:text-gray-700 py-2 transition-colors">
+                                Ahora no
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {publishOpen && (
                 <PublishDialog

@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.735.0 cargado — Plantillas IA. La composición se guarda con el diseño y viaja al enlace público.');
+console.log('[designStudioController] v4.736.0 cargado — Plantillas IA. Un diseño se puede atar a mano a su enlace público.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -539,6 +539,59 @@ export const listPublications = async (req, res) => {
     } catch (e) { fail(res, e, 500, 'No se pudieron cargar las publicaciones'); }
 };
 
+// ── POST /api/design-studio/projects/:id/publication ──────────────────
+//
+// Atar A MANO un diseño a una plantilla ya publicada.
+//
+// Desde v4.730 el vínculo se adopta solo cuando no hay duda —el nombre coincide
+// o el sitio tiene un solo diseño—, y con razón: atarlo a la publicación
+// equivocada le cambiaría a alguien una pieza que ya circula por WhatsApp. Pero
+// avisar sin dar salida deja un callejón: un sitio con tres diseños y una
+// publicación heredada no puede vincularse por ninguna vía, y entonces guardar
+// no cambia nunca el enlace público — que es exactamente como se reportó.
+//
+// Es el mismo par que «Vincular evento» en Postulaciones: se adopta cuando se
+// puede y se OFRECE elegir cuando no.
+//
+// El aislamiento va en el WHERE de las dos filas: no se recibe un id y se
+// comprueba la pertenencia después.
+export const linkPublication = async (req, res) => {
+    try {
+        await ensureDesignSchema();
+        const clubId = scopeClubId(req);
+        const { publicationId } = req.body || {};
+        if (!publicationId) return res.status(400).json({ error: 'Falta la plantilla publicada que se quiere vincular.' });
+
+        const { rows: proj } = await db.query(
+            `SELECT * FROM "DesignProject" WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2`,
+            [req.params.id, clubId]
+        );
+        if (!proj[0]) return res.status(404).json({ error: 'Diseño no encontrado' });
+
+        // Se libera el vínculo anterior de ESE diseño antes de tomar el nuevo:
+        // un diseño apunta a una publicación, no a dos. Sin esto, cambiar de
+        // enlace dejaría el viejo siguiendo al diseño para siempre.
+        await db.query(
+            `UPDATE "DesignPublicTemplate" SET "projectId" = NULL
+              WHERE "projectId" = $1 AND "clubId" IS NOT DISTINCT FROM $2`,
+            [req.params.id, clubId]
+        );
+        const { rows: pub } = await db.query(
+            `UPDATE "DesignPublicTemplate" SET "projectId" = $1, "updatedAt" = NOW()
+              WHERE id = $2 AND "clubId" IS NOT DISTINCT FROM $3
+              RETURNING *`,
+            [req.params.id, publicationId, clubId]
+        );
+        if (!pub[0]) return res.status(404).json({ error: 'Plantilla publicada no encontrada' });
+
+        // Y se refresca en el acto con lo que el diseño tiene ahora: vincular
+        // sin actualizar dejaría el enlace igual y parecería que no funcionó.
+        const { row } = await refreshPublication(proj[0].id, proj[0].document, clubId, proj[0].title, proj[0].composition);
+        const fila = row || pub[0];
+        res.json({ slug: fila.slug, url: publicUrl(fila.slug, originOf(req)), published: fila.published });
+    } catch (e) { fail(res, e, 500, 'No se pudo vincular el enlace público'); }
+};
+
 // ── POST /api/design-studio/publications ──────────────────────────────
 export const publish = async (req, res) => {
     try {
@@ -643,5 +696,5 @@ export default {
     getCatalog, findClubs, getBranding, putFoundation, compose, improve,
     startBackdrop, syncBackdrop,
     listProjects, saveProject, updateProject, deleteProject,
-    listPublications, publish, setPublished, deletePublication, previewPublication,
+    listPublications, publish, setPublished, deletePublication, previewPublication, linkPublication,
 };

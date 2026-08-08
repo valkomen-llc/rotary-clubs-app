@@ -12,7 +12,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import {
     getCatalog, findClubs, getBranding, putFoundation, compose, improve,
     listProjects, saveProject, updateProject, deleteProject,
-    listPublications, publish, setPublished, deletePublication, previewPublication,
+    listPublications, publish, setPublished, deletePublication, previewPublication, linkPublication,
     startBackdrop, syncBackdrop,
 } from '../controllers/designStudioController.js';
 
@@ -44,6 +44,8 @@ router.delete('/publications/:id', authMiddleware, deletePublication);
 router.get('/projects', authMiddleware, listProjects);
 router.post('/projects', authMiddleware, saveProject);
 router.put('/projects/:id', authMiddleware, updateProject);
+// Atar un diseño a una plantilla ya publicada, cuando no se pudo adoptar sola.
+router.post('/projects/:id/publication', authMiddleware, linkPublication);
 router.delete('/projects/:id', authMiddleware, deleteProject);
 
 export default router;

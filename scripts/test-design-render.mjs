@@ -534,10 +534,20 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     let subioAlGuardar = false;
     let cuerpoGuardado = null;
     await page.route('**/api/media/upload', r => { subioAlGuardar = true; return r.fulfill({ json: { id: 'm2', url: 'https://ejemplo.test/x.png' } }); });
+    await page.route('**/api/design-studio/publications', r => r.fulfill({
+        json: [{ id: 'pub_1', slug: 'aniversario-de-clubes', name: 'Aniversario de Clubes', intro: '', category: 'aniversario', format: 'post_1_1', fields: [], frozen: {}, composition: {}, published: true, uses: 0, url: 'http://localhost/plantillas/aniversario-de-clubes', createdAt: '', updatedAt: '' }],
+    }));
+    let vinculada = null;
+    await page.route('**/api/design-studio/projects/*/publication', r => {
+        try { vinculada = JSON.parse(r.request().postData() || '{}').publicationId; } catch { vinculada = null; }
+        return r.fulfill({ json: { slug: 'aniversario-de-clubes', url: 'http://localhost/plantillas/aniversario-de-clubes', published: true } });
+    });
     await page.route('**/api/design-studio/projects', r => {
         if (r.request().method() === 'POST') {
             try { cuerpoGuardado = JSON.parse(r.request().postData() || '{}'); } catch { cuerpoGuardado = {}; }
-            return r.fulfill({ json: { id: 'd1', title: 'X', document: { format: 'post_1_1', nodes: [] }, variables: {}, copy: {}, imageUrl: null, thumbUrl: null, mediaId: null, subjectClubId: null, status: 'draft', createdAt: '', updatedAt: '', templateId: 'aniversario_foto', category: 'aniversario', format: 'post_1_1' } });
+            // `publicationNote`: el servidor no pudo adoptar el vínculo. Es lo
+            // que dispara el diálogo para elegirlo a mano.
+            return r.fulfill({ json: { id: 'd1', title: 'X', document: { format: 'post_1_1', nodes: [] }, variables: {}, copy: {}, imageUrl: null, thumbUrl: null, mediaId: null, subjectClubId: null, status: 'draft', createdAt: '', updatedAt: '', templateId: 'aniversario_foto', category: 'aniversario', format: 'post_1_1', publication: null, publicationNote: 'Este diseño todavía no está atado a su enlace público.' } });
         }
         return r.fulfill({ json: [] });
     });
@@ -563,6 +573,24 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('y con ella la imagen base elegida',
         typeof cuerpoGuardado?.composition?.baseImageUrl === 'string'
         && cuerpoGuardado.composition.baseImageUrl.length > 0);
+
+    // ── Vincular el diseño a su enlace público ─────────────────────
+    //
+    // Lo reportado: un sitio con VARIOS diseños y una publicación heredada no
+    // se puede vincular solo —atarlo al enlace equivocado le cambiaría a
+    // alguien una pieza que ya circula—, así que guardar no cambiaba nunca el
+    // sitio público y no había forma de arreglarlo desde la pantalla.
+    check('cuando no se puede vincular solo, se ofrece elegir el enlace',
+        await page.getByText('¿Cuál es el enlace de este diseño?').count() === 1);
+    check('y se listan las plantillas publicadas del sitio',
+        await page.getByText('/plantillas/aniversario-de-clubes').count() === 1);
+    await page.getByText('Aniversario de Clubes', { exact: true }).first().click();
+    await page.waitForTimeout(800);
+    check('elegir una la vincula', vinculada === 'pub_1', String(vinculada));
+    check('y el diálogo se cierra',
+        await page.getByText('¿Cuál es el enlace de este diseño?').count() === 0);
+    check('la barra pasa a mostrar el enlace en vivo',
+        await page.getByText('En vivo').count() >= 1);
 
     // Pero la vía explícita sigue existiendo: quitarla dejaría al
     // administrador sin forma de mandar la pieza a la Biblioteca.
