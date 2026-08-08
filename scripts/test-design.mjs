@@ -955,6 +955,63 @@ const pubBloqueada = P.buildPublication({ document: docV2, name: 'X', slug: 'ani
 check('un campo bloqueado al publicar sigue bloqueado al rehacer',
     !pubBloqueada.fields.some(f => f.key === 'club'));
 
+grupo('Una publicación HEREDADA se rehace sin perder nada');
+
+// El defecto reportado después de la v4.729: se agrega un texto, se guarda, y el
+// enlace público sigue igual. La causa es que `settings` nació con la v4.729,
+// así que TODA publicación anterior —que son todas— tiene la columna vacía.
+//
+// Rehacerlas con `settings` a secas no es neutral: se publicarían con los
+// ajustes POR DEFECTO. Esto es lo que se perdería.
+const heredada = {
+    settings: {},                       // la columna nació vacía
+    document: pubBloqueada.document,    // pero el RESULTADO está en la fila
+    fields: pubBloqueada.fields,
+    frozen: pubBloqueada.frozen,
+    intro: pubBloqueada.intro,
+};
+const aPelo = P.buildPublication({ document: docV2, name: 'X', slug: 'aniv-bloq', settings: {} });
+check('sin deducir, la firma del Distrito se perdería',
+    Object.keys(aPelo.frozen).length === 0);
+check('sin deducir, un campo bloqueado volvería a salir al público',
+    aPelo.fields.some(f => f.key === 'club'));
+
+const deducidos = P.settingsForRefresh(heredada);
+check('el bloqueo se deduce del formulario que salió', deducidos.locked.includes('club'));
+check('lo congelado se recupera de la propia fila',
+    deducidos.frozen.gobernador === 'Fabio Enrique Véjar Montañez');
+check('y el texto de introducción también', deducidos.intro === 'Completá y descargá');
+
+const rehecha = P.buildPublication({ document: docV2, name: 'X', slug: 'aniv-bloq', settings: deducidos });
+check('rehacer una heredada da el MISMO formulario',
+    JSON.stringify(rehecha.fields.map(f => f.key)) === JSON.stringify(pubBloqueada.fields.map(f => f.key)));
+check('y la MISMA firma', JSON.stringify(rehecha.frozen) === JSON.stringify(pubBloqueada.frozen));
+
+// Lo que NO puede pasar: que la deducción congele para siempre el formulario.
+// Por eso se deduce contra el documento PUBLICADO, no contra el nuevo — contra
+// el nuevo, una variable recién marcada se leería como «no salía, luego estaba
+// bloqueada» y no llegaría a ofrecerse nunca.
+const docConCampoNuevo = S.normalizeDocument({
+    nodes: [...docV2.nodes, { type: 'text', id: 'pres', text: '', srcText: '{{presidente}}' }],
+});
+const conNuevo = P.buildPublication({ document: docConCampoNuevo, name: 'X', slug: 'aniv-bloq', settings: P.settingsForRefresh(heredada) });
+check('un campo recién marcado SÍ se ofrece', conNuevo.fields.some(f => f.key === 'presidente'));
+check('y el que estaba bloqueado sigue sin ofrecerse', !conNuevo.fields.some(f => f.key === 'club'));
+
+// Una institucional que se soltó a propósito al publicar tiene que seguir
+// suelta: si no, el primer guardado la vuelve a cerrar sin decirlo.
+const suelta = P.buildPublication({ document: docV1, name: 'X', slug: 'aniv-suelta', settings: { unlock: ['gobernador'] } });
+check('una institucional soltada al publicar sale como campo',
+    suelta.fields.some(f => f.key === 'gobernador'));
+check('y sigue suelta al rehacer',
+    P.settingsForRefresh({ settings: {}, document: suelta.document, fields: suelta.fields, frozen: suelta.frozen })
+        .unlock.includes('gobernador'));
+
+// Una publicación ya nacida con v4.729 no se toca: sus ajustes mandan.
+const modernos = P.settingsForRefresh({ settings: { locked: ['mensaje'], frozen: { club: 'RC X' }, intro: 'Hola' }, document: docV2, fields: [], frozen: {}, intro: 'otro' });
+check('los ajustes guardados mandan sobre la deducción',
+    JSON.stringify(modernos.locked) === JSON.stringify(['mensaje']) && modernos.intro === 'Hola');
+
 grupo('Campos vinculados: el hueco de CADA campo');
 
 const fmt1080 = { w: 1080, h: 1080 };

@@ -29,11 +29,11 @@ import { catalog, templateById, availableTemplates } from '../lib/designTemplate
 import { elementsByCategory } from '../lib/designElements.js';
 import { searchClubs, brandingForClub, saveFoundationDate, yearsSince, rotaryPeriod } from '../lib/designBranding.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
-import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl, ASSIGNABLE_FIELDS } from '../lib/designPublish.js';
+import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publicUrl, ASSIGNABLE_FIELDS, settingsForRefresh } from '../lib/designPublish.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.729.0 cargado — Plantillas IA. Guardar un diseño publicado refresca su enlace público.');
+console.log('[designStudioController] v4.730.0 cargado — Plantillas IA. Una publicación sin vincular se adopta al guardar, conservando sus ajustes.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -285,10 +285,14 @@ export const updateProject = async (req, res) => {
         // acaba de guardar. `publication` viaja en la respuesta para que la
         // pantalla pueda DECIRLO: un enlace que cambia en silencio es tan
         // confuso como uno que no cambia.
-        const pub = await refreshPublication(rows[0].id, rows[0].document, clubId);
+        const { row: pub, note } = await refreshPublication(rows[0].id, rows[0].document, clubId, rows[0].title);
         res.json({
             ...rowToProject(rows[0]),
             publication: pub ? { slug: pub.slug, url: publicUrl(pub.slug, originOf(req)), published: pub.published } : null,
+            // Por qué NO se actualizó ningún enlace, cuando hay algo que decir.
+            // Un guardado que no toca la publicación que el usuario espera que
+            // toque, sin explicación, es el defecto que esto viene a corregir.
+            publicationNote: note || null,
         });
     } catch (e) { fail(res, e, 500, 'No se pudo actualizar el diseño'); }
 };
@@ -316,16 +320,83 @@ export const updateProject = async (req, res) => {
 //
 // Va en el SERVIDOR y no en la pantalla: así vale para cualquier camino que
 // guarde un diseño, hoy y mañana.
-const refreshPublication = async (projectId, doc, clubId) => {
-    if (!projectId || !doc?.nodes?.length) return null;
+// ── QUÉ PUBLICACIÓN ES LA DE ESTE DISEÑO ──────────────────────────────
+//
+// El vínculo es `projectId`, y lo escribe `publish`. Pero esa columna se empezó
+// a llenar con la v4.729, así que **toda publicación anterior está huérfana** —
+// y son todas las que hay—: `refreshPublication` no encontraba ninguna y el
+// enlace público se quedaba mostrando la versión con la que se publicó, en
+// silencio. Guardar parecía no hacer nada, que es exactamente como se reportó.
+// Una publicación hecha desde un diseño sin guardar nace igual de huérfana.
+//
+// Adoptar una huérfana lo resuelve sin pedirle nada al administrador, pero
+// **no se adivina**: es el mismo criterio de `bindLegacyEdition` en el módulo
+// de Postulaciones. Se adopta cuando el sitio tiene UNA sola publicación sin
+// dueño, o cuando el nombre coincide exacto con el del diseño. Con varias
+// candidatas indistinguibles no se toca ninguna: atar el diseño a la
+// publicación equivocada le cambiaría a alguien una pieza que ya circula.
+//
+// La adopción es un UPDATE condicional (`WHERE "projectId" IS NULL`): dos
+// guardados simultáneos no pueden reclamar la misma fila.
+const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+const publicationFor = async (projectId, clubId, title) => {
     const { rows } = await db.query(
         `SELECT * FROM "DesignPublicTemplate"
           WHERE "projectId" = $1 AND "clubId" IS NOT DISTINCT FROM $2
           LIMIT 1`,
         [projectId, clubId]
     );
-    const row = rows[0];
-    if (!row) return null;
+    if (rows[0]) return { row: rows[0], note: null };
+
+    const { rows: huerfanas } = await db.query(
+        `SELECT * FROM "DesignPublicTemplate"
+          WHERE "clubId" IS NOT DISTINCT FROM $1 AND "projectId" IS NULL
+          ORDER BY "updatedAt" DESC`,
+        [clubId]
+    );
+    if (!huerfanas.length) return { row: null, note: null };
+
+    // Qué cuenta como identificarla SIN AMBIGÜEDAD. «Hay una sola huérfana» no
+    // alcanza: un sitio con tres diseños y una publicación sin vincular
+    // adoptaría esa publicación al guardar CUALQUIERA de los tres, y el primero
+    // en guardarse le pisaría a otro una pieza que ya circula. Hacen falta las
+    // dos puntas.
+    const porNombre = huerfanas.filter(r => norm(r.name) === norm(title));
+    let candidata = porNombre.length === 1 ? porNombre[0] : null;
+
+    if (!candidata && huerfanas.length === 1) {
+        // La otra forma de que no haya duda: que el sitio tenga un solo diseño.
+        // Entonces la correspondencia está forzada aunque le hayan cambiado el
+        // nombre a la publicación, que es lo habitual —el nombre se edita al
+        // publicar y deja de parecerse al del diseño—.
+        const { rows: cuantos } = await db.query(
+            `SELECT COUNT(*)::int AS n FROM "DesignProject" WHERE "clubId" IS NOT DISTINCT FROM $1`,
+            [clubId]
+        );
+        if (cuantos[0]?.n === 1) candidata = huerfanas[0];
+    }
+
+    if (!candidata) {
+        return {
+            row: null,
+            note: 'Este diseño todavía no está atado a su enlace público, así que guardar no lo cambia. Publicalo una vez —con la misma dirección— y a partir de ahí el enlace sigue tus cambios.',
+        };
+    }
+
+    const { rows: adoptada } = await db.query(
+        `UPDATE "DesignPublicTemplate" SET "projectId" = $2, "updatedAt" = NOW()
+          WHERE id = $1 AND "projectId" IS NULL
+          RETURNING *`,
+        [candidata.id, projectId]
+    );
+    return { row: adoptada[0] || null, note: null };
+};
+
+const refreshPublication = async (projectId, doc, clubId, title) => {
+    if (!projectId || !doc?.nodes?.length) return { row: null, note: null };
+    const { row, note } = await publicationFor(projectId, clubId, title);
+    if (!row) return { row: null, note };
 
     let pub;
     try {
@@ -334,25 +405,33 @@ const refreshPublication = async (projectId, doc, clubId) => {
             name: row.name,
             slug: row.slug,
             category: row.category,
-            settings: row.settings || {},
+            // Con los MISMOS ajustes con los que se publicó. Para las
+            // publicaciones anteriores a v4.729 —que no los guardaron— se
+            // deducen de su propio resultado, o rehacerlas les borraría la firma
+            // del Distrito y les soltaría los campos bloqueados.
+            settings: settingsForRefresh(row),
         });
     } catch (e) {
         // Un diseño que dejó de ser publicable —se borraron todos sus nodos—
         // no puede tumbar el guardado: lo que se estaba pidiendo era guardar.
         console.warn('[designStudio] no se pudo refrescar la publicación:', e.message);
-        return null;
+        return { row: null, note: `El enlace público no se actualizó: ${e.message}` };
     }
 
     const { rows: upd } = await db.query(
         `UPDATE "DesignPublicTemplate" SET
             document = $2::jsonb, fields = $3::jsonb, frozen = $4::jsonb,
-            format = $5, "updatedAt" = NOW()
+            intro = $6, settings = $7::jsonb, format = $5, "updatedAt" = NOW()
           WHERE id = $1
           RETURNING *`,
         [row.id, JSON.stringify(pub.document), JSON.stringify(pub.fields),
-         JSON.stringify(pub.frozen), pub.format]
+         JSON.stringify(pub.frozen), pub.format, pub.intro,
+         // Los ajustes deducidos se GUARDAN: así la fila deja de ser una
+         // publicación heredada y el siguiente guardado no tiene que deducir
+         // nada. La deducción se hace una vez, no en cada guardado.
+         JSON.stringify(settingsForRefresh(row))]
     );
-    return upd[0] || null;
+    return { row: upd[0] || null, note: null };
 };
 
 // ── DELETE /api/design-studio/projects/:id ────────────────────────────

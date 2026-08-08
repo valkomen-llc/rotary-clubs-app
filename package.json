@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.729.0",
-  "cache_bust": "2026-08-08c (Guardar un diseno publicado actualiza su enlace publico.)",
+  "version": "4.730.0",
+  "cache_bust": "2026-08-08d (Una publicacion sin vincular se adopta al guardar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

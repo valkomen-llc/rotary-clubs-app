@@ -103,6 +103,11 @@ export interface SavedDesign {
      *  que DECIRLO — un enlace que cambia en silencio confunde tanto como uno
      *  que no cambia. */
     publication?: { slug: string; url: string; published: boolean } | null;
+    /** Por qué NO se actualizó ningún enlace. Sólo viene cuando hay algo que
+     *  explicar —varias plantillas publicadas sin vincular, un diseño que dejó
+     *  de ser publicable—: guardar sin tocar el enlace que el usuario espera
+     *  que se toque, y sin decir por qué, es el defecto que esto corrige. */
+    publicationNote?: string | null;
 }
 
 // ─── Llamadas ──────────────────────────────────────────────────────────

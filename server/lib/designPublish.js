@@ -440,8 +440,61 @@ const withSamples = (fields, document) => {
         : f));
 };
 
+// ─── Con qué ajustes se REHACE una publicación ya existente ────────────
+//
+// Guardar un diseño publicado rehace su publicación (v4.729), y para que salga
+// igual hay que rehacerla con los MISMOS ajustes: qué campos quedaron
+// bloqueados, qué se congeló, qué texto de introducción lleva. Desde v4.729 eso
+// se guarda en `settings`.
+//
+// El problema es TODA publicación anterior a esa versión: la columna nació con
+// `{}`, así que rehacerlas con `settings` a secas las publicaría con los
+// ajustes por defecto —sin nada bloqueado y sin nada congelado—. Las
+// consecuencias no son cosméticas:
+//
+//   · La firma del Distrito desaparecería de la pieza. `frozen` es donde vive
+//     el nombre del Gobernador ya resuelto; sin él, el nodo se queda con el
+//     marcador y el portal no lo ofrece ni lo llena nadie.
+//   · Un campo que el administrador BLOQUEÓ al publicar volvería a salir en el
+//     formulario público. Aflojar un cierre por lo bajo es peor que no tener la
+//     función: quien lo bloqueó no se entera.
+//
+// Nada de eso hace falta adivinarlo, porque la fila guarda el RESULTADO de esos
+// ajustes: `frozen` son los valores congelados y `fields` es el formulario que
+// salió. De ahí se deducen los ajustes que lo produjeron.
+//
+// La deducción se hace contra el documento PUBLICADO (`row.document`), no
+// contra el nuevo: `row.fields` se derivó de aquél. Contra el nuevo, una
+// variable que el administrador acaba de marcar se leería como «no salía en el
+// formulario, luego estaba bloqueada» y nunca llegaría a ofrecerse — que es
+// justo lo contrario de lo que acaba de pedir.
+export const settingsForRefresh = (row) => {
+    const s = { ...(row?.settings || {}) };
+    const fields = Array.isArray(row?.fields) ? row.fields : [];
+    const previos = variablesOf(row?.document);
+    const ofrecidos = new Set(fields.map(f => f?.key).filter(Boolean));
+
+    if (!s.frozen || !Object.keys(s.frozen).length) {
+        const previo = row?.frozen && typeof row.frozen === 'object' ? row.frozen : null;
+        if (previo && Object.keys(previo).length) s.frozen = { ...previo };
+    }
+    if (!Array.isArray(s.locked)) {
+        // Una variable que el documento publicado usaba, que no es
+        // institucional —ésas se bloquean solas— y que aun así no salió como
+        // campo: la bloqueó quien publicó.
+        s.locked = previos.filter(k => !isInstitutional(k) && !ofrecidos.has(k));
+    }
+    if (!Array.isArray(s.unlock)) {
+        // Y al revés: una institucional que SÍ salía como campo se soltó a
+        // propósito. Sin recuperarlo, volvería a quedar bloqueada.
+        s.unlock = previos.filter(k => isInstitutional(k) && ofrecidos.has(k));
+    }
+    if (s.intro === undefined && row?.intro) s.intro = row.intro;
+    return s;
+};
+
 export default {
     FIELD_SPECS, ASSIGNABLE_FIELDS, isInstitutional, variablesOf, buildPublicFields, fieldFor,
     sanitizeValues, isAcceptableImage, bakeFrozen, applyPublicValues,
-    stripPublicDefaults, slugify, validateSlug, publicUrl, buildPublication,
+    stripPublicDefaults, slugify, validateSlug, publicUrl, buildPublication, settingsForRefresh,
 };
