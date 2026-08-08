@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.726.0 | 2026-08-07 (El portal muestra la imagen de ejemplo)
-// Cache bust: 2026-08-07c
+// UI V4.727.0 | 2026-08-08 (El ejemplo se ve limpio, sin texto encima)
+// Cache bust: 2026-08-08a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.727.0',
+        title: 'El logo de ejemplo se ve limpio, como en el generador de pendones 🧼',
+        description: 'El ejemplo del logotipo salía con el texto «Logotipo del club · ejemplo · subí el tuyo» superpuesto encima, que tapaba justamente lo que se quiere ver: cómo va a quedar el escudo en su sitio. Ahora se ve limpio, igual que en el Generador de Pendones. El aviso no desapareció, se movió a donde de verdad hace falta: junto al botón de descargar. Si hay un logotipo de ejemplo a la vista y todavía no subiste el tuyo, ahí dice —con esas palabras— que si descargás ahora la pieza sale SIN esa imagen. Es el único momento en que la confusión cuesta algo, y es el momento en que se avisa; encima de la imagen sólo estorbaba. El recuadro punteado y la leyenda de abajo siguen estando, así que la pieza sigue diciendo qué es un ejemplo y qué no. Los huecos que NO tienen ejemplo cargado —una fotografía que nadie puso al diseñar— conservan su etiqueta: ahí el texto es lo único que dice qué va en ese espacio.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'logotipo'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'El logo de ejemplo ya no lleva texto superpuesto.' },
+            { type: 'added', text: 'Junto a «Descargar» se avisa que la pieza saldría sin esa imagen.' },
+            { type: 'changed', text: 'Un hueco sin ejemplo conserva su etiqueta, que es lo único que dice qué va ahí.' },
+        ]
+    },
     {
         version: '4.726.0',
         title: 'El enlace público muestra el logo de ejemplo, para ver cómo queda 👁️',
