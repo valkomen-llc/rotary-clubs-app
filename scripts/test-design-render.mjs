@@ -289,6 +289,7 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     let llamado = false;
     await page.route('**/api/media/upload', r => { llamado = true; return r.fulfill({ json: { id: 'm1', url: 'https://ejemplo.test/subida.png' } }); });
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const PIXEL_URL = `data:image/png;base64,${png.toString('base64')}`;
     await page.locator('input[type=file]').nth(1).setInputFiles({ name: 'sello.png', mimeType: 'image/png', buffer: png });
     await page.waitForTimeout(900);
     check('subir llama a /api/media/upload (queda en la Biblioteca)', llamado);
@@ -447,6 +448,37 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('los pasos del panel no repiten número', new Set(pasos).size === pasos.length, pasos.join(','));
     check('y van en orden desde el 1',
         pasos.join(',') === pasos.map((_, i) => i + 1).join(','), pasos.join(','));
+
+    // ── El lienzo institucional se DIBUJA ──────────────────────────
+    //
+    // Lo reportado: la imagen base se elegía y no aparecía en ninguna parte.
+    // Que ahora entre como nodo se comprueba en `test:design`; lo que no se ve
+    // desde ahí es si la PANTALLA lo conecta — el efecto que sincroniza el nodo
+    // con el ajuste.
+    check('la pieza arranca sin lienzo institucional',
+        await page.locator('[data-node="lienzo_base"]').count() === 0);
+    const antesDelLienzo = await page.locator('[data-node]').count();
+
+    // El lienzo se sube como cualquier imagen del panel, pero acá la respuesta
+    // tiene que ser una data URL: una dirección externa la pide el navegador de
+    // verdad y ensucia la consola con un fallo de red que no dice nada del
+    // módulo.
+    await page.route('**/api/media/upload', r => r.fulfill({ json: { id: 'm3', url: PIXEL_URL } }));
+    await page.getByText('Activar', { exact: true }).click();
+    await page.waitForTimeout(300);
+    const casillasBase = page.locator('input[type=file]');
+    const nBase = await casillasBase.count();
+    await casillasBase.nth(nBase - 1).setInputFiles({ name: 'lienzo.png', mimeType: 'image/png', buffer: png });
+    await page.waitForTimeout(1000);
+    check('elegir la imagen base la dibuja en la mesa de trabajo',
+        await page.locator('[data-node="lienzo_base"]').count() === 1);
+    check('y va al fondo, con todo lo demás encima',
+        await page.evaluate(() => document.querySelector('[data-node]')?.getAttribute('data-node') === 'lienzo_base'));
+    // El lienzo NO es el fondo generado: no apaga nada. Si apagara la
+    // fotografía, quien abre el enlace público subiría su foto y no la vería.
+    check('el lienzo no apaga ningún otro nodo',
+        await page.locator('[data-node]').count() === antesDelLienzo + 1,
+        `${antesDelLienzo} → ${await page.locator('[data-node]').count()}`);
 
     // ── Guardar NO produce un archivo ──────────────────────────────
     //
@@ -705,6 +737,123 @@ window.go = () => createRoot(document.getElementById('root')).render(
     await page.waitForTimeout(250);
     check('y con el club sí', !(await page.getByRole('button', { name: /Descargar PNG/ }).isDisabled()));
     check('el portal no lanzó errores', fallos.length === 0, fallos.join(' | '));
+    await page.close();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// El portal público COMPONIENDO
+//
+// Lo pedido: que la fotografía que sube el visitante la integre la IA DENTRO
+// del lienzo institucional, como un diseño gráfico, en vez de encajarla en un
+// recuadro. El motor y los endpoints existían desde v4.722; lo que faltaba era
+// que esta pantalla los llamara — y eso no se ve desde el servidor.
+console.log('\nEl portal público, componiendo con IA');
+{
+    const { buildPublication, bakeFrozen } = await import('../server/lib/designPublish.js');
+    const compiled = compileTemplate({
+        template: templateById('aniversario_foto'), variables: {},
+        branding: { district: '4281', governor: 'Fabio', period: '2026-2027' }, keepSlots: true,
+    });
+    const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
+    const frozen = { distrito: '4281', gobernador: 'Fabio', periodo: '2026-2027' };
+    const pub = buildPublication({ document: doc, name: 'Aniversario', slug: 'aniversario', settings: { frozen } });
+    const RESP = {
+        slug: pub.slug, name: pub.name, intro: '', category: 'aniversario', format: pub.format,
+        document: bakeFrozen(pub.document, frozen), fields: pub.fields,
+        composition: { enabled: true, variants: 1 },
+    };
+
+    const entry = `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import PlantillaPublica from './src/pages/PlantillaPublica';
+window.go = () => createRoot(document.getElementById('root')).render(
+  React.createElement(MemoryRouter, { initialEntries: ['/plantillas/aniversario'] },
+    React.createElement(Routes, null,
+      React.createElement(Route, { path: '/plantillas/:slug', element: React.createElement(PlantillaPublica) }))));
+`;
+    const portal = await build({
+        stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
+        bundle: true, write: false, format: 'iife', platform: 'browser',
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        external: ['jspdf'], jsx: 'automatic',
+    });
+
+    const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    const fallos = [];
+    page.on('pageerror', e => fallos.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
+
+    const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    let pidioComponer = null;
+    let sondeos = 0;
+
+    await page.route('**/api/**', r => r.fulfill({ json: {} }));
+    await page.route('**/api/public/design/aniversario', r => r.fulfill({ json: RESP }));
+    await page.route('**/api/public/design/aniversario/photo', r =>
+        r.fulfill({ json: { dataUrl: PIXEL, notes: [] } }));
+    await page.route('**/api/public/design/aniversario/backdrop', r => {
+        try { pidioComponer = JSON.parse(r.request().postData() || '{}'); } catch { pidioComponer = {}; }
+        return r.fulfill({ json: { variants: [{ planId: 'foto_superior', label: 'Arriba', taskId: 'task_9' }] } });
+    });
+    // El primer sondeo devuelve `pending`: es el caso real —el modelo tarda
+    // entre 20 y 60 segundos— y hay que comprobar que la pantalla lo espera en
+    // vez de darlo por fallido.
+    await page.route('**/api/public/design/aniversario/backdrop/task_9', r => {
+        sondeos += 1;
+        return sondeos < 2
+            ? r.fulfill({ json: { status: 'pending' } })
+            : r.fulfill({ json: { status: 'ready', url: 'https://ejemplo.test/compuesto.png', notes: [] } });
+    });
+    await page.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: portal.outputFiles[0].text });
+    await page.evaluate(() => window.go());
+    await page.waitForTimeout(900);
+
+    // Subir la FOTOGRAFÍA dispara la composición. El logotipo no: un escudo se
+    // dibuja nítido en su sitio, no se funde con el fondo.
+    const archivos = page.locator('input[type=file]');
+    const cuantos = await archivos.count();
+    // La FOTOGRAFÍA es la única casilla que acepta `image/*`; el logotipo, la
+    // firma y el sello enumeran sus formatos. Buscar por «jpeg» tomaba el
+    // logotipo —y comprobaba lo contrario de lo que se quería—.
+    let idxFoto = -1;
+    for (let i = 0; i < cuantos; i++) {
+        if ((await archivos.nth(i).getAttribute('accept')) === 'image/*') { idxFoto = i; break; }
+    }
+    check('la casilla de la fotografía existe en el formulario', idxFoto >= 0, `${cuantos} casillas`);
+    const png = Buffer.from(PIXEL.split(',')[1], 'base64');
+    await archivos.nth(idxFoto).setInputFiles({ name: 'club.png', mimeType: 'image/png', buffer: png });
+    await page.waitForTimeout(1200);
+
+    check('subir la fotografía pide componer', !!pidioComponer);
+    check('y le manda la fotografía al motor',
+        typeof pidioComponer?.photo === 'string' && pidioComponer.photo.startsWith('data:image/'));
+    check('mientras compone se DICE, no se deja la pantalla muda',
+        /Integrando tu fotograf/i.test(await page.locator('#root').innerText()));
+
+    await page.waitForTimeout(9000);
+    check('un sondeo pendiente no se toma por un fallo', sondeos >= 2, `${sondeos} sondeos`);
+    check('el fondo compuesto entra en la pieza',
+        await page.locator('[data-node="fondo_ia"]').count() === 1);
+    check('y apaga el nodo de la fotografía, que ya está dentro',
+        await page.locator('[data-node="foto"]').count() === 0);
+    check('el texto se sigue dibujando encima, nítido',
+        await page.locator('[data-node="saludo"]').count() === 1);
+
+    // La vuelta atrás tiene que existir: una composición que no gusta no puede
+    // dejar la pieza peor que antes.
+    const volver = page.getByText('Prefiero verla en su recuadro');
+    check('se ofrece volver a la fotografía en su recuadro', await volver.count() === 1);
+    await volver.click();
+    await page.waitForTimeout(400);
+    check('y al volver, el fondo compuesto se va',
+        await page.locator('[data-node="fondo_ia"]').count() === 0);
+    check('con la fotografía otra vez visible',
+        await page.locator('[data-node="foto"]').count() === 1);
+    check('componer no lanzó errores', fallos.length === 0, fallos.join(' | '));
     await page.close();
 }
 

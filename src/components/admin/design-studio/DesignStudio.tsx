@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.731.0
+// v4.732.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -41,6 +41,7 @@ import {
     type DesignDocument, type DesignNode, type TextNode, type ImageNode,
 } from '../../../lib/designSpec';
 import { newField, type LinkedField } from '../../../lib/designFields';
+import { withBase, withBackdrop, withoutBackdrop, hasBackdrop } from '../../../lib/designCompose';
 import { exportDocument, exportToFile, thumbnail, type ExportFormat } from '../../../lib/designRender';
 
 const EMPTY_DOC: DesignDocument = { format: 'post_1_1', background: PALETTE.white, nodes: [] };
@@ -407,33 +408,42 @@ const DesignStudio: React.FC = () => {
     }, [doc.nodes.length, runCompose, catalog]);
 
     // ── Fondo generado por IA ──────────────────────────────────────
-    // El fondo entra AL PIE de la pila y oculta el nodo de la fotografía: la
-    // foto ya está dentro de la imagen generada y dejarla encima la mostraría
-    // dos veces. Se marca con `role` para poder reemplazarlo o quitarlo.
+    // El criterio —dónde entra el fondo, qué apaga, cómo se quita— vive en
+    // `src/lib/designCompose.ts`, espejo del servidor. Hasta v4.731 estaba
+    // escrito a mano acá, y el portal público iba a necesitar exactamente lo
+    // mismo: dos copias que se separan en silencio.
     const applyBackdrop = useCallback((url: string) => {
-        const nodes = doc.nodes
-            .filter(n => n.role !== 'backdrop')
-            .map(n => (isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: true } : n));
-        const fondo: DesignNode = {
-            id: 'fondo_ia', type: 'image', name: 'Fondo generado', role: 'backdrop',
-            src: url, srcVar: null, fit: 'cover',
-            x: 0, y: 0, w: 1, h: 1, rotation: 0, opacity: 1, radius: 0, locked: true,
-        } as DesignNode;
-        commit({ ...doc, nodes: [fondo, ...nodes] });
+        commit(withBackdrop(doc, url));
         setSelectedIds([]);
         toast.success('Fondo aplicado. El texto se sigue dibujando encima, nítido.');
     }, [commit, doc]);
 
-    const removeBackdrop = useCallback(() => {
-        commit({
-            ...doc,
-            nodes: doc.nodes
-                .filter(n => n.role !== 'backdrop')
-                .map(n => (isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: false } : n)),
-        });
-    }, [commit, doc]);
+    const removeBackdrop = useCallback(() => commit(withoutBackdrop(doc)), [commit, doc]);
 
-    const hasBackdrop = useMemo(() => doc.nodes.some(n => n.role === 'backdrop'), [doc.nodes]);
+    const hayBackdrop = useMemo(() => hasBackdrop(doc), [doc]);
+
+    // ── El lienzo institucional ────────────────────────────────────
+    //
+    // La imagen base se elegía en el panel de Composición y no se veía en
+    // ninguna parte: era sólo un dato que viajaba al modelo. El administrador
+    // colocaba el texto y el logotipo a ciegas respecto del fondo sobre el que
+    // iban a quedar, y la pieza salía sin ese fondo. Ahora entra como nodo al
+    // pie de la pila, así que se dibuja, se exporta y se publica con el resto.
+    //
+    // Es un EFECTO y no un envoltorio del setter a propósito: la imagen base se
+    // cambia desde cuatro sitios —subir, elegir de la Biblioteca, quitarla, y
+    // cambiar de plantilla, que trae la suya—. Sincronizar en cada uno deja al
+    // quinto sin hacerlo, y el fallo es mudo: el panel muestra la imagen y la
+    // pieza sigue en blanco.
+    useEffect(() => {
+        setDoc(d => {
+            if (!d.nodes.length) return d;
+            const actual = d.nodes.find(n => n.role === 'lienzo');
+            const puesta = actual && isImage(actual) ? actual.src : null;
+            if ((puesta || null) === (composition.baseImageUrl || null)) return d;
+            return withBase(d, composition.baseImageUrl);
+        });
+    }, [composition.baseImageUrl]);
 
     // ── La Cabecera ────────────────────────────────────────────────
     //
@@ -772,7 +782,7 @@ const DesignStudio: React.FC = () => {
                             format={doc.format}
                             palette={{ primary: branding?.primary, accent: branding?.accent }}
                             maxVariants={catalog?.maxVariants || 4}
-                            hasBackdrop={hasBackdrop}
+                            hasBackdrop={hayBackdrop}
                             onApply={applyBackdrop}
                             onRemove={removeBackdrop}
                             onPickBase={() => setPickerTarget('base')}

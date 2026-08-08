@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.731.0",
-  "cache_bust": "2026-08-08e (Guardar el diseno ya no deja una imagen en la Biblioteca.)",
+  "version": "4.732.0",
+  "cache_bust": "2026-08-08f (La imagen base se dibuja y la IA integra la foto del portal.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

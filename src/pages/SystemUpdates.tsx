@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.731.0 | 2026-08-08 (Guardar ya no deja una imagen en la Biblioteca)
-// Cache bust: 2026-08-08e
+// UI V4.732.0 | 2026-08-08 (El lienzo se dibuja y la IA integra la foto)
+// Cache bust: 2026-08-08f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.732.0',
+        title: 'La imagen base ya se ve, y la IA integra la foto del club dentro de ella 🎨',
+        description: 'Dos cosas que faltaban para que el módulo hiciera lo que promete. La primera: la imagen base institucional se elegía en el panel de Composición y no aparecía en ninguna parte — era sólo un dato que viajaba al modelo. El administrador colocaba el texto y el logotipo sobre un fondo blanco, a ciegas respecto del fondo real sobre el que iban a quedar, y la pieza salía sin ese fondo. Ahora la imagen base entra como el lienzo de la pieza: se dibuja en la mesa de trabajo, se exporta y se publica con todo lo demás encima. Está bloqueada, así que no se arrastra por accidente. La segunda, y es la que da sentido a este motor: cuando alguien sube la fotografía de su club desde el enlace público, la IA la INTEGRA dentro de ese lienzo —armonizando luz, color y bordes— en vez de encajarla en un recuadro. Es la diferencia entre una foto pegada y un diseño gráfico. El motor y sus endpoints existían desde hace varias versiones; lo que faltaba era que la página pública los llamara. Mientras compone se avisa —tarda entre 20 y 60 segundos y se puede seguir completando el resto del formulario—, y si no gusta hay un enlace para volver a ver la fotografía en su recuadro. Si la composición falla, la pieza no se rompe: queda la versión con la foto en su recuadro, que también se puede descargar. Como siempre, el texto, el nombre del club, el logotipo y la firma del Gobernador los sigue dibujando la plataforma, nítidos: un modelo generativo escribe el texto con errores.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'ia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La imagen base institucional ya se dibuja como fondo de la pieza.' },
+            { type: 'added', text: 'La IA integra la fotografía del club dentro del lienzo, desde el enlace público.' },
+            { type: 'added', text: 'Aviso mientras compone y opción de volver a la foto en su recuadro.' },
+        ]
+    },
     {
         version: '4.731.0',
         title: 'Guardar el diseño ya no llena la Biblioteca de imágenes 🧹',
