@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — Motor de Composición (el CRITERIO)
-// v4.722.0
+// v4.734.0
 //
 // PURO: sin base, sin red, sin IA, sin DOM. Decide qué se le pide al modelo de
 // imagen, con qué variantes y qué se acepta de vuelta. La orquestación —hablar
@@ -92,6 +92,18 @@ export const VARIANT_PLANS = [
         textZone: { y: 0.55, h: 0.4 },
     },
     {
+        // El recorte curvo de la papelería del Distrito: la fotografía entra en
+        // una forma grande de bordes redondeados arriba a la derecha y la curva
+        // del lienzo la muerde por abajo. Es la referencia que trajo el equipo,
+        // y la que mejor se lleva con un texto en columna a la izquierda.
+        id: 'foto_recorte_curvo',
+        label: 'Recorte curvo',
+        summary: 'La foto entra en una forma redondeada arriba a la derecha, mordida por la curva del lienzo.',
+        photo: 'the photograph fills one large rounded shape in the upper right, its lower edge cut by the sweeping curve of the canvas',
+        clear: 'the left column and the lower area stay a calm, even surface with plenty of room to read',
+        textZone: { y: 0.45, h: 0.5 },
+    },
+    {
         id: 'foto_fondo',
         label: 'Fotografía de fondo',
         summary: 'La foto es el fondo entero, atenuada hacia abajo para que el texto se lea.',
@@ -103,10 +115,83 @@ export const VARIANT_PLANS = [
 
 export const planById = (id) => VARIANT_PLANS.find(p => p.id === id) || VARIANT_PLANS[0];
 
-/** Los planes que se van a usar en esta generación. Se toman EN ORDEN, no al
- *  azar: con una sola variante tiene que salir siempre la misma y no una
- *  ruleta — el usuario que regenera espera una alternativa, no un sorteo. */
-export const plansFor = (count) => VARIANT_PLANS.slice(0, Math.max(1, Math.min(MAX_VARIANTS, count || DEFAULT_VARIANTS)));
+// ─── DÓNDE VA A CAER NUESTRO TEXTO ─────────────────────────────────────
+//
+// El modelo compone a ciegas: no sabe que encima de esa imagen vamos a imprimir
+// el nombre del club, el mensaje y la firma del Gobernador. Por eso una
+// composición podía salir preciosa y quedar inservible —la fotografía justo
+// debajo del título, con las caras tapadas por el texto—.
+//
+// `textBandOf` mira el documento REAL y devuelve la franja vertical que ocupa
+// lo que se va a imprimir. Es la diferencia entre «integrá la foto» y «armá una
+// pieza»: en una pieza, el hueco para el texto es parte del diseño.
+//
+// Es una FRANJA vertical y no una caja: el modelo entiende «la mitad de abajo»
+// mucho mejor que unas coordenadas, y una caja obligaría a describir formas que
+// después no se pueden comprobar.
+export const textBandOf = (document) => {
+    const nodes = (document?.nodes || []).filter(n =>
+        !n.hidden && (n.type === 'text' || (n.type === 'image' && (n.srcVar === 'logo' || n.role === 'logo')))
+    );
+    if (!nodes.length) return null;
+
+    let top = 1, bottom = 0;
+    for (const n of nodes) {
+        const y = Number(n.y) || 0;
+        const h = Number(n.h) || 0;
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y + h);
+    }
+    top = Math.max(0, Math.min(1, top));
+    bottom = Math.max(0, Math.min(1, bottom));
+    return bottom > top ? { y: top, h: bottom - top } : null;
+};
+
+/** Cuánto se solapan dos franjas verticales, de 0 a 1 sobre la más chica. Es lo
+ *  que permite ordenar los planes por lo bien que le sientan a ESTE diseño. */
+const overlap = (a, b) => {
+    if (!a || !b) return 0;
+    const ini = Math.max(a.y, b.y);
+    const fin = Math.min(a.y + a.h, b.y + b.h);
+    const cruce = Math.max(0, fin - ini);
+    const menor = Math.min(a.h, b.h);
+    return menor > 0 ? cruce / menor : 0;
+};
+
+/** Los planes que se van a usar en esta generación.
+ *
+ *  Con `document`, se ORDENAN por lo bien que su zona limpia coincide con la
+ *  franja donde de verdad va el texto: con una sola variante sale la que le
+ *  sirve a esta pieza, no la primera de la lista. Sin documento se conserva el
+ *  orden declarado.
+ *
+ *  El orden sigue siendo determinista en los dos casos, que es lo que importa:
+ *  quien regenera espera una alternativa, no un sorteo. */
+export const plansFor = (count, document = null) => {
+    const n = Math.max(1, Math.min(MAX_VARIANTS, count || DEFAULT_VARIANTS));
+    const banda = textBandOf(document);
+    if (!banda) return VARIANT_PLANS.slice(0, n);
+
+    return VARIANT_PLANS
+        .map((p, i) => ({ p, i, score: overlap(p.textZone, banda) }))
+        // A igual puntaje manda el orden declarado: sin este desempate, dos
+        // planes empatados podrían salir en cualquier orden según el motor.
+        .sort((a, b) => (b.score - a.score) || (a.i - b.i))
+        .slice(0, n)
+        .map(x => x.p);
+};
+
+/** La franja libre, dicha como la entiende un modelo de imagen. Nada de
+ *  coordenadas: «la mitad de abajo» se cumple, «y entre 0,5 y 1,0» no. */
+export const clearClauseFor = (banda) => {
+    if (!banda) return null;
+    const centro = banda.y + banda.h / 2;
+    const dónde = banda.h > 0.7 ? 'the middle of the square'
+        : centro < 0.34 ? 'the upper third of the square'
+        : centro > 0.66 ? 'the lower third of the square'
+        : 'the middle band of the square';
+    return `${cap(dónde)} stays calm and even, with nothing busy in it: that is where the club's name and message are printed afterwards.`;
+};
 
 // ─── Configuración de composición de una plantilla ─────────────────────
 //
@@ -167,7 +252,7 @@ const STYLE_CLAUSES = {
     sobrio: 'The mood is sober and formal: restrained palette, quiet surfaces, nothing decorative.',
 };
 
-export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = null, hasBase = false }) => {
+export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = null, hasBase = false, document = null }) => {
     const c = normalizeComposition(composition);
     const p = plan || VARIANT_PLANS[0];
 
@@ -180,7 +265,11 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
     //    «la segunda» mejor que nombres inventados.
     if (hasBase && photo) {
         partes.push('The first image is the brand canvas: keep its texture, its curves and its colours exactly as they are, and build on top of it.');
-        partes.push('The second image is a real photograph of the club members. Place it into the canvas so it belongs there: follow the curves of the canvas, ease its edges into the surface, and match the light so the two read as one piece.');
+        // Cómo se INTEGRA, no sólo que se integre. Es lo que separa una foto
+        // pegada de una pieza de papelería: la fotografía va DENTRO de una
+        // forma que pertenece al lienzo —un recorte de bordes curvos, con su
+        // margen limpio alrededor— y la luz de las dos se encuentra.
+        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed institutional stationery does: it sits inside one large, softly rounded shape whose curve follows the curves already in the canvas, with a clean margin of canvas breathing around it, its edge easing into the surface instead of being cut, and its light and colour matched to the canvas so the two read as a single designed piece.');
     } else if (photo) {
         partes.push('The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
     } else if (hasBase) {
@@ -188,7 +277,15 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
     }
 
     // 3. Dónde va y qué queda limpio.
+    //
+    // La franja limpia sale del documento REAL cuando se conoce: el modelo
+    // compone a ciegas y no sabe que encima vamos a imprimir el nombre del club
+    // y el mensaje. Sin esto, una composición podía salir preciosa y quedar
+    // inservible, con las caras justo debajo del título. El plan sigue
+    // decidiendo DÓNDE va la fotografía; lo que se afina es qué se respeta.
+    const banda = clearClauseFor(textBandOf(document));
     partes.push(`${cap(p.photo)}, and ${p.clear}.`);
+    if (banda) partes.push(banda);
 
     // La gente de la foto es el motivo por el que existe la pieza.
     if (photo) {
@@ -362,6 +459,7 @@ export default {
     VARIANT_PLANS, planById, plansFor,
     COMPOSITION_DEFAULTS, normalizeComposition,
     buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS,
+    textBandOf, clearClauseFor,
     BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
     BASE_ROLE, baseNode, withBase, hasBase,
     validateBackdrop, aspectFor,

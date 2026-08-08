@@ -55,6 +55,9 @@ interface Props {
      *  desde el panel eso no se ve: el administrador mira su pieza completa. */
     hasPhotoSlot?: boolean;
     onAddPhoto?: () => void;
+    /** El documento de la pieza. Viaja al motor para que la composición respete
+     *  la franja donde después se imprime el texto. */
+    document?: unknown;
 }
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -63,7 +66,7 @@ const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400
 const CompositionPanel: React.FC<Props> = ({
     composition, onChange, photoUrl, format, palette, maxVariants,
     hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading, step = 6,
-    hasPhotoSlot = true, onAddPhoto,
+    hasPhotoSlot = true, onAddPhoto, document = null,
 }) => {
     const [running, setRunning] = useState(false);
     const [variants, setVariants] = useState<VariantResult[]>([]);
@@ -103,7 +106,7 @@ const CompositionPanel: React.FC<Props> = ({
         setRunning(true);
         setVariants([]);
         try {
-            const r = await startBackdrop({ composition, format, photoUrl, palette, variants: composition.variants });
+            const r = await startBackdrop({ composition, format, photoUrl, palette, variants: composition.variants, document });
             setVariants(r.variants.map(v => ({
                 ...v,
                 status: v.taskId ? ('pending' as const) : ('failed' as const),

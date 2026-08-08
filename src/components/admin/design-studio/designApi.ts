@@ -162,6 +162,9 @@ export interface BackdropVariant {
 export const startBackdrop = (body: {
     composition: Composition; format: string; photoUrl: string | null;
     palette: Record<string, string | undefined>; variants?: number;
+    /** El documento de la pieza. Con él la composición sabe dónde va a caer el
+     *  texto que se imprime encima y deja esa franja tranquila. */
+    document?: unknown;
 }) => request<{ model: string; aspect: string; variants: BackdropVariant[] }>('/backdrop', {
     method: 'POST', body: JSON.stringify(body),
 });

@@ -250,6 +250,9 @@ export const publicBackdrop = async (req, res) => {
             // En el portal manda `publicVariants`, no `variants`: el panel puede
             // explorar cuatro; una visita anónima gasta lo que el operador dijo.
             variants: comp.publicVariants,
+            // El documento publicado: es lo que dice dónde va el texto que
+            // imprimimos encima. Sale de la fila, no del navegador.
+            document: { format: row.format, nodes: row.document?.nodes || [] },
         });
         if (!r.variants.some(v => v.taskId)) {
             return res.status(502).json({ error: r.variants[0]?.error || 'No se pudo iniciar la composición.' });

@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.733.0 | 2026-08-08 (Se ofrece crear el espacio de la fotografia)
-// Cache bust: 2026-08-08g
+// UI V4.734.0 | 2026-08-08 (La composicion respeta donde cae el texto)
+// Cache bust: 2026-08-08h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.734.0',
+        title: 'La fotografía ahora se compone como una pieza de papelería, no como una foto pegada 🖼️',
+        description: 'La composición ya integraba la fotografía en el lienzo, pero le faltaban dos cosas para que quedara como las piezas de referencia del Distrito. La primera: el modelo componía a ciegas. No sabía que encima de esa imagen la plataforma iba a imprimir el nombre del club, el mensaje y la firma del Gobernador, así que una composición podía salir preciosa y quedar inservible —con las caras justo debajo del título—. Ahora el motor mira el diseño real, calcula en qué franja va a caer el texto y se lo dice al modelo con todas las letras, incluido el porqué. Y va más allá: entre los distintos repartos posibles elige automáticamente el que le sirve a ese diseño en concreto, así que con una sola variante no sale «la primera de la lista» sino la que encaja. La segunda: ahora se describe CÓMO se integra, no sólo que se integre. Se le pide al modelo lo que hace la papelería impresa —la fotografía dentro de una forma grande de bordes redondeados cuya curva sigue las curvas del lienzo, con un margen limpio respirando alrededor, el borde fundido en la superficie en vez de cortado, y la luz y el color de las dos igualados para que se lean como una sola pieza—. Se sumó además un reparto nuevo, «Recorte curvo», que es exactamente el de la papelería del Distrito: la foto en una forma redondeada arriba a la derecha, mordida por la curva del lienzo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia', 'portal publico'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La composición respeta la franja donde después se imprime el texto.' },
+            { type: 'added', text: 'Se elige solo el reparto que le sirve a cada diseño.' },
+            { type: 'added', text: 'Reparto «Recorte curvo», el de la papelería del Distrito.' },
+            { type: 'changed', text: 'El prompt describe cómo se funde la foto con el lienzo.' },
+        ]
+    },
     {
         version: '4.733.0',
         title: 'Si al diseño le falta el espacio para la fotografía, ahora se avisa y se agrega de un clic 📷',
