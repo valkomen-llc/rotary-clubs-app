@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.736.0 | 2026-08-08 (Se puede vincular a mano el enlace publico)
-// Cache bust: 2026-08-08j
+// UI V4.737.0 | 2026-08-08 (El sitio de un distrito vuelve a ser un sitio normal)
+// Cache bust: 2026-08-08k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.737.0',
+        title: 'El sitio de un distrito vuelve a ser un sitio normal 🏛️',
+        description: 'Al entrar al sitio de un distrito no aparecía su portada: aparecía directamente el formulario de la Galería Multimedia de la Conferencia Bidistrital Medellín 2026, y no había ningún ajuste del panel que lo apagara. La causa era una condición escrita para el Distrito 4271 que en realidad no miraba el número del distrito sino el TIPO de sitio, así que atrapaba también al 4281 y habría atrapado a cualquier distrito que se creara después. El mismo criterio dejaba el menú reducido a «Inicio | Contacto»: el menú estándar se salteaba y el configurable no aplicaba, de modo que tampoco se podía cambiar desde Configuración. Ahora un distrito se arma con su configuración como cualquier otro sitio —su portada, sus secciones y su menú, que ya se puede editar desde el panel— y la galería dejó de estar en la portada de nadie: vive en su propia dirección, /galeria-multimedia, y el distrito que la necesite la enlaza desde su menú. La regla de qué sitios llevan menú propio quedó en un solo lugar del código, porque estaba escrita dos veces y las dos copias ya se habían separado.',
+        date: new Date().toISOString(),
+        tags: ['distritos', 'sitio publico', 'menu'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La portada de un distrito ya no la reemplaza el formulario de la galería multimedia.' },
+            { type: 'fixed', text: 'El menú de un distrito deja de ser «Inicio | Contacto» y se configura desde el panel.' },
+            { type: 'added', text: 'La Galería Multimedia tiene su propia dirección: /galeria-multimedia.' },
+            { type: 'changed', text: 'Qué sitios llevan menú propio se decide en un solo lugar, no en dos listas separadas.' },
+        ]
+    },
     {
         version: '4.736.0',
         title: 'Ya se puede decirle al sistema cuál es el enlace público de un diseño 🔗',

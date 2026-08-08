@@ -2860,6 +2860,53 @@ implementado de punta a punta pero todavía no se llama desde el barrido, así q
 Core Web Vitals no entra aún en la nota. Y el sitemap es un archivo único: por
 encima de 50.000 direcciones habrá que partirlo en índice.
 
+## Tipo de sitio y portada — v4.737
+
+`SmartHome` (`src/App.tsx`) decide qué se pinta en `/` según el tipo de sitio, y
+`ENTITY_TYPES` (`src/lib/entityTypes.ts`, espejado en `server/lib/entityTypes.js`)
+es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
+—desde v4.737— `fixedNav`.
+
+**Reglas durables:**
+
+- **Un DISTRITO es un sitio normal.** Se arma con su configuración, como un club:
+  su portada son las secciones estándar y su menú sale del panel. No tiene rama
+  propia en `SmartHome` y no está en `fixedNav`.
+- **Una campaña NO se pone como portada de un tipo de sitio.** Hasta v4.736
+  `SmartHome` devolvía `<DistrictMultimediaGallery />` —el formulario de la
+  Conferencia Bidistrital Medellín 2026— para todo sitio de tipo distrito. El
+  comentario decía «e.g. 4271.org» y la intención era ese distrito, pero la
+  condición miraba `club.type === 'district'`: atrapó al 4281 y habría atrapado a
+  cualquier distrito futuro, dejándolos **sin portada y sin ningún ajuste del
+  panel que lo apagara**. Una campaña con fecha —una conferencia, una
+  convocatoria— es una PÁGINA con su ruta, que el sitio enlaza desde su menú; hoy
+  `/galeria-multimedia`. Al condicionar por tipo, preguntarse a cuántos sitios
+  alcanza además del que se tenía en mente.
+- **El criterio de qué sitios llevan menú propio vive en `entityTypes.ts`**
+  (`hasFixedNav`), no en cada pantalla. Estaba escrito a mano en `Navbar.tsx` y
+  otra vez en `ClubSettings.tsx`, y las dos copias **ya se habían separado** —el
+  `Navbar` contemplaba además los sitios RYE y el panel no—. Acepta la clave
+  máquina (`district`) y la etiqueta legible (`Distrito Rotario`) porque el panel
+  guarda una u otra según por dónde se creó el sitio.
+- **El menú y su editor son la MISMA decisión.** El `Navbar` saltea el bloque
+  estándar y el panel esconde el editor: si las dos condiciones no salen de la
+  misma función, un sitio termina con un menú que nadie puede cambiar. Es lo que
+  le pasaba al distrito, con «Inicio | Contacto» y ninguna vía para tocarlo.
+- **Un sitio RYE se reconoce por el dominio Y por el subdominio.** En una vista
+  previa (`app.clubplatform.org/?distrito=rye…`) el dominio es el de la
+  plataforma. `ClubContext` ya fuerza `type = 'Programa de Intercambio'` para
+  esos sitios; el `Navbar` lo comprueba igual porque no depende de ese orden.
+- Pruebas: `npm run test:nav` (34 casos). **Sin base, credenciales ni red.**
+  Comprueban el criterio, que los dos catálogos coincidan y —leyendo los
+  archivos— que la portada no vuelva a quedar secuestrada ni reaparezca un número
+  de distrito escrito a mano. Esto último no lo ve el typecheck: el código era
+  válido y estaba bien tipado.
+- **Verificar la PORTADA en un navegador, no sólo el criterio.** El defecto vivió
+  versiones porque nadie abrió el sitio de un distrito. Comprobado con Chromium
+  sobre el `dist/` real y la API interceptada: la portada pinta sus secciones y
+  el menú da «Inicio · Sobre Nosotros · Proyectos · Noticias · Eventos ·
+  Contacto», y `/galeria-multimedia` sigue mostrando la galería.
+
 ## Recursos que cambian con el idioma — v4.699
 
 Algunas piezas gráficas están **rotuladas** y por tanto tienen idioma: el logo

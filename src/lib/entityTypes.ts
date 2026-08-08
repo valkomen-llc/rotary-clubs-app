@@ -37,16 +37,28 @@ export interface EntityTypeEntry {
      * de club (mismos colores/fondos/botón estándar).
      */
     customTheme?: boolean;
+    /**
+     * Si el sitio lleva una navbar PROPIA, con un menú fijo escrito en el código, en vez
+     * del menú estándar y configurable desde el panel. Sólo las asociaciones y los
+     * programas de intercambio: su menú habla de Intercambios y Rotex, que no son
+     * secciones del sitio de un club.
+     *
+     * Un DISTRITO no está aquí a propósito (v4.737). Lo estaba, y eso le dejaba el menú
+     * reducido a "Inicio | Contacto" —el bloque estándar se saltea y el configurable no
+     * aplica—, sin forma de cambiarlo desde el panel. Un distrito es un sitio normal:
+     * su menú sale de su configuración, como el de un club.
+     */
+    fixedNav?: boolean;
 }
 
 export const ENTITY_TYPES: EntityTypeEntry[] = [
     { type: 'club',                    organizationType: 'Club Rotario',            label: 'Rotary Club (Socio)',      registerable: true },
     { type: 'district',                organizationType: 'Distrito Rotario',        label: 'Distrito Rotary',          registerable: true },
-    { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true },
+    { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true,  fixedNav: true },
     { type: 'colrotarios',             organizationType: 'Colrotarios',             label: 'Colrotarios (Fundación)',  registerable: false },
     { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true, customTheme: true },
     { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true,  editableHome: true },
-    { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true },
+    { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true,  fixedNav: true },
     { type: 'Zona',                    organizationType: 'Zona',                    label: 'Zona',                     registerable: true },
 ];
 
@@ -94,4 +106,20 @@ export function hasEditableHome(type?: string): boolean {
 export function hasCustomTheme(type?: string): boolean {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
     return !!entry?.customTheme;
+}
+
+/**
+ * ¿Este tipo de sitio lleva navbar propia, con su menú fijo escrito en el código?
+ * Sólo asociaciones y programas de intercambio.
+ *
+ * Acepta tanto la clave máquina (`district`) como la etiqueta legible
+ * (`Distrito Rotario`): el panel guarda una u otra según por dónde se haya creado el
+ * sitio, y hasta v4.736 cada pantalla llevaba su propia lista con las dos formas
+ * escritas a mano. Estaban desincronizadas —el `Navbar` contemplaba además los sitios
+ * RYE y `ClubSettings` no—, que es como el criterio se bifurca en silencio.
+ */
+export function hasFixedNav(type?: string): boolean {
+    const value = norm(type);
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === value || norm(e.organizationType) === value);
+    return !!entry?.fixedNav;
 }

@@ -20,14 +20,18 @@
 // `customTheme`: el sitio usa el TEMA VISUAL personalizable (colores/fondos, overlays,
 //   colores de botones, hero de pantalla completa, skin del footer) — SOLO eventos.
 //   Las ferias conservan la línea visual de club.
+// `fixedNav`: el sitio lleva navbar propia, con un menú fijo escrito en el código, en vez
+//   del menú estándar y configurable — asociaciones y programas de intercambio. Lo consume
+//   el navegador; vive también acá para que los dos catálogos no se separen. Un DISTRITO
+//   NO lo lleva (v4.737): es un sitio normal y su menú sale de su configuración.
 export const ENTITY_TYPES = [
     { type: 'club',                    organizationType: 'Club Rotario',            label: 'Rotary Club (Socio)',      registerable: true },
     { type: 'district',                organizationType: 'Distrito Rotario',        label: 'Distrito Rotary',          registerable: true },
-    { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true },
+    { type: 'association',             organizationType: 'Asociación Rotaria',      label: 'Asociación / Agrupación',  registerable: true,  fixedNav: true },
     { type: 'colrotarios',             organizationType: 'Colrotarios',             label: 'Colrotarios (Fundación)',  registerable: false },
     { type: 'Evento o Convención',     organizationType: 'Evento o Convención',     label: 'Evento o Convención',      registerable: true,  editableHome: true, customTheme: true },
     { type: 'Feria de Proyectos',      organizationType: 'Feria de Proyectos',      label: 'Feria de Proyectos',       registerable: true,  editableHome: true },
-    { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true },
+    { type: 'Programa de Intercambio', organizationType: 'Programa de Intercambio', label: 'Programa de Intercambio',  registerable: true,  fixedNav: true },
     { type: 'Zona',                    organizationType: 'Zona',                    label: 'Zona',                     registerable: true },
 ];
 
@@ -62,4 +66,12 @@ export function hasEditableHome(type) {
 export function hasCustomTheme(type) {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === norm(type));
     return !!(entry && entry.customTheme);
+}
+
+// ¿Este tipo de sitio lleva navbar propia con menú fijo? Asociaciones e intercambios.
+// Acepta la clave máquina ('association') o la etiqueta legible ('Asociación Rotaria').
+export function hasFixedNav(type) {
+    const value = norm(type);
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === value || norm(e.organizationType) === value);
+    return !!(entry && entry.fixedNav);
 }

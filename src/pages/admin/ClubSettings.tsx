@@ -19,7 +19,7 @@ import ImageSourceOverlay from '../../components/admin/ImageSourceOverlay';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
-import { hasEditableHome, hasCustomTheme } from '../../lib/entityTypes';
+import { hasEditableHome, hasCustomTheme, hasFixedNav } from '../../lib/entityTypes';
 import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
@@ -105,10 +105,16 @@ const ClubSettings: React.FC = () => {
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
 
-    // El menú principal configurable aplica a Clubes y Eventos/Convenciones (sitios con navbar estándar).
-    // Los sitios con navbar propia (distrito, asociación, intercambio) mantienen su menú fijo.
-    const SITES_WITH_CUSTOM_NAV = ['Distrito Rotario', 'district', 'Asociación Rotaria', 'association', 'Programa de Intercambio'];
-    const canConfigureNav = isSuperAdmin || !SITES_WITH_CUSTOM_NAV.includes((club?.type as string) || '');
+    // El menú principal configurable aplica a todo sitio con navbar estándar: clubes,
+    // distritos, eventos/convenciones y ferias. Sólo los que llevan navbar propia
+    // (asociación, intercambio) mantienen su menú fijo.
+    //
+    // El criterio es `hasFixedNav`, la misma función que consulta el `Navbar` (v4.737).
+    // Antes había acá una lista escrita a mano y otra allá, y ya se habían separado: el
+    // `Navbar` contemplaba además los sitios RYE y esta no. Un distrito estaba en la
+    // lista, así que el panel le escondía el editor del menú y el `Navbar` le daba uno
+    // fijo de dos enlaces — sin forma de cambiarlo por ninguna vía.
+    const canConfigureNav = isSuperAdmin || !hasFixedNav(club?.type as string);
 
     type TabType = 'estado' | 'identidad' | 'avanzado' | 'facturacion' | 'wa-api' | 'comms';
     const [activeTab, setActiveTab] = useState<TabType>('estado');

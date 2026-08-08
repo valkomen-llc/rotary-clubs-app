@@ -9,7 +9,7 @@ import { pickLocalizedAsset } from '../lib/audienceAssets';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
-import { hasEditableHome } from '../lib/entityTypes';
+import { hasEditableHome, hasFixedNav } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, ctaTarget, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../lib/ctaStyles';
 // Tercera identidad del sitio: quien consulta su inscripción a un evento.
@@ -216,10 +216,12 @@ const Navbar = () => {
     navigate('/');
   };
 
-  // Determine if it's a district site
   const currentHostname = window.location.hostname;
-  const currentParams = window.location.search;
-  const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271') || currentHostname.toLowerCase().startsWith('rye');
+  // Un sitio RYE se reconoce por el dominio Y por el subdominio: en una vista previa
+  // (`app.clubplatform.org/?distrito=rye…`) el dominio es el de la plataforma, así que
+  // mirar sólo el dominio lo dejaría con el menú de otro tipo de sitio.
+  const isRyeSite = currentHostname.toLowerCase().startsWith('rye')
+    || !!(club as any)?.subdomain?.toLowerCase().startsWith('rye');
 
   // Menú personalizable para sitios Evento/Convención: cada sección puede activarse/desactivarse.
   const isEventSite = hasEditableHome((club as any)?.type);
@@ -227,12 +229,10 @@ const Navbar = () => {
   const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
   // Ítems de menú adicionales (Evento/Convención): creados o tomados de secciones del sistema.
   const extraNav = (isEventSite ? ((club as any)?.eventNavExtra || []) : []) as { label: string; href: string; external?: boolean }[];
-  // Sitios con navbar propia (distrito, asociación, intercambio/RYE): conservan su menú fijo
-  // y NO usan el menú configurable.
-  const hasCustomNav = isDistrict
-    || (club as any)?.type === 'association'
-    || (club as any)?.type === 'Programa de Intercambio'
-    || currentHostname.toLowerCase().startsWith('rye');
+  // Sitios con navbar propia (asociación, intercambio/RYE): conservan su menú fijo y NO
+  // usan el menú configurable. El criterio vive en `entityTypes.ts`, no acá: estaba
+  // escrito a mano también en `ClubSettings.tsx` y las dos listas ya se habían separado.
+  const hasCustomNav = hasFixedNav((club as any)?.type) || isRyeSite;
   // Orden unificado del menú configurable: fijos + personalizados en el orden elegido.
   // Disponible para Clubes y sitios Evento/Convención (todo sitio con navbar estándar).
   const orderedNav = (!hasCustomNav ? ((club as any)?.eventNavOrder || []) : []) as { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
@@ -629,7 +629,7 @@ const Navbar = () => {
             {!useOrderedNav && (<>
             {showNav('inicio') && <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>}
 
-            {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
+            {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || isRyeSite) ? (
               <>
                 <Link to="/quienes-somos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Sobre Rotary</T></Link>
                 <Link to="/intercambio-jovenes" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Intercambios</T></Link>
@@ -637,7 +637,7 @@ const Navbar = () => {
                 <Link to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>
                 <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>
               </>
-            ) : !isDistrict && (
+            ) : (
               <>
                 {/* Sobre Nosotros Dropdown */}
                 {showNav('sobreNosotros') && (
@@ -836,7 +836,7 @@ const Navbar = () => {
               {!useOrderedNav && (<>
               {showNav('inicio') && <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>}
 
-              {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
+              {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || isRyeSite) ? (
                 <>
                   <Link to="/quienes-somos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Sobre Rotary</Link>
                   <Link to="/intercambio-jovenes" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Intercambios</Link>
@@ -844,7 +844,7 @@ const Navbar = () => {
                   <Link to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>
                   <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
                 </>
-              ) : !isDistrict && (
+              ) : (
                 <>
                   {/* Sobre Nosotros en móvil */}
                   {showNav('sobreNosotros') && (
