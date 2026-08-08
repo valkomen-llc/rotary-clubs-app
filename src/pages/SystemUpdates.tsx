@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.734.0 | 2026-08-08 (La composicion respeta donde cae el texto)
-// Cache bust: 2026-08-08h
+// UI V4.735.0 | 2026-08-08 (La composicion se guarda y llega al enlace)
+// Cache bust: 2026-08-08i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.735.0',
+        title: 'La Composición con IA ya se guarda de verdad (antes se perdía en silencio) 💾',
+        description: 'Se encendía «Composición con IA», se elegía la imagen base, se guardaba… y todo seguía igual. El motivo es que esa configuración no se guardaba en ninguna parte: el panel la enviaba al servidor y el servidor la descartaba, porque no existía dónde ponerla. Las consecuencias eran dos, y las dos silenciosas. Al reabrir el diseño, la composición aparecía apagada otra vez, como si nunca se hubiera configurado. Y el enlace público nunca se enteraba de que esa plantilla componía, así que quien subía su fotografía la recibía encajada en su recuadro, sin integrar. Ahora la configuración se guarda junto al diseño, vuelve con él al reabrirlo y —al guardar— viaja también al enlace público, igual que el resto de los cambios. Lo que se comprueba automáticamente es lo que sale por el cable al pulsar Guardar: que la configuración va, y que va con la imagen base elegida. Desde el servidor eso no se ve, así que la comprobación se hace manejando el panel en un navegador de verdad.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia', 'portal publico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La configuración de Composición con IA se guarda con el diseño.' },
+            { type: 'fixed', text: 'Vuelve al reabrir el diseño, en vez de aparecer apagada.' },
+            { type: 'fixed', text: 'Y llega al enlace público al guardar, así el portal sí compone.' },
+        ]
+    },
     {
         version: '4.734.0',
         title: 'La fotografía ahora se compone como una pieza de papelería, no como una foto pegada 🖼️',

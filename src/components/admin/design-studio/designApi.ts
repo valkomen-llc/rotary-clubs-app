@@ -108,6 +108,10 @@ export interface SavedDesign {
      *  de ser publicable—: guardar sin tocar el enlace que el usuario espera
      *  que se toque, y sin decir por qué, es el defecto que esto corrige. */
     publicationNote?: string | null;
+    /** La Composición con IA de este diseño. Hasta v4.734 el navegador la
+     *  mandaba al guardar y el servidor la descartaba: se perdía al reabrir y
+     *  no llegaba nunca al enlace público. */
+    composition?: Composition | null;
 }
 
 // ─── Llamadas ──────────────────────────────────────────────────────────

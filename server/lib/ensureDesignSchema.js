@@ -28,12 +28,15 @@ export async function ensureDesignSchema() {
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignPublicTemplate' AND column_name = 'settings') AS settings_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col`
+                         WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'DesignProject' AND column_name = 'composition') AS proj_comp_col`
     );
     // Esta lista NO es un número de versión: enumera los objetos reales del
     // archivo. Al agregar una columna hay que agregarla acá o la comprobación
     // rápida la da por presente y no se crea nunca (regla del sitio).
-    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.settings_col && rows[0]?.copy_col) { _ready = true; return; }
+    if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.settings_col
+        && rows[0]?.copy_col && rows[0]?.proj_comp_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "DesignProject" (
@@ -70,6 +73,13 @@ export async function ensureDesignSchema() {
             "mediaId" TEXT,
             "thumbUrl" TEXT,
 
+            -- La Composición con IA de ESTE diseño: si está encendida, la imagen
+            -- base, el prompt maestro y cuántas variantes. Hasta v4.734 el
+            -- navegador la mandaba y el servidor la descartaba, así que se
+            -- perdía al guardar y no llegaba nunca al enlace público — se
+            -- encendía, se guardaba y todo seguía igual.
+            composition JSONB NOT NULL DEFAULT '{}'::jsonb,
+
             status TEXT NOT NULL DEFAULT 'draft',
             "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -82,6 +92,7 @@ export async function ensureDesignSchema() {
         `ADD COLUMN IF NOT EXISTS "subjectClubId" TEXT`,
         `ADD COLUMN IF NOT EXISTS "thumbUrl" TEXT`,
         `ADD COLUMN IF NOT EXISTS "mediaId" TEXT`,
+        `ADD COLUMN IF NOT EXISTS composition JSONB NOT NULL DEFAULT '{}'::jsonb`,
     ]) {
         await db.query(`ALTER TABLE "DesignProject" ${col};`).catch(() => {});
     }

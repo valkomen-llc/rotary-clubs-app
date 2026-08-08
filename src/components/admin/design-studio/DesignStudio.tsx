@@ -653,6 +653,10 @@ const DesignStudio: React.FC = () => {
         setDoc(d.document); setTemplateId(d.templateId); setCurrentId(d.id);
         setMessage(d.variables?.mensaje || ''); setYears(d.variables?.anios || '');
         setPhoto(d.variables?.imagen || null); setCopy(d.copy || null);
+        // La Composición con IA vuelve con el diseño. Sin esto se abría apagada
+        // y sin imagen base, así que quien reabriera su plantilla creía que no
+        // había configurado nada.
+        if (d.composition) setComposition(d.composition);
         setPast([]); setFuture([]); setSelectedIds([]); setShowSaved(false);
         // Si ese diseño ya tiene enlace, la barra lo muestra desde el primer
         // momento: es lo que explica por qué guardar va a cambiar el enlace.
