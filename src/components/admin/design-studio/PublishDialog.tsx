@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — publicar al portal público
-// v4.723.0
+// v4.729.0
 //
 // Publicar es exponer un diseño a Internet sin sesión. Por eso esta pantalla
 // hace dos cosas antes de dejar hacerlo:
@@ -25,6 +25,9 @@ import { previewPublication, publishDesign, type PublicField, type Publication, 
 
 interface Props {
     document: DesignDocument;
+    /** El diseño guardado al que pertenece esta publicación. Atarlos es lo que
+     *  permite que guardar el diseño refresque el enlace público. */
+    projectId?: string | null;
     defaultName: string;
     frozen: Record<string, string>;
     /** La composición con IA viaja a la publicación: el portal público la
@@ -39,7 +42,7 @@ const slugify = (raw: string) => raw.toLowerCase().normalize('NFD').replace(/[̀
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
-const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, composition, onClose, onPublished }) => {
+const PublishDialog: React.FC<Props> = ({ document: doc, projectId, defaultName, frozen, composition, onClose, onPublished }) => {
     const [name, setName] = useState(defaultName);
     const [slug, setSlug] = useState(slugify(defaultName));
     const [intro, setIntro] = useState('');
@@ -70,7 +73,7 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
         setSaving(true);
         try {
             const p = await publishDesign({
-                document: doc, name, slug, category: 'aniversario',
+                document: doc, name, slug, category: 'aniversario', projectId,
                 settings: { locked, intro, frozen, composition },
             });
             setResult(p);
@@ -213,8 +216,9 @@ const PublishDialog: React.FC<Props> = ({ document: doc, defaultName, frozen, co
                             {saving ? 'Publicando…' : 'Publicar'}
                         </button>
                         <p className="text-[10px] text-gray-400 text-center">
-                            Se publica el diseño tal como está ahora. Editarlo después no cambia la pieza publicada
-                            hasta que la vuelvas a publicar.
+                            {projectId
+                                ? 'Se publica el diseño tal como está ahora, y a partir de acá cada vez que lo guardes el enlace se actualiza solo.'
+                                : 'Se publica el diseño tal como está ahora. Guardalo primero si querés que el enlace siga tus cambios.'}
                         </p>
                     </div>
                 )}

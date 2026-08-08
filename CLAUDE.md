@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.728
+## Plantillas IA (Generador de Diseños) — v4.729
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2165,9 +2165,27 @@ completa un formulario y descarga su pieza.
   instantánea**: el navegador sólo resuelve los pocos marcadores del formulario,
   con el mismo `applyVariables` del editor. Sin esto haría falta una petición
   por pulsación.
-- **Publicar CONGELA.** Se guarda el documento compilado, no una referencia al
-  catálogo del código. Si apuntara a `designTemplates.js`, tocar ese archivo en
-  un despliegue cambiaría piezas cuyo enlace ya está circulando por WhatsApp.
+- **Publicar guarda una COPIA, no una referencia al catálogo del código.** Si
+  apuntara a `designTemplates.js`, tocar ese archivo en un despliegue cambiaría
+  piezas cuyo enlace ya está circulando por WhatsApp. Eso no cambió y no debe
+  cambiar.
+- **Pero la copia SIGUE al diseño** (v4.729, `refreshPublication`). Guardar un
+  diseño que ya está publicado actualiza su enlace. Es un cambio de postura
+  respecto de v4.721 y la distinción es la que importa: lo que se protegía era
+  que un DESPLIEGUE moviera una pieza ajena, no que el administrador cambiara la
+  suya. Tener que acordarse de volver a publicar dejaba el enlace mostrando una
+  versión vieja **sin decirlo**, que es exactamente como se reportó.
+- **Se rehace con los MISMOS ajustes** (`settings` en la fila). Sin guardarlos
+  habría que volver a preguntar en cada guardado —o peor, adivinarlos—: la
+  dirección no cambia, un campo bloqueado sigue bloqueado y lo congelado sigue
+  congelado. Sólo se recalcula el formulario, que es lo que el cambio pudo
+  mover.
+- **Va en el SERVIDOR, no en la pantalla**, así vale para cualquier camino que
+  guarde un diseño. Y si el diseño quedó impublicable, el refresco se salta con
+  un aviso en consola: lo que se pidió fue guardar, y eso no puede fallar por
+  algo secundario.
+- **El enlace se DICE, en el aviso al guardar y en la barra.** Un enlace que se
+  refresca en silencio confunde tanto como uno que se queda viejo.
 - **Despublicar NO borra.** El enlace deja de responder pero la fila se
   conserva, porque volver a publicar tiene que devolver la MISMA dirección: un
   enlace ya compartido no se puede reasignar. El `ON CONFLICT (slug)` lleva

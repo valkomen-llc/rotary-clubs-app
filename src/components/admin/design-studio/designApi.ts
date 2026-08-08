@@ -98,6 +98,11 @@ export interface SavedDesign {
     document: DesignDocument; variables: Record<string, string>; copy: DesignCopy;
     imageUrl: string | null; thumbUrl: string | null; mediaId: string | null;
     subjectClubId: string | null; status: string; createdAt: string; updatedAt: string;
+    /** El enlace público de este diseño, si lo tiene. Viaja en la respuesta de
+     *  guardar: al guardar un diseño publicado su enlace se actualiza, y eso hay
+     *  que DECIRLO — un enlace que cambia en silencio confunde tanto como uno
+     *  que no cambia. */
+    publication?: { slug: string; url: string; published: boolean } | null;
 }
 
 // ─── Llamadas ──────────────────────────────────────────────────────────
@@ -191,7 +196,10 @@ export const previewPublication = (document: DesignDocument, settings: Record<st
 
 export const publishDesign = (body: {
     document: DesignDocument; name: string; slug: string;
-    category?: string; settings?: Record<string, unknown>; projectId?: string | null;
+    category?: string; settings?: Record<string, unknown>;
+    /** Ata la publicación al diseño. Es lo que permite que guardar el diseño
+     *  actualice su enlace: sin esto no hay forma de encontrarla. */
+    projectId?: string | null;
 }) => request<Publication>('/publications', { method: 'POST', body: JSON.stringify(body) });
 
 export const setPublished = (id: string, published: boolean) =>

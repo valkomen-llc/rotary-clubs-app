@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.724.0 cargado — Plantillas IA. Cabecera del logotipo: el recuadro que edita el panel es el que hereda el logo del público.');
+console.log('[designStudioController] v4.729.0 cargado — Plantillas IA. Guardar un diseño publicado refresca su enlace público.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -201,12 +201,21 @@ export const listProjects = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
+        // LEFT JOIN con la publicación: abrir un diseño tiene que recuperar su
+        // enlace público, o la barra diría que no está publicado cuando sí lo
+        // está y el usuario no entendería por qué guardar cambia el enlace.
         const { rows } = await db.query(
-            `SELECT * FROM "DesignProject"
-              WHERE "clubId" IS NOT DISTINCT FROM $1
-              ORDER BY "updatedAt" DESC LIMIT 60`, [clubId]
+            `SELECT p.*, t.slug AS pub_slug, t.published AS pub_published
+               FROM "DesignProject" p
+               LEFT JOIN "DesignPublicTemplate" t ON t."projectId" = p.id
+              WHERE p."clubId" IS NOT DISTINCT FROM $1
+              ORDER BY p."updatedAt" DESC LIMIT 60`, [clubId]
         );
-        res.json(rows.map(rowToProject));
+        const origin = originOf(req);
+        res.json(rows.map(r => ({
+            ...rowToProject(r),
+            publication: r.pub_slug ? { slug: r.pub_slug, url: publicUrl(r.pub_slug, origin), published: r.pub_published } : null,
+        })));
     } catch (e) { fail(res, e, 500, 'No se pudieron cargar los diseños'); }
 };
 
@@ -271,8 +280,79 @@ export const updateProject = async (req, res) => {
             ]
         );
         if (!rows[0]) return res.status(404).json({ error: 'Diseño no encontrado' });
-        res.json(rowToProject(rows[0]));
+
+        // Si este diseño tiene un enlace público, se actualiza con lo que se
+        // acaba de guardar. `publication` viaja en la respuesta para que la
+        // pantalla pueda DECIRLO: un enlace que cambia en silencio es tan
+        // confuso como uno que no cambia.
+        const pub = await refreshPublication(rows[0].id, rows[0].document, clubId);
+        res.json({
+            ...rowToProject(rows[0]),
+            publication: pub ? { slug: pub.slug, url: publicUrl(pub.slug, originOf(req)), published: pub.published } : null,
+        });
     } catch (e) { fail(res, e, 500, 'No se pudo actualizar el diseño'); }
+};
+
+// ── EL ENLACE PÚBLICO SIGUE AL DISEÑO ─────────────────────────────────
+//
+// Guardar un diseño que YA está publicado actualiza su enlace. Es un cambio de
+// postura respecto de v4.721 y conviene decir exactamente qué cambia y qué no,
+// porque la regla original sigue siendo válida:
+//
+//   · Lo que NO cambia: la publicación guarda una COPIA del documento, no una
+//     referencia al catálogo del código. Ése era el motivo de congelar —que
+//     tocar `designTemplates.js` en un despliegue cambiara piezas cuyo enlace ya
+//     circula por WhatsApp— y sigue protegido: un despliegue no toca ninguna
+//     publicación.
+//   · Lo que SÍ cambia: la copia se refresca cuando el ADMINISTRADOR guarda su
+//     propio diseño. Eso no es un cambio a sus espaldas, es exactamente lo que
+//     acaba de pedir al pulsar Guardar. El modelo mental de cualquiera es que el
+//     diseño y su enlace son la misma cosa; tener que acordarse de volver a
+//     publicar hacía que el enlace mostrara una versión vieja sin decirlo.
+//
+// Se rehace con los MISMOS ajustes con los que se publicó —qué campos quedaron
+// bloqueados, qué se congeló, el texto de introducción— guardados en `settings`.
+// Sin eso habría que volver a preguntarlos en cada guardado, o peor, adivinarlos.
+//
+// Va en el SERVIDOR y no en la pantalla: así vale para cualquier camino que
+// guarde un diseño, hoy y mañana.
+const refreshPublication = async (projectId, doc, clubId) => {
+    if (!projectId || !doc?.nodes?.length) return null;
+    const { rows } = await db.query(
+        `SELECT * FROM "DesignPublicTemplate"
+          WHERE "projectId" = $1 AND "clubId" IS NOT DISTINCT FROM $2
+          LIMIT 1`,
+        [projectId, clubId]
+    );
+    const row = rows[0];
+    if (!row) return null;
+
+    let pub;
+    try {
+        pub = buildPublication({
+            document: doc,
+            name: row.name,
+            slug: row.slug,
+            category: row.category,
+            settings: row.settings || {},
+        });
+    } catch (e) {
+        // Un diseño que dejó de ser publicable —se borraron todos sus nodos—
+        // no puede tumbar el guardado: lo que se estaba pidiendo era guardar.
+        console.warn('[designStudio] no se pudo refrescar la publicación:', e.message);
+        return null;
+    }
+
+    const { rows: upd } = await db.query(
+        `UPDATE "DesignPublicTemplate" SET
+            document = $2::jsonb, fields = $3::jsonb, frozen = $4::jsonb,
+            format = $5, "updatedAt" = NOW()
+          WHERE id = $1
+          RETURNING *`,
+        [row.id, JSON.stringify(pub.document), JSON.stringify(pub.fields),
+         JSON.stringify(pub.frozen), pub.format]
+    );
+    return upd[0] || null;
 };
 
 // ── DELETE /api/design-studio/projects/:id ────────────────────────────
@@ -379,12 +459,18 @@ export const publish = async (req, res) => {
 
         const { rows } = await db.query(
             `INSERT INTO "DesignPublicTemplate"
-                (slug, name, intro, category, format, document, fields, frozen, composition, published, "clubId", "projectId", "createdBy", "updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$12,true,$9,$10,$11,NOW())
+                (slug, name, intro, category, format, document, fields, frozen, composition, settings, published, "clubId", "projectId", "createdBy", "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$12,$13,true,$9,$10,$11,NOW())
              ON CONFLICT (slug) DO UPDATE SET
                 name = EXCLUDED.name, intro = EXCLUDED.intro, category = EXCLUDED.category,
                 format = EXCLUDED.format, document = EXCLUDED.document, fields = EXCLUDED.fields,
                 frozen = EXCLUDED.frozen, composition = EXCLUDED.composition,
+                -- Los ajustes se guardan para poder REPUBLICAR con el mismo
+                -- criterio cuando el diseño cambie, sin volver a preguntar.
+                settings = EXCLUDED.settings,
+                -- Y el proyecto queda atado: es lo que permite encontrar esta
+                -- publicación al guardar el diseño.
+                "projectId" = COALESCE(EXCLUDED."projectId", "DesignPublicTemplate"."projectId"),
                 published = true, "updatedAt" = NOW()
              -- Sólo el dueño del slug lo puede volver a publicar: sin esta
              -- condición, otro sitio de la plataforma podría pisar una
@@ -396,7 +482,8 @@ export const publish = async (req, res) => {
             [pub.slug, pub.name, pub.intro, pub.category, pub.format,
              JSON.stringify(pub.document), JSON.stringify(pub.fields), JSON.stringify(pub.frozen),
              clubId, projectId, req.user?.id || null,
-             JSON.stringify(normalizeComposition(settings.composition))]
+             JSON.stringify(normalizeComposition(settings.composition)),
+             JSON.stringify(settings || {})]
         );
         if (!rows[0]) return res.status(409).json({ error: `La dirección «${pub.slug}» ya la usa otro sitio. Elegí otra.` });
 
