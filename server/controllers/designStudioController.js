@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.731.0 cargado — Plantillas IA. Guardar guarda la configuración; la Biblioteca sólo recibe lo que se le manda a propósito.');
+console.log('[designStudioController] v4.733.0 cargado — Plantillas IA. Un diseño sin espacio para la fotografía lo ofrece crear.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que

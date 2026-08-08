@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.732.0
+// v4.733.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -477,6 +477,42 @@ const DesignStudio: React.FC = () => {
         toast.success('Listo. Colocalo y ajustá su tamaño; quien use el enlace público sube el suyo ahí.');
     }, [commit, doc, branding]);
 
+    // ── El hueco de la FOTOGRAFÍA ──────────────────────────────────
+    //
+    // Mismo caso que el logotipo, y con la misma consecuencia: un diseño sin
+    // hueco para la fotografía no la pide en el formulario público, y desde el
+    // panel no hay forma de darse cuenta —el administrador ve su pieza completa
+    // y el visitante ve un formulario al que le falta la mitad—.
+    //
+    // Pasa sobre todo con los diseños hechos antes de v4.722.3: el compilador
+    // borraba el hueco cuyo valor no se podía resolver, y el club con el que se
+    // diseñaba casi nunca tenía una fotografía cargada. El logotipo sobrevivía
+    // —el club sí tiene escudo— y la fotografía no. Recompilar la plantilla se
+    // llevaría por delante todo lo que el usuario haya movido, así que lo que
+    // se ofrece es agregar el hueco que falta.
+    const photoNode = useMemo(
+        () => doc.nodes.find(n => isImage(n) && (n.srcVar === 'imagen' || n.role === 'foto')) || null,
+        [doc.nodes]
+    );
+
+    const addPhotoNode = useCallback(() => {
+        const box = { x: 0, y: 0, w: 1, h: 0.47 };
+        const field = newField('imagen', 'image');
+        const node: DesignNode = {
+            id: uid('foto'), type: 'image', name: 'Fotografía del club', role: 'foto',
+            src: photo || null, srcVar: 'imagen', fit: 'cover', radius: 0,
+            rotation: 0, opacity: 1, ...box,
+            field: { ...field, kind: 'foto', label: 'Fotografía del club' },
+        } as DesignNode;
+        // Al principio de la lista: la fotografía va DEBAJO del texto y del
+        // logotipo, o los taparía. Después del lienzo, que es el fondo de todo.
+        const i = doc.nodes.findIndex(n => n.role !== 'lienzo');
+        const at = i === -1 ? doc.nodes.length : i;
+        commit({ ...doc, nodes: [...doc.nodes.slice(0, at), node, ...doc.nodes.slice(at)] });
+        setSelectedIds([node.id]);
+        toast.success('Listo. Colocalo y ajustá su tamaño; quien use el enlace público sube la suya ahí.');
+    }, [commit, doc, photo]);
+
     // ── Teclado ────────────────────────────────────────────────────
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -788,6 +824,8 @@ const DesignStudio: React.FC = () => {
                             onPickBase={() => setPickerTarget('base')}
                             onUploadBase={f => uploadImage(f, 'base')}
                             uploading={uploading}
+                            hasPhotoSlot={!!photoNode}
+                            onAddPhoto={addPhotoNode}
                         />
                     }
                 />

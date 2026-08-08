@@ -2519,6 +2519,16 @@ foto en un recuadro.
   imagen base se cambia desde cuatro sitios —subir, Biblioteca, quitarla y
   cambiar de plantilla—; hacerlo en cada uno deja al quinto sin hacerlo, y el
   fallo es mudo: el panel muestra la imagen y la pieza sigue en blanco.
+- **Un diseño sin espacio para la FOTOGRAFÍA lo ofrece crear** (v4.733), igual
+  que la Cabecera con el logotipo y por el mismo motivo: sin ese hueco el
+  formulario público no la pide y no hay nada que integrar en el lienzo, y desde
+  el panel no se ve —el administrador mira su pieza completa—. Es la secuela de
+  v4.722.3: el compilador borraba el hueco cuyo valor no se podía resolver, y el
+  club con el que se diseña casi nunca tiene fotografía cargada, así que el
+  logotipo sobrevivía y la fotografía no. Recompilar la plantilla se llevaría
+  por delante todo lo que el usuario movió; por eso se agrega el hueco que
+  falta. Nace **marcado como campo del portal** —uno que no es campo no lo puede
+  llenar nadie— y por debajo del texto y del logotipo, para no taparlos.
 - **El portal público COMPONE al subir la fotografía** (v4.732). El motor y sus
   endpoints existían desde v4.722 y `PlantillaPublica.tsx` **no los llamaba**:
   la función estaba declarada y muerta. Se dispara sólo con el campo de clase
