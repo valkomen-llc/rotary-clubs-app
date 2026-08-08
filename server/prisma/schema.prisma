@@ -299,8 +299,22 @@ model Media {
   sourceId    String?
   sourceLabel String?
 
+  // Carpeta de la Librería de Medios a la que pertenece el archivo (v4.738).
+  // NULL = está en la raíz de su sitio.
+  //
+  // La tabla "MediaFolder" vive FUERA de Prisma (se crea en runtime, ver
+  // server/lib/ensureMediaFolderSchema.js), pero esta COLUMNA está declarada
+  // acá a propósito: el guardián de db:push compara tablas, no columnas, así
+  // que una columna que existiera sólo en el ensure la borraría el primer
+  // `npm run db:push` sin que nada avisara. Misma regla que las columnas
+  // nuevas de WhatsAppContact y WhatsAppMessageLog.
+  //
+  // Sin relación declarada: el destino no es un modelo de Prisma.
+  folderId    String?
+
   @@index([sourceType, sourceId])
   @@index([clubId])
+  @@index([folderId])
 }
 
 model Project {

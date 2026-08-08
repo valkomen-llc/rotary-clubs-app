@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.737.0",
-  "cache_bust": "2026-08-08k (El sitio de un distrito vuelve a ser un sitio normal.)",
+  "version": "4.738.0",
+  "cache_bust": "2026-08-08l (Carpetas en la Libreria de Medios.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -28,6 +28,7 @@
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",
+    "test:media": "node scripts/test-media-folders.mjs",
     "test:design": "node scripts/test-design.mjs",
     "test:design:render": "node scripts/test-design-render.mjs",
     "check:syntax": "node scripts/check-syntax.mjs"
