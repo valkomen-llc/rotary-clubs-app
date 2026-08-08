@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — capas, propiedades y biblioteca de elementos (derecha)
-// v4.723.0
+// v4.728.0
 //
 // Tres pestañas sobre la MISMA selección. Está a la derecha, y no dentro de la
 // mesa de trabajo, por la razón de siempre: un panel flotante sobre el lienzo
@@ -138,7 +138,13 @@ const DesignInspector: React.FC<Props> = ({
                             return (
                                 <>
                                     <Row label="Texto">
-                                        <textarea className={`${inp} min-h-[70px] resize-y`} value={t.text} onChange={e => patch({ text: e.target.value } as Partial<DesignNode>)} />
+                                        <textarea className={`${inp} min-h-[70px] resize-y`} value={t.text}
+                                            placeholder="Escribí o pegá el texto"
+                                            onChange={e => patch({ text: e.target.value } as Partial<DesignNode>)} />
+                                        <p className="mt-1 text-[10px] text-gray-400">
+                                            También podés hacer <strong>doble clic</strong> sobre el texto en la mesa de trabajo
+                                            y escribir ahí mismo.
+                                        </p>
                                     </Row>
                                     <Row label="Tipografía">
                                         <select className={inp} value={t.fontFamily} onChange={e => patch({ fontFamily: e.target.value } as Partial<DesignNode>)}>
@@ -156,6 +162,26 @@ const DesignInspector: React.FC<Props> = ({
                                                 value={t.color} onChange={e => patch({ color: e.target.value } as Partial<DesignNode>)} />
                                         </Row>
                                     </div>
+                                    {/* Los colores institucionales a un clic. Acertar el
+                                        azul de Rotary con el selector del sistema es
+                                        cuestión de suerte, y una pieza del Distrito con
+                                        un azul aproximado se nota. El selector libre
+                                        sigue estando para todo lo demás. */}
+                                    <Row label="Colores institucionales">
+                                        <div className="flex gap-1.5 flex-wrap">
+                                            {([
+                                                ['royal', 'Azul Rotary'], ['gold', 'Dorado Rotary'],
+                                                ['navy', 'Azul profundo'], ['azure', 'Azul medio'],
+                                                ['ink', 'Tinta'], ['slate', 'Gris'], ['white', 'Blanco'],
+                                            ] as const).map(([k, title]) => (
+                                                <button key={k} title={title}
+                                                    onClick={() => patch({ color: PALETTE[k] } as Partial<DesignNode>)}
+                                                    className={`w-6 h-6 rounded-full border transition-transform hover:scale-110 ${t.color.toLowerCase() === PALETTE[k].toLowerCase() ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-300'}`}
+                                                    style={{ background: PALETTE[k] }} />
+                                            ))}
+                                        </div>
+                                    </Row>
+
                                     {/* El tamaño es fracción del ANCHO del lienzo — el mismo
                                         criterio que los `sizes` del pendón. Se muestra en
                                         porcentaje porque «0.046» no le dice nada a nadie. */}
@@ -448,7 +474,11 @@ const DesignInspector: React.FC<Props> = ({
                 {/* ── Capas ────────────────────────────────────────── */}
                 {tab === 'layers' && (
                     <>
-                        <button onClick={onAddText} className="w-full mb-2 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 transition-colors">
+                        {/* Agregar algo lleva a Propiedades: es donde están sus
+                            herramientas, y quedarse en la lista de capas deja al
+                            usuario con un «Escribí acá» seleccionado y ningún
+                            control a la vista. */}
+                        <button onClick={() => { onAddText(); setTab('props'); }} className="w-full mb-2 text-xs font-bold border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg py-2 text-gray-600 transition-colors">
                             + Agregar texto
                         </button>
                         {/* Una imagen como CAPA propia: se coloca donde se
@@ -499,7 +529,7 @@ const DesignInspector: React.FC<Props> = ({
                                 <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">{group.label}</p>
                                 <div className="grid grid-cols-3 gap-2">
                                     {group.items.map(el => (
-                                        <button key={el.id} onClick={() => onAddElement(el)} title={el.label}
+                                        <button key={el.id} onClick={() => { onAddElement(el); setTab('props'); }} title={el.label}
                                             className="aspect-square rounded-lg border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 flex items-center justify-center p-2 transition-colors">
                                             <svg viewBox="0 0 100 100" className="w-full h-full">
                                                 <path d={el.path || 'M0 0 H100 V100 H0 Z'} fill={el.defaultFill} fillRule="evenodd" />

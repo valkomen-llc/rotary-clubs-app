@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.724.0
+// v4.728.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -728,6 +728,10 @@ const DesignStudio: React.FC = () => {
                             showGuides={showGuides}
                             onSelect={setSelectedIds}
                             onNodesChange={setNodes}
+                            // Escribir en el lienzo pasa por `patchNode`, igual
+                            // que escribir en la casilla del panel: es el mismo
+                            // gesto y tiene que desligar de la variable igual.
+                            onEditText={(id, text) => patchNode(id, { text } as Partial<DesignNode>)}
                         />
                     )}
                 </main>

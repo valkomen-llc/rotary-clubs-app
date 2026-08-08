@@ -381,6 +381,63 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         await page.locator('main img, main [data-node]').count() >= 0);
     check('la Cabecera no lanzó errores', fallos.length === 0, fallos.join(' | '));
 
+    // ── Escribir el texto (v4.728) ────────────────────────────────
+    //
+    // Lo reportado: «la plantilla no permite editar el texto, escribir o pegar».
+    // Eran dos cosas — no había edición en el lienzo (el gesto natural es el
+    // doble clic) y agregar un texto dejaba la pestaña en Capas, sin ninguna
+    // herramienta a la vista.
+    await page.getByText('Capas', { exact: true }).click();
+    await page.waitForTimeout(200);
+    await page.getByText('+ Agregar texto').click();
+    await page.waitForTimeout(400);
+    const trasAgregar = await page.locator('aside').last().innerText();
+    check('agregar un texto abre Propiedades, no deja la lista de capas',
+        /Tipograf/i.test(trasAgregar), trasAgregar.slice(0, 300));
+    check('y ofrece las herramientas de texto',
+        /Tipograf/i.test(trasAgregar) && /Color/i.test(trasAgregar)
+        && /Tamaño/i.test(trasAgregar) && /Alineación/i.test(trasAgregar)
+        && /Mayúsculas/i.test(trasAgregar) && /Cursiva/i.test(trasAgregar),
+        trasAgregar.slice(0, 500));
+    check('el catálogo de tipografías ya no son tres',
+        await page.locator('aside').last().locator('select').first().locator('option').count() >= 8);
+    // Acertar el azul de Rotary con el selector del sistema es cuestión de
+    // suerte, y una pieza del Distrito con un azul aproximado se nota.
+    check('ofrece los colores institucionales a un clic',
+        /Colores institucionales/.test(trasAgregar)
+        && await page.locator('aside').last().locator('button[title="Azul Rotary"]').count() === 1);
+    await page.locator('aside').last().locator('button[title="Dorado Rotary"]').click();
+    await page.waitForTimeout(300);
+    check('elegir uno lo aplica al texto', await page.evaluate(() => {
+        const el = [...document.querySelectorAll('main [data-node] div')]
+            .find(d => getComputedStyle(d).color === 'rgb(247, 168, 27)');
+        return !!el;
+    }));
+
+    // La casilla del panel: escribir y pegar tienen que funcionar.
+    const casillaTexto = page.locator('aside').last().locator('textarea').first();
+    await casillaTexto.fill('Hola Distrito 4281');
+    await page.waitForTimeout(350);
+    check('escribir en la casilla del panel cambia la pieza',
+        /Hola Distrito 4281/.test(await page.locator('main').innerText()),
+        (await page.locator('main').innerText()).slice(0, 200));
+
+    // Y el doble clic sobre el texto en la mesa de trabajo.
+    const nodoTexto = page.locator('main [data-node]').last();
+    await nodoTexto.dblclick();
+    await page.waitForTimeout(300);
+    check('el doble clic abre un editor sobre la pieza',
+        await page.locator('main textarea[data-editing]').count() === 1);
+    await page.keyboard.insertText('Escrito en el lienzo');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    check('lo escrito en el lienzo queda en la pieza',
+        /Escrito en el lienzo/.test(await page.locator('main').innerText()),
+        (await page.locator('main').innerText()).slice(0, 200));
+    check('y el editor se cierra al confirmar',
+        await page.locator('main textarea[data-editing]').count() === 0);
+    check('escribir no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
     // Los pasos del panel se numeran a mano, y agregar la Cabecera en v4.724
     // dejó DOS secciones con el «5» —el número de la Composición estaba escrito
     // dentro de su propio componente—. No lo ve el typecheck ni ninguna prueba
