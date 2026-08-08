@@ -16,7 +16,8 @@ import {
     Calendar,
     Mic,
     Lightbulb,
-    Heart
+    Heart,
+    Folder as FolderIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
@@ -46,6 +47,13 @@ interface MediaSource {
     sourceId: string | null;
     sourceLabel: string;
     imageCount: number;
+}
+
+/** Una carpeta de la Librería del sitio. */
+interface PickerFolder {
+    id: string;
+    name: string;
+    parentId: string | null;
 }
 
 interface MediaPickerProps {
@@ -106,6 +114,14 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     const [selectedCategory, setSelectedCategory] = useState<CategoryId>('all');
     const [selectedSourceId, setSelectedSourceId] = useState<string>('');
 
+    // Carpetas de la Librería (v4.738). `currentFolder` NULL = sin filtrar por
+    // carpeta, que NO es lo mismo que la raíz: al abrir el selector se ven
+    // TODAS las imágenes del sitio, estén sueltas o dentro de una carpeta.
+    // Filtrar por la raíz de entrada escondería justamente lo que alguien se
+    // tomó el trabajo de ordenar.
+    const [folders, setFolders] = useState<PickerFolder[]>([]);
+    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+
     const API = import.meta.env.VITE_API_URL || '/api';
 
     const fetchMedia = useCallback(async () => {
@@ -115,6 +131,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
             const params = new URLSearchParams({ type: 'image' });
             if (selectedCategory !== 'all') params.set('sourceType', selectedCategory);
             if (selectedSourceId) params.set('sourceId', selectedSourceId);
+            if (currentFolder) params.set('folderId', currentFolder);
             if (searchQuery.trim()) params.set('search', searchQuery.trim());
             const response = await fetch(`${API}/media?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -128,7 +145,21 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [API, selectedCategory, selectedSourceId, searchQuery]);
+    }, [API, selectedCategory, selectedSourceId, currentFolder, searchQuery]);
+
+    // El árbol de carpetas del sitio. Si falla, el selector funciona igual: se
+    // ven todas las imágenes sin el atajo de las carpetas.
+    const fetchFolders = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API}/media/library-folders`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            setFolders(data?.folders ?? []);
+        } catch { /* silent */ }
+    }, [API]);
 
     // Load ALL sources once (no type filter). We slice them client-side for the
     // dropdown so chip counts stay stable regardless of the active category.
@@ -155,7 +186,8 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         fetchSources();
-    }, [isOpen, fetchSources]);
+        fetchFolders();
+    }, [isOpen, fetchSources, fetchFolders]);
 
     // Reset the source filter when the user switches category.
     useEffect(() => {
@@ -291,6 +323,40 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                         </select>
                     )}
                 </div>
+
+                {/* Carpetas del sitio. Es un FILTRO, no una navegación: no hay
+                    migaja de pan ni subniveles porque acá se viene a encontrar
+                    una imagen, no a ordenar. Ordenar es la Librería de Medios.
+                    Sólo se pinta si el sitio creó alguna. */}
+                {folders.length > 0 && (
+                    <div className="px-4 py-2.5 bg-white border-b border-gray-50 flex gap-1.5 overflow-x-auto scrollbar-hide items-center">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 flex-shrink-0 pr-1">Carpetas</span>
+                        <button
+                            onClick={() => setCurrentFolder(null)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap transition-all border flex-shrink-0 ${
+                                !currentFolder
+                                    ? 'bg-indigo-50 text-indigo-700 border-current shadow-sm'
+                                    : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
+                            }`}
+                        >
+                            TODAS
+                        </button>
+                        {folders.map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setCurrentFolder(f.id)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap transition-all border flex-shrink-0 ${
+                                    currentFolder === f.id
+                                        ? 'bg-amber-50 text-amber-700 border-current shadow-sm'
+                                        : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
+                                }`}
+                            >
+                                <FolderIcon className="w-3 h-3" />
+                                <span className="uppercase tracking-wide">{f.name}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Grid */}
                 <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">

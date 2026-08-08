@@ -7,9 +7,9 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 35 tablas en tiempo de ejecución que no están en el
+// La aplicación crea 36 tablas en tiempo de ejecución que no están en el
 // schema (las once ProjectFair*, BannerTemplate, DesignProject,
-// DesignPublicTemplate, FAQ, OutroProject,
+// DesignPublicTemplate, FAQ, MediaFolder, OutroProject,
 // las dos de la auditoría del CRM: CrmWebhookEvent y CrmOutboundLog, las seis del módulo
 // de SEO Inteligente: SeoSiteConfig, SeoPageMeta, SeoAudit, SeoIssue,
 // SeoKeyword y SeoMetric, las seis

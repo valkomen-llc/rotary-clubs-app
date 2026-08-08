@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.737.0 | 2026-08-08 (El sitio de un distrito vuelve a ser un sitio normal)
-// Cache bust: 2026-08-08k
+// UI V4.738.0 | 2026-08-08 (Carpetas en la Libreria de Medios)
+// Cache bust: 2026-08-08l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.738.0',
+        title: 'Ya se pueden crear carpetas en la Librería de Medios 📁',
+        description: 'Hasta ahora todos los archivos de un sitio vivían en una sola lista: con cien fotos, encontrar el escudo del club era cuestión de buscar por nombre y acordarse de cómo se llamaba. Ahora cada sitio arma sus propias carpetas —y subcarpetas, hasta cinco niveles— desde el botón «Nueva carpeta». Se entra con un clic, la ruta queda a la vista arriba, y lo que se suba estando dentro de una carpeta queda en esa carpeta, no en la raíz. Un archivo se manda a otra carpeta desde el botón de mover, sin volver a subirlo. Las carpetas aparecen también al elegir una imagen desde cualquier otra pantalla del panel, como un filtro rápido: ahí se sigue entrando con todo a la vista, porque ese momento es para encontrar, no para ordenar. Dos detalles pensados a propósito: eliminar una carpeta NUNCA elimina lo que hay adentro —los archivos y las subcarpetas pasan al nivel de arriba, y el aviso lo dice antes de confirmar—, y una carpeta cerrada muestra cuántos archivos tiene contando los de sus subcarpetas, para que no diga «0» cuando adentro hay veinte.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'biblioteca', 'organizacion'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Crear, renombrar y eliminar carpetas dentro de la Librería de Medios.' },
+            { type: 'added', text: 'Subcarpetas hasta cinco niveles, con la ruta visible arriba.' },
+            { type: 'added', text: 'Mover un archivo a otra carpeta sin volver a subirlo.' },
+            { type: 'added', text: 'Filtro por carpeta al elegir una imagen desde el resto del panel.' },
+            { type: 'changed', text: 'Lo que se sube estando dentro de una carpeta queda en esa carpeta.' },
+            { type: 'fixed', text: 'Eliminar una carpeta no elimina sus archivos: pasan al nivel de arriba.' },
+        ]
+    },
     {
         version: '4.737.0',
         title: 'El sitio de un distrito vuelve a ser un sitio normal 🏛️',

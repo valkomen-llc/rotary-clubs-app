@@ -2706,9 +2706,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 32 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 33 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EventRegistration`,
-`EventAttendeeAccount`,
+`MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,
@@ -2958,6 +2958,92 @@ Prueba: `npm run test:assets` (21 casos). Pide `esbuild`, que se instala aparte.
 
 **Pendiente:** el cliente todavía no ha definido qué imágenes de la portada
 llevan versión internacional. El mecanismo está listo; falta la lista.
+
+## Carpetas de la Librería de Medios — v4.738
+
+Cada sitio organiza sus archivos en carpetas propias, con subcarpetas hasta
+cinco niveles. Es un eje DISTINTO del que ya existía.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/mediaFolders.js` | El CRITERIO. **Puro**: nombres, profundidad, ciclos, árbol y conteos |
+| `server/lib/ensureMediaFolderSchema.js` | Crea `MediaFolder` y la columna `Media."folderId"` en runtime |
+| `server/routes/media.js` | CRUD de carpetas, filtro por carpeta y movimiento de archivos |
+| `src/lib/mediaFolders.ts` | Espejo del criterio en el navegador |
+| `src/pages/admin/MediaLibrary.tsx` | La pantalla: migaja de pan, rejilla de carpetas y mover |
+| `src/components/admin/content-studio/MediaPicker.tsx` | Las carpetas como filtro al elegir una imagen |
+
+Pruebas: `npm run test:media` (65 casos). **Sin base, credenciales ni red.**
+
+**Reglas durables:**
+
+- **«Carpeta» ya significaba otra cosa, y las dos conviven.** `GET /media/folders`
+  devuelve los CLUBES que el operador de la plataforma recorre; lo nuevo vive en
+  `/media/library-folders`. Son dos ejes: aquél es «de quién es el archivo»
+  (`sourceType`/`sourceId`) y éste «cómo lo ordenó ese sitio por dentro»
+  (`folderId`). Renombrar el viejo dejaría la pantalla del operador rota en
+  cualquier navegador con el bundle anterior en caché.
+- **Borrar una carpeta NO borra sus archivos.** Suben al padre, y la
+  confirmación lo dice con esas palabras. Un archivo de la Biblioteca puede ser
+  el logo del club, estar publicado en el sitio o ser el fondo de una plantilla:
+  perderlo por ordenar carpetas sería destructivo y nadie lo espera de «eliminar
+  carpeta». Lo comprueba `test:media` leyendo el archivo, porque un `DELETE`
+  escrito de más ahí no lo ve ninguna otra comprobación.
+- **`MediaFolder` vive fuera de Prisma; `Media."folderId"` está declarada EN
+  `schema.prisma`.** No es una inconsistencia: el guardián de `db:push` compara
+  TABLAS, no columnas, así que una columna que existiera sólo en el ensure la
+  borraría el primer `npm run db:push` sin que nada avisara. Misma regla que las
+  columnas nuevas de `WhatsAppContact`. `Media` se AMPLÍA con
+  `ADD COLUMN IF NOT EXISTS`; jamás se recrea — tiene datos de producción.
+- **Sin clave foránea, a propósito.** El destino no es un modelo de Prisma, así
+  que una restricción declarada sólo en el ensure sería otra cosa que `db push`
+  podría quitar en silencio. La integridad la sostienen el borrado —que sube los
+  archivos antes de borrar la fila— y `buildFolderTree`, que muestra en la RAÍZ
+  lo que apunte a una carpeta inexistente. Esconderlo lo volvería irrecuperable
+  desde la pantalla.
+- **Los índices de nombre único son DOS y son parciales.** En Postgres NULL
+  nunca es igual a NULL: con un solo índice sobre `(clubId, parentId, name)` las
+  carpetas de la raíz —`parentId` NULL— no chocarían nunca entre sí, que es
+  justo donde más se repite un nombre. Por ser parciales, un `ON CONFLICT`
+  contra ellos tendría que repetir su predicado o la sentencia falla entera
+  (error real, v4.648): por eso el alta comprueba el duplicado y devuelve un 409
+  redactado en vez de apoyarse en `ON CONFLICT`.
+- **El aislamiento va en el WHERE, no en la pantalla.** Toda consulta de
+  carpetas lleva `"clubId" IS NOT DISTINCT FROM $n`, y el 404 de una carpeta
+  ajena se decide sobre la lista ya acotada: para quien pregunta no existe, que
+  además no revela que exista. Lo comprueba `test:media` sobre el archivo.
+- **Mover un archivo valida que la carpeta sea del MISMO sitio.** Sin eso, un id
+  ajeno lo mandaría a una carpeta que su dueño no ve: desaparecido de su raíz y
+  dentro de la de otro.
+- **Subir estando dentro de una carpeta deja el archivo AHÍ.** Y lo respetan los
+  DOS caminos de subida (`/save` y `/upload`), o subir desde una pantalla u otra
+  daría resultados distintos. Si la carpeta pedida no es del sitio se guarda en
+  la raíz **sin fallar**: a esa altura el archivo ya está en S3, y perder la fila
+  sería peor que guardarlo en el sitio equivocado del árbol.
+- **`folderId` tiene TRES estados en el listado y los tres importan.** Sin el
+  parámetro no se filtra —es lo que hacían todos los consumidores y lo que
+  tienen que seguir haciendo—; `root` es la raíz; un id es esa carpeta. Un solo
+  parámetro con dos sentidos («vacío = raíz») dejaría el selector de imágenes
+  mostrando sólo lo suelto.
+- **El conteo de una carpeta SUBE a sus ancestros** (`withRollupCounts`). Una
+  carpeta con dos subcarpetas llenas y nada propio diría «0», y quien mira una
+  carpeta cerrada quiere saber si hay algo adentro. El conteo propio se conserva
+  aparte para el rótulo de la carpeta abierta.
+- **Los ciclos se cortan, no se confía en que no ocurran.** `depthOf` y
+  `breadcrumbOf` devuelven `Infinity` / `[]` en vez de girar sin fin, y
+  `canMoveFolder` rechaza mover una carpeta dentro de sí misma o de una
+  descendiente. Un ciclo no se ve: la carpeta simplemente desaparece del árbol
+  porque deja de colgar de la raíz.
+- **En el selector de imágenes las carpetas son un FILTRO, no una navegación**, y
+  entra sin filtrar: al abrirlo se ven TODAS las imágenes del sitio, dentro y
+  fuera de carpetas. Filtrar por la raíz escondería justamente lo que alguien se
+  tomó el trabajo de ordenar. Ordenar es la Librería; ahí se viene a encontrar.
+- **Una carpeta que sólo tiene subcarpetas NO está vacía.** El cartel de «no hay
+  archivos» a pantalla completa decía lo contrario y tapaba lo que sí había.
+- **Probar la PANTALLA, no sólo el criterio.** El flujo completo —crear, entrar,
+  crear dentro, mover, eliminar— se manejó en Chromium sobre el `dist/` real con
+  la API interceptada. Es donde se vio que el nombre del archivo no es texto
+  visible en la rejilla y que el aviso de eliminación llega con su recuento.
 
 ### Casillas de imagen del panel (v4.700)
 

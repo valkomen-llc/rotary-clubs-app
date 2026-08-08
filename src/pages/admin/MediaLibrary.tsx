@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Trash2, Search, FileText, ImageIcon,
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
-    ArrowLeft
+    ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
+import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
 
 interface MediaItem {
     id: string;
@@ -17,12 +18,25 @@ interface MediaItem {
     type: 'image' | 'video' | 'document';
     size: number;
     createdAt: string;
+    folderId?: string | null;
 }
 
 interface ClubFolder {
     id: string;
     name: string;
     count: number;
+}
+
+/** Una carpeta de la Librería, tal como la devuelve el servidor. */
+interface LibraryFolder extends FolderRow {
+    clubId?: string | null;
+}
+
+/** El árbol con los conteos ya repartidos hacia los ancestros. */
+interface FolderTreeNode extends LibraryFolder {
+    children: FolderTreeNode[];
+    ownCount: number;
+    totalCount: number;
 }
 
 const MediaLibrary: React.FC = () => {
@@ -38,15 +52,55 @@ const MediaLibrary: React.FC = () => {
     const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
     const [selectedClubName, setSelectedClubName] = useState<string | null>(null);
 
+    // ── Carpetas de la Librería (v4.738) ──────────────────────────────
+    // `currentFolder` es NULL en la raíz del sitio. No se confunde con
+    // `selectedClubId`, que es el otro eje: de qué SITIO son los archivos.
+    const [libraryFolders, setLibraryFolders] = useState<LibraryFolder[]>([]);
+    const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
+    const [rootCount, setRootCount] = useState(0);
+    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+    const [creatingFolder, setCreatingFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+    const [renaming, setRenaming] = useState<LibraryFolder | null>(null);
+    const [movingItem, setMovingItem] = useState<MediaItem | null>(null);
+    const [busyFolder, setBusyFolder] = useState(false);
+
     const isSuperAdmin = user?.role === 'administrator';
+    const API = import.meta.env.VITE_API_URL || '/api';
+    const token = () => localStorage.getItem('rotary_token');
+
+    /** La ruta de la carpeta abierta, de la raíz hacia adentro. */
+    const breadcrumb = useMemo(
+        () => breadcrumbOf(libraryFolders, currentFolder),
+        [libraryFolders, currentFolder]
+    );
+
+    /** Las carpetas que se ven en el nivel actual: las hijas de la abierta. */
+    const visibleFolders = useMemo(() => {
+        if (!currentFolder) return folderTree;
+        const find = (nodes: FolderTreeNode[]): FolderTreeNode | null => {
+            for (const n of nodes) {
+                if (n.id === currentFolder) return n;
+                const hit = find(n.children);
+                if (hit) return hit;
+            }
+            return null;
+        };
+        return find(folderTree)?.children ?? [];
+    }, [folderTree, currentFolder]);
+
+    // El árbol y los archivos se piden por separado: cambiar de carpeta sólo
+    // cambia los ARCHIVOS, así que volver a traer el árbol en cada navegación
+    // sería una consulta por clic para recibir lo mismo.
+    useEffect(() => {
+        if (isSuperAdmin && !selectedClubId) fetchFolders();
+        else fetchLibraryFolders();
+    }, [user, selectedClubId]);
 
     useEffect(() => {
-        if (isSuperAdmin && !selectedClubId) {
-            fetchFolders();
-        } else {
-            fetchMedia();
-        }
-    }, [user, selectedClubId]);
+        if (isSuperAdmin && !selectedClubId) return;
+        fetchMedia();
+    }, [user, selectedClubId, currentFolder]);
 
     const fetchFolders = async () => {
         setLoading(true);
@@ -69,13 +123,14 @@ const MediaLibrary: React.FC = () => {
     const fetchMedia = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('rotary_token');
-            const url = isSuperAdmin && selectedClubId
-                ? `${import.meta.env.VITE_API_URL || '/api'}/media?clubId=${selectedClubId}`
-                : `${import.meta.env.VITE_API_URL || '/api'}/media`;
+            const params = new URLSearchParams();
+            if (isSuperAdmin && selectedClubId) params.set('clubId', selectedClubId);
+            // `root` es la raíz; sin el parámetro el servidor no filtra. Son
+            // cosas distintas y por eso se manda siempre uno de los dos.
+            params.set('folderId', currentFolder || 'root');
 
-            const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await fetch(`${API}/media?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token()}` }
             });
             if (response.ok) {
                 const data = await response.json();
@@ -85,6 +140,136 @@ const MediaLibrary: React.FC = () => {
             toast.error('Error al cargar la librería de medios');
         } finally {
             setLoading(false);
+        }
+    };
+
+    /** El árbol de carpetas del sitio abierto. */
+    const fetchLibraryFolders = useCallback(async () => {
+        try {
+            const params = new URLSearchParams();
+            if (isSuperAdmin && selectedClubId) params.set('clubId', selectedClubId);
+            const res = await fetch(`${API}/media/library-folders?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token()}` }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            // `?.` en cada eslabón: una respuesta sin `folders` —una versión
+            // anterior de la API, un error devuelto como objeto— dejaría la
+            // pantalla EN BLANCO, no un aviso.
+            setLibraryFolders(data?.folders ?? []);
+            setFolderTree(data?.tree ?? []);
+            setRootCount(data?.rootCount ?? 0);
+        } catch {
+            // Sin carpetas la Librería sigue sirviendo: se ve como siempre,
+            // con todo en la raíz. Degradar es mejor que no cargar nada.
+        }
+    }, [API, isSuperAdmin, selectedClubId]);
+
+    const handleCreateFolder = async () => {
+        const check = validateFolderName(newFolderName);
+        if (!check.ok) { toast.error(check.error!); return; }
+
+        setBusyFolder(true);
+        try {
+            const res = await fetch(`${API}/media/library-folders`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: check.name,
+                    parentId: currentFolder,
+                    clubId: isSuperAdmin ? selectedClubId : undefined,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.error || 'No se pudo crear la carpeta'); return; }
+            toast.success(`Carpeta «${check.name}» creada`);
+            setNewFolderName('');
+            setCreatingFolder(false);
+            fetchLibraryFolders();
+        } catch {
+            toast.error('Error de conexión al crear la carpeta');
+        } finally {
+            setBusyFolder(false);
+        }
+    };
+
+    const handleRenameFolder = async () => {
+        if (!renaming) return;
+        const check = validateFolderName(renaming.name);
+        if (!check.ok) { toast.error(check.error!); return; }
+
+        setBusyFolder(true);
+        try {
+            const res = await fetch(`${API}/media/library-folders/${renaming.id}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: check.name, clubId: isSuperAdmin ? selectedClubId : undefined }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.error || 'No se pudo renombrar'); return; }
+            toast.success('Carpeta renombrada');
+            setRenaming(null);
+            fetchLibraryFolders();
+        } catch {
+            toast.error('Error de conexión al renombrar');
+        } finally {
+            setBusyFolder(false);
+        }
+    };
+
+    const handleDeleteFolder = async (folder: LibraryFolder) => {
+        // La confirmación dice lo que va a pasar DE VERDAD: los archivos no se
+        // borran, suben un nivel. Prometer otra cosa —en cualquiera de las dos
+        // direcciones— es lo que hace que alguien pulse sin querer.
+        const where = folder.parentId ? 'a la carpeta que la contiene' : 'a la raíz de la Librería';
+        if (!window.confirm(
+            `¿Eliminar la carpeta «${folder.name}»?\n\n` +
+            `Los archivos y las subcarpetas que tenga adentro NO se eliminan: pasan ${where}.`
+        )) return;
+
+        try {
+            const params = new URLSearchParams();
+            if (isSuperAdmin && selectedClubId) params.set('clubId', selectedClubId);
+            const res = await fetch(`${API}/media/library-folders/${folder.id}?${params.toString()}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token()}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.error || 'No se pudo eliminar la carpeta'); return; }
+
+            const moved = (data.movedFiles || 0) + (data.movedFolders || 0);
+            toast.success(moved
+                ? `Carpeta eliminada · ${data.movedFiles || 0} archivo(s) y ${data.movedFolders || 0} subcarpeta(s) se movieron`
+                : 'Carpeta eliminada');
+            if (currentFolder === folder.id) setCurrentFolder(folder.parentId ?? null);
+            fetchLibraryFolders();
+            fetchMedia();
+        } catch {
+            toast.error('Error de conexión al eliminar la carpeta');
+        }
+    };
+
+    /** Manda un archivo a otra carpeta. `folderId: null` lo devuelve a la raíz. */
+    const moveMediaTo = async (item: MediaItem, folderId: string | null) => {
+        try {
+            const res = await fetch(`${API}/media/library-folders/move`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaIds: [item.id],
+                    folderId,
+                    clubId: isSuperAdmin ? selectedClubId : undefined,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.error || 'No se pudo mover el archivo'); return; }
+            toast.success(folderId ? 'Archivo movido' : 'Archivo devuelto a la raíz');
+            setMovingItem(null);
+            setSelectedItem(null);
+            fetchLibraryFolders();
+            fetchMedia();
+        } catch {
+            toast.error('Error de conexión al mover el archivo');
         }
     };
 
@@ -146,7 +331,11 @@ const MediaLibrary: React.FC = () => {
                         fileUrl,
                         s3Key: key,
                         fileType: processedFile.type,
-                        fileSize: processedFile.size
+                        fileSize: processedFile.size,
+                        // Cae en la carpeta abierta. Quien entró a «Logos» y
+                        // pulsó «Subir Nuevo» espera que quede en Logos, no
+                        // tener que buscarlo en la raíz y moverlo.
+                        folderId: currentFolder,
                     })
                 });
 
@@ -255,11 +444,20 @@ const MediaLibrary: React.FC = () => {
                 </div>
 
                 {(!isSuperAdmin || selectedClubId) && (
-                    <label className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 cursor-pointer disabled:opacity-50 active:scale-95">
-                        {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                        <span>{isUploading ? 'Subiendo...' : 'Subir Nuevo'}</span>
-                        <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-                    </label>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => { setCreatingFolder(true); setNewFolderName(''); }}
+                            className="flex items-center gap-2 bg-white text-rotary-blue border border-gray-200 px-4 py-2.5 rounded-xl hover:border-rotary-blue hover:bg-sky-50 transition-all font-bold shadow-sm active:scale-95"
+                        >
+                            <FolderPlus className="w-5 h-5" />
+                            <span className="hidden sm:inline">Nueva carpeta</span>
+                        </button>
+                        <label className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 cursor-pointer disabled:opacity-50 active:scale-95">
+                            {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                            <span>{isUploading ? 'Subiendo...' : 'Subir Nuevo'}</span>
+                            <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+                        </label>
+                    </div>
                 )}
             </div>
 
@@ -299,6 +497,67 @@ const MediaLibrary: React.FC = () => {
             ) : (
                 // FILES VIEW
                 <>
+                    {/* Migaja de pan. Se pinta siempre —también en la raíz—
+                        porque es lo que dice DÓNDE va a caer lo que se suba. */}
+                    <div className="flex items-center gap-1 flex-wrap mb-5 text-sm">
+                        <button
+                            onClick={() => setCurrentFolder(null)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${currentFolder ? 'text-gray-500 hover:bg-gray-100' : 'bg-sky-50 text-rotary-blue'}`}
+                        >
+                            <Home className="w-4 h-4" />
+                            Librería
+                            {rootCount > 0 && (
+                                <span className="text-[10px] font-extrabold text-gray-400">{rootCount}</span>
+                            )}
+                        </button>
+                        {breadcrumb.map((crumb, i) => (
+                            <React.Fragment key={crumb.id}>
+                                <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                <button
+                                    onClick={() => setCurrentFolder(crumb.id)}
+                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all truncate max-w-[200px] ${i === breadcrumb.length - 1 ? 'bg-sky-50 text-rotary-blue' : 'text-gray-500 hover:bg-gray-100'}`}
+                                >
+                                    {crumb.name}
+                                </button>
+                            </React.Fragment>
+                        ))}
+                    </div>
+
+                    {/* Alta de carpeta en línea, dentro del nivel abierto. */}
+                    {creatingFolder && (
+                        <div className="flex flex-col sm:flex-row gap-3 mb-6 p-4 bg-sky-50/60 border border-sky-100 rounded-2xl">
+                            <div className="flex items-center gap-3 flex-1">
+                                <FolderPlus className="w-5 h-5 text-rotary-blue flex-shrink-0" />
+                                <input
+                                    autoFocus
+                                    value={newFolderName}
+                                    onChange={(e) => setNewFolderName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleCreateFolder();
+                                        if (e.key === 'Escape') setCreatingFolder(false);
+                                    }}
+                                    placeholder={currentFolder ? `Nombre de la subcarpeta en «${breadcrumb[breadcrumb.length - 1]?.name}»` : 'Nombre de la carpeta'}
+                                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/10 bg-white font-medium"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleCreateFolder}
+                                    disabled={busyFolder}
+                                    className="px-5 py-2.5 bg-rotary-blue text-white rounded-xl font-bold hover:bg-rotary-navy transition-all disabled:opacity-50"
+                                >
+                                    {busyFolder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Crear'}
+                                </button>
+                                <button
+                                    onClick={() => setCreatingFolder(false)}
+                                    className="px-4 py-2.5 text-gray-500 rounded-xl font-bold hover:bg-white transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex flex-col md:flex-row gap-4 mb-8">
                         <div className="relative flex-1">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -340,19 +599,75 @@ const MediaLibrary: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Las carpetas del nivel, antes de los archivos. Se
+                        esconden al buscar: una búsqueda mira archivos, y dejar
+                        las carpetas ahí haría creer que el resultado está
+                        filtrado por ellas. */}
+                    {!searchQuery && visibleFolders.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+                            {visibleFolders.map(folder => (
+                                <div
+                                    key={folder.id}
+                                    onClick={() => setCurrentFolder(folder.id)}
+                                    className="group flex items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-gray-100 hover:border-rotary-blue hover:shadow-lg transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0 group-hover:bg-rotary-blue group-hover:text-white transition-all">
+                                            <Folder className="w-5 h-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-gray-800 truncate group-hover:text-rotary-blue transition-colors">{folder.name}</p>
+                                            <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest">
+                                                {folder.totalCount} archivo{folder.totalCount === 1 ? '' : 's'}
+                                                {folder.children.length > 0 && ` · ${folder.children.length} subcarpeta${folder.children.length === 1 ? '' : 's'}`}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setRenaming({ ...folder }); }}
+                                            className="p-2 text-gray-300 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all"
+                                            title="Renombrar"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }}
+                                            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                            title="Eliminar carpeta"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
                             <Loader2 className="w-10 h-10 text-rotary-blue animate-spin mb-4" />
                             <p className="text-gray-500 font-medium">Cargando archivos...</p>
                         </div>
                     ) : filteredMedia.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
-                            <ImageIcon className="w-16 h-16 text-gray-100 mb-6 mx-auto" />
-                            <h3 className="text-lg font-bold text-gray-800">No se encontraron archivos</h3>
-                            <p className="text-gray-400 text-sm mt-1 max-w-xs mx-auto">
-                                Sube archivos para que aparezcan en esta librería.
+                        // Una carpeta que sólo tiene subcarpetas NO está vacía.
+                        // El cartel de «no hay archivos» a pantalla completa
+                        // decía lo contrario y tapaba lo que sí había.
+                        visibleFolders.length > 0 && !searchQuery ? (
+                            <p className="text-sm text-gray-400 font-medium px-1">
+                                {currentFolder ? 'Esta carpeta no tiene archivos sueltos.' : 'No hay archivos fuera de las carpetas.'}
                             </p>
-                        </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 text-center">
+                                <ImageIcon className="w-16 h-16 text-gray-100 mb-6 mx-auto" />
+                                <h3 className="text-lg font-bold text-gray-800">No se encontraron archivos</h3>
+                                <p className="text-gray-400 text-sm mt-1 max-w-xs mx-auto">
+                                    {searchQuery
+                                        ? 'Ninguno coincide con la búsqueda en esta carpeta.'
+                                        : 'Sube archivos para que aparezcan en esta librería.'}
+                                </p>
+                            </div>
+                        )
                     ) : viewMode === 'grid' ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                             {filteredMedia.map((item) => (
@@ -390,6 +705,13 @@ const MediaLibrary: React.FC = () => {
                                             title="Copiar URL"
                                         >
                                             <Copy className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setMovingItem(item); }}
+                                            className="p-2 bg-white text-gray-800 rounded-lg hover:bg-rotary-blue hover:text-white transition-all shadow-lg"
+                                            title="Mover a una carpeta"
+                                        >
+                                            <FolderInput className="w-4 h-4" />
                                         </button>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
@@ -448,6 +770,9 @@ const MediaLibrary: React.FC = () => {
                                                     <button onClick={() => copyToClipboard(item.url)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Copiar URL">
                                                         <Copy className="w-4 h-4" />
                                                     </button>
+                                                    <button onClick={() => setMovingItem(item)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Mover a una carpeta">
+                                                        <FolderInput className="w-4 h-4" />
+                                                    </button>
                                                     <a href={item.url} target="_blank" rel="noreferrer" className="p-2 text-gray-400 hover:text-rotary-gold hover:bg-amber-50 rounded-lg transition-all" title="Ver original">
                                                         <ExternalLink className="w-4 h-4" />
                                                     </a>
@@ -463,6 +788,87 @@ const MediaLibrary: React.FC = () => {
                         </div>
                     )}
                 </>
+            )}
+
+            {/* Renombrar una carpeta */}
+            {renaming && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm" onClick={() => setRenaming(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">Renombrar carpeta</h3>
+                        <p className="text-sm text-gray-500 mb-5">Los archivos que tiene adentro no se mueven.</p>
+                        <input
+                            autoFocus
+                            value={renaming.name}
+                            onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameFolder();
+                                if (e.key === 'Escape') setRenaming(null);
+                            }}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/10 font-medium mb-5"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setRenaming(null)} className="px-4 py-2.5 text-gray-500 rounded-xl font-bold hover:bg-gray-50 transition-all">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleRenameFolder}
+                                disabled={busyFolder}
+                                className="px-5 py-2.5 bg-rotary-blue text-white rounded-xl font-bold hover:bg-rotary-navy transition-all disabled:opacity-50"
+                            >
+                                {busyFolder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Mover un archivo a otra carpeta. Se ofrece el árbol COMPLETO,
+                no sólo el nivel actual: mover suele ser precisamente sacar el
+                archivo de donde está. */}
+            {movingItem && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm" onClick={() => setMovingItem(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 border-b border-gray-100">
+                            <h3 className="font-bold text-gray-800 text-lg">Mover archivo</h3>
+                            <p className="text-sm text-gray-500 mt-1 truncate">{movingItem.filename}</p>
+                        </div>
+                        <div className="p-3 overflow-y-auto">
+                            <button
+                                onClick={() => moveMediaTo(movingItem, null)}
+                                disabled={!movingItem.folderId}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-sky-50 transition-all text-left disabled:opacity-40 disabled:hover:bg-transparent"
+                            >
+                                <CornerLeftUp className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <span className="font-bold text-gray-700">Raíz de la Librería</span>
+                                {!movingItem.folderId && <span className="ml-auto text-[10px] font-extrabold uppercase tracking-widest text-gray-300">Está acá</span>}
+                            </button>
+                            {folderTree.length === 0 && (
+                                <p className="px-4 py-6 text-sm text-gray-400 text-center">
+                                    Todavía no hay carpetas. Creá una con «Nueva carpeta».
+                                </p>
+                            )}
+                            {(function renderOptions(nodes: FolderTreeNode[], depth: number): React.ReactNode {
+                                return nodes.map(node => (
+                                    <React.Fragment key={node.id}>
+                                        <button
+                                            onClick={() => moveMediaTo(movingItem, node.id)}
+                                            disabled={movingItem.folderId === node.id}
+                                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-sky-50 transition-all text-left disabled:opacity-40 disabled:hover:bg-transparent"
+                                            style={{ paddingLeft: `${16 + depth * 20}px` }}
+                                        >
+                                            <Folder className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                            <span className="font-bold text-gray-700 truncate">{node.name}</span>
+                                            {movingItem.folderId === node.id && (
+                                                <span className="ml-auto text-[10px] font-extrabold uppercase tracking-widest text-gray-300">Está acá</span>
+                                            )}
+                                        </button>
+                                        {renderOptions(node.children, depth + 1)}
+                                    </React.Fragment>
+                                ));
+                            })(folderTree, 0)}
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Selection Modal / Sidebar */}

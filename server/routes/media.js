@@ -1,8 +1,278 @@
 import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { ensureMediaFolderSchema } from '../lib/ensureMediaFolderSchema.js';
+import {
+    validateFolderName, folderKey, canMoveFolder,
+    buildFolderTree, withRollupCounts, breadcrumbOf,
+} from '../lib/mediaFolders.js';
 
 const router = express.Router();
+
+// ─── Carpetas de la Librería de Medios ───────────────────────────────────────
+//
+// OJO CON EL NOMBRE: `GET /api/media/folders` ya existía y significa OTRA cosa
+// —la lista de CLUBES que el operador de la plataforma recorre como si fueran
+// carpetas—. Son dos ejes distintos: aquél es «de quién es el archivo» y éste
+// es «cómo lo ordenó ese sitio por dentro». Por eso las rutas nuevas viven en
+// `/library-folders` en vez de reutilizar la palabra: renombrar la vieja
+// dejaría la pantalla del operador rota en cualquier navegador con el bundle
+// anterior en caché.
+
+/**
+ * A qué sitio pertenece lo que el usuario está mirando.
+ *
+ * El aislamiento vive acá y en el WHERE de cada consulta, no en la pantalla:
+ * un administrador de sitio sólo ve y toca las carpetas de SU sitio. El
+ * operador de la plataforma puede pararse en cualquiera pasando `clubId`, que
+ * es lo que ya hace la vista de clubes.
+ */
+const folderScopeOf = (req) => {
+    const asked = req.query.clubId || req.body?.clubId || null;
+    if (req.user.role === 'administrator') return asked || req.user.clubId || null;
+    return req.user.clubId || null;
+};
+
+/** Todas las carpetas del sitio, en plano. Es la entrada del criterio. */
+const listFolders = async (clubId) => {
+    const { rows } = await db.query(
+        `SELECT id, name, "clubId", "parentId", "createdAt"
+           FROM "MediaFolder"
+          WHERE "clubId" IS NOT DISTINCT FROM $1
+          ORDER BY name ASC`,
+        [clubId]
+    );
+    return rows;
+};
+
+// GET /api/media/library-folders — el árbol del sitio, con conteos.
+router.get('/library-folders', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const folders = await listFolders(clubId);
+
+        // Un solo conteo agrupado en vez de una consulta por carpeta.
+        const counts = await db.query(
+            `SELECT "folderId", COUNT(*)::int AS c
+               FROM "Media"
+              WHERE "folderId" IS NOT NULL
+                AND "clubId" IS NOT DISTINCT FROM $1
+              GROUP BY "folderId"`,
+            [clubId]
+        );
+        const byFolder = new Map(counts.rows.map(r => [r.folderId, r.c]));
+
+        const rootCount = await db.query(
+            `SELECT COUNT(*)::int AS c FROM "Media"
+              WHERE "folderId" IS NULL AND "clubId" IS NOT DISTINCT FROM $1`,
+            [clubId]
+        );
+
+        const tree = withRollupCounts(
+            buildFolderTree(folders.map(f => ({ ...f, ownCount: byFolder.get(f.id) || 0 })))
+        );
+
+        res.json({ folders, tree, rootCount: rootCount.rows[0]?.c || 0 });
+    } catch (error) {
+        console.error('[Media] list folders error:', error);
+        res.status(500).json({ error: 'Error al cargar las carpetas' });
+    }
+});
+
+// POST /api/media/library-folders — crear.
+router.post('/library-folders', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const { ok, name, error } = validateFolderName(req.body?.name);
+        if (!ok) return res.status(400).json({ error });
+
+        const parentId = req.body?.parentId || null;
+        const folders = await listFolders(clubId);
+
+        if (parentId && !folders.some(f => f.id === parentId)) {
+            return res.status(404).json({ error: 'La carpeta donde querés crearla no existe.' });
+        }
+        // La profundidad se comprueba como si la nueva carpeta ya colgara del
+        // padre: `canMoveFolder` con una hoja recién nacida es exactamente eso.
+        const depth = canMoveFolder([...folders, { id: '__nueva__', name, parentId: null }], '__nueva__', parentId);
+        if (!depth.ok) return res.status(400).json({ error: depth.error });
+
+        const key = folderKey(name);
+        if (folders.some(f => f.parentId === parentId && folderKey(f.name) === key)) {
+            return res.status(409).json({ error: `Ya hay una carpeta llamada «${name}» acá.` });
+        }
+
+        const { rows } = await db.query(
+            `INSERT INTO "MediaFolder" (id, name, "clubId", "parentId", "createdBy")
+             VALUES (gen_random_uuid()::text, $1, $2, $3, $4) RETURNING *`,
+            [name, clubId, parentId, req.user.id || req.user.email || null]
+        );
+        res.status(201).json(rows[0]);
+    } catch (error) {
+        console.error('[Media] create folder error:', error);
+        res.status(500).json({ error: 'Error al crear la carpeta' });
+    }
+});
+
+// PATCH /api/media/library-folders/:id — renombrar y/o mover.
+router.patch('/library-folders/:id', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const folders = await listFolders(clubId);
+        const current = folders.find(f => f.id === req.params.id);
+        // El 404 se decide con la lista YA acotada al sitio: una carpeta de
+        // otro sitio no existe para quien pregunta, que es la respuesta
+        // correcta y además no revela que exista.
+        if (!current) return res.status(404).json({ error: 'La carpeta no existe.' });
+
+        let name = current.name;
+        if (req.body?.name !== undefined) {
+            const v = validateFolderName(req.body.name);
+            if (!v.ok) return res.status(400).json({ error: v.error });
+            name = v.name;
+        }
+
+        const parentId = req.body?.parentId !== undefined ? (req.body.parentId || null) : current.parentId;
+
+        if (parentId !== current.parentId) {
+            const move = canMoveFolder(folders, current.id, parentId);
+            if (!move.ok) return res.status(400).json({ error: move.error });
+        }
+
+        const key = folderKey(name);
+        if (folders.some(f => f.id !== current.id && f.parentId === parentId && folderKey(f.name) === key)) {
+            return res.status(409).json({ error: `Ya hay una carpeta llamada «${name}» ahí.` });
+        }
+
+        const { rows } = await db.query(
+            `UPDATE "MediaFolder"
+                SET name = $1, "parentId" = $2, "updatedAt" = NOW()
+              WHERE id = $3 AND "clubId" IS NOT DISTINCT FROM $4
+              RETURNING *`,
+            [name, parentId, current.id, clubId]
+        );
+        res.json(rows[0]);
+    } catch (error) {
+        console.error('[Media] update folder error:', error);
+        res.status(500).json({ error: 'Error al actualizar la carpeta' });
+    }
+});
+
+// DELETE /api/media/library-folders/:id — borrar la carpeta, NUNCA los archivos.
+router.delete('/library-folders/:id', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const folders = await listFolders(clubId);
+        const current = folders.find(f => f.id === req.params.id);
+        if (!current) return res.status(404).json({ error: 'La carpeta no existe.' });
+
+        // Borrar una carpeta NO borra lo que hay dentro. Un archivo puede estar
+        // publicado en el sitio, ser el logo del club o el fondo de una
+        // plantilla: perderlo por ordenar carpetas sería destructivo y no es lo
+        // que nadie espera de «eliminar carpeta». Sus archivos y sus
+        // subcarpetas SUBEN al padre, y la respuesta dice cuántos para que la
+        // pantalla lo pueda contar.
+        const moved = await db.query(
+            `UPDATE "Media" SET "folderId" = $1
+              WHERE "folderId" = $2 AND "clubId" IS NOT DISTINCT FROM $3`,
+            [current.parentId, current.id, clubId]
+        );
+        const promoted = await db.query(
+            `UPDATE "MediaFolder" SET "parentId" = $1, "updatedAt" = NOW()
+              WHERE "parentId" = $2 AND "clubId" IS NOT DISTINCT FROM $3`,
+            [current.parentId, current.id, clubId]
+        );
+        await db.query(
+            `DELETE FROM "MediaFolder" WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2`,
+            [current.id, clubId]
+        );
+
+        res.json({
+            deleted: current.id,
+            movedFiles: moved.rowCount || 0,
+            movedFolders: promoted.rowCount || 0,
+            parentId: current.parentId,
+        });
+    } catch (error) {
+        console.error('[Media] delete folder error:', error);
+        res.status(500).json({ error: 'Error al eliminar la carpeta' });
+    }
+});
+
+// POST /api/media/library-folders/move — mandar archivos a una carpeta.
+// `folderId: null` los devuelve a la raíz.
+router.post('/library-folders/move', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const ids = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds.filter(Boolean) : [];
+        if (!ids.length) return res.status(400).json({ error: 'No se indicó ningún archivo.' });
+
+        const folderId = req.body?.folderId || null;
+        if (folderId) {
+            // La carpeta de destino tiene que ser del MISMO sitio. Sin esta
+            // comprobación, un id ajeno mandaría el archivo a una carpeta que
+            // su dueño no ve: desaparecido de la raíz y en la carpeta de otro.
+            const folders = await listFolders(clubId);
+            if (!folders.some(f => f.id === folderId)) {
+                return res.status(404).json({ error: 'La carpeta de destino no existe.' });
+            }
+        }
+
+        // El WHERE lleva el sitio además de los ids: quien manda una lista de
+        // ids ajenos no mueve nada, en vez de mover lo ajeno.
+        const scope = req.user.role === 'administrator' && !clubId
+            ? { clause: '', params: [folderId, ids] }
+            : { clause: ' AND "clubId" IS NOT DISTINCT FROM $3', params: [folderId, ids, clubId] };
+
+        const result = await db.query(
+            `UPDATE "Media" SET "folderId" = $1 WHERE id = ANY($2::text[])${scope.clause}`,
+            scope.params
+        );
+        res.json({ moved: result.rowCount || 0, folderId });
+    } catch (error) {
+        console.error('[Media] move media error:', error);
+        res.status(500).json({ error: 'Error al mover los archivos' });
+    }
+});
+
+/**
+ * Resuelve la carpeta a la que debe entrar un archivo recién subido.
+ *
+ * Devuelve NULL —la raíz— si no se pidió ninguna o si la pedida no es de ese
+ * sitio. No lanza a propósito: para cuando esto corre, el archivo YA está en
+ * S3, y fallar acá dejaría el objeto subido y sin fila en la Biblioteca, que es
+ * el peor de los dos resultados.
+ */
+const resolveTargetFolder = async (folderId, clubId) => {
+    if (!folderId) return null;
+    try {
+        const { rows } = await db.query(
+            `SELECT id FROM "MediaFolder"
+              WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2`,
+            [folderId, clubId]
+        );
+        return rows[0]?.id || null;
+    } catch {
+        return null;
+    }
+};
+
+// GET /api/media/library-folders/:id/breadcrumb — la ruta de una carpeta.
+router.get('/library-folders/:id/breadcrumb', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const folders = await listFolders(folderScopeOf(req));
+        res.json(breadcrumbOf(folders, req.params.id));
+    } catch (error) {
+        console.error('[Media] breadcrumb error:', error);
+        res.status(500).json({ error: 'Error al resolver la ruta' });
+    }
+});
 
 // ── Single lazy loader for ALL upload dependencies ──
 // Creates a minimal S3 client directly — avoids loading storage.js
@@ -168,18 +438,26 @@ router.get('/presigned-url', authMiddleware, async (req, res) => {
 router.post('/save', authMiddleware, async (req, res) => {
     try {
         const { clubId, fileName, fileUrl, s3Key, fileType, fileSize } = req.body;
-        
+
         const targetClubIdRaw = (req.user.role === 'administrator') ? (clubId || req.user.clubId) : req.user.clubId;
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
-        
+
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
         const fileTypeLocal = getMediaType(fileType);
 
+        // Subir estando dentro de una carpeta deja el archivo AHÍ, no en la
+        // raíz: quien abrió «Logos» y pulsa «Subir Nuevo» espera que caiga en
+        // Logos, no tener que moverlo después. Se comprueba que la carpeta sea
+        // del mismo sitio; si no lo es se guarda en la raíz en vez de fallar
+        // —la subida a S3 ya ocurrió y perder el registro sería peor—.
+        await ensureMediaFolderSchema();
+        const folderId = await resolveTargetFolder(req.body?.folderId, targetClubId);
+
         const result = await db.query(
-            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-            [fileName, fileUrl, fileTypeLocal, fileSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
+            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
+            [fileName, fileUrl, fileTypeLocal, fileSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, folderId]
         );
 
         res.json(result.rows[0]);
@@ -254,10 +532,16 @@ router.post('/upload', authMiddleware, async (req, res) => {
                     } catch { /* ignore */ }
                 }
 
+                // Igual que en `/save`: hay DOS caminos de subida y los dos
+                // tienen que respetar la carpeta abierta, o subir desde una
+                // pantalla u otra daría resultados distintos.
+                await ensureMediaFolderSchema();
+                const folderId = await resolveTargetFolder(req.query.folderId || req.body.folderId, targetClubId);
+
                 const result = await db.query(
-                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "createdAt")
-                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING *`,
-                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel]
+                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "folderId", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()) RETURNING *`,
+                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel, folderId]
                 );
                 res.json(result.rows[0]);
             } catch (dbError) {
@@ -403,6 +687,20 @@ router.get('/', authMiddleware, async (req, res) => {
         if (type) {
             where.push(`"type" = $${p}`);
             params.push(type);
+            p += 1;
+        }
+        // Carpeta (v4.738). Tres estados y los tres significan cosas distintas:
+        // sin el parámetro no se filtra —es lo que hacían todos los
+        // consumidores hasta ahora y lo que tienen que seguir haciendo—;
+        // `root` es la raíz del sitio, que NO es lo mismo que «todas»; y un id
+        // es esa carpeta. Un solo parámetro con dos sentidos («vacío = raíz»)
+        // dejaría al selector de imágenes mostrando sólo lo suelto.
+        const { folderId } = req.query;
+        if (folderId === 'root') {
+            where.push(`"folderId" IS NULL`);
+        } else if (folderId) {
+            where.push(`"folderId" = $${p}`);
+            params.push(folderId);
             p += 1;
         }
         if (search) {
