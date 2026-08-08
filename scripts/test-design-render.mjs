@@ -513,12 +513,12 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // fotografía tiene el mismo problema y la misma solución.
     const textosMarcas = await marcas.allInnerTexts();
     check('se marca cada hueco de imagen vacío', textosMarcas.length >= 2, textosMarcas.join(' | '));
-    check('y cada uno dice de qué dato se trata',
-        textosMarcas.some(t => /Logotipo del club/i.test(t)) && textosMarcas.some(t => /Fotograf/i.test(t)),
-        textosMarcas.join(' | '));
+    // Un hueco SIN ejemplo se identifica por su etiqueta; el que TIENE ejemplo
+    // se ve limpio a propósito, así que se lo busca por su id — el del nodo.
+    check('un hueco sin ejemplo dice de qué dato se trata',
+        textosMarcas.some(t => /Fotograf/i.test(t)), textosMarcas.join(' | '));
     check('el recuadro del logotipo cae donde la plantilla lo pone', await page.evaluate(() => {
-        const h = [...document.querySelectorAll('[data-hint]')]
-            .find(el => /Logotipo/i.test(el.textContent || ''));
+        const h = document.querySelector('[data-hint="logo"]');
         if (!h) return false;
         const r = h.getBoundingClientRect();
         const stage = h.closest('div[style*="scale"]')?.getBoundingClientRect();
@@ -529,8 +529,8 @@ window.go = () => createRoot(document.getElementById('root')).render(
     }));
     // La promesa del módulo es que la vista previa ES el archivo. Con recuadros
     // a la vista deja de ser literal, y callarlo sería peor que no mostrarlos.
-    check('y se dice que los recuadros no se descargan',
-        /no se descargan/i.test(await page.locator('#root').innerText()));
+    check('y se dice que lo del recuadro no se descarga',
+        /no se descarga/i.test(await page.locator('#root').innerText()));
 
     // Lo que de verdad importa: que NO viaje al archivo. El exportador dibuja
     // `doc.nodes`, y una marca no es un nodo.
@@ -546,24 +546,26 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // rotulado — no como contenido del nodo, que sigue vacío.
     check('el ejemplo se dibuja dentro de la guía',
         await page.locator('[data-hint] [data-hint-sample]').count() >= 1);
-    check('y se rotula como ejemplo, para que no se confunda con el propio', await page.evaluate(() => {
+    // El rótulo NO va encima del ejemplo: tapaba justamente lo que se quiere
+    // ver, que es cómo queda el logotipo en su sitio.
+    check('el ejemplo se ve limpio, sin texto encima', await page.evaluate(() => {
         const h = [...document.querySelectorAll('[data-hint]')]
             .find(el => el.querySelector('[data-hint-sample]'));
-        return !!h && /ejemplo/i.test(h.textContent || '');
+        return !!h && (h.textContent || '').trim() === '';
     }));
-    // Y el hueco SIN ejemplo —la fotografía, que el club no cargó— no dice
-    // «ejemplo»: sería rotular algo que no está.
-    check('un hueco sin ejemplo no lo menciona', await page.evaluate(() => {
+    // El hueco SIN ejemplo sí lleva su etiqueta: es lo único que dice qué va ahí.
+    check('un hueco sin ejemplo conserva su etiqueta', await page.evaluate(() => {
         const h = [...document.querySelectorAll('[data-hint]')]
             .find(el => !el.querySelector('[data-hint-sample]'));
-        return !!h && !/ejemplo/i.test(h.textContent || '');
-    }));
-    check('va atenuado, no a plena opacidad', await page.evaluate(() => {
-        const img = document.querySelector('[data-hint] [data-hint-sample]');
-        return !!img && parseFloat(getComputedStyle(img).opacity) < 0.7;
+        return !!h && /Fotograf/i.test(h.textContent || '');
     }));
     check('la leyenda dice que el ejemplo no es tuyo y no se descarga',
-        /no son las tuyas y no se descargan/i.test(await page.locator('#root').innerText()));
+        /no es tuyo y no se descarga/i.test(await page.locator('#root').innerText()));
+    // Y el aviso que de verdad protege va JUNTO AL BOTÓN, que es donde alguien
+    // podría llevarse una pieza sin su logotipo creyendo que lo tiene.
+    check('junto a descargar se avisa que la pieza saldría sin esa imagen',
+        /sale <?strong>?sin esa imagen|sale sin esa imagen/i.test(await page.locator('#root').innerText()),
+        (await page.locator('#root').innerText()).slice(-400));
 
     // Lo que de verdad importa, otra vez: el NODO del logotipo sigue vacío, así
     // que el archivo no lleva el escudo del administrador.

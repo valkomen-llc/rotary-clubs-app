@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la mesa de trabajo
-// v4.726.0
+// v4.727.0
 //
 // Seleccionar, mover, redimensionar, rotar, alinear y ordenar capas. Es la
 // mitad visible del módulo; la otra es `designRender.ts`, que dibuja LOS MISMOS
@@ -413,12 +413,19 @@ const DesignCanvas: React.FC<Props> = ({
                                     overflow: 'hidden',
                                 }}>
                                 {/* La imagen con la que se diseñó, como
-                                    ILUSTRACIÓN. Va atenuada y con el rótulo
-                                    encima para que no se confunda con la propia:
-                                    quien mira tiene que entender que ése no es
-                                    su logotipo. Se encuadra con `contain`, que
-                                    es como lo va a encuadrar el nodo. */}
-                                {h.sample && (
+                                    ILUSTRACIÓN, y SIN nada encima: el rótulo
+                                    superpuesto tapaba justamente lo que se
+                                    quiere ver, que es cómo va a quedar el
+                                    logotipo en su sitio. Se encuadra con
+                                    `contain`, igual que lo va a encuadrar el
+                                    nodo.
+                                    Que es un ejemplo lo dicen el recuadro
+                                    punteado, la leyenda de la vista previa y el
+                                    aviso que hay junto al botón de descargar —
+                                    que es donde de verdad importa, porque es
+                                    ahí donde alguien podría llevarse una pieza
+                                    sin su logotipo creyendo que lo tiene. */}
+                                {h.sample ? (
                                     <img src={h.sample} alt="" data-hint-sample=""
                                         style={{
                                             position: 'absolute', inset: h.h * H * 0.06,
@@ -426,31 +433,21 @@ const DesignCanvas: React.FC<Props> = ({
                                             maxWidth: `calc(100% - ${h.h * H * 0.12}px)`,
                                             maxHeight: `calc(100% - ${h.h * H * 0.12}px)`,
                                             margin: 'auto',
-                                            objectFit: 'contain', opacity: 0.4,
+                                            objectFit: 'contain',
                                         }} />
+                                ) : (
+                                    <span style={{
+                                        // Proporcional al lienzo, no en píxeles
+                                        // de pantalla: el lienzo se escala con el
+                                        // zoom y un tamaño fijo se vería enorme o
+                                        // ilegible según cuánto se haya alejado.
+                                        fontFamily: fontStack('sans'),
+                                        fontSize: Math.min(W * 0.022, h.h * H * 0.34),
+                                        fontWeight: 700, color: 'rgba(67,56,202,0.85)', lineHeight: 1.15,
+                                    }}>
+                                        {h.label}
+                                    </span>
                                 )}
-                                <span style={{
-                                    // Proporcional al lienzo, no en píxeles de
-                                    // pantalla: el lienzo se escala con el zoom
-                                    // y un tamaño fijo se vería enorme o
-                                    // ilegible según cuánto se haya alejado.
-                                    position: 'relative',
-                                    fontFamily: fontStack('sans'),
-                                    fontSize: Math.min(W * 0.022, h.h * H * 0.28),
-                                    fontWeight: 700, color: 'rgba(67,56,202,0.9)', lineHeight: 1.15,
-                                    // Sobre la imagen atenuada el texto necesita
-                                    // su propio respaldo o deja de leerse.
-                                    background: h.sample ? 'rgba(255,255,255,0.82)' : undefined,
-                                    borderRadius: h.sample ? W * 0.004 : undefined,
-                                    padding: h.sample ? `${W * 0.003}px ${W * 0.006}px` : undefined,
-                                }}>
-                                    {h.label}
-                                    {h.sample && (
-                                        <span style={{ display: 'block', fontWeight: 600, fontSize: '0.72em', opacity: 0.75 }}>
-                                            ejemplo · subí el tuyo
-                                        </span>
-                                    )}
-                                </span>
                             </div>
                         ))}
                     </div>

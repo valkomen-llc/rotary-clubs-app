@@ -1860,7 +1860,7 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
 
-## Plantillas IA (Generador de Diseños) — v4.726
+## Plantillas IA (Generador de Diseños) — v4.727
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación
@@ -2294,9 +2294,15 @@ todavía están vacíos.
 - **Un `src` de origen no aceptado no se publica ni como ejemplo**
   (`isAcceptableImage`): termina en un `<img>` de una página pública.
 - **Con un ejemplo a la vista hay que decir DOS cosas**, no una: que no es la
-  suya y que no se descarga. Cualquiera de las dos sola deja a alguien creyendo
-  que su pieza ya tiene ese logotipo. Y un hueco SIN ejemplo no dice «ejemplo»
-  —sería rotular algo que no está—.
+  suya y que no se descarga.
+- **Pero NO encima de la imagen** (v4.727). El rótulo superpuesto tapaba
+  justamente lo que se quiere ver —cómo queda el logotipo en su sitio— y era lo
+  que se había pedido mirar. El aviso vive donde la confusión cuesta algo: junto
+  al botón de **descargar**, diciendo que la pieza saldría sin esa imagen. Ahí es
+  donde alguien podría llevarse una pieza incompleta creyendo que está lista;
+  sobre el lienzo sólo estorbaba.
+- **Un hueco SIN ejemplo sí conserva su etiqueta**: ahí el texto es lo único que
+  dice qué va en ese espacio. El que tiene ejemplo se ve limpio.
 - **Se marcan TODOS los huecos de imagen vacíos**, no sólo el logotipo: la
   fotografía tiene el mismo problema y la misma solución. Los de TEXTO no —un
   texto vacío deja su hueco visible en la composición y marcarlo llenaría la

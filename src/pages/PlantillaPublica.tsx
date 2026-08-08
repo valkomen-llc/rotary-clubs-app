@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.726.0
+// v4.727.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -273,6 +273,15 @@ const PlantillaPublica: React.FC = () => {
         } finally { setBusy(null); }
     }, [doc, tpl, marcarUso, descargar]);
 
+    // Los campos de imagen que se están viendo CON EJEMPLO y todavía sin
+    // llenar. Es lo único que puede sorprender a alguien: mira la pieza, ve un
+    // logotipo, descarga, y el archivo sale sin él. El aviso va junto al botón
+    // —no encima de la imagen— porque es ahí donde se toma esa decisión.
+    const conEjemploSinLlenar = useMemo(
+        () => (tpl?.fields || []).filter(f => f.type === 'image' && f.sample && !values[f.key]?.trim()),
+        [tpl, values]
+    );
+
     const faltantes = useMemo(
         () => (tpl?.fields || []).filter(f => f.required && !values[f.key]?.trim()).map(f => f.label),
         [tpl, values]
@@ -455,6 +464,16 @@ const PlantillaPublica: React.FC = () => {
                         {faltantes.length > 0 && (
                             <p className="text-[11px] text-gray-500 text-center">Falta completar: {faltantes.join(', ')}.</p>
                         )}
+                        {conEjemploSinLlenar.length > 0 && (
+                            <p className="flex gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <span>
+                                    {conEjemploSinLlenar.length === 1
+                                        ? <>Lo que se ve en «{conEjemploSinLlenar[0].label}» es un ejemplo. Si descargás ahora, la pieza sale <strong>sin esa imagen</strong>.</>
+                                        : <>Las imágenes que se ven son un ejemplo. Si descargás ahora, la pieza sale <strong>sin ellas</strong>.</>}
+                                </span>
+                            </p>
+                        )}
                         <p className="text-[11px] text-gray-400 text-center pt-1">
                             La imagen se genera en tu navegador, a {fmt.width * 2}×{fmt.height * 2} px.
                         </p>
@@ -484,7 +503,7 @@ const PlantillaPublica: React.FC = () => {
                                     // suya y que no se descarga. Cualquiera de
                                     // las dos sola deja a alguien creyendo que
                                     // su pieza ya tiene ese logotipo.
-                                    ? 'Las imágenes atenuadas son un ejemplo de cómo va a quedar: no son las tuyas y no se descargan.'
+                                    ? 'Lo que está dentro de un recuadro punteado es un ejemplo de cómo va a quedar: no es tuyo y no se descarga.'
                                     : 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'}
                         </p>
                     </div>
