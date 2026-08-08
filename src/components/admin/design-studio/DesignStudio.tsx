@@ -556,7 +556,12 @@ const DesignStudio: React.FC = () => {
                 setPublicUrl(row.publication.url);
                 toast.success('Guardado. El enlace público ya muestra estos cambios.');
             } else {
+                setPublicUrl(null);
                 toast.success('Guardado en la Biblioteca Multimedia y en tus diseños.');
+                // Cuando el servidor sabe POR QUÉ no tocó ningún enlace, se
+                // dice. Callarlo deja al usuario mirando un sitio público que
+                // no cambia, sin nada que explique la diferencia.
+                if (row.publicationNote) toast.warning(row.publicationNote, { duration: 8000 });
             }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar');

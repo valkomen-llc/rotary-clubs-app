@@ -2180,6 +2180,32 @@ completa un formulario y descarga su pieza.
   dirección no cambia, un campo bloqueado sigue bloqueado y lo congelado sigue
   congelado. Sólo se recalcula el formulario, que es lo que el cambio pudo
   mover.
+- **El vínculo es `projectId`, y la v4.729 se estrenó sin poder usarlo**
+  (v4.730). Esa columna se empieza a llenar en `publish`, así que TODA
+  publicación anterior —que eran todas— quedaba huérfana: `refreshPublication`
+  no encontraba fila y guardar no tocaba nada, **en silencio**. Se reportó como
+  «agrego un texto, guardo y el sitio público sigue igual», que es el mismo
+  síntoma que la versión anterior venía a corregir. Al añadir una función que
+  depende de un vínculo nuevo, mirar qué pasa con las filas que se crearon antes
+  de que ese vínculo existiera: son todas.
+- **Una huérfana se ADOPTA al guardar, pero no se adivina** (`publicationFor`).
+  Mismo criterio que `bindLegacyEdition` en Postulaciones. Y «hay una sola
+  huérfana» **no alcanza**: un sitio con tres diseños y una publicación sin
+  vincular la adoptaría al guardar cualquiera de los tres, y el primero le
+  pisaría a otro una pieza que ya circula. Hacen falta las dos puntas — el
+  nombre coincide exacto, o el sitio tiene un solo diseño. Con duda no se toca
+  nada y se DICE, con la salida: publicar una vez ata el vínculo.
+- **Rehacer una publicación heredada sin deducir sus ajustes le borra la
+  firma** (`settingsForRefresh`). `settings` nació vacía, así que rehacerla a
+  secas la publica con los ajustes POR DEFECTO: `frozen` queda en `{}` —el
+  nombre del Gobernador desaparece de la pieza— y un campo que alguien bloqueó
+  al publicar **vuelve a salir en el formulario público**. Aflojar un cierre por
+  lo bajo es peor que no tener la función. No hay que adivinarlos: la fila
+  guarda el RESULTADO —`frozen` son los valores congelados y `fields` el
+  formulario que salió—, y de ahí se deducen. Se deduce contra el documento
+  **publicado**, no contra el nuevo: contra el nuevo, una variable recién
+  marcada se leería como «no salía, luego estaba bloqueada» y no se ofrecería
+  nunca. La deducción se guarda, así que ocurre una sola vez.
 - **Va en el SERVIDOR, no en la pantalla**, así vale para cualquier camino que
   guarde un diseño. Y si el diseño quedó impublicable, el refresco se salta con
   un aviso en consola: lo que se pidió fue guardar, y eso no puede fallar por

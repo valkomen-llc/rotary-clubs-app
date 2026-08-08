@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.729.0 | 2026-08-08 (Guardar actualiza el enlace publico)
-// Cache bust: 2026-08-08c
+// UI V4.730.0 | 2026-08-08 (Se adopta la publicacion sin vincular)
+// Cache bust: 2026-08-08d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.730.0',
+        title: 'Las plantillas ya publicadas también siguen al diseño 🔗',
+        description: 'La versión anterior hizo que guardar un diseño actualizara su enlace público, pero seguía sin funcionar para las plantillas que ya estaban publicadas — es decir, para todas. El motivo: el vínculo entre un diseño y su enlace se empezó a guardar recién en esa versión, así que las publicaciones anteriores quedaban «sin dueño» y guardar no las tocaba. Peor todavía, no lo decía: se agregaba un texto, se guardaba, se abría el enlace y seguía la pieza vieja, sin nada que explicara la diferencia. Ahora, al guardar, el sistema reconoce la publicación que corresponde a ese diseño y la ata, sin pedir nada. No adivina: sólo lo hace cuando no hay duda posible —el nombre coincide, o el sitio tiene un solo diseño—, porque atar un diseño a la publicación equivocada le cambiaría a alguien una pieza que ya está circulando. Cuando no puede saberlo, lo dice y explica que basta con publicar una vez. Y hay un detalle importante que se cuidó: al actualizar una plantilla publicada de antes se conservan los ajustes con los que se había publicado —el nombre del Gobernador y los datos institucionales congelados, y los campos que se habían bloqueado para que el público no los cambie—. Sin eso, el primer guardado le habría borrado la firma del Distrito a la pieza y habría vuelto a abrir al público campos que se cerraron a propósito.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Las plantillas publicadas antes de la v4.729 ya siguen los cambios del diseño.' },
+            { type: 'fixed', text: 'Se conservan la firma institucional congelada y los campos bloqueados al actualizar.' },
+            { type: 'added', text: 'Cuando el enlace no se puede vincular solo, se avisa y se explica qué hacer.' },
+        ]
+    },
     {
         version: '4.729.0',
         title: 'Guardar el diseño ya actualiza su enlace público 🔗',
