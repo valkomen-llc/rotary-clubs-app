@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.733.0 cargado — Plantillas IA. Un diseño sin espacio para la fotografía lo ofrece crear.');
+console.log('[designStudioController] v4.734.0 cargado — Plantillas IA. La composición respeta la franja donde se imprime el texto.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -464,8 +464,12 @@ export const deleteProject = async (req, res) => {
 // ── POST /api/design-studio/backdrop ──────────────────────────────────
 export const startBackdrop = async (req, res) => {
     try {
-        const { composition, format = 'post_1_1', photoUrl = null, palette = {}, variants = null } = req.body || {};
-        const r = await startComposition({ composition, format, photoUrl, palette, variants });
+        const { composition, format = 'post_1_1', photoUrl = null, palette = {}, variants = null, document = null } = req.body || {};
+        // El documento pasa por el normalizador como todo lo que llega del
+        // navegador. Acá sólo se LEE —para saber dónde va a caer el texto— pero
+        // la puerta es la misma para todos.
+        const doc = document ? normalizeDocument(document) : null;
+        const r = await startComposition({ composition, format, photoUrl, palette, variants, document: doc });
         // Si NINGUNA variante arrancó, es un fallo: devolver 200 con cuatro
         // errores adentro haría que la pantalla se quede esperando.
         if (!r.variants.some(v => v.taskId)) {

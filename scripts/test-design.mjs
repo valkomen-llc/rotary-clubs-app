@@ -647,8 +647,14 @@ check('un valor no numérico cae al de por defecto',
 check('el público arranca en 1 variante', CO.normalizeComposition({}).publicVariants === 1);
 check('el prompt maestro tiene tope', CO.normalizeComposition({ masterPrompt: 'x'.repeat(5000) }).masterPrompt.length <= 1200);
 
-check('hay cuatro planes de variante y no se repiten',
-    CO.VARIANT_PLANS.length === 4 && new Set(CO.VARIANT_PLANS.map(p => p.id)).size === 4);
+// Hay MÁS planes que variantes por generación, y es a propósito: el tope de
+// `MAX_VARIANTS` es lo que se paga de una vez, mientras que la lista es el
+// repertorio del que `plansFor` elige el que le sirve a cada diseño.
+check('hay más planes que variantes por generación, y ninguno se repite',
+    CO.VARIANT_PLANS.length >= CO.MAX_VARIANTS
+    && new Set(CO.VARIANT_PLANS.map(p => p.id)).size === CO.VARIANT_PLANS.length);
+check('cada plan declara la franja que deja libre',
+    CO.VARIANT_PLANS.every(p => p.textZone && p.textZone.h > 0 && p.textZone.y >= 0 && p.textZone.y + p.textZone.h <= 1));
 check('cada plan dice dónde va la foto y qué queda limpio',
     CO.VARIANT_PLANS.every(p => p.photo && p.clear && p.label));
 check('pedir una variante devuelve siempre la MISMA, no una ruleta',
@@ -1071,6 +1077,80 @@ check('y conserva el lienzo institucional', CO.hasBase(CO.withoutBackdrop(compue
 // que compone sin imagen base.
 check('sin lienzo, el fondo generado va al pie',
     CO.withBackdrop(docLienzo, 'https://x.amazonaws.com/ia.png').nodes[0].role === CO.BACKDROP_ROLE);
+
+grupo('La composición sabe dónde va a caer el texto');
+
+// Lo pedido: que la fotografía quede COMBINADA con el lienzo, como una pieza de
+// papelería y no como una foto encajada. Parte de eso es el prompt; la otra
+// parte es que el modelo compone A CIEGAS —no sabe que encima vamos a imprimir
+// el nombre del club y el mensaje—, así que una composición podía salir
+// preciosa y quedar inservible, con las caras justo debajo del título.
+const docTextoAbajo = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'foto', srcVar: 'imagen', x: 0, y: 0, w: 1, h: 0.47 },
+        { type: 'text', id: 'saludo', text: 'Al Club X', x: 0.075, y: 0.535, w: 0.85, h: 0.095 },
+        { type: 'text', id: 'mensaje', text: 'Hola', x: 0.10, y: 0.725, w: 0.80, h: 0.115 },
+    ],
+});
+const bandaAbajo = CO.textBandOf(docTextoAbajo);
+check('la franja del texto sale de los nodos reales',
+    bandaAbajo && Math.abs(bandaAbajo.y - 0.535) < 0.001 && Math.abs(bandaAbajo.h - 0.305) < 0.001,
+    JSON.stringify(bandaAbajo));
+check('el logotipo cuenta como texto: también se imprime encima',
+    CO.textBandOf(S.normalizeDocument({ nodes: [{ type: 'image', id: 'logo', srcVar: 'logo', x: 0.07, y: 0.05, w: 0.28, h: 0.1 }] }))?.y === 0.05);
+check('un nodo apagado no reserva sitio',
+    CO.textBandOf(S.normalizeDocument({ nodes: [{ type: 'text', id: 't', text: 'x', hidden: true, x: 0, y: 0.9, w: 1, h: 0.05 }] })) === null);
+check('un documento sin texto no inventa una franja', CO.textBandOf({ nodes: [] }) === null);
+
+check('la franja se dice en palabras, no en coordenadas',
+    /lower third/.test(CO.clearClauseFor(bandaAbajo) || ''), CO.clearClauseFor(bandaAbajo));
+check('y dice POR QUÉ tiene que quedar tranquila',
+    /name and message are printed/.test(CO.clearClauseFor(bandaAbajo) || ''));
+check('sin franja no se inventa la cláusula', CO.clearClauseFor(null) === null);
+
+// Con una sola variante tiene que salir la que le sirve a ESTA pieza, no la
+// primera de la lista.
+const unoAbajo = CO.plansFor(1, docTextoAbajo);
+check('con una variante se elige el plan que respeta esa franja',
+    unoAbajo.length === 1 && unoAbajo[0].textZone.y >= 0.4, unoAbajo[0]?.id);
+const docTextoArriba = S.normalizeDocument({
+    nodes: [
+        { type: 'text', id: 't', text: 'Al Club X', x: 0.1, y: 0.05, w: 0.8, h: 0.2 },
+        { type: 'image', id: 'foto', srcVar: 'imagen', x: 0, y: 0.5, w: 1, h: 0.5 },
+    ],
+});
+check('con el texto arriba se elige otro plan',
+    CO.plansFor(1, docTextoArriba)[0].id !== unoAbajo[0].id,
+    `${CO.plansFor(1, docTextoArriba)[0].id} vs ${unoAbajo[0].id}`);
+check('sin documento se conserva el orden declarado',
+    CO.plansFor(2)[0].id === CO.VARIANT_PLANS[0].id && CO.plansFor(2)[1].id === CO.VARIANT_PLANS[1].id);
+// Determinista: quien regenera espera una alternativa, no un sorteo.
+check('el orden es estable entre llamadas',
+    JSON.stringify(CO.plansFor(3, docTextoAbajo).map(p => p.id)) === JSON.stringify(CO.plansFor(3, docTextoAbajo).map(p => p.id)));
+check('nunca se piden más planes que variantes', CO.plansFor(2, docTextoAbajo).length === 2);
+
+// El prompt lo lleva, y sigue cabiendo en el presupuesto del modelo.
+const conDoc = CO.buildBackdropPrompt({
+    composition: { enabled: true, baseImageUrl: 'https://x/base.png', style: 'institucional' },
+    plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true, document: docTextoAbajo,
+});
+check('el prompt lleva la franja del documento', /name and message are printed/.test(conDoc.prompt));
+check('y describe CÓMO se integra, no sólo que se integre',
+    /softly rounded shape/.test(conDoc.prompt) && /read as a single designed piece/.test(conDoc.prompt));
+check('el prompt entra en el presupuesto del modelo',
+    conDoc.prompt.length <= CO.PROMPT_MAX_CHARS && !conDoc.dropped.length,
+    `${conDoc.prompt.length} de ${CO.PROMPT_MAX_CHARS}`);
+// El peor caso: con prompt maestro largo se recorta por el final y se DICE.
+const maestroLargo = CO.buildBackdropPrompt({
+    composition: { enabled: true, baseImageUrl: 'https://x/base.png', masterPrompt: 'x'.repeat(1200) },
+    plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true, document: docTextoAbajo,
+});
+check('con un prompt maestro largo se recorta y se anota',
+    maestroLargo.prompt.length <= CO.PROMPT_MAX_CHARS && maestroLargo.dropped.includes('prompt maestro'));
+check('pero la franja del texto NO se sacrifica',
+    /name and message are printed/.test(maestroLargo.prompt));
+check('sin documento el prompt sigue armándose igual',
+    CO.buildBackdropPrompt({ composition: { enabled: true }, plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' } }).prompt.length > 0);
 
 grupo('El lienzo y el fondo: el espejo del navegador dice lo mismo');
 

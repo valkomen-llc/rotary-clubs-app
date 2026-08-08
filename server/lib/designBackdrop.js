@@ -56,12 +56,17 @@ const getSharp = async () => _sharp || (_sharp = (await import('sharp')).default
 // falle: con tres de cuatro también se puede elegir.
 export const startComposition = async ({
     composition, format = 'post_1_1', photoUrl = null, palette = {}, variants = null,
+    // El documento de la pieza. Con él, la composición sabe DÓNDE va a caer el
+    // texto que imprimimos encima y deja esa franja tranquila; sin él, el
+    // modelo compone a ciegas y puede dejar las caras justo debajo del título.
+    // Es opcional a propósito: quien no lo tenga sigue componiendo igual.
+    document = null,
 }) => {
     const c = normalizeComposition(composition);
     if (!c.enabled) throw new Error('Esta plantilla no tiene la composición con IA activada.');
     if (!photoUrl && !c.baseImageUrl) throw new Error('Hace falta al menos una imagen: la base de la plantilla o la fotografía del club.');
 
-    const planes = plansFor(variants ?? c.variants);
+    const planes = plansFor(variants ?? c.variants, document);
     const aspect = aspectFor(format);
     const model = COMPOSE_MODEL();
 
@@ -71,7 +76,7 @@ export const startComposition = async ({
 
     const tareas = await Promise.all(planes.map(async (plan) => {
         const { prompt, dropped } = buildBackdropPrompt({
-            composition: c, plan, palette,
+            composition: c, plan, palette, document,
             photo: photoUrl ? { url: photoUrl } : null,
             hasBase: !!c.baseImageUrl,
         });

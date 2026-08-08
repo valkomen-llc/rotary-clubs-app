@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.733.0",
-  "cache_bust": "2026-08-08g (Se ofrece crear el hueco de la fotografia del club.)",
+  "version": "4.734.0",
+  "cache_bust": "2026-08-08h (La composicion respeta donde cae el texto y describe como integrar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -826,6 +826,7 @@ const DesignStudio: React.FC = () => {
                             uploading={uploading}
                             hasPhotoSlot={!!photoNode}
                             onAddPhoto={addPhotoNode}
+                            document={doc}
                         />
                     }
                 />

@@ -2486,6 +2486,29 @@ foto en un recuadro.
   que retoquemos: devuelve el LIENZO sobre el que se compone. Dibujar tipografía
   sobre un fondo es diseño gráfico normal, y es lo que el módulo ya hacía — sólo
   que ahora el fondo también puede venir del modelo.
+- **El modelo compone A CIEGAS si no se le dice dónde cae el texto** (v4.734,
+  `textBandOf` + `clearClauseFor`). No sabe que encima de esa imagen vamos a
+  imprimir el nombre del club, el mensaje y la firma: una composición salía
+  preciosa y quedaba inservible, con las caras justo debajo del título.
+  `textBandOf` mira el documento REAL y devuelve la franja que ocupa lo que se
+  imprime; el logotipo cuenta, porque también va encima. Se dice en PALABRAS
+  —«la mitad de abajo»— y no en coordenadas: lo primero se cumple, lo segundo
+  no. Y se dice el porqué, que es lo que hace que el modelo lo respete.
+- **`plansFor` recibe el documento y ORDENA los planes por lo bien que le
+  sientan.** Con una sola variante tiene que salir la que le sirve a esa pieza,
+  no la primera de la lista. Sigue siendo determinista —a igual puntaje manda el
+  orden declarado—: quien regenera espera una alternativa, no un sorteo.
+- **Hay MÁS planes que `MAX_VARIANTS`, y es a propósito.** El tope es lo que se
+  paga de una vez; la lista es el repertorio del que se elige. No atar los dos
+  números.
+- **Se describe CÓMO se integra, no sólo que se integre.** «Colocala en el
+  lienzo» da una foto pegada. Lo que produce una pieza de papelería es nombrar
+  el mecanismo: la fotografía dentro de una forma grande de bordes redondeados
+  cuya curva sigue las del lienzo, con margen limpio alrededor, el borde fundido
+  en la superficie y la luz de las dos igualada.
+- **La franja del texto NO se sacrifica al recortar el prompt.** El presupuesto
+  se recorta por el final —prompt maestro primero—; lo que sostiene la
+  composición no se toca. Lo comprueba `test:design` con el peor caso.
 - **Cada variante es una DISTRIBUCIÓN, no una semilla.** Pedirle cuatro veces lo
   mismo al modelo da cuatro versiones parecidas y no ayuda a elegir. Lo que
   cambia entre variantes es dónde manda la fotografía y qué zona queda limpia
