@@ -321,12 +321,15 @@ function SmartHome() {
   if (isMainPlatform) return <LandingPage />;
   if (isDraft) return <ComingSoon clubName={club?.name} logo={club?.logo} primaryColor={club?.colors?.primary} />;
 
-  // District Site (e.g. 4271.org) — specialized multimedia gallery
-  const currentHostname = window.location.hostname;
-  const currentParams = window.location.search;
-  if (((club as any)?.type === 'district' && !club?.subdomain?.startsWith('rye')) || currentHostname.includes('4271') || currentParams.includes('4271')) {
-    return <DistrictMultimediaGallery />;
-  }
+  // Un DISTRITO no tiene portada propia: cae en el sitio estándar de más abajo y se
+  // arma con su configuración, como cualquier otro (v4.737).
+  //
+  // Hasta v4.736 acá se devolvía `<DistrictMultimediaGallery />` —el formulario de la
+  // Conferencia Bidistrital Medellín 2026—. La condición se escribió para 4271, pero la
+  // primera de sus tres alternativas miraba el TIPO de sitio, no el número, así que
+  // atrapaba a 4281 y a cualquier distrito que se creara después: se quedaban sin
+  // portada y sin ningún ajuste del panel que lo apagara. La galería sigue viva, ahora
+  // en `/galeria-multimedia`, y se enlaza desde el menú del sitio que la necesite.
 
   // Foundation site (COLROTARIOS) — reuses shell, different middle content
   if ((club as any)?.type === 'foundation') {
@@ -540,6 +543,10 @@ function App() {
                 <Route path="/contacto" element={<Contacto />} />
                 <Route path="/estados-financieros" element={<EstadosFinancieros />} />
                 <Route path="/descargas" element={<Descargas />} />
+                {/* La galería de la Conferencia Bidistrital. Era la portada forzada de
+                    todo sitio de distrito; ahora es una página más, que se enlaza desde
+                    el menú configurable del sitio que la necesite. */}
+                <Route path="/galeria-multimedia" element={<DistrictMultimediaGallery />} />
                 <Route path="/rotaract" element={<Rotaract />} />
                 <Route path="/interact" element={<Interact />} />
                 <Route path="/rotex" element={<Rotex />} />

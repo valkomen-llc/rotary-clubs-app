@@ -96,6 +96,7 @@ export const STATIC_ROUTES = [
     { path: '/postular-proyecto', kind: 'generic', label: 'Postular proyecto' },
     { path: '/agendar-capacitacion', kind: 'generic', label: 'Agendar capacitación' },
     { path: '/generador-pendones', kind: 'generic', label: 'Generador de pendones' },
+    { path: '/galeria-multimedia', kind: 'generic', label: 'Galería multimedia' },
 ];
 
 // Rutas que NUNCA se indexan. No es una lista de "páginas feas": son pantallas
