@@ -2211,6 +2211,15 @@ completa un formulario y descarga su pieza.
   pisaría a otro una pieza que ya circula. Hacen falta las dos puntas — el
   nombre coincide exacto, o el sitio tiene un solo diseño. Con duda no se toca
   nada y se DICE, con la salida: publicar una vez ata el vínculo.
+- **Y cuando no se puede adoptar, se OFRECE elegir** (v4.736,
+  `linkPublication`). No adoptar por si acaso es correcto, pero avisar sin dar
+  salida deja un callejón: un sitio con VARIOS diseños y una publicación
+  heredada no encaja en ninguna de las dos condiciones —ni nombre igual ni
+  diseño único—, así que no se podía vincular por ninguna vía y guardar no
+  cambiaba nunca el enlace. Es el par de «Vincular evento» en Postulaciones. Al
+  vincular se refresca en el acto: vincular sin actualizar dejaría el enlace
+  igual y parecería que no funcionó. Y se libera el vínculo anterior de ESE
+  diseño primero — un diseño apunta a una publicación, no a dos.
 - **Rehacer una publicación heredada sin deducir sus ajustes le borra la
   firma** (`settingsForRefresh`). `settings` nació vacía, así que rehacerla a
   secas la publica con los ajustes POR DEFECTO: `frozen` queda en `{}` —el

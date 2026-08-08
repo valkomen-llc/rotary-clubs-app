@@ -147,6 +147,14 @@ export const updateDesign = (id: string, body: Record<string, unknown>) =>
 
 export const deleteDesign = (id: string) => request<{ ok: true }>(`/projects/${id}`, { method: 'DELETE' });
 
+/** Atar un diseño a una plantilla ya publicada. Hace falta cuando el vínculo no
+ *  se puede adoptar solo —el sitio tiene varios diseños y varias publicaciones
+ *  heredadas—: sin esto, guardar no cambia nunca el enlace público. */
+export const linkPublication = (projectId: string, publicationId: string) =>
+    request<{ slug: string; url: string; published: boolean }>(`/projects/${projectId}/publication`, {
+        method: 'POST', body: JSON.stringify({ publicationId }),
+    });
+
 // ─── Composición con IA ────────────────────────────────────────────────
 
 export interface Composition {

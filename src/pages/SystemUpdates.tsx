@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.735.0 | 2026-08-08 (La composicion se guarda y llega al enlace)
-// Cache bust: 2026-08-08i
+// UI V4.736.0 | 2026-08-08 (Se puede vincular a mano el enlace publico)
+// Cache bust: 2026-08-08j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.736.0',
+        title: 'Ya se puede decirle al sistema cuál es el enlace público de un diseño 🔗',
+        description: 'Quedaba un callejón sin salida. Desde hace unas versiones, guardar un diseño actualiza su enlace público, y para las plantillas publicadas antes de que existiera ese vínculo el sistema lo adopta solo — pero sólo cuando no hay duda posible: que el nombre coincida, o que el sitio tenga un único diseño. Eso es a propósito, porque atar un diseño al enlace equivocado le cambiaría a alguien una pieza que ya está circulando por WhatsApp. El problema es que un sitio con varios diseños y una plantilla publicada de antes no encajaba en ninguno de los dos casos: no se podía vincular por ninguna vía, así que guardar no cambiaba nunca el sitio público y no había forma de arreglarlo desde la pantalla. Ahora, cuando el sistema no puede saberlo solo, lo pregunta: muestra las plantillas publicadas del sitio con su dirección y basta con elegir cuál corresponde. Se vincula, se actualiza en el acto con el diseño que tenés abierto, y a partir de ahí sigue tus cambios como el resto. Es el mismo par que ya existía en Postulación de Proyectos con «Vincular evento»: se adopta cuando se puede y se ofrece elegir cuando no — avisar sin dar salida no sirve de nada.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Elegir a qué enlace público pertenece un diseño, cuando no se puede saber solo.' },
+            { type: 'fixed', text: 'Un sitio con varios diseños ya no queda sin forma de vincular su plantilla publicada.' },
+            { type: 'changed', text: 'Al vincular, el enlace se actualiza en el acto con el diseño abierto.' },
+        ]
+    },
     {
         version: '4.735.0',
         title: 'La Composición con IA ya se guarda de verdad (antes se perdía en silencio) 💾',
