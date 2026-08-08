@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — la pantalla
-// v4.729.0
+// v4.731.0
 //
 // Tres paneles: configuración a la izquierda, mesa de trabajo al centro, capas
 // y propiedades a la derecha. Es el reparto del Generador de Pendones ampliado,
@@ -21,7 +21,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Download, Save, Loader2,
     Trash2, Copy, Grid3x3, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
-    Sparkles, FolderOpen, FileImage, FileType2, ImageDown, Globe2,
+    Sparkles, FolderOpen, FileImage, FileType2, ImageDown, Globe2, ImagePlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MediaPicker from '../content-studio/MediaPicker';
@@ -41,7 +41,7 @@ import {
     type DesignDocument, type DesignNode, type TextNode, type ImageNode,
 } from '../../../lib/designSpec';
 import { newField, type LinkedField } from '../../../lib/designFields';
-import { exportDocument, exportToFile, type ExportFormat } from '../../../lib/designRender';
+import { exportDocument, exportToFile, thumbnail, type ExportFormat } from '../../../lib/designRender';
 
 const EMPTY_DOC: DesignDocument = { format: 'post_1_1', background: PALETTE.white, nodes: [] };
 
@@ -522,6 +522,20 @@ const DesignStudio: React.FC = () => {
         [catalog, templateId, club]
     );
 
+    // La vía explícita a la Biblioteca Multimedia. La fila de `Media` ES el
+    // archivo; la ficha editable vive en `DesignProject`. Se pide a propósito,
+    // no sale de guardar.
+    const sendToLibrary = async () => {
+        setExportOpen(false);
+        setExporting(true);
+        try {
+            const file = await exportToFile(doc, title);
+            await uploadToLibrary(file, club?.id || null);
+            toast.success('La pieza quedó en la Biblioteca Multimedia.');
+        } catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo guardar en la Biblioteca'); }
+        finally { setExporting(false); }
+    };
+
     const doExport = async (format: ExportFormat) => {
         setExportOpen(false);
         setExporting(true);
@@ -530,20 +544,39 @@ const DesignStudio: React.FC = () => {
         finally { setExporting(false); }
     };
 
-    // Guardar hace DOS cosas y las dos importan: sube el archivo a la
-    // Biblioteca Multimedia (la fila de `Media` ES el archivo) y guarda la
-    // ficha editable en `DesignProject`. Sin la ficha, el diseño no se puede
-    // retomar; sin el archivo, no se puede publicar.
+    // ── GUARDAR ES GUARDAR LA CONFIGURACIÓN, NO PRODUCIR UN ARCHIVO ──
+    //
+    // Hasta v4.730 cada guardado exportaba la pieza a 2160 px y la subía a la
+    // Biblioteca Multimedia. Estaba mal por dos motivos, y el segundo es el de
+    // fondo:
+    //
+    //   · Ensuciaba la Biblioteca. Guardar es un gesto que se repite cada dos
+    //     minutos mientras se ajusta un diseño, así que un solo trabajo dejaba
+    //     decenas de PNG casi idénticos mezclados con las fotos reales de los
+    //     clubes. Se reportó con la Biblioteca en más de 3.000 imágenes.
+    //   · Lo que se está editando acá es la CONFIGURACIÓN de una plantilla, no
+    //     una pieza terminada. Las piezas las genera cada club desde el portal
+    //     público, con SUS datos; la del administrador es una vista previa con
+    //     valores de ejemplo. Convertirla en un archivo la presenta como algo
+    //     que no es.
+    //
+    // Lo único que produce guardar es la MINIATURA del listado, y vive en la
+    // ficha (`DesignProject.thumbUrl`), no en `Media`: es de 360 px y sólo
+    // existe para que «Mis diseños» no sea una fila de recuadros vacíos.
+    //
+    // Mandar la pieza a la Biblioteca sigue siendo posible — está en el menú de
+    // Descargar— pero es una decisión explícita, no un efecto secundario.
     const save = async () => {
         if (!doc.nodes.length) { toast.warning('Todavía no hay nada que guardar.'); return; }
         setSaving(true);
         try {
-            const file = await exportToFile(doc, title);
-            const media = await uploadToLibrary(file, club?.id || null);
+            // Una miniatura fallida no puede impedir guardar: lo que se pidió
+            // fue guardar el diseño, y la vista previa es lo secundario.
+            const thumbUrl = await thumbnail(doc).catch(() => null);
             const body = {
                 title, templateId, category: 'aniversario',
                 document: doc, variables: liveVars, branding: branding || {}, copy: copy || {},
-                subjectClubId: club?.id || null, imageUrl: media.url, mediaId: media.id,
+                subjectClubId: club?.id || null, thumbUrl,
                 composition,
             };
             const row = currentId ? await updateDesign(currentId, body) : await createDesign(body);
@@ -557,7 +590,7 @@ const DesignStudio: React.FC = () => {
                 toast.success('Guardado. El enlace público ya muestra estos cambios.');
             } else {
                 setPublicUrl(null);
-                toast.success('Guardado en la Biblioteca Multimedia y en tus diseños.');
+                toast.success('Diseño guardado.');
                 // Cuando el servidor sabe POR QUÉ no tocó ningún enlace, se
                 // dice. Callarlo deja al usuario mirando un sitio público que
                 // no cambia, sin nada que explique la diferencia.
@@ -651,6 +684,17 @@ const DesignStudio: React.FC = () => {
                                     <span className="ml-auto text-[10px] text-gray-400">{hint}</span>
                                 </button>
                             ))}
+                            {/* Mandar la pieza a la Biblioteca Multimedia sigue siendo
+                                posible, pero es una decisión EXPLÍCITA. Como efecto
+                                secundario de guardar dejaba decenas de copias casi
+                                iguales mezcladas con las fotos de los clubes. */}
+                            <div className="border-t border-gray-100 mt-1 pt-1">
+                                <button onClick={sendToLibrary} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-indigo-50 text-left">
+                                    <ImagePlus className="w-4 h-4 text-gray-400" />
+                                    <span className="text-xs font-bold text-gray-700">Guardar en la Biblioteca</span>
+                                    <span className="ml-auto text-[10px] text-gray-400">como imagen</span>
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -666,8 +710,11 @@ const DesignStudio: React.FC = () => {
                             {saved.map(d => (
                                 <div key={d.id} className="relative w-28 group">
                                     <button onClick={() => openSaved(d)} className="block w-28 h-28 rounded-lg overflow-hidden border border-gray-200 hover:border-indigo-400 bg-white transition-colors">
-                                        {d.imageUrl
-                                            ? <img src={d.imageUrl} alt="" className="w-full h-full object-cover" />
+                                        {/* La miniatura de la ficha primero; `imageUrl` es el
+                                            respaldo para los diseños guardados cuando cada
+                                            guardado subía un archivo a la Biblioteca. */}
+                                        {d.thumbUrl || d.imageUrl
+                                            ? <img src={d.thumbUrl || d.imageUrl || ''} alt="" className="w-full h-full object-cover" />
                                             : <span className="text-[10px] text-gray-400 flex items-center justify-center h-full">Sin vista previa</span>}
                                     </button>
                                     <p className="mt-1 text-[10px] text-gray-500 truncate">{d.title}</p>

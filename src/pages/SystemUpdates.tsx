@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.730.0 | 2026-08-08 (Se adopta la publicacion sin vincular)
-// Cache bust: 2026-08-08d
+// UI V4.731.0 | 2026-08-08 (Guardar ya no deja una imagen en la Biblioteca)
+// Cache bust: 2026-08-08e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.731.0',
+        title: 'Guardar el diseño ya no llena la Biblioteca de imágenes 🧹',
+        description: 'Cada vez que se guardaba un diseño, el sistema exportaba la pieza a tamaño completo y la subía a la Biblioteca Multimedia. Como guardar es algo que se hace cada dos minutos mientras se ajusta un diseño, un solo trabajo dejaba decenas de imágenes casi idénticas mezcladas con las fotos reales de los clubes — la Biblioteca llegó a más de 3.000. Pero el problema de fondo no era el desorden: lo que se edita en este módulo es la CONFIGURACIÓN de una plantilla, no una pieza terminada. Las piezas las genera cada club desde el enlace público, con sus propios datos; lo que ve el administrador es una vista previa con valores de ejemplo. Convertirla en un archivo la presentaba como algo que no es. Ahora guardar guarda la configuración y nada más. Lo único que produce es una miniatura pequeña para el listado «Mis diseños», y esa vive dentro de la ficha del diseño, no en la Biblioteca. Mandar la pieza a la Biblioteca sigue siendo posible cuando de verdad se quiere: está en el menú de Descargar, como «Guardar en la Biblioteca». Nota: las imágenes que ya se acumularon no se borraron solas —borrar archivos de la Biblioteca es una decisión que toma el equipo, no una actualización—.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'biblioteca multimedia'],
+        type: 'fix',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'Guardar un diseño ya no sube una imagen a la Biblioteca Multimedia.' },
+            { type: 'changed', text: 'La miniatura del listado vive en la ficha del diseño.' },
+            { type: 'added', text: '«Guardar en la Biblioteca» en el menú de Descargar, para cuando sí se quiere el archivo.' },
+        ]
+    },
     {
         version: '4.730.0',
         title: 'Las plantillas ya publicadas también siguen al diseño 🔗',

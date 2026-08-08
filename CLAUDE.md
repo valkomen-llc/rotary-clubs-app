@@ -1992,6 +1992,22 @@ a píxel y ejercita el arrastre, la subida y el formulario público; pide `npm i
   `/api/media/upload`, que es el camino que ya registra en la Biblioteca
   Multimedia. Duplicar la lógica de S3 daría dos caminos que se separan en
   silencio — el problema que arrastra `sendCampaign` en el CRM.
+- **GUARDAR guarda la CONFIGURACIÓN; no produce un archivo** (v4.731). Hasta
+  v4.730 cada guardado exportaba la pieza a 2160 px y la subía a la Biblioteca.
+  Guardar se repite cada dos minutos mientras se ajusta un diseño, así que un
+  solo trabajo dejaba decenas de PNG casi idénticos mezclados con las fotos
+  reales de los clubes —se reportó con la Biblioteca en 3.116 imágenes—. El
+  motivo de fondo no es el desorden: acá se edita la configuración de una
+  PLANTILLA, y las piezas las genera cada club desde el portal público con SUS
+  datos. La del administrador es una vista previa con valores de ejemplo;
+  convertirla en archivo la presenta como algo que no es. Lo único que produce
+  guardar es la miniatura del listado, en `DesignProject.thumbUrl` —360 px, dato
+  de la ficha—, nunca una fila de `Media`. La vía a la Biblioteca sigue
+  existiendo en el menú de Descargar, como decisión EXPLÍCITA.
+- **Que guardar no suba nada se comprueba en el NAVEGADOR**
+  (`test:design:render`), no con una prueba de criterio: es una llamada del
+  navegador y desde el servidor no se ve. Verificado a la inversa —con la
+  subida reintroducida, la comprobación falla—.
 - **Toda casilla de imagen ofrece las DOS vías, y el módulo se estrenó con una**
   (v4.720.1). La regla de v4.700 ya lo decía y el código hasta la citaba en un
   comentario: el botón abría el `MediaPicker` y nada más. Con sólo «Biblioteca»,

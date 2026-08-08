@@ -448,6 +448,49 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('y van en orden desde el 1',
         pasos.join(',') === pasos.map((_, i) => i + 1).join(','), pasos.join(','));
 
+    // ── Guardar NO produce un archivo ──────────────────────────────
+    //
+    // Lo reportado: cada guardado dejaba un PNG en la Biblioteca Multimedia.
+    // Guardar es un gesto que se repite cada dos minutos mientras se ajusta un
+    // diseño, así que un solo trabajo dejaba decenas de copias casi idénticas
+    // mezcladas con las fotos reales de los clubes —se reportó con más de 3.000
+    // imágenes—. Y de fondo: acá se edita la CONFIGURACIÓN de una plantilla; las
+    // piezas las genera cada club desde el portal público, con sus datos.
+    //
+    // Esto NO lo ve una prueba de criterio: la subida es una llamada del
+    // navegador. Hay que mirar si sale.
+    let subioAlGuardar = false;
+    let cuerpoGuardado = null;
+    await page.route('**/api/media/upload', r => { subioAlGuardar = true; return r.fulfill({ json: { id: 'm2', url: 'https://ejemplo.test/x.png' } }); });
+    await page.route('**/api/design-studio/projects', r => {
+        if (r.request().method() === 'POST') {
+            try { cuerpoGuardado = JSON.parse(r.request().postData() || '{}'); } catch { cuerpoGuardado = {}; }
+            return r.fulfill({ json: { id: 'd1', title: 'X', document: { format: 'post_1_1', nodes: [] }, variables: {}, copy: {}, imageUrl: null, thumbUrl: null, mediaId: null, subjectClubId: null, status: 'draft', createdAt: '', updatedAt: '', templateId: 'aniversario_foto', category: 'aniversario', format: 'post_1_1' } });
+        }
+        return r.fulfill({ json: [] });
+    });
+
+    await page.getByRole('button', { name: /Guardar/ }).first().click();
+    await page.waitForTimeout(1500);
+    check('guardar NO sube nada a la Biblioteca Multimedia', !subioAlGuardar);
+    check('guardar manda el documento', !!cuerpoGuardado?.document);
+    check('y una miniatura para el listado', typeof cuerpoGuardado?.thumbUrl === 'string' && cuerpoGuardado.thumbUrl.startsWith('data:image/'));
+    check('la miniatura es pequeña, no la pieza a 2160 px',
+        (cuerpoGuardado?.thumbUrl || '').length < 400_000, `${(cuerpoGuardado?.thumbUrl || '').length} bytes`);
+    check('guardar no declara un archivo de la Biblioteca',
+        !cuerpoGuardado?.imageUrl && !cuerpoGuardado?.mediaId);
+
+    // Pero la vía explícita sigue existiendo: quitarla dejaría al
+    // administrador sin forma de mandar la pieza a la Biblioteca.
+    await page.getByRole('button', { name: /Descargar/ }).first().click();
+    await page.waitForTimeout(250);
+    check('el menú de Descargar ofrece guardar en la Biblioteca',
+        await page.getByText('Guardar en la Biblioteca').count() > 0);
+    await page.getByText('Guardar en la Biblioteca').first().click();
+    await page.waitForTimeout(1500);
+    check('y esa sí sube a la Biblioteca', subioAlGuardar);
+    check('guardar no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
     await page.close();
 }
 
