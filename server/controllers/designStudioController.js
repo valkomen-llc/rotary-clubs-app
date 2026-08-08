@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.730.0 cargado — Plantillas IA. Una publicación sin vincular se adopta al guardar, conservando sus ajustes.');
+console.log('[designStudioController] v4.731.0 cargado — Plantillas IA. Guardar guarda la configuración; la Biblioteca sólo recibe lo que se le manda a propósito.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -224,7 +224,7 @@ export const saveProject = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
-        const { title, templateId, category, document, variables = {}, branding = {}, copy = {}, subjectClubId = null, imageUrl = null, mediaId = null } = req.body || {};
+        const { title, templateId, category, document, variables = {}, branding = {}, copy = {}, subjectClubId = null, imageUrl = null, mediaId = null, thumbUrl = null } = req.body || {};
 
         // Todo lo que llega del navegador pasa por el normalizador. Es la única
         // puerta: un nodo con `w: "mucho"` no puede llegar al renderizador.
@@ -233,15 +233,15 @@ export const saveProject = async (req, res) => {
         const { rows } = await db.query(
             `INSERT INTO "DesignProject"
                 (title, "clubId", "subjectClubId", "userId", "userEmail", "templateId", category, format,
-                 document, variables, branding, copy, "imageUrl", "mediaId", status, "updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+                 document, variables, branding, copy, "imageUrl", "mediaId", "thumbUrl", status, "updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$16,$15,NOW())
              RETURNING *`,
             [
                 String(title || 'Diseño sin título').slice(0, 160), clubId, subjectClubId || null,
                 req.user?.id || null, req.user?.email || null,
                 String(templateId || 'aniversario_foto'), String(category || 'aniversario'), doc.format,
                 JSON.stringify(doc), JSON.stringify(variables), JSON.stringify(branding), JSON.stringify(copy),
-                imageUrl, mediaId, imageUrl ? 'exported' : 'draft',
+                imageUrl, mediaId, imageUrl ? 'exported' : 'draft', thumbUrl,
             ]
         );
         res.status(201).json(rowToProject(rows[0]));
@@ -253,7 +253,7 @@ export const updateProject = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
-        const { title, document, variables, copy, imageUrl, mediaId } = req.body || {};
+        const { title, document, variables, copy, imageUrl, mediaId, thumbUrl } = req.body || {};
         const doc = document ? normalizeDocument(document) : null;
 
         // El aislamiento va en el WHERE, no en una comprobación posterior:
@@ -266,6 +266,10 @@ export const updateProject = async (req, res) => {
                 copy = COALESCE($6::jsonb, copy),
                 "imageUrl" = COALESCE($7, "imageUrl"),
                 "mediaId" = COALESCE($8, "mediaId"),
+                -- La miniatura del listado. Es lo ÚNICO que guardar produce en
+                -- forma de imagen, y vive en la ficha: no es un archivo de la
+                -- Biblioteca Multimedia. Ver la cabecera de save en el estudio.
+                "thumbUrl" = COALESCE($9, "thumbUrl"),
                 status = CASE WHEN $7 IS NOT NULL THEN 'exported' ELSE status END,
                 "updatedAt" = NOW()
               WHERE id = $1 AND "clubId" IS NOT DISTINCT FROM $2
@@ -276,7 +280,7 @@ export const updateProject = async (req, res) => {
                 doc ? JSON.stringify(doc) : null,
                 variables ? JSON.stringify(variables) : null,
                 copy ? JSON.stringify(copy) : null,
-                imageUrl || null, mediaId || null,
+                imageUrl || null, mediaId || null, thumbUrl || null,
             ]
         );
         if (!rows[0]) return res.status(404).json({ error: 'Diseño no encontrado' });
