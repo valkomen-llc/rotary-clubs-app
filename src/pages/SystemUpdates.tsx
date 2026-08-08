@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.732.0 | 2026-08-08 (El lienzo se dibuja y la IA integra la foto)
-// Cache bust: 2026-08-08f
+// UI V4.733.0 | 2026-08-08 (Se ofrece crear el espacio de la fotografia)
+// Cache bust: 2026-08-08g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.733.0',
+        title: 'Si al diseño le falta el espacio para la fotografía, ahora se avisa y se agrega de un clic 📷',
+        description: 'Con la composición ya funcionando, apareció el caso de un diseño que no tiene dónde va la fotografía del club: el formulario público entonces no la pide —sólo ofrece el logotipo— y no hay nada que la IA pueda integrar en el lienzo. Y desde el panel eso no se veía: el administrador mira su pieza completa y nada le dice que al formulario le falta la mitad. Pasa sobre todo con los diseños hechos antes de que se corrigiera este comportamiento: el sistema borraba el espacio cuyo valor no podía resolver, y como el club casi nunca tenía una fotografía cargada, ese espacio desaparecía —mientras que el del logotipo sobrevivía, porque el club sí tiene escudo—. Ahora, en el panel de Composición con IA, un diseño sin ese espacio muestra un aviso que explica la consecuencia con todas las letras y un botón para agregarlo. Nace ya marcado como campo del formulario público —un espacio que no es campo no lo puede llenar nadie— y colocado debajo del texto y del logotipo, para no taparlos. Después se mueve y se le ajusta el tamaño como a cualquier elemento. Es el mismo comportamiento que ya tenía la Cabecera con el logotipo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'fix',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Aviso y botón para agregar el espacio de la fotografía del club.' },
+            { type: 'fixed', text: 'El espacio nace marcado como campo del formulario público.' },
+        ]
+    },
     {
         version: '4.732.0',
         title: 'La imagen base ya se ve, y la IA integra la foto del club dentro de ella 🎨',

@@ -50,6 +50,11 @@ interface Props {
      *  mano acá y quedó DUPLICADO al agregar la Cabecera en v4.724: dos secciones
      *  numeradas «5» en la misma columna. Un orden se decide en un solo sitio. */
     step?: number;
+    /** Si el diseño tiene un hueco para la fotografía del club. Sin él, el
+     *  formulario público no la pide y no hay nada que integrar en el lienzo —y
+     *  desde el panel eso no se ve: el administrador mira su pieza completa. */
+    hasPhotoSlot?: boolean;
+    onAddPhoto?: () => void;
 }
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -58,6 +63,7 @@ const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400
 const CompositionPanel: React.FC<Props> = ({
     composition, onChange, photoUrl, format, palette, maxVariants,
     hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading, step = 6,
+    hasPhotoSlot = true, onAddPhoto,
 }) => {
     const [running, setRunning] = useState(false);
     const [variants, setVariants] = useState<VariantResult[]>([]);
@@ -130,6 +136,26 @@ const CompositionPanel: React.FC<Props> = ({
 
             {composition.enabled && (
                 <>
+                    {/* El hueco de la fotografía. Va ARRIBA de la imagen base
+                        porque sin él lo de abajo no sirve para nada: no hay
+                        fotografía que integrar. */}
+                    {!hasPhotoSlot && onAddPhoto && (
+                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                            <p className="flex gap-1.5 text-[11px] text-amber-800 leading-relaxed">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <span>
+                                    Este diseño no tiene un espacio para la fotografía del club, así que el
+                                    formulario público <strong>no la va a pedir</strong> y no hay nada que integrar
+                                    en el lienzo.
+                                </span>
+                            </p>
+                            <button onClick={onAddPhoto}
+                                className="mt-2 w-full text-xs font-bold border border-amber-300 bg-white hover:border-amber-500 rounded-lg px-2 py-1.5 text-amber-900 transition-colors">
+                                Agregar el espacio de la fotografía
+                            </button>
+                        </div>
+                    )}
+
                     {/* Imagen base */}
                     <div className="mb-3">
                         <span className={lbl}>Imagen base institucional</span>

@@ -277,6 +277,45 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la casilla de fotografía ofrece la BIBLIOTECA', /Biblioteca/.test(texto));
     check('hay un campo de archivo en la casilla', await page.locator('input[type=file]').count() >= 1);
 
+    // ── El hueco de la FOTOGRAFÍA ──────────────────────────────────
+    //
+    // Un diseño sin espacio para la fotografía no la pide en el formulario
+    // público y no hay nada que integrar en el lienzo — y desde el panel eso no
+    // se ve, porque el administrador mira su pieza completa. Pasa con los
+    // diseños hechos antes de v4.722.3, cuando el compilador borraba el hueco
+    // cuyo valor no se podía resolver: el logotipo sobrevivía —el club sí tiene
+    // escudo— y la fotografía no.
+    //
+    // Va acá, antes de que el resto de la prueba marque una capa como
+    // «Fotografía del club»: después ya habría espacio y el aviso no
+    // correspondería.
+    await page.getByText('Activar', { exact: true }).click();
+    await page.waitForTimeout(400);
+    check('sin espacio para la fotografía, se AVISA',
+        /no la va a pedir/i.test(await page.locator('aside').first().textContent()));
+    await page.getByText('Agregar el espacio de la fotografía').click();
+    await page.waitForTimeout(500);
+    check('y se puede agregar de un clic',
+        await page.locator('[data-node^="foto"]').count() === 1);
+    check('el aviso desaparece cuando ya está',
+        !/no la va a pedir/i.test(await page.locator('aside').first().textContent()));
+    // Lo que hace que sirva: que quede marcado como campo del portal. Un hueco
+    // que no es campo no lo puede llenar nadie — el defecto de v4.722.3. Se lee
+    // en Propiedades, que es donde el administrador lo vería.
+    const propsFoto = (await page.locator('aside').last().textContent()).replace(/\s+/g, ' ');
+    check('el espacio nace marcado como campo del portal público',
+        /Tipo de campo/.test(propsFoto) && /Fotograf/i.test(propsFoto), propsFoto.slice(0, 200));
+    // Se retira para que el resto de la prueba siga con el mismo diseño de
+    // antes: queda seleccionado al crearlo, así que basta con borrarlo.
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(300);
+    check('y se puede quitar como cualquier elemento',
+        await page.locator('[data-node^="foto"]').count() === 0);
+    // Y se vuelve a apagar la composición: encendida agrega su propia casilla
+    // de archivo al panel, y lo que sigue busca las casillas por posición.
+    await page.getByText('Activar', { exact: true }).click();
+    await page.waitForTimeout(300);
+
     await page.getByText('Capas', { exact: true }).click();
     await page.waitForTimeout(250);
     const capas = await page.locator('aside').last().innerText();
@@ -466,6 +505,7 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     await page.route('**/api/media/upload', r => r.fulfill({ json: { id: 'm3', url: PIXEL_URL } }));
     await page.getByText('Activar', { exact: true }).click();
     await page.waitForTimeout(300);
+
     const casillasBase = page.locator('input[type=file]');
     const nBase = await casillasBase.count();
     await casillasBase.nth(nBase - 1).setInputFiles({ name: 'lienzo.png', mimeType: 'image/png', buffer: png });
