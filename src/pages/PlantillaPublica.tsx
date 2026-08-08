@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import DesignCanvas, { type SlotHint } from '../components/admin/design-studio/DesignCanvas';
 import { applyPublicValues, formatOf, isImage, type DesignDocument } from '../lib/designSpec';
+import { withBackdrop } from '../lib/designCompose';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -60,6 +61,9 @@ interface PublicField {
 interface PublicTemplate {
     slug: string; name: string; intro: string; category: string; format: string;
     document: DesignDocument; fields: PublicField[];
+    /** Si esta plantilla integra la fotografía dentro del lienzo institucional
+     *  con IA, y cuántas variantes le toca gastar a una visita anónima. */
+    composition?: { enabled: boolean; variants: number };
 }
 interface PhotoNote { level: string; reason: string; consequence: string }
 
@@ -95,6 +99,20 @@ const PlantillaPublica: React.FC = () => {
     const [dragOver, setDragOver] = useState<string | null>(null);
     const [zoom, setZoom] = useState(0.42);
     const [done, setDone] = useState(false);
+    // ── La composición con IA, en el portal ────────────────────────
+    //
+    // Es lo que hace que la fotografía quede DENTRO del lienzo institucional
+    // —luz, color y bordes armonizados— en vez de encajada en un recuadro. El
+    // motor existía desde v4.722 y el endpoint también; lo que faltaba era que
+    // esta pantalla lo llamara. Se dispara al subir la fotografía, que es el
+    // único momento en que hay algo que componer.
+    //
+    // `backdrop` es la imagen que devolvió el modelo. Vive aparte del documento
+    // y se aplica al final, porque `applyPublicValues` se recalcula con cada
+    // tecla y volvería a poner visible el nodo de la foto.
+    const [backdrop, setBackdrop] = useState<string | null>(null);
+    const [composing, setComposing] = useState(false);
+    const [composeNote, setComposeNote] = useState<string | null>(null);
     const stageRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -151,8 +169,13 @@ const PlantillaPublica: React.FC = () => {
         // plantilla publicada con un dato al que nadie llega salía con el pie
         // institucional y hueco todo lo demás.
         const llenables = (tpl.fields || []).map(f => f.key);
-        return { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values, llenables) };
-    }, [tpl, values]);
+        const resuelto = { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values, llenables) };
+        // El fondo compuesto entra AL FINAL, encima del lienzo institucional y
+        // apagando el nodo de la fotografía: la foto ya está dentro de esa
+        // imagen. Va acá y no dentro de `values` porque este cálculo se rehace
+        // con cada tecla, y el nodo volvería a encenderse.
+        return backdrop ? withBackdrop(resuelto, backdrop) : resuelto;
+    }, [tpl, values, backdrop]);
 
     // ── Dónde va a caer cada dato que todavía falta ────────────────
     //
@@ -188,6 +211,57 @@ const PlantillaPublica: React.FC = () => {
     // ESE nodo y la receta de ESA clase de campo —sin recorte y conservando la
     // transparencia para un escudo, recorte al encuadre para una fotografía—.
     // Sin ella, toda imagen entraba por el camino de la fotografía.
+    // Cuál de los campos de imagen es LA FOTOGRAFÍA. Se resuelve por la clase
+    // declarada del campo (`kind`), no por su clave: una plantilla puede llamar
+    // `portada` a su fotografía, y comparar contra `'imagen'` la dejaría fuera.
+    const esCampoDeFoto = useCallback((key: string) => {
+        const f = (tpl?.fields || []).find(x => x.key === key);
+        return f?.type === 'image' && (f.kind === 'foto' || key === 'imagen');
+    }, [tpl]);
+
+    // ── Componer: la IA mete la fotografía DENTRO del lienzo ───────
+    //
+    // Es asíncrono a propósito, como en el resto de la plataforma: el modelo
+    // tarda entre 20 y 60 segundos y una función serverless corta a los 120.
+    // `POST /backdrop` crea la tarea y devuelve su id; `GET /backdrop/:taskId`
+    // la sondea hasta que hay archivo.
+    //
+    // Un fallo NO rompe la pieza: se avisa y se sigue con la composición
+    // declarada —la fotografía en su recuadro—, que es una pieza correcta. Es
+    // la misma degradación que `fallbackDirection` en el Creador de Reels.
+    const componer = useCallback(async (photoDataUrl: string) => {
+        if (!slug || !tpl?.composition?.enabled) return;
+        setComposing(true);
+        setComposeNote(null);
+        setBackdrop(null);
+        try {
+            const r = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/backdrop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photo: photoDataUrl }),
+            });
+            const d = await r.json().catch(() => null);
+            if (!r.ok) throw new Error(d?.error || 'No se pudo componer la pieza.');
+            const taskId = (d?.variants || []).find((v: { taskId?: string }) => v.taskId)?.taskId;
+            if (!taskId) throw new Error(d?.variants?.[0]?.error || 'El modelo no aceptó la tarea.');
+
+            // Se sonda con tope: sin él, un trabajo que nunca termina deja la
+            // pantalla girando para siempre y quien la abrió no sabe si esperar.
+            const HASTA = Date.now() + 150_000;
+            for (;;) {
+                await new Promise(res => setTimeout(res, 4000));
+                const s = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/backdrop/${encodeURIComponent(taskId)}`, { cache: 'no-store' });
+                const sd = await s.json().catch(() => null);
+                // El contrato es `{ status: 'pending' | 'ready' | 'failed' }`.
+                if (sd?.status === 'ready' && sd.url) { setBackdrop(sd.url); break; }
+                if (sd?.status === 'failed' || (!s.ok && sd?.error)) throw new Error(sd?.error || 'El modelo no pudo componer la pieza.');
+                if (Date.now() > HASTA) throw new Error('La composición está tardando más de lo normal.');
+            }
+        } catch (e) {
+            setComposeNote(e instanceof Error ? e.message : 'No se pudo componer la pieza.');
+        } finally { setComposing(false); }
+    }, [slug, tpl]);
+
     const subirImagen = useCallback(async (file: File | undefined, key: string) => {
         if (!file || !slug) return;
         const aviso = (reason: string, consequence: string) =>
@@ -208,10 +282,14 @@ const PlantillaPublica: React.FC = () => {
             // personas de los bordes, quien subió la foto es el único que puede
             // decidir subir otra.
             setPhotoNotes(prev => ({ ...prev, [key]: d.notes || [] }));
+            // Si esta plantilla compone, la fotografía recién subida es lo que
+            // el modelo tiene que integrar en el lienzo. Sólo la FOTOGRAFÍA: un
+            // logotipo no se funde con el fondo, se dibuja nítido en su sitio.
+            if (esCampoDeFoto(key)) componer(d.dataUrl);
         } catch (e) {
             aviso(e instanceof Error ? e.message : 'No se pudo procesar la imagen.', 'Probá con otro archivo.');
         } finally { setUploadingKey(null); }
-    }, [slug, set]);
+    }, [slug, set, esCampoDeFoto, componer]);
 
     const escribirIA = useCallback(async (tone: string | null) => {
         if (!slug) return;
@@ -471,6 +549,35 @@ const PlantillaPublica: React.FC = () => {
                                     {conEjemploSinLlenar.length === 1
                                         ? <>Lo que se ve en «{conEjemploSinLlenar[0].label}» es un ejemplo. Si descargás ahora, la pieza sale <strong>sin esa imagen</strong>.</>
                                         : <>Las imágenes que se ven son un ejemplo. Si descargás ahora, la pieza sale <strong>sin ellas</strong>.</>}
+                                </span>
+                            </p>
+                        )}
+                        {/* La composición con IA. Se DICE lo que está pasando: son
+                            entre 20 y 60 segundos y, sin aviso, parece que la
+                            fotografía no se subió. */}
+                        {composing && (
+                            <p className="flex gap-1.5 text-[11px] text-purple-700 bg-purple-50 border border-purple-200 rounded-lg p-2 leading-relaxed">
+                                <Loader2 className="w-3.5 h-3.5 shrink-0 mt-0.5 animate-spin" />
+                                <span>Integrando tu fotografía en el diseño. Tarda entre 20 y 60 segundos; mientras tanto podés seguir completando el resto.</span>
+                            </p>
+                        )}
+                        {composeNote && !composing && (
+                            // Un fallo NO rompe la pieza: queda la composición
+                            // declarada, con la fotografía en su recuadro. Es una
+                            // pieza correcta, así que se informa y se sigue.
+                            <p className="flex gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <span>{composeNote} Tu pieza igual se puede descargar: la fotografía queda en su recuadro.</span>
+                            </p>
+                        )}
+                        {backdrop && !composing && (
+                            <p className="flex gap-1.5 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2 leading-relaxed">
+                                <Check className="w-3.5 h-3.5 shrink-0 mt-0.5 text-green-600" />
+                                <span>
+                                    Tu fotografía quedó integrada en el diseño.{' '}
+                                    <button onClick={() => setBackdrop(null)} className="font-bold text-blue-700 hover:underline">
+                                        Prefiero verla en su recuadro
+                                    </button>.
                                 </span>
                             </p>
                         )}

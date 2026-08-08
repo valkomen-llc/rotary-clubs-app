@@ -234,6 +234,53 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 // para acumular fondos.
 export const BACKDROP_ROLE = 'backdrop';
 
+// ─── EL LIENZO INSTITUCIONAL ES UN NODO, NO UN AJUSTE ──────────────────
+//
+// La imagen base se elegía en el panel de Composición y **no se veía en
+// ninguna parte**: era sólo un dato que viajaba al modelo. El administrador
+// diseñaba sobre blanco, así que colocaba el texto y el logotipo a ciegas
+// respecto del fondo sobre el que iban a quedar, y la pieza que descargaba —o
+// que publicaba con la composición apagada— salía sin ese fondo.
+//
+// Ahora es un nodo del documento, al pie de la pila y bloqueado. Con eso se
+// dibuja en la mesa de trabajo, se exporta y se publica, sin ninguna maquinaria
+// nueva: es el mismo grafo de escena de siempre.
+//
+// Es un ROL DISTINTO del fondo generado, y la diferencia importa:
+//
+//   · `lienzo` es la papelería del Distrito. No tapa nada: la fotografía del
+//     club se sigue dibujando encima, en su recuadro.
+//   · `backdrop` es lo que devuelve el modelo, y ahí la fotografía YA está
+//     dentro de la imagen, así que su nodo se apaga.
+//
+// Confundirlos apagaría el hueco de la fotografía apenas se elige una imagen
+// base, y entonces quien abre el enlace público subiría su foto y no la vería.
+export const BASE_ROLE = 'lienzo';
+
+export const baseNode = (url, { id = 'lienzo_base' } = {}) => ({
+    id,
+    type: 'image',
+    name: 'Lienzo institucional',
+    role: BASE_ROLE,
+    src: url,
+    srcVar: null,
+    fit: 'cover',
+    x: 0, y: 0, w: 1, h: 1,
+    rotation: 0, opacity: 1,
+    radius: 0,
+    locked: true,
+});
+
+/** Pone —o cambia, o quita— el lienzo institucional al pie de la pila. Con
+ *  `url` vacía se retira: quitar la imagen base tiene que devolver la pieza a
+ *  como estaba, igual que quitar el fondo generado. */
+export const withBase = (document, url) => {
+    const resto = (document?.nodes || []).filter(n => n.role !== BASE_ROLE);
+    return { ...document, nodes: url ? [baseNode(url), ...resto] : resto };
+};
+
+export const hasBase = (document) => (document?.nodes || []).some(n => n.role === BASE_ROLE);
+
 export const backdropNode = (url, { id = 'fondo_ia' } = {}) => ({
     id,
     type: 'image',
@@ -252,10 +299,15 @@ export const backdropNode = (url, { id = 'fondo_ia' } = {}) => ({
  *  También apaga el nodo de la fotografía original: la foto YA está dentro del
  *  fondo generado, y dejarla encima la mostraría dos veces. */
 export const withBackdrop = (document, url) => {
-    const nodes = (document?.nodes || [])
+    const resto = (document?.nodes || [])
         .filter(n => n.role !== BACKDROP_ROLE)
         .map(n => (n.type === 'image' && (n.srcVar === 'imagen' || n.role === 'foto') ? { ...n, hidden: true } : n));
-    return { ...document, nodes: [backdropNode(url), ...nodes] };
+    // ENCIMA del lienzo institucional, no debajo. La imagen compuesta ya
+    // contiene ese lienzo con la fotografía integrada; ponerla al fondo del
+    // todo la dejaría tapada por el propio lienzo y la composición no se vería.
+    const i = resto.findIndex(n => n.role !== BASE_ROLE);
+    const at = i === -1 ? resto.length : i;
+    return { ...document, nodes: [...resto.slice(0, at), backdropNode(url), ...resto.slice(at)] };
 };
 
 /** Quitar el fondo generado devuelve la pieza a la composición declarada, con
@@ -311,5 +363,6 @@ export default {
     COMPOSITION_DEFAULTS, normalizeComposition,
     buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS,
     BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
+    BASE_ROLE, baseNode, withBase, hasBase,
     validateBackdrop, aspectFor,
 };

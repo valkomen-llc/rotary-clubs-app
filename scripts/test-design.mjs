@@ -51,6 +51,16 @@ const bundleF = await build({
 });
 const CF = await import(`data:text/javascript,${encodeURIComponent(bundleF.outputFiles[0].text)}`);
 
+// Y el espejo del LIENZO y el FONDO GENERADO. Lo usan el editor y el portal
+// público, así que sin esta comparación las dos pantallas podrían acabar
+// componiendo la pieza de maneras distintas — que es exactamente lo que pasaba
+// hasta v4.731, con `withBackdrop` escrito a mano dentro del editor.
+const bundleC = await build({
+    entryPoints: ['src/lib/designCompose.ts'],
+    bundle: true, write: false, format: 'esm', platform: 'neutral',
+});
+const CC = await import(`data:text/javascript,${encodeURIComponent(bundleC.outputFiles[0].text)}`);
+
 let ok = 0; const malos = [];
 const check = (n, cond, extra = '') => {
     if (cond) { ok++; console.log(`  ✓ ${n}`); }
@@ -1011,6 +1021,72 @@ check('y sigue suelta al rehacer',
 const modernos = P.settingsForRefresh({ settings: { locked: ['mensaje'], frozen: { club: 'RC X' }, intro: 'Hola' }, document: docV2, fields: [], frozen: {}, intro: 'otro' });
 check('los ajustes guardados mandan sobre la deducción',
     JSON.stringify(modernos.locked) === JSON.stringify(['mensaje']) && modernos.intro === 'Hola');
+
+grupo('El lienzo institucional se DIBUJA');
+
+// Lo reportado: la imagen base se elegía en el panel de Composición y no
+// aparecía en ninguna parte. Era sólo un dato que viajaba al modelo, así que el
+// administrador colocaba el texto a ciegas y la pieza salía sin ese fondo.
+const docLienzo = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'foto', srcVar: 'imagen', src: 'https://x.amazonaws.com/f.jpg', x: 0, y: 0, w: 1, h: 0.47 },
+        { type: 'text', id: 'titulo', text: '¡Felices 49 años!', x: 0.1, y: 0.6, w: 0.8, h: 0.1 },
+    ],
+});
+const conLienzo = CO.withBase(docLienzo, 'https://x.amazonaws.com/lienzo.png');
+check('la imagen base entra como nodo del documento',
+    conLienzo.nodes.some(n => n.role === CO.BASE_ROLE));
+check('al pie de la pila, para que todo se dibuje encima',
+    conLienzo.nodes[0].role === CO.BASE_ROLE);
+check('y bloqueado: es la papelería, no una capa que se arrastra',
+    conLienzo.nodes[0].locked === true);
+check('a sangre completa', conLienzo.nodes[0].w === 1 && conLienzo.nodes[0].h === 1);
+
+// La distinción que importa: el LIENZO no es el FONDO GENERADO. Confundirlos
+// apagaría el hueco de la fotografía apenas se elige una imagen base, y quien
+// abre el enlace público subiría su foto y no la vería.
+check('el lienzo NO apaga la fotografía',
+    conLienzo.nodes.find(n => n.id === 'foto')?.hidden !== true);
+check('cambiar la imagen base no acumula lienzos',
+    CO.withBase(conLienzo, 'https://x.amazonaws.com/otro.png').nodes.filter(n => n.role === CO.BASE_ROLE).length === 1);
+check('quitarla devuelve la pieza a como estaba',
+    !CO.hasBase(CO.withBase(conLienzo, null)) && CO.withBase(conLienzo, null).nodes.length === docLienzo.nodes.length);
+
+// El fondo generado SÍ apaga la fotografía —ya está dentro de la imagen— y va
+// ENCIMA del lienzo: al pie del todo quedaría tapado por el propio lienzo.
+const compuesto = CO.withBackdrop(conLienzo, 'https://x.amazonaws.com/ia.png');
+check('el fondo generado va encima del lienzo, no debajo',
+    compuesto.nodes[0].role === CO.BASE_ROLE && compuesto.nodes[1].role === CO.BACKDROP_ROLE);
+check('y apaga el nodo de la fotografía',
+    compuesto.nodes.find(n => n.id === 'foto')?.hidden === true);
+check('el texto se sigue dibujando encima',
+    compuesto.nodes.some(n => n.id === 'titulo' && !n.hidden));
+check('componer dos veces reemplaza, no acumula',
+    CO.withBackdrop(compuesto, 'https://x.amazonaws.com/ia2.png').nodes.filter(n => n.role === CO.BACKDROP_ROLE).length === 1);
+check('quitar el fondo devuelve la fotografía',
+    CO.withoutBackdrop(compuesto).nodes.find(n => n.id === 'foto')?.hidden === false);
+check('y conserva el lienzo institucional', CO.hasBase(CO.withoutBackdrop(compuesto)));
+
+// Sin lienzo, el fondo generado sigue yendo al pie: es el caso de una plantilla
+// que compone sin imagen base.
+check('sin lienzo, el fondo generado va al pie',
+    CO.withBackdrop(docLienzo, 'https://x.amazonaws.com/ia.png').nodes[0].role === CO.BACKDROP_ROLE);
+
+grupo('El lienzo y el fondo: el espejo del navegador dice lo mismo');
+
+const casosDoc = [docLienzo, conLienzo, compuesto];
+check('los roles son los mismos',
+    CC.BASE_ROLE === CO.BASE_ROLE && CC.BACKDROP_ROLE === CO.BACKDROP_ROLE);
+check('poner el lienzo da lo mismo en los dos lados',
+    casosDoc.every(d => JSON.stringify(CC.withBase(d, 'https://x.amazonaws.com/l.png')) === JSON.stringify(CO.withBase(d, 'https://x.amazonaws.com/l.png'))));
+check('quitarlo también',
+    casosDoc.every(d => JSON.stringify(CC.withBase(d, null)) === JSON.stringify(CO.withBase(d, null))));
+check('poner el fondo generado da lo mismo',
+    casosDoc.every(d => JSON.stringify(CC.withBackdrop(d, 'https://x.amazonaws.com/i.png')) === JSON.stringify(CO.withBackdrop(d, 'https://x.amazonaws.com/i.png'))));
+check('quitarlo también',
+    casosDoc.every(d => JSON.stringify(CC.withoutBackdrop(d)) === JSON.stringify(CO.withoutBackdrop(d))));
+check('y las dos comprobaciones de presencia',
+    casosDoc.every(d => CC.hasBase(d) === CO.hasBase(d) && CC.hasBackdrop(d) === CO.hasBackdrop(d)));
 
 grupo('Campos vinculados: el hueco de CADA campo');
 

@@ -33,7 +33,7 @@ import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { normalizeComposition } from '../lib/designCompose.js';
 
-console.log('[designPublicController] v4.723.0 cargado — Portal público de Plantillas IA (sin autenticación). Cada campo se adapta por su clase.');
+console.log('[designPublicController] v4.732.0 cargado — Portal público de Plantillas IA. La IA integra la fotografía dentro del lienzo institucional.');
 
 const rowOrNull = async (slug) => {
     const { rows } = await db.query(

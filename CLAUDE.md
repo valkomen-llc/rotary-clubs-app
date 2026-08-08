@@ -2502,6 +2502,40 @@ foto en un recuadro.
   Se marca con `role: 'backdrop'` y no por posición, porque el usuario puede
   reordenar capas y una regeneración tiene que encontrar el fondo anterior para
   reemplazarlo, no para acumular.
+- **El LIENZO institucional es un nodo, no un ajuste** (v4.732, `role: 'lienzo'`,
+  `withBase`). La imagen base se elegía en el panel y **no se veía en ninguna
+  parte**: era sólo un dato que viajaba al modelo, así que el administrador
+  colocaba el texto a ciegas respecto del fondo sobre el que iba a quedar, y la
+  pieza —descargada, o publicada con la composición apagada— salía sin ese
+  fondo. Como nodo se dibuja, se exporta y se publica sin maquinaria nueva: es
+  el mismo grafo de escena.
+- **`lienzo` y `backdrop` son roles DISTINTOS, y confundirlos apaga la
+  fotografía.** El lienzo es la papelería del Distrito y no tapa nada; el
+  backdrop es lo que devuelve el modelo, con la foto ya adentro, y por eso sí
+  apaga su nodo. Con un solo rol, elegir una imagen base dejaría al portal
+  público sin mostrar la foto que acaba de subir el visitante. El backdrop va
+  **encima** del lienzo: al pie del todo quedaría tapado por él.
+- **El nodo del lienzo se sincroniza en un EFECTO, no en cada manejador.** La
+  imagen base se cambia desde cuatro sitios —subir, Biblioteca, quitarla y
+  cambiar de plantilla—; hacerlo en cada uno deja al quinto sin hacerlo, y el
+  fallo es mudo: el panel muestra la imagen y la pieza sigue en blanco.
+- **El portal público COMPONE al subir la fotografía** (v4.732). El motor y sus
+  endpoints existían desde v4.722 y `PlantillaPublica.tsx` **no los llamaba**:
+  la función estaba declarada y muerta. Se dispara sólo con el campo de clase
+  `foto` —un logotipo se dibuja nítido en su sitio, no se funde con el fondo— y
+  se resuelve por `kind`, no por la clave: una plantilla puede llamar `portada`
+  a su fotografía.
+- **Un fallo al componer NO rompe la pieza.** Se avisa y queda la composición
+  declarada, con la fotografía en su recuadro, que es una pieza correcta y
+  descargable. Misma degradación que `fallbackDirection` en el Creador de Reels.
+  Y hay vuelta atrás explícita: una composición que no gusta no puede dejar la
+  pieza peor que antes.
+- **El sondeo tiene tope** (150 s). Sin él, un trabajo que nunca termina deja la
+  pantalla girando para siempre y quien la abrió no sabe si esperar.
+- **El criterio del lienzo y el fondo está espejado** en `src/lib/designCompose.ts`
+  y lo comprueba `test:design` comparando salidas. Hasta v4.731 `DesignStudio.tsx`
+  llevaba su propia copia de `withBackdrop` escrita a mano; al llegar el portal
+  público habrían sido tres. **Al tocar `designCompose.js`, tocar el espejo.**
 - **Quitar el fondo devuelve la pieza a su composición declarada**, con su
   fotografía visible. Una generación que no gusta no puede dejar la pieza peor
   que antes.
