@@ -17,10 +17,12 @@ import {
     Mic,
     Lightbulb,
     Heart,
-    Folder as FolderIcon
+    Folder as FolderIcon,
+    FileImage
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import { isHeicFile } from '../../../lib/heicImages';
 
 // Hosts donde corre la plataforma central (no clubes). Si el usuario está en uno
 // de estos hosts Y tiene role=administrator, lo consideramos super admin y
@@ -386,7 +388,20 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                                         onClick={() => toggleSelection(item)}
                                         title={item.sourceLabel ? `${item.filename} — ${item.sourceLabel}` : item.filename}
                                     >
-                                        <img src={item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
+                                        {/* Un HEIC no lo dibuja ningún navegador salvo Safari.
+                                            Se muestra qué es y dónde se arregla, en vez de un
+                                            recuadro roto que parece un fallo del selector.
+                                            Convertirlo se hace en la Librería de Medios: acá se
+                                            viene a elegir una imagen, no a administrar archivos. */}
+                                        {isHeicFile({ filename: item.filename }) ? (
+                                            <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-amber-50 p-2 text-center">
+                                                <FileImage className="w-6 h-6 text-amber-400" />
+                                                <span className="text-[9px] font-black uppercase tracking-wide text-amber-600">HEIC</span>
+                                                <span className="text-[8px] font-bold text-amber-500 leading-tight">Convertilo en la Librería</span>
+                                            </div>
+                                        ) : (
+                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
+                                        )}
 
                                         <div className={`absolute inset-0 bg-black/20 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
 

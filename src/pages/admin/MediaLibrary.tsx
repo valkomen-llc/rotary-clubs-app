@@ -4,12 +4,13 @@ import {
     Trash2, Search, FileText, ImageIcon,
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
-    ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp
+    ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
 import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
+import { isHeicFile } from '../../lib/heicImages';
 
 interface MediaItem {
     id: string;
@@ -64,6 +65,7 @@ const MediaLibrary: React.FC = () => {
     const [renaming, setRenaming] = useState<LibraryFolder | null>(null);
     const [movingItem, setMovingItem] = useState<MediaItem | null>(null);
     const [busyFolder, setBusyFolder] = useState(false);
+    const [converting, setConverting] = useState<string | null>(null);
 
     const isSuperAdmin = user?.role === 'administrator';
     const API = import.meta.env.VITE_API_URL || '/api';
@@ -249,6 +251,37 @@ const MediaLibrary: React.FC = () => {
         }
     };
 
+    /**
+     * Convierte a JPEG un HEIC que ya está en la Librería.
+     *
+     * Desde v4.739 lo que se sube se convierte solo, así que esto es para lo
+     * que ya estaba cargado desde antes — que es exactamente lo que se ve roto
+     * hoy en la pantalla.
+     */
+    const convertHeic = async (item: MediaItem) => {
+        setConverting(item.id);
+        try {
+            const res = await fetch(`${API}/media/${item.id}/convert`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token()}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                // El motivo del servidor se muestra tal cual: «no se pudo
+                // convertir» a secas no le dice a nadie qué hacer.
+                toast.error(data?.details || data?.error || 'No se pudo convertir el archivo');
+                return;
+            }
+            toast.success('Convertido a JPEG: ya se puede ver');
+            setSelectedItem(null);
+            fetchMedia();
+        } catch {
+            toast.error('Error de conexión al convertir');
+        } finally {
+            setConverting(null);
+        }
+    };
+
     /** Manda un archivo a otra carpeta. `folderId: null` lo devuelve a la raíz. */
     const moveMediaTo = async (item: MediaItem, folderId: string | null) => {
         try {
@@ -287,9 +320,22 @@ const MediaLibrary: React.FC = () => {
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                toast.loading(`Optimizando y subiendo ${i + 1} de ${files.length}...`, { id: toastId });
+                const heic = isHeicFile({ filename: file.name, mimetype: file.type });
+                toast.loading(
+                    heic
+                        ? `Convirtiendo HEIC ${i + 1} de ${files.length}…`
+                        : `Optimizando y subiendo ${i + 1} de ${files.length}...`,
+                    { id: toastId }
+                );
 
-                const processedFile = await compressImage(file, { maxDimension: 4096, quality: 1.0 });
+                // Un HEIC NO pasa por `compressImage`: esa función dibuja en un
+                // canvas y ningún navegador salvo Safari sabe decodificar HEIC,
+                // así que la carga fallaba y devolvía el archivo intacto de
+                // todos modos. Saltearlo ahorra el intento y deja claro, al
+                // leer el código, que de este formato se encarga el servidor.
+                const processedFile = heic
+                    ? file
+                    : await compressImage(file, { maxDimension: 4096, quality: 1.0 });
 
                 const targetClubId = (isSuperAdmin ? selectedClubId : user?.clubId) || '';
                 
@@ -677,7 +723,24 @@ const MediaLibrary: React.FC = () => {
                                         }`}
                                     onClick={() => setSelectedItem(item)}
                                 >
-                                    {item.type === 'image' ? (
+                                    {isHeicFile({ filename: item.filename }) ? (
+                                        // Un HEIC no lo dibuja ningún navegador salvo Safari, así
+                                        // que un `<img>` acá deja el recuadro roto y sin explicación.
+                                        // Se muestra qué es y cómo arreglarlo.
+                                        <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-amber-50 text-center gap-2">
+                                            <FileImage className="w-8 h-8 text-amber-400" />
+                                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-600">HEIC</span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); convertHeic(item); }}
+                                                disabled={converting === item.id}
+                                                className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 transition-all disabled:opacity-50"
+                                            >
+                                                {converting === item.id
+                                                    ? <Loader2 className="w-3 h-3 animate-spin mx-auto" />
+                                                    : 'Convertir a JPG'}
+                                            </button>
+                                        </div>
+                                    ) : item.type === 'image' ? (
                                         <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
                                     ) : item.type === 'video' ? (
                                         <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gray-900 overflow-hidden relative">
@@ -741,7 +804,9 @@ const MediaLibrary: React.FC = () => {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden border border-gray-100">
-                                                        {item.type === 'image' ? (
+                                                        {isHeicFile({ filename: item.filename }) ? (
+                                                            <FileImage className="w-5 h-5 text-amber-400" />
+                                                        ) : item.type === 'image' ? (
                                                             <img src={item.url} className="w-full h-full object-cover" />
                                                         ) : item.type === 'video' ? (
                                                             <Video className="w-5 h-5 text-rotary-blue" />
@@ -767,6 +832,16 @@ const MediaLibrary: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    {isHeicFile({ filename: item.filename }) && (
+                                                        <button
+                                                            onClick={() => convertHeic(item)}
+                                                            disabled={converting === item.id}
+                                                            className="px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-all disabled:opacity-50"
+                                                            title="Convertir a JPG para poder verlo"
+                                                        >
+                                                            {converting === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Convertir a JPG'}
+                                                        </button>
+                                                    )}
                                                     <button onClick={() => copyToClipboard(item.url)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Copiar URL">
                                                         <Copy className="w-4 h-4" />
                                                     </button>
@@ -886,7 +961,25 @@ const MediaLibrary: React.FC = () => {
                         </div>
                         <div className="p-6">
                             <div className="aspect-square bg-gray-50 rounded-2xl border border-gray-100 mb-6 overflow-hidden flex items-center justify-center">
-                                {selectedItem.type === 'image' ? (
+                                {isHeicFile({ filename: selectedItem.filename }) ? (
+                                    <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+                                        <FileImage className="w-14 h-14 text-amber-300" />
+                                        <p className="text-sm font-bold text-gray-700">Formato HEIC</p>
+                                        <p className="text-xs text-gray-500 leading-relaxed">
+                                            Es el formato con el que un iPhone guarda las fotos. Los navegadores
+                                            no lo muestran, y en el sitio publicado tampoco se vería.
+                                        </p>
+                                        <button
+                                            onClick={() => convertHeic(selectedItem)}
+                                            disabled={converting === selectedItem.id}
+                                            className="mt-1 px-4 py-2.5 rounded-xl bg-rotary-blue text-white font-bold text-sm hover:bg-rotary-navy transition-all disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            {converting === selectedItem.id
+                                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Convirtiendo…</>
+                                                : 'Convertir a JPG'}
+                                        </button>
+                                    </div>
+                                ) : selectedItem.type === 'image' ? (
                                     <img src={selectedItem.url} className="w-full h-full object-contain" />
                                 ) : selectedItem.type === 'video' ? (
                                     <video src={selectedItem.url} controls className="w-full h-full object-contain bg-black" />

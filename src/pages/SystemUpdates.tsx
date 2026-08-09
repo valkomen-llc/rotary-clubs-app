@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.738.0 | 2026-08-08 (Carpetas en la Libreria de Medios)
-// Cache bust: 2026-08-08l
+// UI V4.739.0 | 2026-08-09 (Las fotos HEIC del iPhone ya se ven)
+// Cache bust: 2026-08-09a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.739.0',
+        title: 'Las fotos de iPhone (.heic) ya se ven como cualquier otra 📱',
+        description: 'HEIC es el formato con el que un iPhone guarda las fotos por omisión, y hasta ahora una foto subida así aparecía como un recuadro roto en la Librería de Medios. No era un fallo de la Librería: ningún navegador salvo Safari sabe dibujar ese formato, así que tampoco se habría visto en el sitio publicado ni en un post. Ahora, al subir un archivo .heic, el sistema lo convierte automáticamente a JPG de alta calidad antes de guardarlo, y a partir de ahí se comporta igual que un .jpg o un .png en todas partes. Para las fotos que ya estaban cargadas hay un botón «Convertir a JPG» en cada una: la Librería las muestra rotuladas como HEIC con una explicación, en vez de dejar el recuadro roto sin decir por qué. La conversión respeta la orientación —una foto vertical no queda acostada, que es el error clásico al pasar de un formato a otro— y tarda menos de un segundo. Un detalle importante: al convertir, el archivo pasa a ser un JPG y el .heic original se reemplaza; la foto original sigue estando en tu teléfono.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'biblioteca', 'iphone'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Una foto .heic ya no aparece como recuadro roto en la Librería.' },
+            { type: 'added', text: 'Conversión automática a JPG al subir un .heic, por cualquiera de las dos vías.' },
+            { type: 'added', text: 'Botón «Convertir a JPG» para las fotos HEIC que ya estaban cargadas.' },
+            { type: 'added', text: 'Un logo subido en .heic también se convierte y deja de verse roto.' },
+            { type: 'changed', text: 'La orientación de la foto se conserva: una vertical no queda acostada.' },
+        ]
+    },
     {
         version: '4.738.0',
         title: 'Ya se pueden crear carpetas en la Librería de Medios 📁',

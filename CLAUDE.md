@@ -3045,6 +3045,76 @@ Pruebas: `npm run test:media` (65 casos). **Sin base, credenciales ni red.**
   la API interceptada. Es donde se vio que el nombre del archivo no es texto
   visible en la rejilla y que el aviso de eliminación llega con su recuento.
 
+### Fotos de iPhone: HEIC → JPEG (v4.739)
+
+Una foto subida en `.heic` aparecía como un recuadro roto. No era un fallo de la
+Librería: **ningún navegador salvo Safari dibuja HEIC**, así que tampoco se
+habría visto en el sitio publicado ni en un post.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/heicImages.js` | Detección, orientación y conversión |
+| `src/lib/heicImages.ts` | Espejo: sólo la DETECCIÓN |
+| `server/routes/media.js` | Convierte en las subidas y en `POST /media/:id/convert` |
+
+Pruebas: `npm run test:heic` (50 casos). **Sin base, credenciales ni red.**
+
+- **FFmpeg decodifica, sharp codifica.** sharp declara el formato `heif` y LEE
+  el contenedor —da ancho, alto y orientación—, pero sus binarios precompilados
+  **no traen el decodificador HEVC**, que es con el que comprime un iPhone.
+  Medido con seis HEIC reales: `metadata()` responde y `.jpeg()` falla en todos.
+  FFmpeg sí lo decodifica y **ya viaja con la aplicación** desde v4.664, así que
+  no suma un byte al paquete —que es el argumento que descartaría cualquier otra
+  librería, con el tope de 250 MB de la función—.
+- **PNG como paso intermedio**, no JPEG: encadenar el JPEG de ffmpeg con el
+  nuestro comprimiría dos veces la misma foto.
+- **La orientación se APLICA, no se declara** (`orientationOps`). FFmpeg entrega
+  los píxeles sin los metadatos, así que la rotación se perdería. Se podría
+  volver a etiquetar el JPEG, pero la plataforma dibuja imágenes en canvas en
+  varios sitios (Pendones, Plantillas IA) donde el EXIF no se respeta igual: se
+  hornea una vez. `-noautorotate` en ffmpeg para que la rotación ocurra en UN
+  solo lugar.
+- **Las orientaciones 5 y 7 no se deducen: se miden.** Espejando primero, les
+  toca la rotación CONTRARIA a la de su pareja no espejada —5 lleva 270 y 7
+  lleva 90—. Estaban al revés en la primera versión y ninguna otra comprobación
+  lo habría visto. `test:heic` compara las ocho contra la rotación automática de
+  sharp, que es la implementación de referencia del EXIF.
+- **Esa comparación usa PNG como portador, no JPEG.** Con JPEG hay que comparar
+  con tolerancia —los bordes duros del patrón dan diferencias de ±64 hasta en la
+  orientación 1, que no gira nada— y una tolerancia así deja pasar errores de
+  geometría reales. PNG lleva la etiqueta EXIF, sharp la respeta, y los píxeles
+  se comparan EXACTOS.
+- **La detección mira el MIME Y la extensión.** Al elegir un `.heic`, varios
+  navegadores mandan el tipo vacío o `application/octet-stream`: fiarse sólo del
+  MIME dejaría fuera justamente el caso del iPhone. Por lo mismo `getMediaType`
+  lo clasifica como `image`; si cayera en `document` no aparecería ni en el
+  filtro de imágenes.
+- **Los DOS caminos de subida convierten.** En `/upload` el servidor tiene los
+  bytes y convierte antes de subir nada. En `/save` el archivo YA está en S3
+  —lo subió el navegador con una URL prefirmada—, así que se BAJA, se convierte
+  y se sube el JPEG. Da una vuelta de más y es lo que evita el tope de 4,5 MB
+  del cuerpo de una función en Vercel: una foto de iPhone pesa 2-5 MB y mandarla
+  por el cuerpo fallaría con las más grandes.
+- **Una conversión fallida NO pierde el archivo.** Se guarda el original y se
+  informa: no poder mostrarlo es malo, perderlo es peor.
+- **El HEIC original se retira DESPUÉS de que el JPEG esté arriba**, y en la
+  conversión de un archivo ya cargado, después de que la fila apunte al JPEG. La
+  fila de `Media` guarda una sola clave de S3: dejar el original sin que nada lo
+  apunte lo convertiría en un objeto que nadie puede ver ni borrar desde el
+  panel y que sobreviviría a eliminar el archivo.
+- **El navegador NO convierte.** Un decodificador WASM son megabytes en el
+  bundle para adivinar lo que el servidor ya sabe. Lo único que hace el
+  navegador es RECONOCER un HEIC: para saltear `compressImage` —que dibuja en un
+  canvas y no puede decodificarlo— y para pintar el aviso en vez de un `<img>`
+  roto.
+- **Un HEIC ya cargado se explica y se ofrece arreglar**, no se esconde. La
+  conversión al subir sólo alcanza a lo que venga después, y el defecto
+  reportado es sobre archivos que ya están.
+- **Probar el flujo en un navegador.** Verificado en Chromium sobre el `dist/`
+  real con la conversión de verdad detrás del endpoint: la foto pasa de aviso
+  HEIC a imagen dibujada, y se comprueba el `naturalWidth` para saber que el
+  navegador la decodificó y no que sólo cambió el `src`.
+
 ### Casillas de imagen del panel (v4.700)
 
 **Toda casilla de imagen ofrece SIEMPRE dos vías**: subir un archivo nuevo o
