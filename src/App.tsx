@@ -23,6 +23,7 @@ import HeroSection from './sections/HeroSection';
 import ActionSection from './sections/ActionSection';
 import StatsSection from './sections/StatsSection';
 import HomeBannerSection from './sections/HomeBannerSection';
+import SpotlightSection from './sections/SpotlightSection';
 import JoinSection from './sections/JoinSection';
 import FoundationSection from './sections/FoundationSection';
 import CausesHexSection from './sections/CausesHexSection';
@@ -401,6 +402,10 @@ function SmartHome() {
         <StatsSection />
         <FoundationSection />
         <CausesHexSection />
+        {/* Bloque Destacado: cierra la portada, entre las áreas de interés y el
+            pie. No pinta nada si el sitio no lo llenó, así que los que no lo
+            usan se ven igual que antes. */}
+        <SpotlightSection />
       </main>
       <Footer />
     </div>

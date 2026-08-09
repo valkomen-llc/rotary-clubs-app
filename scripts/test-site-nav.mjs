@@ -202,6 +202,47 @@ check('las secciones de la portada tienen el MISMO ancho', () => {
     }
 });
 
+console.log('\n── El Bloque Destacado del inicio ─────────────────────');
+
+const SPOT = readFileSync('src/sections/SpotlightSection.tsx', 'utf8');
+check('cierra la portada, entre las áreas de interés y el pie', () => {
+    const i = orden.indexOf('CausesHexSection');
+    assert.ok(i >= 0, 'no se encontró CausesHexSection');
+    assert.equal(orden[i + 1], 'SpotlightSection');
+});
+check('nace VACÍO: sin imagen ni texto no pinta nada', () =>
+    // La portada la comparten todos los sitios; un contenido escrito en el
+    // código aparecería en cada club (lección de v4.737).
+    assert.match(SPOT, /if \(!imgUrl && !title && !text\) return null;/));
+check('NO está acotado a Evento/Convención', () =>
+    // Se pidió para un distrito: acotarlo con `hasEditableHome`, como los otros
+    // bloques de contenido, lo dejaría sin poder llenarse.
+    // Los comentarios se quitan: explican POR QUÉ no se acota, así que nombrar
+    // `hasEditableHome` ahí es correcto. Lo que no puede volver es que DECIDA.
+    assert.ok(!/hasEditableHome/.test(stripComments(SPOT)), 'volvió a acotarse por tipo de sitio'));
+check('el enlace del botón pasa por `ctaTarget`', () =>
+    // Externo = otro dominio, no «empieza por http» (regla de v4.657).
+    assert.match(SPOT, /ctaTarget\(buttonUrl\)/));
+
+check('el hueco de imagen está en las DOS listas de useSiteImages', () => {
+    // Una clave que esté en DEFAULTS y no en `allKeys` se queda con su valor
+    // por omisión para siempre, sin que nada avise.
+    const H = readFileSync('src/hooks/useSiteImages.ts', 'utf8');
+    assert.match(H, /spotlight: \{ url: '', alt: '' \}/, 'falta en DEFAULTS');
+    assert.match(H, /'homeBanner', 'spotlight'/, 'falta en la lista del efecto');
+});
+check('el administrador puede cargar la imagen y escribir el texto', () => {
+    assert.match(readFileSync('src/pages/admin/ImageDistribution.tsx', 'utf8'),
+        /key: 'spotlight', label: 'Bloque Destacado del Inicio'/);
+    assert.match(readFileSync('src/pages/admin/ClubSettings.tsx', 'utf8'),
+        /spotlightContent, buttonUrl: e\.target\.value/);
+});
+check('el servidor lee y guarda el contenido', () => {
+    assert.match(readFileSync('server/routes/clubs.js', 'utf8'), /spotlight_section_content/);
+    assert.match(readFileSync('server/controllers/clubController.js', 'utf8'),
+        /'spotlight_section_content': spotlightContent !== undefined/);
+});
+
 console.log('\n── La imagen de «Únete a Rotary» ──────────────────────');
 
 // Llevaba un degradado dorado desenfocado detrás y un `shadow-2xl`: sobre el

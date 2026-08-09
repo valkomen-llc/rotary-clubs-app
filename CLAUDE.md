@@ -2884,7 +2884,8 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   alcanza además del que se tenía en mente.
 - **El orden de la portada estándar vive en `SmartHome` y NO es configurable
   por sitio.** Desde v4.745.5 es: hero → «Somos gente de acción» → «Noticias y
-  artículos» → banda → «Únete» → cifras → Fundación → causas. Noticias subió al
+  artículos» → banda → «Únete» → cifras → Fundación → causas → Bloque
+  Destacado. Noticias subió al
   tercer puesto (pedido del Distrito): cerrando la portada, lo más nuevo del
   sitio quedaba donde casi nadie llega. Y las cifras pasaron DEBAJO de «Únete»
   (v4.745.8): la invitación a sumarse va primero y los números la respaldan. Al mover una sección, **la condición
@@ -2892,6 +2893,23 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   noticias vive junto al `<NewsSection />`— y hay que recordar que el cambio
   alcanza a TODOS los sitios estándar, no sólo al que lo pidió. Lo comprueba
   `test:nav` sobre el archivo; el puesto real se verifica en el navegador.
+- **El Bloque Destacado cierra la portada y es CONFIGURABLE** (v4.746,
+  `SpotlightSection.tsx`): imagen de fondo a todo el ancho, título, texto y
+  botón, entre las áreas de interés y el pie. Tres reglas lo sostienen:
+  - **Nace vacío y entonces no pinta nada** —ni el espacio—. Es la lección de
+    v4.737: la portada la comparten todos los sitios, así que un contenido
+    escrito en el código aparecería en cada club.
+  - **NO se acota con `hasEditableHome`.** Los otros bloques de contenido
+    (`actionContent`, `joinContent`, `foundationContent`, `causesContent`)
+    nacieron para Evento/Convención y llevan esa condición; éste se pidió para
+    un DISTRITO, y acotarlo igual lo habría dejado sin poder llenarse. Al
+    agregar un bloque de contenido, preguntarse para qué tipo de sitio es.
+  - **La imagen y el texto viven en sitios distintos y eso hay que DECIRLO en
+    la pantalla.** La imagen es un hueco de `useSiteImages` (Distribución de
+    Imágenes, con las dos vías de v4.700); el texto y el botón son un ajuste
+    (`spotlight_section_content`, Configuración → Identidad). El texto de ayuda
+    del panel nombra la otra pantalla, o el administrador llena la mitad y no
+    encuentra el resto.
 - **Una imagen de la portada es un HUECO CONFIGURABLE, no una URL en el código**
   (v4.742, `homeBanner` en `useSiteImages` + `HomeBannerSection`). La portada la
   comparten todos los sitios: una imagen escrita en el código aparecería en cada
