@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.5 | 2026-08-09 («Noticias y artículos» pasa a ser el tercer contenedor)
-// Cache bust: 2026-08-09m
+// UI V4.745.6 | 2026-08-09 (Noticias con el mismo ancho que «Únete»)
+// Cache bust: 2026-08-09n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.6',
+        title: '«Noticias y artículos» al mismo ancho que «Únete a Rotary» 📐',
+        description: 'El contenedor de noticias era más angosto que el de «Únete a Rotary»: 1.152 px contra 1.280 px. Ahora los dos miden lo mismo. Ahora que las dos secciones están cerca en la portada, esa diferencia se leía como un desalineo y no como una decisión.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'noticias', 'diseno'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'El contenedor de noticias pasa de 1.152 a 1.280 px de ancho máximo.' },
+        ]
+    },
     {
         version: '4.745.5',
         title: '«Noticias y artículos» sube al tercer lugar de la portada 📰',

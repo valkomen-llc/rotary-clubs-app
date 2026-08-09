@@ -188,6 +188,13 @@ check('«Noticias» va justo debajo de «Somos gente de acción»', () => {
 check('la portada abre con el hero y «Somos gente de acción»', () =>
     assert.deepEqual(orden.slice(0, 3), ['HeroSection', 'ActionSection', 'NewsSection']));
 
+check('«Noticias» y «Únete» tienen el MISMO ancho', () => {
+    // Una sección más angosta que la otra se lee como un desalineo, no como
+    // una decisión. Se comparan las clases, que es donde vive el ancho.
+    const anchoDe = (f) => (readFileSync(f, 'utf8').match(/max-w-(\dxl)\s+mx-auto/) || [])[1];
+    assert.equal(anchoDe('src/sections/NewsSection.tsx'), anchoDe('src/sections/JoinSection.tsx'));
+});
+
 console.log('\n── La imagen de «Únete a Rotary» ──────────────────────');
 
 // Llevaba un degradado dorado desenfocado detrás y un `shadow-2xl`: sobre el

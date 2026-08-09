@@ -87,7 +87,13 @@ const NewsSection = () => {
 
   return (
     <section className="bg-white py-16 md:py-20">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/*
+        El MISMO ancho que «Únete a Rotary» (`max-w-7xl`), no uno propio. Las
+        dos son secciones de la portada estándar y una más angosta que la otra
+        se lee como un desalineo, no como una decisión. Al tocar este ancho,
+        mirar `JoinSection.tsx`.
+      */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Título */}
         <h2 className="text-3xl md:text-4xl font-light text-gray-800 text-center mb-12">
           <T>Noticias y artículos</T>
