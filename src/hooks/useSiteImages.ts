@@ -42,6 +42,7 @@ export interface SiteImages {
      * los demás.
      */
     homeBanner?: ImgSlot;
+    spotlight?: ImgSlot;
 }
 
 const DEFAULTS = {
@@ -111,7 +112,10 @@ const DEFAULTS = {
     // Vacía a propósito: sin imagen no hay banda en la portada. Tiene que estar
     // DECLARADA acá igual, porque la mezcla recorre las claves de DEFAULTS y una
     // que no figure nunca se leería de lo que el sitio guardó.
-    homeBanner: { url: '', alt: '' }
+    homeBanner: { url: '', alt: '' },
+    // Bloque Destacado (último contenedor de la portada). Nace vacío: sin
+    // imagen ni texto la sección no se pinta.
+    spotlight: { url: '', alt: '' }
 };
 // Helper: detect if a URL is a default (not a real custom upload)
 // ── Carga compartida (v4.659) ────────────────────────────────────────
@@ -237,7 +241,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     // servidor: una clave que esté en DEFAULTS y NO acá se queda
                     // con su valor por omisión para siempre, sin que nada avise.
                     // Al agregar un hueco de imagen, agregarlo en los dos sitios.
-                    'homeBanner'
+                    'homeBanner', 'spotlight'
                 ];
 
                 allKeys.forEach(key => {

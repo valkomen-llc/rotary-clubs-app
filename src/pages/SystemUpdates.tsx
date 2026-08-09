@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.8 | 2026-08-09 (Las cifras pasan debajo de «Únete a Rotary»)
-// Cache bust: 2026-08-09p
+// UI V4.746.0 | 2026-08-09 (Bloque Destacado configurable al cierre de la portada)
+// Cache bust: 2026-08-09q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.746.0',
+        title: 'Nuevo Bloque Destacado al cierre de la portada 🎯',
+        description: 'Cada sitio puede ahora cerrar su portada con un bloque propio: una imagen de fondo a todo el ancho con un título, un texto y un botón. Va después de las Áreas de Interés y antes del pie de página, y sirve para la campaña que cada organización quiera destacar —la erradicación de la polio, una convocatoria, una conferencia— sin que nadie tenga que tocar el código. La imagen se carga en Distribución de Imágenes → «Bloque Destacado del Inicio», con las dos vías de siempre: subir un archivo o elegir uno de la Biblioteca Multimedia. El título, el texto y el botón se escriben en Configuración → Identidad, y se pueden cambiar cuando se quiera. El enlace del botón entiende tanto una página del propio sitio (se abre en la misma pestaña) como una dirección externa (se abre en una nueva). A diferencia de los otros bloques de contenido de la portada, éste lo puede editar cualquier tipo de sitio, no sólo los de Evento o Convención. Si un sitio no lo llena, el bloque no aparece: su portada se ve exactamente como antes, sin espacios vacíos.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'contenido', 'imagenes'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Bloque Destacado al final de la portada: imagen de fondo, título, texto y botón.' },
+            { type: 'added', text: 'La imagen se sube o se elige de la Biblioteca Multimedia.' },
+            { type: 'added', text: 'El texto y el enlace del botón se editan desde Configuración → Identidad.' },
+            { type: 'added', text: 'Lo puede usar cualquier tipo de sitio, no sólo Evento o Convención.' },
+        ]
+    },
     {
         version: '4.745.8',
         title: 'Las cifras de la portada pasan debajo de «Únete a Rotary» 🔢',

@@ -40,6 +40,7 @@ const DEFAULTS = {
     ],
     // Vacía a propósito: sin imagen no hay banda en la portada.
     homeBanner: { url: '', alt: '' },
+    spotlight: { url: '', alt: '' },
     foundation: { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' },
     join: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' },
     donateHero: { url: '/defaults/hero/1-teamwork.png', alt: 'Maneras de contribuir' },
@@ -104,6 +105,7 @@ interface SiteImages {
     causes: ImgSlot[];
     /** Banda de la portada, entre las cifras y «Únete». Vacía = no se pinta. */
     homeBanner?: ImgSlot;
+    spotlight?: ImgSlot;
     foundation: ImgSlot;
     join: ImgSlot;
     donateHero?: ImgSlot;
@@ -144,6 +146,7 @@ const BASE_CONTAINERS: Container[] = [
         ],
     },
     { key: 'homeBanner', label: 'Banda del Inicio', desc: '1 imagen destacada en la portada, entre las cifras y la sección "Únete". Se muestra COMPLETA, sin recortar, así que sirve para piezas con texto adentro. Sin imagen, la banda no aparece.', count: 1, aspect: '3/2' },
+    { key: 'spotlight', label: 'Bloque Destacado del Inicio', desc: '1 imagen de fondo para el último contenedor de la portada, antes del pie. El título, el texto y el botón se escriben en Configuración → Identidad. Sin imagen ni texto, el bloque no aparece. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     { key: 'donateHero', label: 'Maneras de Contribuir', desc: '1 imagen de fondo para la portada de la página "Maneras de Contribuir". Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
@@ -459,7 +462,7 @@ const ImageDistribution: React.FC = () => {
 
         // Logic for sections that require cropping
         const needsCrop = pickerTarget?.key.startsWith('chatbot') || 
-            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'donateHero', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '');
+            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'donateHero', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar', 'spotlight'].includes(pickerTarget?.key || '');
 
         if (needsCrop) {
             const reader = new FileReader();
@@ -552,7 +555,7 @@ const ImageDistribution: React.FC = () => {
 
     const handleMediaClick = (url: string, filename: string) => {
         const needsCrop = pickerTarget?.key.startsWith('chatbot') || 
-            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'donateHero', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '');
+            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'donateHero', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar', 'spotlight'].includes(pickerTarget?.key || '');
         
         if (needsCrop) {
             // Use proxy to avoid CORS when cropping images from S3 or external URLs
@@ -936,7 +939,7 @@ const ImageDistribution: React.FC = () => {
                                     pickerTarget?.key === 'historyImpact' ? 3 / 2 :
                                     pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' || pickerTarget?.key === 'join' ? 4 / 3 :
                                     pickerTarget?.key === 'history' || pickerTarget?.key === 'historyTimeline' || pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
-                                    (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'foundation', 'donateHero'].includes(pickerTarget?.key || '')) ? 16 / 7 :
+                                    (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'foundation', 'donateHero', 'spotlight'].includes(pickerTarget?.key || '')) ? 16 / 7 :
                                     1
                                 }
                                 cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}

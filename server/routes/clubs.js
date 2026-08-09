@@ -351,6 +351,13 @@ router.get('/by-domain', async (req, res) => {
                 catch { return {}; }
             })(),
             // Contenido editable de la sección "Nuestra Fundación" (Evento/Convención).
+            // Bloque Destacado: título, texto y botón. Editable por CUALQUIER
+            // tipo de sitio (a diferencia de action/join/foundation, acotados a
+            // Evento/Convención): se pidió para un distrito.
+            spotlightContent: (() => {
+                try { return settings['spotlight_section_content'] ? JSON.parse(settings['spotlight_section_content']) : {}; }
+                catch { return {}; }
+            })(),
             foundationContent: (() => {
                 try { return settings['foundation_section_content'] ? JSON.parse(settings['foundation_section_content']) : {}; }
                 catch { return {}; }

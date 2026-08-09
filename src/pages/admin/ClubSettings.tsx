@@ -163,6 +163,10 @@ const ClubSettings: React.FC = () => {
         statsImageAspect: '2:1',
         joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
+        // Bloque Destacado del inicio. A diferencia de los otros bloques de
+        // contenido, NO está acotado a Evento/Convención: se pidió para un
+        // distrito, así que lo edita cualquier tipo de sitio.
+        spotlightContent: { title: '', text: '', buttonText: '', buttonUrl: '' } as { title: string; text: string; buttonText: string; buttonUrl: string },
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         avatarUrl: '',
@@ -373,6 +377,10 @@ const ClubSettings: React.FC = () => {
                 joinContent: (() => {
                     const saved = (club as any).joinContent || (() => { try { return JSON.parse(settingsMap['join_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
+                })(),
+                spotlightContent: (() => {
+                    const saved = (club as any).spotlightContent || (() => { try { return JSON.parse(settingsMap['spotlight_section_content'] || '{}'); } catch { return {}; } })();
+                    return { title: '', text: '', buttonText: '', buttonUrl: '', ...saved };
                 })(),
                 foundationContent: (() => {
                     const saved = (club as any).foundationContent || (() => { try { return JSON.parse(settingsMap['foundation_section_content'] || '{}'); } catch { return {}; } })();
@@ -1912,6 +1920,45 @@ const ClubSettings: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/*
+                            Bloque Destacado del inicio — SIN acotar por tipo de
+                            sitio. Los demás bloques de contenido llevan
+                            `hasEditableHome` por historia (nacieron para
+                            Evento/Convención); éste se pidió para un distrito, y
+                            acotarlo igual lo habría dejado sin poder llenarse.
+                        */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                <Palette className="w-5 h-5 text-rotary-blue" /> Bloque Destacado del Inicio
+                            </h3>
+                            <p className="text-xs text-gray-400 mb-6">
+                                El último contenedor de la portada, antes del pie: una imagen de fondo a todo el ancho con un título, un texto y un botón.
+                                La <strong>imagen</strong> se carga en <strong>Distribución de Imágenes → «Bloque Destacado del Inicio»</strong>, subiéndola o eligiéndola de la Biblioteca Multimedia.
+                                Si dejas todo vacío, el bloque no aparece en la portada.
+                            </p>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
+                                    <textarea rows={2} value={formData.spotlightContent.title} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, title: e.target.value } })} placeholder="Acción constante, impacto duradero" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
+                                    <textarea rows={4} value={formData.spotlightContent.text} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, text: e.target.value } })} placeholder="Describe la campaña o la iniciativa que quieres destacar…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Texto del botón</label>
+                                        <input type="text" value={formData.spotlightContent.buttonText} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, buttonText: e.target.value } })} placeholder="Más información" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Enlace del botón</label>
+                                        <input type="text" value={formData.spotlightContent.buttonUrl} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, buttonUrl: e.target.value } })} placeholder="/proyectos o https://endpolio.org" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Un enlace a una página de este mismo sitio se abre en la misma pestaña; uno a otro dominio, en una nueva. El botón sólo se muestra si tiene texto y enlace.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         {/* Contenido de la sección "Nuestra Fundación" — solo Eventos/Convenciones */}
                         {(isSuperAdmin || hasEditableHome(club?.type)) && (
