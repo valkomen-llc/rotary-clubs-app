@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.749.0 | 2026-08-09 (El Distrito trae también los proyectos de sus sitios)
-// Cache bust: 2026-08-09u
+// UI V4.750.0 | 2026-08-09 (La portada y las cifras de Proyectos, configurables)
+// Cache bust: 2026-08-09v
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.750.0',
+        title: 'La portada y las cifras de Proyectos, ahora se encienden o se apagan 🎚️',
+        description: 'La página pública de Proyectos abría con dos bloques que estaban escritos en el código, iguales para todos los sitios: la franja azul «Transformando Vidas, Un Proyecto a la Vez» con sus botones, y la banda de cifras de impacto. Ahora cada sitio decide si los muestra, desde Proyectos → «Página pública de Proyectos», con un interruptor para cada uno. Vienen APAGADOS, y en el caso de las cifras el motivo es de fondo: esos números —150+ proyectos, $12.5B recaudados, 50.000+ beneficiarios, 3.500+ donantes— eran de ejemplo, no salían de los proyectos de ningún club, y publicar cifras inventadas en el sitio de una institución no es un detalle estético. Quien las quiera puede encenderlas sabiendo lo que son: el propio interruptor lo dice. Con los dos apagados no queda un hueco donde estaban: la sección entera no se dibuja, y el listado de proyectos —que es a lo que se viene— empieza arriba.',
+        date: new Date().toISOString(),
+        tags: ['proyectos', 'contenido', 'panel'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Interruptores para la portada y las cifras, en Proyectos → «Página pública de Proyectos».' },
+            { type: 'changed', text: 'Los dos bloques vienen apagados: eran contenido escrito en el código, igual para todos los sitios.' },
+            { type: 'changed', text: 'El interruptor de las cifras avisa de que son de ejemplo y no salen de tus proyectos.' },
+            { type: 'fixed', text: 'Con los bloques apagados no queda una sección vacía donde estaban.' },
+        ]
+    },
     {
         version: '4.749.0',
         title: 'El Distrito trae también los proyectos de sus sitios 🤝',

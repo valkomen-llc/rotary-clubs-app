@@ -5,6 +5,10 @@ import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { isDistrictSiteType } from '../../lib/districtEcosystem';
 import {
+    PROJECTS_LAYOUT_BLOCKS, normalizeProjectsLayout,
+    type ProjectsLayout,
+} from '../../lib/projectsPageLayout';
+import {
     Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
@@ -116,6 +120,10 @@ const ProjectsManagement: React.FC = () => {
     const [showNewProjectStep1, setShowNewProjectStep1] = useState(false);
     // v4.749 — Traer proyectos de los sitios vinculados al distrito.
     const [showEcosystem, setShowEcosystem] = useState(false);
+    // v4.750 — Qué bloques enciende este sitio en su página pública de Proyectos.
+    const [layout, setLayout] = useState<ProjectsLayout>(() => normalizeProjectsLayout(null));
+    const [layoutSaving, setLayoutSaving] = useState<string | null>(null);
+    const [layoutSaved, setLayoutSaved] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -182,6 +190,51 @@ const ProjectsManagement: React.FC = () => {
         fetchTestimonials();
         fetchStep1Agents();
     }, [clubIdForFetch, isSuperAdmin]);
+
+    // v4.750 — Qué bloques enciende este sitio en su página pública. Se lee del
+    // MISMO sitio donde los lee la página (`ContentSection`, page 'proyectos',
+    // section 'layout') y con el MISMO normalizador, para que el interruptor no
+    // pueda mostrar un estado distinto del que se dibuja.
+    useEffect(() => {
+        if (!clubIdForFetch) return;
+        fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${clubIdForFetch}/sections?page=proyectos&clubId=${clubIdForFetch}`)
+            .then(r => r.json())
+            .then((rows: any[]) => {
+                const row = (rows || []).find(x => x.section === 'layout');
+                const content = typeof row?.content === 'string' ? JSON.parse(row.content) : row?.content;
+                setLayout(normalizeProjectsLayout(content));
+            })
+            .catch(() => { /* la pantalla sigue usable sin este dato */ });
+    }, [clubIdForFetch]);
+
+    const saveLayout = async (key: keyof ProjectsLayout, value: boolean) => {
+        if (!clubIdForFetch) return;
+        const next = { ...layout, [key]: value };
+        setLayout(next);
+        setLayoutSaving(key);
+        setLayoutSaved(false);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/sections/batch-upsert`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    clubId: clubIdForFetch,
+                    sections: [{ page: 'proyectos', section: 'layout', content: next }],
+                }),
+            });
+            if (!r.ok) throw new Error();
+            setLayoutSaved(true);
+            setTimeout(() => setLayoutSaved(false), 2500);
+        } catch {
+            // Se revierte lo que se pintó: dejar el interruptor donde el usuario
+            // lo puso, sabiendo que no se guardó, es peor que devolverlo.
+            setLayout(layout);
+            toast.error('No pudimos guardar el cambio. Intenta de nuevo.');
+        } finally {
+            setLayoutSaving(null);
+        }
+    };
 
     const fetchStep1Agents = async () => {
         try {
@@ -779,6 +832,48 @@ const ProjectsManagement: React.FC = () => {
                     onClose={() => setShowEcosystem(false)}
                     onDone={fetchProjects}
                 />
+            )}
+
+            {/* ── Página pública de Proyectos ─────────────────────
+                v4.750 — Los dos bloques venían escritos en el código, iguales
+                para todos los sitios, y el de las cifras publica números
+                inventados. Ahora cada sitio decide. Va acá y no en una pantalla
+                nueva por lo mismo que la «Sección pública de Eventos»: la
+                decisión se toma donde ya se está trabajando, y las pantallas
+                que se olvidan son siempre las del segundo lugar. */}
+            {clubIdForFetch && (
+                <div className="mb-6 bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                            <h3 className="font-bold text-gray-900 text-sm">Página pública de Proyectos</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                                Qué bloques se muestran arriba de <span className="font-mono">/proyectos</span>.
+                                Tus proyectos se siguen mostrando siempre.
+                            </p>
+                        </div>
+                        {layoutSaved && <span className="text-sm font-semibold text-emerald-600">Guardado.</span>}
+                    </div>
+                    <div className="space-y-2">
+                        {PROJECTS_LAYOUT_BLOCKS.map(block => (
+                            <label
+                                key={block.key}
+                                className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={layout[block.key]}
+                                    disabled={layoutSaving === block.key}
+                                    onChange={(e) => saveLayout(block.key, e.target.checked)}
+                                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rotary-blue focus:ring-blue-500 shrink-0 disabled:opacity-50"
+                                />
+                                <span className="min-w-0">
+                                    <span className="block text-sm font-semibold text-gray-800">{block.label}</span>
+                                    <span className="block text-xs text-gray-500 mt-0.5">{block.help}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
             )}
 
             {/* Barra de filtros */}

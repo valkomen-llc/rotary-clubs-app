@@ -21,6 +21,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
+import { normalizeProjectsLayout } from '../lib/projectsPageLayout';
 import { useSEO } from '../hooks/useSEO';
 
 /** Limpia HTML y entidades HTML para mostrar texto plano en tarjetas */
@@ -183,6 +184,12 @@ const Proyectos = () => {
     return sections[section]?.[field] || fallback;
   }
 
+  // v4.750 — Qué bloques enciende este sitio. Nacen APAGADOS: los dos venían
+  // escritos en el código para todos los sitios, y el de las cifras publica
+  // números inventados que no salen de ninguna consulta. Se encienden desde
+  // Proyectos → «Página pública de Proyectos».
+  const layout = normalizeProjectsLayout(sections?.layout);
+
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -282,7 +289,12 @@ const Proyectos = () => {
         </div>
       </section>
 
-      {/* Hero Section - Impacto */}
+      {/* Hero Section - Impacto.
+          v4.750 — La portada y las cifras son DOS bloques con su propio
+          interruptor: un sitio puede querer la portada sin publicar cifras que
+          no son suyas. Con los dos apagados la sección entera no se dibuja, así
+          que no queda un hueco donde estaban. */}
+      {(layout.hero || layout.stats) && (
       <section
         className="relative overflow-hidden"
         style={{
@@ -294,6 +306,7 @@ const Proyectos = () => {
         }}
       >
 
+        {layout.hero && (
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-4xl mx-auto">
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
@@ -329,8 +342,10 @@ const Proyectos = () => {
             </div>
           </div>
         </div>
+        )}
 
         {/* Stats de Impacto */}
+        {layout.stats && (
         <div className="relative bg-white/10 border-t border-white/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-10">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
@@ -344,7 +359,9 @@ const Proyectos = () => {
             </div>
           </div>
         </div>
+        )}
       </section>
+      )}
 
       {/* Proyectos Activos - Crowdfunding */}
       <section id="proyectos-activos" className="py-16 md:py-24 bg-rotary-concrete">

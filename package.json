@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.749.0",
-  "cache_bust": "2026-08-09u (Traer proyectos del ecosistema del distrito.)",
+  "version": "4.750.0",
+  "cache_bust": "2026-08-09v (Bloques configurables de la pagina de Proyectos.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -32,6 +32,7 @@
     "test:district-site": "node scripts/test-district-site.mjs",
     "test:media": "node scripts/test-media-folders.mjs",
     "test:heic": "node scripts/test-heic.mjs",
+    "test:projects-page": "node scripts/test-projects-page.mjs",
     "test:ecosystem": "node scripts/test-ecosystem.mjs",
     "test:ecosystem:ui": "node scripts/test-ecosystem-ui.mjs",
     "test:design": "node scripts/test-design.mjs",
