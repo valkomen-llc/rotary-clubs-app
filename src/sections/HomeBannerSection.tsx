@@ -26,7 +26,13 @@ const HomeBannerSection = () => {
     // borde— quedaban como una tarjeta recortada en medio de la página.
     return (
         <section className="py-12 md:py-16 bg-rotary-topbar">
-            <div className="max-w-6xl mx-auto px-6">
+            {/*
+                La banda ocupa TODO el ancho de la pantalla menos 20 px a cada
+                lado (`px-5`), no el contenedor centrado del resto de la
+                portada. Es a propósito: la imagen es la sección entera, no un
+                bloque de contenido dentro de ella.
+            */}
+            <div className="px-5">
                 {/*
                     `object-contain` y la proporción natural, NO un recorte a una
                     banda panorámica: estas piezas suelen traer el texto DENTRO
@@ -37,8 +43,15 @@ const HomeBannerSection = () => {
                 <img
                     src={url}
                     alt={banner?.alt || 'Imagen destacada'}
-                    /* Sin sombra: sobre el fondo oscuro una sombra negra no se ve. */
-                    className="w-full h-auto rounded-2xl object-contain"
+                    /*
+                        SIN sombra, sin halo y sin filtro: `shadow-none` está
+                        escrito a propósito y no de más. La imagen se apoya en
+                        un fondo del mismo tono, así que cualquier resplandor se
+                        lee como un marco pegado alrededor de la pieza — es lo
+                        que se pidió quitar. Al tocar estas clases, no
+                        reintroducir `shadow-*`, `ring-*` ni `drop-shadow-*`.
+                    */
+                    className="w-full h-auto rounded-2xl object-contain shadow-none"
                     /*
                         Va debajo del pliegue: cargarla de forma diferida evita
                         que compita con el primer pintado, que es la regla de

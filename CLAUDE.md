@@ -2899,6 +2899,12 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   `test:nav`, incluido que la clase llegue al CSS compilado.
 - **La banda va sobre ese azul, no sobre blanco.** Estas piezas suelen ser
   azules de borde a borde: sobre blanco quedaban como una tarjeta recortada.
+- **La banda ocupa el ancho de la pantalla menos 20 px por lado** (v4.745.3,
+  `px-5`), NO el contenedor centrado del resto de la portada: la imagen ES la
+  sección, no un bloque de contenido dentro de ella. Y **no lleva sombra, halo
+  ni filtro** — sobre un fondo del mismo tono, cualquier resplandor se lee como
+  un marco pegado alrededor de la pieza. No reintroducir `shadow-*`, `ring-*`
+  ni `drop-shadow-*`; lo comprueba `test:nav`.
 - **La barra de copyright lleva el mismo azul** (v4.745.1). Era `bg-black/10`,
   un velo sobre el fondo del pie: su color dependía del fondo de cada sitio y no
   coincidía con nada. Un sitio Evento/Convención conserva su `copyrightBg`

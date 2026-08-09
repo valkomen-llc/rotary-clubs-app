@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.745.2",
-  "cache_bust": "2026-08-09j (Nuevo fondo del pie de pagina: #212C3F.)",
+  "version": "4.745.3",
+  "cache_bust": "2026-08-09k (La banda de la portada, a ancho completo y sin resplandor.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

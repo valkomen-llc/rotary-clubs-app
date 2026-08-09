@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.2 | 2026-08-09 (Nuevo fondo del pie de página)
-// Cache bust: 2026-08-09j
+// UI V4.745.3 | 2026-08-09 (La banda de la portada, a ancho completo y sin resplandor)
+// Cache bust: 2026-08-09k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.3',
+        title: 'La banda de la portada, a ancho completo y sin resplandor 🖼️',
+        description: 'La imagen destacada de la portada dejaba unos 90 px de aire a cada lado, porque usaba el mismo contenedor centrado que el resto de la página. Ahora ocupa el ancho de la pantalla menos 20 px por lado: la imagen ES la sección, no un bloque de contenido dentro de ella. Además se dejó escrito que no lleva sombra ni halo — apoyada sobre un fondo del mismo tono, cualquier resplandor se lee como un marco pegado alrededor de la pieza. Las esquinas redondeadas se conservan.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'imagenes', 'diseno'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La banda ocupa el ancho de la pantalla menos 20 px a cada lado.' },
+            { type: 'removed', text: 'La imagen no lleva sombra ni resplandor detrás.' },
+        ]
+    },
     {
         version: '4.745.2',
         title: 'Nuevo fondo del pie de página 🎨',
