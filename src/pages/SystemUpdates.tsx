@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.7 | 2026-08-09 (Las cifras, al mismo ancho que el resto de la portada)
-// Cache bust: 2026-08-09o
+// UI V4.745.8 | 2026-08-09 (Las cifras pasan debajo de «Únete a Rotary»)
+// Cache bust: 2026-08-09p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.8',
+        title: 'Las cifras de la portada pasan debajo de «Únete a Rotary» 🔢',
+        description: 'El contenedor de las tres cifras («+1.2M», «+47M», «$291M») estaba encima de «Únete a Rotary» y ahora va justo debajo: la invitación a sumarse aparece primero y los números la respaldan. El orden de la portada queda: hero, «Somos gente de acción», «Noticias y artículos», «Únete a Rotary», las cifras, «Nuestra Fundación» y las áreas de interés.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'diseno'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'Las cifras pasan de estar encima a estar debajo de «Únete a Rotary».' },
+        ]
+    },
     {
         version: '4.745.7',
         title: 'Las cifras de la portada, al mismo ancho que el resto 📐',

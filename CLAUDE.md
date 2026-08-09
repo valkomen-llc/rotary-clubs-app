@@ -2884,9 +2884,10 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   alcanza además del que se tenía en mente.
 - **El orden de la portada estándar vive en `SmartHome` y NO es configurable
   por sitio.** Desde v4.745.5 es: hero → «Somos gente de acción» → «Noticias y
-  artículos» → cifras → banda → «Únete» → Fundación → causas. Noticias subió al
+  artículos» → banda → «Únete» → cifras → Fundación → causas. Noticias subió al
   tercer puesto (pedido del Distrito): cerrando la portada, lo más nuevo del
-  sitio quedaba donde casi nadie llega. Al mover una sección, **la condición
+  sitio quedaba donde casi nadie llega. Y las cifras pasaron DEBAJO de «Únete»
+  (v4.745.8): la invitación a sumarse va primero y los números la respaldan. Al mover una sección, **la condición
   que la enciende se mueve con ella** —la de Evento/Convención que apaga
   noticias vive junto al `<NewsSection />`— y hay que recordar que el cambio
   alcanza a TODOS los sitios estándar, no sólo al que lo pidió. Lo comprueba
