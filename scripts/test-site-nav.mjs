@@ -156,6 +156,21 @@ if (dist) {
     console.log('  ⏭  sin dist/: se omite la comprobación del CSS compilado');
 }
 
+console.log('\n── La banda de la portada ─────────────────────────────');
+
+const BANNER = readFileSync('src/sections/HomeBannerSection.tsx', 'utf8');
+check('ocupa el ancho de la pantalla menos 20 px a cada lado', () => {
+    // No es el contenedor centrado del resto de la portada: la imagen ES la
+    // sección, no un bloque de contenido dentro de ella.
+    assert.match(BANNER, /className="px-5"/);
+    assert.ok(!/max-w-6xl/.test(BANNER), 'volvió el contenedor centrado');
+});
+check('la imagen no lleva sombra, halo ni filtro', () =>
+    // Sobre un fondo del mismo tono, cualquier resplandor se lee como un marco
+    // pegado alrededor de la pieza. Se pidió quitarlo expresamente.
+    assert.ok(!/(shadow-(?!none)|ring-\d|drop-shadow)/.test(stripComments(BANNER)),
+        'volvió una sombra o un halo a la banda'));
+
 console.log('\n── El fondo del pie tiene UN solo sitio ───────────────');
 
 // Lo consumen el pie de verdad y la vista previa del panel. Escrito a mano en
