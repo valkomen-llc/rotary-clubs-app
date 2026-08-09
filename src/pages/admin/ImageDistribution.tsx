@@ -38,6 +38,8 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=500&h=500&fit=crop', alt: 'Desarrollo económico' },
         { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=500&h=500&fit=crop', alt: 'Medio ambiente' },
     ],
+    // Vacía a propósito: sin imagen no hay banda en la portada.
+    homeBanner: { url: '', alt: '' },
     foundation: { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' },
     join: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' },
     donateHero: { url: '/defaults/hero/1-teamwork.png', alt: 'Maneras de contribuir' },
@@ -100,6 +102,8 @@ interface ImgSlot { url: string; alt: string; }
 interface SiteImages {
     hero: ImgSlot[];
     causes: ImgSlot[];
+    /** Banda de la portada, entre las cifras y «Únete». Vacía = no se pinta. */
+    homeBanner?: ImgSlot;
     foundation: ImgSlot;
     join: ImgSlot;
     donateHero?: ImgSlot;
@@ -139,6 +143,7 @@ const BASE_CONTAINERS: Container[] = [
             { key: 'polio', subLabel: 'Erradicación de la Polio', count: 1, aspect: '4/3' },
         ],
     },
+    { key: 'homeBanner', label: 'Banda del Inicio', desc: '1 imagen destacada en la portada, entre las cifras y la sección "Únete". Se muestra COMPLETA, sin recortar, así que sirve para piezas con texto adentro. Sin imagen, la banda no aparece.', count: 1, aspect: '3/2' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     { key: 'donateHero', label: 'Maneras de Contribuir', desc: '1 imagen de fondo para la portada de la página "Maneras de Contribuir". Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },

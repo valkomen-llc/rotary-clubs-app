@@ -32,6 +32,16 @@ export interface SiteImages {
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
     missionControl?: ImgSlot;
+    /**
+     * Banda de imagen de la portada, entre las cifras y la sección «Únete».
+     *
+     * Nace VACÍA y por eso la sección no se pinta hasta que un sitio la llena:
+     * la portada la comparten todos los sitios de la plataforma, así que una
+     * imagen puesta en el código aparecería en todos. Es la misma lección de
+     * v4.737, cuando una campaña de un distrito secuestró la portada de todos
+     * los demás.
+     */
+    homeBanner?: ImgSlot;
 }
 
 const DEFAULTS = {
@@ -97,7 +107,11 @@ const DEFAULTS = {
     paulHarrisAvatar: { url: 'https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg', alt: 'Paul Harris' },
     chatbotPublicAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750783080-imagen_2026-02-23_03-49-22_(1).png', alt: 'Chatbot Persona' },
     chatbotAdminAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750805930-imagen_2026-02-23_11-57-31_(3).png', alt: 'Admin Persona' },
-    missionControl: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775761106234-Mision_Control_-_Rotary_Valkomen.png', alt: 'Mission Control' }
+    missionControl: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775761106234-Mision_Control_-_Rotary_Valkomen.png', alt: 'Mission Control' },
+    // Vacía a propósito: sin imagen no hay banda en la portada. Tiene que estar
+    // DECLARADA acá igual, porque la mezcla recorre las claves de DEFAULTS y una
+    // que no figure nunca se leería de lo que el sitio guardó.
+    homeBanner: { url: '', alt: '' }
 };
 // Helper: detect if a URL is a default (not a real custom upload)
 // ── Carga compartida (v4.659) ────────────────────────────────────────
@@ -218,7 +232,12 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     'foundation', 'join', 'donateHero', 'trfCharityBadge', 'trfEfficiencyBadge', 'trfFoundationLogo', 'aboutHero', 'causesHero', 'polio', 'rotaract',
                     'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
                     'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders',
-                    'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
+                    'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl',
+                    // Esta lista es la que decide qué se lee de la respuesta del
+                    // servidor: una clave que esté en DEFAULTS y NO acá se queda
+                    // con su valor por omisión para siempre, sin que nada avise.
+                    // Al agregar un hueco de imagen, agregarlo en los dos sitios.
+                    'homeBanner'
                 ];
 
                 allKeys.forEach(key => {
