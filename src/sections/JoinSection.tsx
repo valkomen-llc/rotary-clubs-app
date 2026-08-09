@@ -5,14 +5,10 @@ import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
+import { resolveCtaEmoji } from '../lib/ctaIcons';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
-const ICON_EMOJI: Record<string, string> = {
-  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
-  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
-  award: '🏅', trophy: '🏆', rocket: '🚀',
-};
 
 // Resalta (en color) la primera aparición de `highlight` en el título.
 const renderTitle = (title: string, highlight?: string, color?: string) => {
@@ -46,7 +42,7 @@ const JoinSection = () => {
   // Contenido editable (Evento/Convención y Feria de Proyectos).
   const content = (canEditContent && (club as any)?.joinContent) ? (club as any).joinContent : {};
   const buttonUrl = resolveCtaUrl(content.buttonUrl) || '';
-  const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
+  const emoji = isEventSite ? (resolveCtaEmoji(content.icon, '⭐')) : '';
   // Externo = otro dominio, no "empieza por http": un enlace al propio
   // sitio se abre en la misma pestaña (ver `ctaTarget`).
   const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);

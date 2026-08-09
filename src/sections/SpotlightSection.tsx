@@ -3,6 +3,7 @@ import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
 import { Link } from 'react-router-dom';
+import { resolveCtaEmoji, CtaStarIcon } from '../lib/ctaIcons';
 
 /**
  * Bloque Destacado — el último contenedor de la portada, antes del pie.
@@ -30,7 +31,7 @@ const SpotlightSection = () => {
     const cta = useCtaButton();
 
     const content = ((club as any)?.spotlightContent || {}) as {
-        title?: string; text?: string; buttonText?: string; buttonUrl?: string;
+        title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string;
     };
     const imgUrl = siteImages.spotlight?.url?.trim() || '';
     const title = (content.title || '').trim();
@@ -46,7 +47,18 @@ const SpotlightSection = () => {
     // Externo = OTRO DOMINIO, no «empieza por http»: un enlace al propio sitio
     // se abre en la misma pestaña (`ctaTarget`, regla de v4.657).
     const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);
+    // La MISMA piel y el MISMO icono que los demás botones de la portada
+    // («Toma Acción con Nosotros», «Involúcrate en Rotary»): píldora con el
+    // icono delante. Sin elección del sitio va la estrella dorada, que es el
+    // respaldo de `ActionSection`.
     const btnClass = `inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`;
+    const emoji = resolveCtaEmoji(content.icon);
+    const btnInner = (
+        <>
+            {emoji ? <span className="text-xl leading-none">{emoji}</span> : <CtaStarIcon />}
+            {buttonText}
+        </>
+    );
 
     return (
         <section className="relative w-full min-h-[420px] md:min-h-[560px] overflow-hidden">
@@ -89,13 +101,9 @@ const SpotlightSection = () => {
                         ninguna parte es peor que no tenerlo. */}
                     {buttonText && buttonUrl && (
                         isExternal ? (
-                            <a href={buttonHref} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>
-                                {buttonText}
-                            </a>
+                            <a href={buttonHref} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
                         ) : (
-                            <Link to={buttonHref} className={btnClass} style={cta.style}>
-                                {buttonText}
-                            </Link>
+                            <Link to={buttonHref} className={btnClass} style={cta.style}>{btnInner}</Link>
                         )
                     )}
                 </div>

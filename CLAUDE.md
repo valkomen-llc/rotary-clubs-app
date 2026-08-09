@@ -2904,6 +2904,11 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
     nacieron para Evento/Convención y llevan esa condición; éste se pidió para
     un DISTRITO, y acotarlo igual lo habría dejado sin poder llenarse. Al
     agregar un bloque de contenido, preguntarse para qué tipo de sitio es.
+  - **El botón toma la piel de `useCtaButton` y el icono de `ctaIcons.tsx`**,
+    igual que «Toma Acción con Nosotros» y «Involúcrate en Rotary». Ese
+    catálogo de emojis estaba escrito TRES veces —idéntico— y éste iba a ser la
+    cuarta: una copia que se queda atrás hace que el panel ofrezca un icono que
+    la portada no sabe dibujar. Mismo criterio que `ctaStyles.ts`.
   - **La imagen y el texto viven en sitios distintos y eso hay que DECIRLO en
     la pantalla.** La imagen es un hueco de `useSiteImages` (Distribución de
     Imágenes, con las dos vías de v4.700); el texto y el botón son un ajuste

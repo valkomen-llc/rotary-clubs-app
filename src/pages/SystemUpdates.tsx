@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.746.0 | 2026-08-09 (Bloque Destacado configurable al cierre de la portada)
-// Cache bust: 2026-08-09q
+// UI V4.746.1 | 2026-08-09 (El botón del Bloque Destacado, con el estilo de la portada)
+// Cache bust: 2026-08-09r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.746.1',
+        title: 'El botón del Bloque Destacado, con el estilo de los demás 🔘',
+        description: 'El botón del Bloque Destacado ya usaba la misma píldora que el resto de la portada, pero le faltaba el icono que llevan «Toma Acción con Nosotros» o «Involúcrate en Rotary». Ahora lo lleva, y además se puede elegir cuál desde Configuración → Identidad: la misma lista de trece iconos que ofrecen los otros bloques. Sin elección, va la estrella dorada. De paso, ese catálogo de iconos estaba escrito TRES veces en el código, idéntico; pasa a estar en un solo lugar, porque una copia que se quede atrás hace que el panel ofrezca un icono que la portada no sabe dibujar.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'diseno', 'contenido'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'added', text: 'El botón del Bloque Destacado lleva icono, como los demás de la portada.' },
+            { type: 'added', text: 'Se puede elegir el icono desde Configuración → Identidad.' },
+            { type: 'changed', text: 'El catálogo de iconos de los botones pasa a un solo lugar.' },
+        ]
+    },
     {
         version: '4.746.0',
         title: 'Nuevo Bloque Destacado al cierre de la portada 🎯',
