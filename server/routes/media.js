@@ -2,6 +2,7 @@ import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { ensureMediaFolderSchema } from '../lib/ensureMediaFolderSchema.js';
+import { isHeicFile, jpegNameFor, jpegKeyFor, convertHeicToJpeg } from '../lib/heicImages.js';
 import {
     validateFolderName, folderKey, canMoveFolder,
     buildFolderTree, withRollupCounts, breadcrumbOf,
@@ -304,6 +305,7 @@ const getUploadDeps = async () => {
             s3,
             PutObjectCommand: aws.PutObjectCommand,
             DeleteObjectCommand: aws.DeleteObjectCommand,
+            GetObjectCommand: aws.GetObjectCommand,
             getSignedUrl: presignerMod.getSignedUrl
         };
     }
@@ -319,10 +321,64 @@ const getSharp = async () => {
     return _sharp;
 };
 
-const getMediaType = (mimetype) => {
-    if (mimetype.startsWith('image/')) return 'image';
-    if (mimetype.startsWith('video/')) return 'video';
+const getMediaType = (mimetype, filename) => {
+    // Un `.heic` es una IMAGEN aunque el navegador mande el tipo vacío o
+    // `application/octet-stream`, que es lo que hacen varios al elegirlo. Sin
+    // esta línea entraba a la Librería clasificado como «documento» y no
+    // aparecía siquiera en el filtro de imágenes.
+    if (isHeicFile({ filename, mimetype })) return 'image';
+    if (String(mimetype || '').startsWith('image/')) return 'image';
+    if (String(mimetype || '').startsWith('video/')) return 'video';
     return 'document';
+};
+
+/**
+ * Deja el archivo listo para verse en la web.
+ *
+ * Devuelve `{ buffer, filename, s3Key, contentType, converted }`. Si no hacía
+ * falta convertir —o si la conversión falla— devuelve lo que entró: perder el
+ * archivo sería peor que no poder mostrarlo, y el original queda igualmente
+ * guardado y descargable. El fallo se anota en consola y viaja al cliente en
+ * `conversion`, para que la pantalla lo pueda decir.
+ */
+const toDisplayableImage = async ({ buffer, filename, s3Key, contentType }) => {
+    if (!isHeicFile({ filename, mimetype: contentType })) {
+        return { buffer, filename, s3Key, contentType, converted: false, error: null };
+    }
+    try {
+        const { buffer: jpeg } = await convertHeicToJpeg(buffer);
+        return {
+            buffer: jpeg,
+            filename: jpegNameFor(filename),
+            s3Key: jpegKeyFor(s3Key),
+            contentType: 'image/jpeg',
+            converted: true,
+            error: null,
+        };
+    } catch (err) {
+        console.error('[Media] HEIC conversion failed:', err.message);
+        return { buffer, filename, s3Key, contentType, converted: false, error: err.message };
+    }
+};
+
+/**
+ * La URL pública de un objeto de S3.
+ *
+ * Cada segmento se codifica por separado: `encodeURIComponent` sobre la clave
+ * entera convertiría las barras en `%2F` y la dirección dejaría de resolver.
+ */
+const publicUrlFor = (bucket, key) => {
+    const encoded = String(key).split('/').map(encodeURIComponent).join('/');
+    return `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encoded}`;
+};
+
+/** Baja un objeto de S3 a memoria. */
+const fetchFromS3 = async (bucket, key) => {
+    const { s3, GetObjectCommand } = await getUploadDeps();
+    const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const chunks = [];
+    for await (const chunk of obj.Body) chunks.push(chunk);
+    return Buffer.concat(chunks);
 };
 
 // ── Proxy Endpoint to Bypass CORS for Canvas Operations ──
@@ -410,9 +466,9 @@ router.get('/presigned-url', authMiddleware, async (req, res) => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
-        const fileTypeLocal = getMediaType(fileType);
+        const fileTypeLocal = getMediaType(fileType, fileName);
         const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
-        
+
         const key = `clubs/${targetClubId || 'global'}/${folderStr}/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
@@ -444,7 +500,7 @@ router.post('/save', authMiddleware, async (req, res) => {
         const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
-        const fileTypeLocal = getMediaType(fileType);
+        const fileTypeLocal = getMediaType(fileType, fileName);
 
         // Subir estando dentro de una carpeta deja el archivo AHÍ, no en la
         // raíz: quien abrió «Logos» y pulsa «Subir Nuevo» espera que caiga en
@@ -454,13 +510,55 @@ router.post('/save', authMiddleware, async (req, res) => {
         await ensureMediaFolderSchema();
         const folderId = await resolveTargetFolder(req.body?.folderId, targetClubId);
 
+        // Un HEIC ya está en S3 —el navegador lo subió con la URL prefirmada—,
+        // así que acá se BAJA, se convierte y se sube el JPEG. Da una vuelta de
+        // más, pero es lo que evita el tope de 4,5 MB del cuerpo de una función
+        // en Vercel: una foto de iPhone pesa 2-5 MB y mandarla por el cuerpo
+        // fallaría justo con las más grandes.
+        let finalName = fileName, finalUrl = fileUrl, finalKey = s3Key, finalSize = fileSize;
+        let conversion = null;
+
+        if (isHeicFile({ filename: fileName, mimetype: fileType })) {
+            try {
+                const original = await fetchFromS3(bucket, s3Key);
+                const converted = await toDisplayableImage({
+                    buffer: original, filename: fileName, s3Key, contentType: fileType,
+                });
+                if (converted.converted) {
+                    const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+                    await s3.send(new PutObjectCommand({
+                        Bucket: bucket, Key: converted.s3Key,
+                        Body: converted.buffer, ContentType: 'image/jpeg',
+                    }));
+                    finalName = converted.filename;
+                    finalKey = converted.s3Key;
+                    finalSize = converted.buffer.length;
+                    finalUrl = publicUrlFor(bucket, converted.s3Key);
+                    conversion = { from: 'heic', to: 'jpeg' };
+                    // El HEIC original se retira DESPUÉS de que el JPEG esté
+                    // arriba. La fila de `Media` guarda una sola clave de S3:
+                    // dejar el original sin que ninguna fila lo apunte lo
+                    // convertiría en un objeto que nadie puede ver ni borrar
+                    // desde el panel, y que sobreviviría a eliminar el archivo.
+                    // Si el borrado falla no se interrumpe nada: el JPEG ya está.
+                    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: s3Key }))
+                        .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
+                } else {
+                    conversion = { from: 'heic', to: null, error: converted.error };
+                }
+            } catch (err) {
+                console.error('[Media] HEIC pipeline error:', err.message);
+                conversion = { from: 'heic', to: null, error: err.message };
+            }
+        }
+
         const result = await db.query(
             `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "createdAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
-            [fileName, fileUrl, fileTypeLocal, fileSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, folderId]
+            [finalName, finalUrl, fileTypeLocal, finalSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, finalKey, folderId]
         );
 
-        res.json(result.rows[0]);
+        res.json({ ...result.rows[0], conversion });
     } catch (error) {
         console.error('[Media] Save error:', error);
         res.status(500).json({ error: 'Error al registrar en base de datos', details: error.message });
@@ -479,26 +577,36 @@ router.post('/upload', authMiddleware, async (req, res) => {
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
             const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
-            const fileTypeLocal = getMediaType(req.file.mimetype);
+            const fileTypeLocal = getMediaType(req.file.mimetype, req.file.originalname);
             const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
-            const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
-            const s3Key = `clubs/${targetClubId || 'global'}/${folderStr}/${fileName}`;
+            const baseName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+
+            // Acá el servidor SÍ tiene los bytes, así que el HEIC se convierte
+            // antes de subir nada: se guarda una sola vez y no hay que retirar
+            // un original. Es el mismo trato que en `/save`, por la regla de
+            // que los dos caminos de subida tienen que dar el mismo resultado.
+            const display = await toDisplayableImage({
+                buffer: req.file.buffer,
+                filename: baseName,
+                s3Key: `clubs/${targetClubId || 'global'}/${folderStr}/${baseName}`,
+                contentType: req.file.mimetype,
+            });
+            const s3Key = display.s3Key;
 
             try {
                 await s3.send(new PutObjectCommand({
                     Bucket: bucket,
                     Key: s3Key,
-                    Body: req.file.buffer,
-                    ContentType: req.file.mimetype,
+                    Body: display.buffer,
+                    ContentType: display.contentType,
                 }));
             } catch (s3Error) {
                 console.error('S3 Upload Error:', s3Error);
                 return res.status(500).json({ error: 'Error al subir archivo a S3', details: s3Error.message });
             }
 
-            const encodedKey = s3Key.split('/').map(segment => encodeURIComponent(segment)).join('/');
-            const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
+            const fileUrl = publicUrlFor(bucket, s3Key);
 
             try {
                 // Resolve source tagging from upload context. Frontend can override
@@ -541,7 +649,11 @@ router.post('/upload', authMiddleware, async (req, res) => {
                 const result = await db.query(
                     `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "folderId", "createdAt")
                      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()) RETURNING *`,
-                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel, folderId]
+                    // El nombre y el tamaño son los del archivo GUARDADO, no los
+                    // del que llegó: si se convirtió, la ficha diría «.heic» y
+                    // el peso del original sobre un archivo que ya es un JPEG.
+                    [display.converted ? jpegNameFor(req.file.originalname) : req.file.originalname,
+                    fileUrl, fileTypeLocal, display.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel, folderId]
                 );
                 res.json(result.rows[0]);
             } catch (dbError) {
@@ -571,17 +683,30 @@ router.post('/upload-logo', authMiddleware, async (req, res) => {
                 : req.user.clubId;
             const folder = req.query.folder || req.body.folder || 'logos';
 
+            // Un logo puede llegar en HEIC igual que cualquier otra imagen —de
+            // hecho es lo normal si alguien lo pasó por su iPhone—. sharp no
+            // sabe decodificarlo, así que sin este paso el `trim` fallaba, se
+            // subía el HEIC tal cual y el logo quedaba roto en el encabezado.
+            let sourceBuffer = req.file.buffer;
+            if (isHeicFile({ filename: req.file.originalname, mimetype: req.file.mimetype })) {
+                try {
+                    sourceBuffer = (await convertHeicToJpeg(req.file.buffer)).buffer;
+                } catch (e) {
+                    console.error('[Media] HEIC logo conversion failed:', e.message);
+                }
+            }
+
             let trimmedBuffer;
             let finalContentType = 'image/png';
             try {
-                trimmedBuffer = await sharp(req.file.buffer)
-                    .trim(30) 
+                trimmedBuffer = await sharp(sourceBuffer)
+                    .trim(30)
                     .png()
                     .toBuffer();
                 console.log('✅ Logo auto-trimmed successfully via Sharp');
             } catch (trimError) {
                 console.warn('⚠️ Auto-trim failed, uploading original image:', trimError.message);
-                trimmedBuffer = req.file.buffer;
+                trimmedBuffer = sourceBuffer;
                 finalContentType = req.file.mimetype;
             }
 
@@ -848,6 +973,56 @@ router.get('/debug-me', authMiddleware, async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /api/media/:id/convert — arregla un HEIC que YA está en la Librería.
+//
+// La conversión al subir sólo alcanza a lo que venga de ahora en adelante, y el
+// defecto que se reportó es sobre archivos que ya están cargados. Sin esta vía
+// habría que borrarlos y volver a subirlos uno por uno.
+router.post('/:id/convert', authMiddleware, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [req.params.id]);
+        const item = rows[0];
+        if (!item) return res.status(404).json({ error: 'Archivo no encontrado' });
+        if (req.user.role !== 'administrator' && item.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        if (!isHeicFile({ filename: item.filename, mimetype: null })) {
+            return res.status(400).json({ error: 'Este archivo no es HEIC: no hay nada que convertir.' });
+        }
+        if (!item.s3Key || !item.bucket) {
+            return res.status(400).json({ error: 'No se sabe dónde está guardado el archivo original.' });
+        }
+
+        const original = await fetchFromS3(item.bucket, item.s3Key);
+        const { buffer } = await convertHeicToJpeg(original);
+
+        const newKey = jpegKeyFor(item.s3Key);
+        const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+        await s3.send(new PutObjectCommand({
+            Bucket: item.bucket, Key: newKey, Body: buffer, ContentType: 'image/jpeg',
+        }));
+
+        const updated = await db.query(
+            `UPDATE "Media"
+                SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image'
+              WHERE id = $5 RETURNING *`,
+            [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id]
+        );
+
+        // El original se retira sólo después de que la fila apunte al JPEG: si
+        // el UPDATE fallara, el archivo viejo tiene que seguir estando.
+        await s3.send(new DeleteObjectCommand({ Bucket: item.bucket, Key: item.s3Key }))
+            .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
+
+        res.json(updated.rows[0]);
+    } catch (error) {
+        console.error('[Media] convert error:', error);
+        // El motivo se propaga TEXTUAL: «no se pudo convertir» a secas obliga a
+        // reproducir el fallo a ciegas.
+        res.status(500).json({ error: 'No se pudo convertir el archivo', details: error.message });
     }
 });
 

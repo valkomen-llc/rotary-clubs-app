@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.738.0",
-  "cache_bust": "2026-08-08l (Carpetas en la Libreria de Medios.)",
+  "version": "4.739.0",
+  "cache_bust": "2026-08-09a (Las fotos HEIC del iPhone ya se ven.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -29,6 +29,7 @@
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",
     "test:media": "node scripts/test-media-folders.mjs",
+    "test:heic": "node scripts/test-heic.mjs",
     "test:design": "node scripts/test-design.mjs",
     "test:design:render": "node scripts/test-design-render.mjs",
     "check:syntax": "node scripts/check-syntax.mjs"
