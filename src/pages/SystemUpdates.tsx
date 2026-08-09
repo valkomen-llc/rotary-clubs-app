@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.744.0 | 2026-08-09 (El dominio propio de un distrito sirve su sitio)
-// Cache bust: 2026-08-09f
+// UI V4.744.1 | 2026-08-09 (Pertenecer al distrito no es ser su sitio)
+// Cache bust: 2026-08-09g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.744.1',
+        title: 'Corrección: el dominio del distrito servía el sitio de otro club 🔧',
+        description: 'La versión anterior hizo que el dominio propio de un distrito llegara a su sitio en vez de a una página vacía, pero eligió mal cuál era ese sitio: rotary4281.org terminó mostrando el sitio del Rotary Club Pasto. La causa es una distinción que el sistema no estaba haciendo. Un club puede PERTENECER a un distrito —lo hacen todos los clubes del distrito, y Pasto pertenece al 4281— y eso no lo convierte en EL SITIO del distrito. Al tomar la pertenencia como si fuera «este club es el sitio», ganaba el que más configuración tuviera cargada, que era justamente un club rotario. Ahora hacen falta las dos cosas: que el club pertenezca al distrito Y que se declare su sitio —por su tipo, por el subdominio que el distrito tenga declarado, o por ser el club al que están asignados los administradores del distrito—. Si falta cualquiera de las dos, se muestra la ficha del distrito y la pestaña «Dominio» explica qué falta: antes eso que servir el sitio de otra organización.',
+        date: new Date().toISOString(),
+        tags: ['distritos', 'dominios', 'correccion'],
+        type: 'hotfix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El dominio de un distrito ya no puede servir el sitio de un club afiliado.' },
+            { type: 'changed', text: 'Ser el sitio de un distrito exige pertenecer Y declararse, no sólo pertenecer.' },
+            { type: 'added', text: 'El club de los administradores del distrito identifica su sitio.' },
+            { type: 'changed', text: 'El panel del distrito y la visita usan el mismo criterio, no dos copias.' },
+        ]
+    },
     {
         version: '4.744.0',
         title: 'El dominio propio de un distrito ya muestra su sitio 🏛️',

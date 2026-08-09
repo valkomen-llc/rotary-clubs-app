@@ -11,7 +11,7 @@ import {
 } from '../controllers/contentController.js';
 import { getPublicSections } from '../controllers/cmsController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
-import { DISTRICT_SITE_TYPES, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
+import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
 
 const router = express.Router();
 
@@ -66,31 +66,16 @@ router.get('/by-domain', async (req, res) => {
         };
 
         /**
-         * Los clubes que podrían ser el sitio de este distrito, con la CANTIDAD
-         * DE AJUSTES de cada uno.
+         * Los clubes que podrían ser el sitio de este distrito.
          *
-         * El conteo se pide acá y no después porque es lo que desempata: puede
-         * haber dos filas vinculadas al mismo distrito —el club espejo vacío
-         * que crea /admin/distritos y el sitio real que configuró el operador—
-         * y elegir el vacío da exactamente el sitio en blanco que se está
-         * corrigiendo. Quién gana lo decide `pickDistrictSite`, que es puro y
-         * está probado; esta consulta sólo reúne a los candidatos.
+         * La consulta REÚNE candidatos —a propósito de más: trae también los
+         * clubes que sólo PERTENECEN al distrito—; quién es el sitio lo decide
+         * `pickDistrictSite`, que es puro y está probado. Pertenecer no es ser
+         * el sitio, y darlo por equivalente es lo que hizo que `rotary4281.org`
+         * sirviera el sitio del Rotary Club Pasto (v4.744).
          */
         const findDistrictSiteClub = async (district) => {
-            const { rows } = await db.query(
-                `SELECT c.id, c.type, c."districtId", c.district, c.subdomain, c."updatedAt",
-                        (SELECT COUNT(*)::int FROM "Setting" s WHERE s."clubId" = c.id) AS "settingsCount"
-                   FROM "Club" c
-                  WHERE c."districtId" = $1
-                     OR (lower(coalesce(c.type, '')) = ANY($2::text[]) AND coalesce(c.district, '') <> '' AND btrim(c.district) = $3)
-                     OR ($4 <> '' AND lower(coalesce(c.subdomain, '')) = $4)`,
-                [
-                    district.id || null,
-                    DISTRICT_SITE_TYPES,
-                    district.number == null ? '' : String(district.number),
-                    String(district.subdomain || '').trim().toLowerCase(),
-                ]
-            );
+            const { rows } = await db.query(DISTRICT_SITE_SQL, districtSiteParams(district));
             return pickDistrictSite(district, rows);
         };
 

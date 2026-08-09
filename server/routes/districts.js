@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import VercelService from '../services/VercelService.js';
 import bcrypt from 'bcryptjs';
 import { canonicalDomain } from '../lib/domains.js';
+import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
 
 const router = express.Router();
 
@@ -215,19 +216,12 @@ router.get('/:id/domain-status', authMiddleware, superAdminOnly, async (req, res
         // blanco: el dominio apuntaba bien a la plataforma y la plataforma no
         // tenía qué servir, porque el distrito no tenía su fila de sitio o la
         // que tenía estaba sin configurar. Se responden por separado.
-        const site = await db.query(
-            `SELECT c.id, c.name,
-                    (SELECT COUNT(*)::int FROM "Setting" s WHERE s."clubId" = c.id) AS "settingsCount"
-               FROM "Club" c
-              WHERE c."districtId" = $1
-                 OR (lower(coalesce(c.type, '')) IN ('district', 'distrito rotario')
-                     AND coalesce(c.district, '') <> '' AND btrim(c.district) = $2)
-              ORDER BY (c."districtId" = $1) DESC,
-                       (SELECT COUNT(*) FROM "Setting" s WHERE s."clubId" = c.id) DESC
-              LIMIT 1`,
-            [id, String(dist.rows[0].number ?? '')]
-        );
-        const siteRow = site.rows[0] || null;
+        // La MISMA consulta y el MISMO criterio que usa `by-domain`: con una
+        // copia propia, este panel acabaría afirmando de un sitio distinto del
+        // que se sirve, que es justo lo que no puede pasar en un diagnóstico.
+        const district = { id, ...dist.rows[0] };
+        const candidates = await db.query(DISTRICT_SITE_SQL, districtSiteParams(district));
+        const siteRow = pickDistrictSite(district, candidates.rows);
 
         res.json({
             domain,
@@ -240,7 +234,10 @@ router.get('/:id/domain-status', authMiddleware, superAdminOnly, async (req, res
                 ? { id: siteRow.id, name: siteRow.name, settingsCount: siteRow.settingsCount }
                 : null,
             siteMessage: !siteRow
-                ? 'El distrito no tiene un sitio asociado: quien visite el dominio verá una página sin contenido. Creá el sitio del distrito y asignáselo.'
+                ? 'El distrito no tiene un sitio propio: quien visite el dominio verá una página sin contenido. '
+                  + 'Un sitio de distrito tiene que ser del tipo «Distrito Rotario» y llevar el número del distrito; '
+                  + 'pertenecer al distrito no alcanza, porque eso lo cumplen todos sus clubes. '
+                  + 'También sirve escribir acá arriba el subdominio de plataforma del sitio del distrito.'
                 : siteRow.settingsCount === 0
                     ? `El dominio lleva al sitio «${siteRow.name}», que todavía no tiene ninguna configuración cargada.`
                     : `El dominio lleva al sitio «${siteRow.name}».`,

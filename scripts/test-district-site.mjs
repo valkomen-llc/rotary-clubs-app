@@ -91,6 +91,38 @@ await check('NO elige un club rotario cualquiera del distrito', async () => {
     assert.notEqual(body.id, 'club-cali');
 });
 
+await check('NO elige un club AFILIADO al distrito, aunque tenga más configuración', async () => {
+    // El defecto real de v4.744: `rotary4281.org` sirvió el sitio del Rotary
+    // Club Pasto. `Club.districtId` es `affiliatedDistrict` —la afiliación—, no
+    // «este club es el sitio del distrito», y Pasto tenía su sitio completo.
+    const { body } = await get('rotary4281.org');
+    assert.equal(body.id, 'sitio');
+    assert.notEqual(body.name, 'Rotary Club Pasto');
+});
+
+await check('sin el sitio del distrito, un club afiliado NO ocupa su lugar', async () => {
+    stub.DATA.clubs = stub.DATA.clubs.filter((c) => !['sitio', 'espejo'].includes(c.id));
+    const { body } = await get('rotary4281.org');
+    assert.equal(body.resolvedBy, 'district', 'sirvió el sitio de un club afiliado');
+    assert.equal(body.name, 'Distrito 4281');
+});
+
+await check('el club de los administradores del distrito rescata al sitio mal tipado', async () => {
+    // Si el `type` del sitio quedó cargado como «club», la asignación humana de
+    // los administradores del distrito es la que lo identifica.
+    stub.DATA.clubs = stub.DATA.clubs.filter((c) => !['sitio', 'espejo'].includes(c.id));
+    stub.DATA.clubs.push({
+        id: 'mal-tipado', name: 'Distrito 4281 de Rotary International',
+        subdomain: 'd4281-mal', domain: null, type: 'club',
+        district: '4281', districtId: 'dist-4281',
+        settings: [{ key: 'contact_email', value: 'distrito@rotary4281.org' }],
+    });
+    stub.DATA.users = [{ districtId: 'dist-4281', clubId: 'mal-tipado' }];
+    const { body } = await get('rotary4281.org');
+    assert.equal(body.id, 'mal-tipado');
+    assert.equal(body.resolvedBy, 'district_site');
+});
+
 console.log('\n── La marca: manda el sitio, el distrito respalda ─────');
 
 await check('el logotipo del sitio gana al de la ficha del distrito', async () => {

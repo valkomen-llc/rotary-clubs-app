@@ -152,12 +152,25 @@ check('el vínculo explícito pesa más que el número', () =>
     assert.ok(
         districtLinkScore(D, { id: 'a', districtId: 'dist-4281', type: 'district' }) >
         districtLinkScore(D, { id: 'b', district: '4281', type: 'district' })));
-check('el número sólo vincula si además es un sitio de distrito', () =>
-    // `Club.district` la lleva TODO club: es el distrito al que pertenece. Un
-    // club rotario del 4281 tiene «4281» ahí y no es el sitio del distrito.
+check('el número no basta: `Club.district` la lleva TODO club del distrito', () =>
     assert.equal(districtLinkScore(D, { id: 'c', district: '4281', type: 'club' }), 0));
+check('`districtId` TAMPOCO basta: es la AFILIACIÓN del club, no «soy el sitio»', () =>
+    // El defecto de v4.744 en producción: `rotary4281.org` sirvió el sitio del
+    // Rotary Club Pasto, que está afiliado al 4281 y tiene mucha configuración.
+    // Es el mismo error que ya estaba escrito para `Club.district`, colado por
+    // la otra puerta — la clave foránea.
+    assert.equal(districtLinkScore(D, { id: 'pasto', districtId: 'dist-4281', type: 'club' }), 0));
+check('un club afiliado NO gana ni siendo el único candidato', () =>
+    assert.equal(pickDistrictSite(D, [{ id: 'pasto', districtId: 'dist-4281', type: 'club', settingsCount: 90 }]), null));
 check('el subdominio declarado en la ficha del distrito también vincula', () =>
     assert.ok(districtLinkScore({ ...D, subdomain: 'd4281' }, { id: 'd', subdomain: 'D4281' }) > 0));
+check('el club de los administradores del distrito rescata al sitio mal tipado', () =>
+    // Asignación humana y explícita: un club rotario cualquiera no la tiene.
+    assert.ok(districtLinkScore(D, { id: 'e', districtId: 'dist-4281', type: 'club', isDistrictAdminSite: true }) > 0));
+check('pertenecer y declararse hacen falta LAS DOS', () => {
+    assert.equal(districtLinkScore(D, { id: 'f', type: 'district' }), 0, 'declararse sin pertenecer');
+    assert.equal(districtLinkScore(D, { id: 'g', districtId: 'dist-4281' }), 0, 'pertenecer sin declararse');
+});
 
 check('sin candidatos vinculados no se inventa un sitio', () => {
     assert.equal(pickDistrictSite(D, []), null);
@@ -172,6 +185,14 @@ check('entre el club espejo VACÍO y el sitio configurado, gana el configurado',
     const real = { id: 'b', type: 'district', districtId: 'dist-4281', settingsCount: 47 };
     assert.equal(pickDistrictSite(D, [espejo, real]).id, 'b');
     assert.equal(pickDistrictSite(D, [real, espejo]).id, 'b');
+});
+
+check('entre el sitio del distrito y un club afiliado con MÁS ajustes, gana el sitio', () => {
+    // El caso exacto de producción: Pasto tenía el sitio completo cargado.
+    const pasto = { id: 'pasto', type: 'club', districtId: 'dist-4281', settingsCount: 90 };
+    const sitio = { id: 'sitio', type: 'district', districtId: 'dist-4281', settingsCount: 12 };
+    assert.equal(pickDistrictSite(D, [pasto, sitio]).id, 'sitio');
+    assert.equal(pickDistrictSite(D, [sitio, pasto]).id, 'sitio');
 });
 
 check('el vínculo explícito gana aunque el otro tenga más ajustes', () => {
@@ -227,8 +248,12 @@ check('el dominio NO se copia al club del distrito', () => {
 check('el estado del dominio distingue el DNS del CONTENIDO', () => {
     // «✅ verificado» sobre un sitio en blanco es lo que confundió al 4281.
     assert.match(DISTRICTS, /siteMessage/);
-    assert.match(DISTRICTS, /no tiene un sitio asociado/);
+    assert.match(DISTRICTS, /no tiene un sitio propio/);
 });
+check('el panel y la visita usan el MISMO criterio de sitio', () =>
+    // Con una copia propia, el panel afirmaría de un sitio distinto del que se
+    // sirve — que es lo peor que puede hacer una pantalla de diagnóstico.
+    assert.match(DISTRICTS, /DISTRICT_SITE_SQL, districtSiteParams\(district\)[\s\S]{0,120}pickDistrictSite/));
 
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail === 0 ? 0 : 1);

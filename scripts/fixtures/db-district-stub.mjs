@@ -47,7 +47,21 @@ const SEED = () => ({
             type: 'club', district: '4281', districtId: 'dist-4281',
             settings: [{ key: 'contact_email', value: 'cali@x.org' }],
         },
+
+        // El caso que se sirvió en producción por error: un club AFILIADO al
+        // distrito (clave foránea puesta) y con MÁS configuración que el sitio
+        // del distrito. Pertenecer no es ser el sitio.
+        {
+            id: 'club-pasto', name: 'Rotary Club Pasto', subdomain: 'pasto', domain: null,
+            type: 'club', district: '4281', districtId: 'dist-4281',
+            updatedAt: '2026-08-05T00:00:00Z',
+            settings: Array.from({ length: 40 }, (_, i) => ({ key: `k${i}`, value: 'v' })),
+        },
     ],
+
+    // Los administradores del distrito y a qué club están asignados. Es lo que
+    // rescata a un sitio cuyo `type` quedó mal cargado.
+    users: [],
 });
 
 export let DATA = SEED();
@@ -83,15 +97,18 @@ const db = {
 
         // Los candidatos a sitio del distrito, con su cantidad de ajustes.
         if (s.includes('FROM "Club" c') && s.includes('settingsCount')) {
-            const [districtId, types, number, subdomain] = params;
+            const [districtId, number, subdomain] = params;
             const rows = DATA.clubs
                 .filter((c) =>
                     (districtId && c.districtId === districtId) ||
-                    (types.includes(lc(c.type)) && c.district && String(c.district).trim() === number) ||
+                    (c.district && String(c.district).trim() === number) ||
                     (subdomain && lc(c.subdomain) === subdomain))
                 .map((c) => ({
-                    id: c.id, type: c.type, districtId: c.districtId, district: c.district,
-                    subdomain: c.subdomain, updatedAt: c.updatedAt, settingsCount: (c.settings || []).length,
+                    id: c.id, name: c.name, type: c.type, districtId: c.districtId, district: c.district,
+                    subdomain: c.subdomain, updatedAt: c.updatedAt,
+                    settingsCount: (c.settings || []).length,
+                    isDistrictAdminSite: (DATA.users || []).some(
+                        (u) => u.districtId === districtId && u.clubId === c.id),
                 }));
             return { rows };
         }

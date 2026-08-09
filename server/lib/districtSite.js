@@ -49,36 +49,82 @@ export function isDistrictSiteType(type) {
 /**
  * Qué tan fuerte es el vínculo entre un club candidato y un distrito.
  *
- * Se puntúa en vez de elegir por una sola condición porque los vínculos son de
- * calidad muy distinta y ninguno está garantizado: `districtId` es el bueno
- * pero puede no estar puesto —el alta de v4.743 creaba el club espejo SIN
- * él—, el número es fiable pero débil, y el subdominio sólo sirve si el
- * distrito declaró uno.
+ * SON DOS PREGUNTAS, y confundirlas sirve el sitio de otro club. Un club puede
+ * PERTENECER al distrito —lo hacen todos los del distrito— y eso no lo
+ * convierte en SU SITIO. Hacen falta las dos cosas:
  *
- * Devuelve 0 cuando NO hay ningún vínculo: un club sin relación con el
- * distrito no es su sitio por mucho que sea el único que quede.
+ *   1. Pertenece: `districtId` (que es `affiliatedDistrict`, la afiliación del
+ *      club) o el número en `Club.district`.
+ *   2. Se declara como el sitio: es del tipo distrito, o lleva el subdominio
+ *      que el distrito declaró, o es el club al que están asignados los
+ *      administradores del distrito.
+ *
+ * En v4.744 sólo se miraba lo primero para `districtId`, dando por explícito un
+ * vínculo que es de AFILIACIÓN: `rotary4281.org` acabó sirviendo el sitio del
+ * Rotary Club Pasto, que pertenece al 4281 y tiene mucha configuración cargada.
+ * Es el mismo error que ya estaba documentado para `Club.district` y que la FK
+ * volvió a colar por la otra puerta.
+ *
+ * Devuelve 0 si falta cualquiera de las dos: antes que servir el sitio
+ * equivocado, se sirve la ficha del distrito y se dice que no hay sitio.
  */
 export function districtLinkScore(district, club) {
     if (!district || !club) return 0;
-    let score = 0;
 
-    // El vínculo explícito. Es el único que alguien declaró a propósito.
-    if (district.id && club.districtId && club.districtId === district.id) score += 8;
-
-    // El club espejo que crea /admin/distritos: tipo `district` y el número del
-    // distrito en la columna `district`.
     const number = district.number == null ? '' : String(district.number).trim();
-    if (number && norm(club.district) === norm(number) && isDistrictSiteType(club.type)) score += 4;
-
-    // El subdominio declarado en la ficha del distrito.
     const sub = norm(district.subdomain);
-    if (sub && norm(club.subdomain) === sub) score += 3;
 
-    // Ser del tipo correcto no vincula por sí solo —hay un sitio de tipo
-    // distrito por cada distrito— pero desempata entre dos filas vinculadas.
-    if (score > 0 && isDistrictSiteType(club.type)) score += 1;
+    const byId = !!(district.id && club.districtId && club.districtId === district.id);
+    const byNumber = !!(number && norm(club.district) === norm(number));
+    const bySubdomain = !!(sub && norm(club.subdomain) === sub);
+
+    // 1. ¿Pertenece al distrito?
+    if (!byId && !byNumber && !bySubdomain) return 0;
+
+    // 2. ¿Se declara su sitio? Pertenecer no alcanza.
+    const isSiteType = isDistrictSiteType(club.type);
+    const isAdminSite = !!club.isDistrictAdminSite;
+    if (!isSiteType && !bySubdomain && !isAdminSite) return 0;
+
+    let score = 0;
+    if (byId) score += 8;
+    if (byNumber) score += 4;
+    if (bySubdomain) score += 3;
+    if (isSiteType) score += 2;
+    // El club al que están asignados los administradores del distrito. Es una
+    // asignación humana y explícita; rescata al sitio cuyo `type` quedó mal.
+    if (isAdminSite) score += 1;
 
     return score;
+}
+
+/**
+ * Los candidatos a sitio de un distrito, con lo que hace falta para elegir.
+ *
+ * El SQL vive acá —y no en cada ruta— porque lo consultan `by-domain` y el
+ * estado del dominio en /admin/distritos, y con dos copias el panel acabaría
+ * afirmando de un sitio distinto del que se sirve. Es texto: este módulo sigue
+ * sin tocar la base.
+ *
+ * Trae la CANTIDAD DE AJUSTES (desempata entre el club espejo vacío y el sitio
+ * configurado) y si es el club de los administradores del distrito.
+ */
+export const DISTRICT_SITE_SQL = `
+    SELECT c.id, c.name, c.type, c."districtId", c.district, c.subdomain, c."updatedAt",
+           (SELECT COUNT(*)::int FROM "Setting" s WHERE s."clubId" = c.id) AS "settingsCount",
+           EXISTS (SELECT 1 FROM "User" u WHERE u."districtId" = $1 AND u."clubId" = c.id) AS "isDistrictAdminSite"
+      FROM "Club" c
+     WHERE c."districtId" = $1
+        OR (coalesce(c.district, '') <> '' AND btrim(c.district) = $2)
+        OR ($3 <> '' AND lower(coalesce(c.subdomain, '')) = $3)`;
+
+/** Los parámetros de `DISTRICT_SITE_SQL`, en su orden. */
+export function districtSiteParams(district) {
+    return [
+        district?.id || null,
+        district?.number == null ? '' : String(district.number),
+        norm(district?.subdomain),
+    ];
 }
 
 /**
@@ -144,4 +190,7 @@ export function districtBranding(club, district) {
     return out;
 }
 
-export default { DISTRICT_SITE_TYPES, isDistrictSiteType, districtLinkScore, pickDistrictSite, districtBranding };
+export default {
+    DISTRICT_SITE_TYPES, DISTRICT_SITE_SQL, isDistrictSiteType,
+    districtLinkScore, districtSiteParams, pickDistrictSite, districtBranding,
+};
