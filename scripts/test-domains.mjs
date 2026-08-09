@@ -122,5 +122,113 @@ check('el panel distingue los tres resultados posibles', () => {
     assert.match(SETTINGS, /lleva a OTRO sitio/);
 });
 
+// ════════════════════════════════════════════════════════════════════
+// El SITIO de un distrito — v4.744
+//
+// Un distrito existe dos veces: la fila de `District` lleva el DOMINIO y la de
+// `Club` lleva el CONTENIDO. Si la resolución se queda en la primera, el
+// dominio propio sirve un sitio vacío mientras el mismo distrito, por su
+// subdominio de plataforma, se ve completo. Pasó con el Distrito 4281.
+// ════════════════════════════════════════════════════════════════════
+const { isDistrictSiteType, districtLinkScore, pickDistrictSite, districtBranding } =
+    await import('../server/lib/districtSite.js');
+
+console.log('\n── ¿Qué club es el sitio de un distrito? ──────────────');
+
+const D = { id: 'dist-4281', number: 4281, subdomain: null };
+
+check('el tipo del sitio se reconoce por la clave máquina y por la etiqueta', () => {
+    // El alta de /admin/distritos escribe `district`; el formulario de sitios
+    // guarda la etiqueta legible. Las dos son el mismo tipo de sitio.
+    assert.equal(isDistrictSiteType('district'), true);
+    assert.equal(isDistrictSiteType('Distrito Rotario'), true);
+    assert.equal(isDistrictSiteType('club'), false);
+    assert.equal(isDistrictSiteType(null), false);
+});
+
+check('un club sin ningún vínculo NO es el sitio del distrito', () =>
+    assert.equal(districtLinkScore(D, { id: 'x', type: 'club' }), 0));
+check('el vínculo explícito pesa más que el número', () =>
+    assert.ok(
+        districtLinkScore(D, { id: 'a', districtId: 'dist-4281', type: 'district' }) >
+        districtLinkScore(D, { id: 'b', district: '4281', type: 'district' })));
+check('el número sólo vincula si además es un sitio de distrito', () =>
+    // `Club.district` la lleva TODO club: es el distrito al que pertenece. Un
+    // club rotario del 4281 tiene «4281» ahí y no es el sitio del distrito.
+    assert.equal(districtLinkScore(D, { id: 'c', district: '4281', type: 'club' }), 0));
+check('el subdominio declarado en la ficha del distrito también vincula', () =>
+    assert.ok(districtLinkScore({ ...D, subdomain: 'd4281' }, { id: 'd', subdomain: 'D4281' }) > 0));
+
+check('sin candidatos vinculados no se inventa un sitio', () => {
+    assert.equal(pickDistrictSite(D, []), null);
+    assert.equal(pickDistrictSite(D, [{ id: 'x', type: 'club' }]), null);
+});
+
+check('entre el club espejo VACÍO y el sitio configurado, gana el configurado', () => {
+    // Es el caso real y el que rompía: al crear el distrito se inserta un club
+    // espejo sin ajustes, y el operador crea después el sitio de verdad. Elegir
+    // el espejo da exactamente la página en blanco que esto corrige.
+    const espejo = { id: 'a', type: 'district', districtId: 'dist-4281', settingsCount: 0 };
+    const real = { id: 'b', type: 'district', districtId: 'dist-4281', settingsCount: 47 };
+    assert.equal(pickDistrictSite(D, [espejo, real]).id, 'b');
+    assert.equal(pickDistrictSite(D, [real, espejo]).id, 'b');
+});
+
+check('el vínculo explícito gana aunque el otro tenga más ajustes', () => {
+    const linked = { id: 'a', type: 'district', districtId: 'dist-4281', settingsCount: 1 };
+    const porNumero = { id: 'b', type: 'district', district: '4281', settingsCount: 99 };
+    assert.equal(pickDistrictSite(D, [porNumero, linked]).id, 'a');
+});
+
+check('a igualdad de todo, la elección es DETERMINISTA', () => {
+    // Si dependiera del orden en que la base devuelve las filas, el mismo
+    // dominio serviría un sitio distinto en cada visita.
+    const a = { id: 'aaa', type: 'district', districtId: 'dist-4281', settingsCount: 5, updatedAt: '2026-01-01' };
+    const b = { id: 'bbb', type: 'district', districtId: 'dist-4281', settingsCount: 5, updatedAt: '2026-01-01' };
+    assert.equal(pickDistrictSite(D, [a, b]).id, 'aaa');
+    assert.equal(pickDistrictSite(D, [b, a]).id, 'aaa');
+});
+
+console.log('\n── La marca: manda el sitio, el distrito es respaldo ──');
+
+check('lo que el sitio tiene cargado NO lo pisa la ficha del distrito', () =>
+    assert.deepEqual(
+        districtBranding({ logo: 'club.png' }, { logo: 'dist.png', favicon: 'd.ico' }),
+        { favicon: 'd.ico' }));
+check('lo que al sitio le falta se completa con la ficha del distrito', () =>
+    assert.equal(districtBranding({}, { logo: 'dist.png' }).logo, 'dist.png'));
+check('sin distrito no se toca nada', () =>
+    assert.deepEqual(districtBranding({ logo: 'club.png' }, null), {}));
+
+console.log('\n── La resolución atraviesa hasta el sitio ─────────────');
+
+check('`by-domain` resuelve el distrito a su sitio, no a la ficha', () => {
+    // El fallo era servir la ficha con `settings: []`: sin ajustes no hay
+    // identidad, ni colores, ni contacto, ni imágenes. Un sitio en blanco.
+    assert.match(ROUTES, /findDistrictSiteClub/);
+    assert.match(ROUTES, /pickDistrictSite/);
+    assert.match(ROUTES, /resolvedBy = `\$\{how\}_site`/);
+});
+
+const DISTRICTS = readFileSync('server/routes/districts.js', 'utf8');
+check('el dominio del distrito se guarda canonizado, igual que el de un sitio', () => {
+    assert.match(DISTRICTS, /canonicalDomain\(domain\) \|\| null/);
+    // Ojo: `subdomain || null` contiene la subcadena y es legítimo.
+    assert.ok(!/[^a-zA-Z]domain \|\| null/.test(DISTRICTS),
+        'volvió a guardarse el dominio en crudo');
+});
+check('el dominio NO se copia al club del distrito', () => {
+    // Las dos columnas son ÚNICAS: con el dominio en las dos filas, cambiarlo
+    // en una deja la otra resolviendo al valor viejo.
+    const insert = DISTRICTS.match(/INSERT INTO "Club"[\s\S]{0,240}/)?.[0] || '';
+    assert.ok(!/\bdomain\b/.test(insert), 'el club espejo volvió a llevarse el dominio');
+    assert.match(insert, /"districtId"/, 'el club espejo debe nacer vinculado al distrito');
+});
+check('el estado del dominio distingue el DNS del CONTENIDO', () => {
+    // «✅ verificado» sobre un sitio en blanco es lo que confundió al 4281.
+    assert.match(DISTRICTS, /siteMessage/);
+    assert.match(DISTRICTS, /no tiene un sitio asociado/);
+});
+
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail === 0 ? 0 : 1);

@@ -673,9 +673,31 @@ const DistrictsManagement: React.FC = () => {
                                                     {domainStatus.status !== 'verified' && (
                                                         <p className="text-xs text-amber-700 mt-1">Los cambios DNS pueden tardar hasta 48 horas en propagarse.</p>
                                                     )}
+                                                    <p className="text-xs text-gray-600 mt-1">Esto comprueba el DNS, no el contenido del sitio.</p>
                                                 </div>
                                             </div>
                                         ) : null}
+
+                                        {/*
+                                          El DNS y el CONTENIDO son dos preguntas distintas. Un dominio
+                                          puede estar perfectamente apuntado a la plataforma y servir una
+                                          página en blanco, porque el contenido no vive en el registro del
+                                          distrito sino en su SITIO. Es lo que pasó con el 4281: acá decía
+                                          «✅ verificado» y el visitante no veía nada.
+                                        */}
+                                        {domainStatus?.siteMessage && (
+                                            <div className={`mt-3 p-4 rounded-xl border flex items-start gap-3 ${domainStatus.site && domainStatus.site.settingsCount > 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                                                {domainStatus.site && domainStatus.site.settingsCount > 0
+                                                    ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                                                    : <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />}
+                                                <div>
+                                                    <p className={`font-bold text-sm ${domainStatus.site && domainStatus.site.settingsCount > 0 ? 'text-green-800' : 'text-amber-800'}`}>
+                                                        Contenido del sitio
+                                                    </p>
+                                                    <p className="text-xs text-gray-700 mt-1">{domainStatus.siteMessage}</p>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <button onClick={handleProvisionDomain} disabled={provisioning}
                                             className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 disabled:opacity-50 transition-colors">

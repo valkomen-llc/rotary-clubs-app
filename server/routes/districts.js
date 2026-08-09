@@ -3,6 +3,7 @@ import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import VercelService from '../services/VercelService.js';
 import bcrypt from 'bcryptjs';
+import { canonicalDomain } from '../lib/domains.js';
 
 const router = express.Router();
 
@@ -66,6 +67,11 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
     } = req.body;
     if (!number || !name) return res.status(400).json({ error: 'Número y nombre son requeridos' });
 
+    // Se guarda en la forma canónica, igual que el alta de un sitio: lo que uno
+    // pega desde la barra del navegador trae `https://` y barra final, y así no
+    // coincide con nada al resolver la visita (v4.743).
+    const cleanDomain = canonicalDomain(domain) || null;
+
     try {
         const result = await db.query(
             `INSERT INTO "District" (
@@ -77,21 +83,29 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
              RETURNING *`,
             [
                 number, name, governor || null, governorEmail || null,
-                countries || [], website || null, subdomain || null, domain || null,
+                countries || [], website || null, subdomain || null, cleanDomain,
                 description || null, status || 'active',
-                subscriptionStatus || 'active', expirationDate || null, 
+                subscriptionStatus || 'active', expirationDate || null,
                 billingContactEmail || null, billingContactPhone || null
             ]
         );
         const district = result.rows[0];
 
-        // 🟢 FIX: Create a mirror/shadow 'Club' for the district so it can use the website CMS platform correctly
+        // El SITIO del distrito: la fila de `Club` donde vive su configuración.
+        // El registro de `District` es administrativo y no tiene ajustes, así
+        // que sin esta fila el distrito no tendría web (ver districtSite.js).
+        //
+        // NO se le copia el dominio: vive en la fila de `District`, que es donde
+        // lo escribe este panel y donde lo lee la provisión en Vercel, y
+        // `by-domain` atraviesa desde ahí hasta este sitio. Con el dominio en
+        // las dos filas —y las dos columnas son ÚNICAS— cambiarlo en una dejaba
+        // la otra apuntando al valor viejo, que seguía resolviendo.
         let mirrorClubId = null;
         try {
             const clubResult = await db.query(
-                `INSERT INTO "Club" (id, name, type, district, domain, subdomain, status, "createdAt", "updatedAt")
+                `INSERT INTO "Club" (id, name, type, district, "districtId", subdomain, status, "createdAt", "updatedAt")
                  VALUES (gen_random_uuid(), $1, 'district', $2, $3, $4, $5, NOW(), NOW()) RETURNING id`,
-                [`Distrito ${number}`, String(number), domain || null, subdomain || null, status || 'active']
+                [`Distrito ${number}`, String(number), district.id, subdomain || null, status || 'active']
             );
             mirrorClubId = clubResult.rows[0].id;
         } catch (e) {
@@ -99,8 +113,8 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
         }
 
         // Auto-provisionar dominio en Vercel si se ha especificado
-        if (domain) {
-            const vercelResult = await VercelService.addDomain(domain);
+        if (cleanDomain) {
+            const vercelResult = await VercelService.addDomain(cleanDomain);
             if (!vercelResult.success) {
                 console.warn(`⚠️ Vercel domain provision for district: ${vercelResult.error}`);
             }
@@ -131,6 +145,9 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
         subscriptionStatus, expirationDate, billingContactEmail, billingContactPhone 
     } = req.body;
 
+    // Misma forma canónica que en el alta y que en la resolución de la visita.
+    const cleanDomain = canonicalDomain(domain) || null;
+
     try {
         // Obtener dominio actual para comparar
         const current = await db.query('SELECT domain FROM "District" WHERE id = $1', [id]);
@@ -148,7 +165,7 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
              RETURNING *`,
             [
                 number, name, governor || null, governorEmail || null,
-                countries || [], website || null, subdomain || null, domain || null,
+                countries || [], website || null, subdomain || null, cleanDomain,
                 description || null, status || 'active',
                 subscriptionStatus || 'active', expirationDate || null,
                 billingContactEmail || null, billingContactPhone || null,
@@ -158,10 +175,10 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Distrito no encontrado' });
 
         // Auto-provisionar en Vercel si el dominio cambió o es nuevo
-        if (domain && domain !== currentDomain) {
-            const vercelResult = await VercelService.addDomain(domain);
+        if (cleanDomain && cleanDomain !== canonicalDomain(currentDomain)) {
+            const vercelResult = await VercelService.addDomain(cleanDomain);
             if (vercelResult.success) {
-                console.log(`✅ Dominio del distrito ${domain} registrado en Vercel`);
+                console.log(`✅ Dominio del distrito ${cleanDomain} registrado en Vercel`);
             } else {
                 console.warn(`⚠️ Vercel error: ${vercelResult.error}`);
             }
@@ -185,13 +202,33 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
 router.get('/:id/domain-status', authMiddleware, superAdminOnly, async (req, res) => {
     try {
         const { id } = req.params;
-        const dist = await db.query('SELECT domain, subdomain FROM "District" WHERE id = $1', [id]);
+        const dist = await db.query('SELECT domain, subdomain, number FROM "District" WHERE id = $1', [id]);
         if (!dist.rows[0]) return res.status(404).json({ error: 'Distrito no encontrado' });
 
         const { domain } = dist.rows[0];
         if (!domain) return res.json({ domain: null, status: 'no_domain', message: 'No hay dominio configurado' });
 
         const vercelStatus = await VercelService.verifyDomain(domain);
+
+        // El DNS y el CONTENIDO son dos cosas distintas, y confundirlas es lo
+        // que dejó al Distrito 4281 con un «✅ verificado» sobre un sitio en
+        // blanco: el dominio apuntaba bien a la plataforma y la plataforma no
+        // tenía qué servir, porque el distrito no tenía su fila de sitio o la
+        // que tenía estaba sin configurar. Se responden por separado.
+        const site = await db.query(
+            `SELECT c.id, c.name,
+                    (SELECT COUNT(*)::int FROM "Setting" s WHERE s."clubId" = c.id) AS "settingsCount"
+               FROM "Club" c
+              WHERE c."districtId" = $1
+                 OR (lower(coalesce(c.type, '')) IN ('district', 'distrito rotario')
+                     AND coalesce(c.district, '') <> '' AND btrim(c.district) = $2)
+              ORDER BY (c."districtId" = $1) DESC,
+                       (SELECT COUNT(*) FROM "Setting" s WHERE s."clubId" = c.id) DESC
+              LIMIT 1`,
+            [id, String(dist.rows[0].number ?? '')]
+        );
+        const siteRow = site.rows[0] || null;
+
         res.json({
             domain,
             status: vercelStatus.success ? 'verified' : 'pending',
@@ -199,6 +236,14 @@ router.get('/:id/domain-status', authMiddleware, superAdminOnly, async (req, res
             message: vercelStatus.success
                 ? '✅ Dominio verificado y activo'
                 : '⏳ Pendiente — Revisa la configuración DNS',
+            site: siteRow
+                ? { id: siteRow.id, name: siteRow.name, settingsCount: siteRow.settingsCount }
+                : null,
+            siteMessage: !siteRow
+                ? 'El distrito no tiene un sitio asociado: quien visite el dominio verá una página sin contenido. Creá el sitio del distrito y asignáselo.'
+                : siteRow.settingsCount === 0
+                    ? `El dominio lleva al sitio «${siteRow.name}», que todavía no tiene ninguna configuración cargada.`
+                    : `El dominio lleva al sitio «${siteRow.name}».`,
         });
     } catch (error) {
         res.status(500).json({ error: 'Error al verificar dominio' });

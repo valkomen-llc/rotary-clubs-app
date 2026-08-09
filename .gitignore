@@ -49,6 +49,10 @@ tmp/
 # Los guardianes del despliegue SÍ van al repositorio: sin ellos el
 # `prebuild` falla y, peor, se pierde la protección contra el borrado de datos.
 !scripts/*.mjs
+# Y los datos de prueba que esos guiones necesitan. La negación de arriba no
+# alcanza a los subdirectorios, así que sin esta línea una prueba se sube sin
+# su fixture y falla en cualquier clon.
+!scripts/fixtures/*.mjs
 check_*.js
 test_*.js
 test-*.js
