@@ -2,12 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import ProjectAIModal from '../../components/admin/ProjectAIModal';
+import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
+import { isDistrictSiteType } from '../../lib/districtEcosystem';
 import {
     Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
     LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash, Quote, Bot,
-    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink, RefreshCw
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink, RefreshCw, Network
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -112,6 +114,8 @@ const ProjectsManagement: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAIModalOpen, setIsAIModalOpen] = useState(false);
     const [showNewProjectStep1, setShowNewProjectStep1] = useState(false);
+    // v4.749 — Traer proyectos de los sitios vinculados al distrito.
+    const [showEcosystem, setShowEcosystem] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -746,6 +750,19 @@ const ProjectsManagement: React.FC = () => {
                     >
                         <Quote className="w-4 h-4" /> Testimonios
                     </button>
+                    {/* v4.749 — Traer del ecosistema. Se muestra por TIPO DE SITIO,
+                        no por rol: la función es del sitio de un distrito. Esto decide
+                        qué se pinta, nunca a qué se tiene acceso — el alcance real lo
+                        resuelve el servidor y devuelve 403 con su motivo. */}
+                    {(isDistrictSiteType((club as any)?.type)
+                      || isDistrictSiteType((club as any)?.organizationType)) && (
+                        <button
+                            onClick={() => setShowEcosystem(true)}
+                            className="flex items-center gap-2 bg-white text-rotary-blue border border-blue-200 px-4 py-2.5 rounded-xl hover:bg-blue-50 transition-all font-bold active:scale-95"
+                        >
+                            <Network className="w-5 h-5" /> Traer del ecosistema
+                        </button>
+                    )}
                     {/* Nuevo proyecto */}
                     <button
                         onClick={() => setShowNewProjectStep1(true)}
@@ -755,6 +772,14 @@ const ProjectsManagement: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            {showEcosystem && (
+                <EcosystemPicker
+                    kind="project"
+                    onClose={() => setShowEcosystem(false)}
+                    onDone={fetchProjects}
+                />
+            )}
 
             {/* Barra de filtros */}
             <div className="mb-6 space-y-3">

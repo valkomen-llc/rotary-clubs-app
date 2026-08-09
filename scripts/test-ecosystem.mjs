@@ -238,6 +238,76 @@ check('sin base tampoco', srv.freeSlug('', []) === null);
 check('una lista con huecos no rompe', srv.freeSlug('x', [null, undefined, '']) === 'x');
 
 // ════════════════════════════════════════════════════════════════════
+grupo('── Qué se copia de un PROYECTO ────────────────────────');
+
+const PROYECTO = {
+    id: 'p1', slug: 'agua-potable', title: 'Agua potable para La Ladera',
+    description: 'Pozo y filtros.', image: 'https://s3/p.jpg', status: 'active',
+    category: 'Servicio', meta: 20000, recaudado: 7500, donantes: 34, beneficiarios: 900,
+    ubicacion: 'Cali', fechaEstimada: '2026-12-01T00:00:00.000Z',
+    videoUrl: 'https://youtu.be/x', images: ['https://s3/1.jpg'],
+    impacto: 'Impacto', actualizaciones: 'Avances', socialCopy: 'copy',
+    clubId: 'c1',
+};
+
+const copiaP = srv.buildProjectClonePayload({ project: PROYECTO, slug: 'agua-potable-2' });
+
+check('se copia el título y la descripción',
+    copiaP.title === PROYECTO.title && copiaP.description === PROYECTO.description);
+check('se copian las cifras: son lo que hace que la ficha se vea completa',
+    copiaP.meta === 20000 && copiaP.recaudado === 7500
+    && copiaP.donantes === 34 && copiaP.beneficiarios === 900);
+check('se copian la ubicación, la fecha estimada y el estado',
+    copiaP.ubicacion === 'Cali' && copiaP.fechaEstimada === PROYECTO.fechaEstimada
+    && copiaP.status === 'active');
+check('se copia la galería', eq(copiaP.images, PROYECTO.images));
+check('se usa el slug liberado, no el del original', copiaP.slug === 'agua-potable-2');
+
+// La copia ya está publicada e indexada en el sitio de su club: dos direcciones
+// con el mismo contenido se compiten en Google. `indexable` lo respeta
+// `seoEntities.js`, así que la copia se ve en el sitio y no entra al sitemap.
+check('la copia NACE sin indexar, para no competir con el original en Google',
+    copiaP.indexable === false);
+
+// Es el equivalente de la inscripción en un evento, y es peor: es dinero.
+check('no se arrastran campos de SEO del original',
+    copiaP.seoTitle === undefined && copiaP.seoDescription === undefined);
+
+check('un proyecto sin datos no revienta al copiarse',
+    srv.buildProjectClonePayload({ project: null, slug: null }).title === ''
+    && srv.buildProjectClonePayload({}).images.length === 0);
+
+grupo('── Qué se vigila de un proyecto ───────────────────────');
+const trackedP = srv.PROJECT_TRACKED_FIELDS.map(f => f.key);
+check('se vigilan el título, el estado, la ubicación, la fecha y la meta',
+    eq(trackedP, ['title', 'status', 'ubicacion', 'fechaEstimada', 'meta']));
+
+// Se mueven con cada aporte: vigilarlos dejaría la copia marcada como «cambió»
+// para siempre, y el aviso que salta siempre se deja de leer.
+check('NO se vigila `recaudado`: se mueve solo con cada aporte',
+    !trackedP.includes('recaudado'));
+check('NI `donantes`, por lo mismo', !trackedP.includes('donantes'));
+
+check('un aporte nuevo en el origen NO marca la copia como divergente',
+    srv.divergenceOf({ ...PROYECTO, recaudado: 7500 }, { ...PROYECTO, recaudado: 9000 },
+        srv.PROJECT_TRACKED_FIELDS).changed.length === 0);
+check('pero cambiar la META sí se avisa',
+    srv.divergenceOf(PROYECTO, { ...PROYECTO, meta: 30000 }, srv.PROJECT_TRACKED_FIELDS)
+        .changed[0]?.field === 'meta');
+check('y cambiar el estado también',
+    srv.divergenceOf(PROYECTO, { ...PROYECTO, status: 'completed' }, srv.PROJECT_TRACKED_FIELDS)
+        .changed[0]?.field === 'status');
+check('sin pasar campos se usan los del EVENTO, como siempre',
+    eq(srv.divergenceOf(EVENTO, EVENTO), { missing: false, changed: [] }));
+
+grupo('── La dirección de un proyecto en su sitio ────────────');
+check('un proyecto vive bajo /proyectos, no bajo /eventos',
+    srv.publicProjectUrlOf(CLUB, PROYECTO) === 'https://calinorte.org/proyectos/agua-potable');
+check('sin dominio propio, el subdominio de plataforma',
+    srv.publicProjectUrlOf(FERIA, PROYECTO) === 'https://feria.clubplatform.org/proyectos/agua-potable');
+check('la ruta de eventos no cambió', srv.publicUrlOf(CLUB, EVENTO).includes('/eventos/'));
+
+// ════════════════════════════════════════════════════════════════════
 grupo('── `Club.district` es una LISTA, no un valor ──────────');
 // El fallo de v4.747: se comparaba por igualdad exacta, así que un sitio con
 // «4271, 4281» no lo reconocía NINGUNO de los dos distritos. Se reportó con la
@@ -373,6 +443,13 @@ for (const t of TAGS) {
 }
 check('formatDistrictTags coincide',
     srv.formatDistrictTags(['4271', '4281']) === web.formatDistrictTags(['4271', '4281']));
+check('publicProjectUrlOf coincide',
+    srv.publicProjectUrlOf(CLUB, PROYECTO) === web.publicProjectUrlOf(CLUB, PROYECTO));
+check('PROJECT_TRACKED_FIELDS vigila los mismos campos',
+    eq(srv.PROJECT_TRACKED_FIELDS.map(f => f.key), web.PROJECT_TRACKED_FIELDS.map(f => f.key)));
+check('divergenceOf con campos de proyecto coincide',
+    eq(srv.divergenceOf(PROYECTO, { ...PROYECTO, meta: 30000 }, srv.PROJECT_TRACKED_FIELDS),
+        web.divergenceOf(PROYECTO, { ...PROYECTO, meta: 30000 }, web.PROJECT_TRACKED_FIELDS)));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(56)}`);

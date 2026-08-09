@@ -1690,8 +1690,8 @@ programas—. Se resolvió **CLONANDO**, no referenciando.
 | `src/components/admin/events/EcosystemPicker.tsx` | El buscador y la selección múltiple |
 | `src/components/admin/DistrictPicker.tsx` | El selector de distritos registrados, compartido por las cinco pantallas de sitios |
 
-Pruebas: `npm run test:ecosystem` (171 casos de criterio, **sin base,
-credenciales ni red**) y `npm run test:ecosystem:ui` (40 casos: monta los
+Pruebas: `npm run test:ecosystem` (192 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:ecosystem:ui` (48 casos: monta los
 componentes en un navegador con la API interceptada; pide `npm i --no-save
 playwright esbuild` y **se salta solo** si no están).
 
@@ -1817,7 +1817,63 @@ playwright esbuild` y **se salta solo** si no están).
   que un evento ya traído no ofrezca casilla, y que un 403 se vea con su motivo
   en vez de dejar el panel en blanco.
 
-**Pendiente conocido:** el clon es **contenido duplicado para SEO**.
+### Proyectos (v4.749)
+
+Lo mismo, con dos diferencias que no son de estilo.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/ensureEcosystemCloneSchema.js` | Crea `EcosystemClone` en runtime |
+| `server/lib/ecosystemClones.js` | Leer y escribir la procedencia |
+
+- **La procedencia de un proyecto NO va en el proyecto, va en `EcosystemClone`.**
+  `CalendarEvent` ya tenía una columna `Json` donde meter `metadata.source`;
+  `Project` **no**, y añadirle una es el riesgo de despliegue que documenta la
+  regla de `logo_intl` (v4.699), agravado: `Project` se consulta con Prisma en
+  media plataforma —el listado del panel, el cerebro, los reportes— y con
+  `findMany` **sin `select`**, así que Prisma pide todas las columnas del
+  esquema. Y el build **no ejecuta `db push`** a propósito (v4.622). Una columna
+  declarada y todavía inexistente dejaría sin listado de proyectos a TODOS los
+  sitios hasta que alguien corriera `npm run db:push` a mano. Una tabla creada
+  en runtime no tiene ese problema.
+- **Toda lectura de la procedencia DEGRADA, nunca revienta.** Si la tabla aún no
+  existe, lo que corresponde es que nada figure como traído, no que la ficha
+  pública de un proyecto responda 500.
+- **La copia NO RECIBE APORTES**, y es lo más importante del módulo. `Donation`
+  cuelga de `projectId` y la pasarela cobra al `clubId` de la página: un aporte
+  hecho sobre la copia entraría a la cuenta del DISTRITO y quedaría registrado
+  contra un proyecto que no es el que se está financiando. **Eso es dinero en la
+  cuenta equivocada, no una molestia.** La ficha manda a aportar al sitio de
+  origen. Es el mismo hallazgo que la inscripción de un evento y es peor.
+- **La copia nace CON `indexable: false`.** El proyecto ya está publicado e
+  indexado en el sitio de su club; dos direcciones con el mismo contenido se
+  compiten en Google. `seoEntities.js` respeta ese campo, así que la copia se ve
+  perfectamente en el sitio del distrito y no entra en el sitemap. Es la
+  respuesta al pendiente que quedó abierto con los eventos, donde no existía un
+  campo así.
+- **Las cifras SÍ se copian** (`meta`, `recaudado`, `donantes`,
+  `beneficiarios`): son lo que hace que la ficha se vea completa. Lo que no
+  hacen es aceptar dinero.
+- **Pero `recaudado` y `donantes` NO se vigilan** (`PROJECT_TRACKED_FIELDS`). Se
+  mueven con cada aporte, así que vigilarlos dejaría la copia marcada como
+  «cambió» de forma permanente — y el aviso que salta siempre se deja de leer.
+  Se refrescan igual al pulsar «Actualizar desde el origen»; lo que no hacen es
+  disparar el aviso. `meta` sí se vigila: cambiar el objetivo es una decisión de
+  quien dirige el proyecto, no el goteo de los aportes.
+- **`Project.slug` es ÚNICO EN TODA LA PLATAFORMA**, no por sitio como el de
+  `CalendarEvent`. El slug del original **sí** choca al llegar a otro sitio, así
+  que se libera consultando los slugs de todos los proyectos, no sólo los
+  propios.
+- **Rutas propias, no un parámetro `kind` en el servidor.** Lo que se copia y lo
+  que NO se copia es distinto en cada uno —la inscripción en un evento, los
+  aportes en un proyecto—, y meterlo en una sola ruta con un `if` dentro haría
+  fácil que un cambio para uno se cuele en el otro.
+- **En la PANTALLA sí es un solo componente** (`EcosystemPicker` con `kind`): el
+  flujo que ve el usuario es idéntico —buscar, marcar varios, traer— y
+  escribirlo dos veces daría dos pantallas que se separan en silencio, que es
+  justo lo que hubo que deshacer con la casilla de distritos.
+
+**Pendiente conocido:** el clon de un EVENTO es **contenido duplicado para SEO**.
 `/eventos/:slug` es indexable y va al sitemap (`seoSpec.js`), así que el evento
 queda publicado en dos direcciones y los dos sitios se compiten en Google. Se
 mitiga parcialmente con la atribución y el enlace al original, pero lo que lo
@@ -2856,9 +2912,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 33 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EventRegistration`,
-`MediaFolder`, `EventAttendeeAccount`,
+Las 34 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EcosystemClone`,
+`EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,

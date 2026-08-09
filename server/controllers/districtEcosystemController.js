@@ -18,9 +18,11 @@
 import db from '../lib/db.js';
 import { isDistrictSiteType } from '../lib/districtSite.js';
 import {
-    orgBadgeOf, publicUrlOf, buildClonePayload, sourceTraceOf,
-    divergenceOf, freeSlug,
+    orgBadgeOf, publicUrlOf, publicProjectUrlOf, buildClonePayload,
+    buildProjectClonePayload, sourceTraceOf, divergenceOf, freeSlug,
+    PROJECT_TRACKED_FIELDS,
 } from '../lib/districtEcosystem.js';
+import { recordClone, markRefreshed, clonesBySource, cloneOf } from '../lib/ecosystemClones.js';
 import { ingestMemorySafe } from '../services/brainService.js';
 
 /** Cuántos eventos próximos se traen de una vez. Acotado: la función corta a los 120 s. */
@@ -419,4 +421,269 @@ export async function refreshClone(req, res) {
     }
 }
 
-export default { listSites, listEvents, cloneEvents, refreshClone };
+// ════════════════════════════════════════════════════════════════════
+// PROYECTOS — v4.749
+//
+// Mismo flujo que los eventos y el mismo criterio compartido, con dos
+// diferencias que no son de estilo:
+//
+//   1. La procedencia NO va en el propio proyecto sino en `EcosystemClone`.
+//      `Project` no tiene columna `Json` y añadirle una a una tabla que Prisma
+//      consulta con `findMany` sin `select` reventaría el listado de proyectos
+//      de todos los sitios hasta que alguien corriera `db:push` a mano
+//      (ver `ensureEcosystemCloneSchema.js`).
+//   2. `Project.slug` es ÚNICO EN TODA LA PLATAFORMA, no por sitio. El slug del
+//      original SÍ choca al llegar a otro sitio, así que hay que liberarlo
+//      contra los slugs de todos los proyectos, no sólo los propios.
+// ════════════════════════════════════════════════════════════════════
+
+const PROJECT_COLUMNS = `id, title, description, image, status, category, meta, recaudado,
+    donantes, beneficiarios, ubicacion, "fechaEstimada", "videoUrl", images, impacto,
+    actualizaciones, "socialCopy", slug, "clubId"`;
+
+/** Los slugs de proyecto ya usados. Es un índice ÚNICO GLOBAL, no por sitio. */
+async function takenProjectSlugs(base) {
+    const res = await db.query(
+        `SELECT slug FROM "Project" WHERE slug IS NOT NULL AND slug LIKE $1`,
+        [`${String(base || '').slice(0, 100)}%`],
+    );
+    return res.rows.map(r => r.slug);
+}
+
+// ── GET /projects ────────────────────────────────────────────────────
+export async function listProjects(req, res) {
+    try {
+        const scope = await resolveScope(req);
+        if (scope.error) return res.status(scope.code).json({ error: scope.error });
+
+        const siteId = req.query.siteId ? String(req.query.siteId) : '';
+        const pool = siteId ? scope.siblings.filter(c => c.id === siteId) : scope.siblings;
+        if (!pool.length) return res.json({ events: [], sites: [] });
+
+        const byId = new Map(pool.map(c => [c.id, c]));
+        const q = String(req.query.q || '').trim().toLowerCase();
+
+        const projectsRes = await db.query(
+            `SELECT ${PROJECT_COLUMNS}
+               FROM "Project"
+              WHERE "clubId" = ANY($1) AND "deletedAt" IS NULL
+              ORDER BY "createdAt" DESC
+              LIMIT ${MAX_EVENTS}`,
+            [pool.map(c => c.id)],
+        );
+
+        const clones = await clonesBySource(scope.site.id, 'project');
+        // Las copias locales, para poder medir la divergencia contra el original.
+        const localIds = [...clones.values()].map(c => c.localId).filter(Boolean);
+        const locals = new Map();
+        if (localIds.length) {
+            const r = await db.query(
+                `SELECT ${PROJECT_COLUMNS} FROM "Project" WHERE id = ANY($1) AND "deletedAt" IS NULL`,
+                [localIds],
+            );
+            for (const row of r.rows) locals.set(row.id, row);
+        }
+
+        // Se responde con la MISMA forma que los eventos (`events`), para que la
+        // pantalla sea una sola. Lo que cambia es el contenido, no el contrato.
+        const events = projectsRes.rows
+            .filter(p => {
+                if (!q) return true;
+                const club = byId.get(p.clubId);
+                return `${p.title} ${p.ubicacion || ''} ${club?.name || ''} ${club?.city || ''}`
+                    .toLowerCase().includes(q);
+            })
+            .map(p => {
+                const club = byId.get(p.clubId);
+                const trace = clones.get(p.id) || null;
+                const local = trace ? locals.get(trace.localId) : null;
+                return {
+                    id: p.id,
+                    title: p.title,
+                    // La pantalla ordena y rotula por fecha; en un proyecto la
+                    // que tiene sentido es la fecha estimada, y puede faltar.
+                    startDate: p.fechaEstimada,
+                    endDate: null,
+                    location: p.ubicacion || '',
+                    type: p.status,
+                    image: p.image || '',
+                    url: publicProjectUrlOf(club, p),
+                    org: {
+                        id: club?.id || p.clubId,
+                        name: club?.name || '',
+                        city: club?.city || '',
+                        logo: club?.logo || '',
+                        badge: orgBadgeOf(club),
+                    },
+                    cloneId: trace?.localId || null,
+                    divergence: trace
+                        ? (local ? divergenceOf(local, p, PROJECT_TRACKED_FIELDS) : { missing: true, changed: [] })
+                        : null,
+                };
+            });
+
+        res.json({ events, sites: pool.map(c => ({ id: c.id, name: c.name, badge: orgBadgeOf(c) })) });
+    } catch (error) {
+        console.error('[ecosystem] listProjects:', error);
+        res.status(500).json({ error: 'No pudimos cargar los proyectos del ecosistema.' });
+    }
+}
+
+// ── POST /clone-projects ─────────────────────────────────────────────
+export async function cloneProjects(req, res) {
+    try {
+        const scope = await resolveScope(req);
+        if (scope.error) return res.status(scope.code).json({ error: scope.error });
+
+        const ids = Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : [];
+        if (!ids.length) return res.status(400).json({ error: 'No se indicó ningún proyecto.' });
+        if (ids.length > MAX_CLONE_BATCH) {
+            return res.status(400).json({ error: `Se pueden traer hasta ${MAX_CLONE_BATCH} proyectos a la vez.` });
+        }
+
+        const allowed = new Set(scope.siblings.map(c => c.id));
+        const byId = new Map(scope.siblings.map(c => [c.id, c]));
+
+        const originsRes = await db.query(
+            `SELECT ${PROJECT_COLUMNS} FROM "Project" WHERE id = ANY($1) AND "deletedAt" IS NULL`,
+            [ids],
+        );
+        const clones = await clonesBySource(scope.site.id, 'project');
+
+        const created = [];
+        const skipped = [];
+
+        for (const origin of originsRes.rows) {
+            if (!allowed.has(origin.clubId)) {
+                skipped.push({ id: origin.id, title: origin.title, reason: 'no disponible en tu distrito' });
+                continue;
+            }
+            if (clones.has(origin.id)) {
+                skipped.push({ id: origin.id, title: origin.title, reason: 'ya estaba en tus proyectos' });
+                continue;
+            }
+
+            const club = byId.get(origin.clubId);
+            // El slug del original CHOCA al llegar a otro sitio: en `Project` el
+            // índice es único en toda la plataforma, no por club. Se normaliza
+            // primero para saber contra qué prefijo consultar, y se libera con
+            // sufijo. La consulta se rehace en cada vuelta a propósito: dentro
+            // del mismo lote ya se insertaron los anteriores.
+            const wanted = freeSlug(origin.slug || origin.title, []);
+            const slug = wanted ? freeSlug(wanted, await takenProjectSlugs(wanted)) : null;
+            const payload = buildProjectClonePayload({ project: origin, slug });
+
+            const inserted = await db.query(
+                `INSERT INTO "Project"
+                    (id, title, description, image, status, category, meta, recaudado, donantes,
+                     beneficiarios, ubicacion, "fechaEstimada", "videoUrl", images, impacto,
+                     actualizaciones, "socialCopy", slug, indexable, "clubId", "createdAt", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                         $14, $15, $16, $17, $18, $19, NOW(), NOW())
+                 RETURNING id, title, slug`,
+                [
+                    payload.title, payload.description, payload.image, payload.status, payload.category,
+                    payload.meta, payload.recaudado, payload.donantes, payload.beneficiarios,
+                    payload.ubicacion, payload.fechaEstimada ? new Date(payload.fechaEstimada) : null,
+                    payload.videoUrl, payload.images, payload.impacto, payload.actualizaciones,
+                    payload.socialCopy, payload.slug, payload.indexable, scope.site.id,
+                ],
+            );
+
+            const row = inserted.rows[0];
+            await recordClone({
+                ownerClubId: scope.site.id,
+                kind: 'project',
+                localId: row.id,
+                source: {
+                    id: origin.id,
+                    clubId: origin.clubId,
+                    clubName: club?.name || '',
+                    url: publicProjectUrlOf(club, origin),
+                },
+            });
+            created.push({ ...row, from: club?.name || '' });
+
+            ingestMemorySafe({
+                clubId: scope.site.id,
+                kind: 'PROJECT',
+                sourceType: 'Project',
+                sourceId: row.id,
+                title: row.title,
+                content: payload.description || '',
+                metadata: { status: payload.status, ubicacion: payload.ubicacion },
+            });
+        }
+
+        const found = new Set(originsRes.rows.map(r => r.id));
+        for (const id of ids) {
+            if (!found.has(id)) skipped.push({ id, title: '', reason: 'el proyecto ya no existe' });
+        }
+
+        res.json({ created, skipped });
+    } catch (error) {
+        console.error('[ecosystem] cloneProjects:', error);
+        res.status(500).json({ error: 'No pudimos traer los proyectos.' });
+    }
+}
+
+// ── POST /refresh-project/:cloneId ───────────────────────────────────
+export async function refreshProjectClone(req, res) {
+    try {
+        const scope = await resolveScope(req);
+        if (scope.error) return res.status(scope.code).json({ error: scope.error });
+
+        // El aislamiento en el WHERE: sólo un proyecto de MI sitio.
+        const localRes = await db.query(
+            `SELECT ${PROJECT_COLUMNS} FROM "Project" WHERE id = $1 AND "clubId" = $2 AND "deletedAt" IS NULL`,
+            [req.params.cloneId, scope.site.id],
+        );
+        const local = localRes.rows[0];
+        if (!local) return res.status(404).json({ error: 'No encontramos ese proyecto en tu sitio.' });
+
+        const trace = await cloneOf('project', local.id);
+        if (!trace) return res.status(400).json({ error: 'Este proyecto no vino de otro sitio: no hay origen que releer.' });
+
+        const originRes = await db.query(
+            `SELECT ${PROJECT_COLUMNS} FROM "Project" WHERE id = $1 AND "deletedAt" IS NULL`,
+            [trace.sourceId],
+        );
+        const origin = originRes.rows[0];
+        if (!origin) {
+            return res.status(409).json({
+                error: 'El proyecto original ya no existe en su sitio. Tu copia se conserva; '
+                    + 'podés editarla o eliminarla.',
+            });
+        }
+
+        // Se conserva el SLUG de la copia: es su dirección publicada.
+        const payload = buildProjectClonePayload({ project: origin, slug: local.slug });
+
+        const updated = await db.query(
+            `UPDATE "Project"
+                SET title=$1, description=$2, image=$3, status=$4, category=$5, meta=$6,
+                    recaudado=$7, donantes=$8, beneficiarios=$9, ubicacion=$10, "fechaEstimada"=$11,
+                    "videoUrl"=$12, images=$13, impacto=$14, actualizaciones=$15, "updatedAt"=NOW()
+              WHERE id=$16 AND "clubId"=$17
+              RETURNING id, title, slug, status, ubicacion, meta, recaudado`,
+            [
+                payload.title, payload.description, payload.image, payload.status, payload.category,
+                payload.meta, payload.recaudado, payload.donantes, payload.beneficiarios,
+                payload.ubicacion, payload.fechaEstimada ? new Date(payload.fechaEstimada) : null,
+                payload.videoUrl, payload.images, payload.impacto, payload.actualizaciones,
+                local.id, scope.site.id,
+            ],
+        );
+
+        await markRefreshed({ kind: 'project', localId: local.id });
+        res.json({ event: updated.rows[0] });
+    } catch (error) {
+        console.error('[ecosystem] refreshProjectClone:', error);
+        res.status(500).json({ error: 'No pudimos actualizar el proyecto.' });
+    }
+}
+
+export default {
+    listSites, listEvents, cloneEvents, refreshClone,
+    listProjects, cloneProjects, refreshProjectClone,
+};

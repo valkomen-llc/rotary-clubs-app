@@ -1,6 +1,7 @@
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 import { ingestMemorySafe } from '../services/brainService.js';
+import { cloneOf } from '../lib/ecosystemClones.js';
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -140,8 +141,30 @@ export const getPublicProjectById = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Proyecto no encontrado' });
         }
+
+        // v4.749 — ¿Es una copia traída del ecosistema del distrito? La ficha
+        // pública lo necesita para DOS cosas: acreditar al club que lo dirige y
+        // —lo importante— NO ofrecer el formulario de aporte. `Donation` cuelga
+        // de `projectId` y la pasarela cobra al `clubId` de la página, así que
+        // un aporte hecho sobre la copia entraría a la cuenta del distrito.
+        //
+        // Va en una consulta aparte y tolerante a propósito: si la tabla aún no
+        // existe, lo que corresponde es que la ficha se comporte como contenido
+        // propio, no que la página devuelva 500.
+        const project = result.rows[0];
+        const trace = await cloneOf('project', project.id);
+
         res.set('Cache-Control', 'no-store');
-        res.json(result.rows[0]);
+        res.json({
+            ...project,
+            ecosystemSource: trace
+                ? {
+                    clubName: trace.sourceName || '',
+                    url: trace.sourceUrl || '',
+                    clubId: trace.sourceClubId || '',
+                }
+                : null,
+        });
     } catch (error) {
         console.error('Error fetching project:', error);
         res.status(500).json({ error: 'Error fetching project' });

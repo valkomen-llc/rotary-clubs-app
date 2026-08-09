@@ -98,17 +98,22 @@ export function districtTagsMatch(value: unknown, number: unknown): boolean {
     return parseDistrictTags(value).includes(n);
 }
 
-export function publicUrlOf(club: any, event: any): string {
-    const ref = event?.slug || event?.id;
+export function publicUrlOf(club: any, entity: any, section = 'eventos'): string {
+    const ref = entity?.slug || entity?.id;
     if (!ref) return '';
 
     const domain = norm(club?.domain).replace(/^https?:\/\//, '').replace(/\/+$/, '');
-    if (domain) return `https://${domain}/eventos/${ref}`;
+    if (domain) return `https://${domain}/${section}/${ref}`;
 
     const sub = norm(club?.subdomain);
-    if (sub) return `https://${sub}.clubplatform.org/eventos/${ref}`;
+    if (sub) return `https://${sub}.clubplatform.org/${section}/${ref}`;
 
     return '';
+}
+
+/** La dirección pública de un PROYECTO en el sitio de su dueño. */
+export function publicProjectUrlOf(club: any, project: any): string {
+    return publicUrlOf(club, project, 'proyectos');
 }
 
 export function buildSourceTrace(
@@ -147,6 +152,22 @@ export const TRACKED_FIELDS = [
     { key: 'location', label: 'la ubicación', date: false },
 ];
 
+/**
+ * Los campos de un PROYECTO que se vigilan.
+ *
+ * `recaudado` y `donantes` NO están a propósito: se mueven con cada aporte, así
+ * que vigilarlos dejaría la copia marcada como «cambió» para siempre — y el
+ * aviso que salta siempre se deja de leer. Se refrescan igual al pulsar
+ * «Actualizar desde el origen».
+ */
+export const PROJECT_TRACKED_FIELDS = [
+    { key: 'title', label: 'el título', date: false },
+    { key: 'status', label: 'el estado', date: false },
+    { key: 'ubicacion', label: 'la ubicación', date: false },
+    { key: 'fechaEstimada', label: 'la fecha estimada', date: true },
+    { key: 'meta', label: 'la meta de recaudación', date: false },
+];
+
 const sameValue = (a: any, b: any, isDate?: boolean): boolean => {
     if (isDate) {
         const ta = a ? new Date(a).getTime() : 0;
@@ -156,10 +177,12 @@ const sameValue = (a: any, b: any, isDate?: boolean): boolean => {
     return String(a ?? '').trim() === String(b ?? '').trim();
 };
 
-export function divergenceOf(clone: any, origin: any): Divergence {
+export function divergenceOf(
+    clone: any, origin: any, fields = TRACKED_FIELDS,
+): Divergence {
     if (!origin) return { missing: true, changed: [] };
     const changed: Array<{ field: string; label: string }> = [];
-    for (const f of TRACKED_FIELDS) {
+    for (const f of fields) {
         if (!sameValue(clone?.[f.key], origin?.[f.key], f.date)) {
             changed.push({ field: f.key, label: f.label });
         }
