@@ -1675,6 +1675,121 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
+## La agenda del Distrito: traer eventos del ecosistema — v4.747
+
+El sitio de un Distrito trae a su propia agenda los eventos próximos de las
+organizaciones vinculadas a él —clubes, la Feria de Proyectos, RYE, fundaciones,
+programas—. Se resolvió **CLONANDO**, no referenciando.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/districtEcosystem.js` | El CRITERIO. **Puro**: qué se copia, cómo se rotula cada organización, a dónde apunta el original, qué cuenta como divergencia |
+| `src/lib/districtEcosystem.ts` | Espejo en el navegador |
+| `server/controllers/districtEcosystemController.js` | La orquestación y el aislamiento |
+| `server/routes/district-ecosystem.js` | `/sites`, `/events`, `/clone`, `/refresh/:cloneId` |
+| `src/components/admin/events/EcosystemPicker.tsx` | El buscador y la selección múltiple |
+
+Pruebas: `npm run test:ecosystem` (123 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:ecosystem:ui` (29 casos: monta el
+componente en un navegador con la API interceptada; pide `npm i --no-save
+playwright esbuild` y **se salta solo** si no están).
+
+**Reglas durables:**
+
+- **Es un CLON, no una referencia, y la decisión fue del cliente sabiendo el
+  precio.** Se evaluaron las dos: una tabla de referencias con `JOIN` daría una
+  única fuente de verdad garantizada por construcción —todos los sitios viven en
+  la MISMA base Postgres, así que «consumir el evento del club» es un `JOIN`, no
+  una federación—; el clon no la da, pero **no exige ningún cambio de esquema**
+  y el evento traído es una fila más de `CalendarEvent` que el módulo de siempre
+  lista, edita y publica sin enterarse. Se eligió el clon por eso. Si algún día
+  la divergencia duele más que el esquema, la migración está preparada: **todos
+  los clones son localizables** por `metadata.source.eventId`.
+- **La huella `metadata.source` es lo único que separa esto de un copiar y
+  pegar.** De ella salen las tres cosas que hacen el clon sostenible: la
+  ATRIBUCIÓN en la ficha pública, la DIVERGENCIA (`divergenceOf`) y el botón de
+  ACTUALIZAR. Sin huella, una copia es irrecuperable: nadie puede saber de dónde
+  vino ni contra qué compararla. Cuesta una línea al clonar.
+- **El clon NO se lleva la inscripción**, y es el punto de todo el módulo.
+  `EventEdition."eventId"` es UNIQUE y `EventRegistration`,
+  `EventRegistrationCategory` y `EventRegistrationPayment` cuelgan de `eventId`:
+  el clon nace con un id nuevo, así que no tiene edición, ni categorías, ni
+  precios. Copiar `metadata.registration` —o `metadata.latir`, que es la otra
+  llave del panel— le pondría un botón «Inscribirme» que lleva a un formulario
+  **vacío**, y quien se inscribiera desde el sitio del Distrito no se estaría
+  inscribiendo a nada. Eso **no se ve mirando la pantalla**: se ve el botón y
+  parece que funciona. `metadata.venue` SÍ se copia: la sede es un dato del
+  lugar, no del cobro.
+- **Se acredita al organizador y se enlaza a su ficha original.** Es lo que
+  separa difundir de apropiarse, y es además dónde vive la inscripción. Va en la
+  página pública del evento (`EventoDetalle.tsx`) y en el panel.
+- **El Distrito clona LIBREMENTE de sus sitios; no hay casilla de permiso.** Son
+  eventos ya públicos y el clon siempre acredita y enlaza. Una casilla de
+  autorización por evento dejaría la función **vacía el día del despliegue** —no
+  aparece nada hasta que cada club haga algo— y obligaría a tocar el formulario
+  de eventos de todos los sitios. Si alguna vez se pide, el sitio para ponerla es
+  el formulario del evento, no una pantalla nueva: las pantallas que se olvidan
+  son siempre las del segundo lugar.
+- **Sólo se vigilan CUATRO campos** (`TRACKED_FIELDS`): título, fecha de inicio,
+  fecha de fin y ubicación. La descripción y el HTML cambian por correcciones de
+  redacción que a nadie le urge propagar; esos cuatro son los que mandan a
+  alguien al sitio equivocado el día equivocado. Avisar de todo sería avisar de
+  nada: el aviso que salta siempre se deja de leer.
+- **«El original ya no existe» es distinto de «no cambió nada»** (`missing`), y
+  se dice distinto. Refrescar un clon huérfano devuelve 409 con el motivo y **la
+  copia se conserva**: borrarla por nuestra cuenta sería decidir por el Distrito.
+- **Editar un clon lo separa de su original, y eso es legítimo** —el Distrito
+  puede querer su propio texto—. Lo que no puede pasar es que ocurra sin saberlo,
+  así que se avisa **donde se edita**.
+- **Al refrescar se conserva el SLUG del clon.** Es su dirección publicada y
+  puede estar circulando; renombrarla rompería enlaces ya compartidos.
+- **El slug se libera con sufijo antes de insertar** (`freeSlug`). El slug del
+  original no choca al llegar a otro sitio —es otro `clubId`—, pero clonar dos
+  eventos homónimos dentro del mismo distrito sí choca con el índice único
+  `(clubId, slug)`, y el error de Postgres saldría como un 409 sin explicación.
+- **El aislamiento vive en `resolveScope`**, en un solo punto por el que pasan
+  las cuatro rutas — mismo patrón que `buildFilters` en Postulaciones y
+  `ownedMedia` en la Librería. Un evento de un sitio ajeno al distrito no se trae
+  y se reporta como «no disponible»: confirmar que existe sería filtrar que
+  existe.
+- **Hacía falta una ruta nueva porque hoy no hay ninguna.** `GET /api/calendar`
+  filtra por `req.user.clubId` (sólo el propio sitio) y `/api/admin/districts` es
+  `superAdminOnly` (sólo el operador): un administrador de distrito **no podía
+  ver los eventos de sus sitios por ninguna vía**. `/api/district-ecosystem` abre
+  esa lectura ACOTADA; no reabre la ruta del operador.
+- **El vínculo se busca por las DOS formas.** `Club.districtId` (clave foránea) y
+  el número en `Club.district` conviven en producción: el alta desde
+  `/admin/distritos` escribe una y el registro público escribe la otra. Mirar
+  sólo una deja fuera a la mitad de los sitios. El tipo de sitio se resuelve con
+  `isDistrictSiteType` de `districtSite.js` —**no se escribe un segundo
+  criterio**—, y el espejo del navegador lo compara contra él en las pruebas.
+- **Los parámetros del SQL van como TEXTO VACÍO, no como NULL**, cuando el mismo
+  parámetro se usa en dos comparaciones. Con NULL, Postgres tiene que inferir el
+  tipo y la sentencia puede fallar en ejecución — que es justo lo que no se ve
+  sin una base delante.
+- **El color de la etiqueta viaja en HEXADECIMAL, no como clase de Tailwind.**
+  Una clase armada al vuelo (`bg-${color}-100`) no llega al CSS compilado y la
+  regla no existe, en silencio: es el fallo de `bg-rotary-blue/90` de v4.719. Con
+  un hexadecimal y un `style` en línea el color llega siempre, y la prueba de
+  navegador comprueba el color RESUELTO, no el atributo.
+- **El botón se muestra por TIPO DE SITIO, no por rol.** La función es del sitio
+  de un distrito. Eso decide **qué se pinta**, nunca a qué se tiene acceso: el
+  alcance real lo resuelve el servidor y devuelve 403 con su motivo.
+- **Probar la PANTALLA, no sólo el criterio** (`test:ecosystem:ui`). Es la
+  lección de v4.744 —`pickDistrictSite` era correcto y el fallo estaba en el
+  camino— y la de v4.717 —se verificó la ficha y no el editor—. La prueba de
+  navegador comprueba que se manden al servidor **los ids que el usuario marcó**,
+  que un evento ya traído no ofrezca casilla, y que un 403 se vea con su motivo
+  en vez de dejar el panel en blanco.
+
+**Pendiente conocido:** el clon es **contenido duplicado para SEO**.
+`/eventos/:slug` es indexable y va al sitemap (`seoSpec.js`), así que el evento
+queda publicado en dos direcciones y los dos sitios se compiten en Google. Se
+mitiga parcialmente con la atribución y el enlace al original, pero lo que lo
+resolvería es declarar la canónica del clon apuntando al original — hay que
+tocar `seoRender.js` / `seoEntities.js`, que hoy componen la canónica a partir
+del propio sitio. Mientras tanto, no afirmar que el clon es neutro para SEO.
+
 ## Postulación de Proyectos — ediciones (v4.683)
 
 El módulo administra **una edición a la vez**. Su primera pantalla es el listado

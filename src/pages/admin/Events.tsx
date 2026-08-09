@@ -5,14 +5,17 @@ import {
     MapPin, Clock, Image, Image as ImageIcon, Loader2, X, Upload, Code, Eye, EyeOff,
     ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw,
     Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2,
-    CalendarDays
+    CalendarDays, Network
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
 import EventRegistrationTab from '../../components/admin/events/EventRegistrationTab';
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
+import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
+import { isDistrictSiteType, sourceTraceOf } from '../../lib/districtEcosystem';
 
 interface CalendarEvent {
     id: string;
@@ -704,11 +707,14 @@ const GalleryManager = ({
 // ── Main Component ────────────────────────────────────────────────────────────
 const EventsManagement = () => {
     const { user } = useAuth();
+    const { club } = useClub();
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [showAdd, setShowAdd] = useState(false);
+    // v4.747 — Traer eventos de los sitios vinculados al distrito.
+    const [showEcosystem, setShowEcosystem] = useState(false);
     const [newEvent, setNewEvent] = useState(emptyForm);
     /** Qué falta o qué falló al crear el evento. */
     const [formError, setFormError] = useState('');
@@ -745,6 +751,20 @@ const EventsManagement = () => {
     // sin club dejaría la redirección como GLOBAL: se filtraría a los demás
     // sitios de la plataforma.
     const siteClubId = (events[0] as any)?.clubId || (user as any)?.clubId || '';
+
+    // v4.747 — Quién ve el botón de «Traer del ecosistema». Se mira el TIPO del
+    // sitio, no el rol: la función es del sitio de un distrito. Se comprueban
+    // `type` y `organizationType` porque `Club` guarda la clasificación en uno
+    // u otro según por dónde se creó el sitio, cosa que `entityTypes.js` ya
+    // documenta. El operador de la plataforma lo ve siempre, para diagnosticar.
+    //
+    // Esto decide QUÉ SE PINTA, nunca a qué se tiene acceso: el alcance real lo
+    // resuelve `resolveScope` en el servidor y devuelve 403 a quien no
+    // corresponda.
+    const canBringFromEcosystem =
+        isDistrictSiteType((club as any)?.type)
+        || isDistrictSiteType((club as any)?.organizationType)
+        || (user as any)?.role === 'administrator';
 
     // Destino actual de la sección pública de Eventos.
     useEffect(() => {
@@ -913,13 +933,30 @@ const EventsManagement = () => {
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setShowAdd(!showAdd)}
-                        className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
-                    >
-                        <Plus className="w-5 h-5" /> Nuevo Evento
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {canBringFromEcosystem && (
+                            <button
+                                onClick={() => setShowEcosystem(true)}
+                                className="flex items-center gap-2 bg-white text-rotary-blue border border-blue-200 px-4 py-2.5 rounded-xl hover:bg-blue-50 transition-all font-bold active:scale-95"
+                            >
+                                <Network className="w-5 h-5" /> Traer del ecosistema
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setShowAdd(!showAdd)}
+                            className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
+                        >
+                            <Plus className="w-5 h-5" /> Nuevo Evento
+                        </button>
+                    </div>
                 </div>
+
+                {showEcosystem && (
+                    <EcosystemPicker
+                        onClose={() => setShowEcosystem(false)}
+                        onDone={fetchEvents}
+                    />
+                )}
 
                 {/* ── Sección pública de Eventos ──────────────────────
                     Un sitio con un solo evento no necesita calendario: puede
@@ -1102,6 +1139,16 @@ const EventsManagement = () => {
                                                         <Code className="w-3 h-3" /> HTML
                                                     </span>
                                                 )}
+                                                {/* v4.747 — Un evento traído se DICE. Sin esta marca,
+                                                    una copia se ve igual que un evento propio y nadie
+                                                    puede saber por qué su fecha no coincide con la del
+                                                    club que lo organiza. */}
+                                                {sourceTraceOf(event) && (
+                                                    <span className="text-[11px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                        <Network className="w-3 h-3" />
+                                                        {sourceTraceOf(event)?.clubName || 'Otro sitio'}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-4 mt-1">
                                                 <span className="text-xs text-gray-400 flex items-center gap-1">
@@ -1124,6 +1171,29 @@ const EventsManagement = () => {
                                     {/* ── Edit panel ── */}
                                     {expandedId === event.id && (
                                         <div className="border-t border-gray-100">
+                                            {/* v4.747 — Editar una copia la separa de su original, y
+                                                eso es legítimo: el distrito puede querer su propio
+                                                texto. Lo que no puede pasar es que ocurra sin saberlo,
+                                                así que se avisa acá, donde se edita, y se deja a la
+                                                vista el enlace al evento de verdad. */}
+                                            {sourceTraceOf(event) && (
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 bg-sky-50/70 border-b border-sky-100 text-xs">
+                                                    <span className="text-sky-900">
+                                                        Traído de <strong>{sourceTraceOf(event)?.clubName || 'otro sitio'}</strong>.
+                                                        Si lo editás acá, tu copia deja de coincidir con el original.
+                                                    </span>
+                                                    {sourceTraceOf(event)?.url && (
+                                                        <a
+                                                            href={sourceTraceOf(event)?.url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 font-semibold text-rotary-blue hover:underline"
+                                                        >
+                                                            Ver el evento original <ExternalLink className="w-3 h-3" />
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            )}
                                             {/* Tab nav */}
                                             <div className="flex border-b border-gray-100 bg-gray-50/70">
                                                 {/* v4.603 — La pestaña del panel de inscripción estaba

@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.746.1 | 2026-08-09 (El botón del Bloque Destacado, con el estilo de la portada)
-// Cache bust: 2026-08-09r
+// UI V4.747.0 | 2026-08-09 (El Distrito trae a su agenda los eventos de los sitios vinculados)
+// Cache bust: 2026-08-09s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.747.0',
+        title: 'El Distrito trae a su agenda los eventos de sus sitios 🗓️',
+        description: 'El sitio de un Distrito puede ahora ver los eventos próximos de todas las organizaciones vinculadas a él —clubes, la Feria de Proyectos, RYE, fundaciones, programas— y traerlos a su propia agenda con dos clics. En Gestión de Eventos aparece el botón «Traer del ecosistema»: se busca por evento, organización o ciudad, se marcan varios a la vez y se traen de una sola vez. Cada evento traído conserva escrito de quién es: en el panel lleva la etiqueta de su organización, y en la página pública se acredita al organizador con un botón que lleva a su ficha original. Eso es a propósito y es lo importante: el Distrito difunde el evento, no se lo apropia, y la inscripción —cuando la hay— sigue estando donde siempre estuvo, en el sitio que la organiza. Un evento ya traído no se ofrece dos veces; y si en el sitio de origen cambia la fecha, la hora, el título o el lugar, la pantalla lo dice y ofrece «Actualizar desde el origen» con un clic. No hizo falta ninguna tabla ni ninguna columna nueva en la base de datos: un evento traído es un evento más del sitio del Distrito, que el módulo de siempre lista, edita y publica sin enterarse.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'distrito', 'agenda'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón «Traer del ecosistema» en Gestión de Eventos, para el sitio de un Distrito.' },
+            { type: 'added', text: 'Buscador por evento, organización o ciudad, con selección múltiple.' },
+            { type: 'added', text: 'Cada evento traído acredita a su organizador y enlaza a su ficha original.' },
+            { type: 'added', text: 'Aviso cuando el original cambió de fecha, hora, título o lugar, con «Actualizar desde el origen».' },
+            { type: 'changed', text: 'La inscripción de un evento traído sigue en el sitio de origen, que es donde existe.' },
+        ]
+    },
     {
         version: '4.746.1',
         title: 'El botón del Bloque Destacado, con el estilo de los demás 🔘',
