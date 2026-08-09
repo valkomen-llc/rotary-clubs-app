@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.6 | 2026-08-09 (Noticias con el mismo ancho que «Únete»)
-// Cache bust: 2026-08-09n
+// UI V4.745.7 | 2026-08-09 (Las cifras, al mismo ancho que el resto de la portada)
+// Cache bust: 2026-08-09o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.7',
+        title: 'Las cifras de la portada, al mismo ancho que el resto 📐',
+        description: 'El contenedor de las tres cifras («+1.2M», «+47M», «$291M») era más angosto que «Noticias y artículos» y «Únete a Rotary»: 1.152 px contra 1.280 px. Ahora las tres secciones miden lo mismo y sus bordes quedan alineados de arriba a abajo de la portada. Las tarjetas se reparten el ancho nuevo, así que quedan un poco más amplias.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'diseno'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'El contenedor de las cifras pasa de 1.152 a 1.280 px de ancho máximo.' },
+        ]
+    },
     {
         version: '4.745.6',
         title: '«Noticias y artículos» al mismo ancho que «Únete a Rotary» 📐',

@@ -113,7 +113,13 @@ const StatsSection = () => {
 
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/*
+        El MISMO ancho que «Noticias y artículos» y «Únete a Rotary»
+        (`max-w-7xl`). Las tres son secciones de la portada estándar y una más
+        angosta que las otras se lee como un desalineo, no como una decisión.
+        Al tocar este ancho, mirar `NewsSection.tsx` y `JoinSection.tsx`.
+      */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {statsImage && (
           <img
             src={statsImage}
