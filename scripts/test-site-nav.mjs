@@ -188,11 +188,15 @@ check('«Noticias» va justo debajo de «Somos gente de acción»', () => {
 check('la portada abre con el hero y «Somos gente de acción»', () =>
     assert.deepEqual(orden.slice(0, 3), ['HeroSection', 'ActionSection', 'NewsSection']));
 
-check('«Noticias» y «Únete» tienen el MISMO ancho', () => {
-    // Una sección más angosta que la otra se lee como un desalineo, no como
+check('las secciones de la portada tienen el MISMO ancho', () => {
+    // Una sección más angosta que las otras se lee como un desalineo, no como
     // una decisión. Se comparan las clases, que es donde vive el ancho.
     const anchoDe = (f) => (readFileSync(f, 'utf8').match(/max-w-(\dxl)\s+mx-auto/) || [])[1];
-    assert.equal(anchoDe('src/sections/NewsSection.tsx'), anchoDe('src/sections/JoinSection.tsx'));
+    const base = anchoDe('src/sections/JoinSection.tsx');
+    assert.ok(base, 'no se pudo leer el ancho de «Únete»');
+    for (const f of ['src/sections/NewsSection.tsx', 'src/sections/StatsSection.tsx']) {
+        assert.equal(anchoDe(f), base, `${f} se separó del ancho de «Únete»`);
+    }
 });
 
 console.log('\n── La imagen de «Únete a Rotary» ──────────────────────');
