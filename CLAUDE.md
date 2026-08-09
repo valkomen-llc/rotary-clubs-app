@@ -2899,6 +2899,15 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   `test:nav`, incluido que la clase llegue al CSS compilado.
 - **La banda va sobre ese azul, no sobre blanco.** Estas piezas suelen ser
   azules de borde a borde: sobre blanco quedaban como una tarjeta recortada.
+- **La barra de copyright lleva el mismo azul** (v4.745.1). Era `bg-black/10`,
+  un velo sobre el fondo del pie: su color dependía del fondo de cada sitio y no
+  coincidía con nada. Un sitio Evento/Convención conserva su `copyrightBg`
+  configurado — ahí el operador ya eligió y pisarlo sería desobedecerlo.
+- **«Club Platform for Rotary» es una MARCA y va con `data-no-translate`.** El
+  traductor de DOM la pasaba a «Plataforma de Club para Rotary», un nombre que
+  no existe. Es la distinción de v4.662 entre LENGUAJE —se traduce— e IDENTIDAD
+  —no se toca—; «Powered by» sí es lenguaje y se sigue traduciendo. Al escribir
+  el nombre de la plataforma en una pantalla pública, marcarlo.
 - **Al agregar un hueco de imagen hay que tocar DOS listas de `useSiteImages`**:
   `DEFAULTS` (de donde sale la mezcla inicial) y el array `allKeys` del efecto
   (que decide qué se lee de la respuesta del servidor). Una clave que esté en

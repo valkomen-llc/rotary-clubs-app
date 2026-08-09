@@ -281,13 +281,35 @@ const Footer = () => {
             </div>
             </div>
 
-            {/* Bottom Bar */}
-            <div className={`relative overflow-hidden border-t border-white/5 ${isEventSite ? '' : 'bg-black/10'}`} style={isEventSite ? { backgroundColor: copyrightBg as string } : undefined}>
+            {/*
+                Bottom Bar
+
+                Lleva el MISMO azul que la barra superior del sitio, tomado del
+                token del tema (`rotary-topbar`): son las dos bandas que cierran
+                la página por arriba y por abajo. Hasta v4.745 era `bg-black/10`
+                —un velo sobre el fondo del pie—, así que su color dependía del
+                fondo que tuviera cada sitio y no coincidía con nada.
+
+                Un sitio Evento/Convención conserva SU color configurado
+                (`copyrightBg`): ahí el operador ya eligió a propósito y pisarlo
+                sería desobedecerlo.
+            */}
+            <div className={`relative overflow-hidden border-t border-white/5 ${isEventSite ? '' : 'bg-rotary-topbar'}`} style={isEventSite ? { backgroundColor: copyrightBg as string } : undefined}>
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className={`text-[11px] leading-loose no-uppercase text-center md:text-left ${isEventSite ? '' : 'text-white/50'}`} style={isEventSite ? { color: copyrightText as string } : undefined}>
                             © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. <br className="md:hidden" />
-                            Powered by <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" className={isEventSite ? cpLinkClass : 'text-white/80 hover:text-white transition-colors'}>Club Platform for Rotary</a>
+                            {/*
+                                El nombre de la plataforma es una MARCA, no una
+                                frase: `data-no-translate` lo deja literal en los
+                                ocho idiomas. Sin esa marca, el traductor de DOM
+                                lo pasaba a «Plataforma de Club para Rotary», que
+                                es un nombre que no existe. Es la distinción de
+                                v4.662 entre LENGUAJE —se traduce— e IDENTIDAD
+                                —no se toca—. «Powered by» sí es lenguaje y se
+                                sigue traduciendo.
+                            */}
+                            Powered by <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" data-no-translate className={isEventSite ? cpLinkClass : 'text-white/80 hover:text-white transition-colors'}>Club Platform for Rotary</a>
                             {' | '}
                             <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className={cpLinkClass}>Privacidad</a>
                             {' · '}
