@@ -171,6 +171,23 @@ check('la imagen no lleva sombra, halo ni filtro', () =>
     assert.ok(!/(shadow-(?!none)|ring-\d|drop-shadow)/.test(stripComments(BANNER)),
         'volvió una sombra o un halo a la banda'));
 
+console.log('\n── La imagen de «Únete a Rotary» ──────────────────────');
+
+// Llevaba un degradado dorado desenfocado detrás y un `shadow-2xl`: sobre el
+// fondo azul de la sección se leía como un halo pegado alrededor de la pieza.
+// Y un `aspect-[4/3]` con `object-cover` recortaba toda imagen que no fuera
+// 4:3 — justo donde estas piezas traen los nombres y el logotipo.
+const JOIN = stripComments(readFileSync('src/sections/JoinSection.tsx', 'utf8'));
+const joinImg = JOIN.slice(JOIN.indexOf('<img'), JOIN.indexOf('/>', JOIN.indexOf('<img')));
+check('la imagen no lleva sombra ni resplandor', () => {
+    assert.ok(!/shadow-(?!none)/.test(joinImg), 'volvió la sombra a la imagen');
+    assert.ok(!/blur/.test(JOIN), 'volvió el resplandor detrás de la imagen');
+});
+check('el contenedor sigue la proporción de la imagen, no la recorta', () => {
+    assert.ok(!/aspect-\[/.test(joinImg), 'volvió una proporción forzada');
+    assert.ok(!/object-cover/.test(joinImg), 'volvió el recorte');
+});
+
 console.log('\n── El fondo del pie tiene UN solo sitio ───────────────');
 
 // Lo consumen el pie de verdad y la vista previa del panel. Escrito a mano en

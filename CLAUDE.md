@@ -2919,6 +2919,18 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   no existe. Es la distinción de v4.662 entre LENGUAJE —se traduce— e IDENTIDAD
   —no se toca—; «Powered by» sí es lenguaje y se sigue traduciendo. Al escribir
   el nombre de la plataforma en una pantalla pública, marcarlo.
+- **Ninguna imagen de la portada lleva resplandor ni se recorta a una
+  proporción fija** (v4.745.4, `JoinSection.tsx`). Esa imagen tenía detrás un
+  degradado dorado desenfocado más un `shadow-2xl` —sobre el fondo azul de la
+  sección se leía como un halo pegado— y un `aspect-[4/3]` con `object-cover`
+  que recortaba toda pieza que no fuera 4:3. Estas piezas traen el texto DENTRO
+  —nombres, cargos, el logotipo del distrito— y el recorte se llevaba
+  justamente eso. El contenedor sigue a la imagen, no al revés. Lo comprueba
+  `test:nav`.
+- **Al diagnosticar «la imagen de la portada tiene sombra», mirar QUÉ hueco
+  está usando el sitio.** Hay varios —`homeBanner`, `join`, `foundation`— y
+  cada uno lo pinta un componente distinto; corregir el equivocado se ve
+  exactamente igual que no haber hecho nada.
 - **Al agregar un hueco de imagen hay que tocar DOS listas de `useSiteImages`**:
   `DEFAULTS` (de donde sale la mezcla inicial) y el array `allKeys` del efecto
   (que decide qué se lee de la respuesta del servidor). Una clave que esté en

@@ -108,13 +108,26 @@ const JoinSection = () => {
             )}
           </div>
 
-          {/* Image */}
-          <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-yellow-400 to-[#FAA51A] rounded-[40px] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+          {/*
+            Image
+
+            SIN resplandor y SIN sombra. Hasta v4.745.4 había un degradado
+            dorado desenfocado detrás (`-inset-1 … blur`) más un `shadow-2xl`:
+            sobre el fondo azul de la sección se leía como un halo pegado
+            alrededor de la pieza. No reintroducir `shadow-*`, `blur` de fondo
+            ni `drop-shadow-*`.
+
+            Y el contenedor SIGUE A LA IMAGEN: nada de `aspect-[4/3]` con
+            `object-cover`. Esa pareja recortaba toda imagen que no fuera 4:3, y
+            estas piezas institucionales suelen traer el texto DENTRO —nombres,
+            cargos, el logotipo del distrito—, que es justo lo que se llevaba el
+            recorte. Es la misma regla que la banda de la portada (v4.742).
+          */}
+          <div>
             <img
               src={imgUrl}
               alt={imgAlt}
-              className="relative rounded-[40px] shadow-2xl w-full h-auto object-cover aspect-[4/3]"
+              className="rounded-[40px] w-full h-auto"
             />
           </div>
         </div>
