@@ -10,6 +10,7 @@ import {
     createPostComment
 } from '../controllers/contentController.js';
 import { getPublicSections } from '../controllers/cmsController.js';
+import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 
 const router = express.Router();
 
@@ -21,20 +22,47 @@ router.get('/by-domain', async (req, res) => {
     }
 
     try {
-        // Normalización robusta del dominio consultado: minúsculas, sin protocolo, sin path,
-        // sin punto final. `cleanDomain` es la forma canónica (apex, sin www).
-        const rawDomain = String(domain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
-        const cleanDomain = rawDomain.replace(/^www\./, '');
-        // Variante con www: para matchear también los dominios guardados CON "www." aunque se
-        // visite el apex (y viceversa). Antes solo se quitaba www de la consulta, no del valor
-        // guardado, por lo que un dominio propio guardado como www.ejemplo.org no resolvía en apex.
-        const wwwDomain = `www.${cleanDomain}`;
-        // Formas a probar contra la columna `domain` (case-insensitive), evitando duplicados.
-        const domainCandidates = [...new Set([cleanDomain, wwwDomain, rawDomain])];
+        // Forma canónica de lo que se pide: minúsculas, sin protocolo, sin ruta,
+        // sin puerto, sin punto final y sin `www.`.
+        const cleanDomain = canonicalDomain(domain);
+        const candidates = domainCandidates(domain);
+        const label = subdomainLabel(domain);
+
+        // Se comparan las variantes contra la columna tal como está GUARDADA.
+        // No alcanza con normalizar al guardar: en la base hay filas escritas
+        // antes de que eso existiera y por caminos que no pasaban por ahí, y una
+        // fila con `https://` o con un espacio delante no casa con nada. Por eso
+        // más abajo, si esto no encuentra, se reintenta normalizando también el
+        // lado guardado.
         const domainOr = [
-            ...domainCandidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
-            { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
+            ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+            { subdomain: { equals: label, mode: 'insensitive' } },
         ];
+
+        /**
+         * Segundo intento: normaliza el valor GUARDADO dentro del propio SQL y
+         * lo compara con la forma canónica de lo pedido.
+         *
+         * Es lo que rescata a un sitio cuyo dominio se guardó con protocolo,
+         * con barra final o con espacios —cosa que pasa, porque es exactamente
+         * lo que uno pega desde la barra del navegador—. Sin esto, ese sitio
+         * cae al «Origen» y su dueño ve un sitio genérico sin ninguna pista de
+         * por qué.
+         */
+        const findByLooseDomain = async (table) => {
+            const { rows } = await db.query(
+                `SELECT id FROM "${table}"
+                  WHERE regexp_replace(
+                            regexp_replace(
+                                regexp_replace(lower(btrim(coalesce("domain", ''))), '^[a-z][a-z0-9+.-]*://', ''),
+                                '[/?#].*$', ''),
+                            '^www\\.', '') = $1
+                    AND coalesce("domain", '') <> ''
+                  LIMIT 1`,
+                [cleanDomain]
+            );
+            return rows[0]?.id || null;
+        };
 
         // Use Prisma for all lookups to ensure column mapping stability
         const masterClub = await db.prisma.club.findFirst({
@@ -68,6 +96,29 @@ router.get('/by-domain', async (req, res) => {
         });
 
         let entityType = 'club';
+        // Cómo se resolvió la visita. Viaja en la respuesta para que el panel
+        // pueda decirle a un administrador si su dominio está atado a su sitio
+        // o no: hasta v4.743 un dominio sin asignar caía al «Origen» EN SILENCIO
+        // y quien lo veía no tenía forma de distinguirlo de un sitio a medio
+        // configurar. Un `console.warn` en el servidor no lo ve nadie.
+        let resolvedBy = activeEntity ? 'club' : null;
+
+        if (!activeEntity) {
+            // Segundo intento sobre `Club`, normalizando también el valor
+            // guardado. Rescata las filas con `https://`, con barra final o con
+            // espacios, que es lo que uno pega desde la barra del navegador.
+            const looseId = await findByLooseDomain('Club');
+            if (looseId) {
+                activeEntity = await db.prisma.club.findUnique({
+                    where: { id: looseId },
+                    include: {
+                        settings: true,
+                        _count: { select: { products: { where: { status: 'active' } }, events: true } }
+                    }
+                });
+                if (activeEntity) resolvedBy = 'club_loose';
+            }
+        }
 
         if (!activeEntity) {
             // Check District table
@@ -90,10 +141,29 @@ router.get('/by-domain', async (req, res) => {
                     logoHeaderSize: district.logoHeaderSize
                 };
                 entityType = 'district';
+                resolvedBy = 'district';
             }
         }
 
         if (!activeEntity) {
+            const looseDistrictId = await findByLooseDomain('District');
+            if (looseDistrictId) {
+                const district = await db.prisma.district.findUnique({ where: { id: looseDistrictId } });
+                if (district) {
+                    activeEntity = {
+                        ...district, settings: [], type: 'district',
+                        logo: district.logo, footerLogo: district.footerLogo,
+                        favicon: district.favicon, colors: district.colors,
+                        logoHeaderSize: district.logoHeaderSize,
+                    };
+                    entityType = 'district';
+                    resolvedBy = 'district_loose';
+                }
+            }
+        }
+
+        if (!activeEntity) {
+            resolvedBy = 'fallback';
             console.warn(`[IDENTITY] Fallback to Origen for ${cleanDomain}`);
             activeEntity = { 
                 ...masterClub, 
@@ -299,7 +369,11 @@ router.get('/by-domain', async (req, res) => {
             )).rows
         };
 
-        res.json(mappedClub);
+        // `resolvedBy` dice CÓMO se llegó a este sitio. Es un dato de
+        // diagnóstico, no de contenido: `fallback` significa que el dominio
+        // visitado no está asignado a ningún sitio y se está sirviendo el
+        // «Origen». El panel lo usa para poder decirlo con todas las letras.
+        res.json({ ...mappedClub, resolvedBy });
     } catch (error) {
         console.error('Error fetching club:', error);
         res.status(500).json({ error: 'Internal server error', message: error.message, stack: error.stack });

@@ -116,6 +116,10 @@ const ClubSettings: React.FC = () => {
     // fijo de dos enlaces — sin forma de cambiarlo por ninguna vía.
     const canConfigureNav = isSuperAdmin || !hasFixedNav(club?.type as string);
 
+    // Resultado de comprobar a qué sitio lleva el dominio (v4.743).
+    const [verifyingDomain, setVerifyingDomain] = useState(false);
+    const [domainCheck, setDomainCheck] = useState<{ ok: boolean; title: string; detail: string } | null>(null);
+
     type TabType = 'estado' | 'identidad' | 'avanzado' | 'facturacion' | 'wa-api' | 'comms';
     const [activeTab, setActiveTab] = useState<TabType>('estado');
     const [stats, setStats] = useState<any>(null);
@@ -721,6 +725,64 @@ const ClubSettings: React.FC = () => {
             toast.error(error.message || 'Hubo un error al guardar los cambios');
         } finally {
             setLoading(false);
+        }
+    };
+
+    /**
+     * Comprueba de verdad a qué sitio lleva el dominio configurado.
+     *
+     * Hasta v4.743 este botón sólo mostraba «Validando configuración DNS…» y no
+     * consultaba nada: daba por conectado un dominio que podía no estar atado a
+     * ningún sitio. Y cuando no lo está, la plataforma sirve el sitio «Origen»
+     * —con «Nombre del club» y fotos genéricas— en vez de un error, así que
+     * desde fuera parece un sitio a medio configurar. Este es el único lugar
+     * donde se puede ver la diferencia.
+     *
+     * No comprueba el DNS: eso lo demuestra el hecho de que la página cargue.
+     * Lo que comprueba es lo otro, que es lo que fallaba.
+     */
+    const handleVerifyDomain = async () => {
+        const value = (formData.domain || '').trim();
+        if (!value) { toast.error('Escribí primero el dominio.'); return; }
+
+        setVerifyingDomain(true);
+        setDomainCheck(null);
+        try {
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${API}/clubs/by-domain?domain=${encodeURIComponent(value)}`);
+            if (!res.ok) throw new Error('No se pudo consultar');
+            const data = await res.json();
+
+            if (data?.resolvedBy === 'fallback' || !data?.id) {
+                setDomainCheck({
+                    ok: false,
+                    title: 'Este dominio no está asignado a ningún sitio',
+                    detail: 'Quien lo visite verá un sitio genérico de la plataforma, no el tuyo. '
+                        + 'Guardá los cambios con el dominio escrito acá y volvé a comprobar.',
+                });
+            } else if (data.id === club?.id) {
+                setDomainCheck({
+                    ok: true,
+                    title: 'El dominio lleva a este sitio',
+                    detail: `Resuelve a «${data.name}». Si al visitarlo ves otra cosa, es la caché del navegador.`,
+                });
+            } else {
+                // El caso que más confunde: el dominio funciona, pero es de otro
+                // sitio. Decir el nombre ahorra la búsqueda.
+                setDomainCheck({
+                    ok: false,
+                    title: 'El dominio lleva a OTRO sitio',
+                    detail: `Hoy resuelve a «${data.name}». Hay que quitarlo de ese sitio antes de usarlo acá.`,
+                });
+            }
+        } catch {
+            setDomainCheck({
+                ok: false,
+                title: 'No se pudo comprobar',
+                detail: 'La consulta falló. Probá de nuevo en un momento.',
+            });
+        } finally {
+            setVerifyingDomain(false);
         }
     };
 
@@ -2140,14 +2202,31 @@ const ClubSettings: React.FC = () => {
                                                 placeholder="ej: rotaryclub.org"
                                             />
                                         </div>
-                                        <button 
+                                        <button
                                             type="button"
-                                            className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors"
-                                            onClick={() => toast.info('Validando configuración DNS...')}
+                                            disabled={verifyingDomain}
+                                            className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors disabled:opacity-50"
+                                            onClick={handleVerifyDomain}
                                         >
-                                            Verificar
+                                            {verifyingDomain ? 'Comprobando…' : 'Verificar'}
                                         </button>
                                     </div>
+
+                                    {/* El resultado REAL de la comprobación. Antes este
+                                        botón sólo mostraba un aviso y no consultaba nada. */}
+                                    {domainCheck && (
+                                        <div className={`mt-4 p-4 rounded-xl border ${domainCheck.ok
+                                            ? 'bg-emerald-50 border-emerald-200'
+                                            : 'bg-amber-50 border-amber-200'}`}>
+                                            <p className={`text-sm font-bold ${domainCheck.ok ? 'text-emerald-800' : 'text-amber-900'}`}>
+                                                {domainCheck.ok ? '✓ ' : '⚠ '}{domainCheck.title}
+                                            </p>
+                                            <p className={`text-xs mt-1 leading-relaxed ${domainCheck.ok ? 'text-emerald-700' : 'text-amber-800'}`}>
+                                                {domainCheck.detail}
+                                            </p>
+                                        </div>
+                                    )}
+
                                     {formData.domain && (
                                         <div className="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
                                             <p className="text-xs text-emerald-800 font-bold mb-2">Instrucciones DNS:</p>

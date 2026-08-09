@@ -2922,6 +2922,48 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   el menú da «Inicio · Sobre Nosotros · Proyectos · Noticias · Eventos ·
   Contacto», y `/galeria-multimedia` sigue mostrando la galería.
 
+## El dominio propio de un sitio — v4.743
+
+`GET /clubs/by-domain` es lo que decide QUÉ sitio se pinta en cada visita. El
+criterio de normalización vive en `server/lib/domains.js` (**puro**), y lo usan
+las dos puntas: el alta y la edición al GUARDAR, y la resolución al BUSCAR.
+
+Pruebas: `npm run test:domains` (34 casos). **Sin base, credenciales ni red.**
+
+**Reglas durables:**
+
+- **Un dominio sin asignar NO da error: da el sitio «Origen».** Es la decisión de
+  diseño que hace que este fallo sea tan difícil de ver — el visitante recibe un
+  sitio Rotary plausible, con «Nombre del club» y fotos de archivo, y concluye
+  que está a medio configurar. No se cambió el comportamiento (servir algo es
+  mejor que un 500), pero **la respuesta ahora dice cómo se resolvió**
+  (`resolvedBy`) y el panel lo traduce a una frase.
+- **Las dos puntas normalizan con la MISMA función.** Si el alta guarda una forma
+  y la búsqueda espera otra, el sitio no resuelve y nadie se entera. Hasta v4.743
+  `updateClub` normalizaba y `createClub` insertaba `domain || null` en crudo: un
+  sitio creado pegando `https://ejemplo.org` nacía con un dominio imposible de
+  casar.
+- **Y aun así se comparan variantes contra lo GUARDADO** (`findByLooseDomain`).
+  Normalizar al escribir no arregla las filas escritas antes, ni las que entran
+  por otros caminos (registro público, importaciones). El segundo intento
+  normaliza la columna dentro del SQL; sin él, arreglar el criterio no arregla
+  los sitios que ya estaban mal.
+- **`www.` se quita en la forma canónica**, no sólo al comparar: guardado y
+  consultado tienen que reducirse a lo mismo.
+- **El botón «Verificar» del panel comprueba de verdad.** Antes sólo mostraba
+  «Validando configuración DNS…» y no consultaba nada, así que confirmaba una
+  conexión que podía no existir — y eso es lo que dejó al Distrito 4281
+  convencido de que su dominio estaba conectado. **No comprueba el DNS**: que la
+  página cargue ya lo demuestra. Comprueba lo otro, que es lo que falla.
+- **Distingue TRES resultados**, y los tres hacen falta: lleva a este sitio,
+  lleva a otro (diciendo a cuál, para no tener que buscarlo) o no está asignado
+  a ninguno (diciendo qué verá el visitante). Un booleano dejaría fuera el caso
+  más confuso, que es el dominio que funciona pero apunta a otro sitio.
+- **El campo del dominio es del OPERADOR de la plataforma** (`isSuperAdmin`), no
+  del administrador del sitio. Al diagnosticar «no me carga el dominio», mirar
+  primero con qué rol se está entrando: un administrador de sitio no ve ese
+  campo y no puede corregirlo.
+
 ## Recursos que cambian con el idioma — v4.699
 
 Algunas piezas gráficas están **rotuladas** y por tanto tienen idioma: el logo
