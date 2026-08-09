@@ -2888,6 +2888,17 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   club. Nace VACÍA y la sección devuelve `null`, así que quien no la usa ve su
   portada igual que antes —ni siquiera queda una sección vacía—. Es la misma
   lección de la campaña que secuestró la portada de los distritos.
+- **El azul de la barra superior es un color del TEMA, no un literal** (v4.745,
+  `rotary-topbar` en `tailwind.config.js`). Lo llevan la barra superior
+  (`Navbar.tsx`), su versión pública (`PublicTopBar.tsx`) y la banda de la
+  portada: estaba escrito a mano como `bg-[#28354b]` en los dos primeros y, al
+  necesitarlo un tercero, tres copias se separan en cuanto alguien cambie una.
+  Va en el TEMA y no en `index.css` a propósito: una clase escrita a mano en
+  `@layer utilities` —como `bg-rotary-blue`— **no genera los modificadores de
+  opacidad** y la regla no existe, en silencio (v4.719). Lo comprueba
+  `test:nav`, incluido que la clase llegue al CSS compilado.
+- **La banda va sobre ese azul, no sobre blanco.** Estas piezas suelen ser
+  azules de borde a borde: sobre blanco quedaban como una tarjeta recortada.
 - **Al agregar un hueco de imagen hay que tocar DOS listas de `useSiteImages`**:
   `DEFAULTS` (de donde sale la mezcla inicial) y el array `allKeys` del efecto
   (que decide qué se lee de la respuesta del servidor). Una clave que esté en

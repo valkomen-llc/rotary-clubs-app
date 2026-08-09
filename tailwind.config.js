@@ -48,6 +48,16 @@ module.exports = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // El azul de la barra superior del sitio público (Endpolio.org / My
+        // Rotary / idioma). Estaba escrito a mano como `bg-[#28354b]` en dos
+        // componentes y al aparecer un tercero que tiene que llevar el MISMO
+        // fondo, tres literales se separan en cuanto alguien cambie uno.
+        //
+        // Va acá y no en `index.css` a propósito: una clase escrita a mano en
+        // `@layer utilities` —como `bg-rotary-blue`— NO genera los modificadores
+        // de opacidad, así que `hover:bg-rotary-blue/90` no existe y falla en
+        // silencio (v4.719). Un color del tema sí los genera.
+        "rotary-topbar": "#28354b",
       },
       borderRadius: {
         xl: "calc(var(--radius) + 4px)",

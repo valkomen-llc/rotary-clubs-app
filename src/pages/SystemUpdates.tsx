@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.744.1 | 2026-08-09 (Pertenecer al distrito no es ser su sitio)
-// Cache bust: 2026-08-09g
+// UI V4.745.0 | 2026-08-09 (La banda de la portada toma el azul de la barra superior)
+// Cache bust: 2026-08-09h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.0',
+        title: 'La banda de la portada, sobre el azul de la barra superior 🎨',
+        description: 'La banda de imagen de la portada se dibujaba sobre fondo blanco. Con piezas institucionales, que suelen ser azules de borde a borde, quedaba como una tarjeta recortada en medio de la página. Ahora lleva el mismo azul de la barra superior del sitio. Ese color estaba escrito a mano en dos componentes; al necesitarlo un tercero, se declaró como color del tema y los tres lo toman de ahí: tres copias del mismo valor se separan en cuanto alguien cambia una. Va en el tema y no como clase suelta a propósito, porque una clase escrita a mano no genera las variantes de opacidad y falla sin avisar. Los sitios que no tienen banda configurada se ven exactamente igual que antes.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'diseno', 'imagenes'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La banda de la portada usa el azul de la barra superior, no blanco.' },
+            { type: 'changed', text: 'Ese azul pasa a ser un color del tema, con un solo sitio donde cambiarlo.' },
+        ]
+    },
     {
         version: '4.744.1',
         title: 'Corrección: el dominio del distrito servía el sitio de otro club 🔧',

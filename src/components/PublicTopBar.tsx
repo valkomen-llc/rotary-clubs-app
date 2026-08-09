@@ -25,7 +25,7 @@ const PublicTopBar: React.FC = () => {
     }, []);
 
     return (
-        <div className="bg-[#28354b] text-white relative z-[60]" data-no-translate>
+        <div className="bg-rotary-topbar text-white relative z-[60]" data-no-translate>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-end gap-6 sm:gap-8 py-4 text-sm">
                     <a href="https://app.clubplatform.org/"
