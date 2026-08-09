@@ -3101,15 +3101,38 @@ habría visto en el sitio publicado ni en un post.
 
 Pruebas: `npm run test:heic` (50 casos). **Sin base, credenciales ni red.**
 
-- **FFmpeg decodifica, sharp codifica.** sharp declara el formato `heif` y LEE
-  el contenedor —da ancho, alto y orientación—, pero sus binarios precompilados
-  **no traen el decodificador HEVC**, que es con el que comprime un iPhone.
-  Medido con seis HEIC reales: `metadata()` responde y `.jpeg()` falla en todos.
-  FFmpeg sí lo decodifica y **ya viaja con la aplicación** desde v4.664, así que
-  no suma un byte al paquete —que es el argumento que descartaría cualquier otra
-  librería, con el tope de 250 MB de la función—.
-- **PNG como paso intermedio**, no JPEG: encadenar el JPEG de ffmpeg con el
-  nuestro comprimiría dos veces la misma foto.
+- **Sharp NO decodifica HEIC.** Declara el formato `heif` y LEE el contenedor
+  —da ancho, alto y orientación—, pero sus binarios precompilados **no traen el
+  decodificador HEVC**, que es con el que comprime un iPhone. Medido con seis
+  HEIC reales: `metadata()` responde y `.jpeg()` falla en todos. Esa lectura del
+  contenedor sigue siendo útil: es de donde salen las medidas contra las que se
+  contrasta lo decodificado.
+- **FFmpeg TAMPOCO sirve, y por qué importa** (v4.741). Decodifica HEVC, pero un
+  HEIC de iPhone guarda la foto como una **rejilla de mosaicos** (`Tile Grid`)
+  más imágenes auxiliares: la miniatura y el **mapa de ganancia HDR**. FFmpeg
+  7.0 —el binario que empaquetamos— expone la rejilla como «stream group» y **no
+  la ensambla**, así que la selección automática terminaba eligiendo un mosaico
+  suelto o el mapa de ganancia. El mapa de ganancia es una imagen en escala de
+  grises, casi negra con manchas blancas: exactamente lo que apareció en la
+  Librería del cliente después de convertir en bloque. El soporte de rejillas
+  llegó en ffmpeg 7.1. **No volver a intentarlo con ffmpeg sin comprobar la
+  versión y la rejilla.**
+- **Se usa libheif** (`heic-decode`), la implementación de referencia del
+  formato: reconstruye la rejilla y distingue la imagen primaria de las
+  auxiliares. Pesa 6,2 MB —holgado en el tope de 250 MB— y el `wasm-bundle` es
+  un único JS con el WASM incrustado, así que no hay un `.wasm` suelto que el
+  empaquetador pueda perder. Trae el decodificador HEVC y **no** el de AV1.
+- **La imagen se elige por TAMAÑO, no por posición** (`pickPrimaryImage`).
+  `heic-decode` devuelve la lista y toma `data[0]`, que suele ser la primaria
+  pero no lo garantiza: es la misma suposición que hizo fallar a ffmpeg. Se
+  elige la que coincide con lo que declara el contenedor, admitiendo el
+  intercambio ancho/alto por si la rotación ya se aplicó.
+- **Y se COMPRUEBA lo decodificado antes de aceptarlo** (`checkDecodedSize`).
+  Decodificar sin mirar lo que salió fue el error de fondo: el mapa de ganancia
+  tiene otro tamaño que la foto, así que la comprobación lo habría atrapado
+  antes de que reemplazara al original. Las dos funciones son PURAS y están
+  probadas con el caso real del iPhone (foto 4032×3024, miniatura 320×240, mapa
+  1008×756).
 - **La orientación se APLICA, no se declara** (`orientationOps`). FFmpeg entrega
   los píxeles sin los metadatos, así que la rotación se perdería. Se podría
   volver a etiquetar el JPEG, pero la plataforma dibuja imágenes en canvas en
@@ -3139,11 +3162,16 @@ Pruebas: `npm run test:heic` (50 casos). **Sin base, credenciales ni red.**
   por el cuerpo fallaría con las más grandes.
 - **Una conversión fallida NO pierde el archivo.** Se guarda el original y se
   informa: no poder mostrarlo es malo, perderlo es peor.
-- **El HEIC original se retira DESPUÉS de que el JPEG esté arriba**, y en la
-  conversión de un archivo ya cargado, después de que la fila apunte al JPEG. La
-  fila de `Media` guarda una sola clave de S3: dejar el original sin que nada lo
-  apunte lo convertiría en un objeto que nadie puede ver ni borrar desde el
-  panel y que sobreviviría a eliminar el archivo.
+- **EL ORIGINAL NO SE BORRA** (v4.741, `Media."originalS3Key"`). Es la
+  corrección más importante de este módulo y se pagó cara: hasta v4.740 el HEIC
+  se retiraba en cuanto el JPEG estaba arriba, y como la conversión entregaba el
+  mapa de ganancia, **el cliente perdió fotos que no se pueden recuperar**. Una
+  conversión no puede ser destructiva mientras exista la posibilidad de que
+  salga mal, y siempre existe. Guardar su clave evita además el objeto huérfano:
+  al eliminar el archivo de la Librería se borran los dos, en los dos caminos de
+  borrado.
+- **La columna va declarada en `schema.prisma` además del ensure**, como
+  `folderId`: el guardián de `db:push` compara tablas, no columnas.
 - **El navegador NO convierte.** Un decodificador WASM son megabytes en el
   bundle para adivinar lo que el servidor ya sabe. Lo único que hace el
   navegador es RECONOCER un HEIC: para saltear `compressImage` —que dibuja en un
@@ -3156,6 +3184,18 @@ Pruebas: `npm run test:heic` (50 casos). **Sin base, credenciales ni red.**
   real con la conversión de verdad detrás del endpoint: la foto pasa de aviso
   HEIC a imagen dibujada, y se comprueba el `naturalWidth` para saber que el
   navegador la decodificó y no que sólo cambió el `src`.
+- **La prueba de punta a punta es OPCIONAL y ése es el hueco conocido.** Hace
+  falta un HEIC HEVC de verdad y no se puede fabricar en el repositorio: sharp
+  sólo escribe HEIF con AV1 y el libheif empaquetado no decodifica AV1; los
+  archivos de conformidad no tienen licencia clara para vendorizarlos. Se corre
+  apuntando a una carpeta con fotos reales:
+  `HEIC_FIXTURES=~/fotos npm run test:heic`. Verificado así en v4.741 con 19
+  archivos: 18 convertidos con contenido y 1 rechazado por estar malformado
+  —fallar es lo correcto—. **Lo que sí está cubierto sin archivos** es la lógica
+  que falló: `pickPrimaryImage` y `checkDecodedSize` son puras y se prueban con
+  las medidas reales de un HEIC de iPhone.
+- **La prueba con archivos reales mira que no sea gris y casi negro.** Es la
+  firma del mapa de ganancia, y es lo que hay que reconocer si esto reaparece.
 
 ### Casillas de imagen del panel (v4.700)
 

@@ -518,6 +518,7 @@ router.post('/save', authMiddleware, async (req, res) => {
         // fallaría justo con las más grandes.
         let finalName = fileName, finalUrl = fileUrl, finalKey = s3Key, finalSize = fileSize;
         let conversion = null;
+        let originalKey = null;
 
         if (isHeicFile({ filename: fileName, mimetype: fileType })) {
             try {
@@ -526,7 +527,7 @@ router.post('/save', authMiddleware, async (req, res) => {
                     buffer: original, filename: fileName, s3Key, contentType: fileType,
                 });
                 if (converted.converted) {
-                    const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+                    const { s3, PutObjectCommand } = await getUploadDeps();
                     await s3.send(new PutObjectCommand({
                         Bucket: bucket, Key: converted.s3Key,
                         Body: converted.buffer, ContentType: 'image/jpeg',
@@ -535,15 +536,13 @@ router.post('/save', authMiddleware, async (req, res) => {
                     finalKey = converted.s3Key;
                     finalSize = converted.buffer.length;
                     finalUrl = publicUrlFor(bucket, converted.s3Key);
+                    // El original SE CONSERVA (v4.741). Hasta v4.740 se borraba
+                    // en cuanto el JPEG estaba arriba, y una conversión que
+                    // salió mal se llevó por delante fotos irrecuperables. Su
+                    // clave queda en `originalS3Key`, así que no es un objeto
+                    // huérfano: al eliminar el archivo se borran los dos.
+                    originalKey = s3Key;
                     conversion = { from: 'heic', to: 'jpeg' };
-                    // El HEIC original se retira DESPUÉS de que el JPEG esté
-                    // arriba. La fila de `Media` guarda una sola clave de S3:
-                    // dejar el original sin que ninguna fila lo apunte lo
-                    // convertiría en un objeto que nadie puede ver ni borrar
-                    // desde el panel, y que sobreviviría a eliminar el archivo.
-                    // Si el borrado falla no se interrumpe nada: el JPEG ya está.
-                    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: s3Key }))
-                        .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
                 } else {
                     conversion = { from: 'heic', to: null, error: converted.error };
                 }
@@ -554,9 +553,9 @@ router.post('/save', authMiddleware, async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
-            [finalName, finalUrl, fileTypeLocal, finalSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, finalKey, folderId]
+            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "originalS3Key", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING *`,
+            [finalName, finalUrl, fileTypeLocal, finalSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, finalKey, folderId, originalKey]
         );
 
         res.json({ ...result.rows[0], conversion });
@@ -1035,19 +1034,19 @@ router.post('/bulk-convert', authMiddleware, async (req, res) => {
                 const { buffer } = await convertHeicToJpeg(original);
                 const newKey = jpegKeyFor(item.s3Key);
 
-                const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+                const { s3, PutObjectCommand } = await getUploadDeps();
                 await s3.send(new PutObjectCommand({
                     Bucket: item.bucket, Key: newKey, Body: buffer, ContentType: 'image/jpeg',
                 }));
+                // El original SE CONSERVA y su clave queda anotada, igual que en
+                // la conversión de a una. `COALESCE` para no pisarla si el
+                // archivo ya se había convertido antes.
                 await db.query(
-                    `UPDATE "Media" SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image'
+                    `UPDATE "Media" SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image',
+                            "originalS3Key" = COALESCE("originalS3Key", $6)
                       WHERE id = $5`,
-                    [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id]
+                    [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id, item.s3Key]
                 );
-                // El original se retira sólo después de que la fila apunte al
-                // JPEG, igual que en la conversión de a una.
-                await s3.send(new DeleteObjectCommand({ Bucket: item.bucket, Key: item.s3Key }))
-                    .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
                 converted.push(item.id);
             } catch (err) {
                 console.error('[Media] bulk convert failed for', item.id, err.message);
@@ -1086,9 +1085,12 @@ router.post('/bulk-delete', authMiddleware, async (req, res) => {
         const { s3, DeleteObjectsCommand } = await getUploadDeps();
         const byBucket = new Map();
         for (const m of items) {
-            if (!m.s3Key || !m.bucket) continue;
+            if (!m.bucket) continue;
             if (!byBucket.has(m.bucket)) byBucket.set(m.bucket, []);
-            byBucket.get(m.bucket).push({ Key: m.s3Key });
+            // El archivo y, si lo hubo, el original conservado al convertirlo.
+            for (const key of [m.s3Key, m.originalS3Key].filter(Boolean)) {
+                byBucket.get(m.bucket).push({ Key: key });
+            }
         }
         for (const [bucket, objects] of byBucket) {
             // `DeleteObjects` acepta 1000 por llamada: se manda por lotes en vez
@@ -1146,22 +1148,21 @@ router.post('/:id/convert', authMiddleware, async (req, res) => {
         const { buffer } = await convertHeicToJpeg(original);
 
         const newKey = jpegKeyFor(item.s3Key);
-        const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+        const { s3, PutObjectCommand } = await getUploadDeps();
         await s3.send(new PutObjectCommand({
             Bucket: item.bucket, Key: newKey, Body: buffer, ContentType: 'image/jpeg',
         }));
 
+        // El original SE CONSERVA y su clave queda anotada. `COALESCE` para no
+        // pisarla si el archivo ya se había convertido antes: la primera es la
+        // que apunta al que subió el usuario.
         const updated = await db.query(
             `UPDATE "Media"
-                SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image'
+                SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image',
+                    "originalS3Key" = COALESCE("originalS3Key", $6)
               WHERE id = $5 RETURNING *`,
-            [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id]
+            [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id, item.s3Key]
         );
-
-        // El original se retira sólo después de que la fila apunte al JPEG: si
-        // el UPDATE fallara, el archivo viejo tiene que seguir estando.
-        await s3.send(new DeleteObjectCommand({ Bucket: item.bucket, Key: item.s3Key }))
-            .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
 
         res.json(updated.rows[0]);
     } catch (error) {
@@ -1183,7 +1184,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         if (media.rows[0].s3Key && media.rows[0].bucket) {
             try {
                 const { s3, DeleteObjectCommand } = await getUploadDeps();
-                await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: media.rows[0].s3Key }));
+                // Se borran los DOS: el archivo y, si lo hubo, el original que
+                // se conservó al convertirlo. Dejar el original sería un objeto
+                // que nadie puede ver ni volver a borrar desde el panel.
+                for (const key of [media.rows[0].s3Key, media.rows[0].originalS3Key].filter(Boolean)) {
+                    await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: key }));
+                }
             } catch (s3Err) {
                 console.error('S3 delete error:', s3Err);
             }

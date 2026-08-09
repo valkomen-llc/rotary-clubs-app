@@ -312,6 +312,18 @@ model Media {
   // Sin relación declarada: el destino no es un modelo de Prisma.
   folderId    String?
 
+  // Clave en S3 del archivo TAL COMO SE SUBIÓ, cuando hubo que convertirlo
+  // para poder mostrarlo (un .heic de iPhone) — v4.741.
+  //
+  // El original NO se borra. En v4.739 sí se borraba en cuanto el JPEG estaba
+  // arriba, y una conversión que salió mal se llevó por delante fotos que ya
+  // no se pueden recuperar. Guardar su clave permite conservarlo sin dejar un
+  // objeto huérfano: al eliminar el archivo de la Librería se borran los dos.
+  //
+  // Declarada acá además de en el ensure por la misma razón que `folderId`:
+  // el guardián de db:push compara tablas, no columnas.
+  originalS3Key String?
+
   @@index([sourceType, sourceId])
   @@index([clubId])
   @@index([folderId])

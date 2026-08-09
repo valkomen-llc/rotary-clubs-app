@@ -6,29 +6,29 @@
 // una foto subida desde un iPhone aparecía rota. No era un fallo de la
 // Librería: es que el archivo no se puede mostrar en la web.
 //
-// POR QUÉ FFMPEG Y NO SHARP: sharp declara el formato `heif` y LEE el
-// contenedor —da ancho, alto y orientación—, pero sus binarios precompilados
-// no traen el decodificador HEVC, que es con el que un iPhone comprime. Medido
-// con seis archivos HEIC reales: `sharp(file).metadata()` responde bien y
-// `.jpeg()` falla en todos. FFmpeg sí lo decodifica, ya viaja con la
-// aplicación desde v4.664 (`ffmpeg-static`, ver el Creador de Reels) y no suma
-// un byte al paquete.
+// POR QUÉ NO SHARP: declara el formato `heif` y LEE el contenedor —da ancho,
+// alto y orientación—, pero sus binarios precompilados no traen el
+// decodificador HEVC, que es con el que un iPhone comprime. Medido con seis
+// archivos HEIC reales: `metadata()` responde bien y `.jpeg()` falla en todos.
 //
-// EL REPARTO: FFmpeg DECODIFICA a PNG —sin pérdida, para no encadenar dos
-// compresiones con pérdida— y sharp CODIFICA el JPEG y aplica la orientación.
-import { spawn } from 'child_process';
-import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
-import { tmpdir } from 'os';
-import path from 'path';
-
-let _ffmpegPath = null;
-const ffmpegBin = async () => {
-    if (_ffmpegPath) return _ffmpegPath;
-    if (process.env.FFMPEG_PATH) return (_ffmpegPath = process.env.FFMPEG_PATH);
-    const mod = await import('ffmpeg-static');
-    _ffmpegPath = mod.default || mod;
-    return _ffmpegPath;
-};
+// POR QUÉ NO FFMPEG (v4.741): decodifica HEVC, pero un HEIC de iPhone guarda la
+// foto como una REJILLA de mosaicos (`Tile Grid`) más imágenes auxiliares —la
+// miniatura y el mapa de ganancia HDR—. FFmpeg 7.0 expone la rejilla como
+// «stream group» y NO la ensambla: la selección automática de stream termina
+// eligiendo un mosaico suelto o el mapa de ganancia. El mapa de ganancia es una
+// imagen en escala de grises, casi negra con manchas blancas, y es exactamente
+// lo que apareció en la Librería después de convertir. La rejilla se agregó a
+// ffmpeg en 7.1 y el binario que empaquetamos es el 7.0.2.
+//
+// LO QUE SE USA: libheif (`heic-decode`), que es la implementación de
+// referencia del formato: reconstruye la rejilla, elige la imagen PRIMARIA y
+// deja fuera las auxiliares. Pesa 6,2 MB, holgado dentro del tope de 250 MB de
+// la función. Devuelve píxeles crudos y sharp codifica el JPEG.
+//
+// Y SE COMPRUEBA LO DECODIFICADO: las dimensiones tienen que coincidir con las
+// que declara el contenedor. Es la comprobación que habría atrapado el mapa de
+// ganancia —tiene otro tamaño que la foto— antes de que reemplazara al
+// original. Decodificar sin mirar lo que salió fue el error de fondo.
 
 let _sharp = null;
 const getSharp = async () => {
@@ -116,92 +116,156 @@ export function orientationOps(orientation) {
 
 // ─── Conversión ──────────────────────────────────────────────────────────────
 
-/** Calidad del JPEG resultante. Alta: esto reemplaza al original. */
+/** Calidad del JPEG resultante. Alta: esto sustituye al original en la ficha. */
 const JPEG_QUALITY = 90;
 
-/** Tope de espera de FFmpeg. Una foto tarda 1-3 s; más que esto es que algo colgó. */
-const FFMPEG_TIMEOUT_MS = 60_000;
-
-const runFfmpeg = async (args) => {
-    const bin = await ffmpegBin();
-    return new Promise((resolve, reject) => {
-        // `stdout` se DESCARTA en el descriptor, no se abre como tubería: con
-        // `pipe` y nadie leyendo, el búfer del sistema se llena y ffmpeg queda
-        // bloqueado escribiendo. No falla, se cuelga. Misma regla que el
-        // Creador de Reels.
-        const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
-        let stderr = '';
-        proc.stderr.on('data', d => { stderr += d.toString(); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
-        const timer = setTimeout(() => { proc.kill('SIGKILL'); reject(new Error('La conversión tardó demasiado.')); }, FFMPEG_TIMEOUT_MS);
-        proc.on('error', (err) => { clearTimeout(timer); reject(err); });
-        proc.on('close', (code) => {
-            clearTimeout(timer);
-            if (code === 0) return resolve();
-            reject(new Error(`ffmpeg salió con código ${code}: ${stderr.slice(-400)}`));
-        });
-    });
+let _decodeHeic = null;
+const getDecoder = async () => {
+    if (!_decodeHeic) {
+        const mod = await import('heic-decode');
+        _decodeHeic = mod.default || mod;
+    }
+    return _decodeHeic;
 };
+
+/**
+ * De todas las imágenes que hay dentro del archivo, ¿cuál es la foto?
+ *
+ * Un HEIC lleva varias: la foto, la miniatura y —en un iPhone— el mapa de
+ * ganancia HDR. `heic-decode` devuelve la lista y toma la PRIMERA, que suele
+ * ser la primaria pero no lo garantiza; es la misma clase de suposición que
+ * hacía ffmpeg cuando eligió el mapa de ganancia y llenó la Librería de
+ * imágenes negras.
+ *
+ * Acá se elige por TAMAÑO: la que coincide con lo que declara el contenedor.
+ * Se admite el intercambio ancho/alto porque el decodificador puede haber
+ * aplicado ya la rotación. Sin dimensiones del contenedor no hay con qué
+ * decidir y se toma la primera, que es lo que se hacía antes.
+ *
+ * PURA: recibe medidas, devuelve un índice. Devuelve -1 si ninguna encaja.
+ */
+export function pickPrimaryImage(container, images) {
+    const list = Array.isArray(images) ? images : [];
+    if (!list.length) return -1;
+
+    const cw = Number(container?.width) || 0;
+    const ch = Number(container?.height) || 0;
+    if (!cw || !ch) return 0;
+
+    const exact = list.findIndex(i => Number(i?.width) === cw && Number(i?.height) === ch);
+    if (exact !== -1) return exact;
+
+    const swapped = list.findIndex(i => Number(i?.width) === ch && Number(i?.height) === cw);
+    if (swapped !== -1) return swapped;
+
+    return -1;
+}
+
+/**
+ * ¿Lo que se decodificó es la foto, o alguna de las imágenes auxiliares?
+ *
+ * Un HEIC de iPhone lleva dentro la foto, una miniatura y el mapa de ganancia
+ * HDR. Las tres son «imágenes» del archivo y ninguna librería avisa si se
+ * entrega la equivocada: lo que se ve es una imagen en escala de grises, casi
+ * negra, que reemplazó a la foto. Pasó en producción (v4.739-v4.740).
+ *
+ * El contraste es contra las dimensiones que declara el CONTENEDOR, que sharp
+ * sabe leer aunque no sepa decodificar los píxeles. La foto tiene esas
+ * dimensiones y las auxiliares no. Se admite el intercambio ancho/alto porque
+ * el decodificador puede haber aplicado ya la rotación del contenedor.
+ *
+ * PURA: recibe los dos tamaños y contesta. Devuelve `{ ok, swapped, error }`.
+ */
+export function checkDecodedSize(container, decoded) {
+    const cw = Number(container?.width) || 0;
+    const ch = Number(container?.height) || 0;
+    const dw = Number(decoded?.width) || 0;
+    const dh = Number(decoded?.height) || 0;
+
+    if (!dw || !dh) return { ok: false, swapped: false, error: 'La imagen decodificada no tiene tamaño.' };
+    // Sin dimensiones del contenedor no hay contra qué contrastar. No se
+    // inventa un veredicto: se acepta y quien mire el resultado decide.
+    if (!cw || !ch) return { ok: true, swapped: false, error: null };
+
+    if (dw === cw && dh === ch) return { ok: true, swapped: false, error: null };
+    if (dw === ch && dh === cw) return { ok: true, swapped: true, error: null };
+
+    return {
+        ok: false,
+        swapped: false,
+        error: `Lo decodificado mide ${dw}×${dh} y el archivo declara ${cw}×${ch}: `
+            + 'no es la imagen principal (puede ser la miniatura o el mapa de ganancia HDR).',
+    };
+}
 
 /**
  * Convierte un HEIC/HEIF a JPEG. Devuelve `{ buffer, width, height, orientation }`.
  *
- * Lanza si no se pudo. Quien llama decide qué hacer con eso — en la subida se
- * guarda el original sin convertir y se avisa, porque perder el archivo sería
- * peor que no poder mostrarlo.
+ * Lanza si no se pudo, y también si lo que salió no supera la comprobación de
+ * tamaño. Quien llama decide qué hacer con eso — en la subida se guarda el
+ * original sin convertir y se avisa, porque perder el archivo sería peor que no
+ * poder mostrarlo.
  */
 export async function convertHeicToJpeg(input, { maxDimension = 4096 } = {}) {
     const sharp = await getSharp();
+    const decodeHeic = await getDecoder();
 
-    // La orientación se lee del CONTENEDOR con sharp, que sí sabe leerlo aunque
-    // no sepa decodificar los píxeles. Es el dato que ffmpeg no nos va a dar.
-    let orientation = 1;
+    // El contenedor se lee con sharp: sabe hacerlo aunque no sepa decodificar
+    // los píxeles. De acá salen la orientación y el tamaño con el que después
+    // se contrasta lo decodificado.
+    let container = { width: 0, height: 0, orientation: 1 };
     try {
         const meta = await sharp(input).metadata();
-        orientation = meta.orientation || 1;
+        container = { width: meta.width || 0, height: meta.height || 0, orientation: meta.orientation || 1 };
     } catch {
-        // Sin orientación legible se asume derecha: rotar a ciegas sería peor.
+        // Sin contenedor legible se sigue: la comprobación de tamaño se salta
+        // sola y la orientación se asume derecha. Rotar a ciegas sería peor.
     }
 
-    // Carpeta temporal propia por operación. FFmpeg necesita un ARCHIVO: el
-    // demuxer de MP4/HEIF salta por el contenedor y no puede leer de una
-    // tubería —comprobado: «partial file»—.
-    const dir = await mkdtemp(path.join(tmpdir(), 'heic-'));
+    // `.all()` da la LISTA de imágenes del archivo con sus medidas, sin
+    // decodificar ninguna: elegir por tamaño no cuesta trabajo de más.
+    const source = Buffer.isBuffer(input) ? input : Buffer.from(input);
+    const images = await decodeHeic.all({ buffer: source });
+    let decoded;
     try {
-        const src = path.join(dir, 'source.heic');
-        const out = path.join(dir, 'decoded.png');
-        await writeFile(src, input);
-
-        // PNG intermedio, sin pérdida: encadenar el JPEG de ffmpeg con el
-        // nuestro comprimiría dos veces la misma foto.
-        //
-        // `-noautorotate` a propósito: la rotación se aplica UNA sola vez, más
-        // abajo y con la orientación del contenedor. Dejar que ffmpeg rote
-        // además daría una foto girada dos veces.
-        await runFfmpeg(['-y', '-hide_banner', '-loglevel', 'error', '-noautorotate',
-            '-i', src, '-frames:v', '1', '-update', '1', out]);
-
-        const decoded = await readFile(out);
-        const { flop, rotate } = orientationOps(orientation);
-
-        let pipeline = sharp(decoded, { failOn: 'none' });
-        if (flop) pipeline = pipeline.flop();
-        if (rotate) pipeline = pipeline.rotate(rotate);
-
-        const meta = await sharp(decoded).metadata();
-        if (Math.max(meta.width || 0, meta.height || 0) > maxDimension) {
-            pipeline = pipeline.resize({
-                width: maxDimension, height: maxDimension,
-                fit: 'inside', withoutEnlargement: true,
-            });
+        const index = pickPrimaryImage(container, images);
+        if (index === -1) {
+            const sizes = images.map(i => `${i.width}×${i.height}`).join(', ');
+            throw new Error(
+                `Ninguna de las imágenes del archivo (${sizes}) coincide con lo que declara `
+                + `(${container.width}×${container.height}). No se puede saber cuál es la foto.`
+            );
         }
-
-        const buffer = await pipeline.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
-        const final = await sharp(buffer).metadata();
-        return { buffer, width: final.width, height: final.height, orientation };
+        const chosen = images[index];
+        decoded = { width: chosen.width, height: chosen.height, data: (await chosen.decode()).data };
     } finally {
-        // `/tmp` no se vacía solo entre invocaciones de una función serverless.
-        await rm(dir, { recursive: true, force: true }).catch(() => { });
+        images.dispose?.();
     }
+
+    const verdict = checkDecodedSize(container, decoded);
+    if (!verdict.ok) throw new Error(verdict.error);
+
+    let pipeline = sharp(Buffer.from(decoded.data), {
+        raw: { width: decoded.width, height: decoded.height, channels: 4 },
+    });
+
+    // La orientación se aplica sólo si el decodificador NO la aplicó ya. Que
+    // las dimensiones vengan intercambiadas respecto del contenedor significa
+    // que sí lo hizo, y rotar otra vez dejaría la foto acostada.
+    const { flop, rotate } = verdict.swapped ? { flop: false, rotate: 0 } : orientationOps(container.orientation);
+    if (flop) pipeline = pipeline.flop();
+    if (rotate) pipeline = pipeline.rotate(rotate);
+
+    if (Math.max(decoded.width, decoded.height) > maxDimension) {
+        pipeline = pipeline.resize({
+            width: maxDimension, height: maxDimension,
+            fit: 'inside', withoutEnlargement: true,
+        });
+    }
+
+    const buffer = await pipeline.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+    const final = await sharp(buffer).metadata();
+    return { buffer, width: final.width, height: final.height, orientation: container.orientation };
 }
 
-export default { isHeicFile, jpegNameFor, jpegKeyFor, orientationOps, convertHeicToJpeg };
+export default { isHeicFile, jpegNameFor, jpegKeyFor, orientationOps, checkDecodedSize, convertHeicToJpeg };
