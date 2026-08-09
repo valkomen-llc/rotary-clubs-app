@@ -251,6 +251,50 @@ check('no se usa ON CONFLICT contra los índices parciales', () =>
     // Un ON CONFLICT contra un índice parcial tiene que repetir su predicado o
     // la sentencia falla entera (error real, corregido en v4.648).
     assert.ok(!/ON CONFLICT[\s\S]{0,200}MediaFolder/.test(ROUTES)));
+console.log('\n── Las acciones en bloque ─────────────────────────────');
+
+// Son las que pueden destruir mucho de una vez, así que lo que las contiene se
+// comprueba sobre el archivo: nada de esto se ve ejecutando el criterio.
+check('las acciones en bloque se acotan al sitio del usuario', () =>
+    // `ownedMedia` es el único punto por el que pasan las dos, y filtra por
+    // clubId salvo para el operador de la plataforma. Quien manda ids ajenos
+    // recibe menos filas de las que pidió, en vez de operar sobre lo ajeno.
+    assert.match(ROUTES, /const ownedMedia[\s\S]{0,600}?clubId" IS NOT DISTINCT FROM/));
+check('el borrado en bloque pasa por ownedMedia, no por los ids crudos', () => {
+    const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-delete'"), ROUTES.indexOf("router.post('/:id/convert'"));
+    assert.match(bulk, /ownedMedia\(/);
+    assert.ok(!/DELETE FROM "Media" WHERE id = ANY\(\$1::text\[\]\)[\s\S]{0,40}asked/.test(bulk),
+        'se borra con la lista pedida en vez de con la comprobada');
+    assert.match(bulk, /const ids = items\.map/);
+});
+check('el borrado en bloque quita S3 ANTES que la fila', () => {
+    const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-delete'"), ROUTES.indexOf("router.post('/:id/convert'"));
+    const s3 = bulk.indexOf('DeleteObjectsCommand');
+    const row = bulk.indexOf('DELETE FROM "Media"');
+    assert.ok(s3 > -1 && row > s3, 'al revés quedarían archivos que nadie puede ver ni volver a borrar');
+});
+check('la conversión en bloque tiene presupuesto de tiempo', () =>
+    // La función corta a los 120 s: sin presupuesto, una selección grande se
+    // convertiría a medias y la respuesta diría que terminó.
+    assert.match(ROUTES, /BULK_TIME_BUDGET_MS[\s\S]{0,900}?pending\.push/));
+check('la conversión en bloque devuelve lo que falta', () =>
+    assert.match(ROUTES, /pending,/));
+check('un fallo no detiene el lote', () => {
+    const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-convert'"), ROUTES.indexOf("router.post('/bulk-delete'"));
+    assert.match(bulk, /failed\.push\(\{ id: item\.id, filename: item\.filename, error/);
+});
+check('en bloque, el HEIC original también se retira DESPUÉS del JPEG', () => {
+    const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-convert'"), ROUTES.indexOf("router.post('/bulk-delete'"));
+    // Se buscan las LLAMADAS (`s3.send(new …`), no los nombres a secas: los
+    // tres aparecen juntos en la línea que los toma de `getUploadDeps()`, y
+    // medir ahí daría un orden que no es el de la ejecución.
+    const put = bulk.indexOf('s3.send(new PutObjectCommand');
+    const upd = bulk.indexOf('UPDATE "Media"');
+    const del = bulk.indexOf('s3.send(new DeleteObjectCommand');
+    assert.ok(put > -1 && upd > put && del > upd,
+        `el orden subir → actualizar → retirar no se respeta (put=${put}, update=${upd}, delete=${del})`);
+});
+
 check('toda consulta de carpetas se acota por sitio', () => {
     const queries = ROUTES.match(/FROM "MediaFolder"[\s\S]{0,200}?(?=`)/g) || [];
     assert.ok(queries.length > 0, 'no se encontró ninguna consulta de MediaFolder');

@@ -305,6 +305,7 @@ const getUploadDeps = async () => {
             s3,
             PutObjectCommand: aws.PutObjectCommand,
             DeleteObjectCommand: aws.DeleteObjectCommand,
+            DeleteObjectsCommand: aws.DeleteObjectsCommand,
             GetObjectCommand: aws.GetObjectCommand,
             getSignedUrl: presignerMod.getSignedUrl
         };
@@ -973,6 +974,151 @@ router.get('/debug-me', authMiddleware, async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── Acciones sobre VARIOS archivos ──────────────────────────────────────────
+//
+// Van por su propia ruta y no repitiendo la de a uno desde el navegador: con
+// cien archivos serían cien peticiones, cien conexiones a la base y cien
+// oportunidades de que una falle a medias sin que nadie sepa cuáles quedaron.
+
+/**
+ * Las filas de `Media` que el usuario puede tocar, de una lista de ids.
+ *
+ * El aislamiento va en el WHERE, no en la pantalla: quien manda ids ajenos
+ * recibe menos filas de las que pidió, en vez de operar sobre lo ajeno. La
+ * diferencia entre lo pedido y lo devuelto es lo que se le informa.
+ */
+const ownedMedia = async (ids, user) => {
+    const unique = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+    if (!unique.length) return [];
+    const params = [unique];
+    let where = 'id = ANY($1::text[])';
+    if (user.role !== 'administrator') {
+        where += ' AND "clubId" IS NOT DISTINCT FROM $2';
+        params.push(user.clubId || null);
+    }
+    const { rows } = await db.query(`SELECT * FROM "Media" WHERE ${where}`, params);
+    return rows;
+};
+
+/** Cuánto puede tardar un lote antes de devolver lo hecho y lo que falta. */
+const BULK_TIME_BUDGET_MS = 90_000;
+
+// POST /api/media/bulk-convert — convierte a JPEG los HEIC de una selección.
+//
+// Tiene PRESUPUESTO DE TIEMPO, igual que el barrido del Creador de Reels: la
+// función corta a los 120 s (`vercel.json`) y cada foto tarda entre 0,3 y 1 s,
+// así que una selección grande no entra en una sola petición. Se convierte lo
+// que quepa y se devuelve lo que falta, para que la pantalla siga pidiendo y
+// pueda mostrar el avance. Cortar en silencio dejaría al usuario creyendo que
+// terminó.
+router.post('/bulk-convert', authMiddleware, async (req, res) => {
+    try {
+        const items = await ownedMedia(req.body?.mediaIds, req.user);
+        const targets = items.filter(m => isHeicFile({ filename: m.filename, mimetype: null }));
+
+        const started = Date.now();
+        const converted = [];
+        const failed = [];
+        const pending = [];
+
+        for (const item of targets) {
+            if (Date.now() - started > BULK_TIME_BUDGET_MS) { pending.push(item.id); continue; }
+            if (!item.s3Key || !item.bucket) {
+                failed.push({ id: item.id, filename: item.filename, error: 'No se sabe dónde está guardado.' });
+                continue;
+            }
+            try {
+                const original = await fetchFromS3(item.bucket, item.s3Key);
+                const { buffer } = await convertHeicToJpeg(original);
+                const newKey = jpegKeyFor(item.s3Key);
+
+                const { s3, PutObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+                await s3.send(new PutObjectCommand({
+                    Bucket: item.bucket, Key: newKey, Body: buffer, ContentType: 'image/jpeg',
+                }));
+                await db.query(
+                    `UPDATE "Media" SET filename = $1, url = $2, "s3Key" = $3, size = $4, type = 'image'
+                      WHERE id = $5`,
+                    [jpegNameFor(item.filename), publicUrlFor(item.bucket, newKey), newKey, buffer.length, item.id]
+                );
+                // El original se retira sólo después de que la fila apunte al
+                // JPEG, igual que en la conversión de a una.
+                await s3.send(new DeleteObjectCommand({ Bucket: item.bucket, Key: item.s3Key }))
+                    .catch(e => console.error('[Media] no se pudo retirar el HEIC original:', e.message));
+                converted.push(item.id);
+            } catch (err) {
+                console.error('[Media] bulk convert failed for', item.id, err.message);
+                // Un fallo no detiene el lote: los demás archivos no tienen la
+                // culpa, y el que falló se informa con su nombre y su motivo.
+                failed.push({ id: item.id, filename: item.filename, error: err.message });
+            }
+        }
+
+        res.json({
+            converted: converted.length,
+            failed,
+            pending,
+            // Lo que se pidió y no era HEIC no es un error: se cuenta aparte
+            // para que el resumen cuadre con lo que el usuario seleccionó.
+            skipped: items.length - targets.length,
+        });
+    } catch (error) {
+        console.error('[Media] bulk convert error:', error);
+        res.status(500).json({ error: 'No se pudieron convertir los archivos', details: error.message });
+    }
+});
+
+// POST /api/media/bulk-delete — elimina varios archivos.
+router.post('/bulk-delete', authMiddleware, async (req, res) => {
+    try {
+        const asked = [...new Set((Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : []).filter(Boolean))];
+        if (!asked.length) return res.status(400).json({ error: 'No se indicó ningún archivo.' });
+
+        const items = await ownedMedia(asked, req.user);
+        if (!items.length) return res.status(404).json({ error: 'No se encontró ninguno de esos archivos.' });
+
+        // Primero S3 y después la base, igual que el borrado de a uno. Al revés
+        // —fila borrada y objeto en pie— dejaría archivos que nadie puede ver ni
+        // volver a borrar desde el panel.
+        const { s3, DeleteObjectsCommand } = await getUploadDeps();
+        const byBucket = new Map();
+        for (const m of items) {
+            if (!m.s3Key || !m.bucket) continue;
+            if (!byBucket.has(m.bucket)) byBucket.set(m.bucket, []);
+            byBucket.get(m.bucket).push({ Key: m.s3Key });
+        }
+        for (const [bucket, objects] of byBucket) {
+            // `DeleteObjects` acepta 1000 por llamada: se manda por lotes en vez
+            // de una petición por archivo.
+            for (let i = 0; i < objects.length; i += 1000) {
+                try {
+                    await s3.send(new DeleteObjectsCommand({
+                        Bucket: bucket, Delete: { Objects: objects.slice(i, i + 1000), Quiet: true },
+                    }));
+                } catch (e) {
+                    // Que no se pueda borrar de S3 no impide quitarlo de la
+                    // Librería: el usuario pidió que desaparezca de su panel.
+                    console.error('[Media] S3 bulk delete error:', e.message);
+                }
+            }
+        }
+
+        const ids = items.map(m => m.id);
+        await db.query('DELETE FROM "Media" WHERE id = ANY($1::text[])', [ids]);
+
+        res.json({
+            deleted: ids.length,
+            // Lo pedido que no apareció es de otro sitio o ya no existe. Se
+            // informa en vez de callarlo: un número que no cuadra con lo que se
+            // seleccionó necesita explicación.
+            notFound: asked.length - ids.length,
+        });
+    } catch (error) {
+        console.error('[Media] bulk delete error:', error);
+        res.status(500).json({ error: 'No se pudieron eliminar los archivos', details: error.message });
     }
 });
 
