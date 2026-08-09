@@ -2903,6 +2903,11 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   un velo sobre el fondo del pie: su color dependía del fondo de cada sitio y no
   coincidía con nada. Un sitio Evento/Convención conserva su `copyrightBg`
   configurado — ahí el operador ya eligió y pisarlo sería desobedecerlo.
+- **El fondo del pie sale de `src/lib/siteChrome.ts`** (`SITE_FOOTER_BG`,
+  `#212C3F` desde v4.745.2). Lo consumen el pie de verdad (`Footer.tsx`) y la
+  vista previa del panel (`FooterSystem.tsx`): escrito a mano en los dos, el
+  panel acaba enseñando un pie que no es el que ve el visitante. Un sitio
+  Evento/Convención conserva su `colors.footerBg` configurado.
 - **«Club Platform for Rotary» es una MARCA y va con `data-no-translate`.** El
   traductor de DOM la pasaba a «Plataforma de Club para Rotary», un nombre que
   no existe. Es la distinción de v4.662 entre LENGUAJE —se traduce— e IDENTIDAD

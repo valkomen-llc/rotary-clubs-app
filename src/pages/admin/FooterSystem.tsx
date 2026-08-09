@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminLayout from '../../components/admin/AdminLayout';
+import { SITE_FOOTER_BG } from '../../lib/siteChrome';
 
 interface FooterItem {
     label: string;
@@ -407,7 +408,9 @@ const FooterSystem = () => {
                     </div>
                 </div>
 
-                <div className="bg-[#013E7D] p-10 rounded-3xl shadow-2xl relative overflow-hidden border border-white/5">
+                {/* El MISMO color que el pie de verdad: si la vista previa lo lleva escrito
+                    a mano, enseña un pie que no es el que ve el visitante. */}
+                <div className="p-10 rounded-3xl shadow-2xl relative overflow-hidden border border-white/5" style={{ backgroundColor: SITE_FOOTER_BG }}>
                     <div className="absolute top-4 right-4 bg-emerald-500/90 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-xl backdrop-blur-sm border border-white/20">
                         Vista Previa Real-Time
                     </div>

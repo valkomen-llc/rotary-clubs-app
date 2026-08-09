@@ -156,6 +156,24 @@ if (dist) {
     console.log('  ⏭  sin dist/: se omite la comprobación del CSS compilado');
 }
 
+console.log('\n── El fondo del pie tiene UN solo sitio ───────────────');
+
+// Lo consumen el pie de verdad y la vista previa del panel. Escrito a mano en
+// los dos, la vista previa acaba enseñando un pie que no es el que se sirve.
+const CHROME = readFileSync('src/lib/siteChrome.ts', 'utf8');
+check('el color del pie está declarado una sola vez', () =>
+    assert.match(CHROME, /SITE_FOOTER_BG = '#212C3F'/));
+check('el pie y la vista previa del panel lo toman de ahí', () => {
+    for (const f of ['src/sections/Footer.tsx', 'src/pages/admin/FooterSystem.tsx']) {
+        const src = readFileSync(f, 'utf8');
+        assert.match(src, /SITE_FOOTER_BG/, `${f} dejó de usar la constante`);
+        assert.ok(!/#212C3F/i.test(stripComments(src)), `${f} volvió a escribir el color a mano`);
+    }
+});
+check('el token de la barra superior dice lo mismo en los dos mecanismos', () =>
+    // Uno se consume como clase (tailwind.config.js) y el otro en línea.
+    assert.match(CHROME, /SITE_TOPBAR_BG = '#28354b'/));
+
 console.log('\n── El nombre de la plataforma es una MARCA ────────────');
 
 // El traductor de DOM lo pasaba a «Plataforma de Club para Rotary», un nombre
