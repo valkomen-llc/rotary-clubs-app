@@ -171,6 +171,23 @@ check('la imagen no lleva sombra, halo ni filtro', () =>
     assert.ok(!/(shadow-(?!none)|ring-\d|drop-shadow)/.test(stripComments(BANNER)),
         'volvió una sombra o un halo a la banda'));
 
+console.log('\n── El orden de la portada estándar ────────────────────');
+
+// El orden se comprueba sobre el archivo porque es una decisión de `SmartHome`.
+// El puesto real en el navegador está verificado aparte; esto impide que un
+// cambio posterior lo mueva sin que nadie se entere.
+const clubHome = stripComments(APP.slice(APP.indexOf('// Default: Club site'), APP.indexOf('const ScrollToTop')));
+const orden = [...clubHome.matchAll(/<([A-Z]\w+Section)\s*\/>/g)].map(m => m[1]);
+
+check('«Noticias» va justo debajo de «Somos gente de acción»', () => {
+    const i = orden.indexOf('ActionSection');
+    assert.ok(i >= 0, 'no se encontró ActionSection en la portada');
+    assert.equal(orden[i + 1], 'NewsSection',
+        `entre las dos se coló ${orden[i + 1]}`);
+});
+check('la portada abre con el hero y «Somos gente de acción»', () =>
+    assert.deepEqual(orden.slice(0, 3), ['HeroSection', 'ActionSection', 'NewsSection']));
+
 console.log('\n── La imagen de «Únete a Rotary» ──────────────────────');
 
 // Llevaba un degradado dorado desenfocado detrás y un `shadow-2xl`: sobre el

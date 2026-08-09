@@ -385,6 +385,12 @@ function SmartHome() {
       <main>
         <HeroSection />
         <ActionSection />
+        {/* Noticias va TERCERO, justo debajo de «Somos gente de acción»
+            (v4.745.5, pedido del Distrito). Antes cerraba la portada, donde
+            casi nadie llegaba: lo más nuevo del sitio quedaba al final.
+            Evento/Convención puede desactivar el contenedor desde su
+            configuración, y esa condición se mueve con la sección. */}
+        {((club as any)?.eventSections?.news !== false) && <NewsSection />}
         <StatsSection />
         {/* Banda configurable por sitio. No pinta nada si nadie la llenó, así
             que los sitios que no la usan se ven igual que antes. */}
@@ -392,8 +398,6 @@ function SmartHome() {
         <JoinSection />
         <FoundationSection />
         <CausesHexSection />
-        {/* Evento/Convención: el contenedor de noticias se puede desactivar desde la configuración. */}
-        {((club as any)?.eventSections?.news !== false) && <NewsSection />}
       </main>
       <Footer />
     </div>

@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.4 | 2026-08-09 (La imagen de «Únete»: sin resplandor y sin recorte)
-// Cache bust: 2026-08-09l
+// UI V4.745.5 | 2026-08-09 («Noticias y artículos» pasa a ser el tercer contenedor)
+// Cache bust: 2026-08-09m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.5',
+        title: '«Noticias y artículos» sube al tercer lugar de la portada 📰',
+        description: 'El contenedor de noticias cerraba la portada, así que lo más nuevo del sitio quedaba al final, donde casi nadie llega. Ahora va tercero, justo debajo de «Somos gente de acción»: el visitante ve el hero, la presentación del sitio y en seguida lo que está pasando. El resto de los contenedores conserva su orden entre sí. Los sitios de Evento o Convención que tengan desactivado el contenedor de noticias lo siguen teniendo desactivado — esa opción viaja con la sección.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'noticias'],
+        type: 'changed',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: '«Noticias y artículos» pasa del final al tercer lugar de la portada.' },
+        ]
+    },
     {
         version: '4.745.4',
         title: 'La imagen de «Únete a Rotary»: sin resplandor y sin recorte 🖼️',
