@@ -19,8 +19,13 @@ const HomeBannerSection = () => {
 
     if (!url) return null;
 
+    // El fondo es el MISMO azul de la barra superior del sitio, tomado del token
+    // del tema (`rotary-topbar`) y no repetido como literal: son tres
+    // componentes los que lo llevan y tres copias se separan en cuanto alguien
+    // cambie una. Sobre blanco, estas piezas —que suelen ser azules de borde a
+    // borde— quedaban como una tarjeta recortada en medio de la página.
     return (
-        <section className="py-12 md:py-16 bg-white">
+        <section className="py-12 md:py-16 bg-rotary-topbar">
             <div className="max-w-6xl mx-auto px-6">
                 {/*
                     `object-contain` y la proporción natural, NO un recorte a una
@@ -32,7 +37,8 @@ const HomeBannerSection = () => {
                 <img
                     src={url}
                     alt={banner?.alt || 'Imagen destacada'}
-                    className="w-full h-auto rounded-2xl shadow-lg shadow-black/5 object-contain"
+                    /* Sin sombra: sobre el fondo oscuro una sombra negra no se ve. */
+                    className="w-full h-auto rounded-2xl object-contain"
                     /*
                         Va debajo del pliegue: cargarla de forma diferida evita
                         que compita con el primer pintado, que es la regla de

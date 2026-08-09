@@ -20,7 +20,7 @@
 // ════════════════════════════════════════════════════════════════════
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -120,6 +120,40 @@ check('el Navbar toma el criterio de entityTypes, no de una lista propia', () =>
 const SETTINGS = readFileSync('src/pages/admin/ClubSettings.tsx', 'utf8');
 check('el panel toma el mismo criterio que el Navbar', () =>
     assert.ok(/hasFixedNav\(/.test(SETTINGS), 'el panel volvió a llevar su propia lista'));
+
+console.log('\n── El azul de la barra superior tiene UN solo sitio ───');
+
+// La barra superior, su versión pública y la banda de la portada llevan el
+// MISMO fondo. Estaba escrito a mano como `bg-[#28354b]` en dos componentes; al
+// aparecer el tercero, tres literales se separan en cuanto alguien cambie uno.
+const TOPBAR_USERS = [
+    'src/sections/Navbar.tsx',
+    'src/components/PublicTopBar.tsx',
+    'src/sections/HomeBannerSection.tsx',
+];
+for (const file of TOPBAR_USERS) {
+    const src = readFileSync(file, 'utf8');
+    check(`${file.split('/').pop()} usa el token, no el hexadecimal`, () => {
+        assert.ok(!/#28354b/i.test(stripComments(src)), 'volvió el color escrito a mano');
+        assert.match(src, /bg-rotary-topbar/);
+    });
+}
+
+check('el token está declarado en el tema de Tailwind, no en index.css', () =>
+    // Una clase escrita a mano en `@layer utilities` —como `bg-rotary-blue`— NO
+    // genera los modificadores de opacidad y falla en silencio (v4.719).
+    assert.match(readFileSync('tailwind.config.js', 'utf8'), /"rotary-topbar":\s*"#28354b"/));
+
+// Que la clase EXISTA en el CSS compilado es lo único que demuestra que llegó:
+// una clase que Tailwind no genera no da error, simplemente no pinta.
+const dist = existsSync('dist') && readdirSync('dist/assets').find(f => /^index-.*\.css$/.test(f));
+if (dist) {
+    const css = readFileSync(`dist/assets/${dist}`, 'utf8');
+    check('la clase llegó al CSS compilado', () =>
+        assert.match(css, /\.bg-rotary-topbar\{[^}]*40 53 75/));
+} else {
+    console.log('  ⏭  sin dist/: se omite la comprobación del CSS compilado');
+}
 
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail === 0 ? 0 : 1);
