@@ -39,9 +39,15 @@ export async function ensureMediaFolderSchema() {
                     WHERE schemaname = 'public' AND tablename = 'MediaFolder') AS has_table,
             EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'Media'
-                      AND column_name = 'folderId') AS has_column
+                      AND column_name = 'folderId') AS has_column,
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'Media'
+                      AND column_name = 'originalS3Key') AS has_original
     `);
-    if (rows[0]?.has_table && rows[0]?.has_column) {
+    // La lista de objetos que se comprueban NO es un número de versión: enumera
+    // lo que este archivo crea de verdad, y hay que ampliarla al agregar uno
+    // nuevo o la comprobación rápida lo dará por presente y no se creará nunca.
+    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original) {
         _ready = true;
         return;
     }
@@ -90,6 +96,7 @@ export async function ensureMediaFolderSchema() {
     await db.query(`
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "folderId" TEXT;
         CREATE INDEX IF NOT EXISTS "Media_folderId_idx" ON "Media"("folderId");
+        ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "originalS3Key" TEXT;
     `);
 
     _ready = true;

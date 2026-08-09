@@ -283,16 +283,16 @@ check('un fallo no detiene el lote', () => {
     const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-convert'"), ROUTES.indexOf("router.post('/bulk-delete'"));
     assert.match(bulk, /failed\.push\(\{ id: item\.id, filename: item\.filename, error/);
 });
-check('en bloque, el HEIC original también se retira DESPUÉS del JPEG', () => {
+check('en bloque, el HEIC original NO se borra (v4.741)', () => {
+    // Corregido tras el defecto de producción: la conversión entregaba el mapa
+    // de ganancia HDR en vez de la foto Y borraba el original, así que las
+    // fotos no se pudieron recuperar. Ahora se conserva y su clave se anota.
     const bulk = ROUTES.slice(ROUTES.indexOf("router.post('/bulk-convert'"), ROUTES.indexOf("router.post('/bulk-delete'"));
-    // Se buscan las LLAMADAS (`s3.send(new …`), no los nombres a secas: los
-    // tres aparecen juntos en la línea que los toma de `getUploadDeps()`, y
-    // medir ahí daría un orden que no es el de la ejecución.
     const put = bulk.indexOf('s3.send(new PutObjectCommand');
     const upd = bulk.indexOf('UPDATE "Media"');
-    const del = bulk.indexOf('s3.send(new DeleteObjectCommand');
-    assert.ok(put > -1 && upd > put && del > upd,
-        `el orden subir → actualizar → retirar no se respeta (put=${put}, update=${upd}, delete=${del})`);
+    assert.ok(put > -1 && upd > put, 'el orden subir → actualizar no se respeta');
+    assert.ok(!/s3\.send\(new DeleteObjectCommand/.test(bulk), 'volvió el borrado del original');
+    assert.match(bulk, /"originalS3Key" = COALESCE/);
 });
 
 check('toda consulta de carpetas se acota por sitio', () => {

@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.740.0 | 2026-08-09 (Seleccion multiple en la Libreria de Medios)
-// Cache bust: 2026-08-09b
+// UI V4.741.0 | 2026-08-09 (La conversion HEIC entregaba la imagen equivocada)
+// Cache bust: 2026-08-09c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.741.0',
+        title: 'Corregido: al convertir un HEIC salía una imagen negra 🛠️',
+        description: 'Las fotos convertidas quedaban negras con manchas blancas. La causa: un HEIC de iPhone no guarda una imagen sino varias —la foto, una miniatura y el mapa de ganancia HDR, que es una imagen en escala de grises casi negra— y además guarda la foto partida en mosaicos. El decodificador que usábamos (FFmpeg 7.0) no sabe recomponer esos mosaicos y terminaba entregando el mapa de ganancia: exactamente lo que se vio en pantalla. Ahora la conversión usa libheif, que es la implementación de referencia del formato: recompone la foto y descarta las auxiliares. Además, antes de dar por buena una conversión se comprueba que lo que salió mida lo mismo que el archivo declara, que es lo que habría detenido este error antes de que llegara a la Librería. Y el cambio más importante: el archivo original YA NO SE BORRA al convertirlo. Hasta esta versión se retiraba en cuanto el JPG estaba listo, así que una conversión defectuosa se llevaba la foto por delante. Ahora se conserva junto al JPG y sólo desaparece cuando se elimina el archivo de la Librería. Las fotos convertidas antes de esta corrección hay que volver a subirlas desde el teléfono; se pueden quitar en bloque con la selección múltiple.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'biblioteca', 'iphone'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Las fotos HEIC ya no se convierten en una imagen negra con manchas.' },
+            { type: 'changed', text: 'La conversión usa libheif, que recompone las fotos partidas en mosaicos.' },
+            { type: 'added', text: 'Se comprueba que lo convertido sea la foto y no una imagen auxiliar.' },
+            { type: 'fixed', text: 'El archivo original ya no se borra al convertirlo.' },
+        ]
+    },
     {
         version: '4.740.0',
         title: 'Seleccionar varios archivos para convertir o eliminar de una vez ☑️',

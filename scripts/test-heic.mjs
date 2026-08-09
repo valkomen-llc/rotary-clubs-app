@@ -26,9 +26,8 @@
 // No necesita base de datos ni credenciales.
 // ════════════════════════════════════════════════════════════════════
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -141,47 +140,96 @@ await check('una orientación desconocida no inventa una rotación', () => {
     }
 });
 
+console.log('\n── Cuál de las imágenes del archivo es la foto ────────');
+
+// Es la parte que falló en producción (v4.739-v4.740) y por eso está escrita
+// como una función PURA: un HEIC de iPhone lleva dentro la foto, la miniatura y
+// el mapa de ganancia HDR, y el decodificador anterior entregó el mapa de
+// ganancia —gris, casi negro— que reemplazó a la foto en la Librería.
+
+const CONTAINER = { width: 4032, height: 3024 };
+const IPHONE_ITEMS = [
+    { width: 4032, height: 3024 },   // la foto
+    { width: 320, height: 240 },     // la miniatura
+    { width: 1008, height: 756 },    // el mapa de ganancia HDR
+];
+
+await check('se elige la que coincide con lo que declara el contenedor', () =>
+    assert.equal(server.pickPrimaryImage(CONTAINER, IPHONE_ITEMS), 0));
+await check('…aunque no venga primera en la lista', () =>
+    assert.equal(server.pickPrimaryImage(CONTAINER, [IPHONE_ITEMS[2], IPHONE_ITEMS[1], IPHONE_ITEMS[0]]), 2));
+await check('NUNCA se elige el mapa de ganancia', () => {
+    const i = server.pickPrimaryImage(CONTAINER, IPHONE_ITEMS);
+    assert.notDeepEqual(IPHONE_ITEMS[i], { width: 1008, height: 756 });
+});
+await check('se admite el intercambio ancho/alto (rotación ya aplicada)', () =>
+    assert.equal(server.pickPrimaryImage({ width: 3024, height: 4032 }, IPHONE_ITEMS), 0));
+await check('sin dimensiones del contenedor se toma la primera', () =>
+    assert.equal(server.pickPrimaryImage({}, IPHONE_ITEMS), 0));
+await check('si ninguna encaja se devuelve -1: no se adivina', () =>
+    assert.equal(server.pickPrimaryImage(CONTAINER, [{ width: 100, height: 100 }]), -1));
+await check('una lista vacía da -1', () => assert.equal(server.pickPrimaryImage(CONTAINER, []), -1));
+await check('sin lista no revienta', () => assert.equal(server.pickPrimaryImage(CONTAINER, null), -1));
+
+console.log('\n── La guarda sobre lo decodificado ────────────────────');
+
+await check('lo que mide igual que el contenedor pasa', () =>
+    assert.deepEqual(server.checkDecodedSize(CONTAINER, { width: 4032, height: 3024 }),
+        { ok: true, swapped: false, error: null }));
+await check('lo intercambiado pasa y se marca como ya rotado', () =>
+    assert.deepEqual(server.checkDecodedSize(CONTAINER, { width: 3024, height: 4032 }),
+        { ok: true, swapped: true, error: null }));
+await check('el MAPA DE GANANCIA se rechaza: es el defecto que se reportó', () => {
+    const v = server.checkDecodedSize(CONTAINER, { width: 1008, height: 756 });
+    assert.equal(v.ok, false);
+    assert.match(v.error, /mapa de ganancia|miniatura/);
+});
+await check('la miniatura también se rechaza', () =>
+    assert.equal(server.checkDecodedSize(CONTAINER, { width: 320, height: 240 }).ok, false));
+await check('el motivo dice las dos medidas, para poder diagnosticar', () =>
+    assert.match(server.checkDecodedSize(CONTAINER, { width: 1008, height: 756 }).error, /1008×756.*4032×3024/));
+await check('sin dimensiones del contenedor no se inventa un veredicto', () =>
+    assert.equal(server.checkDecodedSize({}, { width: 10, height: 10 }).ok, true));
+await check('una imagen sin tamaño se rechaza', () =>
+    assert.equal(server.checkDecodedSize(CONTAINER, { width: 0, height: 0 }).ok, false));
+
 console.log('\n── La conversión de punta a punta ─────────────────────');
 
-// Un HEIF de verdad, fabricado con sharp (AV1: la variante que sabe escribir).
-const heifSource = await sharp({
-    create: { width: 320, height: 200, channels: 3, background: { r: 10, g: 90, b: 180 } }
-}).heif({ compression: 'av1' }).toBuffer();
-
-await check('el archivo de prueba es un HEIF de verdad', async () => {
-    const meta = await sharp(heifSource).metadata();
-    assert.equal(meta.format, 'heif');
-    assert.equal(meta.width, 320);
-});
-
-await check('convertHeicToJpeg devuelve un JPEG legible del tamaño correcto', async () => {
-    const out = await server.convertHeicToJpeg(heifSource);
-    const meta = await sharp(out.buffer).metadata();
-    assert.equal(meta.format, 'jpeg', 'no salió un JPEG');
-    assert.equal(meta.width, 320);
-    assert.equal(meta.height, 200);
-    assert.equal(out.width, 320);
-    assert.equal(out.height, 200);
-});
-
-await check('el JPEG conserva el contenido, no sale en negro', async () => {
-    const out = await server.convertHeicToJpeg(heifSource);
-    const stats = await sharp(out.buffer).stats();
-    const [r, g, b] = stats.channels.map(c => c.mean);
-    // El fondo es (10, 90, 180): se comprueba que el azul domine y que no sea
-    // una imagen vacía. Con tolerancia amplia, porque pasa por dos códecs.
-    assert.ok(b > g && g > r, `los canales no se parecen al original: ${[r, g, b].map(Math.round)}`);
-    assert.ok(b > 100, `el azul se perdió: ${Math.round(b)}`);
-});
-
-await check('una imagen grande se acota al máximo pedido', async () => {
-    const big = await sharp({
-        create: { width: 1200, height: 800, channels: 3, background: { r: 200, g: 50, b: 50 } }
-    }).heif({ compression: 'av1' }).toBuffer();
-    const out = await server.convertHeicToJpeg(big, { maxDimension: 600 });
-    assert.equal(out.width, 600);
-    assert.equal(out.height, 400);
-});
+// Necesita un HEIC HEVC de VERDAD, y no se puede fabricar acá: sharp sólo sabe
+// escribir HEIF con AV1, y el libheif que empaquetamos trae el decodificador
+// HEVC y no el de AV1 (comprobado). Vendorizar un archivo de muestra en el
+// repositorio tampoco: los de conformidad no tienen licencia clara.
+//
+// Por eso este bloque es OPCIONAL y se salta si no hay dónde mirar. Apuntá
+// HEIC_FIXTURES a una carpeta con fotos .heic reales —las del iPhone del
+// cliente sirven— y se convierten todas:
+//
+//     HEIC_FIXTURES=~/fotos npm run test:heic
+//
+// Lo verificado a mano en v4.741: 19 archivos HEIC reales, 18 convertidos con
+// contenido correcto y 1 rechazado por estar malformado (que es lo que tiene
+// que pasar: fallar, no entregar basura).
+const fixtures = process.env.HEIC_FIXTURES;
+if (!fixtures || !existsSync(fixtures)) {
+    console.log('  · sin HEIC_FIXTURES: se omite (apuntalo a una carpeta con .heic reales)');
+} else {
+    const files = readdirSync(fixtures).filter(f => /\.(heic|heif)$/i.test(f));
+    console.log(`  · ${files.length} archivo(s) en ${fixtures}`);
+    for (const f of files) {
+        await check(`${f} se convierte en una imagen con contenido`, async () => {
+            const out = await server.convertHeicToJpeg(readFileSync(join(fixtures, f)));
+            const meta = await sharp(out.buffer).metadata();
+            assert.equal(meta.format, 'jpeg');
+            const stats = await sharp(out.buffer).stats();
+            // Un mapa de ganancia es gris (los tres canales iguales) y casi
+            // negro. Es la firma de lo que se coló en producción.
+            const [r, g, b] = stats.channels.map(c => c.mean);
+            const gris = Math.abs(r - g) < 1 && Math.abs(g - b) < 1;
+            assert.ok(!(gris && r < 30), `salió gris y casi negro: parece el mapa de ganancia (${[r, g, b].map(Math.round)})`);
+            assert.ok(stats.entropy > 3, `entropía ${stats.entropy.toFixed(2)}: la imagen está casi vacía`);
+        });
+    }
+}
 
 await check('un archivo que no es HEIC hace fallar la conversión, no la finge', async () => {
     const png = await sharp({ create: { width: 10, height: 10, channels: 3, background: { r: 0, g: 0, b: 0 } } }).png().toBuffer();
@@ -216,11 +264,32 @@ await check('los DOS caminos de subida convierten', () => {
     assert.ok((ROUTES.match(/toDisplayableImage\(/g) || []).length >= 2,
         'sólo uno de los dos caminos de subida convierte');
 });
-await check('el HEIC original se retira DESPUÉS de subir el JPEG', () => {
-    const save = ROUTES.slice(ROUTES.indexOf("router.post('/save'"), ROUTES.indexOf("router.post('/upload'"));
-    const put = save.indexOf('PutObjectCommand');
-    const del = save.indexOf('DeleteObjectCommand({ Bucket: bucket, Key: s3Key })');
-    assert.ok(put > -1 && del > put, 'se borra el original antes de tener el JPEG arriba');
+await check('el HEIC original NO se borra al convertir', () => {
+    // Es la corrección de v4.741 y la más importante de todas: hasta v4.740 el
+    // original se retiraba en cuanto el JPEG estaba arriba, así que una
+    // conversión que salía mal —y salió— se llevaba por delante la foto. Ahora
+    // se conserva y su clave queda en `originalS3Key`.
+    const src = readFileSync('server/routes/media.js', 'utf8');
+    assert.ok(!/DeleteObjectCommand\(\{ Bucket: bucket, Key: s3Key \}\)/.test(src),
+        'volvió el borrado del original en la subida');
+    assert.ok(!/DeleteObjectCommand\(\{ Bucket: item\.bucket, Key: item\.s3Key \}\)/.test(src),
+        'volvió el borrado del original en la conversión');
+    assert.match(src, /"originalS3Key"/);
+});
+await check('al eliminar el archivo se borran los DOS objetos', () =>
+    // Conservar el original no puede dejar un objeto huérfano que nadie pueda
+    // ver ni volver a borrar desde el panel.
+    assert.match(ROUTES, /\[media\.rows\[0\]\.s3Key, media\.rows\[0\]\.originalS3Key\]\.filter\(Boolean\)/));
+await check('el borrado en bloque también se lleva los originales', () =>
+    assert.match(ROUTES, /\[m\.s3Key, m\.originalS3Key\]\.filter\(Boolean\)/));
+await check('la columna está declarada en schema.prisma', () =>
+    // El guardián de db:push compara tablas, no columnas.
+    assert.match(readFileSync('server/prisma/schema.prisma', 'utf8'), /originalS3Key\s+String\?/));
+await check('la conversión NO usa ffmpeg', () => {
+    // FFmpeg 7.0 no ensambla las rejillas de mosaicos con las que un iPhone
+    // guarda la foto: elegía un mosaico suelto o el mapa de ganancia.
+    const heic = readFileSync('server/lib/heicImages.js', 'utf8');
+    assert.ok(!/ffmpeg/i.test(stripComments(heic)), 'volvió ffmpeg al camino de HEIC');
 });
 await check('una conversión fallida NO pierde el archivo', () => {
     // `toDisplayableImage` devuelve lo que entró cuando falla, y la fila se
