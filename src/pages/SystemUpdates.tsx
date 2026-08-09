@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.0 | 2026-08-09 (La banda de la portada toma el azul de la barra superior)
-// Cache bust: 2026-08-09h
+// UI V4.745.1 | 2026-08-09 (El copyright toma el azul de la barra superior)
+// Cache bust: 2026-08-09i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.1',
+        title: 'La barra de copyright, del mismo azul; y el nombre de la plataforma no se traduce 🔤',
+        description: 'Dos ajustes en el pie de página. El primero: la barra donde va el copyright llevaba un velo negro sobre el fondo del pie, así que su color dependía del fondo que tuviera cada sitio y no coincidía con nada. Ahora lleva el mismo azul de la barra superior, que es la banda que cierra la página por arriba. Un sitio de Evento o Convención conserva el color que su operador haya configurado: ahí la elección ya está hecha a propósito. El segundo: el traductor del sitio estaba convirtiendo «Club Platform for Rotary» en «Plataforma de Club para Rotary», un nombre que no existe. El nombre de la plataforma es una MARCA y ahora se deja literal en los ocho idiomas. «Powered by» sí es lenguaje y se sigue traduciendo con normalidad.',
+        date: new Date().toISOString(),
+        tags: ['pie-de-pagina', 'diseno', 'traduccion'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La barra de copyright usa el azul de la barra superior.' },
+            { type: 'fixed', text: 'El nombre de la plataforma ya no se traduce: es una marca.' },
+        ]
+    },
     {
         version: '4.745.0',
         title: 'La banda de la portada, sobre el azul de la barra superior 🎨',

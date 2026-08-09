@@ -130,6 +130,7 @@ const TOPBAR_USERS = [
     'src/sections/Navbar.tsx',
     'src/components/PublicTopBar.tsx',
     'src/sections/HomeBannerSection.tsx',
+    'src/sections/Footer.tsx',
 ];
 for (const file of TOPBAR_USERS) {
     const src = readFileSync(file, 'utf8');
@@ -154,6 +155,17 @@ if (dist) {
 } else {
     console.log('  ⏭  sin dist/: se omite la comprobación del CSS compilado');
 }
+
+console.log('\n── El nombre de la plataforma es una MARCA ────────────');
+
+// El traductor de DOM lo pasaba a «Plataforma de Club para Rotary», un nombre
+// que no existe. Es la distinción de v4.662: el LENGUAJE se traduce, la
+// IDENTIDAD —marcas, correos, códigos— no se toca.
+const FOOTER = readFileSync('src/sections/Footer.tsx', 'utf8');
+check('el enlace de la plataforma va con `data-no-translate`', () =>
+    assert.match(FOOTER, /data-no-translate[^>]*>Club Platform for Rotary</));
+check('«Powered by» sigue siendo traducible: eso sí es lenguaje', () =>
+    assert.ok(!/data-no-translate[^>]*>\s*Powered by/.test(FOOTER)));
 
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail === 0 ? 0 : 1);
