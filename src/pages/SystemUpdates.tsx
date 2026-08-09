@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.747.0 | 2026-08-09 (El Distrito trae a su agenda los eventos de los sitios vinculados)
-// Cache bust: 2026-08-09s
+// UI V4.748.0 | 2026-08-09 (Selector de distritos registrados y vínculo por lista)
+// Cache bust: 2026-08-09t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.748.0',
+        title: 'Los distritos ya se eligen de una lista, no se escriben 🔗',
+        description: 'Al editar una Feria de Proyectos, una Zona, un Programa, un Evento o una Asociación, el campo «Distritos Asociados» dejó de ser una casilla de texto y pasó a ser la lista real de los distritos registrados en la plataforma: se marcan los que correspondan y listo. Se pueden elegir varios —la Feria de Proyectos pertenece a los dos distritos de Colombia—, se quitan con un clic, y cada uno se muestra con su número y su nombre. Si un distrito todavía no está dado de alta, igual se puede escribir su número a mano y el vínculo se activa solo cuando se registre: la lista ayuda a escribir, no cierra los valores aceptados. Y junto con eso se corrigió un fallo que impedía que esto funcionara: el sistema comparaba el campo de distritos por igualdad exacta, así que un sitio que pertenecía a «4271, 4281» no lo reconocía ninguno de los dos distritos y sus eventos no aparecían en «Traer del ecosistema». Ahora se leen todos los números del campo, escritos como se escriban.',
+        date: new Date().toISOString(),
+        tags: ['distritos', 'eventos', 'panel'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'El campo «Distritos Asociados» es ahora la lista de distritos registrados en la plataforma.' },
+            { type: 'added', text: 'Se pueden marcar varios distritos y quitarlos con un clic.' },
+            { type: 'added', text: 'Un distrito aún no registrado se puede escribir a mano y se avisa de que falta darlo de alta.' },
+            { type: 'fixed', text: 'Un sitio con varios distritos no era reconocido por ninguno: sus eventos no salían en «Traer del ecosistema».' },
+            { type: 'changed', text: 'La casilla estaba escrita cinco veces; pasa a ser un solo componente compartido.' },
+        ]
+    },
     {
         version: '4.747.0',
         title: 'El Distrito trae a su agenda los eventos de sus sitios 🗓️',

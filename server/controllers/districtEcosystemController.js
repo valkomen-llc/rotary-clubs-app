@@ -79,6 +79,18 @@ async function resolveScope(req) {
     // foránea y el número escrito en `Club.district`— porque conviven en
     // producción: el alta desde /admin/distritos escribe una y el registro
     // público escribe la otra.
+    //
+    // v4.748 — `Club.district` ES UNA LISTA («4271, 4281»): una Feria de
+    // Proyectos o una Zona pertenecen a varios distritos, y el formulario del
+    // panel lo ofrece así desde siempre. Hasta v4.747 se comparaba por
+    // IGUALDAD EXACTA, de modo que un sitio con dos distritos no lo reconocía
+    // NINGUNO de los dos y su evento no aparecía en «Traer del ecosistema». Se
+    // reportó con la Feria de Proyectos.
+    //
+    // Se parte por todo lo que no sea dígito —no se busca un patrón— para que
+    // «4271, 4281», «Distrito 4281» y «D-4281» den lo mismo, y para que «42811»
+    // NO cuente como 4281. Es EXACTAMENTE lo que hace `parseDistrictTags` en
+    // `districtEcosystem.js`; si cambia uno, cambiar el otro.
     const number = district?.number == null ? '' : String(district.number);
     const siblingsRes = await db.query(
         `SELECT id, name, type, "organizationType", category, city, logo, domain, subdomain
@@ -86,7 +98,10 @@ async function resolveScope(req) {
           WHERE id <> $1
             AND status = 'active'
             AND (($2 <> '' AND "districtId" = $2)
-              OR ($3 <> '' AND btrim(coalesce(district, '')) = $3))
+              OR ($3 <> '' AND EXISTS (
+                    SELECT 1
+                      FROM regexp_split_to_table(coalesce(district, ''), '[^0-9]+') AS tok
+                     WHERE tok = $3)))
           ORDER BY name ASC`,
         // Los parámetros van como TEXTO VACÍO y no como NULL a propósito: con
         // NULL, Postgres tiene que inferir el tipo del mismo parámetro usado en

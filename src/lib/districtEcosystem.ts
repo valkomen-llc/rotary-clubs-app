@@ -71,6 +71,33 @@ export function orgBadgeOf(club: any): OrgBadge {
     return FALLBACK_BADGE;
 }
 
+/**
+ * Los números de distrito escritos en `Club.district` — v4.748.
+ *
+ * ESE CAMPO ES UNA LISTA: una Feria de Proyectos o una Zona pertenecen a varios
+ * distritos. Se parte por todo lo que no sea dígito, que es EXACTAMENTE lo que
+ * hace el SQL del controlador (`regexp_split_to_table(district, '[^0-9]+')`).
+ * Si cambia uno, cambiar el otro.
+ */
+export function parseDistrictTags(value: unknown): string[] {
+    const out: string[] = [];
+    for (const tok of String(value ?? '').split(/[^0-9]+/)) {
+        if (!tok) continue;
+        if (!out.includes(tok)) out.push(tok);
+    }
+    return out;
+}
+
+export function formatDistrictTags(tags: string[]): string {
+    return (Array.isArray(tags) ? tags : []).filter(Boolean).join(', ');
+}
+
+export function districtTagsMatch(value: unknown, number: unknown): boolean {
+    const n = String(number ?? '').trim();
+    if (!n) return false;
+    return parseDistrictTags(value).includes(n);
+}
+
 export function publicUrlOf(club: any, event: any): string {
     const ref = event?.slug || event?.id;
     if (!ref) return '';

@@ -17,6 +17,7 @@
 // No necesita base, credenciales ni red. Pide `esbuild` para compilar el
 // espejo del navegador (se instala aparte: npm i --no-save esbuild).
 // ════════════════════════════════════════════════════════════════════
+import { readFileSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const srv = await import('../server/lib/districtEcosystem.js');
@@ -237,6 +238,65 @@ check('sin base tampoco', srv.freeSlug('', []) === null);
 check('una lista con huecos no rompe', srv.freeSlug('x', [null, undefined, '']) === 'x');
 
 // ════════════════════════════════════════════════════════════════════
+grupo('── `Club.district` es una LISTA, no un valor ──────────');
+// El fallo de v4.747: se comparaba por igualdad exacta, así que un sitio con
+// «4271, 4281» no lo reconocía NINGUNO de los dos distritos. Se reportó con la
+// Feria de Proyectos, que pertenece a los dos distritos de Colombia.
+
+check('un solo distrito', eq(srv.parseDistrictTags('4281'), ['4281']));
+check('dos distritos separados por coma',
+    eq(srv.parseDistrictTags('4271, 4281'), ['4271', '4281']));
+check('sin espacios', eq(srv.parseDistrictTags('4271,4281'), ['4271', '4281']));
+check('con el prefijo escrito', eq(srv.parseDistrictTags('Distrito 4281'), ['4281']));
+check('con guion', eq(srv.parseDistrictTags('D-4281'), ['4281']));
+check('varios con texto alrededor',
+    eq(srv.parseDistrictTags('Distritos 4271 y 4281 de Colombia'), ['4271', '4281']));
+check('se quitan los repetidos', eq(srv.parseDistrictTags('4281, 4281'), ['4281']));
+check('vacío da lista vacía', eq(srv.parseDistrictTags(''), []));
+check('nulo también', eq(srv.parseDistrictTags(null), []));
+check('un texto sin números da lista vacía', eq(srv.parseDistrictTags('Distrito Rotario'), []));
+
+// «42811» es OTRO número, no el 4281. Partir por lo que no es dígito lo
+// resuelve solo; buscar el patrón «4281» dentro del texto no lo resolvería.
+check('un número más largo NO cuenta como el corto',
+    srv.districtTagsMatch('42811', '4281') === false);
+check('el sitio del 4281 lo reconoce su distrito',
+    srv.districtTagsMatch('4271, 4281', '4281') === true);
+check('y también el otro', srv.districtTagsMatch('4271, 4281', '4271') === true);
+check('un tercero no lo reconoce', srv.districtTagsMatch('4271, 4281', '4290') === false);
+check('sin número no hay coincidencia', srv.districtTagsMatch('4281', '') === false);
+check('el número puede llegar como entero', srv.districtTagsMatch('4281', 4281) === true);
+
+check('se guarda separado por coma y espacio',
+    srv.formatDistrictTags(['4271', '4281']) === '4271, 4281');
+check('una lista vacía se guarda vacía', srv.formatDistrictTags([]) === '');
+check('los huecos no dejan comas sueltas',
+    srv.formatDistrictTags(['4281', '', null]) === '4281');
+
+// El SQL del controlador tiene que aplicar el MISMO criterio. No se puede
+// ejecutar sin una base, así que se comprueba sobre el archivo: que use el
+// reparto por no-dígitos y que NO haya vuelto la igualdad exacta.
+{
+    const ctrl = readFileSync('server/controllers/districtEcosystemController.js', 'utf8');
+    check('el SQL parte por lo que no es dígito, como `parseDistrictTags`',
+        ctrl.includes("regexp_split_to_table(coalesce(district, ''), '[^0-9]+')"));
+    check('no reaparece la comparación por igualdad exacta que causó el fallo',
+        !/btrim\(coalesce\(district[^)]*\)\)\s*=\s*\$/.test(ctrl));
+}
+
+grupo('── El selector de distritos está en las cinco pantallas ');
+// Esta casilla estaba escrita CINCO veces, idéntica. Arreglar una y dejar
+// cuatro es la copia que se queda atrás: el panel se comportaría distinto según
+// por dónde se entre.
+for (const page of ['Ferias', 'Zonas', 'Programas', 'Eventos', 'Asociaciones']) {
+    const src = readFileSync(`src/pages/admin/${page}.tsx`, 'utf8');
+    check(`${page} usa el selector compartido`,
+        src.includes('<DistrictPicker') && src.includes("from '../../components/admin/DistrictPicker'"));
+    check(`${page} ya no tiene la casilla de texto libre`,
+        !src.includes('placeholder="Ej: 4271, 4281, 4290..."'));
+}
+
+// ════════════════════════════════════════════════════════════════════
 grupo('── Qué sitio es el de un distrito ─────────────────────');
 
 check('la clave máquina cuenta', web.isDistrictSiteType('district') === true);
@@ -303,6 +363,16 @@ for (const [base, taken] of SLUGS) {
     check(`freeSlug coincide — ${JSON.stringify(base)}`,
         srv.freeSlug(base, taken) === web.freeSlug(base, taken));
 }
+
+const TAGS = ['4281', '4271, 4281', 'Distrito 4281', 'D-4281', '42811', '', null, '4281, 4281'];
+for (const t of TAGS) {
+    check(`parseDistrictTags coincide — ${JSON.stringify(t)}`,
+        eq(srv.parseDistrictTags(t), web.parseDistrictTags(t)));
+    check(`districtTagsMatch coincide — ${JSON.stringify(t)}`,
+        srv.districtTagsMatch(t, '4281') === web.districtTagsMatch(t, '4281'));
+}
+check('formatDistrictTags coincide',
+    srv.formatDistrictTags(['4271', '4281']) === web.formatDistrictTags(['4271', '4281']));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(56)}`);

@@ -91,6 +91,45 @@ export function orgBadgeOf(club) {
 }
 
 /**
+ * Los números de distrito escritos en `Club.district` — v4.748.
+ *
+ * ESE CAMPO ES UNA LISTA, no un valor. El formulario del panel lo dice desde
+ * siempre en su marcador de posición («Ej: 4271, 4281, 4290…») y una Feria de
+ * Proyectos o una Zona pertenecen de verdad a varios distritos a la vez. La
+ * v4.747 comparaba por IGUALDAD EXACTA (`btrim(district) = numero`), así que un
+ * sitio con «4271, 4281» no lo reconocía NINGUNO de los dos distritos y su
+ * evento no aparecía en «Traer del ecosistema». Se reportó con la Feria.
+ *
+ * Se parte por todo lo que no sea dígito, en vez de buscar un patrón: así
+ * «4271, 4281», «Distrito 4281» y «D-4281» dan lo mismo, y «42811» NO cuenta
+ * como 4281 —es otro número, no ese—.
+ *
+ * ES EL MISMO CRITERIO QUE EL SQL del controlador
+ * (`regexp_split_to_table(district, '[^0-9]+')`). Si cambia uno, cambiar el
+ * otro: la prueba compara los dos contra los mismos casos.
+ */
+export function parseDistrictTags(value) {
+    const out = [];
+    for (const tok of String(value ?? '').split(/[^0-9]+/)) {
+        if (!tok) continue;
+        if (!out.includes(tok)) out.push(tok);
+    }
+    return out;
+}
+
+/** Cómo se guarda la lista de vuelta en `Club.district`. */
+export function formatDistrictTags(tags) {
+    return (Array.isArray(tags) ? tags : []).filter(Boolean).join(', ');
+}
+
+/** ¿Este sitio declara pertenecer al distrito número N? */
+export function districtTagsMatch(value, number) {
+    const n = String(number ?? '').trim();
+    if (!n) return false;
+    return parseDistrictTags(value).includes(n);
+}
+
+/**
  * La dirección PÚBLICA de un evento en el sitio de su dueño.
  *
  * Dos reglas heredadas y las dos importan:
@@ -264,4 +303,5 @@ export function freeSlug(base, taken) {
 export default {
     ORG_BADGES, orgBadgeOf, publicUrlOf, buildSourceTrace, sourceTraceOf,
     isClone, buildClonePayload, TRACKED_FIELDS, divergenceOf, divergenceMessage, freeSlug,
+    parseDistrictTags, formatDistrictTags, districtTagsMatch,
 };
