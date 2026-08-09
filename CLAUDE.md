@@ -2989,6 +2989,25 @@ con la base sustituida en memoria). **Sin Postgres, credenciales ni red.**
   con el valor en los dos lados cambiarlo en uno deja el otro resolviendo al
   viejo. Por eso el alta de un distrito ya **no** le pasa el dominio a su club
   espejo; sí le pone `districtId`, que es el vínculo explícito.
+- **PERTENECER al distrito no es SER su sitio, y confundirlo sirve el sitio de
+  otro club** (v4.744.1). `Club.districtId` es `affiliatedDistrict`: la
+  afiliación, exactamente igual que `Club.district`. v4.744 lo tomó por un
+  vínculo explícito —«este club es el sitio»— y `rotary4281.org` acabó sirviendo
+  el **Rotary Club Pasto**, que está afiliado al 4281 y tenía su sitio completo,
+  así que además ganaba el desempate por cantidad de ajustes. Es el mismo error
+  que ya estaba escrito para `Club.district`, colado por la otra puerta: la
+  clave foránea. Hacen falta **las dos** condiciones: que pertenezca (`districtId`
+  o el número) **y** que se declare su sitio (tipo distrito, el subdominio que
+  declaró el distrito, o ser el club al que están asignados sus
+  administradores). Si falta cualquiera, se sirve la ficha del distrito y se
+  dice que no hay sitio — antes eso que el sitio de otra organización.
+- **La consulta de candidatos es de más A PROPÓSITO y el filtro lo hace el
+  criterio.** `DISTRICT_SITE_SQL` trae también los clubes que sólo pertenecen;
+  quién es el sitio lo decide `pickDistrictSite`, que es puro y está probado.
+  Poner el filtro en el SQL lo dejaría fuera de las pruebas.
+- **El panel usa la MISMA consulta y el MISMO criterio que la visita.** Con una
+  copia propia, `/admin/distritos` afirmaría de un sitio distinto del que se
+  sirve, que es lo peor que puede hacer una pantalla de diagnóstico.
 - **Puede haber DOS clubes vinculados, y elegir mal da la página en blanco.** Al
   crear el distrito se inserta un club espejo vacío y el operador suele crear
   después el sitio de verdad desde el panel de sitios. El desempate es por
