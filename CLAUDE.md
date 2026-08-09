@@ -2882,6 +2882,21 @@ es el catálogo de tipos con sus capacidades: `editableHome`, `customTheme` y
   convocatoria— es una PÁGINA con su ruta, que el sitio enlaza desde su menú; hoy
   `/galeria-multimedia`. Al condicionar por tipo, preguntarse a cuántos sitios
   alcanza además del que se tenía en mente.
+- **Una imagen de la portada es un HUECO CONFIGURABLE, no una URL en el código**
+  (v4.742, `homeBanner` en `useSiteImages` + `HomeBannerSection`). La portada la
+  comparten todos los sitios: una imagen escrita en el código aparecería en cada
+  club. Nace VACÍA y la sección devuelve `null`, así que quien no la usa ve su
+  portada igual que antes —ni siquiera queda una sección vacía—. Es la misma
+  lección de la campaña que secuestró la portada de los distritos.
+- **Al agregar un hueco de imagen hay que tocar DOS listas de `useSiteImages`**:
+  `DEFAULTS` (de donde sale la mezcla inicial) y el array `allKeys` del efecto
+  (que decide qué se lee de la respuesta del servidor). Una clave que esté en
+  una y no en la otra se queda con su valor por omisión para siempre, sin que
+  nada avise.
+- **La banda se muestra ENTERA, sin recortar** (`object-contain`, proporción
+  natural) y por eso no está en la lista de `needsCrop` del editor. Estas piezas
+  suelen traer el texto dentro de la imagen —nombres, cargos, el logotipo— y un
+  recorte panorámico se lleva justamente eso.
 - **El criterio de qué sitios llevan menú propio vive en `entityTypes.ts`**
   (`hasFixedNav`), no en cada pantalla. Estaba escrito a mano en `Navbar.tsx` y
   otra vez en `ClubSettings.tsx`, y las dos copias **ya se habían separado** —el

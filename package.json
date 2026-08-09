@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.741.0",
-  "cache_bust": "2026-08-09c (Corregida la conversion HEIC: entregaba la imagen equivocada.)",
+  "version": "4.742.0",
+  "cache_bust": "2026-08-09d (Banda de imagen configurable en la portada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

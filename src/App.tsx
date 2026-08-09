@@ -22,6 +22,7 @@ import Navbar from './sections/Navbar';
 import HeroSection from './sections/HeroSection';
 import ActionSection from './sections/ActionSection';
 import StatsSection from './sections/StatsSection';
+import HomeBannerSection from './sections/HomeBannerSection';
 import JoinSection from './sections/JoinSection';
 import FoundationSection from './sections/FoundationSection';
 import CausesHexSection from './sections/CausesHexSection';
@@ -385,6 +386,9 @@ function SmartHome() {
         <HeroSection />
         <ActionSection />
         <StatsSection />
+        {/* Banda configurable por sitio. No pinta nada si nadie la llenó, así
+            que los sitios que no la usan se ven igual que antes. */}
+        <HomeBannerSection />
         <JoinSection />
         <FoundationSection />
         <CausesHexSection />

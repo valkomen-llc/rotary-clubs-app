@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.741.0 | 2026-08-09 (La conversion HEIC entregaba la imagen equivocada)
-// Cache bust: 2026-08-09c
+// UI V4.742.0 | 2026-08-09 (Banda de imagen configurable en la portada)
+// Cache bust: 2026-08-09d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.742.0',
+        title: 'Una imagen destacada en la portada, entre las cifras y «Únete» 🖼️',
+        description: 'Cada sitio puede poner ahora una imagen destacada en su portada, justo debajo de las tres cifras y encima de la sección «Únete a Rotary». Se configura desde Distribución de Imágenes → «Banda del Inicio», con las dos vías de siempre: subir un archivo o elegir uno de la Biblioteca Multimedia. La imagen se muestra COMPLETA, sin recortar: eso es a propósito, porque estas piezas suelen traer el texto adentro —nombres, cargos, el logotipo del distrito— y un recorte panorámico se llevaría justamente eso. Si un sitio no configura ninguna, la banda no aparece y su portada se ve exactamente como antes; no queda un espacio vacío. Se optó por un ajuste por sitio y no por una imagen fija en el código porque la portada la comparten todos los sitios de la plataforma: una imagen escrita en el código habría aparecido en todos los clubes.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'imagenes', 'distritos'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Nueva «Banda del Inicio» en Distribución de Imágenes.' },
+            { type: 'added', text: 'La imagen se muestra completa, sin recortar, y se carga en diferido.' },
+            { type: 'changed', text: 'Sin imagen configurada, la portada se ve igual que antes.' },
+        ]
+    },
     {
         version: '4.741.0',
         title: 'Corregido: al convertir un HEIC salía una imagen negra 🛠️',
