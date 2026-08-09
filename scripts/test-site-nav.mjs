@@ -220,6 +220,25 @@ check('NO está acotado a Evento/Convención', () =>
     // Los comentarios se quitan: explican POR QUÉ no se acota, así que nombrar
     // `hasEditableHome` ahí es correcto. Lo que no puede volver es que DECIDA.
     assert.ok(!/hasEditableHome/.test(stripComments(SPOT)), 'volvió a acotarse por tipo de sitio'));
+check('el botón se ve como los demás de la portada', () => {
+    // Misma píldora e icono delante: `useCtaButton` da la piel y `ctaIcons` el
+    // icono. Se compara la cadena de clases contra la de «Únete».
+    const skin = 'inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg';
+    assert.ok(SPOT.includes(skin), 'el botón dejó de usar la piel compartida');
+    assert.ok(readFileSync('src/sections/JoinSection.tsx', 'utf8').includes(skin),
+        'la piel de «Únete» cambió y la del Bloque Destacado se quedó atrás');
+    assert.match(SPOT, /CtaStarIcon/);
+});
+check('el catálogo de iconos vive en UN solo sitio', () => {
+    // Estaba escrito tres veces, idéntico, y el Bloque Destacado iba a ser la
+    // cuarta: una copia que se queda atrás hace que el panel ofrezca un icono
+    // que la portada no sabe pintar.
+    for (const f of ['ActionSection', 'JoinSection', 'FoundationSection', 'SpotlightSection']) {
+        const src = readFileSync(`src/sections/${f}.tsx`, 'utf8');
+        assert.ok(!/const ICON_EMOJI/.test(src), `${f} volvió a llevar su propia copia`);
+    }
+    assert.match(readFileSync('src/pages/admin/ClubSettings.tsx', 'utf8'), /CTA_ICON_OPTIONS/);
+});
 check('el enlace del botón pasa por `ctaTarget`', () =>
     // Externo = otro dominio, no «empieza por http» (regla de v4.657).
     assert.match(SPOT, /ctaTarget\(buttonUrl\)/));

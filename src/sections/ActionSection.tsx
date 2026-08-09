@@ -4,14 +4,9 @@ import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
+import { resolveCtaEmoji } from '../lib/ctaIcons';
 import { renderRichText, hasBoldMarkup } from '../lib/richText';
 
-// Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
-const ICON_EMOJI: Record<string, string> = {
-  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
-  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
-  award: '🏅', trophy: '🏆', rocket: '🚀',
-};
 
 // El color de fondo personalizable + textura overlay aplica SOLO a sitios de tipo
 // "Evento o Convención". Los demás sitios conservan el render original (textura opaca azul).
@@ -26,7 +21,7 @@ const ActionSection = () => {
   // Contenido configurable (Evento/Convención y Feria de Proyectos). Si no hay valor, texto por defecto.
   const content = (canEditContent && (club as any)?.actionContent) ? (club as any).actionContent : {};
   const buttonUrl = resolveCtaUrl(content.buttonUrl) || '/involucrate';
-  const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
+  const emoji = isEventSite ? (resolveCtaEmoji(content.icon, '⭐')) : '';
   // Externo = otro dominio, no "empieza por http": un enlace al propio
   // sitio se abre en la misma pestaña (ver `ctaTarget`).
   const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);

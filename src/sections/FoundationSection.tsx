@@ -5,14 +5,10 @@ import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
+import { resolveCtaEmoji } from '../lib/ctaIcons';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
-const ICON_EMOJI: Record<string, string> = {
-  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
-  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
-  award: '🏅', trophy: '🏆', rocket: '🚀',
-};
 
 const renderTitle = (title: string, highlight?: string, color?: string) => {
   if (!highlight || !highlight.trim()) return title;
@@ -40,7 +36,7 @@ const FoundationSection = () => {
   const canEditContent = hasEditableHome((club as any)?.type);
   const content = (canEditContent && (club as any)?.foundationContent) ? (club as any).foundationContent : {};
   const buttonUrl = resolveCtaUrl(content.buttonUrl) || '';
-  const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '🎁')) : '';
+  const emoji = isEventSite ? (resolveCtaEmoji(content.icon, '🎁')) : '';
   // Externo = otro dominio, no "empieza por http": un enlace al propio
   // sitio se abre en la misma pestaña (ver `ctaTarget`).
   const { external: isExternal, to: buttonHref } = ctaTarget(buttonUrl);

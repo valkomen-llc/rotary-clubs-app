@@ -20,6 +20,7 @@ import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
 import { hasEditableHome, hasCustomTheme, hasFixedNav } from '../../lib/entityTypes';
+import { CTA_ICON_OPTIONS } from '../../lib/ctaIcons';
 import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
@@ -166,7 +167,7 @@ const ClubSettings: React.FC = () => {
         // Bloque Destacado del inicio. A diferencia de los otros bloques de
         // contenido, NO está acotado a Evento/Convención: se pidió para un
         // distrito, así que lo edita cualquier tipo de sitio.
-        spotlightContent: { title: '', text: '', buttonText: '', buttonUrl: '' } as { title: string; text: string; buttonText: string; buttonUrl: string },
+        spotlightContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         avatarUrl: '',
@@ -380,7 +381,7 @@ const ClubSettings: React.FC = () => {
                 })(),
                 spotlightContent: (() => {
                     const saved = (club as any).spotlightContent || (() => { try { return JSON.parse(settingsMap['spotlight_section_content'] || '{}'); } catch { return {}; } })();
-                    return { title: '', text: '', buttonText: '', buttonUrl: '', ...saved };
+                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', ...saved };
                 })(),
                 foundationContent: (() => {
                     const saved = (club as any).foundationContent || (() => { try { return JSON.parse(settingsMap['foundation_section_content'] || '{}'); } catch { return {}; } })();
@@ -1956,6 +1957,13 @@ const ClubSettings: React.FC = () => {
                                         <input type="text" value={formData.spotlightContent.buttonUrl} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, buttonUrl: e.target.value } })} placeholder="/proyectos o https://endpolio.org" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
                                         <p className="text-[11px] text-gray-400 mt-1">Un enlace a una página de este mismo sitio se abre en la misma pestaña; uno a otro dominio, en una nueva. El botón sólo se muestra si tiene texto y enlace.</p>
                                     </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Icono del botón</label>
+                                    <select value={formData.spotlightContent.icon} onChange={e => setFormData({ ...formData, spotlightContent: { ...formData.spotlightContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
+                                        {CTA_ICON_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                    </select>
+                                    <p className="text-[11px] text-gray-400 mt-1">El botón lleva el icono delante, igual que los demás botones de la portada.</p>
                                 </div>
                             </div>
                         </div>
