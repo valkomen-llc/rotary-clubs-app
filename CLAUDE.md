@@ -2964,6 +2964,61 @@ Pruebas: `npm run test:domains` (34 casos). **Sin base, credenciales ni red.**
   primero con qué rol se está entrando: un administrador de sitio no ve ese
   campo y no puede corregirlo.
 
+### El dominio propio de un DISTRITO — v4.744
+
+Un distrito existe **dos veces** y cada fila hace una cosa distinta. La de
+`District` es el registro administrativo —número, gobernador, países,
+facturación y el **dominio propio**, que es lo que escribe `/admin/distritos` y
+lo que se provisiona en Vercel—; la de `Club` de tipo distrito es el **sitio**:
+ajustes, identidad, secciones, miembros, y es lo que edita el administrador del
+distrito. El visitante llega por el dominio, que está en la primera; el
+contenido está en la segunda.
+
+El criterio vive en `server/lib/districtSite.js` (**puro**). Pruebas:
+`npm run test:domains` (criterio) y `npm run test:district-site` (la ruta real,
+con la base sustituida en memoria). **Sin Postgres, credenciales ni red.**
+
+- **`by-domain` ATRAVIESA hasta el sitio.** Hasta v4.743, al encontrar la fila
+  de `District` sintetizaba la entidad con `settings: []` —literalmente ningún
+  ajuste—, así que el dominio propio servía un sitio en blanco mientras el mismo
+  distrito, alcanzado por su subdominio de plataforma, se veía completo. Se
+  reportó como «la configuración no se sincroniza»: no era una sincronización
+  que faltara, era que se estaba sirviendo la fila equivocada.
+- **El dominio NO se duplica en las dos filas: se resuelve al leer.** Copiarlo a
+  la fila de `Club` es lo cómodo y es la trampa: las dos columnas son ÚNICAS, y
+  con el valor en los dos lados cambiarlo en uno deja el otro resolviendo al
+  viejo. Por eso el alta de un distrito ya **no** le pasa el dominio a su club
+  espejo; sí le pone `districtId`, que es el vínculo explícito.
+- **Puede haber DOS clubes vinculados, y elegir mal da la página en blanco.** Al
+  crear el distrito se inserta un club espejo vacío y el operador suele crear
+  después el sitio de verdad desde el panel de sitios. El desempate es por
+  **cantidad de ajustes**: el sitio configurado es el que tiene configuración.
+  A igualdad, el más recientemente actualizado; y a igualdad de todo, el id
+  menor — si dependiera del orden en que la base devuelve las filas, el mismo
+  dominio serviría un sitio distinto en cada visita.
+- **El número por sí solo NO vincula.** `Club.district` la lleva TODO club: es
+  el distrito al que pertenece. Un club rotario del 4281 tiene «4281» ahí y no
+  es el sitio del distrito. Sólo cuenta junto con el tipo de sitio distrito
+  (`district` o `Distrito Rotario` — dos valores porque el alta escribe la clave
+  máquina y el formulario de sitios la etiqueta legible).
+- **En la marca manda el sitio; la ficha del distrito es RESPALDO.** Las dos
+  tienen logo, favicon y colores, y un distrito puede tener puesto uno y no el
+  otro. Tomar sólo el del sitio haría desaparecer un logotipo cargado en la
+  ficha; tomar sólo el de la ficha ignoraría lo que el administrador configuró.
+- **Sin sitio vinculado se sirve la ficha del distrito, no el «Origen».** Es
+  peor un sitio genérico de otra organización que uno propio sin contenido, y
+  `resolvedBy` (`district` frente a `district_site`) deja dicha la diferencia.
+- **El DNS y el CONTENIDO son dos preguntas y se responden por separado.** La
+  pestaña «Dominio» del distrito decía «✅ Dominio verificado y activo» mirando
+  sólo Vercel, y eso convive perfectamente con un sitio en blanco: es lo que
+  convenció al Distrito 4281 de que todo estaba bien. Ahora `domain-status`
+  devuelve además `site` y `siteMessage`.
+- **La prueba ejecuta la RUTA, no sólo el criterio.** `pickDistrictSite` es puro
+  y estaba bien; el defecto estaba en el camino. `test:district-site` sustituye
+  `server/lib/db.js` por una base en memoria con un hook de resolución de
+  módulos y consulta el endpoint de verdad. Al tocar la resolución por dominio,
+  correrla: es lo único que ve este tipo de fallo.
+
 ## Recursos que cambian con el idioma — v4.699
 
 Algunas piezas gráficas están **rotuladas** y por tanto tienen idioma: el logo

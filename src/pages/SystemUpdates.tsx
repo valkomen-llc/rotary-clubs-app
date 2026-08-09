@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.743.0 | 2026-08-09 (El dominio propio: verificacion real y resolucion robusta)
-// Cache bust: 2026-08-09e
+// UI V4.744.0 | 2026-08-09 (El dominio propio de un distrito sirve su sitio)
+// Cache bust: 2026-08-09f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.744.0',
+        title: 'El dominio propio de un distrito ya muestra su sitio 🏛️',
+        description: 'Un distrito existe dos veces en la plataforma, y cada fila hace una cosa: el registro administrativo —el de /admin/distritos— lleva el número, el gobernador, la facturación y el DOMINIO PROPIO; y el sitio, que es donde viven la identidad visual, los ajustes, las secciones y los miembros, y es lo que el administrador del distrito edita desde su panel. El visitante llega por el dominio, que está en el primero, y el contenido está en el segundo. Hasta ahora la plataforma se quedaba en el primero: al entrar por el dominio propio servía una página SIN NINGÚN ajuste, mientras el mismo distrito, alcanzado desde app.clubplatform.org, se veía completo. De ahí que pareciera que la configuración «no se sincronizaba». Ahora la resolución atraviesa hasta el sitio, así que un distrito por su dominio se comporta igual que cualquier club por el suyo. El dominio NO se duplicó en las dos filas —se resuelve al leer—, porque con el valor en los dos lados cambiarlo en uno dejaba el otro resolviendo al viejo. Y en la pestaña «Dominio» del distrito, el DNS y el CONTENIDO se responden por separado: un «✅ verificado» hablaba sólo del DNS y podía convivir con un sitio en blanco.',
+        date: new Date().toISOString(),
+        tags: ['distritos', 'dominios', 'configuracion'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El dominio propio de un distrito ya entrega su sitio configurado.' },
+            { type: 'fixed', text: 'Se elige el sitio con configuración, no el registro vacío que crea el alta.' },
+            { type: 'added', text: 'La ficha del distrito respalda el logotipo si el sitio no tiene uno propio.' },
+            { type: 'added', text: 'La pestaña «Dominio» distingue el estado del DNS del contenido del sitio.' },
+            { type: 'fixed', text: 'El dominio del distrito se guarda normalizado, igual que el de un sitio.' },
+        ]
+    },
     {
         version: '4.743.0',
         title: 'El dominio propio: ahora se puede verificar de verdad 🌐',

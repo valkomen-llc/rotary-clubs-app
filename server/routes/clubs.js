@@ -11,6 +11,7 @@ import {
 } from '../controllers/contentController.js';
 import { getPublicSections } from '../controllers/cmsController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
+import { DISTRICT_SITE_TYPES, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
 
 const router = express.Router();
 
@@ -62,6 +63,35 @@ router.get('/by-domain', async (req, res) => {
                 [cleanDomain]
             );
             return rows[0]?.id || null;
+        };
+
+        /**
+         * Los clubes que podrían ser el sitio de este distrito, con la CANTIDAD
+         * DE AJUSTES de cada uno.
+         *
+         * El conteo se pide acá y no después porque es lo que desempata: puede
+         * haber dos filas vinculadas al mismo distrito —el club espejo vacío
+         * que crea /admin/distritos y el sitio real que configuró el operador—
+         * y elegir el vacío da exactamente el sitio en blanco que se está
+         * corrigiendo. Quién gana lo decide `pickDistrictSite`, que es puro y
+         * está probado; esta consulta sólo reúne a los candidatos.
+         */
+        const findDistrictSiteClub = async (district) => {
+            const { rows } = await db.query(
+                `SELECT c.id, c.type, c."districtId", c.district, c.subdomain, c."updatedAt",
+                        (SELECT COUNT(*)::int FROM "Setting" s WHERE s."clubId" = c.id) AS "settingsCount"
+                   FROM "Club" c
+                  WHERE c."districtId" = $1
+                     OR (lower(coalesce(c.type, '')) = ANY($2::text[]) AND coalesce(c.district, '') <> '' AND btrim(c.district) = $3)
+                     OR ($4 <> '' AND lower(coalesce(c.subdomain, '')) = $4)`,
+                [
+                    district.id || null,
+                    DISTRICT_SITE_TYPES,
+                    district.number == null ? '' : String(district.number),
+                    String(district.subdomain || '').trim().toLowerCase(),
+                ]
+            );
+            return pickDistrictSite(district, rows);
         };
 
         // Use Prisma for all lookups to ensure column mapping stability
@@ -120,45 +150,64 @@ router.get('/by-domain', async (req, res) => {
             }
         }
 
-        if (!activeEntity) {
-            // Check District table
-            const district = await db.prisma.district.findFirst({
-                where: {
-                    OR: domainOr
+        /**
+         * El dominio propio de un distrito vive en la fila de `District`, pero
+         * su CONTENIDO vive en la fila de `Club` de tipo distrito: ajustes,
+         * identidad, secciones, miembros. Son dos filas y hacen cosas distintas
+         * (ver `server/lib/districtSite.js`).
+         *
+         * Hasta v4.743 esto sintetizaba la entidad con `settings: []`, así que
+         * el dominio propio servía un sitio VACÍO mientras el mismo distrito,
+         * alcanzado por su subdominio de plataforma, se veía completo. Ahora se
+         * atraviesa hasta el sitio, que es lo que hace que un distrito por su
+         * dominio se comporte como cualquier club por el suyo.
+         */
+        const resolveDistrictEntity = async (district, how) => {
+            const site = await findDistrictSiteClub(district);
+            if (site) {
+                const club = await db.prisma.club.findUnique({
+                    where: { id: site.id },
+                    include: {
+                        settings: true,
+                        _count: { select: { products: { where: { status: 'active' } }, events: true } }
+                    }
+                });
+                if (club) {
+                    // Manda el sitio; la ficha del distrito es respaldo de marca.
+                    activeEntity = { ...club, ...districtBranding(club, district) };
+                    entityType = 'club';
+                    resolvedBy = `${how}_site`;
+                    return;
                 }
-            });
-
-            if (district) {
-                activeEntity = {
-                    ...district,
-                    settings: [], 
-                    type: 'district',
-                    // Map branding fields explicitly if they exist on District table
-                    logo: district.logo,
-                    footerLogo: district.footerLogo,
-                    favicon: district.favicon,
-                    colors: district.colors,
-                    logoHeaderSize: district.logoHeaderSize
-                };
-                entityType = 'district';
-                resolvedBy = 'district';
             }
+
+            // Sin sitio vinculado no hay contenido que servir, pero se sirve la
+            // ficha del distrito igual que antes: es preferible su nombre y su
+            // logotipo a caer al «Origen». `resolvedBy` lo deja dicho.
+            activeEntity = {
+                ...district,
+                settings: [],
+                type: 'district',
+                logo: district.logo,
+                footerLogo: district.footerLogo,
+                favicon: district.favicon,
+                colors: district.colors,
+                logoHeaderSize: district.logoHeaderSize
+            };
+            entityType = 'district';
+            resolvedBy = how;
+        };
+
+        if (!activeEntity) {
+            const district = await db.prisma.district.findFirst({ where: { OR: domainOr } });
+            if (district) await resolveDistrictEntity(district, 'district');
         }
 
         if (!activeEntity) {
             const looseDistrictId = await findByLooseDomain('District');
             if (looseDistrictId) {
                 const district = await db.prisma.district.findUnique({ where: { id: looseDistrictId } });
-                if (district) {
-                    activeEntity = {
-                        ...district, settings: [], type: 'district',
-                        logo: district.logo, footerLogo: district.footerLogo,
-                        favicon: district.favicon, colors: district.colors,
-                        logoHeaderSize: district.logoHeaderSize,
-                    };
-                    entityType = 'district';
-                    resolvedBy = 'district_loose';
-                }
+                if (district) await resolveDistrictEntity(district, 'district_loose');
             }
         }
 
