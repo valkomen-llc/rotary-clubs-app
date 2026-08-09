@@ -187,6 +187,9 @@ check('«Noticias» va justo debajo de «Somos gente de acción»', () => {
 });
 check('la portada abre con el hero y «Somos gente de acción»', () =>
     assert.deepEqual(orden.slice(0, 3), ['HeroSection', 'ActionSection', 'NewsSection']));
+check('las cifras van DEBAJO de «Únete a Rotary»', () =>
+    assert.ok(orden.indexOf('StatsSection') > orden.indexOf('JoinSection'),
+        'las cifras volvieron a quedar por encima de «Únete»'));
 
 check('las secciones de la portada tienen el MISMO ancho', () => {
     // Una sección más angosta que las otras se lee como un desalineo, no como

@@ -391,11 +391,14 @@ function SmartHome() {
             Evento/Convención puede desactivar el contenedor desde su
             configuración, y esa condición se mueve con la sección. */}
         {((club as any)?.eventSections?.news !== false) && <NewsSection />}
-        <StatsSection />
         {/* Banda configurable por sitio. No pinta nada si nadie la llenó, así
             que los sitios que no la usan se ven igual que antes. */}
         <HomeBannerSection />
         <JoinSection />
+        {/* Las cifras van DEBAJO de «Únete a Rotary» (v4.745.8, pedido del
+            Distrito): la invitación a sumarse va primero y los números la
+            respaldan, no al revés. */}
+        <StatsSection />
         <FoundationSection />
         <CausesHexSection />
       </main>
