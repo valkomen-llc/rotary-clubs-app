@@ -1,6 +1,7 @@
 import db from '../lib/db.js';
 import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
+import { canonicalDomain } from '../lib/domains.js';
 
 // v4.437.17 — Reclasificación explícita de tipo de entidad desde la Gestión Global de
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
@@ -120,11 +121,15 @@ export const createClub = async (req, res) => {
             `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "subscriptionStatus", "expirationDate", "billingContactEmail", "billingContactPhone", "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()) RETURNING *`,
             [
-                name, 
-                city || null, 
-                country || null, 
-                district || null, 
-                domain || null, 
+                name,
+                city || null,
+                country || null,
+                district || null,
+                // Se canoniza al CREAR, no sólo al editar. Hasta v4.743 el alta
+                // insertaba el valor crudo, así que un sitio creado con
+                // `https://ejemplo.org` nacía con un dominio que la resolución
+                // no podía casar — y nadie se enteraba hasta visitar el sitio.
+                canonicalDomain(domain) || null,
                 subdomain || null, 
                 description || null, 
                 status || 'active', 
@@ -191,12 +196,14 @@ export const updateClub = async (req, res) => {
         registrarPoolId
     } = req.body;
 
-    // Normaliza el dominio propio: minúsculas, sin protocolo, sin path ni barra final, sin
-    // espacios ni punto final. Se conserva el "www." si el admin lo puso (Vercel lo registra
-    // tal cual). Evita que un valor con formato sucio no matchee luego en /by-domain.
+    // Normaliza el dominio propio con el MISMO criterio que usa la resolución
+    // por dominio (`server/lib/domains.js`). Que las dos puntas normalicen igual
+    // es lo que evita el fallo mudo: un dominio guardado con `https://` o con
+    // barra final no casa con nada y el visitante ve el sitio «Origen» en vez de
+    // un error, así que parece un sitio a medio configurar.
     const normalizedDomain = domain === undefined || domain === null
         ? domain
-        : String(domain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+        : canonicalDomain(domain);
 
         try {
             // Access Control

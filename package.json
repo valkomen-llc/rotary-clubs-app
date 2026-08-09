@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.742.0",
-  "cache_bust": "2026-08-09d (Banda de imagen configurable en la portada.)",
+  "version": "4.743.0",
+  "cache_bust": "2026-08-09e (El dominio propio: verificacion real y resolucion robusta.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -28,6 +28,7 @@
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",
+    "test:domains": "node scripts/test-domains.mjs",
     "test:media": "node scripts/test-media-folders.mjs",
     "test:heic": "node scripts/test-heic.mjs",
     "test:design": "node scripts/test-design.mjs",

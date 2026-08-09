@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.742.0 | 2026-08-09 (Banda de imagen configurable en la portada)
-// Cache bust: 2026-08-09d
+// UI V4.743.0 | 2026-08-09 (El dominio propio: verificacion real y resolucion robusta)
+// Cache bust: 2026-08-09e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.743.0',
+        title: 'El dominio propio: ahora se puede verificar de verdad 🌐',
+        description: 'Cuando un dominio no está asignado a ningún sitio, la plataforma no muestra un error: muestra el sitio genérico «Origen», con el rótulo «Nombre del club» y fotos de archivo. Visto desde afuera parece un sitio a medio configurar, cuando en realidad el dominio no está atado a nada — y no había forma de distinguir una cosa de la otra. Peor: el botón «Verificar» junto al campo del dominio no verificaba nada, sólo mostraba un aviso de que estaba validando, así que confirmaba una conexión que podía no existir. Ahora ese botón consulta de verdad y responde una de tres cosas: que el dominio lleva a este sitio, que lleva a otro (diciendo a cuál), o que no está asignado a ninguno y qué verá quien lo visite. Además se corrigieron dos causas de que un dominio bien escrito no resolviera: al CREAR un sitio el dominio se guardaba tal como se pegara —con https://, con barra final o con espacios— y así no coincidía nunca con nada, y la búsqueda comparaba el valor guardado literalmente. Ahora las dos puntas usan el mismo criterio, y hay un segundo intento que rescata los sitios cuyo dominio ya estaba guardado con ese formato.',
+        date: new Date().toISOString(),
+        tags: ['dominios', 'configuracion', 'diagnostico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El botón «Verificar» del dominio ahora consulta de verdad.' },
+            { type: 'added', text: 'Dice si el dominio lleva a este sitio, a otro, o a ninguno.' },
+            { type: 'fixed', text: 'Al crear un sitio, el dominio se guarda ya normalizado.' },
+            { type: 'fixed', text: 'Un dominio guardado con https:// o barra final ahora resuelve igual.' },
+        ]
+    },
     {
         version: '4.742.0',
         title: 'Una imagen destacada en la portada, entre las cifras y «Únete» 🖼️',
