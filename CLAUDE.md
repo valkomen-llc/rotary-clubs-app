@@ -3045,6 +3045,48 @@ Pruebas: `npm run test:media` (65 casos). **Sin base, credenciales ni red.**
   la API interceptada. Es donde se vio que el nombre del archivo no es texto
   visible en la rejilla y que el aviso de eliminación llega con su recuento.
 
+### Selección múltiple y acciones en bloque (v4.740)
+
+Convertir HEIC de a uno es razonable con tres y deja de serlo con cuarenta.
+Junto al filtro de tipos hay un botón «Seleccionar»; con algo marcado aparece
+una barra con «Convertir a JPG (N)» y «Eliminar (N)».
+
+- **Van por su propia ruta** (`/media/bulk-convert`, `/media/bulk-delete`), no
+  repitiendo la de a uno desde el navegador: con cien archivos serían cien
+  peticiones, cien conexiones a la base y cien oportunidades de que una falle a
+  medias sin que nadie sepa cuáles quedaron.
+- **El aislamiento vive en `ownedMedia`**, el único punto por el que pasan las
+  dos: filtra por `clubId` salvo para el operador de la plataforma. Quien manda
+  ids ajenos recibe menos filas de las que pidió —y la diferencia se informa—
+  en vez de operar sobre lo ajeno.
+- **La conversión en bloque tiene PRESUPUESTO DE TIEMPO** y devuelve lo que
+  falta (`pending`), igual que el barrido del Creador de Reels. La función corta
+  a los 120 s y cada foto tarda 0,3-1 s: una selección grande no entra en una
+  sola petición. El navegador vuelve a pedir hasta terminar y muestra el avance.
+  Cortar en silencio dejaría al usuario creyendo que terminó.
+- **Ese bucle tiene tope de vueltas y detecta el estancamiento.** Si una ronda
+  no convierte nada y la cola no baja, se para y se dice — girar sin fin es peor
+  que fallar.
+- **Un fallo no detiene el lote.** El archivo que falló se informa con su nombre
+  y su motivo; los demás no tienen la culpa.
+- **El borrado en bloque quita S3 ANTES que la fila**, como el de a uno: al
+  revés quedarían objetos que nadie puede ver ni volver a borrar desde el panel.
+  Que S3 falle no impide quitarlo de la Librería: el usuario pidió que
+  desaparezca de su panel.
+- **`DeleteObjects` en lotes de 1000**, no una petición por archivo.
+- **La selección se limpia al cambiar de carpeta o de sitio.** Lo seleccionado
+  deja de estar a la vista, y actuar sobre archivos que no se ven es exactamente
+  cómo alguien borra lo que no quería borrar.
+- **Convertir sólo se ofrece si hay HEIC en la selección**, y el botón cuenta
+  ESOS, no todos los marcados: un botón que no va a hacer nada es peor que no
+  tenerlo.
+- **Las etiquetas accesibles llevan el nombre del archivo** («Seleccionar:
+  IMG_0001.HEIC»). Con la rejilla llena, «Seleccionar» a secas se repite en cada
+  baldosa y no se distinguen. Lo destapó la prueba de navegador, que no podía
+  resolver a cuál de los siete botones apuntaba.
+- **Con una selección en curso, pulsar la baldosa marca en vez de abrir la
+  ficha.** Quien está eligiendo varios espera seguir eligiendo.
+
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 
 Una foto subida en `.heic` aparecía como un recuadro roto. No era un fallo de la

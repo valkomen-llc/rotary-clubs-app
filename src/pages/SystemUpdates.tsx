@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.739.0 | 2026-08-09 (Las fotos HEIC del iPhone ya se ven)
-// Cache bust: 2026-08-09a
+// UI V4.740.0 | 2026-08-09 (Seleccion multiple en la Libreria de Medios)
+// Cache bust: 2026-08-09b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.740.0',
+        title: 'Seleccionar varios archivos para convertir o eliminar de una vez ☑️',
+        description: 'Convertir fotos HEIC de a una era razonable con dos o tres, y deja de serlo con cuarenta. Ahora, junto al filtro «Todos los tipos», hay un botón «Seleccionar»: al pulsarlo aparece una casilla en cada archivo y una barra arriba con lo que se puede hacer con la selección. Se puede marcar de a uno, o usar «Seleccionar todo» para tomar lo que haya en la carpeta abierta. Con archivos marcados, la barra ofrece dos acciones. «Convertir a JPG» cuenta sólo los HEIC de la selección —si marcaste veinte archivos y cinco son HEIC, el botón dice cinco—, y si son muchos el sistema los procesa por tandas mostrando el avance, en vez de cortar a la mitad sin avisar. «Eliminar» borra todos los marcados con una sola confirmación que dice cuántos son y advierte que si alguno está publicado en el sitio dejará de verse ahí. Es la forma de limpiar imágenes repetidas o contenido que ya no va, sin ir de una en una. La selección se limpia sola al cambiar de carpeta: actuar sobre archivos que no están a la vista es justamente como se borra lo que no se quería borrar.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'biblioteca', 'productividad'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Selección de uno, varios o todos los archivos de la carpeta.' },
+            { type: 'added', text: 'Convertir a JPG en bloque, por tandas y con avance a la vista.' },
+            { type: 'added', text: 'Eliminar varios archivos con una sola confirmación.' },
+            { type: 'changed', text: 'El botón de convertir cuenta sólo los HEIC de la selección.' },
+            { type: 'changed', text: 'La selección se limpia al cambiar de carpeta.' },
+        ]
+    },
     {
         version: '4.739.0',
         title: 'Las fotos de iPhone (.heic) ya se ven como cualquier otra 📱',

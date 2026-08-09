@@ -4,7 +4,8 @@ import {
     Trash2, Search, FileText, ImageIcon,
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
-    ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage
+    ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage,
+    Check, Square, CheckSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -67,6 +68,14 @@ const MediaLibrary: React.FC = () => {
     const [busyFolder, setBusyFolder] = useState(false);
     const [converting, setConverting] = useState<string | null>(null);
 
+    // ── Selección múltiple (v4.740) ───────────────────────────────────
+    // `Set` y no array: las operaciones que importan acá son «¿está?» y
+    // «agregar/quitar», y con cientos de archivos un array las vuelve
+    // cuadráticas al pintar la rejilla.
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [bulkBusy, setBulkBusy] = useState<'convert' | 'delete' | null>(null);
+    const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
     const isSuperAdmin = user?.role === 'administrator';
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = () => localStorage.getItem('rotary_token');
@@ -101,6 +110,10 @@ const MediaLibrary: React.FC = () => {
 
     useEffect(() => {
         if (isSuperAdmin && !selectedClubId) return;
+        // La selección se limpia al cambiar de carpeta o de sitio: lo
+        // seleccionado ya no está a la vista, y actuar sobre archivos que no se
+        // ven es exactamente cómo alguien borra lo que no quería borrar.
+        setSelected(new Set());
         fetchMedia();
     }, [user, selectedClubId, currentFolder]);
 
@@ -282,6 +295,109 @@ const MediaLibrary: React.FC = () => {
         }
     };
 
+    // ── Acciones sobre la selección ───────────────────────────────────
+
+    const toggleSelected = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    /**
+     * Convierte a JPG todos los HEIC de la selección.
+     *
+     * El servidor atiende lo que le entra en su presupuesto de tiempo y
+     * devuelve lo que falta, así que acá se vuelve a pedir hasta terminar. Sin
+     * este bucle, una selección grande se convertiría a medias y la pantalla
+     * diría que terminó.
+     */
+    const bulkConvert = async () => {
+        const targets = filteredMedia.filter(m => selected.has(m.id) && isHeicFile({ filename: m.filename }));
+        if (!targets.length) { toast.info('No hay archivos HEIC en la selección.'); return; }
+
+        setBulkBusy('convert');
+        setBulkProgress({ done: 0, total: targets.length });
+        let queue = targets.map(m => m.id);
+        let done = 0;
+        const problems: { filename: string; error: string }[] = [];
+
+        try {
+            // Tope de vueltas: si el servidor dejara de avanzar, esto pararía en
+            // vez de pedir para siempre.
+            for (let round = 0; queue.length && round < 50; round++) {
+                const res = await fetch(`${API}/media/bulk-convert`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mediaIds: queue }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { toast.error(data?.details || data?.error || 'No se pudieron convertir'); break; }
+
+                done += data.converted || 0;
+                problems.push(...(data.failed || []));
+                setBulkProgress({ done, total: targets.length });
+
+                const next: string[] = data.pending || [];
+                // Sin avance y con cola pendiente: parar y decirlo, en vez de
+                // girar sin fin.
+                if (!data.converted && !data.failed?.length && next.length === queue.length) {
+                    toast.error('La conversión no avanzó. Probá con menos archivos a la vez.');
+                    break;
+                }
+                queue = next;
+            }
+
+            if (done) toast.success(`${done} archivo(s) convertido(s) a JPG`);
+            if (problems.length) {
+                toast.error(`${problems.length} no se pudo(ieron) convertir: ${problems[0].filename} — ${problems[0].error}`);
+            }
+            setSelected(new Set());
+            fetchMedia();
+            fetchLibraryFolders();
+        } catch {
+            toast.error('Error de conexión al convertir');
+        } finally {
+            setBulkBusy(null);
+            setBulkProgress(null);
+        }
+    };
+
+    /** Elimina los archivos seleccionados. */
+    const bulkDelete = async () => {
+        const ids = [...selected];
+        if (!ids.length) return;
+        // La confirmación dice CUÁNTOS y que no tiene vuelta atrás. Un archivo
+        // puede estar publicado en el sitio o ser el logo del club.
+        if (!window.confirm(
+            `¿Eliminar ${ids.length} archivo(s) de forma permanente?\n\n` +
+            'Esta acción no se puede deshacer. Si alguno está publicado en el sitio, dejará de verse ahí.'
+        )) return;
+
+        setBulkBusy('delete');
+        try {
+            const res = await fetch(`${API}/media/bulk-delete`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mediaIds: ids }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.details || data?.error || 'No se pudieron eliminar'); return; }
+
+            toast.success(`${data.deleted} archivo(s) eliminado(s)`);
+            if (data.notFound) toast.info(`${data.notFound} ya no estaba(n) en la Librería.`);
+            setSelected(new Set());
+            setSelectedItem(null);
+            fetchMedia();
+            fetchLibraryFolders();
+        } catch {
+            toast.error('Error de conexión al eliminar');
+        } finally {
+            setBulkBusy(null);
+        }
+    };
+
     /** Manda un archivo a otra carpeta. `folderId: null` lo devuelve a la raíz. */
     const moveMediaTo = async (item: MediaItem, folderId: string | null) => {
         try {
@@ -440,6 +556,10 @@ const MediaLibrary: React.FC = () => {
         const matchesType = filterType === 'all' || m.type === filterType;
         return matchesSearch && matchesType;
     });
+
+    /** Cuántos de los seleccionados son HEIC: decide si se ofrece convertir. */
+    const selectedHeicCount = filteredMedia
+        .filter(m => selected.has(m.id) && isHeicFile({ filename: m.filename })).length;
 
     const formatSize = (bytes: number) => {
         if (bytes === 0) return '0 Bytes';
@@ -642,8 +762,78 @@ const MediaLibrary: React.FC = () => {
                                 <option value="video">Videos</option>
                                 <option value="document">Documentos</option>
                             </select>
+
+                            {/* Entrar a seleccionar. Vive al lado del filtro de
+                                tipos, que es donde el usuario lo pidió. */}
+                            {filteredMedia.length > 0 && selected.size === 0 && (
+                                <button
+                                    onClick={() => setSelected(new Set([filteredMedia[0].id]))}
+                                    className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-100 bg-white text-sm font-bold text-gray-600 shadow-sm hover:border-rotary-blue hover:text-rotary-blue transition-all"
+                                    title="Seleccionar archivos para convertir o eliminar en bloque"
+                                >
+                                    <CheckSquare className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Seleccionar</span>
+                                </button>
+                            )}
                         </div>
                     </div>
+
+                    {/* Barra de la selección. Sólo aparece con algo seleccionado:
+                        una barra siempre presente ocuparía sitio para no decir nada. */}
+                    {selected.size > 0 && (
+                        <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6 p-3 pl-4 bg-rotary-blue/5 border border-rotary-blue/20 rounded-2xl">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <span className="text-sm font-extrabold text-rotary-blue whitespace-nowrap">
+                                    {selected.size} seleccionado{selected.size === 1 ? '' : 's'}
+                                </span>
+                                <button
+                                    onClick={() => setSelected(new Set(filteredMedia.map(m => m.id)))}
+                                    disabled={selected.size === filteredMedia.length}
+                                    className="text-xs font-bold text-gray-500 hover:text-rotary-blue transition-colors disabled:opacity-40 whitespace-nowrap"
+                                >
+                                    Seleccionar todo ({filteredMedia.length})
+                                </button>
+                                <button
+                                    onClick={() => setSelected(new Set())}
+                                    className="text-xs font-bold text-gray-500 hover:text-rotary-blue transition-colors whitespace-nowrap"
+                                >
+                                    Quitar selección
+                                </button>
+                                {bulkProgress && (
+                                    <span className="text-xs font-bold text-gray-500 whitespace-nowrap">
+                                        Convirtiendo {bulkProgress.done} de {bulkProgress.total}…
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {/* Convertir sólo se ofrece si hay algo que convertir:
+                                    un botón que no va a hacer nada es peor que no tenerlo. */}
+                                {selectedHeicCount > 0 && (
+                                    <button
+                                        onClick={bulkConvert}
+                                        disabled={!!bulkBusy}
+                                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-amber-700 border border-amber-200 text-sm font-bold hover:bg-amber-50 transition-all disabled:opacity-50"
+                                    >
+                                        {bulkBusy === 'convert'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                                            : <FileImage className="w-4 h-4" />}
+                                        Convertir a JPG ({selectedHeicCount})
+                                    </button>
+                                )}
+                                <button
+                                    onClick={bulkDelete}
+                                    disabled={!!bulkBusy}
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-red-600 border border-red-200 text-sm font-bold hover:bg-red-50 transition-all disabled:opacity-50"
+                                >
+                                    {bulkBusy === 'delete'
+                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                        : <Trash2 className="w-4 h-4" />}
+                                    Eliminar ({selected.size})
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Las carpetas del nivel, antes de los archivos. Se
                         esconden al buscar: una búsqueda mira archivos, y dejar
@@ -719,10 +909,35 @@ const MediaLibrary: React.FC = () => {
                             {filteredMedia.map((item) => (
                                 <div
                                     key={item.id}
-                                    className={`group relative aspect-square bg-gray-50 rounded-2xl border transition-all overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 ${selectedItem?.id === item.id ? 'border-rotary-blue ring-4 ring-rotary-blue/10' : 'border-gray-100'
+                                    className={`group relative aspect-square bg-gray-50 rounded-2xl border transition-all overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-1 ${selected.has(item.id)
+                                        ? 'border-rotary-blue ring-4 ring-rotary-blue/20'
+                                        : selectedItem?.id === item.id ? 'border-rotary-blue ring-4 ring-rotary-blue/10' : 'border-gray-100'
                                         }`}
-                                    onClick={() => setSelectedItem(item)}
+                                    // Con una selección en curso, pulsar la baldosa AGREGA o QUITA
+                                    // en vez de abrir la ficha: quien está eligiendo varios espera
+                                    // seguir eligiendo, no que se le abra un panel encima.
+                                    onClick={() => (selected.size > 0 ? toggleSelected(item.id) : setSelectedItem(item))}
                                 >
+                                    {/* La casilla aparece al pasar el ratón, y se queda fija
+                                        mientras haya algo seleccionado. Siempre visible llenaría
+                                        la rejilla de controles para el uso normal, que es mirar. */}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); toggleSelected(item.id); }}
+                                        className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md flex items-center justify-center transition-all shadow-sm ${selected.has(item.id)
+                                            ? 'bg-rotary-blue text-white opacity-100'
+                                            : 'bg-white/90 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-rotary-blue'
+                                            } ${selected.size > 0 ? 'opacity-100' : ''}`}
+                                        // La etiqueta lleva el NOMBRE del archivo: con la rejilla
+                                        // llena, «Seleccionar» a secas se repite en cada baldosa y
+                                        // un lector de pantalla no puede distinguirlas.
+                                        title={`${selected.has(item.id) ? 'Quitar de la selección' : 'Seleccionar'}: ${item.filename}`}
+                                        aria-label={`${selected.has(item.id) ? 'Quitar de la selección' : 'Seleccionar'}: ${item.filename}`}
+                                        aria-pressed={selected.has(item.id)}
+                                    >
+                                        {selected.has(item.id)
+                                            ? <Check className="w-4 h-4" strokeWidth={3} />
+                                            : <Square className="w-3.5 h-3.5" />}
+                                    </button>
                                     {isHeicFile({ filename: item.filename }) ? (
                                         // Un HEIC no lo dibuja ningún navegador salvo Safari, así
                                         // que un `<img>` acá deja el recuadro roto y sin explicación.
@@ -734,6 +949,8 @@ const MediaLibrary: React.FC = () => {
                                                 onClick={(e) => { e.stopPropagation(); convertHeic(item); }}
                                                 disabled={converting === item.id}
                                                 className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-white text-amber-700 border border-amber-200 hover:bg-amber-100 transition-all disabled:opacity-50"
+                                                aria-label={`Convertir a JPG: ${item.filename}`}
+                                                title={`Convertir a JPG: ${item.filename}`}
                                             >
                                                 {converting === item.id
                                                     ? <Loader2 className="w-3 h-3 animate-spin mx-auto" />
@@ -792,6 +1009,22 @@ const MediaLibrary: React.FC = () => {
                             <table className="w-full text-left min-w-[600px]">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="pl-6 pr-2 py-4 w-10">
+                                            {/* Seleccionar todo desde la cabecera: es donde se
+                                                busca en una tabla. */}
+                                            <button
+                                                onClick={() => setSelected(prev =>
+                                                    prev.size === filteredMedia.length
+                                                        ? new Set()
+                                                        : new Set(filteredMedia.map(m => m.id)))}
+                                                className="w-5 h-5 rounded flex items-center justify-center border border-gray-300 text-white transition-all hover:border-rotary-blue"
+                                                style={{ background: selected.size === filteredMedia.length && filteredMedia.length ? '#013388' : 'transparent' }}
+                                                title="Seleccionar todo"
+                                                aria-label="Seleccionar todo"
+                                            >
+                                                {selected.size === filteredMedia.length && filteredMedia.length > 0 && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                                            </button>
+                                        </th>
                                         <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Archivo</th>
                                         <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Tipo</th>
                                         <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Tamaño</th>
@@ -800,7 +1033,19 @@ const MediaLibrary: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredMedia.map((item) => (
-                                        <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <tr key={item.id} className={`transition-colors ${selected.has(item.id) ? 'bg-sky-50/60' : 'hover:bg-gray-50/50'}`}>
+                                            <td className="pl-6 pr-2 py-4">
+                                                <button
+                                                    onClick={() => toggleSelected(item.id)}
+                                                    className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${selected.has(item.id)
+                                                        ? 'bg-rotary-blue border-rotary-blue text-white'
+                                                        : 'border-gray-300 text-transparent hover:border-rotary-blue'}`}
+                                                    aria-label={`${selected.has(item.id) ? 'Quitar de la selección' : 'Seleccionar'}: ${item.filename}`}
+                                                    aria-pressed={selected.has(item.id)}
+                                                >
+                                                    <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                                                </button>
+                                            </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden border border-gray-100">
