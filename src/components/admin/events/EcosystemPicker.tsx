@@ -45,10 +45,52 @@ interface EcosystemSite {
 }
 
 interface Props {
-    /** Se llama tras traer eventos, para que el panel recargue su lista. */
+    /** Se llama tras traer, para que el panel recargue su lista. */
     onDone: () => void;
     onClose: () => void;
+    /**
+     * Qué se trae. v4.749 — El MISMO componente sirve para eventos y proyectos:
+     * el flujo que ve el usuario es idéntico (buscar, marcar varios, traer) y
+     * escribirlo dos veces daría dos pantallas que se separan en silencio, que
+     * es justo lo que hubo que deshacer con la casilla de distritos.
+     * Lo que cambia son las rutas y las palabras, no la mecánica.
+     */
+    kind?: 'event' | 'project';
 }
+
+/** Las rutas y las palabras de cada tipo. Todo lo demás es común. */
+const KINDS = {
+    event: {
+        list: 'events',
+        clone: 'clone',
+        refresh: 'refresh',
+        title: 'Traer eventos del ecosistema',
+        intro: 'Eventos próximos de los sitios vinculados',
+        one: 'evento',
+        many: 'eventos',
+        emptyAll: 'Ninguna organización de tu distrito tiene eventos próximos.',
+        emptyHint: 'Aparecerán acá en cuanto publiquen un evento con fecha futura.',
+        noMatch: 'Ningún evento coincide con la búsqueda.',
+        already: 'Ya está en tu agenda',
+        foot: 'El evento se copia a tu sitio. La inscripción, si la tiene, sigue en el sitio de origen.',
+        cta: 'Traer a mi agenda',
+    },
+    project: {
+        list: 'projects',
+        clone: 'clone-projects',
+        refresh: 'refresh-project',
+        title: 'Traer proyectos del ecosistema',
+        intro: 'Proyectos de los sitios vinculados',
+        one: 'proyecto',
+        many: 'proyectos',
+        emptyAll: 'Ninguna organización de tu distrito tiene proyectos publicados.',
+        emptyHint: 'Aparecerán acá en cuanto publiquen uno.',
+        noMatch: 'Ningún proyecto coincide con la búsqueda.',
+        already: 'Ya está en tus proyectos',
+        foot: 'El proyecto se copia a tu sitio. Los aportes siguen recibiéndose en el sitio de origen.',
+        cta: 'Traer a mis proyectos',
+    },
+} as const;
 
 const fmtDate = (value: string) => {
     if (!value) return '';
@@ -61,7 +103,8 @@ const fmtTime = (value: string) => {
     return new Date(value).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 };
 
-const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
+const EcosystemPicker: React.FC<Props> = ({ onDone, onClose, kind = 'event' }) => {
+    const T = KINDS[kind];
     const [sites, setSites] = useState<EcosystemSite[]>([]);
     const [events, setEvents] = useState<EcosystemEvent[]>([]);
     const [districtName, setDistrictName] = useState('');
@@ -87,13 +130,13 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
         try {
             const [sitesRes, eventsRes] = await Promise.all([
                 fetch(`${API}/district-ecosystem/sites`, { headers }),
-                fetch(`${API}/district-ecosystem/events`, { headers }),
+                fetch(`${API}/district-ecosystem/${T.list}`, { headers }),
             ]);
             const sitesData = await sitesRes.json();
             const eventsData = await eventsRes.json();
 
             if (!sitesRes.ok) throw new Error(sitesData?.error || 'No pudimos cargar tu ecosistema.');
-            if (!eventsRes.ok) throw new Error(eventsData?.error || 'No pudimos cargar los eventos.');
+            if (!eventsRes.ok) throw new Error(eventsData?.error || `No pudimos cargar los ${T.many}.`);
 
             // `?.` en CADA eslabón: una respuesta sin `sites` —una versión
             // anterior de la API, un error devuelto como objeto— revienta el
@@ -106,7 +149,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
         } finally {
             setLoading(false);
         }
-    }, [API, headers]);
+    }, [API, headers, T.list]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -142,13 +185,13 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
         setWorking(true);
         setError('');
         try {
-            const res = await fetch(`${API}/district-ecosystem/clone`, {
+            const res = await fetch(`${API}/district-ecosystem/${T.clone}`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ eventIds: [...selected] }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'No pudimos traer los eventos.');
+            if (!res.ok) throw new Error(data?.error || `No pudimos traer los ${T.many}.`);
 
             setResult({
                 created: (data?.created || []).length,
@@ -158,7 +201,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
             await load();
             onDone();
         } catch (e: any) {
-            setError(e?.message || 'No pudimos traer los eventos.');
+            setError(e?.message || `No pudimos traer los ${T.many}.`);
         } finally {
             setWorking(false);
         }
@@ -168,15 +211,15 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
         setRefreshing(cloneId);
         setError('');
         try {
-            const res = await fetch(`${API}/district-ecosystem/refresh/${cloneId}`, {
+            const res = await fetch(`${API}/district-ecosystem/${T.refresh}/${cloneId}`, {
                 method: 'POST', headers,
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'No pudimos actualizar el evento.');
+            if (!res.ok) throw new Error(data?.error || `No pudimos actualizar el ${T.one}.`);
             await load();
             onDone();
         } catch (e: any) {
-            setError(e?.message || 'No pudimos actualizar el evento.');
+            setError(e?.message || `No pudimos actualizar el ${T.one}.`);
         } finally {
             setRefreshing(null);
         }
@@ -189,11 +232,11 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                 {/* ── Cabecera ────────────────────────────────────── */}
                 <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-200">
                     <div className="min-w-0">
-                        <h3 className="text-lg font-bold text-gray-900">Traer del ecosistema</h3>
+                        <h3 className="text-lg font-bold text-gray-900">{T.title}</h3>
                         <p className="text-sm text-gray-500 mt-0.5">
-                            Eventos próximos de los sitios vinculados
+                            {T.intro}
                             {districtName ? ` a ${districtName}` : ' a tu distrito'}. Se copian a tu
-                            agenda acreditando y enlazando al sitio de origen.
+                            sitio acreditando y enlazando al de origen.
                         </p>
                     </div>
                     <button
@@ -213,7 +256,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Buscar por evento, organización o ciudad…"
+                            placeholder={`Buscar por ${T.one}, organización o ciudad…`}
                             className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                     </div>
@@ -242,8 +285,8 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                     <div className="mx-6 mt-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg px-4 py-3 text-sm">
                         <p className="font-semibold">
                             {result.created === 0
-                                ? 'No se trajo ningún evento nuevo.'
-                                : `Se ${result.created === 1 ? 'trajo 1 evento' : `trajeron ${result.created} eventos`} a tu agenda.`}
+                                ? `No se trajo ningún ${T.one} nuevo.`
+                                : `Se ${result.created === 1 ? `trajo 1 ${T.one}` : `trajeron ${result.created} ${T.many}`} a tu sitio.`}
                         </p>
                         {result.skipped.length > 0 && (
                             <ul className="mt-1.5 list-disc pl-5 text-emerald-800/80">
@@ -263,15 +306,13 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                         <div className="text-center py-14 px-6">
                             <Inbox className="w-10 h-10 mx-auto text-gray-300" />
                             <p className="mt-3 font-semibold text-gray-700">
-                                {events.length === 0
-                                    ? 'Ninguna organización de tu distrito tiene eventos próximos.'
-                                    : 'Ningún evento coincide con la búsqueda.'}
+                                {events.length === 0 ? T.emptyAll : T.noMatch}
                             </p>
                             <p className="mt-1 text-sm text-gray-500 max-w-md mx-auto">
                                 {events.length === 0
                                     ? sites.length === 0
                                         ? 'Todavía no hay sitios vinculados a tu distrito. Los vincula el operador de la plataforma desde el panel de Distritos.'
-                                        : `Se revisaron ${sites.length} sitios vinculados. Aparecerán acá en cuanto publiquen un evento con fecha futura.`
+                                        : `Se revisaron ${sites.length} sitios vinculados. ${T.emptyHint}`
                                     : 'Probá con otro término o quitá el filtro de organización.'}
                             </p>
                         </div>
@@ -286,7 +327,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                                         {selected.size === selectable.length ? 'Quitar la selección' : `Seleccionar los ${selectable.length} disponibles`}
                                     </button>
                                     <span className="text-xs text-gray-500 tabular-nums">
-                                        {visible.length} evento{visible.length === 1 ? '' : 's'}
+                                        {visible.length} {visible.length === 1 ? T.one : T.many}
                                     </span>
                                 </div>
                             )}
@@ -305,7 +346,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                                             {already ? (
                                                 <span
                                                     className="mt-1 w-4 h-4 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"
-                                                    title="Ya está en tu agenda"
+                                                    title={T.already}
                                                 >
                                                     <Check className="w-3 h-3" />
                                                 </span>
@@ -354,7 +395,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                                                 {already && (
                                                     <div className="mt-1.5 flex items-center gap-3 flex-wrap">
                                                         <span className="text-xs text-emerald-700 font-medium">
-                                                            Ya está en tu agenda
+                                                            {T.already}
                                                         </span>
                                                         {diverged && (
                                                             <>
@@ -397,8 +438,7 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                 {/* ── Pie ─────────────────────────────────────────── */}
                 <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
                     <p className="text-xs text-gray-500">
-                        El evento se copia a tu sitio. La inscripción, si la tiene, sigue en el sitio
-                        de origen.
+                        {T.foot}
                     </p>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -414,8 +454,8 @@ const EcosystemPicker: React.FC<Props> = ({ onDone, onClose }) => {
                         >
                             {working && <Loader2 className="w-4 h-4 animate-spin" />}
                             {selected.size
-                                ? `Traer ${selected.size} evento${selected.size === 1 ? '' : 's'}`
-                                : 'Traer a mi agenda'}
+                                ? `Traer ${selected.size} ${selected.size === 1 ? T.one : T.many}`
+                                : T.cta}
                         </button>
                     </div>
                 </div>

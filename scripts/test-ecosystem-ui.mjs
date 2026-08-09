@@ -87,9 +87,10 @@ import { createRoot } from 'react-dom/client';
 import EcosystemPicker from '../src/components/admin/events/EcosystemPicker';
 
 window.__done = 0;
-window.go = () => {
+window.go = (kind) => {
     createRoot(document.getElementById('root')).render(
         React.createElement(EcosystemPicker, {
+            kind: kind || 'event',
             onClose: () => { window.__closed = true; },
             onDone: () => { window.__done += 1; },
         }),
@@ -106,7 +107,7 @@ const bundle = await build({
 const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {});
 
 /** Monta el componente con la API interceptada. Devuelve la página y el registro de llamadas. */
-async function montar({ sites = SITES, events = EVENTS, cloneReply, sitesStatus = 200 } = {}) {
+async function montar({ sites = SITES, events = EVENTS, cloneReply, sitesStatus = 200, kind = 'event' } = {}) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
     const fallos = [];
     const llamadas = [];
@@ -128,6 +129,21 @@ async function montar({ sites = SITES, events = EVENTS, cloneReply, sitesStatus 
     await page.route('**/api/district-ecosystem/sites', r => {
         llamadas.push({ url: r.request().url(), method: r.request().method() });
         return r.fulfill({ status: sitesStatus, json: sites });
+    });
+    await page.route('**/api/district-ecosystem/projects*', r => {
+        llamadas.push({ url: r.request().url(), method: r.request().method() });
+        return r.fulfill({ status: sitesStatus === 200 ? 200 : sitesStatus, json: events });
+    });
+    await page.route('**/api/district-ecosystem/clone-projects', r => {
+        llamadas.push({
+            url: r.request().url(), method: r.request().method(),
+            body: JSON.parse(r.request().postData() || '{}'),
+        });
+        return r.fulfill({ json: cloneReply || { created: [{ id: 'n1', title: 'X' }], skipped: [] } });
+    });
+    await page.route('**/api/district-ecosystem/refresh-project/**', r => {
+        llamadas.push({ url: r.request().url(), method: r.request().method() });
+        return r.fulfill({ json: { event: { id: 'clon-1' } } });
     });
     await page.route('**/api/district-ecosystem/events*', r => {
         llamadas.push({ url: r.request().url(), method: r.request().method() });
@@ -153,7 +169,7 @@ async function montar({ sites = SITES, events = EVENTS, cloneReply, sitesStatus 
     }));
     await page.goto('http://localhost/');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.evaluate(() => window.go());
+    await page.evaluate((k) => window.go(k), kind);
     await page.waitForTimeout(600);
 
     return { page, fallos, llamadas };
@@ -317,6 +333,56 @@ grupo('── Estados vacíos y errores ─────────────�
     check('una respuesta incompleta no deja el panel en blanco',
         (await page.locator('#root').innerHTML()).length > 500 && fallos.length === 0,
         fallos.join(' | '));
+    await page.close();
+}
+
+grupo('── El MISMO selector, en modo proyectos ───────────────');
+{
+    // v4.749 — Un solo componente sirve a las dos pantallas. Lo que cambia son
+    // las rutas y las palabras; la mecánica es idéntica y por eso no se
+    // escribió dos veces.
+    const PROYECTOS = {
+        sites: EVENTS.sites,
+        events: [
+            {
+                id: 'p1', title: 'Agua potable para La Ladera',
+                startDate: '2026-12-01T00:00:00.000Z', endDate: null,
+                location: 'Cali', type: 'active', image: '',
+                url: 'https://calinorte.org/proyectos/agua-potable',
+                org: EVENTS.events[0].org, cloneId: null, divergence: null,
+            },
+        ],
+    };
+    const { page, llamadas, fallos } = await montar({ kind: 'project', events: PROYECTOS });
+    const texto = await page.locator('#root').innerText();
+
+    check('sin errores al montar en modo proyectos', fallos.length === 0, fallos.join(' | '));
+    check('consulta la ruta de PROYECTOS, no la de eventos',
+        llamadas.some(l => l.url.includes('/district-ecosystem/projects'))
+        && !llamadas.some(l => l.url.includes('/district-ecosystem/events')));
+    check('el título habla de proyectos', texto.includes('Traer proyectos del ecosistema'));
+    check('lista el proyecto con su organización',
+        texto.includes('Agua potable para La Ladera') && texto.includes('RC Cali Norte'));
+
+    // Es la diferencia que importa: el dinero se recibe en el sitio de origen.
+    check('el pie avisa de que los aportes siguen en el sitio de origen',
+        texto.includes('Los aportes siguen recibiéndose en el sitio de origen'));
+
+    await page.locator('#root input[type=checkbox]').first().check();
+    await page.waitForTimeout(150);
+    check('el botón cuenta en proyectos, no en eventos',
+        (await page.locator('#root button', { hasText: 'Traer' }).last().innerText()).includes('Traer 1 proyecto'));
+
+    await page.locator('#root button', { hasText: 'Traer' }).last().click();
+    await page.waitForTimeout(400);
+    check('clona por la ruta de proyectos',
+        llamadas.some(l => l.method === 'POST' && l.url.endsWith('/clone-projects')));
+    await page.close();
+}
+{
+    const { page } = await montar({ kind: 'project', events: { events: [], sites: [] } });
+    check('el vacío también habla de proyectos',
+        (await page.locator('#root').innerText()).includes('Se revisaron 2 sitios vinculados'));
     await page.close();
 }
 

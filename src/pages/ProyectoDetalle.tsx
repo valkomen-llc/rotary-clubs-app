@@ -3,7 +3,7 @@ import { useLang } from '../contexts/LanguageContext';
 import {
   ArrowLeft, Heart, Users, MapPin, Calendar, Target,
   CheckCircle2, Facebook, Twitter, Linkedin, X, Loader2,
-  Tag, FileText, BarChart2, ShieldCheck
+  Tag, FileText, BarChart2, ShieldCheck, ExternalLink
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Navbar from '../sections/Navbar';
@@ -243,6 +243,13 @@ const ProyectoDetalle = () => {
   const galeria: string[] = Array.isArray(proyecto?.images) ? proyecto?.images : [];
   const porcentaje  = meta > 0 ? Math.min(Math.round((recaudado / meta) * 100), 100) : 0;
 
+  // v4.749 — De dónde vino este proyecto, si es una copia traída del ecosistema
+  // del distrito. Lo manda el servidor (`ecosystemSource`) y gobierna dos cosas:
+  // la acreditación del club que lo dirige y que la copia NO reciba aportes.
+  const origen = proyecto?.ecosystemSource?.clubName || proyecto?.ecosystemSource?.url
+    ? proyecto.ecosystemSource
+    : null;
+
   // Fecha legible
   const fecha = proyecto?.fechaEstimada
     ? new Date(proyecto.fechaEstimada).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
@@ -347,6 +354,30 @@ const ProyectoDetalle = () => {
                   {/* Columna Principal */}
                   <div className="lg:col-span-2 space-y-10">
 
+                    {/* v4.749 — Un proyecto traído de otro sitio del ecosistema ACREDITA
+                        a la organización que lo dirige y enlaza a su ficha original.
+                        Es lo que separa difundir de apropiarse, y es además donde se
+                        recibe el dinero: la copia no acepta aportes. */}
+                    {origen && (
+                      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/70 px-5 py-4">
+                        <p className="text-sm text-sky-900">
+                          Dirige este proyecto <strong>{origen.clubName || 'otra organización del distrito'}</strong>.
+                          {' '}Lo publicamos para difundirlo; la información oficial y los aportes
+                          están en su sitio.
+                        </p>
+                        {origen.url && (
+                          <a
+                            href={origen.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-xl bg-rotary-blue px-4 py-2 text-sm font-bold text-white transition hover:bg-rotary-navy"
+                          >
+                            Ver el proyecto original <ExternalLink className="w-4 h-4" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+
                     {/* Descripción */}
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -444,13 +475,36 @@ const ProyectoDetalle = () => {
                         </div>
                       </div>
 
-                      {/* CTA Donar */}
-                      <button
-                        onClick={() => setMostrarModal(true)}
-                        className="w-full bg-rotary-gold text-white py-4 rounded-full font-bold text-lg hover:bg-[#c9a020] transition-colors flex items-center justify-center gap-2 mb-4 shadow-md"
-                      >
-                        <Heart className="w-5 h-5" /> Realizar Aporte
-                      </button>
+                      {/* CTA Donar.
+                          v4.749 — Una copia traída del ecosistema NO recibe aportes.
+                          `Donation` cuelga de `projectId` y la pasarela cobra al
+                          `clubId` de la página: un aporte hecho acá entraría a la
+                          cuenta del DISTRITO y quedaría registrado contra un proyecto
+                          que no es el que se está financiando. Eso es dinero en la
+                          cuenta equivocada, no una molestia. Se manda a donar al sitio
+                          de origen, que es donde el proyecto se financia de verdad. */}
+                      {origen ? (
+                        <a
+                          href={origen.url || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-rotary-gold text-white py-4 rounded-full font-bold text-lg hover:bg-[#c9a020] transition-colors flex items-center justify-center gap-2 mb-2 shadow-md"
+                        >
+                          <Heart className="w-5 h-5" /> Aportar en el sitio de origen
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => setMostrarModal(true)}
+                          className="w-full bg-rotary-gold text-white py-4 rounded-full font-bold text-lg hover:bg-[#c9a020] transition-colors flex items-center justify-center gap-2 mb-4 shadow-md"
+                        >
+                          <Heart className="w-5 h-5" /> Realizar Aporte
+                        </button>
+                      )}
+                      {origen && (
+                        <p className="text-xs text-gray-500 text-center mb-4">
+                          Los aportes los recibe {origen.clubName || 'la organización que dirige el proyecto'}.
+                        </p>
+                      )}
 
                       {/* Compartir */}
                       <div className="flex justify-center gap-3">

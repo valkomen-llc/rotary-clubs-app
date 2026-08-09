@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.748.0 | 2026-08-09 (Selector de distritos registrados y vínculo por lista)
-// Cache bust: 2026-08-09t
+// UI V4.749.0 | 2026-08-09 (El Distrito trae también los proyectos de sus sitios)
+// Cache bust: 2026-08-09u
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.749.0',
+        title: 'El Distrito trae también los proyectos de sus sitios 🤝',
+        description: 'Lo mismo que ya funcionaba con los eventos, ahora con los proyectos. En Gestión de Proyectos del sitio de un Distrito aparece «Traer del ecosistema»: se buscan los proyectos de los clubes, fundaciones, ferias y programas vinculados, se marcan varios y se traen de una vez. Cada proyecto traído acredita a la organización que lo dirige y enlaza a su ficha original, y si allá cambian el título, el estado, la ubicación, la fecha estimada o la meta, la pantalla lo dice y ofrece actualizarlo con un clic. Dos decisiones importantes: la copia NO recibe aportes —el botón lleva a donar en el sitio del club que dirige el proyecto, porque un aporte hecho sobre la copia entraría a la cuenta del Distrito y quedaría registrado contra un proyecto que no es el que se está financiando—, y la copia no se indexa en buscadores, para no competir con el original del club en Google. Las cifras de recaudación sí se copian, para que la ficha se vea completa, y se actualizan al refrescar.',
+        date: new Date().toISOString(),
+        tags: ['proyectos', 'distrito', 'ecosistema'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón «Traer del ecosistema» en Gestión de Proyectos, para el sitio de un Distrito.' },
+            { type: 'added', text: 'Cada proyecto traído acredita a su organización y enlaza al original.' },
+            { type: 'added', text: 'Aviso cuando el original cambió, con «Actualizar desde el origen».' },
+            { type: 'changed', text: 'La copia no recibe aportes: el botón lleva al sitio del club que dirige el proyecto.' },
+            { type: 'changed', text: 'La copia no se indexa en buscadores, para no competir con el original.' },
+        ]
+    },
     {
         version: '4.748.0',
         title: 'Los distritos ya se eligen de una lista, no se escriben 🔗',

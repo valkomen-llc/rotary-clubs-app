@@ -141,17 +141,22 @@ export function districtTagsMatch(value, number) {
  *     dejaría el botón «Ver evento original» sin destino, que es peor que una
  *     dirección larga.
  */
-export function publicUrlOf(club, event) {
-    const ref = event?.slug || event?.id;
+export function publicUrlOf(club, entity, section = 'eventos') {
+    const ref = entity?.slug || entity?.id;
     if (!ref) return '';
 
     const domain = norm(club?.domain).replace(/^https?:\/\//, '').replace(/\/+$/, '');
-    if (domain) return `https://${domain}/eventos/${ref}`;
+    if (domain) return `https://${domain}/${section}/${ref}`;
 
     const sub = norm(club?.subdomain);
-    if (sub) return `https://${sub}.clubplatform.org/eventos/${ref}`;
+    if (sub) return `https://${sub}.clubplatform.org/${section}/${ref}`;
 
     return '';
+}
+
+/** La dirección pública de un PROYECTO en el sitio de su dueño. */
+export function publicProjectUrlOf(club, project) {
+    return publicUrlOf(club, project, 'proyectos');
 }
 
 /**
@@ -222,12 +227,79 @@ export function buildClonePayload({ event, club, clonedAt, slug }) {
     };
 }
 
-/** Los campos cuya diferencia con el original le importa a alguien. */
+/**
+ * Qué se copia de un PROYECTO traído del ecosistema — v4.749.
+ *
+ * DOS COSAS NO SE COPIAN, y las dos por el mismo motivo que la inscripción de
+ * un evento: cuelgan de la identidad del original.
+ *
+ *   - Los campos de SEO y `indexable`. La copia nace CON `indexable: false`
+ *     porque el proyecto ya está publicado e indexado en el sitio de su club:
+ *     dos direcciones con el mismo contenido se compiten en Google. `indexable`
+ *     lo respeta `seoEntities.js`, así que la copia se ve perfectamente en el
+ *     sitio del distrito y no entra en el sitemap. Es la respuesta al pendiente
+ *     que quedó abierto con los eventos, donde no había un campo así.
+ *   - La copia NO ACEPTA APORTES. `Donation` cuelga de `projectId` y la pasarela
+ *     cobra al `clubId` de la página, así que un aporte hecho sobre la copia
+ *     entraría a la cuenta del DISTRITO y quedaría registrado contra un proyecto
+ *     que no es el que se está financiando. Eso es dinero en la cuenta
+ *     equivocada, no una molestia. La ficha de la copia manda a donar al sitio
+ *     de origen (`ProyectoDetalle.tsx`).
+ *
+ * Las cifras (`meta`, `recaudado`, `donantes`, `beneficiarios`) SÍ se copian:
+ * son lo que hace que la ficha se vea completa, y se actualizan al refrescar.
+ * Lo que no hacen es aceptar dinero.
+ */
+export function buildProjectClonePayload({ project, slug }) {
+    return {
+        title: project?.title || '',
+        description: project?.description || '',
+        image: project?.image || null,
+        status: project?.status || 'planned',
+        category: project?.category || null,
+        meta: project?.meta ?? 0,
+        recaudado: project?.recaudado ?? 0,
+        donantes: project?.donantes ?? 0,
+        beneficiarios: project?.beneficiarios ?? 0,
+        ubicacion: project?.ubicacion || null,
+        fechaEstimada: project?.fechaEstimada || null,
+        videoUrl: project?.videoUrl || null,
+        images: Array.isArray(project?.images) ? project.images : [],
+        impacto: project?.impacto || null,
+        actualizaciones: project?.actualizaciones || null,
+        socialCopy: project?.socialCopy || null,
+        slug: slug ?? null,
+        indexable: false,
+    };
+}
+
+/** Los campos de un EVENTO cuya diferencia con el original le importa a alguien. */
 export const TRACKED_FIELDS = [
     { key: 'title', label: 'el título' },
     { key: 'startDate', label: 'la fecha de inicio', date: true },
     { key: 'endDate', label: 'la fecha de fin', date: true },
     { key: 'location', label: 'la ubicación' },
+];
+
+/**
+ * Los campos de un PROYECTO que se vigilan — v4.749.
+ *
+ * `recaudado` y `donantes` NO están, y es una decisión, no un olvido: se mueven
+ * solos con cada aporte, así que vigilarlos dejaría la copia marcada como
+ * «cambió» de forma permanente. Y el aviso que salta siempre se deja de leer
+ * —es la misma regla por la que no se vigila la descripción de un evento—.
+ * Se refrescan igual cuando se pulsa «Actualizar desde el origen»; lo que no
+ * hacen es disparar el aviso.
+ *
+ * `meta` SÍ se vigila: que cambie el objetivo del proyecto es una decisión de
+ * quien lo dirige, no el goteo de los aportes.
+ */
+export const PROJECT_TRACKED_FIELDS = [
+    { key: 'title', label: 'el título' },
+    { key: 'status', label: 'el estado' },
+    { key: 'ubicacion', label: 'la ubicación' },
+    { key: 'fechaEstimada', label: 'la fecha estimada', date: true },
+    { key: 'meta', label: 'la meta de recaudación' },
 ];
 
 const sameValue = (a, b, isDate) => {
@@ -251,10 +323,10 @@ const sameValue = (a, b, isDate) => {
  * Si el original ya no existe se devuelve `missing: true`, que es una situación
  * DISTINTA de «no cambió nada» y se dice distinto en la pantalla.
  */
-export function divergenceOf(clone, origin) {
+export function divergenceOf(clone, origin, fields = TRACKED_FIELDS) {
     if (!origin) return { missing: true, changed: [] };
     const changed = [];
-    for (const f of TRACKED_FIELDS) {
+    for (const f of fields) {
         if (!sameValue(clone?.[f.key], origin?.[f.key], f.date)) {
             changed.push({ field: f.key, label: f.label });
         }
@@ -301,7 +373,8 @@ export function freeSlug(base, taken) {
 }
 
 export default {
-    ORG_BADGES, orgBadgeOf, publicUrlOf, buildSourceTrace, sourceTraceOf,
-    isClone, buildClonePayload, TRACKED_FIELDS, divergenceOf, divergenceMessage, freeSlug,
+    ORG_BADGES, orgBadgeOf, publicUrlOf, publicProjectUrlOf, buildSourceTrace, sourceTraceOf,
+    isClone, buildClonePayload, buildProjectClonePayload,
+    TRACKED_FIELDS, PROJECT_TRACKED_FIELDS, divergenceOf, divergenceMessage, freeSlug,
     parseDistrictTags, formatDistrictTags, districtTagsMatch,
 };
