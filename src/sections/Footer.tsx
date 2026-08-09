@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useClub } from '../contexts/ClubContext';
 import { hasCustomTheme } from '../lib/entityTypes';
+import { SITE_FOOTER_BG } from '../lib/siteChrome';
 
 // ── Skin del pie de página, compartido (v4.659) ──────────────────────
 //
@@ -150,7 +151,10 @@ const Footer = () => {
             menu2Items: (fc.menu2Items && fc.menu2Items.length) ? fc.menu2Items : localDefaults.menu2Items,
         }
         : (config || localDefaults);
-    const footerBg = isEventSite ? ((club as any)?.colors?.footerBg || '#013E7D') : '#013E7D';
+    // Un sitio Evento/Convención tiene su propio color configurable y conserva
+    // el suyo; el resto usa el del sitio, que sale de `siteChrome.ts` para que
+    // la vista previa del panel no se separe del pie de verdad.
+    const footerBg = isEventSite ? ((club as any)?.colors?.footerBg || '#013E7D') : SITE_FOOTER_BG;
     const copyrightBg = isEventSite ? ((club as any)?.colors?.copyrightBg || '#013871') : null;
     const copyrightText = isEventSite ? ((club as any)?.colors?.copyrightText || '#FFFFFF') : null;
     // Clases de los enlaces del copyright: en Evento/Convención heredan el color elegido; el resto, como siempre.

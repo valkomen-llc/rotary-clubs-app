@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.1 | 2026-08-09 (El copyright toma el azul de la barra superior)
-// Cache bust: 2026-08-09i
+// UI V4.745.2 | 2026-08-09 (Nuevo fondo del pie de página)
+// Cache bust: 2026-08-09j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.2',
+        title: 'Nuevo fondo del pie de página 🎨',
+        description: 'El pie de página pasa del azul Rotary a un azul más oscuro (#212C3F), más cercano al de la barra superior. El color estaba escrito a mano en dos sitios —el pie de verdad y la vista previa del panel de Footer— así que ahora los dos lo toman de un único lugar: si sólo se cambiara uno, el panel mostraría una vista previa de un pie que no es el que ve el visitante. Los sitios de Evento o Convención conservan el color que su operador haya configurado, que sigue siendo suyo.',
+        date: new Date().toISOString(),
+        tags: ['pie-de-pagina', 'diseno'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'El fondo del pie de página pasa a #212C3F.' },
+            { type: 'changed', text: 'El pie y su vista previa en el panel toman el color del mismo lugar.' },
+        ]
+    },
     {
         version: '4.745.1',
         title: 'La barra de copyright, del mismo azul; y el nombre de la plataforma no se traduce 🔤',
