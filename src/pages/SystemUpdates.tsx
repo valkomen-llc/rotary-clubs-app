@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.745.3 | 2026-08-09 (La banda de la portada, a ancho completo y sin resplandor)
-// Cache bust: 2026-08-09k
+// UI V4.745.4 | 2026-08-09 (La imagen de «Únete»: sin resplandor y sin recorte)
+// Cache bust: 2026-08-09l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.745.4',
+        title: 'La imagen de «Únete a Rotary»: sin resplandor y sin recorte 🖼️',
+        description: 'La imagen de la sección «Únete a Rotary» llevaba detrás un degradado dorado desenfocado y una sombra grande. Sobre el fondo azul de la sección eso se leía como un halo pegado alrededor de la pieza, y se quitaron los dos. Además, la imagen se recortaba a una proporción fija de 4:3: cualquier pieza que no fuera exactamente 4:3 perdía franjas arriba y abajo, que es justo donde estas piezas institucionales traen los nombres, los cargos y el logotipo. Ahora el contenedor sigue la proporción real de la imagen y no recorta nada. Es la misma regla que ya rige la banda de la portada.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'imagenes', 'diseno'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'removed', text: 'Se quitó el resplandor dorado y la sombra detrás de la imagen.' },
+            { type: 'fixed', text: 'La imagen ya no se recorta a 4:3: el contenedor sigue su proporción real.' },
+        ]
+    },
     {
         version: '4.745.3',
         title: 'La banda de la portada, a ancho completo y sin resplandor 🖼️',
