@@ -178,6 +178,9 @@ const getCRM = async () => _crm || (({ default: _crm } = await import('../server
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
 const getDistAnalytics = async () => _distAnalytics || (({ default: _distAnalytics } = await import('../server/routes/district-analytics.js')), _distAnalytics);
+// v4.747 — Traer eventos de los sitios vinculados al distrito.
+let _distEcosystem;
+const getDistEcosystem = async () => _distEcosystem || (({ default: _distEcosystem } = await import('../server/routes/district-ecosystem.js')), _distEcosystem);
 let _seoEngine;
 const getSeoEngine = async () => _seoEngine || (({ default: _seoEngine } = await import('../server/routes/seo-engine.js')), _seoEngine);
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
@@ -278,6 +281,7 @@ app.use('/api/domains', async (req, res, next) => { try { return (await getDomai
 app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(req, res, next); } catch (e) { console.error('API Error [cron]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/district-ecosystem', async (req, res, next) => { try { return (await getDistEcosystem())(req, res, next); } catch (e) { console.error('API Error [district-ecosystem]:', e); res.status(500).json({ error: e.message }); } });
 
 // Club Platform Insights — Informes Ejecutivos Inteligentes (v4.552.0)
 app.use('/api/reports', async (req, res, next) => { try { return (await getReports())(req, res, next); } catch (e) { console.error('API Error [reports]:', e); res.status(500).json({ error: e.message }); } });

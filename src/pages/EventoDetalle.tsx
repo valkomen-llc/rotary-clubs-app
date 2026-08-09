@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2, ExternalLink } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import RegistrationPanel from '../components/RegistrationPanel';
@@ -8,6 +8,7 @@ import EventRegistrationCta, { useEventCta, hasVisibleCta } from '../components/
 import MediaGallery from '../components/MediaGallery';
 import EventVenueCard from '../components/EventVenueCard';
 import { normalizeVenue } from '../lib/eventVenue';
+import { sourceTraceOf } from '../lib/districtEcosystem';
 import { useClub } from '../contexts/ClubContext';
 import { useLang } from '../contexts/LanguageContext';
 import { useSEO } from '../hooks/useSEO';
@@ -239,6 +240,31 @@ const EventoDetalle = () => {
                 >
                     <ArrowLeft className="w-4 h-4" /> Volver a Eventos
                 </Link>
+
+                {/* v4.747 — Un evento traído de otro sitio del ecosistema ACREDITA a
+                    su organizador y enlaza a su ficha original. Es lo que separa
+                    promocionar de apropiarse, y es además donde vive la inscripción:
+                    la copia no la tiene (el formulario cuelga del id del evento
+                    original), así que quien quiera inscribirse tiene que llegar allá. */}
+                {sourceTraceOf(event) && (
+                    <div className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/70 px-5 py-4">
+                        <p className="text-sm text-sky-900">
+                            Organiza <strong>{sourceTraceOf(event)?.clubName || 'otra organización del distrito'}</strong>.
+                            {' '}Publicamos este evento para difundirlo; la información oficial y la
+                            inscripción están en su sitio.
+                        </p>
+                        {sourceTraceOf(event)?.url && (
+                            <a
+                                href={sourceTraceOf(event)?.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 rounded-xl bg-rotary-blue px-4 py-2 text-sm font-bold text-white transition hover:bg-rotary-navy"
+                            >
+                                Ver el evento original <ExternalLink className="w-4 h-4" />
+                            </a>
+                        )}
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
