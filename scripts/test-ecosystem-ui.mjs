@@ -320,6 +320,123 @@ grupo('── Estados vacíos y errores ─────────────�
     await page.close();
 }
 
+// ════════════════════════════════════════════════════════════════════
+// El selector de distritos — v4.748
+//
+// Es la casilla que permite conectar una Feria, una Zona o un Programa con su
+// distrito. Antes era texto libre y por eso no había forma de elegir de una
+// lista; el defecto se reportó intentando vincular la Feria de Proyectos.
+// ════════════════════════════════════════════════════════════════════
+const DISTRITOS = [
+    { id: 'd1', number: 4271, name: 'Distrito 4271', countries: ['Colombia'] },
+    { id: 'd2', number: 4281, name: 'Distrito 4281', countries: ['Colombia'] },
+];
+
+const ENTRY_PICKER = `
+import React, { useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import DistrictPicker from '../src/components/admin/DistrictPicker';
+
+window.go = (inicial) => {
+    const App = () => {
+        const [v, setV] = useState(inicial || '');
+        window.__value = v;
+        return React.createElement(DistrictPicker, {
+            value: v,
+            onChange: (n) => { window.__value = n; setV(n); },
+        });
+    };
+    createRoot(document.getElementById('root')).render(React.createElement(App));
+};
+`;
+
+const bundlePicker = await build({
+    stdin: { contents: ENTRY_PICKER, resolveDir: 'scripts', loader: 'tsx' },
+    bundle: true, write: false, format: 'iife', platform: 'browser',
+    jsx: 'automatic', define: { 'import.meta.env.VITE_API_URL': '"/api"' },
+});
+
+async function montarPicker({ inicial = '', distritos = DISTRITOS, status = 200 } = {}) {
+    const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
+    const fallos = [];
+    page.on('pageerror', e => fallos.push(e.message));
+    page.on('console', m => {
+        if (m.type() !== 'error') return;
+        if (/Failed to load resource/i.test(m.text())) return;
+        fallos.push(`console: ${m.text()}`);
+    });
+    await page.route('**/api/**', r => r.fulfill({ json: {} }));
+    await page.route('**/api/admin/districts', r => r.fulfill({ status, json: distritos }));
+    await page.route('http://localhost/', r => r.fulfill({
+        contentType: 'text/html', body: '<!doctype html><body style="margin:0"><div id="root"></div></body>',
+    }));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: bundlePicker.outputFiles[0].text });
+    await page.evaluate((v) => window.go(v), inicial);
+    await page.waitForTimeout(500);
+    return { page, fallos };
+}
+
+grupo('── El selector de distritos ───────────────────────────');
+{
+    const { page, fallos } = await montarPicker();
+    const texto = await page.locator('#root').innerText();
+    check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
+    check('lista los distritos registrados en la plataforma',
+        texto.includes('4271') && texto.includes('4281') && texto.includes('Colombia'));
+
+    await page.locator('#root button', { hasText: '4281' }).first().click();
+    await page.waitForTimeout(150);
+    check('marcar un distrito lo guarda',
+        (await page.evaluate(() => window.__value)) === '4281');
+
+    await page.locator('#root button', { hasText: '4271' }).first().click();
+    await page.waitForTimeout(150);
+    check('marcar el segundo guarda LOS DOS, separados por coma',
+        (await page.evaluate(() => window.__value)) === '4281, 4271');
+    await page.close();
+}
+{
+    // Es el caso de producción: la Feria pertenece a los dos distritos.
+    const { page } = await montarPicker({ inicial: '4271, 4281' });
+    const texto = await page.locator('#root').innerText();
+    check('un valor ya guardado se muestra como lo elegido',
+        texto.includes('4271') && texto.includes('4281'));
+
+    await page.locator('#root button[aria-label="Quitar el distrito 4271"]').click();
+    await page.waitForTimeout(150);
+    check('se puede quitar uno sin perder el otro',
+        (await page.evaluate(() => window.__value)) === '4281');
+    await page.close();
+}
+{
+    // La lista ayuda a escribir; no cierra los valores aceptados (v4.706).
+    const { page } = await montarPicker();
+    await page.locator('#root input[type=text]').fill('4290');
+    await page.locator('#root button', { hasText: 'Agregar' }).click();
+    await page.waitForTimeout(200);
+    check('se puede agregar un distrito que aún no está registrado',
+        (await page.evaluate(() => window.__value)) === '4290');
+    check('y se avisa de que todavía no está dado de alta',
+        (await page.locator('#root').innerText()).includes('todavía no está registrado'));
+    await page.close();
+}
+{
+    const { page, fallos } = await montarPicker({ status: 403 });
+    const texto = await page.locator('#root').innerText();
+    check('si la lista no carga, la casilla se degrada a texto libre',
+        texto.includes('No pudimos cargar la lista')
+        && (await page.locator('#root input[placeholder="Ej: 4271, 4281, 4290..."]').count()) === 1);
+    check('y no revienta la pantalla', fallos.length === 0, fallos.join(' | '));
+    await page.close();
+}
+{
+    const { page } = await montarPicker({ distritos: [] });
+    check('sin distritos registrados se explica qué hacer',
+        (await page.locator('#root').innerText()).includes('Todavía no hay distritos registrados'));
+    await page.close();
+}
+
 await browser.close();
 
 console.log(`\n${'─'.repeat(56)}`);

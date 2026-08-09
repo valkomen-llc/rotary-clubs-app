@@ -1688,10 +1688,11 @@ programas—. Se resolvió **CLONANDO**, no referenciando.
 | `server/controllers/districtEcosystemController.js` | La orquestación y el aislamiento |
 | `server/routes/district-ecosystem.js` | `/sites`, `/events`, `/clone`, `/refresh/:cloneId` |
 | `src/components/admin/events/EcosystemPicker.tsx` | El buscador y la selección múltiple |
+| `src/components/admin/DistrictPicker.tsx` | El selector de distritos registrados, compartido por las cinco pantallas de sitios |
 
-Pruebas: `npm run test:ecosystem` (123 casos de criterio, **sin base,
-credenciales ni red**) y `npm run test:ecosystem:ui` (29 casos: monta el
-componente en un navegador con la API interceptada; pide `npm i --no-save
+Pruebas: `npm run test:ecosystem` (171 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:ecosystem:ui` (40 casos: monta los
+componentes en un navegador con la API interceptada; pide `npm i --no-save
 playwright esbuild` y **se salta solo** si no están).
 
 **Reglas durables:**
@@ -1763,6 +1764,40 @@ playwright esbuild` y **se salta solo** si no están).
   sólo una deja fuera a la mitad de los sitios. El tipo de sitio se resuelve con
   `isDistrictSiteType` de `districtSite.js` —**no se escribe un segundo
   criterio**—, y el espejo del navegador lo compara contra él en las pruebas.
+- **`Club.district` ES UNA LISTA, no un valor** (v4.748). El formulario del panel
+  lo dice desde siempre en su marcador de posición —«Ej: 4271, 4281, 4290…»— y
+  una Feria de Proyectos o una Zona pertenecen de verdad a varios distritos. La
+  v4.747 comparaba por IGUALDAD EXACTA, así que un sitio con «4271, 4281» **no lo
+  reconocía NINGUNO de los dos** y su evento no aparecía en «Traer del
+  ecosistema». Se reportó con la Feria. Ahora se parte por todo lo que no es
+  dígito (`parseDistrictTags` en JS, `regexp_split_to_table(district,
+  '[^0-9]+')` en SQL): así «4271, 4281», «Distrito 4281» y «D-4281» dan lo mismo,
+  y «42811» **no** cuenta como 4281 —es otro número—. **Los dos criterios tienen
+  que coincidir**; la prueba los contrasta contra los mismos casos y comprueba
+  sobre el archivo del controlador que no haya vuelto la igualdad exacta.
+- **Los distritos se ELIGEN de la lista registrada, no se escriben**
+  (`src/components/admin/DistrictPicker.tsx`). Con texto libre no había forma de
+  saber qué distritos existen ni de acertar el número, que es exactamente lo que
+  impedía conectar la Feria. La lista sale de `/api/admin/districts`, que es
+  `superAdminOnly` — y estas cinco pantallas son del operador de la plataforma,
+  así que no hace falta abrir nada.
+- **La lista ayuda a escribir; NO cierra los valores aceptados.** Un distrito
+  puede existir en Rotary y no estar todavía dado de alta, y este formulario se
+  usa justo mientras se están creando las cosas. Queda la vía de escribir el
+  número a mano —con un aviso de que aún no está registrado y de que el vínculo
+  se activará solo—, igual que «Mi club no está en la lista» en la postulación
+  (v4.706) y en el registro al evento (v4.708). Y si el catálogo no carga, la
+  casilla **se degrada a texto libre** en vez de dejar el formulario inservible.
+- **El selector es UN componente compartido por las cinco pantallas** —Ferias,
+  Zonas, Programas, Eventos y Asociaciones—, que hasta v4.747 llevaban esa
+  casilla escrita cinco veces, idéntica. Arreglar una y dejar cuatro es la copia
+  que se queda atrás: el panel se comportaría distinto según por dónde se entre.
+  Lo comprueba `test:ecosystem` leyendo los cinco archivos.
+- **NO se deduce `districtId` de la lista.** Es de un solo valor y la lista puede
+  traer dos: elegir uno codificaría una mentira sobre a cuál «pertenece» el
+  sitio, y ese campo lo usan además otros módulos (segmentación de noticias,
+  v4.551). La lista de números es la verdad multi-distrito; el que la lee es el
+  criterio de arriba.
 - **Los parámetros del SQL van como TEXTO VACÍO, no como NULL**, cuando el mismo
   parámetro se usa en dos comparaciones. Con NULL, Postgres tiene que inferir el
   tipo y la sentencia puede fallar en ejecución — que es justo lo que no se ve

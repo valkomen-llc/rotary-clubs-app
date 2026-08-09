@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import DistrictPicker from '../../components/admin/DistrictPicker';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, 
     MessageSquare, Mail, FileText, Download, RefreshCw, Send, AlertTriangle, 
@@ -519,14 +520,15 @@ const EventosManagement: React.FC = () => {
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Distritos Asociados (Opcional)</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                    {/* v4.748 — La lista REAL de distritos registrados, no texto
+                                        libre: es lo que permite conectar el sitio con su distrito y
+                                        que sus eventos aparezcan en «Traer del ecosistema». Es un
+                                        componente compartido a propósito — esta casilla estaba
+                                        escrita cinco veces, idéntica. */}
+                                    <DistrictPicker
                                         value={formData.district}
-                                        onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                                        placeholder="Ej: 4271, 4281, 4290..."
+                                        onChange={(district) => setFormData({ ...formData, district })}
                                     />
-                                    <p className="text-xs text-gray-400 mt-1">Busca o agrega los distritos que pertenecen a esta asociación.</p>
                                 </div>
 
                                 <div className="md:col-span-2">
