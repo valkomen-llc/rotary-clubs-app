@@ -28,6 +28,7 @@ import * as PH from '../server/lib/designPhoto.js';
 import * as CO from '../server/lib/designCompose.js';
 import * as F from '../server/lib/designFields.js';
 import * as PC from '../server/lib/publicClubs.js';
+import * as G from '../server/lib/designGuard.js';
 import { CLUBS_4271, CLUBS_4281 } from '../server/lib/rotaryClubs.js';
 
 // Las fechas rotarias se importan del CRITERIO, no de `designBranding.js`: ese
@@ -1029,6 +1030,60 @@ check('y sigue suelta al rehacer',
 const modernos = P.settingsForRefresh({ settings: { locked: ['mensaje'], frozen: { club: 'RC X' }, intro: 'Hola' }, document: docV2, fields: [], frozen: {}, intro: 'otro' });
 check('los ajustes guardados mandan sobre la deducción',
     JSON.stringify(modernos.locked) === JSON.stringify(['mensaje']) && modernos.intro === 'Hola');
+
+grupo('La preservación de la fotografía se MIDE');
+
+// El prompt PIDE que no se invente ni se pierda a nadie. Pedirlo es necesario y
+// no alcanza: un modelo generativo puede desobedecer y la pieza sale igual, con
+// una persona de más, en una publicación institucional.
+const okSemantico = { leftPeople: 6, rightPeople: 6, newSubjects: false, missingSubjects: false, faceConsistency: 9, notes: '' };
+check('una composición fiel se usa',
+    G.decidePreservation({ semantic: okSemantico, structural: { ok: true, score: 0.4 } }).use === true);
+
+check('una persona INVENTADA descarta la composición',
+    G.decidePreservation({ semantic: { ...okSemantico, newSubjects: true } }).use === false);
+check('y una persona PERDIDA también',
+    G.decidePreservation({ semantic: { ...okSemantico, missingSubjects: true } }).use === false);
+check('el recuento que no cuadra descarta',
+    G.decidePreservation({ semantic: { ...okSemantico, rightPeople: 7 } }).use === false);
+check('unos rostros que no son los mismos descartan',
+    G.decidePreservation({ semantic: { ...okSemantico, faceConsistency: 3 } }).use === false);
+
+// Contar catorce cabezas no lo hace bien ningún modelo de visión: descartar por
+// un ±1 en una multitud sería gastar créditos en un problema inexistente.
+check('en multitud el recuento NO decide solo',
+    G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 14, rightPeople: 15 } }).use === true);
+check('pero la señal explícita sigue valiendo en multitud',
+    G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 14, rightPeople: 15, newSubjects: true } }).use === false);
+
+// La estructural sola sólo atrapa el caso extremo: acá el lienzo alrededor es
+// contenido NUEVO a propósito, así que un piso alto reprobaría toda composición
+// buena — el error que costó dos rondas de créditos en el Creador de Reels.
+check('sin modelo de visión, una composición razonable pasa',
+    G.decidePreservation({ structural: { ok: true, score: 0.35 } }).use === true);
+check('y una imagen sin relación con la fotografía se descarta',
+    G.decidePreservation({ structural: { ok: true, score: 0.05 } }).use === false);
+check('con modelo de visión, manda el modelo',
+    G.decidePreservation({ semantic: okSemantico, structural: { ok: true, score: 0.05 } }).use === true);
+
+// `unavailable` NO es un tipo de «bien»: significa que no se pudo mirar.
+const sinNada = G.decidePreservation({});
+check('sin ninguna señal se dice que no se pudo comprobar', sinNada.state === 'unavailable');
+check('y aun así la pieza se entrega', sinNada.use === true);
+
+// El motivo se dice con su CONSECUENCIA: «hay una persona de más» no le explica
+// a nadie por qué su pieza salió sin el diseño compuesto.
+const descartada = G.decidePreservation({ semantic: { ...okSemantico, newSubjects: true } });
+check('un descarte explica la consecuencia',
+    /fotograf[ií]a tal como la subiste/i.test(descartada.consequence || ''), descartada.consequence);
+
+// Lo que devuelve el modelo se normaliza antes de decidir.
+check('una respuesta con envoltorio de markdown se lee igual',
+    G.readPeopleVerdict('```json\n{"leftPeople":3,"rightPeople":3,"faceConsistency":8}\n```')?.leftPeople === 3);
+check('una respuesta ilegible no inventa un veredicto',
+    G.readPeopleVerdict('no puedo') === null);
+check('los booleanos son estrictos: sólo true es true',
+    G.readPeopleVerdict('{"newSubjects":"si"}')?.newSubjects === false);
 
 grupo('El buscador de clubes del portal');
 

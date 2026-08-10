@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.756.0
+// v4.757.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -272,7 +272,31 @@ const PlantillaPublica: React.FC = () => {
                 const s = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/backdrop/${encodeURIComponent(taskId)}`, { cache: 'no-store' });
                 const sd = await s.json().catch(() => null);
                 // El contrato es `{ status: 'pending' | 'ready' | 'failed' }`.
-                if (sd?.status === 'ready' && sd.url) { setBackdrop(sd.url); break; }
+                if (sd?.status === 'ready' && sd.url) {
+                    // ── LA PRESERVACIÓN SE MIDE ────────────────────
+                    //
+                    // El prompt le pide al modelo que conserve a las personas.
+                    // Pedirlo no alcanza: puede desobedecer y la pieza sale
+                    // igual, con alguien de más o con una cara que no es la de
+                    // nadie. Si la comprobación no da, la composición se
+                    // DESCARTA y la pieza sale con la fotografía en su
+                    // recuadro, intacta — no se retoca la imagen.
+                    const v = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/verify`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ photo: photoDataUrl, composed: sd.url }),
+                    }).then(r => r.json()).catch(() => null);
+
+                    if (v && v.use === false) {
+                        setBackdrop(null);
+                        setComposeNote(`${v.reason} ${v.consequence}`);
+                    } else {
+                        setBackdrop(sd.url);
+                        // `unavailable` NO es un tipo de «bien»: se dice.
+                        if (v?.state === 'unavailable') setComposeNote(`${v.reason} ${v.consequence}`);
+                    }
+                    break;
+                }
                 if (sd?.status === 'failed' || (!s.ok && sd?.error)) throw new Error(sd?.error || 'El modelo no pudo componer la pieza.');
                 if (Date.now() > HASTA) throw new Error('La composición está tardando más de lo normal.');
             }

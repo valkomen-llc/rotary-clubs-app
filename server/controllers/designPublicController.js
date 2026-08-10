@@ -27,14 +27,15 @@
 import db from '../lib/db.js';
 import { ensureDesignSchema } from '../lib/ensureDesignSchema.js';
 import { formatOf } from '../lib/designSpec.js';
-import { sanitizeValues, applyPublicValues, bakeFrozen } from '../lib/designPublish.js';
+import { sanitizeValues, applyPublicValues, bakeFrozen, isAcceptableImage } from '../lib/designPublish.js';
 import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { normalizeComposition } from '../lib/designCompose.js';
 import { searchPublicClubs, findPublicClub, norm as normClub } from '../lib/publicClubs.js';
+import { checkPreservation } from '../lib/designGuard.js';
 
-console.log('[designPublicController] v4.756.0 cargado — Portal público de Plantillas IA. Buscador de clubes y generación por pasos.');
+console.log('[designPublicController] v4.757.0 cargado — Portal público de Plantillas IA. La preservación de la fotografía se mide.');
 
 const rowOrNull = async (slug) => {
     const { rows } = await db.query(
@@ -322,12 +323,61 @@ export const publicBackdropSync = async (req, res) => {
     }
 };
 
-const storeTempPhoto = async (dataUrl, slug) => {
-    const m = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
-    if (!m) throw new Error('La fotografía no tiene un formato reconocible.');
-    const buffer = Buffer.from(m[2], 'base64');
-    const ext = m[1].split('/')[1].replace('jpeg', 'jpg');
+// ── POST /api/public/design/:slug/verify ──────────────────────────────
+//
+// LA PRESERVACIÓN SE MIDE, NO SE PROMETE.
+//
+// El prompt le pide al modelo que conserve a las personas de la fotografía.
+// Pedirlo es necesario y no alcanza: puede desobedecer, y la pieza sale igual
+// —con alguien de más, o con una cara que no es la de nadie— en una publicación
+// institucional. Acá se comprueba.
+//
+// Cuando la comprobación no da, NO se retoca la imagen: se descarta la
+// composición y la pieza sale con la fotografía en su recuadro, intacta. Pegar
+// la original encima sería el composite que el equipo rechazó dos veces.
+//
+// Va en su propio paso y no dentro del sondeo porque necesita la fotografía
+// ORIGINAL, que vive en el navegador de quien la subió: mandarla en cada sondeo
+// sería mandarla cinco veces para usarla una.
+export const publicVerify = async (req, res) => {
+    try {
+        const row = await rowOrNull(req.params.slug);
+        if (!row) return res.status(404).json({ error: 'Esta plantilla no existe o no está publicada.' });
 
+        const dataUrl = String(req.body?.photo || '');
+        const composedUrl = String(req.body?.composed || '');
+        if (!dataUrl.startsWith('data:image/') || !isAcceptableImage(composedUrl)) {
+            return res.status(400).json({ error: 'Hacen falta la fotografía y la composición para comprobarla.' });
+        }
+
+        const m = dataUrl.match(/^data:image\/[a-z+]+;base64,(.+)$/i);
+        if (!m) return res.status(400).json({ error: 'La fotografía no tiene un formato reconocible.' });
+        const original = Buffer.from(m[1], 'base64');
+
+        const composed = Buffer.from(await (await fetch(composedUrl)).arrayBuffer());
+        const veredicto = await checkPreservation(original, composed, {
+            // La composición lado a lado se sube al mismo prefijo efímero que la
+            // fotografía: la cadena de proveedores acepta una imagen POR URL.
+            publish: (buf) => storeTempBuffer(buf, row.slug, 'jpg'),
+        });
+
+        res.json({
+            state: veredicto.state,
+            use: veredicto.use,
+            reason: veredicto.reason,
+            consequence: veredicto.consequence,
+        });
+    } catch (e) {
+        console.error('[designPublic] verify:', e);
+        // Un control de calidad que tumba la generación es peor que no tenerlo.
+        res.json({ state: 'unavailable', use: true, reason: 'No se pudo comprobar la fotografía.', consequence: 'La pieza se generó igual; conviene mirarla antes de publicarla.' });
+    }
+};
+
+// Sube un buffer al prefijo EFÍMERO. Está aparte de la Biblioteca Multimedia a
+// propósito: es contenido de un visitante anónimo y el prefijo se puede vaciar
+// con una regla de ciclo de vida sin tocar los archivos de nadie.
+const storeTempBuffer = async (buffer, slug, ext = 'jpg', mime = 'image/jpeg') => {
     const aws = await import('@aws-sdk/client-s3');
     const mod = aws.default || aws;
     const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
@@ -339,9 +389,16 @@ const storeTempPhoto = async (dataUrl, slug) => {
         },
     });
     const key = `public-tmp/designs/${slug}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    await client.send(new mod.PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: m[1] }));
+    await client.send(new mod.PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: mime }));
     const encoded = key.split('/').map(encodeURIComponent).join('/');
     return `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encoded}`;
+};
+
+const storeTempPhoto = async (dataUrl, slug) => {
+    const m = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+    if (!m) throw new Error('La fotografía no tiene un formato reconocible.');
+    const ext = m[1].split('/')[1].replace('jpeg', 'jpg');
+    return storeTempBuffer(Buffer.from(m[2], 'base64'), slug, ext, m[1]);
 };
 
 // ── POST /api/public/design/:slug/used ────────────────────────────────
@@ -358,4 +415,4 @@ export const markUsed = async (req, res) => {
     }
 };
 
-export default { getPublicTemplate, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, markUsed };
+export default { getPublicTemplate, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, publicVerify, markUsed };

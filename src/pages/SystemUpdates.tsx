@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.756.0 | 2026-08-10 (Flujo publico por pasos y buscador de clubes)
-// Cache bust: 2026-08-10f
+// UI V4.757.0 | 2026-08-10 (La preservacion de la fotografia se mide)
+// Cache bust: 2026-08-10g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.757.0',
+        title: 'Ahora se comprueba que la IA no le cambie la gente a tu fotografía 🛡️',
+        description: 'Tercera fase de la reingeniería. El sistema ya le pedía al modelo que conservara a las personas de la fotografía: que no invente a nadie, que no borre a nadie, que no cambie rostros ni ropa. Pedirlo es necesario y no alcanza — un modelo generativo puede desobedecer, y la pieza sale igual, con alguien de más o con una cara que no es la de nadie, en una publicación institucional. Ahora se comprueba. Cuando la composición está lista, se compara con la fotografía original: se cuentan las personas de las dos, se mira si aparece alguien que no estaba o falta alguien que sí, y si los rostros siguen siendo los mismos. Si algo no da, la composición se DESCARTA y la pieza sale con tu fotografía tal como la subiste, dentro del diseño — se dice el motivo y su consecuencia, no sólo «hubo un problema». Lo que no se hace, a propósito, es retocar la imagen para arreglarla: pegar la fotografía original encima es exactamente el montaje que el equipo rechazó dos veces. Este control mide y decide; no toca el archivo. Dos matices para que el número signifique algo: en fotografías de más de ocho personas el recuento no decide solo, porque contar catorce cabezas no lo hace bien ningún modelo y descartar por un ±1 sería desperdiciar una composición buena; y cuando no se puede comprobar nada, se dice que no se pudo —«no comprobado» no es lo mismo que «está bien»— y la pieza se entrega igual.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia', 'portal publico'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Se comprueba que la composición conserve a las personas de la fotografía.' },
+            { type: 'added', text: 'Si no da, se descarta la composición y se usa tu foto tal como la subiste.' },
+            { type: 'added', text: 'El motivo se explica con su consecuencia, no como un error genérico.' },
+        ]
+    },
     {
         version: '4.756.0',
         title: 'El enlace público ahora tiene un botón «Generar» y busca tu club 🔎',
