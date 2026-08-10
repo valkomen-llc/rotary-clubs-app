@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 // Un enlace al propio sitio abre en la misma pestaña, aunque venga escrito con
 // la dirección completa. El criterio es único para todo el sitio.
 import { ctaTarget } from '../lib/ctaLinks';
-import { CTA_SOFT, ctaSkin } from '../lib/ctaStyles';
+import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../lib/ctaStyles';
 
 /** Clases de color del panel. Por defecto, las de la Conferencia LATIR. */
 export interface RegistrationPanelTheme {
@@ -33,18 +33,21 @@ export interface RegistrationPanelTheme {
     tickets: string;
 }
 
-// v4.751 — La cuenta regresiva y el botón de inscripción llevan la MISMA piel
-// que «Únete a un club» y «Postular Proyecto»: la píldora azul claro con letra
-// azul Rotary. Venían en un naranja escrito a mano que no pertenecía a ninguna
-// paleta del sitio y no se repetía en ninguna otra parte.
+// v4.751 — La cuenta regresiva y el botón de inscripción dejaron un naranja
+// escrito a mano que no pertenecía a ninguna paleta del sitio y no se repetía
+// en ninguna otra parte. Los colores se toman de `ctaStyles.ts` en vez de
+// escribirlos otra vez, que es la regla de ese archivo: la piel de esta familia
+// de botones es UNA, y repetirla a mano es lo que hizo que la misma acción se
+// viera de dos maneras hasta v4.718.
 //
-// Se toma de `ctaStyles.ts` en vez de escribir las clases otra vez, que es la
-// regla de ese archivo: la piel de esta familia de botones es UNA, y repetirla
-// a mano es lo que hizo que la misma acción se viera de dos maneras hasta
-// v4.718.
+// Las CAJAS van en la piel suave y SIN hover, porque no se pulsan: reaccionar
+// al cursor es la promesa de que algo va a pasar al hacerlo.
 //
-// Las cajas van con `ctaSkin(CTA_SOFT, false)` —SIN hover— porque no se pulsan:
-// reaccionar al cursor es la promesa de que algo va a pasar al hacerlo.
+// El BOTÓN va en la piel sólida (v4.752). El mismo «Inscripciones» se pinta por
+// dos caminos —éste cuando el evento no tiene categorías, y `EventRegistrationCta`
+// cuando sí—, y con pieles distintas se vería de dos maneras según una
+// configuración que el visitante no conoce. Es exactamente el defecto que este
+// módulo existe para no tener.
 //
 // La Feria conserva su tema propio (`FAIR_THEME` en `RegistroFeria.tsx`): lo
 // que se unifica es el valor POR DEFECTO, no toda personalización.
@@ -52,7 +55,7 @@ const DEFAULT_THEME: RegistrationPanelTheme = {
     title: 'text-[#1B2B4D]',
     subtitle: 'text-[#475569]',
     counter: ctaSkin(CTA_SOFT, false),
-    button: ctaSkin(CTA_SOFT),
+    button: ctaSkin(CTA_SOLID),
     tickets: 'text-[#1B2B4D]',
 };
 

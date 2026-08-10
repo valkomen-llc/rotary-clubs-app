@@ -27,7 +27,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { money } from '../lib/eventRegistrationSpec';
-import { CTA_SOFT, ctaSkin } from '../lib/ctaStyles';
+import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../lib/ctaStyles';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -131,10 +131,17 @@ const Button = ({ button, eventRef, variant }: {
     variant: 'primary' | 'secondary';
 }) => {
     // La GEOMETRÍA es de la ficha —el botón ocupa el ancho de la columna—, pero
-    // los COLORES del secundario salen de `ctaStyles.ts`, que es de donde los
-    // toma «Postular Proyecto» en el encabezado (v4.719). Es la misma acción
-    // vista desde otro sitio y tiene que verse igual; hasta v4.718 era un
-    // contorno azul marino escrito a mano aquí.
+    // los COLORES salen de `ctaStyles.ts`, que es de donde los toma «Postular
+    // Proyecto» en el encabezado (v4.719). Es la misma acción vista desde otro
+    // sitio y tiene que verse igual; hasta v4.718 el secundario era un contorno
+    // azul marino escrito a mano aquí.
+    //
+    // v4.752 — El PRINCIPAL también. Iba en un naranja (#D57D2C) escrito a mano
+    // que no pertenecía a ninguna paleta del sitio y no se repetía en ninguna
+    // otra parte; ahora es `CTA_SOLID`, que es la pareja declarada de
+    // `CTA_SOFT`: uno sólido que pesa y uno suave a su lado. Así el color sigue
+    // distinguiendo cuál es el registro principal —que es lo único que los
+    // distingue— pero con la paleta del sitio.
     //
     // Los DOS botones tienen el mismo alto y la misma letra (v4.719.1). El
     // secundario venía más bajo y con letra más chica, y esa diferencia no dice
@@ -142,9 +149,8 @@ const Button = ({ button, eventRef, variant }: {
     // trámite menor que el otro —el CADRE es el registro de un rol del propio
     // evento—. Lo que distingue al principal es el COLOR, que ya basta.
     const base = 'w-full block text-center rounded-full font-bold transition-colors text-[15px] py-3';
-    const skinOf = (interactive: boolean) => (variant === 'primary'
-        ? `bg-[#D57D2C] text-white${interactive ? ' hover:bg-[#c46f23]' : ''}`
-        : ctaSkin(CTA_SOFT, interactive));
+    const skinOf = (interactive: boolean) =>
+        ctaSkin(variant === 'primary' ? CTA_SOLID : CTA_SOFT, interactive);
     const style = (interactive: boolean) => `${base} ${skinOf(interactive)}`;
 
     // Categoría cerrada o agotada, pero con mensaje del administrador: se
