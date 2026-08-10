@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.757.0 | 2026-08-10 (La preservacion de la fotografia se mide)
-// Cache bust: 2026-08-10g
+// UI V4.758.0 | 2026-08-10 (La vista previa publica ya no se ve rota)
+// Cache bust: 2026-08-10h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.758.0',
+        title: 'La vista previa del enlace público ya no se ve rota 🧹',
+        description: 'Tres arreglos visibles. El primero: en el enlace público, el espacio de la fotografía se dibujaba con el tablero a cuadros gris que usa el editor para decir «acá falta una imagen». En el editor eso está bien —es un hueco que el administrador va a llenar—, pero en el portal ocupaba media pieza y la hacía ver rota, cuando lo que el visitante mira ahí es lo que va a descargar. El hueco ya está marcado con su recuadro punteado y su etiqueta, así que el tablero sobraba; también se quitó el cartel «Sin imagen» por el mismo motivo. El segundo: los rótulos de los recuadros se escribían uno encima del otro. El espacio de la fotografía ocupa la mitad superior y el del logotipo cae dentro, y con los dos rótulos centrados quedaban superpuestos e ilegibles; ahora cada uno se escribe arriba de su propio recuadro, que es donde nunca coinciden. El tercero, en el panel: el aviso de «este diseño no tiene un espacio para la fotografía del club» aparecía también con la mesa de trabajo vacía, antes de elegir plantilla y club — cuando todavía no hay ningún diseño del que decir eso. Un aviso que salta siempre se deja de leer, así que ahora sólo sale cuando de verdad hay un diseño al que le falta ese espacio.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'fix',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'El hueco de la fotografía ya no pinta el tablero a cuadros en el portal.' },
+            { type: 'fixed', text: 'Los rótulos de dos recuadros anidados ya no se pisan.' },
+            { type: 'fixed', text: 'El aviso del espacio de la fotografía no sale con la mesa de trabajo vacía.' },
+        ]
+    },
     {
         version: '4.757.0',
         title: 'Ahora se comprueba que la IA no le cambie la gente a tu fotografía 🛡️',

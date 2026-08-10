@@ -366,16 +366,24 @@ const DesignCanvas: React.FC<Props> = ({
                     ...style,
                     borderRadius: img.circle ? '50%' : img.radius ? img.radius * Math.min(node.w * W, node.h * H) : undefined,
                     overflow: 'hidden',
-                    background: img.src ? undefined : 'repeating-conic-gradient(#e5e7eb 0% 25%, #f3f4f6 0% 50%) 50% / 24px 24px',
+                    // El tablero a cuadros y el «Sin imagen» son afordancias
+                    // del EDITOR: dicen «acá hay un hueco que podés
+                    // seleccionar». En el portal público la pieza es lo que el
+                    // visitante va a descargar, y un tablero gris ocupando la
+                    // mitad superior la hace ver ROTA — el hueco ya lo marca su
+                    // recuadro punteado, que además explica qué va ahí.
+                    background: img.src || !interactive
+                        ? undefined
+                        : 'repeating-conic-gradient(#e5e7eb 0% 25%, #f3f4f6 0% 50%) 50% / 24px 24px',
                 }} onPointerDown={startMove(node)} data-node={node.id}>
                     {img.src ? (
                         <img src={displayUrl(img.src)} alt="" draggable={false}
                             style={{ width: '100%', height: '100%', objectFit: img.fit, display: 'block', pointerEvents: 'none' }} />
-                    ) : (
+                    ) : interactive ? (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', fontSize: 22, fontFamily: 'Arial, sans-serif' }}>
                             Sin imagen
                         </div>
-                    )}
+                    ) : null}
                 </div>
             );
         }
@@ -442,8 +450,14 @@ const DesignCanvas: React.FC<Props> = ({
                                     border: `${Math.max(2, W * 0.002)}px dashed rgba(99,102,241,0.55)`,
                                     borderRadius: W * 0.008,
                                     background: 'rgba(99,102,241,0.06)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    textAlign: 'center', padding: W * 0.006,
+                                    // Arriba, no centrado. El hueco de la
+                                    // fotografía ocupa media pieza y el del
+                                    // logotipo cae DENTRO: con los dos rótulos
+                                    // centrados se escribían uno encima del
+                                    // otro. Cada caja empieza en su propia `y`,
+                                    // así que arriba nunca coinciden.
+                                    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+                                    textAlign: 'center', padding: W * 0.008,
                                     overflow: 'hidden',
                                 }}>
                                 {/* La imagen con la que se diseñó, como

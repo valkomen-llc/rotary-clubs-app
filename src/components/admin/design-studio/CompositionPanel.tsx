@@ -68,6 +68,8 @@ const CompositionPanel: React.FC<Props> = ({
     hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading, step = 6,
     hasPhotoSlot = true, onAddPhoto, document = null,
 }) => {
+    const hayDiseno = Array.isArray((document as { nodes?: unknown[] } | null)?.nodes)
+        && ((document as { nodes: unknown[] }).nodes.length > 0);
     const [running, setRunning] = useState(false);
     const [variants, setVariants] = useState<VariantResult[]>([]);
     const timer = useRef<number | null>(null);
@@ -142,7 +144,11 @@ const CompositionPanel: React.FC<Props> = ({
                     {/* El hueco de la fotografía. Va ARRIBA de la imagen base
                         porque sin él lo de abajo no sirve para nada: no hay
                         fotografía que integrar. */}
-                    {!hasPhotoSlot && onAddPhoto && (
+                    {/* Con la mesa de trabajo VACÍA no hay diseño del que
+                        decir nada: el aviso saldría siempre, antes de elegir
+                        plantilla y club, y un aviso que salta siempre se deja
+                        de leer. */}
+                    {!hasPhotoSlot && onAddPhoto && hayDiseno && (
                         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
                             <p className="flex gap-1.5 text-[11px] text-amber-800 leading-relaxed">
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
