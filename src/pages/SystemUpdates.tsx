@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.755.0 | 2026-08-10 (Texto de referencia y prompt maestro, separados)
-// Cache bust: 2026-08-10e
+// UI V4.756.0 | 2026-08-10 (Flujo publico por pasos y buscador de clubes)
+// Cache bust: 2026-08-10f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.756.0',
+        title: 'El enlace público ahora tiene un botón «Generar» y busca tu club 🔎',
+        description: 'Segunda fase de la reingeniería. Hasta ahora el enlace público era un formulario donde la pieza se armaba sola mientras se escribía y abajo había un botón de descargar: nadie sabía en qué momento «se generaba» algo. Ahora hay un gesto explícito. Se completan los datos, se pulsa «Generar mi pieza» y la pantalla dice en qué paso está —escribiendo el mensaje, componiendo el diseño con la IA, integrando la identidad del club—; al terminar aparece «Tu pieza está lista» con descargar, compartir, regenerar y volver a editar los datos sin perder nada de lo cargado. Los pasos que se muestran son los que de verdad ocurren: si no hay mensaje que escribir ni composición que hacer, generar es instantáneo, en vez de fingir un progreso. Y si algo falla, se vuelve al formulario con el motivo escrito — nunca se queda girando. Además, el nombre del club ya no se escribe a ciegas: hay un buscador con los 133 clubes de los Distritos 4271 y 4281, el mismo catálogo que ya se usa en los formularios de Postulación de Proyectos y de Inscripción al evento de la Feria. Al elegir uno se escribe su nombre completo y, si la plataforma ya tiene su escudo cargado, se pone solo. La lista ayuda a escribir pero no obliga: el campo sigue aceptando cualquier nombre, porque un catálogo se queda viejo solo y hay clubes de otros distritos. Un detalle de costo que conviene saber: antes la composición con IA se disparaba al soltar la fotografía, así que con el botón nuevo se habría pagado dos veces por visita. Ahora ocurre una sola vez, dentro de Generar.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico', 'ia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón «Generar mi pieza» con los pasos reales del proceso a la vista.' },
+            { type: 'added', text: 'Pantalla de resultado: descargar, compartir, regenerar o volver a editar.' },
+            { type: 'added', text: 'Buscador con los 133 clubes de los Distritos 4271 y 4281.' },
+            { type: 'added', text: 'El escudo del club se completa solo cuando la plataforma lo tiene.' },
+            { type: 'fixed', text: 'La composición con IA ya no se paga dos veces por visita.' },
+        ]
+    },
     {
         version: '4.755.0',
         title: 'Plantillas IA: ya se puede declarar QUÉ comunicar, aparte de CÓMO verse ✍️',

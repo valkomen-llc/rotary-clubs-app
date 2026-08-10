@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.755.0",
-  "cache_bust": "2026-08-10e (Texto de referencia y prompt maestro, separados.)",
+  "version": "4.756.0",
+  "cache_bust": "2026-08-10f (Flujo publico por pasos y buscador de clubes.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
