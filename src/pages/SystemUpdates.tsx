@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.750.0 | 2026-08-09 (La portada y las cifras de Proyectos, configurables)
-// Cache bust: 2026-08-09v
+// UI V4.751.0 | 2026-08-10 (La cuenta regresiva y el botón de inscripción, con la píldora del sitio)
+// Cache bust: 2026-08-10a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.751.0',
+        title: 'La cuenta regresiva y el botón de inscripción, con los colores del sitio 🎨',
+        description: 'En el panel de inscripción de un evento, las cajas de la cuenta regresiva (Días, Horas, Minutos, Segundos) y el botón «Inscripciones» iban en un naranja que no pertenecía a ninguna paleta del sitio y no se repetía en ninguna otra parte. Ahora llevan la misma píldora azul claro con letra azul Rotary que «Únete a un club» y «Postular Proyecto», así que el panel se lee como parte de la misma familia de botones. El color no se escribió otra vez: se toma del mismo módulo del que salen los demás, que es lo que impide que se vuelvan a separar. Las cajas van sin efecto al pasar el cursor, porque no se pulsan. La Feria de Proyectos conserva su tema propio, dorado y azul marino: lo que se unificó es el color por defecto, no la personalización de cada sitio.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'diseno', 'botones'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La cuenta regresiva y el botón «Inscripciones» usan la píldora azul del resto del sitio.' },
+            { type: 'changed', text: 'El color sale del módulo compartido de botones, no escrito a mano.' },
+            { type: 'changed', text: 'Las cajas de la cuenta regresiva no reaccionan al cursor: no se pulsan.' },
+            { type: 'fixed', text: 'La Feria de Proyectos conserva su tema propio.' },
+        ]
+    },
     {
         version: '4.750.0',
         title: 'La portada y las cifras de Proyectos, ahora se encienden o se apagan 🎚️',
