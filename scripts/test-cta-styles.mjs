@@ -56,18 +56,37 @@ grupo('Nadie las escribe a mano');
 const navbar = leer('src/sections/Navbar.tsx');
 const ficha = leer('src/components/EventRegistrationCta.tsx');
 const preview = leer('src/components/admin/events/EventCtaManager.tsx');
+// v4.751 — El panel de inscripción de un evento: la cuenta regresiva y el
+// botón «Inscripciones» son de esta misma familia y llevaban un naranja
+// escrito a mano que no pertenecía a ninguna paleta del sitio.
+const panel = leer('src/components/RegistrationPanel.tsx');
 
 check('el encabezado toma los colores del módulo', navbar.includes("from '../lib/ctaStyles'"));
 check('la ficha del evento también', ficha.includes("from '../lib/ctaStyles'"));
 check('y la vista previa del panel, la tercera', preview.includes('ctaStyles'));
+check('el panel de inscripción, la cuarta', panel.includes("from '../lib/ctaStyles'"));
 
-for (const [nombre, src] of [['el encabezado', navbar], ['la ficha', ficha], ['la vista previa', preview]]) {
+for (const [nombre, src] of [['el encabezado', navbar], ['la ficha', ficha], ['la vista previa', preview], ['el panel de inscripción', panel]]) {
     check(`${nombre} no repite el fondo azul claro`,
         !src.includes('bg-sky-100 text-rotary-blue'));
 }
 check('la ficha ya no pinta el contorno azul marino a mano',
     !ficha.includes('border-[#1B2B4D]'));
 check('ni la vista previa', !preview.includes('border-[#1B2B4D]'));
+
+// El naranja no salía de ninguna paleta: estaba sólo en este archivo. Se busca
+// la CLASE, no la mención: el comentario que explica de dónde se viene tiene
+// que poder nombrar el valor viejo sin hacer fallar la prueba.
+check('el panel ya no PINTA el naranja escrito a mano',
+    !/(?:bg|text|border)-\[#(?:D57D2C|c46f23)\]/i.test(panel));
+// La cuenta regresiva no se pulsa: reaccionar al cursor prometería algo que no
+// va a pasar. Es la razón de ser del segundo parámetro de `ctaSkin`.
+check('la cuenta regresiva va SIN hover', panel.includes('ctaSkin(CTA_SOFT, false)'));
+check('y el botón CON hover', /counter:[\s\S]{0,80}button: ctaSkin\(CTA_SOFT\)/.test(panel));
+// La Feria tiene identidad propia (dorado y azul marino) y se respeta: lo que
+// se unifica es el tema POR DEFECTO, no toda personalización.
+check('el tema propio de la Feria se conserva',
+    leer('src/pages/RegistroFeria.tsx').includes("counter: 'bg-[#F7A81B] text-[#17458F]'"));
 
 grupo('Las clases existen de verdad en el CSS compilado');
 // Una clase de Tailwind mal escrita no falla: no genera regla. Sólo el CSS

@@ -3907,7 +3907,18 @@ panel (`EventCtaManager.tsx`).
   `/90` y 7 de `/10`); no se tocaron porque cambian el aspecto de muchas
   pantallas. Al escribir una clase de estas, buscarla en
   `dist/assets/index-*.css`: es la única forma de saber si llegó.
-- Pruebas: `npm run test:cta` (21 casos). **Sin base, credenciales ni red.**
+- **El panel de inscripción de un evento es de esta MISMA familia** (v4.751,
+  `RegistrationPanel.tsx`). Las cajas de la cuenta regresiva y el botón
+  «Inscripciones» iban en un naranja (`#D57D2C`) escrito a mano que no salía de
+  ninguna paleta del sitio y no se repetía en ningún otro lado. Ahora toman
+  `CTA_SOFT` del módulo, como los demás. Las cajas van con
+  `ctaSkin(CTA_SOFT, false)` —**sin hover**— porque no se pulsan.
+  `FAIR_THEME` en `RegistroFeria.tsx` **se conserva**: lo que se unifica es el
+  tema POR DEFECTO, no toda personalización.
+- La comprobación de «nadie las escribe a mano» busca la **CLASE**, no la
+  mención: el comentario que explica de dónde se viene tiene que poder nombrar
+  el valor viejo sin hacer fallar la prueba.
+- Pruebas: `npm run test:cta` (27 casos). **Sin base, credenciales ni red.**
   Comprueban dos cosas que no se ven mirando una pantalla: que nadie repita las
   clases a mano y que cada clase **exista en el CSS compilado** (por eso el
   bloque final se salta si no hay `dist/`).
