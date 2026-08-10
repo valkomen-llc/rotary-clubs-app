@@ -2831,7 +2831,39 @@ foto en un recuadro.
   por delante todo lo que el usuario movió; por eso se agrega el hueco que
   falta. Nace **marcado como campo del portal** —uno que no es campo no lo puede
   llenar nadie— y por debajo del texto y del logotipo, para no taparlos.
-- **El portal público COMPONE al subir la fotografía** (v4.732). El motor y sus
+- **El portal público GENERA con un gesto explícito** (v4.756). Era un
+  formulario con vista previa en vivo y un botón de descargar: la pieza se
+  armaba sola mientras se escribía y nadie sabía cuándo «se generaba» algo.
+  Ahora hay tres fases —formulario, generando, listo— y el trabajo real ocurre
+  al pulsar Generar.
+- **Los pasos que se muestran son los que OCURREN.** Si no hay mensaje que
+  escribir ni composición que hacer, generar es instantáneo y se dice así. Un
+  progreso inventado es peor que ninguno: hace esperar por nada. Y un fallo
+  vuelve al formulario con el motivo — nunca se queda girando.
+- **Componer se dispara SÓLO en Generar, no al subir la fotografía.** Con el
+  gesto explícito, hacerlo también al soltar el archivo gastaría los créditos
+  DOS veces por visita, y en un portal anónimo eso lo paga el operador. Cambiar
+  la fotografía sí invalida lo compuesto, que es lo que corresponde ahí.
+- **Los clubes del buscador salen del catálogo de la FERIA, no del directorio
+  de sitios** (`publicClubs.js`, sobre `rotaryClubs.js`). Tres motivos: el
+  directorio incluye organizaciones que no son clubes y sitios a medio
+  configurar, y abrirlo entero a un portal sin autenticación expone más de lo
+  que la función necesita; es la MISMA lista que el rotario ya vio al postular
+  su proyecto o al inscribirse al evento, y dos listas para lo mismo se separan
+  en silencio; y no cuesta una consulta por pulsación en una pantalla anónima.
+  Lo único que se enriquece desde la base es el logotipo, y sólo para un club
+  que YA está en el catálogo.
+- **El nombre para imprimir se CONSTRUYE** (`clubDisplayName`). El catálogo
+  guarda «Bogotá» porque es lo que hace usable un desplegable de 74 entradas,
+  pero la pieza dice «Al {{club}}» y «Al Bogotá» no es el nombre de nadie. Los
+  clubes electrónicos son la excepción —«Rotary E-Club Origen», no «Club Rotario
+  E-Club Origen»—. Al agregar un tipo de club con nombre propio, agregarlo ahí.
+- **La lista ayuda a escribir; NO cierra el valor.** Misma regla que la
+  postulación (v4.706) y el registro al evento (v4.708), y por el mismo motivo:
+  un catálogo se queda viejo solo y hay Rotaract, Interact y clubes de otros
+  distritos. Y **nunca un `<datalist>`** (v4.656).
+- **El portal público COMPONE al subir la fotografía** (v4.732; desde v4.756, al
+  pulsar Generar). El motor y sus
   endpoints existían desde v4.722 y `PlantillaPublica.tsx` **no los llamaba**:
   la función estaba declarada y muerta. Se dispara sólo con el campo de clase
   `foto` —un logotipo se dibuja nítido en su sitio, no se funde con el fondo— y

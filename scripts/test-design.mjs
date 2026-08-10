@@ -27,6 +27,8 @@ import * as P from '../server/lib/designPublish.js';
 import * as PH from '../server/lib/designPhoto.js';
 import * as CO from '../server/lib/designCompose.js';
 import * as F from '../server/lib/designFields.js';
+import * as PC from '../server/lib/publicClubs.js';
+import { CLUBS_4271, CLUBS_4281 } from '../server/lib/rotaryClubs.js';
 
 // Las fechas rotarias se importan del CRITERIO, no de `designBranding.js`: ese
 // archivo importa la base de datos y arrastrarlo acá obligaría a tener Prisma
@@ -1027,6 +1029,44 @@ check('y sigue suelta al rehacer',
 const modernos = P.settingsForRefresh({ settings: { locked: ['mensaje'], frozen: { club: 'RC X' }, intro: 'Hola' }, document: docV2, fields: [], frozen: {}, intro: 'otro' });
 check('los ajustes guardados mandan sobre la deducción',
     JSON.stringify(modernos.locked) === JSON.stringify(['mensaje']) && modernos.intro === 'Hola');
+
+grupo('El buscador de clubes del portal');
+
+// Sale del catálogo curado de la Feria —el mismo que ya vio quien postuló su
+// proyecto o se inscribió al evento—, no del directorio de sitios alojados.
+check('el catálogo son los clubes de los dos distritos',
+    PC.allPublicClubs().length === CLUBS_4271.length + CLUBS_4281.length,
+    String(PC.allPublicClubs().length));
+check('cada club dice a qué distrito pertenece',
+    PC.allPublicClubs().every(c => c.district === '4271' || c.district === '4281'));
+
+// El catálogo guarda el nombre corto —«Bogotá»— porque es lo que hace usable un
+// desplegable de 74 entradas. Pero la pieza dice «Al {{club}}», y «Al Bogotá»
+// no es el nombre de nadie.
+check('el nombre para imprimir se construye', PC.clubDisplayName('Bogotá') === 'Club Rotario Bogotá');
+check('un club electrónico se llama distinto',
+    PC.clubDisplayName('E-Club Origen') === 'Rotary E-Club Origen');
+check('y no se le pone el prefijo dos veces',
+    PC.clubDisplayName('Club Rotario Cali') === 'Club Rotario Cali'
+    && PC.clubDisplayName('Rotary E-Club Origen') === 'Rotary E-Club Origen');
+check('un nombre vacío no inventa nada', PC.clubDisplayName('  ') === '');
+
+// Ordena por dónde CASA el término: quien escribe «cali» espera «Cali» antes
+// que «Nuevo Cali».
+const cali = PC.searchPublicClubs('cali');
+check('buscar encuentra sin tildes ni mayúsculas',
+    PC.searchPublicClubs('BOGOTA').some(c => c.name === 'Bogotá'));
+check('lo que empieza con el término va primero',
+    cali[0].name === 'Cali', cali.map(c => c.name).join(' | '));
+check('el orden es reproducible',
+    JSON.stringify(PC.searchPublicClubs('cali')) === JSON.stringify(cali));
+check('sin término no se vuelcan los 133', PC.searchPublicClubs('').length <= PC.SEARCH_LIMIT);
+check('el tope se respeta', PC.searchPublicClubs('a', 3).length === 3);
+check('un término que no está da vacío', PC.searchPublicClubs('zzzz').length === 0);
+check('un club escrito a mano se reconoce por su forma corta o larga',
+    PC.findPublicClub('cali pance')?.name === 'Cali Pance'
+    && PC.findPublicClub('Club Rotario Cali Pance')?.name === 'Cali Pance');
+check('y uno que no está no se fuerza', PC.findPublicClub('Club de Ajedrez') === null);
 
 grupo('Tres textos, tres cosas distintas');
 

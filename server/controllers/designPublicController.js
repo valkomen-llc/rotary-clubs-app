@@ -32,8 +32,9 @@ import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { normalizeComposition } from '../lib/designCompose.js';
+import { searchPublicClubs, findPublicClub, norm as normClub } from '../lib/publicClubs.js';
 
-console.log('[designPublicController] v4.732.0 cargado — Portal público de Plantillas IA. La IA integra la fotografía dentro del lienzo institucional.');
+console.log('[designPublicController] v4.756.0 cargado — Portal público de Plantillas IA. Buscador de clubes y generación por pasos.');
 
 const rowOrNull = async (slug) => {
     const { rows } = await db.query(
@@ -76,6 +77,46 @@ export const getPublicTemplate = async (req, res) => {
     } catch (e) {
         console.error('[designPublic] get:', e);
         res.status(500).json({ error: 'No se pudo cargar la plantilla' });
+    }
+};
+
+// ── GET /api/public/design/clubs?q= ───────────────────────────────────
+//
+// El buscador de clubes del portal. Sale del catálogo curado de la Feria, no
+// del directorio de sitios de la plataforma — ver la cabecera de
+// `publicClubs.js`.
+//
+// Lo ÚNICO que se enriquece desde la base es el logotipo, y sólo para un club
+// que ya está en el catálogo: es lo que evita pedirle su escudo a quien ya lo
+// tiene cargado en su sitio. No se devuelve nada más de la fila; un buscador
+// público no es una ventana al directorio.
+export const publicClubs = async (req, res) => {
+    res.set('Cache-Control', 'public, max-age=300');
+    try {
+        const hits = searchPublicClubs(req.query.q, req.query.limit);
+        if (!hits.length) return res.json([]);
+
+        // Una sola consulta para todos los resultados, no una por club.
+        let logos = new Map();
+        try {
+            const { rows } = await db.query(
+                `SELECT name, logo FROM "Club" WHERE logo IS NOT NULL AND logo <> '' LIMIT 2000`
+            );
+            logos = new Map(rows.map(r => [normClub(r.name), r.logo]));
+        } catch (e) {
+            // El logotipo es una comodidad: sin él el buscador sigue sirviendo.
+            console.warn('[designPublic] logos de clubes:', e.message);
+        }
+
+        res.json(hits.map(c => ({
+            name: c.name,
+            display: c.display,
+            district: c.district,
+            logo: logos.get(normClub(c.name)) || logos.get(normClub(c.display)) || null,
+        })));
+    } catch (e) {
+        console.error('[designPublic] clubs:', e);
+        res.status(500).json({ error: 'No se pudo buscar el club' });
     }
 };
 
@@ -317,4 +358,4 @@ export const markUsed = async (req, res) => {
     }
 };
 
-export default { getPublicTemplate, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, markUsed };
+export default { getPublicTemplate, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, markUsed };

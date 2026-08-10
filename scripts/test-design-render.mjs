@@ -684,7 +684,20 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // logotipo, una firma o un sello, y llamarla «foto» confunde en el campo que
     // pide el escudo del club.
     check('ofrece arrastrar el archivo', /Arrastrá el archivo/.test(txt));
-    check('ofrece descargar y compartir', /Descargar PNG/.test(txt) && /Compartir/.test(txt));
+    // Descargar y compartir ya NO están en el formulario: aparecen con la pieza
+    // generada. Es el gesto explícito que faltaba — antes la pieza se resolvía
+    // sola mientras se escribía y nadie sabía cuándo se «generaba».
+    check('el formulario ofrece GENERAR, no descargar a secas',
+        /Generar mi pieza/.test(txt) && !/Descargar PNG/.test(txt));
+    check('sin el club obligatorio no se puede generar',
+        await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled());
+    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /Generar mi pieza/ }).click();
+    await page.waitForTimeout(1200);
+    const txtListo = await page.locator('#root').innerText();
+    check('con la pieza lista ofrece descargar y compartir',
+        /Descargar PNG/.test(txtListo) && /Compartir/.test(txtListo));
 
     // Lo que el pedido prohíbe mostrar.
     check('NO hay capas, propiedades ni elementos a la vista',
@@ -809,13 +822,16 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('la vista previa se repinta mientras se escribe',
         /Club Rotario Pasto/.test(await page.locator('[data-node="saludo"]').innerText().catch(() => '')));
 
-    // El campo obligatorio gobierna la descarga.
+    // El campo obligatorio gobierna GENERAR, que es el gesto que ahora produce
+    // la pieza. Se comprueba desde el formulario, que es donde se edita.
+    await page.getByRole('button', { name: /Editar los datos/ }).click();
+    await page.waitForTimeout(300);
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('');
     await page.waitForTimeout(250);
-    check('sin el club no se puede descargar', await page.getByRole('button', { name: /Descargar PNG/ }).isDisabled());
+    check('sin el club no se puede generar', await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled());
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
     await page.waitForTimeout(250);
-    check('y con el club sí', !(await page.getByRole('button', { name: /Descargar PNG/ }).isDisabled()));
+    check('y con el club sí', !(await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled()));
     check('el portal no lanzó errores', fallos.length === 0, fallos.join(' | '));
     await page.close();
 }
@@ -908,11 +924,20 @@ window.go = () => createRoot(document.getElementById('root')).render(
     await archivos.nth(idxFoto).setInputFiles({ name: 'club.png', mimeType: 'image/png', buffer: png });
     await page.waitForTimeout(1200);
 
-    check('subir la fotografía pide componer', !!pidioComponer);
+    // Subir NO compone: con un gesto explícito de Generar, hacerlo también al
+    // soltar el archivo gastaría los créditos dos veces por visita.
+    check('subir la fotografía NO compone todavía', !pidioComponer);
+
+    // Generar exige lo obligatorio, así que el club va antes.
+    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /Generar mi pieza/ }).click();
+    await page.waitForTimeout(1200);
+    check('generar pide componer', !!pidioComponer);
     check('y le manda la fotografía al motor',
         typeof pidioComponer?.photo === 'string' && pidioComponer.photo.startsWith('data:image/'));
-    check('mientras compone se DICE, no se deja la pantalla muda',
-        /Integrando tu fotograf/i.test(await page.locator('#root').innerText()));
+    check('mientras compone se DICE en qué paso está',
+        /Componiendo el dise/i.test(await page.locator('#root').innerText()));
 
     await page.waitForTimeout(9000);
     check('un sondeo pendiente no se toma por un fallo', sondeos >= 2, `${sondeos} sondeos`);
@@ -925,6 +950,12 @@ window.go = () => createRoot(document.getElementById('root')).render(
 
     // La vuelta atrás tiene que existir: una composición que no gusta no puede
     // dejar la pieza peor que antes.
+    check('al terminar se dice que la pieza está lista',
+        /Tu pieza está lista/i.test(await page.locator('#root').innerText()));
+    check('y se ofrece volver a editar sin empezar de nuevo',
+        await page.getByRole('button', { name: /Editar los datos/ }).count() === 1);
+    check('y regenerar', await page.getByRole('button', { name: /Regenerar/ }).count() === 1);
+
     const volver = page.getByText('Prefiero verla en su recuadro');
     check('se ofrece volver a la fotografía en su recuadro', await volver.count() === 1);
     await volver.click();

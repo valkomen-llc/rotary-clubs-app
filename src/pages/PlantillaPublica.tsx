@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — el portal público
-// v4.727.0
+// v4.756.0
 //
 // Cualquiera con el enlace genera su pieza. Sin sesión, sin cuenta, sin saber
 // nada del sistema. Mismo lugar que el Generador de Pendones en la aplicación:
@@ -66,6 +66,10 @@ interface PublicTemplate {
     composition?: { enabled: boolean; variants: number };
 }
 interface PhotoNote { level: string; reason: string; consequence: string }
+/** Un club del catálogo curado de la Feria. `display` es el nombre para
+ *  imprimir («Club Rotario Cali Pance»); `logo` viene sólo si la plataforma ya
+ *  tiene el escudo de ese club cargado. */
+interface ClubHit { name: string; display: string; district: string; logo: string | null }
 
 const TONOS = [
     { id: 'emotivo', label: 'Más emotivo' },
@@ -113,6 +117,21 @@ const PlantillaPublica: React.FC = () => {
     const [backdrop, setBackdrop] = useState<string | null>(null);
     const [composing, setComposing] = useState(false);
     const [composeNote, setComposeNote] = useState<string | null>(null);
+    // ── EL PIPELINE, EN TRES FASES ─────────────────────────────────
+    //
+    // Antes esto era un formulario con vista previa en vivo y un botón de
+    // descargar: quien lo abría no sabía en qué momento «se generaba» nada.
+    // Ahora hay un gesto explícito —Generar— y el trabajo de verdad ocurre ahí,
+    // diciendo en qué está.
+    //
+    // Los pasos que se muestran son los que OCURREN. No se inventa un
+    // «preparando la publicación» decorativo: si no hay mensaje que escribir ni
+    // composición que hacer, generar es instantáneo y se dice así.
+    const [fase, setFase] = useState<'form' | 'generando' | 'listo'>('form');
+    const [pasos, setPasos] = useState<{ label: string; done: boolean }[]>([]);
+    // El buscador de clubes del catálogo de la Feria.
+    const [clubHits, setClubHits] = useState<ClubHit[] | null>(null);
+    const [buscandoClub, setBuscandoClub] = useState(false);
     const stageRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -282,14 +301,18 @@ const PlantillaPublica: React.FC = () => {
             // personas de los bordes, quien subió la foto es el único que puede
             // decidir subir otra.
             setPhotoNotes(prev => ({ ...prev, [key]: d.notes || [] }));
-            // Si esta plantilla compone, la fotografía recién subida es lo que
-            // el modelo tiene que integrar en el lienzo. Sólo la FOTOGRAFÍA: un
-            // logotipo no se funde con el fondo, se dibuja nítido en su sitio.
-            if (esCampoDeFoto(key)) componer(d.dataUrl);
+            // Componer NO se dispara acá desde v4.756: lo hace «Generar».
+            //
+            // Con el gesto explícito, hacerlo también al subir gastaría los
+            // créditos DOS veces por visita —una al soltar el archivo y otra al
+            // pulsar el botón—, y en un portal anónimo eso lo paga el operador.
+            // Cambiar la fotografía invalida lo compuesto, que es lo que sí
+            // corresponde hacer acá.
+            if (esCampoDeFoto(key)) { setBackdrop(null); setComposeNote(null); }
         } catch (e) {
             aviso(e instanceof Error ? e.message : 'No se pudo procesar la imagen.', 'Probá con otro archivo.');
         } finally { setUploadingKey(null); }
-    }, [slug, set, esCampoDeFoto, componer]);
+    }, [slug, set, esCampoDeFoto]);
 
     const escribirIA = useCallback(async (tone: string | null) => {
         if (!slug) return;
@@ -307,6 +330,37 @@ const PlantillaPublica: React.FC = () => {
             setAiNote(e instanceof Error ? e.message : 'No se pudo escribir el mensaje. Podés escribirlo a mano.');
         } finally { setBusy(null); }
     }, [slug, values, set]);
+
+    // ── El buscador de clubes ──────────────────────────────────────
+    //
+    // Sale del catálogo curado de la Feria —el mismo que ya vio quien postuló su
+    // proyecto o se inscribió al evento—, no del directorio de sitios. La lista
+    // AYUDA a escribir y no cierra el valor: el campo sigue siendo texto libre,
+    // porque un catálogo se queda viejo solo y acá además hay Rotaract, Interact
+    // y clubes de otros distritos. Misma regla que la postulación (v4.706).
+    const buscarClub = useCallback(async (term: string) => {
+        if (!term.trim()) { setClubHits(null); return; }
+        setBuscandoClub(true);
+        try {
+            const r = await fetch(`${API}/public/design/clubs?q=${encodeURIComponent(term)}`);
+            const d = await r.json().catch(() => null);
+            setClubHits(Array.isArray(d) ? d : []);
+        } catch { setClubHits([]); }
+        finally { setBuscandoClub(false); }
+    }, []);
+
+    // Elegir un club escribe su nombre completo y, si la plataforma ya tiene su
+    // escudo cargado, lo pone. Es el «recuperar automáticamente los datos
+    // disponibles» del pedido — y sólo rellena lo que está VACÍO: quien ya subió
+    // su logotipo no lo pierde por cambiar el club.
+    const elegirClub = useCallback((c: ClubHit) => {
+        setValues(prev => {
+            const next: Record<string, string> = { ...prev, club: c.display };
+            if (c.logo && !prev.logo) next.logo = c.logo;
+            return next;
+        });
+        setClubHits(null);
+    }, []);
 
     const marcarUso = useCallback(() => {
         if (!slug) return;
@@ -359,6 +413,51 @@ const PlantillaPublica: React.FC = () => {
         () => (tpl?.fields || []).filter(f => f.type === 'image' && f.sample && !values[f.key]?.trim()),
         [tpl, values]
     );
+
+    // ── GENERAR ────────────────────────────────────────────────────
+    //
+    // El gesto explícito que faltaba. Corre los pasos que de verdad hay que
+    // correr y va diciendo en cuál está; los que no aplican no se muestran, en
+    // vez de fingir un progreso.
+    //
+    // Un fallo NUNCA deja la pantalla girando: se vuelve al formulario con el
+    // motivo escrito. Es la regla del sitio —nunca un estado de carga
+    // indefinido— y acá importa más porque quien la abrió no tiene a quién
+    // preguntarle.
+    const generar = useCallback(async () => {
+        if (!tpl || !slug) return;
+        const campoFoto = (tpl.fields || []).find(f => f.type === 'image' && (f.kind === 'foto' || f.key === 'imagen'));
+        const campoMensaje = (tpl.fields || []).find(f => f.ai);
+        const hayFoto = !!(campoFoto && values[campoFoto.key]);
+        const faltaMensaje = !!(campoMensaje && !values[campoMensaje.key]?.trim());
+        const componeIA = !!(tpl.composition?.enabled && hayFoto);
+
+        const plan = [
+            faltaMensaje ? 'Escribiendo el mensaje' : null,
+            componeIA ? 'Componiendo el diseño con la IA' : null,
+            'Integrando la identidad del club',
+        ].filter(Boolean) as string[];
+
+        setFase('generando');
+        setPasos(plan.map(label => ({ label, done: false })));
+        const avanzar = () => setPasos(ps => {
+            const i = ps.findIndex(p => !p.done);
+            return i < 0 ? ps : ps.map((p, k) => (k === i ? { ...p, done: true } : p));
+        });
+
+        try {
+            if (faltaMensaje) { await escribirIA(null); avanzar(); }
+            if (componeIA) { await componer(values[campoFoto!.key]); avanzar(); }
+            // El último paso es local e instantáneo: `applyPublicValues` ya
+            // resolvió la pieza mientras se escribía. Se muestra igual porque es
+            // lo que responde «¿y el nombre de mi club, dónde entró?».
+            avanzar();
+            setFase('listo');
+        } catch (e) {
+            setAiNote(e instanceof Error ? e.message : 'No se pudo generar la pieza.');
+            setFase('form');
+        }
+    }, [tpl, slug, values, escribirIA, componer]);
 
     const faltantes = useMemo(
         () => (tpl?.fields || []).filter(f => f.required && !values[f.key]?.trim()).map(f => f.label),
@@ -509,8 +608,15 @@ const PlantillaPublica: React.FC = () => {
                             );
                         }
 
+                        // El nombre del club se BUSCA en el catálogo curado de
+                        // la Feria, pero el campo sigue siendo texto libre: la
+                        // lista ahorra escribir, no cierra el valor (regla del
+                        // sitio desde v4.706). Y nunca un `<datalist>` — el
+                        // navegador lo despliega encima y hace creer que la
+                        // lista es obligatoria (v4.656).
+                        const esClub = field.key === 'club';
                         return (
-                            <div key={field.key}>
+                            <div key={field.key} className="relative">
                                 <label className="block text-xs font-black text-gray-700 mb-1.5">
                                     {field.label}{field.required && <span className="text-red-500"> *</span>}
                                 </label>
@@ -519,26 +625,113 @@ const PlantillaPublica: React.FC = () => {
                                     inputMode={field.type === 'number' ? 'numeric' : undefined}
                                     maxLength={field.maxChars || undefined}
                                     placeholder={field.placeholder}
+                                    autoComplete={esClub ? 'off' : undefined}
                                     value={values[field.key] || ''}
-                                    onChange={e => set(field.key, field.type === 'number' ? e.target.value.replace(/\D/g, '') : e.target.value)}
+                                    onChange={e => {
+                                        const v = field.type === 'number' ? e.target.value.replace(/\D/g, '') : e.target.value;
+                                        set(field.key, v);
+                                        if (esClub) buscarClub(v);
+                                    }}
+                                    onBlur={esClub ? () => window.setTimeout(() => setClubHits(null), 150) : undefined}
                                 />
+                                {esClub && clubHits && clubHits.length > 0 && (
+                                    <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                                        {clubHits.map(c => (
+                                            <li key={`${c.district}-${c.name}`}>
+                                                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => elegirClub(c)}
+                                                    className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-blue-50 transition-colors">
+                                                    {c.logo
+                                                        ? <img src={c.logo} alt="" className="w-6 h-6 object-contain shrink-0" />
+                                                        : <span className="w-6 h-6 shrink-0" />}
+                                                    <span className="text-sm text-gray-800 flex-1 truncate">{c.display}</span>
+                                                    <span className="text-[10px] text-gray-400 shrink-0">D{c.district}</span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {esClub && buscandoClub && !clubHits?.length && (
+                                    <p className="mt-1 text-[11px] text-gray-400">Buscando…</p>
+                                )}
                                 {field.help && <p className="mt-1 text-[11px] text-gray-400">{field.help}</p>}
+                                {esClub && !field.help && (
+                                    <p className="mt-1 text-[11px] text-gray-400">
+                                        Escribí y elegí de la lista, o escribilo a mano si tu club no aparece.
+                                    </p>
+                                )}
                             </div>
                         );
                     })}
 
                     <div className="pt-2 space-y-2">
-                        <button onClick={descargar} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
-                            className="w-full flex items-center justify-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold rounded-lg px-4 py-3 transition-colors">
-                            {busy === 'descarga' ? <Loader2 className="w-4 h-4 animate-spin" />
-                                : done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-                            {busy === 'descarga' ? 'Generando…' : done ? '¡Listo!' : 'Descargar PNG'}
-                        </button>
-                        <button onClick={compartir} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
-                            className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-300 disabled:opacity-50 text-gray-700 text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors">
-                            {busy === 'compartir' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                            Compartir
-                        </button>
+                        {/* ── EL GESTO EXPLÍCITO ────────────────────────
+                            Antes acá había «Descargar» a secas y la pieza se
+                            resolvía sola mientras se escribía: nadie sabía en
+                            qué momento se generaba nada. Ahora Generar es el
+                            paso, y descargar viene después, con la pieza a la
+                            vista. */}
+                        {fase === 'form' && (
+                            <button onClick={generar} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
+                                className="w-full flex items-center justify-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold rounded-lg px-4 py-3 transition-colors">
+                                <Sparkles className="w-4 h-4" />
+                                Generar mi pieza
+                            </button>
+                        )}
+
+                        {/* Los pasos son los que OCURREN. Un progreso inventado
+                            es peor que ninguno: hace esperar por nada. */}
+                        {fase === 'generando' && (
+                            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
+                                {pasos.map((p, i) => (
+                                    <p key={i} className="flex items-center gap-2 text-xs">
+                                        {p.done
+                                            ? <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                            : <Loader2 className="w-3.5 h-3.5 text-blue-700 animate-spin shrink-0" />}
+                                        <span className={p.done ? 'text-gray-400 line-through' : 'font-semibold text-gray-700'}>{p.label}</span>
+                                    </p>
+                                ))}
+                                <p className="pt-1 text-[11px] text-gray-400 leading-relaxed">
+                                    Podés dejar esta pestaña abierta. Si algo falla, volvés al formulario con lo que ya cargaste.
+                                </p>
+                            </div>
+                        )}
+
+                        {fase === 'listo' && (
+                            <>
+                                <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+                                    <p className="flex items-center gap-2 text-sm font-black text-green-900">
+                                        <Check className="w-4 h-4" /> Tu pieza está lista
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-green-800 leading-relaxed">
+                                        Descargala o compartila. Si querés cambiar algo, volvé al formulario: no se pierde nada.
+                                    </p>
+                                </div>
+                                <button onClick={descargar} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
+                                    className="w-full flex items-center justify-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white font-bold rounded-lg px-4 py-3 transition-colors">
+                                    {busy === 'descarga' ? <Loader2 className="w-4 h-4 animate-spin" />
+                                        : done ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+                                    {busy === 'descarga' ? 'Generando…' : done ? '¡Listo!' : 'Descargar PNG'}
+                                </button>
+                                <button onClick={compartir} disabled={!!busy || !!uploadingKey || faltantes.length > 0}
+                                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-300 disabled:opacity-50 text-gray-700 text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors">
+                                    {busy === 'compartir' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                                    Compartir
+                                </button>
+                                {/* Volver a EDITAR, no a empezar. Obligar a
+                                    recomenzar todo para cambiar una palabra es
+                                    justo lo que el pedido señala. */}
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                    <button onClick={() => setFase('form')}
+                                        className="text-xs font-bold border border-gray-300 hover:border-blue-400 rounded-lg px-2 py-2 text-gray-700 transition-colors">
+                                        Editar los datos
+                                    </button>
+                                    <button onClick={generar} disabled={!!busy}
+                                        className="flex items-center justify-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-blue-400 disabled:opacity-50 rounded-lg px-2 py-2 text-gray-700 transition-colors">
+                                        <Sparkles className="w-3.5 h-3.5" /> Regenerar
+                                    </button>
+                                </div>
+                            </>
+                        )}
                         {faltantes.length > 0 && (
                             <p className="text-[11px] text-gray-500 text-center">Falta completar: {faltantes.join(', ')}.</p>
                         )}
