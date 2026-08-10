@@ -2869,6 +2869,36 @@ foto en un recuadro.
   `foto` —un logotipo se dibuja nítido en su sitio, no se funde con el fondo— y
   se resuelve por `kind`, no por la clave: una plantilla puede llamar `portada`
   a su fotografía.
+- **La preservación de la fotografía se MIDE, no se promete** (v4.757,
+  `designGuard.js`). El prompt pide que no se invente ni se pierda a nadie;
+  pedirlo es necesario y no alcanza — un modelo generativo puede desobedecer y
+  la pieza sale igual, con alguien de más, en una publicación institucional. Se
+  compara la composición con la fotografía original: recuento, personas nuevas o
+  ausentes, y consistencia de los rostros.
+- **Cuando no da, se DESCARTA la composición; no se retoca la imagen.** Pegar la
+  fotografía original encima para corregirla es el composite que el equipo
+  rechazó dos veces («se ve overlay / montaje», v4.323-v4.324). Este control mide
+  y decide. La pieza sale con la foto en su recuadro, y el motivo se dice con su
+  CONSECUENCIA.
+- **Las mediciones se REUTILIZAN de `reelQuality.js`**, no se reimplementan
+  —copiar una medición es la forma segura de que las dos mitades se separen en
+  silencio—. Lo que vive en `designGuard.js` es el CRITERIO de este módulo: qué
+  se pregunta y qué se decide con la respuesta.
+- **El piso estructural es DELIBERADAMENTE bajo (0,18).** Acá el modelo
+  construye un lienzo NUEVO alrededor de la fotografía, así que gran parte de
+  los píxeles deben ser distintos: un piso alto reprobaría toda composición
+  buena — el error que ya costó dos rondas de créditos en el Creador de Reels
+  (v4.675). Sólo atrapa el caso extremo, y sólo cuando no hubo modelo de visión.
+- **Por encima de ocho personas el recuento no decide solo**
+  (`reliableCountMax`), igual que en Reels: contar catorce cabezas no lo hace
+  bien ningún modelo y descartar por un ±1 sería tirar una composición buena. En
+  multitud sólo vale la señal explícita.
+- **`unavailable` no es un tipo de «bien».** Significa que no se pudo mirar, se
+  dice así, y la pieza se entrega igual: un control de calidad que tumba la
+  generación es peor que no tenerlo.
+- **La verificación va en su PROPIO paso, no dentro del sondeo.** Necesita la
+  fotografía original, que vive en el navegador de quien la subió: mandarla en
+  cada sondeo sería mandarla cinco veces para usarla una.
 - **Un fallo al componer NO rompe la pieza.** Se avisa y queda la composición
   declarada, con la fotografía en su recuadro, que es una pieza correcta y
   descargable. Misma degradación que `fallbackDirection` en el Creador de Reels.

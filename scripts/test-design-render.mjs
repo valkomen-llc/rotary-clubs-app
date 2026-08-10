@@ -884,6 +884,10 @@ window.go = () => createRoot(document.getElementById('root')).render(
     const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     let pidioComponer = null;
     let sondeos = 0;
+    let pidioVerificar = null;
+    // El veredicto se controla desde la prueba: primero aprueba, y más abajo se
+    // reprueba para comprobar que la composición se DESCARTA.
+    let veredicto = { state: 'ok', use: true, reason: null, consequence: null };
 
     await page.route('**/api/**', r => r.fulfill({ json: {} }));
     await page.route('**/api/public/design/aniversario', r => r.fulfill({ json: RESP }));
@@ -896,6 +900,10 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // El primer sondeo devuelve `pending`: es el caso real —el modelo tarda
     // entre 20 y 60 segundos— y hay que comprobar que la pantalla lo espera en
     // vez de darlo por fallido.
+    await page.route('**/api/public/design/aniversario/verify', r => {
+        try { pidioVerificar = JSON.parse(r.request().postData() || '{}'); } catch { pidioVerificar = {}; }
+        return r.fulfill({ json: veredicto });
+    });
     await page.route('**/api/public/design/aniversario/backdrop/task_9', r => {
         sondeos += 1;
         return sondeos < 2
@@ -941,6 +949,10 @@ window.go = () => createRoot(document.getElementById('root')).render(
 
     await page.waitForTimeout(9000);
     check('un sondeo pendiente no se toma por un fallo', sondeos >= 2, `${sondeos} sondeos`);
+    check('la composición se COMPRUEBA antes de usarla', !!pidioVerificar);
+    check('y se le manda la fotografía original y la composición',
+        typeof pidioVerificar?.photo === 'string' && pidioVerificar.photo.startsWith('data:image/')
+        && typeof pidioVerificar?.composed === 'string');
     check('el fondo compuesto entra en la pieza',
         await page.locator('[data-node="fondo_ia"]').count() === 1);
     check('y apaga el nodo de la fotografía, que ya está dentro',
@@ -964,6 +976,28 @@ window.go = () => createRoot(document.getElementById('root')).render(
         await page.locator('[data-node="fondo_ia"]').count() === 0);
     check('con la fotografía otra vez visible',
         await page.locator('[data-node="foto"]').count() === 1);
+    // ── Un veredicto NEGATIVO descarta la composición ──────────────
+    //
+    // Es el punto de todo el control: si el modelo inventó una persona, la
+    // pieza sale con la fotografía en su recuadro, intacta. No se retoca la
+    // imagen —eso sería el composite que el equipo rechazó dos veces—, se
+    // descarta y se dice por qué.
+    veredicto = {
+        state: 'failed', use: false,
+        reason: 'La composición agregó una persona que no está en tu fotografía.',
+        consequence: 'Se usó tu fotografía tal como la subiste, dentro del diseño.',
+    };
+    sondeos = 0;
+    await page.getByRole('button', { name: /Regenerar/ }).click();
+    await page.waitForTimeout(9000);
+    check('un veredicto negativo descarta la composición',
+        await page.locator('[data-node="fondo_ia"]').count() === 0);
+    check('y la fotografía vuelve a su recuadro',
+        await page.locator('[data-node="foto"]').count() === 1);
+    const avisoFinal = await page.locator('#root').innerText();
+    check('se dice el motivo y su consecuencia',
+        /agregó una persona/i.test(avisoFinal) && /tal como la subiste/i.test(avisoFinal));
+
     check('componer no lanzó errores', fallos.length === 0, fallos.join(' | '));
     await page.close();
 }

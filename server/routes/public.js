@@ -270,7 +270,7 @@ router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) =>
 // pieza. La diferencia importante es que acá el público SÓLO manda valores de
 // variables declaradas; el diseño viene de la publicación guardada y no se
 // puede tocar desde la petición. Ver la cabecera de `designPublicController.js`.
-import { getPublicTemplate as getPublicDesign, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, markUsed }
+import { getPublicTemplate as getPublicDesign, publicClubs, renderPublic, publicMessage, publicPhoto, publicBackdrop, publicBackdropSync, publicVerify, markUsed }
     from '../controllers/designPublicController.js';
 // 12 MB: una foto de móvil moderna entra holgada y un archivo mayor es casi
 // siempre un error (o alguien probando el límite). Se procesa en memoria y no
@@ -287,6 +287,8 @@ router.post('/design/:slug/photo', designPhotoUpload.single('file'), publicPhoto
 const renderPublicJson = express.json({ limit: '12mb' });
 router.post('/design/:slug/backdrop', renderPublicJson, publicBackdrop);
 router.get('/design/:slug/backdrop/:taskId', publicBackdropSync);
+// La preservación se MIDE: qué pasó con las personas de la fotografía.
+router.post('/design/:slug/verify', renderPublicJson, publicVerify);
 router.post('/design/:slug/used', markUsed);
 
 // ── Calendario de Capacitaciones y Soporte — herramienta PÚBLICA (sin login) ──
