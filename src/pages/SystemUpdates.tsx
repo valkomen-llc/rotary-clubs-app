@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.754.0 | 2026-08-10 (El fondo de las noticias, con la textura del sitio)
-// Cache bust: 2026-08-10d
+// UI V4.755.0 | 2026-08-10 (Texto de referencia y prompt maestro, separados)
+// Cache bust: 2026-08-10e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.755.0',
+        title: 'Plantillas IA: ya se puede declarar QUÉ comunicar, aparte de CÓMO verse ✍️',
+        description: 'Primera fase de la reingeniería del generador de piezas. Hasta ahora la configuración de una plantilla tenía un solo campo de texto —el prompt maestro— y ahí terminaban mezcladas dos cosas que no son la misma: la intención del mensaje y la dirección de arte. Mezcladas, una de las dos siempre queda mal servida, porque las lee maquinaria distinta. Ahora son dos campos. «Texto de referencia para la IA» define QUÉ hay que comunicar en las piezas de esa plantilla —por ejemplo, reconocer la trayectoria del club y felicitar a sus socios— y lo lee el redactor: no se imprime literal, es el sentido con el que se escribe el mensaje de cada club, con sus datos reales. «Prompt maestro de composición» define CÓMO tiene que verse y lo lee el modelo de imagen. El copy final —el texto concreto de cada generación— sigue siendo un tercer elemento, producido por club. Además se corrigió el peso del prompt maestro: era lo último del prompt y por tanto lo primero que se recortaba cuando el total se pasaba del presupuesto del modelo, así que quien se tomaba el trabajo de escribir su dirección creativa podía quedarse sin ella mientras sobrevivía una cláusula de estilo genérica escrita por el sistema. Entre las dos, ahora manda la del administrador: primero se sacrifica la paleta y el estilo. Lo que no se recorta nunca, y no puede aflojarse desde el prompt maestro, es la preservación de las personas de la fotografía y el espacio reservado para el texto.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Campo «Texto de referencia para la IA», que define qué comunicar.' },
+            { type: 'changed', text: 'El prompt maestro queda sólo para la dirección de arte.' },
+            { type: 'fixed', text: 'La dirección de arte ya no es lo primero que se recorta del prompt.' },
+        ]
+    },
     {
         version: '4.754.0',
         title: 'La lista de noticias, sobre la misma textura 🧱',

@@ -195,15 +195,33 @@ const CompositionPanel: React.FC<Props> = ({
                         </p>
                     </div>
 
+                    {/* ── LOS DOS TEXTOS, SEPARADOS ──────────────────────
+                        Responden preguntas distintas y los lee maquinaria
+                        distinta: la intención la lee el redactor y la dirección
+                        de arte la lee el modelo de imagen. Juntos en un solo
+                        campo, uno de los dos siempre queda mal servido. */}
                     <div className="mb-3">
-                        <span className={lbl}>Prompt maestro</span>
+                        <span className={lbl}>Texto de referencia para la IA</span>
+                        <textarea className={`${box} min-h-[80px] resize-y text-xs leading-relaxed`}
+                            value={composition.referenceText} maxLength={1200}
+                            placeholder="Celebramos con alegría un nuevo aniversario del club, reconociendo su trayectoria de servicio y su compromiso con la comunidad."
+                            onChange={e => set({ referenceText: e.target.value })} />
+                        <p className="mt-1 text-[10px] text-gray-400">
+                            QUÉ hay que comunicar. <strong>No se imprime literal</strong>: es el sentido con el que se escribe
+                            el mensaje de cada club, con sus datos reales. Lo lee el redactor, no el modelo de imagen.
+                        </p>
+                    </div>
+
+                    <div className="mb-3">
+                        <span className={lbl}>Prompt maestro de composición</span>
                         <textarea className={`${box} min-h-[70px] resize-y text-xs leading-relaxed`}
                             value={composition.masterPrompt} maxLength={1200}
-                            placeholder="Cómo tiene que sentirse la pieza. En positivo y corto."
+                            placeholder="Cómo tiene que verse la pieza. En positivo y corto."
                             onChange={e => set({ masterPrompt: e.target.value })} />
                         <p className="mt-1 text-[10px] text-gray-400">
-                            Se agrega al final del prompt. Si el total se pasa del presupuesto del modelo, esto es lo primero
-                            que se recorta — y queda anotado en la consola.
+                            CÓMO tiene que verse. Es tu dirección de arte y pesa más que el estilo de acá abajo: si el prompt
+                            se pasa del presupuesto del modelo, lo primero que se recorta es la paleta y el estilo, no esto.
+                            Lo que nunca se recorta es la preservación de las personas ni el espacio para el texto.
                         </p>
                     </div>
 

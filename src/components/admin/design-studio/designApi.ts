@@ -160,6 +160,10 @@ export const linkPublication = (projectId: string, publicationId: string) =>
 export interface Composition {
     enabled: boolean;
     baseImageUrl: string | null;
+    /** QUÉ hay que comunicar: contexto semántico para el redactor. No se imprime
+     *  literal y no viaja al modelo de imagen. */
+    referenceText: string;
+    /** CÓMO tiene que verse: dirección de arte para el modelo de imagen. */
     masterPrompt: string;
     variants: number;
     publicVariants: number;
