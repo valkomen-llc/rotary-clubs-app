@@ -74,15 +74,37 @@ check('la ficha ya no pinta el contorno azul marino a mano',
     !ficha.includes('border-[#1B2B4D]'));
 check('ni la vista previa', !preview.includes('border-[#1B2B4D]'));
 
-// El naranja no salía de ninguna paleta: estaba sólo en este archivo. Se busca
-// la CLASE, no la mención: el comentario que explica de dónde se viene tiene
-// que poder nombrar el valor viejo sin hacer fallar la prueba.
-check('el panel ya no PINTA el naranja escrito a mano',
-    !/(?:bg|text|border)-\[#(?:D57D2C|c46f23)\]/i.test(panel));
+// El naranja no salía de ninguna paleta del sitio y no se repetía en ninguna
+// otra parte. Se busca la CLASE, no la mención: el comentario que explica de
+// dónde se viene tiene que poder nombrar el valor viejo sin hacer fallar la
+// prueba.
+const naranja = /(?:bg|text|border)-\[#(?:D57D2C|c46f23)\]/i;
+for (const [nombre, src] of [
+    ['el panel de inscripción', panel],
+    ['la botonera de la ficha', ficha],
+    ['la vista previa del panel', preview],
+]) {
+    check(`${nombre} ya no PINTA el naranja escrito a mano`, !naranja.test(src));
+}
+
+// v4.752 — El principal y el secundario son la PAREJA declarada: uno sólido que
+// pesa y uno suave a su lado. Es lo único que distingue cuál es el registro
+// principal, porque desde v4.719.1 los dos tienen el mismo alto y la misma
+// letra a propósito.
+check('la botonera pinta el principal con la piel sólida',
+    ficha.includes("variant === 'primary' ? CTA_SOLID : CTA_SOFT"));
+check('y la vista previa hace lo mismo, con el mismo criterio',
+    preview.includes("b.role === 'primary' ? CTA_SOLID : CTA_SOFT"));
+check('ninguna de las dos repite el azul lleno a mano',
+    !ficha.includes('bg-rotary-blue text-white') && !preview.includes('bg-rotary-blue text-white'));
 // La cuenta regresiva no se pulsa: reaccionar al cursor prometería algo que no
 // va a pasar. Es la razón de ser del segundo parámetro de `ctaSkin`.
 check('la cuenta regresiva va SIN hover', panel.includes('ctaSkin(CTA_SOFT, false)'));
-check('y el botón CON hover', /counter:[\s\S]{0,80}button: ctaSkin\(CTA_SOFT\)/.test(panel));
+// El mismo «Inscripciones» se pinta por dos caminos —el panel cuando el evento
+// no tiene categorías, y la botonera cuando sí—: con pieles distintas se vería
+// de dos maneras según una configuración que el visitante no conoce.
+check('y el botón del panel va en la piel SÓLIDA, como el principal de la botonera',
+    /button: ctaSkin\(CTA_SOLID\)/.test(panel));
 // La Feria tiene identidad propia (dorado y azul marino) y se respeta: lo que
 // se unifica es el tema POR DEFECTO, no toda personalización.
 check('el tema propio de la Feria se conserva',

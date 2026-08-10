@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.751.0 | 2026-08-10 (La cuenta regresiva y el botón de inscripción, con la píldora del sitio)
-// Cache bust: 2026-08-10a
+// UI V4.752.0 | 2026-08-10 (El botón «Inscripciones», en azul Rotary lleno)
+// Cache bust: 2026-08-10b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.752.0',
+        title: 'El botón «Inscripciones» ya no es naranja 🔵',
+        description: 'Quedaba un naranja escrito a mano en el botón principal de inscripción de la ficha de un evento y en su vista previa del panel: no pertenecía a ninguna paleta del sitio y no se repetía en ninguna otra parte. Ahora los dos botones de la ficha son la pareja que el sitio ya define: el principal en azul Rotary lleno con letra blanca, y «Registro CADRE» debajo en azul claro con letra azul. El color es lo único que distingue cuál es el registro principal —los dos tienen el mismo alto y la misma letra a propósito desde v4.719—, así que se conserva esa distinción con la paleta correcta. Además, el mismo botón «Inscripciones» se pintaba por dos caminos según si el evento tiene categorías configuradas o no, y quedaban con colores distintos; ahora los dos van igual, porque el visitante no conoce esa diferencia de configuración.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'diseno', 'botones'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'El botón principal de inscripción va en azul Rotary lleno; «Registro CADRE», en azul claro.' },
+            { type: 'changed', text: 'La vista previa del panel usa la misma fuente de colores que la ficha pública.' },
+            { type: 'fixed', text: 'El botón «Inscripciones» ya no cambiaba de color según si el evento tiene categorías.' },
+            { type: 'removed', text: 'El naranja escrito a mano desaparece del módulo de eventos.' },
+        ]
+    },
     {
         version: '4.751.0',
         title: 'La cuenta regresiva y el botón de inscripción, con los colores del sitio 🎨',

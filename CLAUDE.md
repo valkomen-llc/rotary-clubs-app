@@ -3910,15 +3910,25 @@ panel (`EventCtaManager.tsx`).
 - **El panel de inscripción de un evento es de esta MISMA familia** (v4.751,
   `RegistrationPanel.tsx`). Las cajas de la cuenta regresiva y el botón
   «Inscripciones» iban en un naranja (`#D57D2C`) escrito a mano que no salía de
-  ninguna paleta del sitio y no se repetía en ningún otro lado. Ahora toman
-  `CTA_SOFT` del módulo, como los demás. Las cajas van con
-  `ctaSkin(CTA_SOFT, false)` —**sin hover**— porque no se pulsan.
-  `FAIR_THEME` en `RegistroFeria.tsx` **se conserva**: lo que se unifica es el
-  tema POR DEFECTO, no toda personalización.
+  ninguna paleta del sitio y no se repetía en ningún otro lado. Ahora toman las
+  pieles del módulo. Las cajas van con `ctaSkin(CTA_SOFT, false)` —**sin
+  hover**— porque no se pulsan. `FAIR_THEME` en `RegistroFeria.tsx` **se
+  conserva**: lo que se unifica es el tema POR DEFECTO, no toda personalización.
+- **El principal y el secundario de la ficha son la PAREJA declarada** (v4.752):
+  `CTA_SOLID` arriba y `CTA_SOFT` debajo. El principal también llevaba el
+  naranja escrito a mano, en `EventRegistrationCta.tsx` y otra vez en su vista
+  previa del panel. Se eligió la pareja y no dejar los dos en azul claro porque
+  **el color es lo único que distingue cuál es el registro principal**: desde
+  v4.719.1 los dos tienen el mismo alto y la misma letra a propósito.
+- **El MISMO «Inscripciones» se pinta por dos caminos**, y tienen que verse
+  igual: `RegistrationPanel` cuando el evento no tiene categorías configuradas y
+  `EventRegistrationCta` cuando sí. Con pieles distintas, el botón cambiaría de
+  color según una configuración que el visitante no conoce — que es exactamente
+  el defecto que este módulo existe para no tener.
 - La comprobación de «nadie las escribe a mano» busca la **CLASE**, no la
   mención: el comentario que explica de dónde se viene tiene que poder nombrar
   el valor viejo sin hacer fallar la prueba.
-- Pruebas: `npm run test:cta` (27 casos). **Sin base, credenciales ni red.**
+- Pruebas: `npm run test:cta` (32 casos). **Sin base, credenciales ni red.**
   Comprueban dos cosas que no se ven mirando una pantalla: que nadie repita las
   clases a mano y que cada clase **exista en el CSS compilado** (por eso el
   bloque final se salta si no hay `dist/`).

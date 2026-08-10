@@ -25,7 +25,7 @@ import {
     Plus, RefreshCw, Save, Trash2,
 } from 'lucide-react';
 import { money } from '../../../lib/eventRegistrationSpec';
-import { CTA_SOFT, ctaSkin } from '../../../lib/ctaStyles';
+import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../../../lib/ctaStyles';
 import type { AdminCategory } from './EventCategoriesManager';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -174,9 +174,9 @@ const EventCtaManager = ({ eventId, cta, categories, saving, onChange, onSave, o
                                                 enseñando un botón que no es el que ve el visitante. */}
                                             {visibles.map((b: any) => (
                                                 <div key={b.key}
-                                                    className={`rounded-lg px-3 py-2 text-center text-xs font-bold ${b.role === 'primary'
-                                                        ? 'bg-[#D57D2C] text-white'
-                                                        : ctaSkin(CTA_SOFT, false)} ${b.available ? '' : 'opacity-45'}`}>
+                                                    className={`rounded-lg px-3 py-2 text-center text-xs font-bold ${
+                                                        ctaSkin(b.role === 'primary' ? CTA_SOLID : CTA_SOFT, false)
+                                                    } ${b.available ? '' : 'opacity-45'}`}>
                                                     {b.label}
                                                     {b.price > 0 && (
                                                         <span className="ml-1 font-normal">· {money(b.price, b.currency)}</span>
