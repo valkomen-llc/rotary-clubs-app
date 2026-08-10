@@ -130,6 +130,21 @@ export const generateDesignCopy = async ({
     tone = null,
     provider = null,
     language = 'es',
+    // ── EL TEXTO DE REFERENCIA DE LA PLANTILLA ──────────────────────
+    //
+    // Lo escribe el administrador una vez y dice QUÉ hay que comunicar en las
+    // piezas de esta plantilla —«reconocer la trayectoria, felicitar a los
+    // socios»—. No es el mensaje: es su intención.
+    //
+    // Va acá y no al modelo de imagen a propósito. Es la separación que sostiene
+    // el reparto del módulo: el modelo de imagen hace el arte y no escribe, y el
+    // modelo de lenguaje escribe con este contexto. Meterlo en el prompt visual
+    // sería pedirle al motor generativo que redacte, que es exactamente lo que
+    // acá no se le pide.
+    //
+    // Y NO se imprime literal: si se imprimiera, sobraría el generador de copy y
+    // todas las piezas dirían lo mismo, con el marcador del club sin resolver.
+    referenceText = '',
 } = {}) => {
     const toneSpec = tone && TONES[tone] ? TONES[tone] : null;
     const limit = Math.min(LIMITS.message, toneSpec?.maxChars || maxChars);
@@ -138,8 +153,13 @@ export const generateDesignCopy = async ({
         aniversario: 'Se celebra el ANIVERSARIO del club: cumple un año más desde su fundación. El tono es de reconocimiento por la trayectoria y de deseo hacia lo que viene.',
     }[purpose] || `Motivo de la pieza: ${purpose}.`;
 
-    const userText = `${purposeLine}
+    const referencia = String(referenceText || '').trim();
+    const referenceLine = referencia
+        ? `\nLa plantilla declara esta intención, escrita por quien la configuró. Es el SENTIDO que tiene que tener el mensaje, no un texto para copiar: reescribilo para ESTE club, con sus datos reales, sin repetirlo palabra por palabra y sin dejar ningún marcador entre llaves.\n«${referencia}»\n`
+        : '';
 
+    const userText = `${purposeLine}
+${referenceLine}
 ${contextBlock(context)}
 
 ${identityClause(Boolean(context.clubName))}

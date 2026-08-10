@@ -2764,6 +2764,22 @@ foto en un recuadro.
 - **Hay MÁS planes que `MAX_VARIANTS`, y es a propósito.** El tope es lo que se
   paga de una vez; la lista es el repertorio del que se elige. No atar los dos
   números.
+- **TRES TEXTOS, TRES COSAS DISTINTAS** (v4.755). `referenceText` dice QUÉ hay
+  que comunicar y lo lee el REDACTOR; `masterPrompt` dice CÓMO tiene que verse y
+  lo lee el MODELO DE IMAGEN; el copy final es de cada generación y vive en el
+  documento. Estaban mezclados en un solo campo y así una de las dos partes
+  siempre queda mal servida. La intención **no** viaja al prompt visual: sería
+  pedirle al motor generativo que redacte, que es justo lo que este módulo no le
+  pide, y encima gastaría el presupuesto del prompt de imagen. Y **no se imprime
+  literal** — si se imprimiera sobraría el redactor y todas las piezas dirían lo
+  mismo, con el marcador del club sin resolver.
+- **La dirección de arte del administrador pesa MÁS que el estilo genérico.**
+  Hasta v4.754 `masterPrompt` iba último y era lo primero que se recortaba: quien
+  escribía su dirección creativa podía quedarse sin ella mientras sobrevivía una
+  cláusula escrita por nosotros. Ahora se sacrifica primero la paleta y el
+  estilo. Lo que **no** se puede desplazar ni aflojar desde el prompt maestro es
+  la preservación de las personas y la franja del texto: van antes y no se
+  recortan nunca. Al tocar el orden, medir — la base ocupa 1.038 de 1.400.
 - **Se describe CÓMO se integra, no sólo que se integre.** «Colocala en el
   lienzo» da una foto pegada. Lo que produce una pieza de papelería es nombrar
   el mecanismo: la fotografía dentro de una forma grande de bordes redondeados

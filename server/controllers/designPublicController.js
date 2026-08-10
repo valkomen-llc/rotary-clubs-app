@@ -141,7 +141,12 @@ export const publicMessage = async (req, res) => {
             return res.json({ mensaje: r.mensaje, degraded: !!r.degraded, note: r.note || null });
         }
 
-        const copy = await generateDesignCopy({ purpose: row.category, tone, context, maxChars: limit });
+        // El texto de referencia sale de la fila publicada: es configuración de
+        // la plantilla, no un dato que el navegador pueda mandar.
+        const copy = await generateDesignCopy({
+            purpose: row.category, tone, context, maxChars: limit,
+            referenceText: normalizeComposition(row.composition).referenceText,
+        });
         res.json({ mensaje: copy.mensaje, degraded: !!copy.degraded, note: copy.note || null });
     } catch (e) {
         console.error('[designPublic] message:', e);

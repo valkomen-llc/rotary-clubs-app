@@ -1028,6 +1028,53 @@ const modernos = P.settingsForRefresh({ settings: { locked: ['mensaje'], frozen:
 check('los ajustes guardados mandan sobre la deducción',
     JSON.stringify(modernos.locked) === JSON.stringify(['mensaje']) && modernos.intro === 'Hola');
 
+grupo('Tres textos, tres cosas distintas');
+
+// El pedido separa explícitamente: qué comunicar (referencia), cómo verse
+// (prompt maestro) y el copy final de cada generación. Se guardan aparte
+// porque los consume maquinaria distinta.
+const conTextos = CO.normalizeComposition({
+    enabled: true,
+    referenceText: '  Celebramos la trayectoria del {{club}} y a sus socios.  ',
+    masterPrompt: 'Elegante, con luz suave.',
+});
+check('el texto de referencia se guarda aparte del prompt maestro',
+    conTextos.referenceText === 'Celebramos la trayectoria del {{club}} y a sus socios.'
+    && conTextos.masterPrompt === 'Elegante, con luz suave.');
+check('una composición sin ellos no los inventa',
+    CO.normalizeComposition({}).referenceText === '' && CO.normalizeComposition({}).masterPrompt === '');
+check('el texto de referencia tiene tope',
+    CO.normalizeComposition({ referenceText: 'x'.repeat(5000) }).referenceText.length <= CO.REFERENCE_MAX_CHARS);
+
+// Lo que NO puede pasar: que la intención acabe en el prompt de imagen. Ahí
+// sería pedirle al motor generativo que redacte, que es justo lo que este
+// módulo no le pide — y además gastaría presupuesto del prompt visual.
+const promptVisual = CO.buildBackdropPrompt({
+    composition: conTextos, plan: CO.VARIANT_PLANS[0],
+    photo: { url: 'https://x/f.jpg' }, hasBase: true,
+});
+check('el texto de referencia NO viaja al modelo de imagen',
+    !/Celebramos la trayectoria/.test(promptVisual.prompt));
+check('pero la dirección de arte SÍ', /Elegante, con luz suave/.test(promptVisual.prompt));
+
+// El prompt maestro pesa más que el estilo genérico: era al revés, y un
+// administrador que escribía su dirección creativa podía quedarse sin ella
+// mientras sobrevivía una cláusula escrita por nosotros.
+const maestroGrande = CO.buildBackdropPrompt({
+    // Medido: la base con paleta y estilo ocupa 1038 de 1400, así que una
+    // dirección de arte de 400 sólo entra si se sacrifica el estilo.
+    composition: CO.normalizeComposition({ enabled: true, masterPrompt: 'D'.repeat(400) }),
+    plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
+    palette: { primary: '#17458F', accent: '#F7A81B' },
+});
+check('al recortar se sacrifica el estilo antes que la dirección de arte',
+    maestroGrande.dropped.includes('paleta y estilo') && /D{50}/.test(maestroGrande.prompt),
+    maestroGrande.dropped.join(', '));
+check('y el prompt sigue dentro del presupuesto',
+    maestroGrande.prompt.length <= CO.PROMPT_MAX_CHARS);
+check('lo que sostiene la composición nunca se recorta',
+    /stays in the frame, whole and recognisable/.test(maestroGrande.prompt));
+
 grupo('El lienzo institucional se DIBUJA');
 
 // Lo reportado: la imagen base se elegía en el panel de Composición y no

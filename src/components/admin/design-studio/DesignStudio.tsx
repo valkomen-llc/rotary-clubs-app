@@ -95,7 +95,7 @@ const DesignStudio: React.FC = () => {
     // La composición con IA sale de la plantilla elegida y el administrador la
     // ajusta acá. Se guarda con el diseño y viaja a la publicación.
     const [composition, setComposition] = useState<Composition>({
-        enabled: false, baseImageUrl: null, masterPrompt: '', variants: 1, publicVariants: 1, style: 'institucional',
+        enabled: false, baseImageUrl: null, referenceText: '', masterPrompt: '', variants: 1, publicVariants: 1, style: 'institucional',
     });
 
     const viewportRef = useRef<HTMLDivElement>(null);

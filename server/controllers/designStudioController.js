@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.736.0 cargado — Plantillas IA. Un diseño se puede atar a mano a su enlace público.');
+console.log('[designStudioController] v4.755.0 cargado — Plantillas IA. Texto de referencia y prompt maestro son dos cosas distintas.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -116,7 +116,7 @@ export const putFoundation = async (req, res) => {
 export const compose = async (req, res) => {
     try {
         await ensureDesignSchema();
-        const { templateId, subjectClubId, overrides = {}, skipAI = false, tone = null, provider = null } = req.body || {};
+        const { templateId, subjectClubId, overrides = {}, skipAI = false, tone = null, provider = null, composition = null } = req.body || {};
 
         const template = templateById(templateId);
         if (!template) return res.status(400).json({ error: `Plantilla desconocida: ${templateId}` });
@@ -147,6 +147,10 @@ export const compose = async (req, res) => {
                     projects: branding?.projects,
                 },
                 maxChars: template.id === 'aniversario_clasico' ? 340 : 300,
+                // La intención declarada en la plantilla. Sin ella el mensaje
+                // sale correcto pero genérico: lo que le da sentido propio a
+                // esta plantilla es lo que escribió quien la configuró.
+                referenceText: normalizeComposition(composition ?? template.composition).referenceText,
             });
         }
 

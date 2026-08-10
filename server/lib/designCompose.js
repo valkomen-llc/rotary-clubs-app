@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Plantillas IA — Motor de Composición (el CRITERIO)
-// v4.734.0
+// v4.755.0
 //
 // PURO: sin base, sin red, sin IA, sin DOM. Decide qué se le pide al modelo de
 // imagen, con qué variantes y qué se acepta de vuelta. La orquestación —hablar
@@ -55,6 +55,10 @@ import { formatOf } from './designSpec.js';
 export const COMPOSE_MODEL = () => process.env.DESIGN_COMPOSE_MODEL || 'google/nano-banana-edit';
 export const MAX_VARIANTS = 4;
 export const DEFAULT_VARIANTS = 1;
+
+/** El texto de referencia va al generador de COPY, no al de imagen, así que su
+ *  tope es el de un contexto de texto y no el presupuesto de `nano-banana`. */
+export const REFERENCE_MAX_CHARS = 1200;
 
 // ─── Planes de variante ────────────────────────────────────────────────
 //
@@ -201,6 +205,24 @@ export const clearClauseFor = (banda) => {
 export const COMPOSITION_DEFAULTS = {
     enabled: false,
     baseImageUrl: null,
+    // ── TRES TEXTOS, TRES COSAS DISTINTAS ───────────────────────────
+    //
+    // Se guardan por separado a propósito, porque responden preguntas
+    // distintas y los consume maquinaria distinta. Mezclarlos es el error que
+    // este módulo ya cometió teniendo sólo dos:
+    //
+    //   · `referenceText` — QUÉ hay que comunicar. Es contexto SEMÁNTICO y lo
+    //     lee el generador de copy, no el modelo de imagen. No se imprime
+    //     literal: describe la intención («reconocer la trayectoria, felicitar
+    //     a los socios») para que el mensaje de cada club salga con ese sentido.
+    //   · `masterPrompt` — CÓMO tiene que verse la pieza. Es dirección de arte
+    //     y lo lee el modelo de imagen.
+    //   · El copy final —el texto impreso de ESA generación— no vive acá: se
+    //     produce por club y queda en el documento.
+    //
+    // Meter la intención dentro del prompt de imagen sería pedirle al modelo
+    // generativo que escriba, que es justo lo que este módulo no le pide.
+    referenceText: '',
     masterPrompt: '',
     variants: DEFAULT_VARIANTS,
     // Cuántas variantes ve el público. Por defecto una: el portal es anónimo y
@@ -218,6 +240,7 @@ export const normalizeComposition = (raw) => {
     return {
         enabled: !!c.enabled,
         baseImageUrl: typeof c.baseImageUrl === 'string' && c.baseImageUrl.trim() ? c.baseImageUrl.trim() : null,
+        referenceText: String(c.referenceText || '').slice(0, REFERENCE_MAX_CHARS).trim(),
         masterPrompt: String(c.masterPrompt || '').slice(0, 1200).trim(),
         variants: clampVariants(c.variants, DEFAULT_VARIANTS),
         publicVariants: clampVariants(c.publicVariants, DEFAULT_VARIANTS),
@@ -292,25 +315,41 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
         partes.push('Everyone in the photograph stays in the frame, whole and recognisable, with their faces and their clothing exactly as they are.');
     }
 
-    // 4. Paleta y estilo.
+    // 4. LA DIRECCIÓN DE ARTE DEL ADMINISTRADOR.
+    //
+    // Va ANTES de la paleta y el estilo genérico, y ése es un cambio deliberado
+    // respecto de v4.734: el prompt maestro era lo ÚLTIMO y por tanto lo
+    // primero que se recortaba, así que un administrador que se tomara el
+    // trabajo de escribir su dirección creativa podía quedarse sin ella
+    // mientras sobrevivía una cláusula de estilo escrita por nosotros. Entre
+    // las dos, manda la suya.
+    //
+    // Lo que NO se puede desplazar es la preservación de las personas ni la
+    // franja del texto: van antes, y no se recortan nunca. Un prompt maestro no
+    // puede aflojar por lo bajo una garantía que la pieza promete.
+    if (c.masterPrompt) partes.push(c.masterPrompt);
+
+    // 5. Paleta y estilo, que es lo más prescindible: son la guinda cuando ya
+    //    hay un lienzo institucional y una dirección de arte escrita.
     const cols = [palette.primary, palette.accent].filter(Boolean);
     if (cols.length) partes.push(`The palette leans on ${cols.join(' and ')} with plenty of white.`);
     partes.push(STYLE_CLAUSES[c.style] || STYLE_CLAUSES.institucional);
 
-    // 5. Lo del administrador, al final y acotado.
-    if (c.masterPrompt) partes.push(c.masterPrompt);
-
     const full = partes.join(' ');
     if (full.length <= PROMPT_MAX_CHARS) return { prompt: full, dropped: [] };
 
-    // Se recorta por el final —el prompt maestro primero, después el estilo—,
-    // nunca la parte que sostiene la composición. Y se DICE lo que se dejó
-    // fuera: un recorte silencioso convierte «lo pedimos» en una afirmación
-    // falsa (misma regla que el prompt de escena del Creador de Reels).
+    // Se recorta por el FINAL, que ahora es el estilo genérico y no la
+    // dirección de arte. Y se DICE lo que se dejó fuera: un recorte silencioso
+    // convierte «lo pedimos» en una afirmación falsa (misma regla que el prompt
+    // de escena del Creador de Reels).
     const dropped = [];
-    const sinMaestro = partes.slice(0, c.masterPrompt ? -1 : partes.length);
-    if (c.masterPrompt) dropped.push('prompt maestro');
-    let out = sinMaestro.join(' ');
+    const sinEstilo = partes.slice(0, -(cols.length ? 2 : 1));
+    dropped.push('paleta y estilo');
+    let out = sinEstilo.join(' ');
+    if (out.length > PROMPT_MAX_CHARS && c.masterPrompt) {
+        out = sinEstilo.slice(0, -1).join(' ');
+        dropped.push('prompt maestro');
+    }
     if (out.length > PROMPT_MAX_CHARS) {
         out = out.slice(0, PROMPT_MAX_CHARS).replace(/\s+\S*$/, '');
         dropped.push('cola del prompt');
