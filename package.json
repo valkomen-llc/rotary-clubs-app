@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.752.0",
-  "cache_bust": "2026-08-10b (El boton Inscripciones, en azul Rotary lleno.)",
+  "version": "4.753.0",
+  "cache_bust": "2026-08-10c (El fondo de los eventos, con la textura de la portada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -163,8 +163,14 @@ const Eventos = () => {
                 </div>
             </section>
 
-            {/* Events Grid */}
-            <section className="py-24 bg-gray-50">
+            {/* Events Grid.
+                v4.753 — El fondo es la MISMA textura de hormigón que lleva la
+                banda de cifras de la portada (`StatsSection`), en vez de un gris
+                plano: las dos son rejillas de tarjetas blancas sobre un fondo, y
+                con dos fondos distintos se leían como piezas de sitios
+                distintos. La clase vive en `index.css`; no se repite el
+                `background-image` a mano. */}
+            <section className="py-24 bg-rotary-concrete">
                 <div className="max-w-7xl mx-auto px-6">
                     {loading ? (
                         <div className="flex justify-center py-20">

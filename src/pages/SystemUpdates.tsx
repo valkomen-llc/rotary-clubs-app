@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.752.0 | 2026-08-10 (El botón «Inscripciones», en azul Rotary lleno)
-// Cache bust: 2026-08-10b
+// UI V4.753.0 | 2026-08-10 (El fondo de los eventos, con la textura de la portada)
+// Cache bust: 2026-08-10c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.753.0',
+        title: 'La lista de eventos, sobre la misma textura de la portada 🧱',
+        description: 'La rejilla de tarjetas de la página de Eventos iba sobre un gris plano, mientras que la banda de cifras de la portada —que es la misma idea: tarjetas blancas sobre un fondo— va sobre la textura de hormigón del sitio. Con dos fondos distintos, las dos secciones se leían como piezas de sitios diferentes. Ahora comparten fondo. La textura sale de la clase que ya existe en los estilos del sitio, no de un fondo escrito otra vez en la página.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'diseno'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La rejilla de eventos va sobre la textura de hormigón, como la banda de cifras de la portada.' },
+        ]
+    },
     {
         version: '4.752.0',
         title: 'El botón «Inscripciones» ya no es naranja 🔵',
