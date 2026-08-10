@@ -277,45 +277,6 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la casilla de fotografía ofrece la BIBLIOTECA', /Biblioteca/.test(texto));
     check('hay un campo de archivo en la casilla', await page.locator('input[type=file]').count() >= 1);
 
-    // ── El hueco de la FOTOGRAFÍA ──────────────────────────────────
-    //
-    // Un diseño sin espacio para la fotografía no la pide en el formulario
-    // público y no hay nada que integrar en el lienzo — y desde el panel eso no
-    // se ve, porque el administrador mira su pieza completa. Pasa con los
-    // diseños hechos antes de v4.722.3, cuando el compilador borraba el hueco
-    // cuyo valor no se podía resolver: el logotipo sobrevivía —el club sí tiene
-    // escudo— y la fotografía no.
-    //
-    // Va acá, antes de que el resto de la prueba marque una capa como
-    // «Fotografía del club»: después ya habría espacio y el aviso no
-    // correspondería.
-    await page.getByText('Activar', { exact: true }).click();
-    await page.waitForTimeout(400);
-    check('sin espacio para la fotografía, se AVISA',
-        /no la va a pedir/i.test(await page.locator('aside').first().textContent()));
-    await page.getByText('Agregar el espacio de la fotografía').click();
-    await page.waitForTimeout(500);
-    check('y se puede agregar de un clic',
-        await page.locator('[data-node^="foto"]').count() === 1);
-    check('el aviso desaparece cuando ya está',
-        !/no la va a pedir/i.test(await page.locator('aside').first().textContent()));
-    // Lo que hace que sirva: que quede marcado como campo del portal. Un hueco
-    // que no es campo no lo puede llenar nadie — el defecto de v4.722.3. Se lee
-    // en Propiedades, que es donde el administrador lo vería.
-    const propsFoto = (await page.locator('aside').last().textContent()).replace(/\s+/g, ' ');
-    check('el espacio nace marcado como campo del portal público',
-        /Tipo de campo/.test(propsFoto) && /Fotograf/i.test(propsFoto), propsFoto.slice(0, 200));
-    // Se retira para que el resto de la prueba siga con el mismo diseño de
-    // antes: queda seleccionado al crearlo, así que basta con borrarlo.
-    await page.keyboard.press('Delete');
-    await page.waitForTimeout(300);
-    check('y se puede quitar como cualquier elemento',
-        await page.locator('[data-node^="foto"]').count() === 0);
-    // Y se vuelve a apagar la composición: encendida agrega su propia casilla
-    // de archivo al panel, y lo que sigue busca las casillas por posición.
-    await page.getByText('Activar', { exact: true }).click();
-    await page.waitForTimeout(300);
-
     await page.getByText('Capas', { exact: true }).click();
     await page.waitForTimeout(250);
     const capas = await page.locator('aside').last().innerText();
@@ -335,6 +296,53 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la imagen subida entra como capa', /Imagen/.test(await page.locator('aside').last().innerText()));
     check('y se dibuja en el lienzo', await page.locator('img[src*="subida.png"], img[src*="banner-image"]').count() > 0);
     check('subir no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
+    // ── El hueco de la FOTOGRAFÍA ──────────────────────────────────
+    //
+    // Un diseño sin espacio para la fotografía no la pide en el formulario
+    // público y no hay nada que integrar en el lienzo — y desde el panel eso no
+    // se ve, porque el administrador mira su pieza completa. Pasa con los
+    // diseños hechos antes de v4.722.3, cuando el compilador borraba el hueco
+    // cuyo valor no se podía resolver: el logotipo sobrevivía —el club sí tiene
+    // escudo— y la fotografía no.
+    //
+    // Va DESPUÉS de subir una capa —con la mesa vacía no hay diseño del que
+    // avisar— y ANTES de que el resto de la prueba marque una capa como
+    // «Fotografía del club», porque a partir de ahí sí habría espacio.
+    await page.getByText('Activar', { exact: true }).click();
+    await page.waitForTimeout(400);
+    check('sin espacio para la fotografía, se AVISA',
+        /no la va a pedir/i.test(await page.locator('aside').first().textContent()));
+    await page.getByText('Agregar el espacio de la fotografía').click();
+    await page.waitForTimeout(500);
+    check('y se puede agregar de un clic',
+        await page.locator('[data-node^="foto"]').count() === 1);
+    check('el aviso desaparece cuando ya está',
+        !/no la va a pedir/i.test(await page.locator('aside').first().textContent()));
+    // Lo que hace que sirva: que quede marcado como campo del portal. Un hueco
+    // que no es campo no lo puede llenar nadie — el defecto de v4.722.3. Se lee
+    // en Propiedades, que es donde el administrador lo vería.
+    await page.getByText('Propiedades', { exact: true }).click();
+    await page.waitForTimeout(300);
+    const propsFoto = (await page.locator('aside').last().textContent()).replace(/\s+/g, ' ');
+    check('el espacio nace marcado como campo del portal público',
+        /Tipo de campo/.test(propsFoto) && /Fotograf/i.test(propsFoto), propsFoto.slice(0, 200));
+    // Se retira para que el resto de la prueba siga con el mismo diseño de
+    // antes: queda seleccionado al crearlo, así que basta con borrarlo.
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(300);
+    check('y se puede quitar como cualquier elemento',
+        await page.locator('[data-node^="foto"]').count() === 0);
+    // Y se vuelve a apagar la composición: encendida agrega su propia casilla
+    // de archivo al panel, y lo que sigue busca las casillas por posición.
+    await page.getByText('Activar', { exact: true }).click();
+    await page.waitForTimeout(300);
+    // Se devuelve la selección a la capa: borrar el hueco la dejó vacía, y lo
+    // que sigue comprueba Propiedades sobre un elemento seleccionado.
+    await page.getByText('Capas', { exact: true }).click();
+    await page.waitForTimeout(250);
+    await page.locator('aside').last().getByText('Imagen', { exact: true }).first().click();
+    await page.waitForTimeout(250);
 
     // ── Marcar un elemento como campo público ──────────────────────
     // El caso reportado: un diseño armado a mano no tenía variables, el
@@ -737,6 +745,26 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // Se marcan TODOS los huecos de imagen vacíos, no sólo el logotipo: la
     // fotografía tiene el mismo problema y la misma solución.
     const textosMarcas = await marcas.allInnerTexts();
+    // El tablero a cuadros es del EDITOR. En el portal la pieza es lo que se va
+    // a descargar, y un tablero gris ocupando media pieza la hace ver rota.
+    check('en el portal, un hueco vacío NO dibuja el tablero a cuadros',
+        await page.evaluate(() => [...document.querySelectorAll('[data-node]')]
+            .every(e => !/repeating-conic/.test(getComputedStyle(e).backgroundImage))));
+    check('ni el cartel «Sin imagen»',
+        !/Sin imagen/.test(await page.locator('#root').innerText()));
+    // Dos recuadros anidados —la fotografía ocupa media pieza y el logotipo cae
+    // dentro— escribían sus rótulos uno encima del otro.
+    check('los rótulos de dos huecos anidados no se pisan',
+        await page.evaluate(() => {
+            const cajas = [...document.querySelectorAll('[data-hint]')]
+                .map(e => e.getBoundingClientRect());
+            if (cajas.length < 2) return true;
+            // Cada rótulo se dibuja arriba de su caja: basta con que las cajas
+            // no empiecen a la misma altura.
+            const tops = cajas.map(r => Math.round(r.top));
+            return new Set(tops).size === tops.length;
+        }));
+
     check('se marca cada hueco de imagen vacío', textosMarcas.length >= 2, textosMarcas.join(' | '));
     // Un hueco SIN ejemplo se identifica por su etiqueta; el que TIENE ejemplo
     // se ve limpio a propósito, así que se lo busca por su id — el del nodo.
