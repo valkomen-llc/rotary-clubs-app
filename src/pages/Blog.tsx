@@ -219,8 +219,13 @@ const Blog = () => {
         </section>
       )}
 
-      {/* Filtros y Grid de Artículos */}
-      <section className="py-12 md:py-16">
+      {/* Filtros y Grid de Artículos.
+          v4.754 — Sobre la MISMA textura de hormigón que ya usan «Artículos
+          Destacados» justo encima, la rejilla de eventos y la banda de cifras de
+          la portada. Esta sección era la única de la página sin fondo, así que
+          heredaba el blanco y quedaba un corte contra el bloque de arriba. La
+          clase vive en `index.css`; no se repite el `background-image` a mano. */}
+      <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Filtros de Categoría */}
           <div className="flex flex-wrap gap-2 mb-12 justify-center">
@@ -248,7 +253,9 @@ const Blog = () => {
               ))}
             </div>
           ) : articulosPagina.length === 0 ? (
-            <div className="text-center py-24 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+            // v4.754 — En blanco, como las tarjetas: sobre la textura, un gris
+            // claro se lee como un parche y no como una tarjeta vacía.
+            <div className="text-center py-24 bg-white rounded-3xl border border-dashed border-gray-200">
               <Tag className="w-12 h-12 text-gray-200 mx-auto mb-4" />
               <p className="text-gray-500 font-medium">No hay noticias disponibles en esta categoría.</p>
             </div>
