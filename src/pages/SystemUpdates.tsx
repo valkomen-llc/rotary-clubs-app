@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.753.0 | 2026-08-10 (El fondo de los eventos, con la textura de la portada)
-// Cache bust: 2026-08-10c
+// UI V4.754.0 | 2026-08-10 (El fondo de las noticias, con la textura del sitio)
+// Cache bust: 2026-08-10d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.754.0',
+        title: 'La lista de noticias, sobre la misma textura 🧱',
+        description: 'La rejilla de artículos de la página de Noticias era la única sección de esa página sin fondo, así que heredaba el blanco y quedaba un corte contra «Artículos Destacados», que va justo encima sobre la textura de hormigón del sitio. Ahora las dos comparten fondo, igual que la lista de eventos y la banda de cifras de la portada. De paso, el aviso de «no hay noticias en esta categoría» pasa de gris claro a blanco: sobre la textura, un gris se leía como un parche y no como una tarjeta.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'diseno'],
+        type: 'improvement',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La rejilla de noticias va sobre la textura de hormigón, como el resto del sitio.' },
+            { type: 'changed', text: 'El aviso de categoría sin noticias se ve como una tarjeta, no como un parche gris.' },
+        ]
+    },
     {
         version: '4.753.0',
         title: 'La lista de eventos, sobre la misma textura de la portada 🧱',
