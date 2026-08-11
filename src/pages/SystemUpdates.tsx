@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.763.0 | 2026-08-11 (El encuadre y la ocasion los declara la plantilla)
-// Cache bust: 2026-08-11e
+// UI V4.764.0 | 2026-08-11 (La Biblioteca se dibuja por tandas)
+// Cache bust: 2026-08-11f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.764.0',
+        title: 'El selector de imágenes ya no se queda en blanco al bajar 🖼️',
+        description: 'Se reportó que al ir a poner la imagen de base y bajar, las imágenes de la Biblioteca no cargaban: tarjetas vacías. No era la red ni el servidor —la respuesta llegaba completa—: la rejilla dibujaba la lista ENTERA de una vez, y en este sitio la Biblioteca tiene 3.295 imágenes. Son 3.295 elementos de imagen en el documento; la carga diferida del navegador aplaza la descarga pero no la creación, y al desplazarse se dispara una avalancha de peticiones que se atascan entre sí. El resultado son tarjetas en blanco, que además se ven exactamente igual que «esta imagen no existe». Ahora se dibuja una tanda de 60 y la siguiente entra sola al acercarse al final, con un botón por si el desplazamiento fue de un tirón y además diciendo cuántas quedan. Y dos estados que antes se confundían con «todavía está cargando»: una imagen sin archivo se muestra como tal, y una que el navegador no puede traer se marca en vez de dejar una tarjeta muda. Cambiar de categoría, de carpeta o de búsqueda vuelve a empezar por la primera tanda: conservar la página anterior dejaría mirando el hueco de una lista que ya no existe.',
+        date: new Date().toISOString(),
+        tags: ['biblioteca', 'rendimiento'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La rejilla del selector se dibuja por tandas de 60, no las 3.295 de una vez.' },
+            { type: 'added', text: 'La tanda siguiente entra sola al bajar, y se dice cuántas quedan.' },
+            { type: 'improved', text: 'Una imagen sin archivo o que no se pudo traer se marca, en vez de quedar en blanco.' },
+        ]
+    },
     {
         version: '4.763.0',
         title: 'El encuadre y los motivos de la ocasión ya los decide la plantilla 🎨',
