@@ -103,9 +103,21 @@ export const VARIANT_PLANS = [
         id: 'foto_recorte_curvo',
         label: 'Recorte curvo',
         summary: 'La foto entra en una forma redondeada arriba a la derecha, mordida por la curva del lienzo.',
-        photo: 'the photograph fills one large rounded shape in the upper right, its lower edge cut by the sweeping curve of the canvas',
+        photo: 'the photograph fills one large rounded shape in the upper right, taking up a substantial part of the layout, its lower edge cut by the sweeping curve of the canvas',
         clear: 'the left column and the lower area stay a calm, even surface with plenty of room to read',
         textZone: { y: 0.45, h: 0.5 },
+    },
+    {
+        // La forma de la papelería del Distrito: un óvalo alto arriba a la
+        // derecha, con el borde levantado por un resplandor blanco suave. Es la
+        // referencia que trajo el equipo (la pieza de «La verdadera inclusión»)
+        // y la que mejor se lleva con el texto en columna a la izquierda.
+        id: 'foto_ovalo_brillo',
+        label: 'Óvalo con brillo',
+        summary: 'La foto entra en un óvalo alto arriba a la derecha, con un halo blanco suave que la levanta del fondo.',
+        photo: 'the photograph fills one large tall soft-edged oval in the upper right, taking up a substantial part of the layout, its curved edge lifted off the canvas by a gentle white glow',
+        clear: 'the left column and the lower area stay a calm, even surface with plenty of room to read',
+        textZone: { y: 0.4, h: 0.5 },
     },
     {
         id: 'foto_fondo',
@@ -307,7 +319,14 @@ export const normalizeComposition = (raw) => {
 // El presupuesto es real: `nano-banana` recorta prompts largos y lo primero que
 // se pierde es el final. Por eso el plan va ANTES del prompt maestro y el
 // maestro se acota.
-export const PROMPT_MAX_CHARS = 1400;
+// El presupuesto es NUESTRO, no un límite declarado por el modelo: `nano-banana`
+// acepta bastante más y lo que pasa con un prompt larguísimo es que se diluye,
+// no que se rechace. Estaba en 1400 y con la dirección de arte del Distrito
+// escrita —la lámina clara con la banda azul y dorada— se caían justo los
+// motivos de la ocasión, que es lo que el cliente había pedido. Se sube y queda
+// configurable, como el prompt de escena del Creador de Reels: si algún día un
+// motor recorta antes, se ajusta sin desplegar.
+export const PROMPT_MAX_CHARS = Number(process.env.DESIGN_PROMPT_MAX_CHARS) || 2000;
 // Los motivos de la ocasión son un ACENTO, no un párrafo: acotados para que no
 // desplacen lo que sostiene la composición y para que el modelo no los tome por
 // el tema de la pieza.
@@ -319,7 +338,9 @@ export const NEGATIVE_PROMPT =
     + 'distorted faces, extra people, duplicated people, warped hands, harsh shadows, heavy vignette, cluttered collage, '
     // Lo que salió de verdad al estrenar la composición: una miniatura con
     // marco flotando en el medio, en vez de la forma grande integrada.
-    + 'framed inset, thumbnail, photo border, sticker, drop shadow box, polaroid';
+    + 'framed inset, thumbnail, photo border, sticker, drop shadow box, polaroid, '
+    // El fondo salía oscurecido y con un gris sucio encima del lienzo claro.
+    + 'grey wash, darkened background, muddy tones, desaturated, heavy gradient';
 
 const STYLE_CLAUSES = {
     institucional: 'The mood is calm and institutional: soft light, generous white space, understated elegance.',
@@ -348,7 +369,7 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
         // modelo de edición entiende «reproducilo sin cambios, lo único que se
         // añade es la fotografía» mucho mejor que una lista de cualidades a
         // respetar, porque lo segundo lo lee como una descripción de estilo.
-        partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Do not restyle it and do not redraw it. The only thing added is the photograph.');
+        partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Its surface stays bright and light throughout. Do not restyle it and do not redraw it. The only thing added is the photograph.');
         // Cómo se INTEGRA, no sólo que se integre. Es lo que separa una foto
         // pegada de una pieza de papelería: la fotografía va DENTRO de una
         // forma que pertenece al lienzo —un recorte de bordes curvos, con su
@@ -357,7 +378,7 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
         // Y el TAMAÑO se dice: sin él salía una miniatura con marco flotando en
         // el medio. «Grande» y «una parte sustancial de la lámina» es lo que
         // entiende un modelo de imagen; un porcentaje no.
-        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed stationery does: it fills one LARGE softly rounded shape taking up a substantial part of the layout, its curve following the curves already in the canvas, a clean margin breathing around it, its edge easing into the surface instead of sitting in a frame, its light matched so the two read as a single designed piece.');
+        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed stationery does: a clean margin of canvas breathing around it, its edge easing into the surface instead of sitting in a frame, and its light and colour matched so the two read as a single designed piece.');
     } else if (photo) {
         partes.push('The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
     } else if (hasBase) {

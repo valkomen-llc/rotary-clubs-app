@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.764.0 | 2026-08-11 (La Biblioteca se dibuja por tandas)
-// Cache bust: 2026-08-11f
+// UI V4.765.0 | 2026-08-11 (La pieza de aniversario sigue la lamina del Distrito)
+// Cache bust: 2026-08-11g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.765.0',
+        title: 'La pieza de aniversario ya sigue la lámina que usa el Distrito 🎈',
+        description: 'Con las referencias del equipo —la lámina de PowerPoint de los aniversarios y la pieza de «La verdadera inclusión»— la dirección de arte quedó escrita en la plantilla, que es donde se puede cambiar sin desplegar. Tres cosas reportadas. La primera: el fondo salía oscurecido, con un gris apagado encima del lienzo claro. Ahora se le pide que la superficie se mantenga clara y luminosa, y lo contrario va al campo de lo que no se quiere. La segunda: la fotografía no tenía una forma coherente. Se agregó el encuadre «Óvalo con brillo» —un óvalo alto arriba a la derecha, con un halo blanco suave que lo levanta del fondo, como en la pieza de referencia— y la plantilla lo trae puesto. De paso se corrigió una contradicción que venía de antes: la forma y el tamaño se describían DOS veces, una en la cláusula común y otra en el encuadre, y se pisaban entre sí; ahora la cláusula común dice sólo CÓMO se integra —el margen, el borde que se funde, la luz igualada— y el encuadre dice qué forma tiene y dónde va. La tercera: los globos y confetis ahora son dorados y blanco perlado con cintas finas, agrupados hacia un borde, que es la paleta de la lámina. Y un ajuste que hacía falta para que todo esto llegara: el presupuesto del prompt era un número nuestro, conservador, y con la dirección de arte escrita se caían justo los motivos de la ocasión — es decir, lo que se había pedido. Se subió y quedó configurable por entorno.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Encuadre «Óvalo con brillo»: la forma de la pieza de referencia.' },
+            { type: 'fixed', text: 'El lienzo se mantiene claro: se acabó el gris apagado sobre el fondo.' },
+            { type: 'changed', text: 'Globos y confetis dorados y blanco perlado, como la lámina del Distrito.' },
+            { type: 'fixed', text: 'La forma dejó de describirse dos veces y contradecirse.' },
+        ]
+    },
     {
         version: '4.764.0',
         title: 'El selector de imágenes ya no se queda en blanco al bajar 🖼️',

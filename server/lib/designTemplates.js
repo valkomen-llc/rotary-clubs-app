@@ -75,18 +75,24 @@ export const TEMPLATES = [
         composition: {
             enabled: false,
             baseImageUrl: null,
-            masterPrompt: 'Keep the piece serene and institutional, in the visual language of Rotary stationery.',
+            // La dirección de arte sale de la lámina de PowerPoint que el
+            // Distrito ya usa para los aniversarios: superficie nacarada muy
+            // clara con la textura de olas suaves, y el azul y el dorado
+            // reservados a la banda de abajo. Es lo que hace que la pieza se
+            // reconozca como suya — y lo que faltaba cuando el fondo salía con
+            // un gris apagado encima.
+            masterPrompt: 'The canvas is a bright pearl-white surface with soft flowing wave texture; royal blue and gold appear only in the sweeping band along the bottom. Everything above it stays light, airy and uncluttered, in the visual language of Rotary stationery.',
             // El encuadre se DECLARA: es dirección de arte, no una puntuación.
             // Sin esto, `plansFor` elegía el óvalo del medio —puntuaba mejor
             // contra la franja del texto— y la pieza salía con una miniatura
             // flotando. La forma grande mordida por la curva es la papelería
             // del Distrito, la referencia que trajo el equipo.
-            photo: { strategy: 'compose', plan: 'foto_recorte_curvo', edgeCrop: 'allow' },
+            photo: { strategy: 'compose', plan: 'foto_ovalo_brillo', edgeCrop: 'allow' },
             // Es una pieza de ANIVERSARIO y tiene que notarse, sin volverse una
             // tarjeta de cumpleaños: el acento va acotado —pocos, pequeños, en
             // los huecos, nunca sobre la gente ni sobre donde va el texto—
             // porque un motivo sin acotar se come la pieza.
-            motifs: 'A few very small celebratory touches: a light scatter of fine confetti and one or two soft balloons, barely there, in the brand colours, tucked into the empty corners of the canvas, never over the people and never over the calm area.',
+            motifs: 'A small elegant cluster of gold and pearl-white balloons with thin gold ribbons, and a light scatter of fine gold confetti, gathered towards one edge of the canvas, never over the people and never over the calm area.',
             variants: 4,
             publicVariants: 1,
             style: 'institucional',
