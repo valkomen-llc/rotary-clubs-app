@@ -890,7 +890,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     await page.waitForTimeout(1200);
     const txtListo = await page.locator('#root').innerText();
     check('el título imprime los años afirmados',
-        /Felices 52 años/.test(await page.locator('[data-node="titulo"]').innerText().catch(() => '')));
+        /aniversario número 52/.test(await page.locator('[data-node="titulo"]').innerText().catch(() => '')));
     check('con la pieza lista ofrece descargar y compartir',
         /Descargar PNG/.test(txtListo) && /Compartir/.test(txtListo));
 

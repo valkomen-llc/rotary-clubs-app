@@ -277,7 +277,19 @@ export const normalizeNode = (raw, index = 0) => {
             // Editar el texto a mano lo pone en null: a partir de ahí ese nodo
             // deja de seguir a la variable, que es lo que el usuario acaba de
             // pedir al escribirlo él.
-            srcText: raw?.srcText ? String(raw.srcText) : null,
+            //
+            // AUTORREPARACIÓN (v4.776): un marcador VISIBLE en el texto es una
+            // declaración. Un nodo editado a mano que conserva `{{club}}`
+            // quedaba desligado y el marcador se imprimía LITERAL en la pieza
+            // pública —«¡Feliz aniversario, {{club}}!» llegó así a producción,
+            // sin casilla para llenarlo—. Si el texto trae marcadores y no hay
+            // fuente, el propio texto ES la fuente; es la misma deducción que
+            // la línea de `srcVar` hace con las imágenes desde siempre, y el
+            // mismo criterio de v4.722.1: escribir `{{clave}}` es declararla.
+            // Editar a mano SIN marcadores sigue desligando, como siempre.
+            srcText: raw?.srcText
+                ? String(raw.srcText)
+                : (variablesUsedIn(String(raw?.text ?? '')).length ? String(raw.text) : null),
             fontSize: Math.min(0.4, Math.max(0.005, Number.isFinite(+raw?.fontSize) ? +raw.fontSize : TEXT_DEFAULTS.fontSize)),
             fontFamily: FONTS.some(f => f.id === raw?.fontFamily) ? raw.fontFamily : TEXT_DEFAULTS.fontFamily,
             fontWeight: [300, 400, 500, 600, 700, 800, 900].includes(+raw?.fontWeight) ? +raw.fontWeight : TEXT_DEFAULTS.fontWeight,

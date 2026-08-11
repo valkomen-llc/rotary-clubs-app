@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.775.0 | 2026-08-11 (Club de la lista del distrito y años en el título)
-// Cache bust: 2026-08-11q
+// UI V4.776.0 | 2026-08-11 (Autorreparación del portal: el marcador visible es declaración)
+// Cache bust: 2026-08-11r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.776.0',
+        title: 'El portal se repara solo: los campos vuelven a aparecer 🔧',
+        description: 'Lo reportado: el enlace público mostraba la pieza con «{{club}}» impreso LITERAL y en Datos del club sólo aparecía la fotografía — ni el club ni los años. La causa: el nodo del título había quedado DESLIGADO de su variable (texto con el marcador adentro pero sin fuente), y como los campos del formulario se derivan de las variables declaradas, la casilla no existía y el marcador se imprimía crudo. Dos cierres, los dos estructurales. Primero: un marcador VISIBLE en el texto ES una declaración — al normalizar, un nodo que conserva «{{club}}» en su texto vuelve a ligarse solo; es la misma deducción que las imágenes hacen desde siempre con su src, y el criterio de v4.722.1 (escribir la clave es declararla). Editar a mano SIN marcadores sigue desligando, como corresponde. Segundo: la publicación se DERIVA de nuevo al servirla — el documento se normaliza y los campos se recalculan de él con los ajustes deducidos ANTES de sanar (para no tomar el marcador recién ligado por bloqueado) — así que una publicación desalineada se corrige sola al abrirse el enlace, sin re-publicar ni recrear nada. Además, la redacción del título quedó como se pidió: «¡Feliz aniversario número 52, Club Rotario X!». Con esto, el enlace actual de aniversario muestra el desplegable del club, los años y el título completo sin ningún paso extra.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un texto que conserva su marcador vuelve a ligarse solo a la variable.' },
+            { type: 'fixed', text: 'La publicación se deriva de nuevo al servirla: los campos desalineados reaparecen.' },
+            { type: 'changed', text: 'Título: «¡Feliz aniversario número N, Club Rotario X!».' },
+        ]
+    },
     {
         version: '4.775.0',
         title: 'El club se elige de la lista del Distrito y el título imprime los años 📋',

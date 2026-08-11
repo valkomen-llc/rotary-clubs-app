@@ -27,7 +27,7 @@
 import db from '../lib/db.js';
 import { ensureDesignSchema } from '../lib/ensureDesignSchema.js';
 import { formatOf, parseFoundation, yearsSince } from '../lib/designSpec.js';
-import { sanitizeValues, applyPublicValues, bakeFrozen, isAcceptableImage } from '../lib/designPublish.js';
+import { sanitizeValues, applyPublicValues, bakeFrozen, isAcceptableImage, derivePublicRow } from '../lib/designPublish.js';
 import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
@@ -42,7 +42,18 @@ const rowOrNull = async (slug) => {
         `SELECT * FROM "DesignPublicTemplate" WHERE slug = $1 AND published = true LIMIT 1`,
         [String(slug || '').toLowerCase()]
     );
-    return rows[0] || null;
+    const row = rows[0] || null;
+    if (!row) return null;
+    // El documento y los campos se DERIVAN de nuevo al servir (v4.776): una
+    // publicación con el documento y los campos desalineados —el `{{club}}`
+    // impreso literal y sin casilla— se corrige sola, sin re-publicar. Si la
+    // derivación falla, se sirve lo guardado: servir algo gana siempre.
+    try {
+        const d = derivePublicRow(row);
+        row.document = d.document;
+        row.fields = d.fields;
+    } catch (e) { console.warn('[designPublic] derivación al servir:', e.message); }
+    return row;
 };
 
 // Lo que ve el público. Se enumera lo que SÍ va, no se filtra lo que no:
