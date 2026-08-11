@@ -865,7 +865,10 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('el formulario se derivó de las variables',
         ['Logotipo del club', 'Nombre del club', 'Fotografía'].every(l => txt.includes(l)),
         txt.slice(0, 300));
-    check('los años ya no se preguntan: la lámina no los dice', !txt.includes('Años que cumple'));
+    // Los años VOLVIERON en v4.775: el título los imprime, así que son un
+    // campo obligatorio. Sin lista de distrito (esta publicación no la trae)
+    // se escriben a mano.
+    check('los años se preguntan: el título los imprime (v4.775)', txt.includes('Años que cumple'));
     // El MENSAJE no se pide: lo escribe la IA al generar. La casilla vuelve a
     // aparecer sólo cuando ya hay un texto que corregir.
     check('el mensaje NO se pide: lo escribe la IA al generar', !txt.includes('Mensaje'));
@@ -881,10 +884,13 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('sin el club obligatorio no se puede generar',
         await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled());
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    await page.getByPlaceholder('49').fill('52');
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: /Generar mi pieza/ }).click();
     await page.waitForTimeout(1200);
     const txtListo = await page.locator('#root').innerText();
+    check('el título imprime los años afirmados',
+        /Felices 52 años/.test(await page.locator('[data-node="titulo"]').innerText().catch(() => '')));
     check('con la pieza lista ofrece descargar y compartir',
         /Descargar PNG/.test(txtListo) && /Compartir/.test(txtListo));
 
@@ -1040,7 +1046,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('sin el club no se puede generar', await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled());
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
     await page.waitForTimeout(250);
-    check('y con el club sí', !(await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled()));
+    check('y con el club y los años sí', !(await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled()));
     check('el portal no lanzó errores', fallos.length === 0, fallos.join(' | '));
     await page.close();
 }
@@ -1066,6 +1072,8 @@ console.log('\nEl portal público, componiendo con IA');
         slug: pub.slug, name: pub.name, intro: '', category: 'aniversario', format: pub.format,
         document: bakeFrozen(pub.document, frozen), fields: pub.fields,
         composition: { enabled: true, variants: 1 },
+        // Con distrito, el club se ELIGE de la lista (v4.775).
+        district: '4281',
     };
 
     const entry = `
@@ -1120,6 +1128,9 @@ window.go = () => createRoot(document.getElementById('root')).render(
         try { pidioVerificar = JSON.parse(r.request().postData() || '{}'); } catch { pidioVerificar = {}; }
         return r.fulfill({ json: veredicto });
     });
+    await page.route('**/api/public/design/clubs**', r => r.fulfill({
+        json: [{ name: 'Pasto', display: 'Club Rotario Pasto', district: '4281', logo: null, years: 52 }],
+    }));
     await page.route('**/api/public/design/aniversario/backdrop/task_9', r => {
         sondeos += 1;
         return sondeos < 2
@@ -1158,9 +1169,17 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('la fotografía NO entra a la pieza al subirla',
         await page.locator('[data-node="foto"]').count() === 0);
 
-    // Generar exige lo obligatorio, así que el club va antes.
-    await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    // Generar exige lo obligatorio, así que el club va antes — y acá se ELIGE
+    // de la lista del distrito (v4.775), que además trae los años calculados.
+    check('el club se elige de la lista del distrito',
+        await page.locator('select').count() === 1
+        && (await page.locator('select').innerText()).includes('Mi club no está en la lista'));
+    await page.locator('select').selectOption({ label: 'Pasto' });
     await page.waitForTimeout(300);
+    check('elegirlo completa los años y la casilla se esconde',
+        !(await page.locator('#root').innerText()).includes('Años que cumple'));
+    check('y con eso alcanza para generar',
+        !(await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled()));
     await page.getByRole('button', { name: /Generar mi pieza/ }).click();
     await page.waitForTimeout(1200);
     check('generar pide componer', !!pidioComponer);

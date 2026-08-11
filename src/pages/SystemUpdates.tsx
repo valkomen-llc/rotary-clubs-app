@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.774.0 | 2026-08-11 (El portal de plantillas con la cara del pendón)
-// Cache bust: 2026-08-11p
+// UI V4.775.0 | 2026-08-11 (Club de la lista del distrito y años en el título)
+// Cache bust: 2026-08-11q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.775.0',
+        title: 'El club se elige de la lista del Distrito y el título imprime los años 📋',
+        description: 'Dos pedidos sobre los Datos del club del portal. Primero: el club ya no se escribe en un buscador — se ELIGE de un desplegable con el listado completo del Distrito, el mismo catálogo que usa el formulario de Postular Proyecto de la Feria. Al elegirlo se completan solos el nombre para imprimir («Club Rotario X»), el escudo si la plataforma lo tiene, y los años que cumple, calculados desde la fecha de fundación. La lista ayuda pero no cierra el valor: «Mi club no está en la lista» pasa al texto libre, con botón explícito para volver — la regla de siempre (v4.706), y nunca un datalist (v4.656). El distrito no está escrito en el código: sale de la firma congelada de cada publicación, así que una pieza de otro distrito ofrece su propia lista, y una sin distrito degrada al buscador de texto. Segundo: el título de la lámina ahora imprime el número — «¡Felices 52 años, Club Rotario X!» — y por eso los años son un campo obligatorio: llegan calculados con el club elegido (y la casilla se esconde), o se escriben a mano si el club no está en la lista. El número lo afirma quien genera la pieza, no se inventa. Y los años siguen al club: cambiar de club actualiza el número que puso la lista; uno escrito a mano no se pisa. Para estrenar el título nuevo hay que crear el diseño otra vez desde la plantilla del catálogo y vincularlo al enlace publicado.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Desplegable con el listado del Distrito, el mismo catálogo de Postular Proyecto.' },
+            { type: 'added', text: 'Al elegir el club: nombre completo, escudo y años calculados, solos.' },
+            { type: 'changed', text: 'El título imprime los años: «¡Felices N años, Club Rotario X!». Campo obligatorio.' },
+        ]
+    },
     {
         version: '4.774.0',
         title: 'El portal de Plantillas IA toma la cara del Generador de Pendones 🎨',

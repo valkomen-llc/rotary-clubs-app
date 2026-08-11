@@ -66,7 +66,7 @@ export const TEMPLATES = [
         // Lo que el motor de IA tiene que llenar y lo que la pieza necesita
         // para verse completa. `requires` lo usa la pantalla para avisar ANTES
         // de generar, no después.
-        requires: ['club', 'imagen'],
+        requires: ['club', 'anios', 'imagen'],
         summary: 'La lámina del Distrito: textos a la izquierda y la fotografía del club abajo, bajo la banda azul y dorada.',
         // Composición con IA (v4.722). Viene APAGADA: encenderla gasta créditos
         // por pieza y manda la fotografía a un proveedor externo, así que es una
@@ -143,14 +143,18 @@ export const TEMPLATES = [
             },
 
             {
-                // El título de la lámina: dos líneas, a la izquierda, sin años.
-                // El nombre ya viene con su tratamiento («Club Rotario X»), así
-                // que el saludo no lo repite. SIN el emoji 🎉 de la lámina, y es
+                // El título de la lámina: dos líneas, a la izquierda, CON los
+                // años (pedido del 11/8: el título toma el número y el nombre
+                // del club). El número no se inventa: es un campo obligatorio
+                // que llega calculado al elegir el club de la lista y queda
+                // editable — quien genera la pieza lo afirma. El nombre ya
+                // viene con su tratamiento («Club Rotario X»), así que el
+                // saludo no lo repite. SIN el emoji 🎉 de la lámina, y es
                 // medido, no gusto: sus métricas difieren entre el DOM y el
                 // canvas y corrían la pieza 1 px — la vista previa dejaba de ser
                 // el archivo, que es la promesa del módulo. La celebración la
                 // ponen los motivos de la composición.
-                id: 'titulo', type: 'text', name: 'Título', text: '¡Feliz aniversario,\n{{club}}!',
+                id: 'titulo', type: 'text', name: 'Título', text: '¡Felices {{anios}} años,\n{{club}}!',
                 x: 0.06, y: 0.115, w: 0.64, h: 0.135,
                 fontSize: 0.049, fontWeight: 800, color: PALETTE.royal, align: 'left', lineHeight: 1.22, minFontSize: 0.028,
             },
