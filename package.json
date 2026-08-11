@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.768.0",
-  "cache_bust": "2026-08-11j (La plantilla sigue la maqueta de la lamina.)",
+  "version": "4.769.0",
+  "cache_bust": "2026-08-11k (La silueta del grupo sobre la lamina.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
