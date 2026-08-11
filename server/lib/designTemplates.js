@@ -252,6 +252,37 @@ for (const tpl of TEMPLATES) {
     }
 }
 
+// ─── Migraciones de REDACCIÓN, por procedencia exacta ──────────────────
+//
+// La regla del módulo sigue en pie: publicar guarda una COPIA y un despliegue
+// no recompila diseños — lo que protege es el TRABAJO del usuario. Pero un
+// texto que sigue siendo PALABRA POR PALABRA el del catálogo viejo no tiene
+// trabajo del usuario adentro: es el catálogo, en una versión anterior. El
+// caso real (11/8, cuatro publicaciones seguidas): el Distrito pidió los años
+// en el título, la plantilla se actualizó, y cada enlace publicado siguió con
+// la redacción vieja — sin el marcador `{{anios}}` no se deriva el campo, así
+// que el par fundación + años no aparecía por ninguna vía.
+//
+// La comparación es EXACTA salvo espacios (el mismo texto compilado puede
+// llevar `\n` o espacio según por dónde pasó). Un título editado a mano no
+// coincide con ninguna clave y NO se toca — eso sigue siendo del usuario.
+const normWs = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+export const TEXT_MIGRATIONS = new Map([
+    ['¡Feliz aniversario, {{club}}!', '¡Feliz aniversario número {{anios}},\n{{club}}!'],
+    ['¡Felices {{anios}} años, {{club}}!', '¡Feliz aniversario número {{anios}},\n{{club}}!'],
+].map(([from, to]) => [normWs(from), to]));
+
+/** Actualiza la redacción de los nodos que siguen siendo la del catálogo
+ *  viejo. Devuelve el MISMO documento si no hay nada que migrar. */
+export const migrateTemplateTexts = (document) => {
+    const nodes = (document?.nodes || []).map(n => {
+        if (n?.type !== 'text' || !n.srcText) return n;
+        const to = TEXT_MIGRATIONS.get(normWs(n.srcText));
+        return to && to !== n.srcText ? { ...n, srcText: to } : n;
+    });
+    return { ...document, nodes };
+};
+
 export const templateById = (id) => TEMPLATES.find(t => t.id === id) || null;
 
 export const availableTemplates = (format = null) =>

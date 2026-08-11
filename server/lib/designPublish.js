@@ -30,6 +30,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { VARIABLES, variablesUsedIn, resolveVariables, normalizeDocument, LIMITS } from './designSpec.js';
+import { migrateTemplateTexts } from './designTemplates.js';
 import { FIELD_KINDS, declarationsOf, defaultKindFor, isImageKind } from './designFields.js';
 
 // ─── Qué es cada variable en un formulario público ─────────────────────
@@ -519,7 +520,12 @@ export const settingsForRefresh = (row) => {
 // que no se pueden recalcular.
 export const derivePublicRow = (row) => {
     const ajustes = settingsForRefresh(row);
-    const document = normalizeDocument(row?.document || {});
+    // Normalizar SANA (el marcador visible vuelve a ser variable) y la
+    // migración ACTUALIZA la redacción de los nodos que siguen siendo,
+    // palabra por palabra, la del catálogo viejo — ver `TEXT_MIGRATIONS`.
+    // Las dos van DESPUÉS de deducir los ajustes, por el mismo motivo: una
+    // variable que aparece recién acá no puede leerse como «bloqueada».
+    const document = migrateTemplateTexts(normalizeDocument(row?.document || {}));
     const derivados = buildPublicFields(document, ajustes);
     const previos = new Map((Array.isArray(row?.fields) ? row.fields : []).map(f => [f?.key, f]));
     const fields = derivados.map(f => (previos.get(f.key)?.sample ? { ...f, sample: previos.get(f.key).sample } : f));

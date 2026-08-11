@@ -1950,8 +1950,10 @@ const filaRota = {
 const sanada = P.derivePublicRow(filaRota);
 check('la fila desalineada recupera su casilla del club',
     sanada.fields.some(f => f.key === 'club'), sanada.fields.map(f => f.key).join(','));
+// El sanado encadena con la migración de v4.778: el texto re-ligado es el del
+// catálogo viejo, así que además se actualiza a la redacción vigente.
 check('y el documento servido vuelve a declarar la variable',
-    sanada.nodes === undefined && sanada.document.nodes[0].srcText === '¡Feliz aniversario, {{club}}!');
+    sanada.nodes === undefined && /\{\{club\}\}/.test(sanada.document.nodes[0].srcText));
 check('los ejemplos guardados se conservan al derivar',
     sanada.fields.find(f => f.key === 'imagen')?.sample === 'https://ok.amazonaws.com/e.png');
 // Los ajustes se deducen ANTES de sanar: el marcador recién re-ligado no puede
@@ -1959,6 +1961,43 @@ check('los ejemplos guardados se conservan al derivar',
 check('el marcador sanado no se toma por bloqueado',
     !P.settingsForRefresh(filaRota).locked.includes('club'),
     P.settingsForRefresh(filaRota).locked.join(','));
+
+// La MIGRACIÓN por procedencia (v4.778). El caso real, cuatro publicaciones
+// seguidas: la plantilla del catálogo cambió su título para llevar los años y
+// cada enlace publicado siguió con la redacción vieja — sin `{{anios}}` no se
+// deriva el campo y el par fundación + años no aparecía por ninguna vía. Un
+// texto que sigue siendo PALABRA POR PALABRA el del catálogo viejo no tiene
+// trabajo del usuario adentro y se actualiza al servirse; uno editado a mano
+// no coincide con ninguna clave y no se toca.
+const filaVieja = {
+    document: {
+        format: 'post_1_1', background: '#fff',
+        nodes: [
+            { id: 'titulo', type: 'text', text: '¡Feliz aniversario, Club X!', srcText: '¡Feliz aniversario,\n{{club}}!' },
+            { id: 'foto', type: 'image', src: null, srcVar: 'imagen' },
+        ],
+    },
+    fields: [
+        { key: 'club', type: 'text', label: 'Nombre del club' },
+        { key: 'imagen', type: 'image', kind: 'foto', label: 'Fotografía del club' },
+    ],
+    frozen: {}, settings: {},
+};
+const migrada = P.derivePublicRow(filaVieja);
+check('la redacción del catálogo viejo se migra a la vigente',
+    /aniversario número \{\{anios\}\}/.test(migrada.document.nodes[0].srcText),
+    migrada.document.nodes[0].srcText);
+check('y con ella aparece el campo de los años, obligatorio',
+    migrada.fields.some(f => f.key === 'anios' && f.required),
+    migrada.fields.map(f => f.key).join(','));
+check('un título editado a mano NO se migra',
+    P.derivePublicRow({
+        ...filaVieja,
+        document: {
+            ...filaVieja.document,
+            nodes: [{ id: 'titulo', type: 'text', text: 'x', srcText: 'Nuestro saludo, {{club}}' }, filaVieja.document.nodes[1]],
+        },
+    }).document.nodes[0].srcText === 'Nuestro saludo, {{club}}');
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

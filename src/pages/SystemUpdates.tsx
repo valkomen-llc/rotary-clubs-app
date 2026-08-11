@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.777.0 | 2026-08-11 (Fundación del club y años en el portal público)
-// Cache bust: 2026-08-11s
+// UI V4.778.0 | 2026-08-11 (Migración de redacción: los enlaces publicados se actualizan solos)
+// Cache bust: 2026-08-11t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.778.0',
+        title: 'Los enlaces publicados adoptan solos la redacción nueva del título 🔁',
+        description: 'Lo reportado, por cuarta publicación consecutiva: la plantilla del catálogo ya imprime los años en el título, pero cada enlace publicado seguía con la redacción vieja — «¡Feliz aniversario, {{club}}!» sin el número — y sin el marcador de los años el formulario no podía ofrecer el par fundación + años por ninguna vía. La causa de fondo: publicar guarda una COPIA del diseño (regla del módulo, y correcta: un despliegue no puede recompilar el trabajo de nadie), así que las mejoras del catálogo nunca alcanzaban a los enlaces que ya circulaban. El cierre es una MIGRACIÓN DE REDACCIÓN POR PROCEDENCIA EXACTA: al servirse, un título que sigue siendo palabra por palabra el del catálogo viejo —es decir, sin ninguna edición del usuario adentro— se actualiza a la redacción vigente, con lo que el campo de los años se deriva y el par aparece. Un título editado a mano no coincide con ninguna clave y NO se toca: eso sigue siendo del usuario, que es exactamente lo que la regla de la copia protege. Con esto, el enlace actual muestra al recargar: «¡Feliz aniversario número N, Club Rotario X!», el desplegable del club y el par fundación + años — sin re-publicar ni recrear nada.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El título del catálogo viejo se migra solo a la redacción con los años, al servirse.' },
+            { type: 'fixed', text: 'Con la migración aparecen el campo de años y el par con la fundación.' },
+            { type: 'changed', text: 'Un título editado a mano no se toca: la migración es por coincidencia exacta.' },
+        ]
+    },
     {
         version: '4.777.0',
         title: 'Fundación del club y años, en pareja, en el portal público 📅',
