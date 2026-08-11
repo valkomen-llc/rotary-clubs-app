@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.767.0 | 2026-08-11 (Dos datos y un boton: la plantilla de aniversario)
-// Cache bust: 2026-08-11i
+// UI V4.768.0 | 2026-08-11 (La plantilla sigue la maqueta de la lamina)
+// Cache bust: 2026-08-11j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.768.0',
+        title: 'La plantilla de aniversario ya ES la maqueta de la lámina 📐',
+        description: 'La pieza generada no seguía la lámina del Distrito: tenía la fotografía arriba y los textos centrados abajo, cuando la referencia lleva el título, el mensaje y el cierre dorado a la IZQUIERDA, sin número de años, y la fotografía ABAJO, entrando por debajo de la banda azul y dorada. La plantilla es dato, así que la maqueta se reescribió: título en dos líneas a la izquierda («¡Feliz aniversario, / Club Rotario X!»), mensaje y cierre dorados debajo, y la fotografía ocupando la mitad inferior con la ola blanca suavizándole el borde y la banda del pie cubriéndola — exactamente la composición de la lámina. El número de años salió de la pieza: la lámina no lo dice y el pliego lo prohíbe (no afirmar un aniversario que no se verificó), así que esa casilla desaparece del formulario y la pieza queda en club + fotografía. El emoji 🎉 de la lámina quedó fuera por una razón medida, no de gusto: sus métricas difieren entre la vista previa y el archivo exportado y corrían la pieza un píxel — y que la vista previa SEA el archivo es la promesa del módulo. La celebración la ponen los motivos de la composición. Para que el enlace público tome esta maqueta: abrir Plantillas IA, cargar «Aniversario · con fotografía», elegir un club y guardar.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'Título, mensaje y cierre a la izquierda, como la lámina.' },
+            { type: 'changed', text: 'La fotografía abajo, entrando bajo la banda azul y dorada.' },
+            { type: 'removed', text: 'El número de años: la lámina no lo dice y no se afirma sin verificar.' },
+        ]
+    },
     {
         version: '4.767.0',
         title: 'El aniversario queda en dos datos y un botón 🎯',

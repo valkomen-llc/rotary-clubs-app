@@ -136,10 +136,12 @@ const compilado = S.compileTemplate({
     branding: { clubName: 'Club Rotario Cali San Fernando', district: '4281', governor: 'Fabio Véjar', period: '2026-2027', logo: 'https://x/l.png' },
 });
 
-check('el saludo lleva el nombre real del club',
-    compilado.nodes.find(n => n.id === 'saludo')?.text === 'Al Club Rotario Cali San Fernando');
-check('el título lleva los años',
-    compilado.nodes.find(n => n.id === 'titulo')?.text === '¡Felices 49 años!');
+// El título de la lámina: nombre del club, SIN años — la lámina no los dice y
+// el pliego lo prohíbe (no afirmar un aniversario que no se verificó).
+check('el título lleva el nombre real del club',
+    /Club Rotario Cali San Fernando!/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
+check('y NO lleva número de años',
+    !/49/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
 check('la firma une gobernador, distrito y periodo',
     /Fabio Véjar/.test(compilado.nodes.find(n => n.id === 'firma')?.text || '')
     && /4281/.test(compilado.nodes.find(n => n.id === 'firma')?.text || ''));
@@ -148,7 +150,7 @@ check('la fotografía toma la URL de la variable',
 check('el nodo de imagen recuerda de qué variable salió',
     compilado.nodes.find(n => n.id === 'foto')?.srcVar === 'imagen');
 check('un nodo de texto con variables recuerda su plantilla',
-    compilado.nodes.find(n => n.id === 'titulo')?.srcText === '¡Felices {{anios}} años!');
+    /\{\{\s*club\s*\}\}/.test(compilado.nodes.find(n => n.id === 'titulo')?.srcText || ''));
 check('no quedan marcadores sin resolver en ningún texto',
     !compilado.nodes.filter(n => n.type === 'text').some(n => /\{\{/.test(n.text)));
 
@@ -181,7 +183,7 @@ check('y la placa que depende de él también sobrevive',
 const pintados = S.visibleNodes(conHueco.nodes).map(n => n.id);
 check('al pintar, el hueco vacío no se dibuja', !pintados.includes('logo'));
 check('ni la placa blanca que sólo existía para respaldarlo', !pintados.includes('placa_logo'));
-check('el resto de la pieza sí', pintados.includes('saludo') && pintados.includes('pie_azul'));
+check('el resto de la pieza sí', pintados.includes('titulo') && pintados.includes('pie_azul'));
 check('en modo EDITOR el hueco se ve, para poder seleccionarlo',
     S.visibleNodes(conHueco.nodes, { slots: true }).some(n => n.id === 'logo'));
 check('pero la placa suelta no, porque no se puede llenar con nada',
@@ -440,7 +442,7 @@ grupo('Portal público: el formulario se DERIVA de las variables');
 const docPub = { format: 'post_1_1', background: '#fff', nodes: compilado.nodes };
 
 check('encuentra todas las variables del documento',
-    ['club', 'anios', 'mensaje', 'imagen', 'logo', 'gobernador', 'distrito', 'periodo']
+    ['club', 'mensaje', 'imagen', 'logo', 'gobernador', 'distrito', 'periodo']
         .every(v => P.variablesOf(docPub).includes(v)),
     P.variablesOf(docPub).join(','));
 
@@ -451,13 +453,15 @@ const campos = P.buildPublicFields(docPub);
 // declaración del nodo (`visible: false`), no una regla global: la decisión de
 // v4.722.3 sigue en pie —el logotipo NO es institucional— y otra plantilla lo
 // enciende marcándolo en Propiedades.
+// Dos datos y un botón: club y fotografía. El mensaje sigue siendo un campo
+// —lo escribe la IA y el portal lo esconde hasta que haya texto que corregir—
+// y los AÑOS ya no existen en esta pieza: la lámina no los dice.
 check('el formulario ofrece exactamente lo editable',
-    campos.map(f => f.key).join(',') === 'club,anios,mensaje,imagen',
+    campos.map(f => f.key).join(',') === 'club,mensaje,imagen',
     campos.map(f => f.key).join(','));
 check('cada campo trae su tipo',
     campos.find(f => f.key === 'mensaje')?.type === 'textarea'
-    && campos.find(f => f.key === 'imagen')?.type === 'image'
-    && campos.find(f => f.key === 'anios')?.type === 'number');
+    && campos.find(f => f.key === 'imagen')?.type === 'image');
 check('el mensaje se marca como asistible por IA', campos.find(f => f.key === 'mensaje')?.ai === true);
 check('el nombre del club es obligatorio', campos.find(f => f.key === 'club')?.required === true);
 check('los campos salen en un orden estable', campos[0].key === 'club');
@@ -529,7 +533,7 @@ const san = P.sanitizeValues(
 );
 check('acepta lo declarado', san.values.club === 'Club Rotario Pasto');
 check('recorta espacios', san.values.mensaje === 'hola');
-check('deja los años en dígitos', san.values.anios === '49');
+check('los años ya no son un campo de esta pieza', !('anios' in san.values));
 check('DESCARTA el logotipo: esta plantilla no lo pide', !('logo' in san.values));
 check('DESCARTA al gobernador', !('gobernador' in san.values));
 check('DESCARTA el periodo rotario', !('periodo' in san.values));
@@ -582,8 +586,8 @@ check('y deja de seguir a una variable',
     horneado.nodes.find(n => n.id === 'logo')?.srcVar === null);
 // Éste es todo el motivo de que `bakeFrozen` no sea `resolveVariables`.
 const tituloH = horneado.nodes.find(n => n.id === 'titulo');
-check('lo que llena el público SIGUE siendo un marcador', /\{\{\s*anios\s*\}\}/.test(tituloH.srcText || ''), String(tituloH.srcText));
-check('y el nodo del saludo también', /\{\{\s*club\s*\}\}/.test(horneado.nodes.find(n => n.id === 'saludo')?.srcText || ''));
+check('lo que llena el público SIGUE siendo un marcador', /\{\{\s*club\s*\}\}/.test(tituloH.srcText || ''), String(tituloH.srcText));
+check('y el nodo del mensaje también', /\{\{\s*mensaje\s*\}\}/.test(horneado.nodes.find(n => n.id === 'mensaje')?.srcText || ''));
 
 grupo('Portal público: la dirección');
 
@@ -600,7 +604,7 @@ const publicacion = P.buildPublication({
     document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
     settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
 });
-check('la publicación trae su formulario derivado', publicacion.fields.length === 4, String(publicacion.fields.length));
+check('la publicación trae su formulario derivado', publicacion.fields.length === 3, String(publicacion.fields.length));
 check('y congela lo institucional con su valor',
     publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
 check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));

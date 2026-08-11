@@ -839,8 +839,9 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // pero SÓLO pide lo que el sistema no resuelve solo (Fase 3): el club, el
     // logotipo, los años (mientras no lleguen con el club) y la fotografía.
     check('el formulario se derivó de las variables',
-        ['Logotipo del club', 'Nombre del club', 'Años que cumple', 'Fotografía'].every(l => txt.includes(l)),
+        ['Logotipo del club', 'Nombre del club', 'Fotografía'].every(l => txt.includes(l)),
         txt.slice(0, 300));
+    check('los años ya no se preguntan: la lámina no los dice', !txt.includes('Años que cumple'));
     // El MENSAJE no se pide: lo escribe la IA al generar. La casilla vuelve a
     // aparecer sólo cuando ya hay un texto que corregir.
     check('el mensaje NO se pide: lo escribe la IA al generar', !txt.includes('Mensaje'));
@@ -888,7 +889,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('y la placa blanca de contraste tampoco',
         await page.locator('[data-node="placa_logo"]').count() === 0);
     check('el resto de la pieza sí se dibuja',
-        await page.locator('[data-node="saludo"]').count() === 1);
+        await page.locator('[data-node="titulo"]').count() === 1);
 
     // ── Dónde va a caer el logotipo (v4.725) ──────────────────────
     //
@@ -1004,7 +1005,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
     await page.waitForTimeout(300);
     check('la vista previa se repinta mientras se escribe',
-        /Club Rotario Pasto/.test(await page.locator('[data-node="saludo"]').innerText().catch(() => '')));
+        /Club Rotario Pasto/.test(await page.locator('[data-node="titulo"]').innerText().catch(() => '')));
 
     // El campo obligatorio gobierna GENERAR, que es el gesto que ahora produce
     // la pieza. Se comprueba desde el formulario, que es donde se edita.
@@ -1148,7 +1149,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('y apaga el nodo de la fotografía, que ya está dentro',
         await page.locator('[data-node="foto"]').count() === 0);
     check('el texto se sigue dibujando encima, nítido',
-        await page.locator('[data-node="saludo"]').count() === 1);
+        await page.locator('[data-node="titulo"]').count() === 1);
 
     // La vuelta atrás tiene que existir: una composición que no gusta no puede
     // dejar la pieza peor que antes.
