@@ -54,6 +54,10 @@ export const FIELD_SPECS = {
     presidente: { order: 50, type: 'text', label: 'Presidente del club', placeholder: 'Nombre y apellido', maxChars: 80 },
     titulo: { order: 60, type: 'text', label: 'Título', maxChars: LIMITS.title },
     mensaje: { order: 70, type: 'textarea', label: 'Mensaje', placeholder: 'El texto que va impreso en la pieza', maxChars: LIMITS.message, ai: true },
+    // La frase dorada que remata la pieza. `ai: true`: la escribe el modelo en
+    // cada generación —el pedido es que varíe entre piezas— y la persona puede
+    // corregirla; el valor por defecto del nodo garantiza que nunca falte.
+    cierre: { order: 75, type: 'text', label: 'Frase de cierre', maxChars: 70, ai: true },
     imagen: { order: 80, type: 'image', label: 'Fotografía del club', help: 'Se adapta sola al espacio de la plantilla.' },
 
     // Institucionales: los fija la plantilla publicada. Quien quiera congelar

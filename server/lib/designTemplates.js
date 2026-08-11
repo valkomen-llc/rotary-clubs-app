@@ -161,10 +161,14 @@ export const TEMPLATES = [
                 fontSize: 0.030, fontWeight: 400, color: PALETTE.ink, align: 'left', lineHeight: 1.35, minFontSize: 0.018,
             },
             {
-                // El cierre dorado de la lámina: voz del Distrito, itálica
-                // dorada. FIJO — nunca un campo del público.
+                // El cierre dorado de la lámina, itálica dorada. Desde v4.773
+                // es una VARIABLE: el pedido del 11/8 es que la frase cambie en
+                // cada pieza, así que la escribe el modelo junto con el mensaje.
+                // El `defaultValue` es lo que garantiza que la línea nunca
+                // falte: si el modelo no responde, sale la fórmula clásica.
                 id: 'cierre', type: 'text', name: 'Cierre', role: 'cierre',
-                text: '¡Gracias por marcar la diferencia!',
+                text: '{{cierre}}',
+                field: { kind: 'texto', label: 'Frase de cierre', defaultValue: '¡Gracias por marcar la diferencia!' },
                 x: 0.06, y: 0.352, w: 0.58, h: 0.04,
                 fontSize: 0.030, fontWeight: 700, italic: true, color: PALETTE.gold, align: 'left', lineHeight: 1.2, minFontSize: 0.017,
             },

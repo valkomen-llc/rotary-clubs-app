@@ -84,6 +84,40 @@ export const trimToLimit = (text, maxChars) => {
     return (word > 0 ? cut.slice(0, word) : cut).trim() + '…';
 };
 
+// ─── La frase de cierre ────────────────────────────────────────────────
+//
+// La línea dorada e itálica que remata la pieza («¡Gracias por marcar la
+// diferencia!»). Desde v4.773 la escribe el modelo junto con el mensaje —el
+// pedido es que VARÍE entre piezas— y este pool es el respaldo: si el modelo
+// no la devuelve o no responde, se elige una al azar de acá. La pieza NUNCA
+// sale sin cierre; lo que no está garantizado sin modelo es la variedad.
+export const CIERRE_MAX_CHARS = 70;
+export const CIERRE_FALLBACKS = [
+    '¡Gracias por marcar la diferencia!',
+    '¡Que vengan muchos años más de servicio!',
+    '¡Celebramos su historia y su gente!',
+    '¡Gracias por servir para cambiar vidas!',
+    '¡Un orgullo para toda la familia rotaria!',
+];
+const randomCierre = () => CIERRE_FALLBACKS[Math.floor(Math.random() * CIERRE_FALLBACKS.length)];
+
+// ─── El ángulo de cada pieza ───────────────────────────────────────────
+//
+// Es el mecanismo concreto de la variedad. Con el mismo prompt, un modelo
+// tiende a la misma felicitación; la temperatura sola no alcanza y pedirle
+// «sé variado» no es una instrucción. Lo que sí funciona es darle un ENFOQUE
+// distinto cada vez —el mismo recurso que los nueve `MUSIC_STYLES` del
+// Creador de Reels: la variedad no viene del proveedor, viene de qué se le
+// pide—. Se elige al azar en el servidor, por generación.
+export const MESSAGE_ANGLES = [
+    'la trayectoria: los años de trabajo sostenido y lo que dejaron',
+    'las personas: los socios que hacen posible el club, su entrega',
+    'el impacto: lo que la comunidad recibió gracias al club',
+    'la amistad rotaria: el compañerismo que sostiene el servicio',
+    'lo que viene: el futuro, los proyectos por delante',
+    'la gratitud: lo que la comunidad y el Distrito le deben al club',
+];
+
 // ─── Contexto real del club ────────────────────────────────────────────
 //
 // Sólo entra lo que la plataforma SABE. Cada dato ausente se omite en vez de
@@ -145,6 +179,9 @@ export const generateDesignCopy = async ({
     // Y NO se imprime literal: si se imprimiera, sobraría el generador de copy y
     // todas las piezas dirían lo mismo, con el marcador del club sin resolver.
     referenceText = '',
+    // Lo que decía la pieza anterior de esta misma sesión. Regenerar tiene que
+    // dar OTRA pieza: sin esto, el modelo repite su propia fórmula.
+    avoidText = '',
 } = {}) => {
     const toneSpec = tone && TONES[tone] ? TONES[tone] : null;
     const limit = Math.min(LIMITS.message, toneSpec?.maxChars || maxChars);
@@ -158,8 +195,15 @@ export const generateDesignCopy = async ({
         ? `\nLa plantilla declara esta intención, escrita por quien la configuró. Es el SENTIDO que tiene que tener el mensaje, no un texto para copiar: reescribilo para ESTE club, con sus datos reales, sin repetirlo palabra por palabra y sin dejar ningún marcador entre llaves.\n«${referencia}»\n`
         : '';
 
+    // El ángulo elegido para ESTA generación y, si la hay, la pieza anterior
+    // que no se puede repetir. Son las dos mitades de la variedad pedida.
+    const angle = MESSAGE_ANGLES[Math.floor(Math.random() * MESSAGE_ANGLES.length)];
+    const avoid = String(avoidText || '').trim().slice(0, 400);
+    const varietyLine = `\nEnfocá el mensaje en ${angle}. Cada pieza debe sonar distinta: evitá la felicitación genérica y las fórmulas obvias.`
+        + (avoid ? `\nLa pieza anterior decía: «${avoid}». Escribí un mensaje DISTINTO — otra estructura, otras palabras, mismo sentido institucional.` : '');
+
     const userText = `${purposeLine}
-${referenceLine}
+${referenceLine}${varietyLine}
 ${contextBlock(context)}
 
 ${identityClause(Boolean(context.clubName))}
@@ -170,6 +214,7 @@ ${language !== 'es' ? `\nEscribí TODO en ${language}.` : ''}
 Devolvé EXACTAMENTE este JSON, sin texto alrededor:
 {
   "mensaje": "el texto que va impreso en la pieza, máximo ${limit} caracteres",
+  "cierre": "una frase corta de remate, cálida y celebratoria, que se imprime en dorado bajo el mensaje — máximo ${CIERRE_MAX_CHARS} caracteres, sin emojis, distinta de la fórmula «Gracias por marcar la diferencia»",
   "titulo": "título breve para la pieza, máximo 60 caracteres",
   "subtitulo": "una línea de apoyo, máximo 70 caracteres",
   "descripcion": "el copy para publicar en la red, 2 a 4 frases, sin hashtags",
@@ -214,6 +259,9 @@ Devolvé EXACTAMENTE este JSON, sin texto alrededor:
 
 const shape = (parsed, mensaje, limit) => ({
     mensaje,
+    // El cierre con respaldo: sin él, la línea dorada de la pieza quedaría en
+    // blanco cuando el modelo omite el campo.
+    cierre: clip(parsed?.cierre, CIERRE_MAX_CHARS) || randomCierre(),
     titulo: clip(parsed?.titulo, LIMITS.title),
     subtitulo: clip(parsed?.subtitulo, 90),
     descripcion: clip(parsed?.descripcion, 900),
@@ -238,6 +286,7 @@ const lastResort = async ({ context, limit }) => {
         + 'Que este nuevo año rotario traiga más proyectos, más amistad y más impacto en la comunidad.';
     return {
         mensaje: trimToLimit(base, limit),
+        cierre: randomCierre(),
         titulo: '', subtitulo: '', descripcion: base, cta: '', hashtags: [], altText: '',
         limit,
         degraded: true,

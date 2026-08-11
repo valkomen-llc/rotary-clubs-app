@@ -146,6 +146,7 @@ export const VARIABLES = {
     anios: { label: 'Años que cumple', example: '49' },
     fecha: { label: 'Fecha', example: '4 de agosto de 2026' },
     mensaje: { label: 'Mensaje', example: 'Celebramos su compromiso con el servicio…' },
+    cierre: { label: 'Frase de cierre', example: '¡Gracias por marcar la diferencia!' },
     titulo: { label: 'Título', example: '¡Felices 49 años!' },
     logo: { label: 'Logotipo', example: '(imagen)', kind: 'image' },
     imagen: { label: 'Fotografía del club', example: '(imagen)', kind: 'image' },

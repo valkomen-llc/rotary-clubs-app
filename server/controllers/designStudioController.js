@@ -157,6 +157,10 @@ export const compose = async (req, res) => {
         const variables = {
             anios: years != null ? String(years) : '',
             mensaje: copy.mensaje || '',
+            // El cierre dorado: lo escribe el modelo con el mensaje. Sin modelo
+            // (skipAI, o un mensaje traído en overrides) queda la fórmula
+            // clásica — la línea no puede faltar en el editor.
+            cierre: overrides.cierre || copy.cierre || '¡Gracias por marcar la diferencia!',
             fecha: overrides.fecha || '',
             titulo: overrides.titulo || '',
             ...Object.fromEntries(Object.entries(overrides).filter(([k, v]) => k in VARIABLES && v !== undefined && v !== null && v !== '')),
