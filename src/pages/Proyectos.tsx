@@ -22,6 +22,8 @@ import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { normalizeProjectsLayout } from '../lib/projectsPageLayout';
+import { siteName, siteSentence } from '../lib/siteName';
+import SiteSentence from '../components/SiteSentence';
 import { useSEO } from '../hooks/useSEO';
 
 /** Limpia HTML y entidades HTML para mostrar texto plano en tarjetas */
@@ -662,8 +664,11 @@ const Proyectos = () => {
             ¿Listo para Hacer la Diferencia?
           </h2>
           <p className="text-gray-600 text-lg mb-8 max-w-2xl mx-auto">
-            Tu contribución puede cambiar vidas. Únete a miles de donantes que están
-            construyendo un mundo mejor a través del Rotary Club.
+            <SiteSentence parts={siteSentence(siteName(club), {
+              before: 'Tu contribución puede cambiar vidas. Únete a miles de donantes que están construyendo un mundo mejor a través de ',
+              after: '.',
+              withoutName: 'Tu contribución puede cambiar vidas. Únete a miles de donantes que están construyendo un mundo mejor.',
+            })} />
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a

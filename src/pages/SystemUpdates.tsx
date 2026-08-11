@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.758.0 | 2026-08-10 (La vista previa publica ya no se ve rota)
-// Cache bust: 2026-08-10h
+// UI V4.759.0 | 2026-08-11 (El subtitulo dice el nombre del sitio)
+// Cache bust: 2026-08-11a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.759.0',
+        title: 'Las páginas públicas dicen el nombre de tu sitio, no «Rotary Club» 🏷️',
+        description: 'El subtítulo de Noticias decía «Actualizaciones del Rotary Club», y eso estaba escrito en el código: salía igual en todos los sitios alojados, así que en el sitio del Distrito 4281 nombraba a una organización que no es la suya. Ahora dice el nombre del sitio: «Actualizaciones de Distrito 4281». El mismo texto escrito a mano estaba en otras dos páginas y se corrigió también — el subtítulo de Estados Financieros y el cierre de Proyectos, donde se invitaba a donar «a través del Rotary Club». Dos detalles que no se ven pero deciden si esto funciona bien. El primero es el artículo: la frase original llevaba «del», y con nombres reales eso deja de servir porque hay sitios femeninos —«Feria de Proyectos Rotary Colombia»— donde «del Feria» estaría mal; el género de un nombre propio no se puede deducir, así que la frase se escribe sin artículo y funciona para todos. El segundo es el traductor: el nombre de un sitio es identidad, no lenguaje, así que va marcado para que al leer la página en inglés o en portugués el nombre se quede como es y no se traduzca solo. Y si el nombre todavía no cargó, la frase se arma sin él en vez de poner un nombre de respaldo: antes que el nombre de otro, ninguno.',
+        date: new Date().toISOString(),
+        tags: ['sitio publico', 'identidad'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'El subtítulo de Noticias dice el nombre del sitio, no «Rotary Club».' },
+            { type: 'fixed', text: 'Lo mismo en Estados Financieros y en el cierre de Proyectos.' },
+            { type: 'improved', text: 'El nombre del sitio queda literal al cambiar de idioma.' },
+        ]
+    },
     {
         version: '4.758.0',
         title: 'La vista previa del enlace público ya no se ve rota 🧹',

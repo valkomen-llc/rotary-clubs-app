@@ -17,6 +17,8 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { siteName, siteSentence } from '../lib/siteName';
+import SiteSentence from '../components/SiteSentence';
 
 interface Documento {
   id: string;
@@ -105,7 +107,13 @@ const EstadosFinancieros = () => {
               {getC('header', 'title', "Estados Financieros")}
             </h1>
             <p className="text-white/80 text-lg">
-              {getC('header', 'description', "Documentación legal y tributaria del Rotary Club. Información transparente para nuestros socios.")}
+              {sections.header?.description || (
+                <SiteSentence parts={siteSentence(siteName(club), {
+                  before: 'Documentación legal y tributaria de ',
+                  after: '. Información transparente para nuestros socios.',
+                  withoutName: 'Documentación legal y tributaria. Información transparente para nuestros socios.',
+                })} />
+              )}
             </p>
           </div>
         </div>
