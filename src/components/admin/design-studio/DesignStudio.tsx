@@ -37,7 +37,7 @@ import {
     type Composition, type Publication,
 } from './designApi';
 import {
-    formatOf, applyVariables, resolveVariables, duplicateNode, uid, isText, isImage,
+    formatOf, applyVariables, resolveVariables, variablesUsedIn, duplicateNode, uid, isText, isImage,
     HISTORY_STEPS, PALETTE,
     type DesignDocument, type DesignNode, type TextNode, type ImageNode,
 } from '../../../lib/designSpec';
@@ -46,6 +46,16 @@ import { withBase, withBackdrop, withoutBackdrop, hasBackdrop, fusedPhotoId } fr
 import { exportDocument, exportToFile, thumbnail, type ExportFormat } from '../../../lib/designRender';
 
 const EMPTY_DOC: DesignDocument = { format: 'post_1_1', background: PALETTE.white, nodes: [] };
+
+// Datos de EJEMPLO para la vista previa cuando el panel todavía no los tiene.
+// El nombre es deliberadamente LARGO —es el caso que `autoFit` encoge— y se
+// declara «de Ejemplo» para que nadie lo tome por un dato real si lo ve en una
+// miniatura. Nunca se persiste: al guardar viaja `rawVars`, no esto.
+const PREVIEW_SAMPLES: Record<string, string> = {
+    club: 'Club Rotario Nombre del Club de Ejemplo',
+    anios: '25',
+    mensaje: 'Un año más donde el liderazgo se teje con amistad, y el servicio transforma vidas. Gracias por la conexión humana y el impacto en la comunidad.',
+};
 
 const DesignStudio: React.FC = () => {
     // ── Estado. TODOS los hooks van arriba, antes de cualquier return:
@@ -280,7 +290,19 @@ const DesignStudio: React.FC = () => {
     // ── Variables en vivo ──────────────────────────────────────────
     // El panel izquierdo escribe variables; esto las aplica a los nodos que
     // siguen atados a ellas, y a ninguno más.
-    const liveVars = useMemo(() => ({
+    //
+    // `rawVars` es lo que el usuario de verdad puso — es lo que se GUARDA.
+    // `liveVars` es la vista previa: las claves del público que estén vacías
+    // se rellenan con un dato de EJEMPLO, deliberadamente largo, porque sin
+    // él el título se previsualiza corto («¡Feliz aniversario, !») y
+    // `autoFit` no actúa: el administrador agranda un texto que en el portal
+    // público se encoge hasta caber en el recuadro, y las dos pantallas se
+    // contradicen. El ejemplo no puede llegar a ninguna pieza ajena al
+    // editor: no se guarda (se guarda `rawVars`), no se congela al publicar
+    // (el diálogo congela desde `branding`) y el portal resuelve los nodos
+    // atados desde `srcText` (`applyPublicValues`), no desde el texto
+    // horneado acá.
+    const rawVars = useMemo(() => ({
         anios: years,
         mensaje: message,
         imagen: photo || '',
@@ -292,6 +314,23 @@ const DesignStudio: React.FC = () => {
         periodo: branding?.period || '',
         logo: branding?.logo || '',
     }), [years, message, photo, branding]);
+
+    const liveVars = useMemo(() => ({
+        ...rawVars,
+        anios: rawVars.anios || PREVIEW_SAMPLES.anios,
+        club: rawVars.club || PREVIEW_SAMPLES.club,
+        mensaje: rawVars.mensaje || PREVIEW_SAMPLES.mensaje,
+    }), [rawVars]);
+
+    // El aviso de que la vista previa lleva datos de ejemplo, sólo cuando los
+    // lleva DE VERDAD: alguna variable rellenada con ejemplo tiene que estar
+    // en uso por un nodo atado. Un diseño sin nodo de mensaje no puede quedar
+    // avisando para siempre por un mensaje que no imprime.
+    const previewConEjemplo = useMemo(() => {
+        const vacias = Object.keys(PREVIEW_SAMPLES).filter(k => !(rawVars as Record<string, string>)[k]);
+        if (!vacias.length) return false;
+        return doc.nodes.some(n => isText(n) && n.srcText && variablesUsedIn(n.srcText).some(k => vacias.includes(k)));
+    }, [doc.nodes, rawVars]);
 
     useEffect(() => {
         setDoc(d => {
@@ -662,7 +701,10 @@ const DesignStudio: React.FC = () => {
             const thumbUrl = await thumbnail(doc).catch(() => null);
             const body = {
                 title, templateId, category: 'aniversario',
-                document: doc, variables: liveVars, branding: branding || {}, copy: copy || {},
+                // Se guarda `rawVars`, NUNCA `liveVars`: los datos de ejemplo
+                // de la vista previa no pueden volver como estado al reabrir
+                // el diseño (`openSaved` restaura `variables`).
+                document: doc, variables: rawVars, branding: branding || {}, copy: copy || {},
                 subjectClubId: club?.id || null, thumbUrl,
                 composition,
             };
@@ -936,23 +978,37 @@ const DesignStudio: React.FC = () => {
                             </p>
                         </div>
                     ) : (
-                        <DesignCanvas
-                            doc={doc}
-                            selectedIds={selectedIds}
-                            zoom={zoom}
-                            showGuides={showGuides}
-                            // Con la Composición encendida, la fotografía no
-                            // ocupa un recuadro: la IA la integra en la imagen
-                            // de base. Su hueco vacío llenaba media pieza de
-                            // tablero gris y prometía algo que no iba a pasar.
-                            fusedId={fusedId}
-                            onSelect={setSelectedIds}
-                            onNodesChange={setNodes}
-                            // Escribir en el lienzo pasa por `patchNode`, igual
-                            // que escribir en la casilla del panel: es el mismo
-                            // gesto y tiene que desligar de la variable igual.
-                            onEditText={(id, text) => patchNode(id, { text } as Partial<DesignNode>)}
-                        />
+                        <div className="flex flex-col items-center gap-2">
+                            <DesignCanvas
+                                doc={doc}
+                                selectedIds={selectedIds}
+                                zoom={zoom}
+                                showGuides={showGuides}
+                                // Con la Composición encendida, la fotografía no
+                                // ocupa un recuadro: la IA la integra en la imagen
+                                // de base. Su hueco vacío llenaba media pieza de
+                                // tablero gris y prometía algo que no iba a pasar.
+                                fusedId={fusedId}
+                                onSelect={setSelectedIds}
+                                onNodesChange={setNodes}
+                                // Escribir en el lienzo pasa por `patchNode`, igual
+                                // que escribir en la casilla del panel: es el mismo
+                                // gesto y tiene que desligar de la variable igual.
+                                onEditText={(id, text) => patchNode(id, { text } as Partial<DesignNode>)}
+                            />
+                            {/* Con datos de ejemplo a la vista hay que DECIRLO
+                                (misma regla que el portal, v4.726). El tamaño de
+                                los textos con «Ajustar al recuadro» depende del
+                                contenido real: sin este aviso, el administrador
+                                agranda un título corto que el público ve largo
+                                y encogido, y las dos pantallas se contradicen. */}
+                            {previewConEjemplo && (
+                                <p className="text-[11px] text-gray-500 text-center max-w-md">
+                                    Vista previa con datos de ejemplo: el tamaño de cada texto se ajusta a su contenido
+                                    real. Elegí un club en el paso «Club» para verla con los datos verdaderos.
+                                </p>
+                            )}
+                        </div>
                     )}
                 </main>
 

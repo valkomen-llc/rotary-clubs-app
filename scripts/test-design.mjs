@@ -1999,6 +1999,46 @@ check('un título editado a mano NO se migra',
         },
     }).document.nodes[0].srcText === 'Nuestro saludo, {{club}}');
 
+// ── El tamaño que se ve es el que sale (v4.779) ───────────────────────
+//
+// El defecto reportado: el administrador agranda el título en el editor y el
+// portal público lo sirve chico. No es un dato que se pierda: es `autoFit`
+// haciendo su trabajo sobre el texto REAL —largo—, mientras el editor
+// previsualizaba con las variables vacías —texto corto— y además con la
+// redacción vieja del catálogo (la migración sólo corría al servir el
+// enlace). Dos pantallas, dos textos, dos tamaños.
+grupo('El tamaño que se ve es el que sale (v4.779)');
+
+// El mecanismo, demostrado con el nodo del título del catálogo: el texto
+// corto del editor sin datos cabe al tamaño configurado; el resuelto con un
+// club de nombre largo baja hasta el piso. Es la diferencia que el usuario
+// fotografió.
+const tituloCat = TEMPLATES[0].nodes.find(n => n.id === 'titulo');
+// Medida realista (~0,5 em por carácter, como una sans a peso 800); la de 0,1
+// em del resto del arnés daría por caber lo que en un navegador no cabe.
+const mReal = fakeMeasure(50);
+const caja = { boxW: tituloCat.w * 1080, boxH: tituloCat.h * 1080, fontSize: 0.05 * 1080, minFontSize: tituloCat.minFontSize * 1080, measure: mReal };
+const corto = S.layoutText({ ...caja, text: '¡Feliz aniversario, !' });
+const real = S.layoutText({ ...caja, text: '¡Feliz aniversario número 30,\nClub Rotario Villa de Leyva y el Alto Ricaurte!' });
+check('el texto corto de un editor sin datos no encoge', corto.fontSize === caja.fontSize, String(corto.fontSize));
+check('el título real de un club largo se encoge para caber', real.fontSize <= caja.fontSize * 0.8, String(real.fontSize));
+
+// Por eso el editor tiene que previsualizar con el texto que el público va a
+// ver: la redacción vigente (migrada también al LEER el diseño) y datos de
+// ejemplo cuando el panel aún no los tiene.
+check('rowToProject migra la redacción al leer el diseño',
+    /document:\s*r\.document\s*\?\s*migrateTemplateTexts\(r\.document\)/.test(ctrl));
+const studio = readFileSync('src/components/admin/design-studio/DesignStudio.tsx', 'utf8');
+check('la vista previa del editor rellena con datos de ejemplo',
+    /PREVIEW_SAMPLES/.test(studio) && /club:\s*rawVars\.club\s*\|\|\s*PREVIEW_SAMPLES\.club/.test(studio));
+const sampleClub = studio.match(/club:\s*'([^']+)'/)?.[1] || '';
+check('el club de ejemplo es LARGO (el caso que encoge) y se declara ejemplo',
+    sampleClub.length >= 30 && /Ejemplo/.test(sampleClub), sampleClub);
+check('lo que se GUARDA es lo crudo, nunca el ejemplo',
+    /variables:\s*rawVars/.test(studio) && !/variables:\s*liveVars/.test(studio));
+check('y con el ejemplo a la vista, se dice',
+    /previewConEjemplo/.test(studio) && /datos de ejemplo/.test(studio));
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
 if (malos.length) {
