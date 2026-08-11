@@ -445,24 +445,30 @@ check('encuentra todas las variables del documento',
     P.variablesOf(docPub).join(','));
 
 const campos = P.buildPublicFields(docPub);
-// Los cuatro datos que pidió el cliente, en el mismo orden en que se completan
-// en el Generador de Pendones: logotipo, nombre, años y fotografía.
+// El formulario de la reingeniería: club, años, mensaje y fotografía. El
+// LOGOTIPO ya no se pide en ESTA plantilla —la lámina de referencia del
+// Distrito no lo lleva; firma el logo institucional del pie— y la vía es la
+// declaración del nodo (`visible: false`), no una regla global: la decisión de
+// v4.722.3 sigue en pie —el logotipo NO es institucional— y otra plantilla lo
+// enciende marcándolo en Propiedades.
 check('el formulario ofrece exactamente lo editable',
-    campos.map(f => f.key).join(',') === 'logo,club,anios,mensaje,imagen',
+    campos.map(f => f.key).join(',') === 'club,anios,mensaje,imagen',
     campos.map(f => f.key).join(','));
 check('cada campo trae su tipo',
     campos.find(f => f.key === 'mensaje')?.type === 'textarea'
     && campos.find(f => f.key === 'imagen')?.type === 'image'
-    && campos.find(f => f.key === 'logo')?.type === 'image'
     && campos.find(f => f.key === 'anios')?.type === 'number');
 check('el mensaje se marca como asistible por IA', campos.find(f => f.key === 'mensaje')?.ai === true);
 check('el nombre del club es obligatorio', campos.find(f => f.key === 'club')?.required === true);
-check('los campos salen en un orden estable', campos[0].key === 'logo');
+check('los campos salen en un orden estable', campos[0].key === 'club');
 
-// El logotipo es del CLUB que cumple años, no del Distrito: es un campo
-// público, como en el Generador de Pendones. La firma del Distrito es el pie.
-check('el logotipo SÍ es un campo público', campos.some(f => f.key === 'logo'));
-check('y no está marcado como institucional', !P.isInstitutional('logo'));
+// El logotipo se APAGÓ en esta plantilla, pero NO por institucional: la regla
+// de v4.722.3 sigue —es un dato del club—, y apagarlo es una decisión del
+// diseño, reversible desde Propiedades.
+check('el logotipo no sale en el formulario de esta plantilla', !campos.some(f => f.key === 'logo'));
+check('y sigue sin estar marcado como institucional', !P.isInstitutional('logo'));
+check('la plantilla lo declara apagado, no lo borra',
+    templateById('aniversario_foto').nodes.some(n => n.id === 'logo' && n.field?.visible === false));
 
 // Lo institucional NO se ofrece: es la firma de la pieza.
 check('el gobernador no es un campo público', !campos.some(f => f.key === 'gobernador'));
@@ -524,7 +530,7 @@ const san = P.sanitizeValues(
 check('acepta lo declarado', san.values.club === 'Club Rotario Pasto');
 check('recorta espacios', san.values.mensaje === 'hola');
 check('deja los años en dígitos', san.values.anios === '49');
-check('acepta el logotipo del club', san.values.logo === 'https://ok.s3.amazonaws.com/escudo.png');
+check('DESCARTA el logotipo: esta plantilla no lo pide', !('logo' in san.values));
 check('DESCARTA al gobernador', !('gobernador' in san.values));
 check('DESCARTA el periodo rotario', !('periodo' in san.values));
 check('y reporta lo descartado en vez de callarlo',
@@ -594,12 +600,17 @@ const publicacion = P.buildPublication({
     document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
     settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
 });
-check('la publicación trae su formulario derivado', publicacion.fields.length === 5, String(publicacion.fields.length));
+check('la publicación trae su formulario derivado', publicacion.fields.length === 4, String(publicacion.fields.length));
 check('y congela lo institucional con su valor',
     publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
 check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));
-check('y el logotipo tampoco queda congelado: lo sube cada club',
-    !('logo' in publicacion.frozen), JSON.stringify(Object.keys(publicacion.frozen)));
+// El logotipo está APAGADO en esta plantilla (`visible: false`): se congela
+// con su valor por defecto —vacío— y con `dropIfEmpty` la pieza sale sin él,
+// como la lámina de referencia. El del settings NO lo pisa: apagado es «este
+// dato lo fijo yo», y el diseño lo fijó vacío.
+check('el logotipo apagado queda CONGELADO, no ofrecido',
+    'logo' in publicacion.frozen && !publicacion.fields.some(f => f.key === 'logo'),
+    JSON.stringify(Object.keys(publicacion.frozen)));
 
 // El escudo con el que el administrador DISEÑÓ no puede viajar dentro de la
 // plantilla publicada: cada club que abra el enlace vería el de otro.
@@ -607,14 +618,20 @@ const conEjemplo = {
     ...docPub,
     nodes: docPub.nodes.map(n => n.id === 'logo' ? { ...n, src: 'https://ok.s3.amazonaws.com/escudo-del-admin.png' } : n),
 };
-const limpio = P.buildPublication({ document: conEjemplo, name: 'Aniversario', slug: 'aniversario-2' });
+// Para esta comprobación el campo se ENCIENDE: lo que se prueba es que el
+// escudo del admin no viaje al público cuando el campo SÍ se ofrece.
+const conEjemploVisible = {
+    ...conEjemplo,
+    nodes: conEjemplo.nodes.map(n => n.id === 'logo' ? { ...n, field: { ...(n.field || {}), visible: true } } : n),
+};
+const limpio = P.buildPublication({ document: conEjemploVisible, name: 'Aniversario', slug: 'aniversario-2' });
 check('el documento publicado sale sin el valor de ejemplo del panel',
     limpio.document.nodes.find(n => n.id === 'logo')?.src === null,
     String(limpio.document.nodes.find(n => n.id === 'logo')?.src));
 check('pero el nodo sigue atado a su variable',
     limpio.document.nodes.find(n => n.id === 'logo')?.srcVar === 'logo');
 check('y un campo BLOQUEADO conserva el suyo, porque lo congela la publicación',
-    P.stripPublicDefaults(conEjemplo, P.buildPublicFields(conEjemplo, { locked: ['logo'] }))
+    P.stripPublicDefaults(conEjemploVisible, P.buildPublicFields(conEjemploVisible, { locked: ['logo'] }))
         .nodes.find(n => n.id === 'logo')?.src === 'https://ok.s3.amazonaws.com/escudo-del-admin.png');
 check('un slug inválido impide publicar',
     (() => { try { P.buildPublication({ document: docPub, name: 'x', slug: 'admin' }); return false; } catch { return true; } })());
@@ -1594,8 +1611,12 @@ const compiladoCampos = S.compileTemplate({
 check('la declaración sobrevive a compilar la plantilla',
     compiladoCampos.nodes.find(n => n.id === 'logo').field?.kind === 'logo');
 const camposTpl = P.buildPublicFields({ nodes: compiladoCampos.nodes });
-check('y el formulario derivado trae el logotipo con sus reglas',
-    camposTpl.find(f => f.key === 'logo')?.image?.crop === false);
+check('el formulario derivado NO trae el logotipo: la plantilla lo apagó',
+    !camposTpl.find(f => f.key === 'logo'));
+// Sus reglas siguen vivas para cualquier plantilla que lo encienda.
+const conLogoVivo = compiladoCampos.nodes.map(n => n.id === 'logo' ? { ...n, field: { ...(n.field || {}), visible: true } } : n);
+check('y encendido vuelve con sus reglas de logotipo',
+    P.buildPublicFields({ nodes: conLogoVivo }).find(f => f.key === 'logo')?.image?.crop === false);
 check('y la fotografía con las suyas',
     camposTpl.find(f => f.key === 'imagen')?.image?.crop === true);
 

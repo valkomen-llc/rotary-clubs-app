@@ -129,7 +129,13 @@ export const TEMPLATES = [
                 // No es obligatorio a propósito: el nodo declara `dropIfEmpty`,
                 // así que la pieza sale bien sin logotipo. Quien quiera exigirlo
                 // lo marca al publicar.
-                field: { kind: 'logo', label: 'Logotipo del club', required: false },
+                // `visible: false` es «este dato lo fijo yo» (v4.723): el campo
+                // NO sale en el formulario público y el hueco se congela vacío
+                // al publicar — con `dropIfEmpty`, la pieza sale sin él, que es
+                // como está la lámina de referencia del Distrito: la firma la
+                // pone el logo institucional del pie, no el escudo del club.
+                // Quien quiera pedirlo lo enciende en Propiedades.
+                field: { kind: 'logo', label: 'Logotipo del club', required: false, visible: false },
             },
 
             {
@@ -145,8 +151,18 @@ export const TEMPLATES = [
             {
                 id: 'mensaje', type: 'text', name: 'Mensaje', role: 'mensaje', text: '{{mensaje}}',
                 field: { kind: 'texto_largo', label: 'Mensaje' },
-                x: 0.10, y: 0.725, w: 0.80, h: 0.115,
+                x: 0.10, y: 0.725, w: 0.80, h: 0.082,
                 fontSize: 0.0272, fontWeight: 400, color: PALETTE.ink, align: 'center', lineHeight: 1.38, minFontSize: 0.0175,
+            },
+            {
+                // El cierre dorado de la lámina del Distrito. Es un texto FIJO
+                // —la voz institucional, en itálica dorada—, editable en el
+                // estudio y NUNCA un campo del público: preguntarlo sería
+                // pedirle al club que escriba la voz del Distrito.
+                id: 'cierre', type: 'text', name: 'Cierre', role: 'cierre',
+                text: '¡Gracias por marcar la diferencia!',
+                x: 0.10, y: 0.807, w: 0.80, h: 0.038,
+                fontSize: 0.026, fontWeight: 700, italic: true, color: PALETTE.gold, align: 'center', lineHeight: 1.2, minFontSize: 0.016,
             },
             ...footerBlock({ top: 0.848 }),
         ],

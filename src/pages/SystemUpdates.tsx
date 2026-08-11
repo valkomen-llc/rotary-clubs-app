@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.766.0 | 2026-08-11 (Fase 3: el formulario pide solo club, logo y foto)
-// Cache bust: 2026-08-11h
+// UI V4.767.0 | 2026-08-11 (Dos datos y un boton: la plantilla de aniversario)
+// Cache bust: 2026-08-11i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.767.0',
+        title: 'El aniversario queda en dos datos y un botón 🎯',
+        description: 'La reingeniería del pliego confirmó la arquitectura que ya está construida —plantilla maestra determinística, datos dinámicos y la IA acotada a los elementos que la declaran— y dejó dos deltas concretos, que son esta versión. El primero: el formulario público de la plantilla de aniversario deja de pedir el logotipo del club. La lámina de referencia del Distrito no lo lleva —la pieza firma con el logo institucional del pie—, así que el hueco se apaga en la declaración de la plantilla y el formulario queda en lo prometido: elegí tu club, subí tu fotografía, Generar. Importante cómo se apagó: no se marcó el logotipo como institucional —ese error ya se cometió y se corrigió en su momento, porque dejaba a cada club con el escudo de otro—, sino con el interruptor de visibilidad del propio campo, que es por plantilla y reversible desde Propiedades. Cualquier otra plantilla puede pedirlo. El segundo: la pieza gana el cierre dorado de la lámina —«¡Gracias por marcar la diferencia!», en itálica dorada bajo el mensaje—. Es un texto fijo de la voz del Distrito, editable en el estudio y nunca un campo del público: preguntárselo al club sería pedirle que escriba la voz institucional. Con los años calculados desde la fecha de fundación y el mensaje escrito por la IA al generar (v4.766), el criterio de éxito del pliego queda en pie: club + fotografía + un clic.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'El formulario del aniversario ya no pide el logotipo del club.' },
+            { type: 'added', text: 'El cierre dorado de la lámina: «¡Gracias por marcar la diferencia!».' },
+            { type: 'improved', text: 'Apagar un campo es por plantilla y reversible, no una regla global.' },
+        ]
+    },
     {
         version: '4.766.0',
         title: 'El formulario público pide sólo el club, el logo y la fotografía 📋',

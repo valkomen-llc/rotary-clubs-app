@@ -787,7 +787,14 @@ console.log('\nEl portal público');
         },
         keepSlots: true,
     });
-    const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
+    // El logotipo se ENCIENDE en el arnés: la plantilla real lo apaga (la
+    // lámina del Distrito no lo lleva; lo custodia `test:design`), pero estas
+    // pruebas ejercitan sus reglas de adaptación —trim, transparencia, la placa
+    // de contraste, el ejemplo en la guía— y ésas siguen vivas para cualquier
+    // plantilla que lo pida.
+    const nodesConLogo = compiled.nodes.map(n =>
+        n.id === 'logo' ? { ...n, field: { ...(n.field || {}), visible: true } } : n);
+    const doc = { format: compiled.format, background: compiled.background, nodes: nodesConLogo };
     const frozen = { distrito: '4281', gobernador: 'Fabio Enrique Véjar Montañez', periodo: '2026-2027' };
     const pub = buildPublication({ document: doc, name: 'Aniversario de Club', slug: 'aniversario', settings: { frozen } });
     // `pub.document`, no `doc`: es lo que de verdad se guarda en la fila, con
