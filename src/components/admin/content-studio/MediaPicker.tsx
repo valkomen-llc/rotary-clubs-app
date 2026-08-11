@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     X,
     Search,
@@ -88,6 +88,11 @@ const CATEGORIES: { id: CategoryId; label: string; icon: React.FC<{ className?: 
     { id: 'project',          label: 'Proyectos',     icon: Briefcase,      color: 'text-amber-700',    bg: 'bg-amber-50' },
     { id: 'platform',         label: 'Plataforma',    icon: Globe,          color: 'text-emerald-700',  bg: 'bg-emerald-50' }
 ];
+
+// Cuántas tarjetas se dibujan por tanda. Doce filas de cinco: llena la ventana
+// del selector con holgura y deja el documento en un tamaño que el navegador
+// maneja. Con 3.295 imágenes dibujadas de una vez, no.
+const PAGE_SIZE = 60;
 
 const categoryMeta = (id: string | null | undefined) =>
     CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
@@ -246,6 +251,42 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         return counts;
     }, [sources]);
 
+    // ── LA REJILLA SE DIBUJA POR TANDAS ────────────────────────────
+    //
+    // Se reportó que al bajar no cargaban las imágenes. No era la red ni el
+    // servidor: la rejilla dibujaba `media.map(...)` ENTERO, y en este sitio la
+    // Biblioteca tiene 3.295 imágenes. Son 3.295 elementos `<img>` en el
+    // documento; `loading="lazy"` difiere la descarga pero no la creación, y al
+    // desplazarse el navegador dispara una avalancha de peticiones que se
+    // atascan entre sí. El resultado son tarjetas en blanco — que además se ven
+    // igual que «esta imagen no existe».
+    //
+    // Se dibuja una tanda y se agrega la siguiente cuando el centinela del
+    // final entra en pantalla. Sin librería: es un IntersectionObserver y un
+    // contador.
+    const [pagina, setPagina] = useState(1);
+    const centinela = useRef<HTMLDivElement>(null);
+
+    // Cualquier cambio de filtro empieza de nuevo: conservar la página anterior
+    // dejaría al usuario mirando el hueco de una lista que ya no existe.
+    useEffect(() => { setPagina(1); }, [selectedCategory, selectedSourceId, currentFolder, searchQuery]);
+
+    const visibles = useMemo(() => media.slice(0, pagina * PAGE_SIZE), [media, pagina]);
+    const faltan = media.length - visibles.length;
+
+    useEffect(() => {
+        const el = centinela.current;
+        if (!el || faltan <= 0) return;
+        const obs = new IntersectionObserver(
+            entradas => { if (entradas.some(e => e.isIntersecting)) setPagina(p => p + 1); },
+            // Un margen generoso: la tanda siguiente se pide ANTES de llegar al
+            // final, así el desplazamiento no se corta.
+            { root: null, rootMargin: '600px' }
+        );
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, [faltan, visibles.length]);
+
     if (!isOpen) return null;
 
     return (
@@ -375,7 +416,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                         </div>
                     ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
-                            {media.map((item) => {
+                            {visibles.map((item) => {
                                 const isSelected = selectedIds.includes(item.id);
                                 const meta = categoryMeta(item.sourceType);
                                 const MetaIcon = meta.icon;
@@ -399,8 +440,25 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                                                 <span className="text-[9px] font-black uppercase tracking-wide text-amber-600">HEIC</span>
                                                 <span className="text-[8px] font-bold text-amber-500 leading-tight">Convertilo en la Librería</span>
                                             </div>
+                                        ) : !item.url ? (
+                                            /* Sin dirección no hay nada que dibujar, y una tarjeta
+                                               en blanco se ve IGUAL que una que todavía está
+                                               cargando. Se dice cuál de las dos es. */
+                                            <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-gray-50 p-2 text-center">
+                                                <ImageIcon className="w-6 h-6 text-gray-300" />
+                                                <span className="text-[8px] font-bold text-gray-400 leading-tight">Sin archivo</span>
+                                            </div>
                                         ) : (
-                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
+                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover bg-gray-50" loading="lazy"
+                                                onError={e => {
+                                                    // Una imagen que el navegador no puede traer deja
+                                                    // el hueco vacío. Se marca, en vez de dejar una
+                                                    // tarjeta muda que parece un fallo del selector.
+                                                    const el = e.currentTarget;
+                                                    el.style.display = 'none';
+                                                    el.parentElement?.classList.add('bg-gray-100');
+                                                    el.parentElement?.setAttribute('data-media-error', '1');
+                                                }} />
                                         )}
 
                                         <div className={`absolute inset-0 bg-black/20 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
@@ -434,6 +492,27 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                                 );
                             })}
                         </div>
+                    )}
+
+                    {/* El centinela de la tanda siguiente. Va DENTRO del área
+                        que se desplaza y con un margen generoso, así la tanda
+                        se pide antes de llegar al final y el desplazamiento no
+                        se corta. El botón está por si el observador no llega a
+                        dispararse —una ventana muy alta, un desplazamiento de
+                        un tirón—: quedarse sin salida sería peor. */}
+                    {!loading && faltan > 0 && (
+                        <div ref={centinela} className="flex flex-col items-center gap-2 py-8">
+                            <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                            <button onClick={() => setPagina(p => p + 1)}
+                                className="text-[11px] font-bold text-gray-500 hover:text-indigo-600">
+                                Mostrar más · quedan {faltan.toLocaleString('es-CO')}
+                            </button>
+                        </div>
+                    )}
+                    {!loading && media.length > PAGE_SIZE && faltan === 0 && (
+                        <p className="text-center text-[11px] text-gray-400 py-6">
+                            Se muestran las {media.length.toLocaleString('es-CO')} imágenes.
+                        </p>
                     )}
                 </div>
 

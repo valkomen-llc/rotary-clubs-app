@@ -224,11 +224,19 @@ for (const tpl of availableTemplates()) {
 //      cargarla y volver: el retroceso que la regla existe para evitar.
 console.log('\nEl panel completo');
 {
+    // Va DENTRO de `AuthProvider`, igual que en producción. Sin él, el selector
+    // de la Biblioteca —que lee el rol para decidir si ofrece los filtros de
+    // todos los sitios— tumba el árbol con «useAuth must be used within an
+    // AuthProvider», y eso se ve igual que «el selector no abre». El proveedor
+    // es barato: lee `localStorage` y hace una sola consulta que ya está
+    // interceptada.
     const entry = `
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import DesignStudio from './src/components/admin/design-studio/DesignStudio';
-window.go = () => createRoot(document.getElementById('root')).render(React.createElement(DesignStudio));
+import { AuthProvider } from './src/hooks/useAuth';
+window.go = () => createRoot(document.getElementById('root'))
+    .render(React.createElement(AuthProvider, null, React.createElement(DesignStudio)));
 `;
     const panel = await build({
         stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
@@ -301,6 +309,48 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('la imagen subida entra como capa', /Imagen/.test(await page.locator('aside').last().innerText()));
     check('y se dibuja en el lienzo', await page.locator('img[src*="subida.png"], img[src*="banner-image"]').count() > 0);
     check('subir no lanzó errores', fallos.length === 0, fallos.join(' | '));
+
+    // ── La Biblioteca con MILES de imágenes ────────────────────────
+    //
+    // Lo reportado: al elegir la imagen base y bajar, las imágenes de la
+    // Biblioteca no cargaban. No era la red ni el servidor: la rejilla dibujaba
+    // la lista ENTERA, y en ese sitio hay 3.295 imágenes. `loading="lazy"`
+    // difiere la descarga pero no la creación de 3.295 elementos, y al
+    // desplazarse el navegador dispara una avalancha que se atasca sola.
+    //
+    // Desde el servidor esto no se ve: la respuesta es correcta. Hay que contar
+    // los nodos que quedan en el documento.
+    const MUCHAS = Array.from({ length: 3295 }, (_, i) => ({
+        id: `m${i}`, filename: `foto-${i}.jpg`, url: PIXEL_URL, type: 'image',
+        sourceType: 'platform', sourceId: null, sourceLabel: 'Plataforma',
+    }));
+    await page.route('**/api/media?**', r => r.fulfill({ json: MUCHAS }));
+    await page.route('**/api/media/sources', r => r.fulfill({ json: [] }));
+    await page.route('**/api/media/library-folders', r => r.fulfill({ json: { folders: [] } }));
+
+    // El PRIMER botón VISIBLE: hay varios «Biblioteca» y algunos viven dentro
+    // de un velo que sólo aparece al pasar el ratón, así que `.first()` a secas
+    // puede resolver a uno oculto y quedarse esperando para siempre.
+    await page.locator('button:visible').filter({ hasText: 'Biblioteca' }).first().click();
+    await page.waitForTimeout(1200);
+    check('el selector abre con la Biblioteca cargada',
+        await page.getByText(/IMAGENES EN VISTA/i).count() === 1);
+    const primeraTanda = await page.locator('[title^="foto-"]').count();
+    check('NO se dibujan las 3.295 tarjetas de una vez',
+        primeraTanda > 0 && primeraTanda <= 120, String(primeraTanda));
+    check('y se dice cuántas quedan', /quedan/.test(await page.locator('body').innerText()));
+
+    // La tanda siguiente se pide al bajar. Se pulsa el botón, que es la misma
+    // vía y no depende del observador — lo que se comprueba es que la rejilla
+    // CREZCA, no cómo se disparó.
+    await page.getByRole('button', { name: /Mostrar más/ }).click();
+    await page.waitForTimeout(600);
+    check('al bajar se agrega la tanda siguiente',
+        await page.locator('[title^="foto-"]').count() > primeraTanda,
+        `${primeraTanda} → ${await page.locator('[title^="foto-"]').count()}`);
+    check('la Biblioteca no lanzó errores', fallos.length === 0, fallos.join(' | '));
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await page.waitForTimeout(400);
 
     // ── El hueco de la FOTOGRAFÍA ──────────────────────────────────
     //
