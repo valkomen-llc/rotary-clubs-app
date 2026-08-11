@@ -612,6 +612,56 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     check('guardar no lanzó errores', fallos.length === 0, fallos.join(' | '));
 
     await page.close();
+
+    // ── «Mis diseños» cuando el listado FALLA ──────────────────────
+    //
+    // Lo reportado: «no cargan los diseños ya guardados». El panel decía
+    // «Todavía no guardaste ningún diseño» — el mismo texto que ve alguien que
+    // de verdad no tiene ninguno—, porque el listado se pedía con un `.catch`
+    // vacío. Un fallo del servidor y una lista vacía eran indistinguibles, así
+    // que quien tenía diseños los daba por perdidos.
+    //
+    // Esto sólo se ve montando la pantalla: desde el servidor no se distingue
+    // «no devolvió nada» de «nadie mostró lo que devolvió».
+    const p2 = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+    const fallos2 = [];
+    p2.on('pageerror', e => fallos2.push(e.message));
+    await p2.route('**/api/**', r => r.fulfill({ json: {} }));
+    let intentos = 0;
+    await p2.route('**/api/design-studio/projects', r => {
+        intentos++;
+        // El primer intento falla con el motivo que devuelve el servidor; el
+        // segundo —el de «Reintentar»— responde con un diseño.
+        if (intentos === 1) return r.fulfill({ status: 500, json: { error: 'No se pudieron cargar los diseños', details: 'column t.projectId does not exist' } });
+        return r.fulfill({ json: [{ id: 'd9', title: 'Aniversario de Clubes', document: { format: 'post_1_1', nodes: [] }, variables: {}, copy: {}, imageUrl: null, thumbUrl: null, mediaId: null, subjectClubId: null, status: 'draft', createdAt: '', updatedAt: '', templateId: 'aniversario_foto', category: 'aniversario', format: 'post_1_1', publication: null }] });
+    });
+    await p2.route('**/api/design-studio/catalog', r => r.fulfill({ json: CATALOGO }));
+    await p2.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
+    await p2.goto('http://localhost/');
+    await p2.addScriptTag({ content: panel.outputFiles[0].text });
+    await p2.evaluate(() => window.go());
+    await p2.waitForTimeout(1200);
+
+    await p2.getByRole('button', { name: /Mis diseños/ }).first().click();
+    await p2.waitForTimeout(400);
+    const panelSaved = await p2.locator('#root').innerText();
+    check('un listado que falla NO dice «todavía no guardaste ningún diseño»',
+        !/Todavía no guardaste ningún diseño/.test(panelSaved));
+    check('dice que no se pudieron cargar', /No se pudieron cargar tus diseños/.test(panelSaved));
+    check('y da el motivo del servidor, textual', /projectId does not exist/.test(panelSaved));
+    // Un fallo al LEER no es una pérdida, y decirlo evita el susto de creer que
+    // el trabajo se borró.
+    check('aclara que los diseños siguen guardados', /no una pérdida/.test(panelSaved));
+    check('ofrece reintentar', await p2.getByRole('button', { name: 'Reintentar' }).count() === 1);
+
+    await p2.getByRole('button', { name: 'Reintentar' }).click();
+    await p2.waitForTimeout(900);
+    const tras = await p2.locator('#root').innerText();
+    check('reintentar vuelve a pedir el listado', intentos === 2, String(intentos));
+    check('y al lograrlo el aviso desaparece', !/No se pudieron cargar tus diseños/.test(tras));
+    check('y aparece el diseño guardado', /Aniversario de Clubes/.test(tras));
+    check('el fallo del listado no rompe el panel', fallos2.length === 0, fallos2.join(' | '));
+    await p2.close();
 }
 
 // ════════════════════════════════════════════════════════════════════

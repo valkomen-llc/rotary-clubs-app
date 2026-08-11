@@ -197,29 +197,59 @@ const rowToProject = (r) => ({
     document: r.document, variables: r.variables, branding: r.branding, copy: r.copy,
     imageUrl: r.imageUrl, thumbUrl: r.thumbUrl, mediaId: r.mediaId,
     subjectClubId: r.subjectClubId, status: r.status,
+    // La Composición con IA vuelve con el diseño. Se guardaba desde v4.735 y
+    // no se leía de vuelta acá, así que reabrir una plantilla la mostraba
+    // apagada y sin imagen base: el usuario creía haber perdido lo que
+    // configuró, y volver a guardar la apagaba también en el enlace público.
+    composition: r.composition || null,
     createdAt: r.createdAt, updatedAt: r.updatedAt,
 });
 
 // ── GET /api/design-studio/projects ───────────────────────────────────
+//
+// Los DISEÑOS y sus ENLACES PÚBLICOS se leen por separado, y eso no es un
+// detalle de estilo: hasta v4.759 era un LEFT JOIN contra
+// `DesignPublicTemplate`, así que cualquier problema con esa tabla —una columna
+// que falte en una instalación vieja, un permiso— tiraba la consulta entera y
+// el panel se quedaba sin NINGÚN diseño. El enlace es un dato accesorio de la
+// ficha; los diseños son lo que la pantalla existe para mostrar. Misma regla
+// que la procedencia de un clon en el Ecosistema: toda lectura accesoria
+// DEGRADA, nunca revienta.
 export const listProjects = async (req, res) => {
     try {
         await ensureDesignSchema();
         const clubId = scopeClubId(req);
-        // LEFT JOIN con la publicación: abrir un diseño tiene que recuperar su
-        // enlace público, o la barra diría que no está publicado cuando sí lo
-        // está y el usuario no entendería por qué guardar cambia el enlace.
         const { rows } = await db.query(
-            `SELECT p.*, t.slug AS pub_slug, t.published AS pub_published
-               FROM "DesignProject" p
-               LEFT JOIN "DesignPublicTemplate" t ON t."projectId" = p.id
-              WHERE p."clubId" IS NOT DISTINCT FROM $1
-              ORDER BY p."updatedAt" DESC LIMIT 60`, [clubId]
+            `SELECT * FROM "DesignProject"
+              WHERE "clubId" IS NOT DISTINCT FROM $1
+              ORDER BY "updatedAt" DESC LIMIT 60`, [clubId]
         );
+
+        // Abrir un diseño tiene que recuperar su enlace, o la barra diría que no
+        // está publicado cuando sí lo está y guardar cambiaría el enlace sin
+        // que nada lo explicara. Pero si esto falla, se pierde el enlace — no
+        // los diseños.
+        const links = new Map();
+        if (rows.length) {
+            try {
+                const pub = await db.query(
+                    `SELECT "projectId", slug, published FROM "DesignPublicTemplate"
+                      WHERE "projectId" = ANY($1::text[])`, [rows.map(r => r.id)]
+                );
+                pub.rows.forEach(p => links.set(p.projectId, p));
+            } catch (e) {
+                console.warn('[designStudio] sin enlaces públicos en el listado:', e.message);
+            }
+        }
+
         const origin = originOf(req);
-        res.json(rows.map(r => ({
-            ...rowToProject(r),
-            publication: r.pub_slug ? { slug: r.pub_slug, url: publicUrl(r.pub_slug, origin), published: r.pub_published } : null,
-        })));
+        res.json(rows.map(r => {
+            const p = links.get(r.id);
+            return {
+                ...rowToProject(r),
+                publication: p ? { slug: p.slug, url: publicUrl(p.slug, origin), published: p.published } : null,
+            };
+        }));
     } catch (e) { fail(res, e, 500, 'No se pudieron cargar los diseños'); }
 };
 

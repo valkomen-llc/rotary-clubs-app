@@ -78,6 +78,15 @@ const DesignStudio: React.FC = () => {
     // regla de v4.700, no un selector por casilla.
     const [pickerTarget, setPickerTarget] = useState<'foto' | 'capa' | 'base' | string | null>(null);
     const [saved, setSaved] = useState<SavedDesign[]>([]);
+    // «No tenés diseños» y «no se pudieron cargar» son cosas DISTINTAS y hasta
+    // v4.759 se veían igual: el listado se pedía con un `.catch` vacío —«es
+    // secundario»— así que cualquier fallo del servidor pintaba «Todavía no
+    // guardaste ningún diseño». Quien tenía diseños guardados los daba por
+    // perdidos y no había nada en la pantalla que dijera otra cosa. Es la misma
+    // regla que en el resto del sitio: «no se pudo comprobar» no es un tipo de
+    // «bien», y un panel que falla al cargar DICE por qué.
+    const [savedError, setSavedError] = useState<string | null>(null);
+    const [loadingSaved, setLoadingSaved] = useState(false);
     const [showSaved, setShowSaved] = useState(false);
     const [currentId, setCurrentId] = useState<string | null>(null);
     const [exportOpen, setExportOpen] = useState(false);
@@ -100,12 +109,31 @@ const DesignStudio: React.FC = () => {
 
     const viewportRef = useRef<HTMLDivElement>(null);
 
+    /**
+     * Trae «Mis diseños» y GUARDA EL MOTIVO cuando no se puede.
+     *
+     * No lanza: quien la llama después de guardar o de vincular ya hizo su
+     * trabajo, y que el listado falle no puede convertirse en «no se guardó».
+     * El fallo se muestra en el panel, que es donde se está mirando.
+     */
+    const refreshSaved = useCallback(async () => {
+        setLoadingSaved(true);
+        try {
+            setSaved(await listDesigns());
+            setSavedError(null);
+        } catch (e) {
+            setSavedError(e instanceof Error ? e.message : 'No se pudieron cargar los diseños guardados.');
+        } finally {
+            setLoadingSaved(false);
+        }
+    }, []);
+
     // ── Carga inicial ──────────────────────────────────────────────
     useEffect(() => {
         fetchCatalog()
             .then(setCatalog)
             .catch(e => toast.error(e instanceof Error ? e.message : 'No se pudo cargar el catálogo'));
-        listDesigns().then(setSaved).catch(() => { /* el listado es secundario */ });
+        refreshSaved();
     }, []);
 
     // ── Historial ──────────────────────────────────────────────────
@@ -634,7 +662,7 @@ const DesignStudio: React.FC = () => {
             };
             const row = currentId ? await updateDesign(currentId, body) : await createDesign(body);
             setCurrentId(row.id);
-            setSaved(await listDesigns());
+            await refreshSaved();
             // El servidor refresca la publicación atada a este diseño y devuelve
             // cuál es. Se DICE: el usuario acaba de cambiar lo que ve cualquiera
             // que tenga el enlace.
@@ -688,7 +716,7 @@ const DesignStudio: React.FC = () => {
             const p = await linkPublication(currentId, publicationId);
             setPublicUrl(p.url);
             setLinkOptions(null);
-            setSaved(await listDesigns());
+            await refreshSaved();
             toast.success('Enlace vinculado. Ya muestra este diseño, y a partir de ahora sigue tus cambios.');
         } catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo vincular'); }
         finally { setLinking(false); }
@@ -727,8 +755,13 @@ const DesignStudio: React.FC = () => {
                     {fmt.label} · {fmt.width}×{fmt.height} px · {fmt.networks.slice(0, 3).join(', ')}
                 </span>
 
-                <button onClick={() => setShowSaved(s => !s)} className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-indigo-600 px-2.5 py-2 rounded-lg hover:bg-gray-100 transition-colors">
+                <button onClick={() => setShowSaved(s => !s)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-indigo-600 px-2.5 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    title={savedError ? 'No se pudieron cargar tus diseños guardados' : undefined}>
                     <FolderOpen className="w-4 h-4" /> Mis diseños{saved.length > 0 && <span className="text-gray-400">({saved.length})</span>}
+                    {/* El aviso tiene que verse SIN abrir el panel: si no, el
+                        fallo se sigue leyendo como «no tengo diseños». */}
+                    {savedError && <span className="w-1.5 h-1.5 rounded-full bg-red-500" aria-label="Error al cargar" />}
                 </button>
                 <button onClick={save} disabled={saving || !doc.nodes.length}
                     className="flex items-center gap-1.5 text-xs font-bold border border-gray-300 hover:border-indigo-400 disabled:opacity-40 rounded-lg px-3 py-2 text-gray-700 transition-colors">
@@ -783,7 +816,25 @@ const DesignStudio: React.FC = () => {
             {/* ── Mis diseños ──────────────────────────────────────── */}
             {showSaved && (
                 <div className="border-b border-gray-200 bg-gray-50 p-3 shrink-0 max-h-40 overflow-y-auto">
-                    {saved.length === 0 ? (
+                    {/* Tres estados, no uno. Un listado que falla y uno vacío se
+                        veían idénticos, así que quien tenía diseños guardados
+                        leía «todavía no guardaste ninguno» y los daba por
+                        perdidos. El motivo del servidor se muestra TEXTUAL. */}
+                    {savedError ? (
+                        <div className="text-center py-2">
+                            <p className="text-xs font-bold text-red-600">No se pudieron cargar tus diseños guardados.</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">{savedError}</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5">Están guardados: esto es un problema al leerlos, no una pérdida.</p>
+                            <button onClick={refreshSaved} disabled={loadingSaved}
+                                className="mt-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-40">
+                                {loadingSaved ? 'Reintentando…' : 'Reintentar'}
+                            </button>
+                        </div>
+                    ) : loadingSaved && saved.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-3 flex items-center justify-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando tus diseños…
+                        </p>
+                    ) : saved.length === 0 ? (
                         <p className="text-xs text-gray-400 text-center py-3">Todavía no guardaste ningún diseño.</p>
                     ) : (
                         <div className="flex gap-3 flex-wrap">

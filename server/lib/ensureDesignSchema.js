@@ -30,13 +30,15 @@ export async function ensureDesignSchema() {
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'DesignProject' AND column_name = 'copy') AS copy_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'DesignProject' AND column_name = 'composition') AS proj_comp_col`
+                         WHERE table_name = 'DesignProject' AND column_name = 'composition') AS proj_comp_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'DesignPublicTemplate' AND column_name = 'projectId') AS project_col`
     );
     // Esta lista NO es un número de versión: enumera los objetos reales del
     // archivo. Al agregar una columna hay que agregarla acá o la comprobación
     // rápida la da por presente y no se crea nunca (regla del sitio).
     if (rows[0]?.tabla && rows[0]?.publica && rows[0]?.comp_col && rows[0]?.settings_col
-        && rows[0]?.copy_col && rows[0]?.proj_comp_col) { _ready = true; return; }
+        && rows[0]?.copy_col && rows[0]?.proj_comp_col && rows[0]?.project_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "DesignProject" (
@@ -147,6 +149,10 @@ export async function ensureDesignSchema() {
     // Aditiva: una instalación anterior a v4.722 se completa sola.
     await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS composition JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
     await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
+    // Estaba SÓLO en el CREATE TABLE. Una instalación cuya tabla ya existiera
+    // nunca la habría recibido, y es la columna por la que se busca la
+    // publicación de un diseño: sin ella, guardar no refresca ningún enlace.
+    await db.query(`ALTER TABLE "DesignPublicTemplate" ADD COLUMN IF NOT EXISTS "projectId" TEXT;`).catch(() => {});
     // El enlace público se refresca al guardar el diseño, así que hace falta
     // encontrar la publicación por su proyecto en cada guardado.
     await db.query(`CREATE INDEX IF NOT EXISTS "DesignPublicTemplate_project_idx" ON "DesignPublicTemplate" ("projectId");`).catch(() => {});

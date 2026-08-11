@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.759.0 | 2026-08-11 (El subtitulo dice el nombre del sitio)
-// Cache bust: 2026-08-11a
+// UI V4.760.0 | 2026-08-11 (Mis disenos deja de fallar en silencio)
+// Cache bust: 2026-08-11b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.760.0',
+        title: '«Mis diseños» ya no dice que no tenés ninguno cuando falla 🗂️',
+        description: 'Se reportó que no cargaban los diseños ya guardados de una plantilla. El panel decía «Todavía no guardaste ningún diseño» — el mismo texto exacto que ve alguien que de verdad no tiene ninguno—, porque el listado se pedía descartando cualquier error: un fallo del servidor y una lista vacía se veían idénticos, así que quien tenía diseños guardados los daba por perdidos y no había nada en la pantalla que dijera otra cosa. Ahora son tres estados distintos: buscando, vacío, y «no se pudieron cargar» con el motivo del servidor escrito tal cual y un botón para reintentar — más la aclaración de que los diseños siguen guardados, porque un fallo al leerlos no es una pérdida. Y se corrigió la causa más probable: el listado se leía uniéndolo con la tabla de los enlaces públicos, así que cualquier problema con esa tabla tiraba la consulta entera y dejaba el panel sin NINGÚN diseño. El enlace es un dato accesorio de la ficha; los diseños son lo que la pantalla existe para mostrar. Ahora se leen por separado: si los enlaces fallan, se pierden los enlaces, no el trabajo. De paso, dos arreglos que venían con esto: la configuración de la Composición con IA vuelve al reabrir un diseño —se guardaba y no se leía de vuelta, así que aparecía apagada y sin imagen base—, y una columna que sólo se creaba en instalaciones nuevas ahora se agrega también en las que ya existían.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'diagnostico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un listado que falla ya no se lee como «no tenés diseños».' },
+            { type: 'fixed', text: 'Los diseños se listan aunque falle la tabla de enlaces públicos.' },
+            { type: 'fixed', text: 'La Composición con IA vuelve al reabrir un diseño guardado.' },
+            { type: 'added', text: 'Botón para reintentar, con el motivo del error a la vista.' },
+        ]
+    },
     {
         version: '4.759.0',
         title: 'Las páginas públicas dicen el nombre de tu sitio, no «Rotary Club» 🏷️',
