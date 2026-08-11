@@ -18,6 +18,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 
 import * as S from '../server/lib/designSpec.js';
 import { TEMPLATES, templateById, catalog, availableTemplates } from '../server/lib/designTemplates.js';
@@ -1464,6 +1465,46 @@ check('el recuadro escalado también',
         JSON.stringify(F.scaledBox(n, sc)) === JSON.stringify(CF.scaledBox(n, sc)))));
 check('y restablecer devuelve lo mismo',
     casosFrame.every(n => JSON.stringify(F.resetBox(n)) === JSON.stringify(CF.resetBox(n))));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('El listado de diseños no depende de los enlaces públicos');
+// ════════════════════════════════════════════════════════════════════
+//
+// Lo reportado: «no cargan los diseños ya guardados». El listado se leía con un
+// LEFT JOIN contra `DesignPublicTemplate`, así que cualquier problema con esa
+// tabla —una columna que falte en una instalación vieja, un permiso— tiraba la
+// consulta entera y el panel se quedaba sin NINGÚN diseño.
+//
+// El enlace público es un dato ACCESORIO de la ficha; los diseños son lo que la
+// pantalla existe para mostrar. Misma regla que la procedencia de un clon en el
+// Ecosistema: toda lectura accesoria degrada, nunca revienta. Se comprueba
+// leyendo el archivo porque es una consulta: no hay función que llamar sin base.
+const ctrl = readFileSync('server/controllers/designStudioController.js', 'utf8');
+const listado = ctrl.slice(ctrl.indexOf('export const listProjects'), ctrl.indexOf('export const saveProject'));
+
+check('el listado NO une con la tabla de publicaciones',
+    !/JOIN\s+"DesignPublicTemplate"/i.test(listado));
+check('los diseños se leen de su propia tabla',
+    /FROM\s+"DesignProject"/.test(listado));
+check('los enlaces se leen aparte y su fallo se atrapa',
+    /"DesignPublicTemplate"/.test(listado) && /catch/.test(listado));
+check('el aislamiento por sitio sigue en el WHERE',
+    /WHERE "clubId" IS NOT DISTINCT FROM \$1/.test(listado));
+
+// La Composición con IA se guardaba desde v4.735 y no se leía de vuelta: al
+// reabrir un diseño salía apagada y sin imagen base, y volver a guardar la
+// apagaba también en el enlace público.
+const fila = ctrl.slice(ctrl.indexOf('const rowToProject'), ctrl.indexOf('// ── GET /api/design-studio/projects'));
+check('la ficha devuelve la composición guardada', /composition:\s*r\.composition/.test(fila));
+
+// Esta columna estaba SÓLO en el CREATE TABLE: una instalación cuya tabla ya
+// existiera no la habría recibido nunca, y es por la que se busca la
+// publicación de un diseño.
+const ensure = readFileSync('server/lib/ensureDesignSchema.js', 'utf8');
+check('`projectId` tiene su ALTER aditivo',
+    /ADD COLUMN IF NOT EXISTS "projectId"/.test(ensure));
+check('y está en la comprobación rápida, o el ALTER no correría nunca',
+    /column_name = 'projectId'/.test(ensure));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
