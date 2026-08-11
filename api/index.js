@@ -369,6 +369,35 @@ app.get('*', async (req, res) => {
         }
     }
 
+    // ── Redirecciones de enlaces del sitio ───────────────────────────────────
+    //
+    // Va ANTES de servir el documento: una dirección corta como
+    // `/conferencia` no es una página de la aplicación, así que si llegara al
+    // catch-all el visitante vería la pantalla de «no encontrado».
+    //
+    // Es un salto HTTP de verdad y no un `<Navigate>` de React a propósito: la
+    // vista previa de WhatsApp, los rastreadores y `curl` no ejecutan
+    // JavaScript. Mismo motivo por el que el `<head>` se resuelve acá (v4.702).
+    try {
+        const { readRedirectsForHost } = await import('../server/lib/linkRedirectStore.js');
+        const { matchRule, buildTarget } = await import('../server/lib/linkRedirects.js');
+        const rule = matchRule(req.path, await readRedirectsForHost(hostname));
+        if (rule) {
+            const target = buildTarget(rule, {
+                search: req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '',
+            });
+            // Una redirección temporal NO se cachea: es lo que permite
+            // corregirla y que el cambio se note en la siguiente visita. La
+            // permanente la elige el administrador sabiendo que el navegador la
+            // va a recordar.
+            if (!rule.permanent) res.setHeader('Cache-Control', 'no-store');
+            return res.redirect(rule.permanent ? 301 : 302, target);
+        }
+    } catch (e) {
+        // Nunca se rompe la página por esto: sin redirección, se sirve el sitio.
+        console.error('[redirects]', e.message);
+    }
+
     // ── SEO Inteligente: el <head> se resuelve en el servidor ────────────────
     //
     // Hasta v4.702 esto AÑADÍA `<meta name="description">`, `og:title` y

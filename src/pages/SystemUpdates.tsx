@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.780.0 | 2026-08-11 (Adjuntos entrantes: descarga vía lista firmada de Resend + botón Recuperar adjuntos)
-// Cache bust: 2026-08-11v
+// UI V4.781.0 | 2026-08-11 (Redirecciones de enlaces por sitio)
+// Cache bust: 2026-08-11w
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.781.0',
+        title: 'Redirecciones de enlaces: direcciones cortas de tu propio dominio 🔗',
+        description: 'Cada sitio puede crear direcciones cortas propias que lleven a otra parte: por ejemplo tudominio.org/conferencia hacia el formulario de inscripción, o /polio hacia endpolio.org. Se configuran en Configuración → Identidad → «Redirecciones de Enlaces», y sirven para repartir por WhatsApp, imprimir en un pendón o decir en voz alta: si el destino cambia, se corrige la redirección y el enlace ya repartido sigue funcionando. El salto lo hace el SERVIDOR, no la pantalla, así que funciona también para las vistas previas de WhatsApp, para los buscadores y para cualquier programa que siga el enlace — una redirección hecha desde el navegador no haría nada de eso. Cada regla puede ser temporal (por defecto) o permanente: la permanente la recuerda el navegador, así que si después se corrige, quien ya la visitó puede seguir yendo al destino viejo; por eso lo temporal es lo que viene puesto. No se pueden redirigir la portada ni las direcciones del sistema como /admin: una redirección ahí dejaría el panel inaccesible y sin forma de entrar a quitarla. La query de la visita viaja al destino, así que las campañas con ?utm_source se siguen midiendo.',
+        date: new Date().toISOString(),
+        tags: ['enlaces', 'configuracion', 'sitios'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Redirecciones de enlaces por sitio, en Configuración → Identidad.' },
+            { type: 'added', text: 'El salto es del servidor: funciona en vistas previas y buscadores.' },
+            { type: 'added', text: 'Cada regla puede ser temporal o permanente, con su advertencia.' },
+            { type: 'added', text: 'La portada y las rutas del sistema quedan protegidas.' },
+        ]
+    },
     {
         version: '4.780.0',
         title: 'Los adjuntos de los correos recibidos ya se pueden descargar 📎',

@@ -2,6 +2,8 @@ import db from '../lib/db.js';
 import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 import { canonicalDomain } from '../lib/domains.js';
+import { sanitizeRules } from '../lib/linkRedirects.js';
+import { invalidateRedirectCache } from '../lib/linkRedirectStore.js';
 
 // v4.437.17 — Reclasificación explícita de tipo de entidad desde la Gestión Global de
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
@@ -183,7 +185,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, districtId, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, spotlightContent, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, spotlightContent, linkRedirects, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, honoraryMembersVisible, governorsVisible, authorsVisible, paymentBlocks, currency, defaultLanguage, headerCtas,
@@ -372,6 +374,12 @@ export const updateClub = async (req, res) => {
                 'join_section_content': joinContent !== undefined ? JSON.stringify(joinContent) : undefined,
                 'foundation_section_content': foundationContent !== undefined ? JSON.stringify(foundationContent) : undefined,
                 'spotlight_section_content': spotlightContent !== undefined ? JSON.stringify(spotlightContent) : undefined,
+                // Redirecciones de enlaces. Se SANEAN en el servidor y no sólo
+                // en la pantalla: una regla sobre `/admin` dejaría al
+                // administrador sin panel y sin forma de entrar a quitarla.
+                'link_redirects': linkRedirects !== undefined
+                    ? JSON.stringify(sanitizeRules(linkRedirects))
+                    : undefined,
                 'event_sections_visibility': eventSections !== undefined ? JSON.stringify(eventSections) : undefined,
                 'trf_credibility_visible': trfCredibilityVisible !== undefined ? String(trfCredibilityVisible) : undefined,
                 'honorary_members_visible': honoraryMembersVisible !== undefined ? String(honoraryMembersVisible) : undefined,
@@ -465,6 +473,10 @@ export const updateClub = async (req, res) => {
                 [id, req.body.adminUserId]
             );
         }
+
+        // Quien acaba de guardar una redirección espera probarla en seguida,
+        // no cuando venza el TTL de la caché.
+        if (linkRedirects !== undefined) invalidateRedirectCache();
 
         res.json(result.rows[0]);
     } catch (error) {
