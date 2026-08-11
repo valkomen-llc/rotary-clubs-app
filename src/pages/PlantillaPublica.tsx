@@ -69,7 +69,7 @@ interface PhotoNote { level: string; reason: string; consequence: string }
 /** Un club del catálogo curado de la Feria. `display` es el nombre para
  *  imprimir («Club Rotario Cali Pance»); `logo` viene sólo si la plataforma ya
  *  tiene el escudo de ese club cargado. */
-interface ClubHit { name: string; display: string; district: string; logo: string | null }
+interface ClubHit { name: string; display: string; district: string; logo: string | null; years?: number | null }
 
 const TONOS = [
     { id: 'emotivo', label: 'Más emotivo' },
@@ -132,6 +132,10 @@ const PlantillaPublica: React.FC = () => {
     // El buscador de clubes del catálogo de la Feria.
     const [clubHits, setClubHits] = useState<ClubHit[] | null>(null);
     const [buscandoClub, setBuscandoClub] = useState(false);
+    // Qué campos llenó el SISTEMA al elegir el club. Sólo ésos se esconden del
+    // formulario: esconder «años» mientras alguien lo escribe a mano lo haría
+    // desaparecer bajo sus dedos.
+    const [autoLlenados, setAutoLlenados] = useState<string[]>([]);
     const stageRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -188,13 +192,24 @@ const PlantillaPublica: React.FC = () => {
         // plantilla publicada con un dato al que nadie llega salía con el pie
         // institucional y hueco todo lo demás.
         const llenables = (tpl.fields || []).map(f => f.key);
-        const resuelto = { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, values, llenables) };
+        // Con la Composición encendida, la fotografía NO entra a la pieza al
+        // subirla: entra al GENERAR — integrada por el modelo o, si la
+        // composición falla, en su recuadro como respaldo. Mostrarla apenas se
+        // sube prometía que iba a quedar ahí, y quedaba en otra parte. En el
+        // formulario se ve en su propia casilla, que es donde se eligió.
+        const valoresPieza = { ...values };
+        if (tpl.composition?.enabled && fase !== 'listo') {
+            for (const f of tpl.fields || []) {
+                if (f.type === 'image' && (f.kind === 'foto' || f.key === 'imagen')) delete valoresPieza[f.key];
+            }
+        }
+        const resuelto = { ...tpl.document, nodes: applyPublicValues(tpl.document.nodes, valoresPieza, llenables) };
         // El fondo compuesto entra AL FINAL, encima del lienzo institucional y
         // apagando el nodo de la fotografía: la foto ya está dentro de esa
         // imagen. Va acá y no dentro de `values` porque este cálculo se rehace
         // con cada tecla, y el nodo volvería a encenderse.
         return backdrop ? withBackdrop(resuelto, backdrop) : resuelto;
-    }, [tpl, values, backdrop]);
+    }, [tpl, values, backdrop, fase]);
 
     // Con la Composición encendida la fotografía NO va a caer en un recuadro:
     // la integra el modelo dentro de la imagen de base. Ni su hueco ni su guía
@@ -402,8 +417,14 @@ const PlantillaPublica: React.FC = () => {
         setValues(prev => {
             const next: Record<string, string> = { ...prev, club: c.display };
             if (c.logo && !prev.logo) next.logo = c.logo;
+            // Los años que cumple llegan YA CALCULADOS con el club: la
+            // plataforma conoce la fundación, y preguntar lo que ya se sabe es
+            // trabajo para todos los que llenan el formulario. Sólo si está
+            // vacío: un número escrito a mano no se pisa.
+            if (c.years != null && !prev.anios) next.anios = String(c.years);
             return next;
         });
+        setAutoLlenados(c.years != null ? ['anios'] : []);
         setClubHits(null);
     }, []);
 
@@ -568,6 +589,15 @@ const PlantillaPublica: React.FC = () => {
                     )}
 
                     {tpl.fields.map(field => {
+                        // El formulario pide SÓLO lo que el sistema no resuelve
+                        // solo (Fase 3 de la reingeniería): el mensaje lo
+                        // escribe la IA al generar, y los años llegan con el
+                        // club elegido de la lista. Se ESCONDEN, no se quitan
+                        // de la publicación: siguen siendo campos reales, y si
+                        // los años no se conocieron —un club fuera de la
+                        // lista— la casilla vuelve a aparecer.
+                        if (field.ai && !values[field.key]?.trim()) return null;
+                        if (autoLlenados.includes(field.key) && values[field.key]?.trim()) return null;
                         if (field.type === 'image') {
                             const v = values[field.key];
                             const subiendo = uploadingKey === field.key;

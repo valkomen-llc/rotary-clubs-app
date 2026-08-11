@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.765.0 | 2026-08-11 (La pieza de aniversario sigue la lamina del Distrito)
-// Cache bust: 2026-08-11g
+// UI V4.766.0 | 2026-08-11 (Fase 3: el formulario pide solo club, logo y foto)
+// Cache bust: 2026-08-11h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.766.0',
+        title: 'El formulario público pide sólo el club, el logo y la fotografía 📋',
+        description: 'Fase 3 de la reingeniería. El formulario deja de pedir lo que el sistema resuelve solo: el mensaje no se pregunta —lo escribe la IA al pulsar Generar, y la casilla reaparece únicamente cuando ya hay un texto que corregir—, y los años que cumple el club llegan calculados al elegirlo de la lista, porque la plataforma conoce su fecha de fundación. Si el club no está en la lista o no tiene la fecha cargada, la casilla de años vuelve a aparecer: esconder un campo que hace falta sería peor que preguntarlo. Un número escrito a mano nunca se pisa. Y un cambio que se pidió con la última prueba: con la Composición con IA encendida, la fotografía ya NO se mete en la pieza apenas se sube. Se ve en su casilla del formulario, que es donde se eligió, y entra a la pieza al GENERAR — integrada por el modelo o, si la composición falla o se descarta, en su recuadro como respaldo. Mostrarla antes prometía que iba a quedar en un lugar en el que no iba a quedar. Sobre los textos que no aparecen en la pieza publicada: el diseño publicado no tiene los nodos del saludo, el título y el mensaje — hay que abrir el diseño en el estudio, cargar la plantilla de aniversario (que los trae) y guardar, para que el enlace se actualice con ellos.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'portal publico'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'El mensaje no se pregunta: lo escribe la IA al generar.' },
+            { type: 'added', text: 'Los años del club llegan calculados al elegirlo de la lista.' },
+            { type: 'fixed', text: 'La fotografía ya no se mete en la pieza al subirla: entra al generar.' },
+        ]
+    },
     {
         version: '4.765.0',
         title: 'La pieza de aniversario ya sigue la lámina que usa el Distrito 🎈',

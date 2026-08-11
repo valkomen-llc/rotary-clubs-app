@@ -26,7 +26,7 @@
 
 import db from '../lib/db.js';
 import { ensureDesignSchema } from '../lib/ensureDesignSchema.js';
-import { formatOf } from '../lib/designSpec.js';
+import { formatOf, parseFoundation, yearsSince } from '../lib/designSpec.js';
 import { sanitizeValues, applyPublicValues, bakeFrozen, isAcceptableImage } from '../lib/designPublish.js';
 import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
@@ -97,21 +97,38 @@ export const publicClubs = async (req, res) => {
         const hits = searchPublicClubs(req.query.q, req.query.limit);
         if (!hits.length) return res.json([]);
 
-        // Una sola consulta para todos los resultados, no una por club.
+        // Una sola consulta para todos los resultados, no una por club. La
+        // fecha de fundación viaja también: es lo que permite que «los años que
+        // cumple» no se le pregunten a quien elige su club de la lista — la
+        // plataforma ya lo sabe (Setting `club_foundation_date`, la misma fila
+        // que usa el panel).
         let logos = new Map();
+        let fundacion = new Map();
         try {
             const { rows } = await db.query(
-                `SELECT name, logo FROM "Club" WHERE logo IS NOT NULL AND logo <> '' LIMIT 2000`
+                `SELECT c.name, c.logo, s.value AS foundation
+                   FROM "Club" c
+                   LEFT JOIN "Setting" s ON s."clubId" = c.id AND s.key = 'club_foundation_date'
+                  LIMIT 2000`
             );
-            logos = new Map(rows.map(r => [normClub(r.name), r.logo]));
+            for (const r of rows) {
+                const k = normClub(r.name);
+                if (r.logo) logos.set(k, r.logo);
+                const anio = parseFoundation(r.foundation)?.year ?? null;
+                if (anio) fundacion.set(k, anio);
+            }
         } catch (e) {
-            // El logotipo es una comodidad: sin él el buscador sigue sirviendo.
-            console.warn('[designPublic] logos de clubes:', e.message);
+            // El logotipo y la fundación son comodidades: sin ellos el buscador
+            // sigue sirviendo.
+            console.warn('[designPublic] datos de clubes:', e.message);
         }
 
         res.json(hits.map(c => ({
             name: c.name,
             display: c.display,
+            // Los AÑOS que cumple, ya calculados: es lo que permite que el
+            // formulario no se los pregunte a quien eligió su club de la lista.
+            years: yearsSince(fundacion.get(normClub(c.name))) ?? null,
             district: c.district,
             logo: logos.get(normClub(c.name)) || logos.get(normClub(c.display)) || null,
         })));

@@ -828,13 +828,15 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('el portal se pinta sin sesión', (await page.locator('#root').innerHTML()).length > 500);
     check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
 
-    // El formulario sale de las variables, no de una lista escrita a mano.
-    // Los cuatro datos que pidió el cliente, los mismos del Generador de
-    // Pendones: logotipo, nombre, años y fotografía del club (v4.722.3).
+    // El formulario sale de las variables, no de una lista escrita a mano —
+    // pero SÓLO pide lo que el sistema no resuelve solo (Fase 3): el club, el
+    // logotipo, los años (mientras no lleguen con el club) y la fotografía.
     check('el formulario se derivó de las variables',
-        ['Logotipo del club', 'Nombre del club', 'Años que cumple', 'Mensaje', 'Fotografía'].every(l => txt.includes(l)),
+        ['Logotipo del club', 'Nombre del club', 'Años que cumple', 'Fotografía'].every(l => txt.includes(l)),
         txt.slice(0, 300));
-    check('ofrece escribir el mensaje con IA', /Generar mensaje con IA/.test(txt));
+    // El MENSAJE no se pide: lo escribe la IA al generar. La casilla vuelve a
+    // aparecer sólo cuando ya hay un texto que corregir.
+    check('el mensaje NO se pide: lo escribe la IA al generar', !txt.includes('Mensaje'));
     // El texto dice «el archivo», no «una foto»: la misma casilla sirve para el
     // logotipo, una firma o un sello, y llamarla «foto» confunde en el campo que
     // pide el escudo del club.
@@ -1110,6 +1112,12 @@ window.go = () => createRoot(document.getElementById('root')).render(
     // Subir NO compone: con un gesto explícito de Generar, hacerlo también al
     // soltar el archivo gastaría los créditos dos veces por visita.
     check('subir la fotografía NO compone todavía', !pidioComponer);
+    // Y tampoco ENTRA a la pieza: con la composición encendida, la foto entra
+    // al GENERAR —integrada por el modelo o en su recuadro como respaldo—.
+    // Mostrarla apenas se sube prometía que iba a quedar ahí, y quedaba en
+    // otra parte. En el formulario se ve en su casilla, que es donde se eligió.
+    check('la fotografía NO entra a la pieza al subirla',
+        await page.locator('[data-node="foto"]').count() === 0);
 
     // Generar exige lo obligatorio, así que el club va antes.
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
