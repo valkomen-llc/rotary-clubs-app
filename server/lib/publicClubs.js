@@ -65,6 +65,20 @@ export const allPublicClubs = () =>
 
 export const SEARCH_LIMIT = 12;
 
+/** TODOS los clubes de un distrito, para un desplegable — el mismo listado que
+ *  el formulario de Postular Proyecto (pedido del 11/8: el club se ELIGE de la
+ *  lista del Distrito, como en la Feria). Ordenado alfabético y SIN tope: un
+ *  `select` de 74 entradas es usable; un buscador truncado a 50 esconde a los
+ *  del final del alfabeto. La lista sigue sin cerrar el valor: el portal
+ *  ofrece «Mi club no está en la lista», como manda la regla de v4.706. */
+export const districtClubs = (district) => {
+    const n = String(district || '').replace(/\D/g, '');
+    if (!n) return [];
+    return allPublicClubs()
+        .filter(c => c.district === n)
+        .sort((a, b) => norm(a.name).localeCompare(norm(b.name)));
+};
+
 // ─── El buscador ───────────────────────────────────────────────────────
 //
 // Ordena por dónde CASA el término, no alfabéticamente: quien escribe «cali»
@@ -100,4 +114,4 @@ export const findPublicClub = (raw) => {
     return allPublicClubs().find(c => norm(c.name) === q || norm(c.display) === q) || null;
 };
 
-export default { norm, clubDisplayName, allPublicClubs, searchPublicClubs, findPublicClub, SEARCH_LIMIT };
+export default { norm, clubDisplayName, allPublicClubs, searchPublicClubs, districtClubs, findPublicClub, SEARCH_LIMIT };

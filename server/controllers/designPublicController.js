@@ -32,7 +32,7 @@ import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { normalizeComposition } from '../lib/designCompose.js';
-import { searchPublicClubs, findPublicClub, norm as normClub } from '../lib/publicClubs.js';
+import { searchPublicClubs, districtClubs, findPublicClub, norm as normClub } from '../lib/publicClubs.js';
 import { checkPreservation } from '../lib/designGuard.js';
 
 console.log('[designPublicController] v4.757.0 cargado — Portal público de Plantillas IA. La preservación de la fotografía se mide.');
@@ -65,6 +65,11 @@ const publicShape = (row) => ({
     // El portal necesita saber si esta plantilla compone con IA y cuántas
     // variantes le tocan. No se manda el prompt maestro: es configuración.
     composition: (() => { const c = normalizeComposition(row.composition); return { enabled: c.enabled, variants: c.publicVariants }; })(),
+    // El distrito de la pieza, para que el club se ELIJA de su lista — el
+    // mismo listado que Postular Proyecto. Sale de la firma congelada, no se
+    // escribe «4281» en ninguna pantalla: una publicación de otro distrito
+    // ofrece su propia lista, y una sin distrito degrada al campo de texto.
+    district: String(row.frozen?.distrito || '').replace(/\D/g, '') || null,
 });
 
 // ── GET /api/public/design/:slug ──────────────────────────────────────
@@ -94,7 +99,12 @@ export const getPublicTemplate = async (req, res) => {
 export const publicClubs = async (req, res) => {
     res.set('Cache-Control', 'public, max-age=300');
     try {
-        const hits = searchPublicClubs(req.query.q, req.query.limit);
+        // Con `district` se devuelve la lista COMPLETA de ese distrito, para el
+        // desplegable — el mismo listado que Postular Proyecto. Sin él, el
+        // buscador de siempre.
+        const hits = req.query.district
+            ? districtClubs(req.query.district)
+            : searchPublicClubs(req.query.q, req.query.limit);
         if (!hits.length) return res.json([]);
 
         // Una sola consulta para todos los resultados, no una por club. La

@@ -69,6 +69,10 @@ interface PublicTemplate {
     /** Si esta plantilla integra la fotografía dentro del lienzo institucional
      *  con IA, y cuántas variantes le toca gastar a una visita anónima. */
     composition?: { enabled: boolean; variants: number };
+    /** El distrito de la pieza (de la firma congelada). Con él, el club se
+     *  ELIGE de la lista de ese distrito — el mismo listado que Postular
+     *  Proyecto —; sin él, el campo queda como buscador de texto. */
+    district?: string | null;
 }
 interface PhotoNote { level: string; reason: string; consequence: string }
 /** Un club del catálogo curado de la Feria. `display` es el nombre para
@@ -137,6 +141,13 @@ const PlantillaPublica: React.FC = () => {
     // El buscador de clubes del catálogo de la Feria.
     const [clubHits, setClubHits] = useState<ClubHit[] | null>(null);
     const [buscandoClub, setBuscandoClub] = useState(false);
+    // La LISTA del distrito, para el desplegable (pedido del 11/8: el club se
+    // elige como en Postular Proyecto). `null` = no hay lista —sin distrito en
+    // la publicación, o el catálogo no cargó— y el campo degrada al buscador
+    // de texto, la misma regla que el DistrictPicker. `clubManual` es «Mi club
+    // no está en la lista»: la lista ayuda a escribir, no cierra el valor.
+    const [clubOptions, setClubOptions] = useState<ClubHit[] | null>(null);
+    const [clubManual, setClubManual] = useState(false);
     // Qué campos llenó el SISTEMA al elegir el club. Sólo ésos se esconden del
     // formulario: esconder «años» mientras alguien lo escribe a mano lo haría
     // desaparecer bajo sus dedos.
@@ -181,6 +192,17 @@ const PlantillaPublica: React.FC = () => {
             })
             .catch(e => setLoadError(e instanceof Error ? e.message : 'No se pudo cargar la plantilla.'));
     }, [slug]);
+
+    // La lista de clubes del distrito, una sola vez. Si no hay distrito o el
+    // catálogo no responde, `clubOptions` queda en null y el campo degrada al
+    // buscador de texto — nunca un formulario inservible.
+    useEffect(() => {
+        if (!tpl?.district || !(tpl.fields || []).some(f => f.key === 'club')) return;
+        fetch(`${API}/public/design/clubs?district=${encodeURIComponent(tpl.district)}`)
+            .then(r => r.json())
+            .then(d => { if (Array.isArray(d) && d.length) setClubOptions(d); })
+            .catch(() => { /* queda el buscador de texto */ });
+    }, [tpl]);
 
     // El lienzo se ajusta al ancho disponible. Sin esto, en un móvil la pieza
     // de 1080 px se sale de la pantalla y no se ve nada.
@@ -464,14 +486,18 @@ const PlantillaPublica: React.FC = () => {
             if (c.logo && !prev.logo) next.logo = c.logo;
             // Los años que cumple llegan YA CALCULADOS con el club: la
             // plataforma conoce la fundación, y preguntar lo que ya se sabe es
-            // trabajo para todos los que llenan el formulario. Sólo si está
-            // vacío: un número escrito a mano no se pisa.
-            if (c.years != null && !prev.anios) next.anios = String(c.years);
+            // trabajo para todos los que llenan el formulario. Los años SIGUEN
+            // al club elegido: si estaban vacíos o los puso la lista, se
+            // actualizan — dejar los del club anterior imprimiría su número en
+            // el título de otro club—; un número escrito a mano no se pisa.
+            const auto = !prev.anios || autoLlenados.includes('anios');
+            if (c.years != null && auto) next.anios = String(c.years);
+            else if (c.years == null && autoLlenados.includes('anios')) next.anios = '';
             return next;
         });
         setAutoLlenados(c.years != null ? ['anios'] : []);
         setClubHits(null);
-    }, []);
+    }, [autoLlenados]);
 
     const marcarUso = useCallback(() => {
         if (!slug) return;
@@ -757,6 +783,48 @@ const PlantillaPublica: React.FC = () => {
                         // navegador lo despliega encima y hace creer que la
                         // lista es obligatoria (v4.656).
                         const esClub = field.key === 'club';
+                        // El club se ELIGE de la lista del distrito, como en
+                        // Postular Proyecto (pedido del 11/8). Un `select`, y
+                        // nunca un `datalist` (v4.656). La lista ayuda a
+                        // escribir y NO cierra el valor: «Mi club no está en
+                        // la lista» pasa al texto libre, con vuelta explícita
+                        // (v4.706). Sin lista —publicación sin distrito, o el
+                        // catálogo no cargó— queda el buscador de siempre.
+                        if (esClub && clubOptions && !clubManual) {
+                            const enLista = clubOptions.some(c => c.display === values.club);
+                            return (
+                                <div key={field.key}>
+                                    <label className="block text-xs font-black text-gray-700 mb-1.5">
+                                        {field.label}{field.required && <span className="text-red-500"> *</span>}
+                                    </label>
+                                    <select
+                                        className={box}
+                                        value={enLista ? values.club : ''}
+                                        onChange={e => {
+                                            // Salir de la lista descarta también los años que
+                                            // ELLA puso: dejarlos imprimiría el número del club
+                                            // anterior en el título de otro club.
+                                            const soltarAuto = () => {
+                                                if (autoLlenados.includes('anios')) { set('anios', ''); setAutoLlenados([]); }
+                                            };
+                                            if (e.target.value === '__otro__') { setClubManual(true); setManual('club', ''); soltarAuto(); return; }
+                                            const c = clubOptions.find(x => x.display === e.target.value);
+                                            if (c) elegirClub(c); else { setManual('club', ''); soltarAuto(); }
+                                        }}>
+                                        <option value="">— Seleccioná tu club —</option>
+                                        {clubOptions.map(c => (
+                                            <option key={`${c.district}-${c.name}`} value={c.display}>{c.name}</option>
+                                        ))}
+                                        {/* De ÚLTIMA y con un clic extra: quien
+                                            sí está en la lista la usa. */}
+                                        <option value="__otro__">Mi club no está en la lista</option>
+                                    </select>
+                                    <p className="mt-1 text-[11px] text-gray-400">
+                                        La lista del Distrito {tpl.district}. Al elegirlo se completan solos el nombre, el escudo y los años.
+                                    </p>
+                                </div>
+                            );
+                        }
                         return (
                             <div key={field.key} className="relative">
                                 <label className="block text-xs font-black text-gray-700 mb-1.5">
@@ -800,6 +868,16 @@ const PlantillaPublica: React.FC = () => {
                                     <p className="mt-1 text-[11px] text-gray-400">
                                         Escribí y elegí de la lista, o escribilo a mano si tu club no aparece.
                                     </p>
+                                )}
+                                {/* Volver del texto libre a la lista es un botón
+                                    EXPLÍCITO (v4.706): sin él, quien marcó «no
+                                    está en la lista» por error se queda
+                                    escribiendo a mano. */}
+                                {esClub && clubManual && clubOptions && (
+                                    <button type="button" onClick={() => { setClubManual(false); setManual('club', ''); }}
+                                        className="mt-1.5 text-[11px] font-bold text-blue-700 hover:underline">
+                                        ← Volver a la lista del Distrito {tpl.district}
+                                    </button>
                                 )}
                             </div>
                         );

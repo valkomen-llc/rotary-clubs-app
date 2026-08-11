@@ -48,7 +48,12 @@ import { FIELD_KINDS, declarationsOf, defaultKindFor, isImageKind } from './desi
 export const FIELD_SPECS = {
     logo: { order: 5, type: 'image', label: 'Logotipo del club', help: 'El escudo de tu club. Si no lo subís, la pieza sale sin él.' },
     club: { order: 10, type: 'text', label: 'Nombre del club', placeholder: 'Rotary Club Bogotá Centro', maxChars: 90, required: true },
-    anios: { order: 20, type: 'number', label: 'Años que cumple', placeholder: '49', maxChars: 3 },
+    // Obligatorio desde v4.775: el título de la lámina imprime el número
+    // («¡Felices 52 años, …!»), y un marcador sin valor dejaría el saludo
+    // mocho. No contradice la regla de «no afirmar un aniversario que no se
+    // verificó»: el número lo AFIRMA quien genera la pieza — llega calculado
+    // al elegir el club de la lista y queda editable.
+    anios: { order: 20, type: 'number', label: 'Años que cumple', placeholder: '49', maxChars: 3, required: true, help: 'Se completa solo al elegir tu club de la lista. Corregilo si hace falta.' },
     fecha: { order: 30, type: 'text', label: 'Fecha', placeholder: '4 de agosto', maxChars: 40 },
     ciudad: { order: 40, type: 'text', label: 'Ciudad', placeholder: 'Bogotá', maxChars: 60 },
     presidente: { order: 50, type: 'text', label: 'Presidente del club', placeholder: 'Nombre y apellido', maxChars: 80 },

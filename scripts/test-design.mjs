@@ -136,12 +136,13 @@ const compilado = S.compileTemplate({
     branding: { clubName: 'Club Rotario Cali San Fernando', district: '4281', governor: 'Fabio Véjar', period: '2026-2027', logo: 'https://x/l.png' },
 });
 
-// El título de la lámina: nombre del club, SIN años — la lámina no los dice y
-// el pliego lo prohíbe (no afirmar un aniversario que no se verificó).
+// El título de la lámina: los años y el nombre del club (pedido del 11/8).
+// El número no se inventa: es un campo obligatorio que quien genera afirma —
+// llega calculado al elegir el club de la lista y queda editable.
 check('el título lleva el nombre real del club',
     /Club Rotario Cali San Fernando!/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
-check('y NO lleva número de años',
-    !/49/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
+check('y lleva el número de años afirmado (v4.775)',
+    /Felices 49 años/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
 check('la firma une gobernador, distrito y periodo',
     /Fabio Véjar/.test(compilado.nodes.find(n => n.id === 'firma')?.text || '')
     && /4281/.test(compilado.nodes.find(n => n.id === 'firma')?.text || ''));
@@ -453,13 +454,13 @@ const campos = P.buildPublicFields(docPub);
 // declaración del nodo (`visible: false`), no una regla global: la decisión de
 // v4.722.3 sigue en pie —el logotipo NO es institucional— y otra plantilla lo
 // enciende marcándolo en Propiedades.
-// Dos datos y un botón: club y fotografía. El mensaje sigue siendo un campo
-// —lo escribe la IA y el portal lo esconde hasta que haya texto que corregir—
-// y los AÑOS ya no existen en esta pieza: la lámina no los dice. Desde v4.773
-// el CIERRE dorado también es un campo de IA: el pedido es que la frase varíe
-// entre piezas, y el portal lo esconde mientras siga en su valor por defecto.
+// El formulario: club, años, mensaje, cierre y fotografía. El mensaje y el
+// cierre los escribe la IA y el portal los esconde hasta que haya texto que
+// corregir. Los AÑOS volvieron en v4.775 —el pedido del 11/8 es que el título
+// imprima el número— y son obligatorios: llegan calculados al elegir el club
+// de la lista y quedan editables, así que el número lo afirma quien genera.
 check('el formulario ofrece exactamente lo editable',
-    campos.map(f => f.key).join(',') === 'club,mensaje,cierre,imagen',
+    campos.map(f => f.key).join(',') === 'club,anios,mensaje,cierre,imagen',
     campos.map(f => f.key).join(','));
 check('cada campo trae su tipo',
     campos.find(f => f.key === 'mensaje')?.type === 'textarea'
@@ -535,7 +536,7 @@ const san = P.sanitizeValues(
 );
 check('acepta lo declarado', san.values.club === 'Club Rotario Pasto');
 check('recorta espacios', san.values.mensaje === 'hola');
-check('los años ya no son un campo de esta pieza', !('anios' in san.values));
+check('los años vuelven a ser un campo de esta pieza (v4.775)', 'anios' in san.values);
 check('DESCARTA el logotipo: esta plantilla no lo pide', !('logo' in san.values));
 check('DESCARTA al gobernador', !('gobernador' in san.values));
 check('DESCARTA el periodo rotario', !('periodo' in san.values));
@@ -606,8 +607,8 @@ const publicacion = P.buildPublication({
     document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
     settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
 });
-// Cuatro desde v4.773: club, mensaje, cierre y fotografía.
-check('la publicación trae su formulario derivado', publicacion.fields.length === 4, String(publicacion.fields.length));
+// Cinco desde v4.775: club, años, mensaje, cierre y fotografía.
+check('la publicación trae su formulario derivado', publicacion.fields.length === 5, String(publicacion.fields.length));
 check('y congela lo institucional con su valor',
     publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
 check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));
@@ -1875,6 +1876,39 @@ check('lo escrito a mano se marca y no se pisa',
     /setManual/.test(portal) && /tocados\.has\(k\)/.test(portal));
 check('regenerar manda la pieza anterior para no repetirla',
     /previous: values\.mensaje/.test(portal));
+
+grupo('El club se ELIGE de la lista del distrito (v4.775)');
+
+// El pedido del 11/8: el mismo listado que Postular Proyecto, en un `select`.
+// La lista es COMPLETA —un buscador truncado esconde a los del final del
+// alfabeto— y ordenada; y sigue sin cerrar el valor.
+const lista4281 = PC.districtClubs('4281');
+check('la lista del 4281 llega completa', lista4281.length === CLUBS_4281.length,
+    `${lista4281.length} de ${CLUBS_4281.length}`);
+check('ordenada alfabéticamente, con tildes normalizadas',
+    lista4281.every((c, i) => i === 0 || PC.norm(lista4281[i - 1].name).localeCompare(PC.norm(c.name)) <= 0));
+check('cada entrada trae el nombre para IMPRIMIR', lista4281.every(c => c.display && c.display !== c.name || /^(Club Rotario|Rotary)/.test(c.display)));
+check('el distrito se reconoce con adornos', PC.districtClubs('Distrito 4281').length === lista4281.length);
+check('sin distrito no hay lista', PC.districtClubs('').length === 0);
+
+// El título imprime los años y el nombre: los dos marcadores viven en el nodo.
+const tituloFoto = templateById('aniversario_foto').nodes.find(n => n.id === 'titulo');
+check('el título imprime los años y el club',
+    /\{\{anios\}\}/.test(tituloFoto.text) && /\{\{club\}\}/.test(tituloFoto.text));
+// Y por eso los años son OBLIGATORIOS: un marcador sin valor deja el saludo
+// mocho. El número lo afirma quien genera —llega calculado al elegir el club
+// y queda editable—, así que no se contradice con «no afirmar un aniversario
+// que no se verificó».
+check('los años son obligatorios en el formulario público',
+    P.FIELD_SPECS.anios?.required === true);
+check('y la plantilla los declara entre lo que exige',
+    templateById('aniversario_foto').requires.includes('anios'));
+// El portal degrada: sin distrito en la publicación o sin catálogo, queda el
+// buscador de texto — misma regla que el DistrictPicker.
+check('el desplegable ofrece la salida «no está en la lista»',
+    /Mi club no está en la lista/.test(portal) && /Volver a la lista/.test(portal));
+check('y sin lista el campo degrada al buscador de texto',
+    /clubOptions && !clubManual/.test(portal));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
