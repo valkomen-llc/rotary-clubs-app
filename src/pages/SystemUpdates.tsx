@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.776.0 | 2026-08-11 (Autorreparación del portal: el marcador visible es declaración)
-// Cache bust: 2026-08-11r
+// UI V4.777.0 | 2026-08-11 (Fundación del club y años en el portal público)
+// Cache bust: 2026-08-11s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.777.0',
+        title: 'Fundación del club y años, en pareja, en el portal público 📅',
+        description: 'Bajo el nombre del club van ahora DOS campos lado a lado, como el control del panel: «Fundación del club» («1974» o «1974-08-04») y «Años que cumple». Quien conoce la fecha la escribe y los años se calculan solos, en vivo, mientras teclea; quien sabe el número lo escribe directo. El número queda siempre editable — lo afirma quien genera la pieza — y junto con el nombre del club arma el título: «¡Feliz aniversario número 52, Club Rotario Tuluá!». La fecha de fundación es un ayudante del cálculo: no se imprime en la pieza ni se envía al servidor. El cálculo usa el MISMO criterio del panel (parseFoundation/yearsSince), espejado en el navegador y comprobado por las pruebas comparando las salidas de los dos lados — si un espejo cambia sin el otro, la prueba lo dice. Cuando el club se elige de la lista del distrito y la plataforma ya conoce su fundación, el par ni aparece: los años llegan puestos.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Par «Fundación del club» + «Años que cumple», lado a lado, en Datos del club.' },
+            { type: 'added', text: 'Los años se calculan en vivo al escribir la fecha; el número queda editable.' },
+            { type: 'changed', text: 'Los años y el nombre del club arman el título de la pieza.' },
+        ]
+    },
     {
         version: '4.776.0',
         title: 'El portal se repara solo: los campos vuelven a aparecer 🔧',

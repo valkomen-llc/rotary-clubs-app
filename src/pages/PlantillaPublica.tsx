@@ -38,7 +38,7 @@ import {
     Share2, AlertTriangle, Check, Users,
 } from 'lucide-react';
 import DesignCanvas, { type SlotHint } from '../components/admin/design-studio/DesignCanvas';
-import { applyPublicValues, formatOf, isImage, type DesignDocument } from '../lib/designSpec';
+import { applyPublicValues, formatOf, isImage, parseFoundation, yearsSince, type DesignDocument } from '../lib/designSpec';
 import { withBackdrop, fusedPhotoId } from '../lib/designCompose';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
@@ -148,6 +148,11 @@ const PlantillaPublica: React.FC = () => {
     // no está en la lista»: la lista ayuda a escribir, no cierra el valor.
     const [clubOptions, setClubOptions] = useState<ClubHit[] | null>(null);
     const [clubManual, setClubManual] = useState(false);
+    // La fecha de fundación es un dato AUXILIAR del portal: no se imprime ni se
+    // envía — sirve para calcular los años que cumple mientras se escribe, con
+    // el mismo criterio del panel («1974» o «1974-08-04»). Por eso vive en su
+    // propio estado y no en `values`.
+    const [fundacion, setFundacion] = useState('');
     // Qué campos llenó el SISTEMA al elegir el club. Sólo ésos se esconden del
     // formulario: esconder «años» mientras alguien lo escribe a mano lo haría
     // desaparecer bajo sus dedos.
@@ -783,6 +788,43 @@ const PlantillaPublica: React.FC = () => {
                         // navegador lo despliega encima y hace creer que la
                         // lista es obligatoria (v4.656).
                         const esClub = field.key === 'club';
+                        // Los AÑOS van en pareja con la FUNDACIÓN, como el
+                        // control del panel (pedido del 11/8): quien conoce la
+                        // fecha la escribe y los años se calculan solos; quien
+                        // sabe el número lo escribe directo. El número queda
+                        // siempre editable — lo afirma quien genera la pieza.
+                        // La fundación no se imprime ni se envía: es el
+                        // ayudante del cálculo.
+                        if (field.key === 'anios') {
+                            return (
+                                <div key={field.key}>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-black text-gray-700 mb-1.5">Fundación del club</label>
+                                            <input className={box} placeholder="1974 o 1974-08-04" value={fundacion}
+                                                onChange={e => {
+                                                    const v = e.target.value;
+                                                    setFundacion(v);
+                                                    const y = parseFoundation(v).year;
+                                                    const calc = y != null ? yearsSince(y) : null;
+                                                    if (calc != null) set(field.key, String(calc));
+                                                }} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-black text-gray-700 mb-1.5">
+                                                {field.label}{field.required && <span className="text-red-500"> *</span>}
+                                            </label>
+                                            <input className={box} inputMode="numeric" maxLength={field.maxChars || 3}
+                                                placeholder={field.placeholder} value={values[field.key] || ''}
+                                                onChange={e => setManual(field.key, e.target.value.replace(/\D/g, ''))} />
+                                        </div>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-gray-400">
+                                        Escribí la fundación y los años se calculan solos — o escribí el número directo. Los años y el nombre del club arman el título.
+                                    </p>
+                                </div>
+                            );
+                        }
                         // El club se ELIGE de la lista del distrito, como en
                         // Postular Proyecto (pedido del 11/8). Un `select`, y
                         // nunca un `datalist` (v4.656). La lista ayuda a
