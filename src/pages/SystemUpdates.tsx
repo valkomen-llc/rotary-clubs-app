@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.771.0 | 2026-08-11 (Ancho del grupo y variacion de la lamina)
-// Cache bust: 2026-08-11m
+// UI V4.772.0 | 2026-08-11 (Censo de personas y brillo de silueta)
+// Cache bust: 2026-08-11n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.772.0',
+        title: 'La fotografía se conserva exacta y la silueta gana su brillo blanco ✨',
+        description: 'La prueba real mostró dos defectos: la pieza generada AGREGABA personas que no están en la fotografía, y dibujaba una forma en degradado —una cinta curvada— por encima del grupo. Las dos cosas se atacan en la instrucción, que es donde nacen. La preservación ahora es un CENSO en positivo: «el grupo es exactamente la gente de la fotografía — el mismo número de personas, cada una reconocible, con sus rostros y su ropa exactamente como son, y nada dibujado encima de ellas». Y en el campo de lo prohibido (negative_prompt, aparte del positivo como manda la regla del sitio) entran la cinta en degradado sobre la gente, la forma ondulada superpuesta y las figuras añadidas. Además, lo pedido para la silueta: un brillo blanco suave que recorre el borde del recorte del grupo, para que la silueta se despegue con delicadeza del lienzo — declarado en el encuadre «Silueta en la mitad inferior», que es quien describe cómo va la fotografía. El verificador de personas sigue detrás como red: una persona inventada descarta la composición aunque el prompt no haya bastado.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Censo en positivo: mismo número de personas, reconocibles, nada dibujado encima.' },
+            { type: 'fixed', text: 'negative_prompt: cinta en degradado, forma ondulada superpuesta, figuras añadidas.' },
+            { type: 'added', text: 'Brillo blanco suave recorriendo el borde de la silueta del grupo.' },
+        ]
+    },
     {
         version: '4.771.0',
         title: 'El ancho del grupo y la variación de la lámina se configuran 🎚️',

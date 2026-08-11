@@ -129,7 +129,7 @@ export const VARIANT_PLANS = [
         id: 'silueta_inferior',
         label: 'Silueta en la mitad inferior',
         summary: 'Las personas recortadas de su fondo, a lo ancho de la mitad de abajo, tras la banda del pie.',
-        photo: 'the people from the photograph are cut out of their own background and stand together across the lower half of the canvas, large and centred, their lower edge tucked behind the bottom band, softly lit so they belong to the piece',
+        photo: 'the people from the photograph are cut out of their own background and stand together across the lower half of the canvas, large and centred, their lower edge tucked behind the bottom band, with a soft white glow tracing the cut edge of the group so the silhouette lifts gently off the canvas',
         clear: 'the upper left column stays a calm, even surface with plenty of room to read',
         textZone: { y: 0.08, h: 0.34 },
     },
@@ -363,7 +363,10 @@ export const NEGATIVE_PROMPT =
     // marco flotando en el medio, en vez de la forma grande integrada.
     + 'framed inset, thumbnail, photo border, sticker, drop shadow box, polaroid, '
     // El fondo salía oscurecido y con un gris sucio encima del lienzo claro.
-    + 'grey wash, darkened background, muddy tones, desaturated, heavy gradient';
+    + 'grey wash, darkened background, muddy tones, desaturated, heavy gradient, '
+    // Lo que salió en la prueba del 11/8: una cinta ondulada con degradado
+    // cruzando al grupo, y personas que no están en la fotografía.
+    + 'gradient ribbon across the people, wavy overlay shape, added figures, extra person';
 
 const STYLE_CLAUSES = {
     institucional: 'The mood is calm and institutional: soft light, generous white space, understated elegance.',
@@ -437,7 +440,7 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
 
     // La gente de la foto es el motivo por el que existe la pieza.
     if (photo) {
-        partes.push('Everyone in the photograph stays in the frame, whole and recognisable, with their faces and their clothing exactly as they are.');
+        partes.push('The group is exactly the people in the photograph — the same number of people, each one recognisable, with their faces and their clothing exactly as they are, and nothing drawn across them.');
     }
 
     // 4. LA DIRECCIÓN DE ARTE DEL ADMINISTRADOR.

@@ -693,7 +693,7 @@ const pr = CO.buildBackdropPrompt({
     photo: { url: 'x' }, hasBase: true,
 });
 check('el prompt nombra las dos imágenes en orden', /first image/.test(pr.prompt) && /second image/.test(pr.prompt));
-check('pide que no se pierda a nadie de la foto', /everyone in the photograph/i.test(pr.prompt));
+check('pide que no se pierda a nadie de la foto', /exactly the people in the photograph/i.test(pr.prompt));
 check('describe la zona limpia para el texto', /room to read/i.test(pr.prompt));
 check('lleva la paleta del club', /17458F/i.test(pr.prompt));
 check('incluye el prompt maestro', /Keep it serene/.test(pr.prompt));
@@ -1225,9 +1225,11 @@ check('pero la dirección de arte SÍ', /Elegante, con luz suave/.test(promptVis
 // mientras sobrevivía una cláusula escrita por nosotros.
 const maestroGrande = CO.buildBackdropPrompt({
     // Medido: la base ocupa 935 de 2000, y 1055 con la paleta y el estilo. Una
-    // dirección de arte de 1000 sólo entra si se sacrifica el estilo — que es
-    // exactamente lo que hay que comprobar.
-    composition: CO.normalizeComposition({ enabled: true, masterPrompt: 'D'.repeat(1000) }),
+    // dirección de arte de 900 sólo entra si se sacrifican el estilo y la
+    // paleta — que es exactamente lo que hay que comprobar. (Era 1000 hasta
+    // v4.772: el censo de personas y el brillo de la silueta agrandaron la
+    // base, y con 1000 el propio prompt maestro dejaba de caber.)
+    composition: CO.normalizeComposition({ enabled: true, masterPrompt: 'D'.repeat(900) }),
     plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
     palette: { primary: '#17458F', accent: '#F7A81B' },
 });
@@ -1237,7 +1239,7 @@ check('al recortar se sacrifica el estilo antes que la dirección de arte',
 check('y el prompt sigue dentro del presupuesto',
     maestroGrande.prompt.length <= CO.PROMPT_MAX_CHARS);
 check('lo que sostiene la composición nunca se recorta',
-    /stays in the frame, whole and recognisable/.test(maestroGrande.prompt));
+    /same number of people/.test(maestroGrande.prompt));
 
 grupo('El encuadre y la ocasión los DECLARA la plantilla');
 
@@ -1279,6 +1281,17 @@ check('y el plan pide la silueta recortada, abajo, tras la banda',
     /cut out of their own background/i.test(CO.planById('silueta_inferior').photo)
     && /lower half/i.test(CO.planById('silueta_inferior').photo)
     && /behind the bottom band/i.test(CO.planById('silueta_inferior').photo));
+check('y el brillo blanco traza el borde de la silueta (pedido 11/8)',
+    /white glow tracing the cut edge/i.test(CO.planById('silueta_inferior').photo));
+// El censo va EN POSITIVO —mismo criterio que Reels—: se afirma que el grupo es
+// exactamente la gente de la foto, en número; lo que salió mal (la cinta
+// degradada, figuras agregadas) va al campo negativo.
+check('la preservación afirma el número exacto de personas',
+    /same number of people/i.test(CO.buildBackdropPrompt({
+        composition: { enabled: true }, plan: CO.planById('silueta_inferior'), photo: { url: 'x' }, hasBase: true,
+    }).prompt));
+check('la cinta degradada y las figuras agregadas van al negativo',
+    /gradient ribbon across the people/.test(CO.NEGATIVE_PROMPT) && /added figures/.test(CO.NEGATIVE_PROMPT));
 check('su zona tranquila es la columna superior izquierda, donde va el texto',
     /upper left/i.test(CO.planById('silueta_inferior').clear));
 
@@ -1386,7 +1399,7 @@ check('después los motivos, y el prompt maestro se conserva',
     JSON.stringify(promptCola.dropped));
 check('lo que sostiene la composición nunca se recorta',
     /reproduce it unchanged/i.test(promptCola.prompt)
-    && /Everyone in the photograph stays in the frame/i.test(promptCola.prompt));
+    && /exactly the people in the photograph/i.test(promptCola.prompt));
 check('y el prompt entra en el presupuesto', promptCola.prompt.length <= CO.PROMPT_MAX_CHARS, String(promptCola.prompt.length));
 
 // `edgeCrop` ya no es sólo un parámetro del guard: lo declara la plantilla.
