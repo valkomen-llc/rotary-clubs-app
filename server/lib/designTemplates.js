@@ -66,8 +66,8 @@ export const TEMPLATES = [
         // Lo que el motor de IA tiene que llenar y lo que la pieza necesita
         // para verse completa. `requires` lo usa la pantalla para avisar ANTES
         // de generar, no después.
-        requires: ['club', 'anios', 'imagen'],
-        summary: 'La fotografía del club ocupa la mitad superior. Ideal cuando hay una buena foto de grupo.',
+        requires: ['club', 'imagen'],
+        summary: 'La lámina del Distrito: textos a la izquierda y la fotografía del club abajo, bajo la banda azul y dorada.',
         // Composición con IA (v4.722). Viene APAGADA: encenderla gasta créditos
         // por pieza y manda la fotografía a un proveedor externo, así que es una
         // decisión del operador, no un valor por defecto. El administrador
@@ -98,71 +98,62 @@ export const TEMPLATES = [
             style: 'institucional',
         },
         nodes: [
+            // ── LA MAQUETA ES LA LÁMINA DEL DISTRITO (v4.768) ──────────
+            //
+            // Textos a la IZQUIERDA, sin número de años —la lámina no lo dice y
+            // el pliego lo prohíbe: no afirmar un aniversario que no se
+            // verificó—, y la FOTOGRAFÍA abajo, entrando por debajo de la banda
+            // azul y dorada del pie. El orden del array es el orden de capas:
+            // la foto va primera (al fondo) y el pie la cubre.
             {
                 id: 'foto', type: 'image', name: 'Fotografía del club', role: 'foto', src: '{{imagen}}', fit: 'cover',
-                x: 0, y: 0, w: 1, h: 0.47,
+                x: 0, y: 0.40, w: 1, h: 0.60,
                 // Campo vinculado: qué le sale al público y cómo se adapta lo
-                // que suba. Una fotografía SÍ se recorta al encuadre —es lo que
-                // la hace llenar la banda— y sale en JPEG.
+                // que suba. Una fotografía SÍ se recorta al encuadre y sale en
+                // JPEG.
                 field: { kind: 'foto', label: 'Fotografía del club' },
             },
-            { id: 'corte_oro', type: 'shape', name: 'Filo dorado', shape: 'wave', fill: goldFill, x: -0.02, y: 0.40, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
-            { id: 'corte_blanco', type: 'shape', name: 'Corte', shape: 'wave', fill: PALETTE.white, x: -0.02, y: 0.4165, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
+            // El corte blanco suaviza el borde superior de la fotografía, como
+            // la ola de la lámina. Va DESPUÉS de la foto para taparle el filo.
+            { id: 'corte_blanco', type: 'shape', name: 'Corte', shape: 'wave', fill: PALETTE.white, x: -0.02, y: 0.345, w: 1.04, h: 0.115, role: 'decoracion', locked: true },
 
-            // La placa existe SÓLO para dar contraste al logotipo sobre la
-            // fotografía: sin logotipo es un rectángulo blanco vacío. Por eso
-            // declara su dependencia en vez de dibujarse siempre.
+            // La placa existe SÓLO para dar contraste al logotipo sobre un
+            // fondo con textura: sin logotipo es un rectángulo vacío.
             { id: 'placa_logo', type: 'shape', name: 'Placa del logo', shape: 'rect', fill: PALETTE.white, radius: 0.02, x: 0.05, y: 0.042, w: 0.315, h: 0.122, role: 'decoracion', requiresVar: 'logo' },
             {
                 id: 'logo', type: 'image', name: 'Logotipo', role: 'logo', src: '{{logo}}', fit: 'contain',
                 dropIfEmpty: true, x: 0.068, y: 0.055, w: 0.28, h: 0.096,
-                // EL PRIMER CAMPO VINCULADO, y el que define el patrón. Un
-                // logotipo NO se recorta y conserva su transparencia: con las
-                // reglas de la fotografía —encuadre `cover`, recorte por
-                // atención, salida JPEG— el escudo del club llegaba cortado por
-                // los bordes y con el fondo transparente relleno de negro.
-                //
-                // `trim` es lo mismo que hace el Generador de Pendones desde su
-                // primera versión: un PNG del Brand Center trae márgenes vacíos
-                // y sin quitarlos el escudo ocupa la mitad de su recuadro.
-                //
-                // No es obligatorio a propósito: el nodo declara `dropIfEmpty`,
-                // así que la pieza sale bien sin logotipo. Quien quiera exigirlo
-                // lo marca al publicar.
-                // `visible: false` es «este dato lo fijo yo» (v4.723): el campo
-                // NO sale en el formulario público y el hueco se congela vacío
-                // al publicar — con `dropIfEmpty`, la pieza sale sin él, que es
-                // como está la lámina de referencia del Distrito: la firma la
-                // pone el logo institucional del pie, no el escudo del club.
-                // Quien quiera pedirlo lo enciende en Propiedades.
+                // Apagado por defecto: la lámina de referencia no lleva el
+                // escudo del club — firma el logo institucional del pie. Otra
+                // plantilla lo enciende desde Propiedades (v4.767).
                 field: { kind: 'logo', label: 'Logotipo del club', required: false, visible: false },
             },
 
             {
-                id: 'saludo', type: 'text', name: 'Saludo', text: 'Al {{club}}',
-                x: 0.075, y: 0.535, w: 0.85, h: 0.095,
-                fontSize: 0.0465, fontWeight: 800, color: PALETTE.royal, align: 'center', lineHeight: 1.16, minFontSize: 0.026,
-            },
-            {
-                id: 'titulo', type: 'text', name: 'Título', text: '¡Felices {{anios}} años!',
-                x: 0.075, y: 0.638, w: 0.85, h: 0.072,
-                fontSize: 0.055, fontWeight: 800, color: PALETTE.royal, align: 'center', lineHeight: 1.1, minFontSize: 0.03,
+                // El título de la lámina: dos líneas, a la izquierda, sin años.
+                // El nombre ya viene con su tratamiento («Club Rotario X»), así
+                // que el saludo no lo repite. SIN el emoji 🎉 de la lámina, y es
+                // medido, no gusto: sus métricas difieren entre el DOM y el
+                // canvas y corrían la pieza 1 px — la vista previa dejaba de ser
+                // el archivo, que es la promesa del módulo. La celebración la
+                // ponen los motivos de la composición.
+                id: 'titulo', type: 'text', name: 'Título', text: '¡Feliz aniversario,\n{{club}}!',
+                x: 0.06, y: 0.115, w: 0.64, h: 0.135,
+                fontSize: 0.049, fontWeight: 800, color: PALETTE.royal, align: 'left', lineHeight: 1.22, minFontSize: 0.028,
             },
             {
                 id: 'mensaje', type: 'text', name: 'Mensaje', role: 'mensaje', text: '{{mensaje}}',
                 field: { kind: 'texto_largo', label: 'Mensaje' },
-                x: 0.10, y: 0.725, w: 0.80, h: 0.082,
-                fontSize: 0.0272, fontWeight: 400, color: PALETTE.ink, align: 'center', lineHeight: 1.38, minFontSize: 0.0175,
+                x: 0.06, y: 0.262, w: 0.58, h: 0.085,
+                fontSize: 0.030, fontWeight: 400, color: PALETTE.ink, align: 'left', lineHeight: 1.35, minFontSize: 0.018,
             },
             {
-                // El cierre dorado de la lámina del Distrito. Es un texto FIJO
-                // —la voz institucional, en itálica dorada—, editable en el
-                // estudio y NUNCA un campo del público: preguntarlo sería
-                // pedirle al club que escriba la voz del Distrito.
+                // El cierre dorado de la lámina: voz del Distrito, itálica
+                // dorada. FIJO — nunca un campo del público.
                 id: 'cierre', type: 'text', name: 'Cierre', role: 'cierre',
                 text: '¡Gracias por marcar la diferencia!',
-                x: 0.10, y: 0.807, w: 0.80, h: 0.038,
-                fontSize: 0.026, fontWeight: 700, italic: true, color: PALETTE.gold, align: 'center', lineHeight: 1.2, minFontSize: 0.016,
+                x: 0.06, y: 0.352, w: 0.58, h: 0.04,
+                fontSize: 0.030, fontWeight: 700, italic: true, color: PALETTE.gold, align: 'left', lineHeight: 1.2, minFontSize: 0.017,
             },
             ...footerBlock({ top: 0.848 }),
         ],
