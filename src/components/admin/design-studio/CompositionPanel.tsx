@@ -58,6 +58,11 @@ interface Props {
     /** El documento de la pieza. Viaja al motor para que la composición respete
      *  la franja donde después se imprime el texto. */
     document?: unknown;
+    /** Los encuadres disponibles. Los declara el SERVIDOR y viajan en el
+     *  catálogo: duplicar `VARIANT_PLANS` en el navegador metería en el bundle
+     *  los textos en inglés del prompt —que acá no sirven para nada— y dejaría
+     *  dos listas separándose en silencio. */
+    plans?: { id: string; label: string; summary: string }[];
 }
 
 const box = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -66,7 +71,7 @@ const lbl = 'block text-[10px] font-black uppercase tracking-wider text-gray-400
 const CompositionPanel: React.FC<Props> = ({
     composition, onChange, photoUrl, format, palette, maxVariants,
     hasBackdrop, onApply, onRemove, onPickBase, onUploadBase, uploading, step = 6,
-    hasPhotoSlot = true, onAddPhoto, document = null,
+    hasPhotoSlot = true, onAddPhoto, document = null, plans = [],
 }) => {
     const hayDiseno = Array.isArray((document as { nodes?: unknown[] } | null)?.nodes)
         && ((document as { nodes: unknown[] }).nodes.length > 0);
@@ -242,6 +247,55 @@ const CompositionPanel: React.FC<Props> = ({
                             CÓMO tiene que verse. Es tu dirección de arte y pesa más que el estilo de acá abajo: si el prompt
                             se pasa del presupuesto del modelo, lo primero que se recorta es la paleta y el estilo, no esto.
                             Lo que nunca se recorta es la preservación de las personas ni el espacio para el texto.
+                        </p>
+                    </div>
+
+                    {/* El ENCUADRE es dirección de arte, no una puntuación.
+                        Hasta v4.762 lo elegía el sistema puntuando cada plan
+                        contra la franja del texto: un buen respaldo que no sabe
+                        que esta pieza quiere la forma grande mordida por la
+                        curva y no el óvalo del medio. */}
+                    <div className="mb-3">
+                        <span className={lbl}>Encuadre de la fotografía</span>
+                        <select className={box} value={composition.photo?.plan || 'auto'}
+                            onChange={e => set({ photo: { ...(composition.photo || {}), plan: e.target.value } })}>
+                            <option value="auto">Automático — el que mejor le siente al texto</option>
+                            {plans.map(p => <option key={p.id} value={p.id}>{p.label} · {p.summary}</option>)}
+                        </select>
+                        <p className="mt-1 text-[10px] text-gray-400">
+                            Dónde entra la fotografía dentro del lienzo. Con una sola variante, es el único que se genera.
+                        </p>
+                    </div>
+
+                    {/* La OCASIÓN. Va aparte del prompt maestro porque responde
+                        otra pregunta —qué se celebra, no cómo se ve la marca— y
+                        porque se recorta antes que la dirección de arte. */}
+                    <div className="mb-3">
+                        <span className={lbl}>Motivos de la ocasión</span>
+                        <textarea className={`${box} min-h-[56px] resize-y text-xs leading-relaxed`}
+                            value={composition.motifs || ''} maxLength={240}
+                            placeholder="Unos pocos confetis finos y algún globo suave, en las esquinas vacías."
+                            onChange={e => set({ motifs: e.target.value })} />
+                        <p className="mt-1 text-[10px] text-gray-400">
+                            El acento que hace que se note de qué es la pieza. <strong>Acotado y en positivo</strong>: decí
+                            cuántos, de qué tamaño y dónde. Un motivo sin acotar se come la pieza.
+                        </p>
+                    </div>
+
+                    {/* Recortar no es borrar (v4.762): componer es encuadrar, y
+                        en una foto de grupo alguien de los bordes queda fuera
+                        siempre. Hay piezas donde eso es diseño y otras donde
+                        aparecer es el punto. */}
+                    <div className="mb-3">
+                        <span className={lbl}>Si el encuadre recorta a alguien</span>
+                        <select className={box} value={composition.photo?.edgeCrop || 'allow'}
+                            onChange={e => set({ photo: { ...(composition.photo || {}), edgeCrop: e.target.value } })}>
+                            <option value="allow">Se usa igual y se avisa (recomendado)</option>
+                            <option value="strict">Se descarta: tienen que salir todos</option>
+                        </select>
+                        <p className="mt-1 text-[10px] text-gray-400">
+                            Una persona inventada, o borrada del centro de la fotografía, descarta la composición
+                            en los dos casos. Esto decide sólo qué pasa con quien estaba pegado a un borde.
                         </p>
                     </div>
 

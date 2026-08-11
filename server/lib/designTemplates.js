@@ -76,6 +76,17 @@ export const TEMPLATES = [
             enabled: false,
             baseImageUrl: null,
             masterPrompt: 'Keep the piece serene and institutional, in the visual language of Rotary stationery.',
+            // El encuadre se DECLARA: es dirección de arte, no una puntuación.
+            // Sin esto, `plansFor` elegía el óvalo del medio —puntuaba mejor
+            // contra la franja del texto— y la pieza salía con una miniatura
+            // flotando. La forma grande mordida por la curva es la papelería
+            // del Distrito, la referencia que trajo el equipo.
+            photo: { strategy: 'compose', plan: 'foto_recorte_curvo', edgeCrop: 'allow' },
+            // Es una pieza de ANIVERSARIO y tiene que notarse, sin volverse una
+            // tarjeta de cumpleaños: el acento va acotado —pocos, pequeños, en
+            // los huecos, nunca sobre la gente ni sobre donde va el texto—
+            // porque un motivo sin acotar se come la pieza.
+            motifs: 'A few very small celebratory touches: a light scatter of fine confetti and one or two soft balloons, barely there, in the brand colours, tucked into the empty corners of the canvas, never over the people and never over the calm area.',
             variants: 4,
             publicVariants: 1,
             style: 'institucional',

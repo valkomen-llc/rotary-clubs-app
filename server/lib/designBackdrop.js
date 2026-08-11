@@ -66,7 +66,10 @@ export const startComposition = async ({
     if (!c.enabled) throw new Error('Esta plantilla no tiene la composición con IA activada.');
     if (!photoUrl && !c.baseImageUrl) throw new Error('Hace falta al menos una imagen: la base de la plantilla o la fotografía del club.');
 
-    const planes = plansFor(variants ?? c.variants, document);
+    // El encuadre declarado por la plantilla va primero y, con una sola
+    // variante, es el único. Puntuar contra la franja del texto sigue siendo el
+    // respaldo cuando dice `auto`.
+    const planes = plansFor(variants ?? c.variants, document, c.photo.plan);
     const aspect = aspectFor(format);
     const model = COMPOSE_MODEL();
 

@@ -1210,12 +1210,111 @@ const maestroGrande = CO.buildBackdropPrompt({
     palette: { primary: '#17458F', accent: '#F7A81B' },
 });
 check('al recortar se sacrifica el estilo antes que la dirección de arte',
-    maestroGrande.dropped.includes('paleta y estilo') && /D{50}/.test(maestroGrande.prompt),
+    maestroGrande.dropped.includes('estilo') && /D{50}/.test(maestroGrande.prompt),
     maestroGrande.dropped.join(', '));
 check('y el prompt sigue dentro del presupuesto',
     maestroGrande.prompt.length <= CO.PROMPT_MAX_CHARS);
 check('lo que sostiene la composición nunca se recorta',
     /stays in the frame, whole and recognisable/.test(maestroGrande.prompt));
+
+grupo('El encuadre y la ocasión los DECLARA la plantilla');
+
+// Lo reportado tras la Fase 1: la composición ya sobrevivía, pero la
+// fotografía salía «dentro de una forma cuadrada con bordes» y «cambia el color
+// del fondo de base». Tres cosas distintas, y ninguna es el control de calidad.
+
+// 1. EL ENCUADRE es dirección de arte, no una puntuación. `plansFor` lo elegía
+//    sola comparando contra la franja del texto: buen respaldo, pero no sabe
+//    que esta pieza quiere la forma grande mordida por la curva.
+check('el plan declarado va primero',
+    CO.plansFor(1, null, 'foto_recorte_curvo')[0].id === 'foto_recorte_curvo');
+check('y con una sola variante es el ÚNICO que se genera',
+    CO.plansFor(1, null, 'foto_recorte_curvo').length === 1);
+check('los demás siguen detrás, para las variantes del panel',
+    CO.plansFor(4, null, 'foto_recorte_curvo').length === 4
+    && new Set(CO.plansFor(4, null, 'foto_recorte_curvo').map(p => p.id)).size === 4);
+const docConTexto = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'foto', srcVar: 'imagen', x: 0, y: 0, w: 1, h: 0.47 },
+        { type: 'text', id: 'saludo', text: 'Al Club X', x: 0.075, y: 0.535, w: 0.85, h: 0.095 },
+    ],
+});
+check('`auto` conserva el criterio del documento',
+    CO.plansFor(1, docConTexto, 'auto')[0].id === CO.plansFor(1, docConTexto)[0].id);
+// Un id viejo se degrada al respaldo, no al primero de la lista: elegir un
+// encuadre por descarte es peor que dejar decidir al documento.
+check('un plan inexistente cae en `auto`, no en el primero',
+    CO.normalizeComposition({ photo: { plan: 'nope' } }).photo.plan === 'auto');
+check('la plantilla de aniversario declara el recorte curvo',
+    templateById('aniversario_foto').composition.photo.plan === 'foto_recorte_curvo');
+
+// 2. EL LIENZO VUELVE INTACTO. «Conservá sus colores» sonaba suficiente y no lo
+//    era: el modelo devolvía el fondo aclarado y la curva redibujada.
+const conBase = CO.buildBackdropPrompt({
+    composition: { enabled: true }, plan: CO.planById('foto_recorte_curvo'),
+    photo: { url: 'https://x/f.jpg' }, hasBase: true,
+});
+check('el prompt pide REPRODUCIR el lienzo sin cambios',
+    /reproduce it unchanged/i.test(conBase.prompt));
+check('y lo dice también en negativo, que es lo que falló',
+    /do not restyle it|do not shift its palette/i.test(conBase.prompt));
+check('y afirma que lo ÚNICO que se agrega es la fotografía',
+    /only thing added is the photograph/i.test(conBase.prompt));
+// 3. EL TAMAÑO. Sin decirlo salía una miniatura con marco flotando en el medio.
+check('la forma de la fotografía se pide GRANDE',
+    /LARGE softly rounded shape/.test(conBase.prompt) && /substantial part of the layout/i.test(conBase.prompt));
+check('y se dice que no va en un marco',
+    /instead of sitting in a frame/i.test(conBase.prompt));
+check('lo que salió mal entra en el prompt negativo, no en el positivo',
+    /framed inset|thumbnail|photo border/.test(CO.NEGATIVE_PROMPT)
+    && !/framed inset/.test(conBase.prompt));
+
+// 4. LOS MOTIVOS de la ocasión. Una pieza de aniversario no se ve como una de
+//    condolencias, y eso no lo resuelve el estilo genérico.
+const conMotivos = CO.buildBackdropPrompt({
+    composition: { enabled: true, motifs: 'A light scatter of fine confetti in the empty corners.' },
+    plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
+});
+check('los motivos entran en el prompt', /fine confetti/i.test(conMotivos.prompt));
+check('la plantilla de aniversario trae los suyos',
+    /confetti/i.test(templateById('aniversario_foto').composition.motifs));
+check('y van acotados: un motivo sin acotar se come la pieza',
+    templateById('aniversario_foto').composition.motifs.length <= CO.MOTIF_MAX_CHARS
+    && /never over the people/i.test(templateById('aniversario_foto').composition.motifs));
+check('sin motivos declarados no se inventa ninguno',
+    !/confetti|balloon/i.test(CO.buildBackdropPrompt({
+        composition: { enabled: true }, plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' },
+    }).prompt));
+
+// El ORDEN DE SACRIFICIO. La dirección de arte del administrador se cae la
+// última; los motivos importan y pesan menos que su criterio.
+const promptCola = CO.buildBackdropPrompt({
+    composition: {
+        enabled: true,
+        masterPrompt: 'M'.repeat(400),
+        motifs: 'C'.repeat(240),
+    },
+    plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
+    palette: { primary: '#17458F', accent: '#F7A81B' },
+});
+check('al recortar se va primero el estilo y la paleta',
+    promptCola.dropped[0] === 'estilo' && promptCola.dropped[1] === 'paleta', JSON.stringify(promptCola.dropped));
+check('después los motivos, y el prompt maestro se conserva',
+    promptCola.dropped.includes('motivos de la ocasión') && !promptCola.dropped.includes('prompt maestro'),
+    JSON.stringify(promptCola.dropped));
+check('lo que sostiene la composición nunca se recorta',
+    /reproduce it unchanged/i.test(promptCola.prompt)
+    && /Everyone in the photograph stays in the frame/i.test(promptCola.prompt));
+check('y el prompt entra en el presupuesto', promptCola.prompt.length <= CO.PROMPT_MAX_CHARS, String(promptCola.prompt.length));
+
+// `edgeCrop` ya no es sólo un parámetro del guard: lo declara la plantilla.
+check('la plantilla declara qué hacer con el recorte del borde',
+    CO.normalizeComposition({ photo: { edgeCrop: 'strict' } }).photo.edgeCrop === 'strict');
+check('y por defecto se permite, que es lo que hace que componer sirva',
+    CO.normalizeComposition({}).photo.edgeCrop === 'allow');
+check('una configuración vieja, sin `photo`, se completa sola',
+    CO.normalizeComposition({ enabled: true }).photo.plan === 'auto'
+    && CO.normalizeComposition({ enabled: true }).photo.strategy === 'compose');
 
 grupo('El lienzo institucional se DIBUJA');
 

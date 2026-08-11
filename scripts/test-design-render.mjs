@@ -52,6 +52,7 @@ const CHROME = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-b
 const { compileTemplate } = await import('../server/lib/designSpec.js');
 const { templateById, availableTemplates } = await import('../server/lib/designTemplates.js');
 const { ASSIGNABLE_FIELDS } = await import('../server/lib/designPublish.js');
+const { VARIANT_PLANS } = await import('../server/lib/designCompose.js');
 
 const OUT = mkdtempSync(join(tmpdir(), 'design-render-'));
 // Tolerancias. El piso no puede ser 0: el antialias de las letras en DOM y en
@@ -247,6 +248,10 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         // El catálogo REAL de claves asignables: así la prueba también comprueba
         // que lo que declara el servidor sirve para el selector.
         assignable: ASSIGNABLE_FIELDS,
+        // Los encuadres REALES del servidor: así la prueba comprueba también
+        // que lo que declara `VARIANT_PLANS` sirve para pintar el selector.
+        variantPlans: VARIANT_PLANS.map(p => ({ id: p.id, label: p.label, summary: p.summary })),
+        maxVariants: 4,
         palette: {}, fonts: [], variables: {}, limits: {},
     };
 
@@ -534,6 +539,27 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
     await page.route('**/api/media/upload', r => r.fulfill({ json: { id: 'm3', url: PIXEL_URL } }));
     await page.getByText('Activar', { exact: true }).click();
     await page.waitForTimeout(300);
+
+    // ── Lo que la plantilla DECLARA sobre la fotografía ─────────────
+    //
+    // Tras la Fase 1 la composición sobrevivía, pero salía «dentro de una forma
+    // cuadrada con bordes» y con el fondo de base cambiado de color. El
+    // encuadre lo elegía el sistema puntuando contra la franja del texto —buen
+    // respaldo, pero no es dirección de arte— y no había dónde declararlo.
+    // Estos tres controles son eso, y desde el servidor no se ve si la pantalla
+    // los ofrece.
+    const panelComp = await page.locator('aside').first().textContent();
+    check('el panel deja declarar el encuadre de la fotografía',
+        /Encuadre de la fotograf/i.test(panelComp));
+    check('y ofrece los planes que declara el servidor',
+        await page.locator('option[value="foto_recorte_curvo"]').count() === 1);
+    check('con «Automático» como respaldo, no como única opción',
+        await page.locator('option[value="auto"]').count() === 1);
+    check('el panel deja escribir los motivos de la ocasión',
+        /Motivos de la ocasi/i.test(panelComp));
+    check('y decidir qué pasa si el encuadre recorta a alguien',
+        /Si el encuadre recorta a alguien/i.test(panelComp)
+        && await page.locator('option[value="strict"]').count() === 1);
 
     const casillasBase = page.locator('input[type=file]');
     const nBase = await casillasBase.count();

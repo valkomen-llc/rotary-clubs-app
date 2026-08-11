@@ -356,6 +356,10 @@ export const publicVerify = async (req, res) => {
 
         const composed = Buffer.from(await (await fetch(composedUrl)).arrayBuffer());
         const veredicto = await checkPreservation(original, composed, {
+            // Qué hacer cuando el encuadre se lleva a alguien del borde. Lo
+            // declara la plantilla: hay piezas donde recortar es diseño y otras
+            // donde aparecer es el punto.
+            edgeCrop: normalizeComposition(row.composition).photo.edgeCrop,
             // La composición lado a lado se sube al mismo prefijo efímero que la
             // fotografía: la cadena de proveedores acepta una imagen POR URL.
             publish: (buf) => storeTempBuffer(buf, row.slug, 'jpg'),
