@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.772.0 | 2026-08-11 (Censo de personas y brillo de silueta)
-// Cache bust: 2026-08-11n
+// UI V4.773.0 | 2026-08-11 (Textos dinámicos: mensaje y cierre varían por pieza)
+// Cache bust: 2026-08-11o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.773.0',
+        title: 'Título, mensaje y frase de cierre: dinámicos y distintos en cada pieza 📝',
+        description: 'La prueba real mostró la pieza sin los textos de arriba, y el pedido es que sean dinámicos: el título con el club, y el mensaje y la frase dorada distintos en cada generación. El título ya varía con el club («¡Feliz aniversario, {{club}}!») y el mensaje ya lo escribía la IA; lo que faltaba era el CIERRE: la frase dorada era un texto fijo y todas las piezas decían «¡Gracias por marcar la diferencia!». Ahora la escribe el modelo junto con el mensaje, con respaldo: si el modelo no responde, sale una fórmula clásica de un pool propio — la línea nunca falta. Y la variedad tiene MECANISMO, no deseo: cada generación recibe un ÁNGULO distinto (la trayectoria, las personas, el impacto, la amistad, lo que viene, la gratitud) y, al regenerar, el modelo recibe lo que decía la pieza anterior con la instrucción de escribir una distinta. En el portal, Generar y Regenerar reescriben los textos de IA en cada pieza — pero NUNCA por encima de lo que la persona escribió a mano: un texto tocado queda marcado y se respeta, con el mismo criterio con el que editar un nodo lo desliga de su variable. Importante: una publicación creada antes de la lámina nueva conserva su documento viejo — para estrenar estos textos hay que crear el diseño de nuevo desde la plantilla del catálogo y vincularlo al enlace publicado.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La frase de cierre dorada la escribe la IA y varía en cada pieza, con respaldo propio.' },
+            { type: 'added', text: 'Ángulos de enfoque por generación y anti-repetición al regenerar.' },
+            { type: 'changed', text: 'Generar y Regenerar reescriben los textos de IA; lo escrito a mano no se pisa.' },
+        ]
+    },
     {
         version: '4.772.0',
         title: 'La fotografía se conserva exacta y la silueta gana su brillo blanco ✨',

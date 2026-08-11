@@ -201,12 +201,15 @@ export const publicMessage = async (req, res) => {
         }
 
         // El texto de referencia sale de la fila publicada: es configuración de
-        // la plantilla, no un dato que el navegador pueda mandar.
+        // la plantilla, no un dato que el navegador pueda mandar. `previous` es
+        // lo que decía la pieza anterior de esta sesión: regenerar tiene que
+        // dar OTRA pieza, y sin ese dato el modelo repite su propia fórmula.
         const copy = await generateDesignCopy({
             purpose: row.category, tone, context, maxChars: limit,
             referenceText: normalizeComposition(row.composition).referenceText,
+            avoidText: typeof req.body?.previous === 'string' ? req.body.previous : '',
         });
-        res.json({ mensaje: copy.mensaje, degraded: !!copy.degraded, note: copy.note || null });
+        res.json({ mensaje: copy.mensaje, cierre: copy.cierre || null, degraded: !!copy.degraded, note: copy.note || null });
     } catch (e) {
         console.error('[designPublic] message:', e);
         res.status(500).json({ error: 'No se pudo escribir el mensaje. Podés escribirlo a mano.' });

@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import * as S from '../server/lib/designSpec.js';
 import { TEMPLATES, templateById, catalog, availableTemplates } from '../server/lib/designTemplates.js';
 import { ELEMENTS, elementById, elementToNode } from '../server/lib/designElements.js';
-import { validateMessage, trimToLimit, TONES } from '../server/lib/designAI.js';
+import { validateMessage, trimToLimit, TONES, CIERRE_FALLBACKS, CIERRE_MAX_CHARS, MESSAGE_ANGLES } from '../server/lib/designAI.js';
 import * as P from '../server/lib/designPublish.js';
 import * as PH from '../server/lib/designPhoto.js';
 import * as CO from '../server/lib/designCompose.js';
@@ -455,9 +455,11 @@ const campos = P.buildPublicFields(docPub);
 // enciende marcándolo en Propiedades.
 // Dos datos y un botón: club y fotografía. El mensaje sigue siendo un campo
 // —lo escribe la IA y el portal lo esconde hasta que haya texto que corregir—
-// y los AÑOS ya no existen en esta pieza: la lámina no los dice.
+// y los AÑOS ya no existen en esta pieza: la lámina no los dice. Desde v4.773
+// el CIERRE dorado también es un campo de IA: el pedido es que la frase varíe
+// entre piezas, y el portal lo esconde mientras siga en su valor por defecto.
 check('el formulario ofrece exactamente lo editable',
-    campos.map(f => f.key).join(',') === 'club,mensaje,imagen',
+    campos.map(f => f.key).join(',') === 'club,mensaje,cierre,imagen',
     campos.map(f => f.key).join(','));
 check('cada campo trae su tipo',
     campos.find(f => f.key === 'mensaje')?.type === 'textarea'
@@ -604,7 +606,8 @@ const publicacion = P.buildPublication({
     document: docPub, name: 'Aniversario de Club', slug: 'aniversario',
     settings: { frozen: { gobernador: 'Fabio', distrito: '4281', periodo: '2026-2027', logo: 'https://ok.amazonaws.com/l.png' }, intro: 'Completá los datos' },
 });
-check('la publicación trae su formulario derivado', publicacion.fields.length === 3, String(publicacion.fields.length));
+// Cuatro desde v4.773: club, mensaje, cierre y fotografía.
+check('la publicación trae su formulario derivado', publicacion.fields.length === 4, String(publicacion.fields.length));
 check('y congela lo institucional con su valor',
     publicacion.frozen.gobernador === 'Fabio' && publicacion.frozen.distrito === '4281');
 check('no congela lo que el público SÍ llena', !('club' in publicacion.frozen) && !('mensaje' in publicacion.frozen));
@@ -1825,6 +1828,53 @@ check('`projectId` tiene su ALTER aditivo',
     /ADD COLUMN IF NOT EXISTS "projectId"/.test(ensure));
 check('y está en la comprobación rápida, o el ALTER no correría nunca',
     /column_name = 'projectId'/.test(ensure));
+
+grupo('El mensaje y la frase de cierre VARÍAN por generación (v4.773)');
+
+// Lo reportado el 11/8: la pieza salía sin título, sin mensaje y con la frase
+// dorada siempre igual. El título ya varía con el club ({{club}}); lo que
+// faltaba era que el CIERRE fuera una variable escrita por el modelo.
+check('`cierre` es una variable del catálogo', 'cierre' in S.VARIABLES);
+check('y un campo del formulario público, escrito por la IA',
+    P.FIELD_SPECS.cierre?.ai === true && P.FIELD_SPECS.cierre?.type === 'text');
+
+const nodoCierre = templateById('aniversario_foto').nodes.find(n => n.id === 'cierre');
+check('el cierre del aniversario es un marcador, no un texto fijo',
+    nodoCierre?.text === '{{cierre}}');
+// El respaldo es lo que garantiza que la línea dorada NUNCA falte: si el
+// modelo no responde, sale la fórmula clásica. Sin `defaultValue`, un fallo
+// del proveedor dejaría la pieza sin remate.
+check('con la fórmula clásica de respaldo: la línea nunca falta',
+    /Gracias por marcar la diferencia/.test(nodoCierre?.field?.defaultValue || ''));
+
+// El pool de respaldo del servidor: variado de verdad y dentro del recuadro.
+check('el respaldo del cierre es un pool con variedad real',
+    CIERRE_FALLBACKS.length >= 3 && new Set(CIERRE_FALLBACKS).size === CIERRE_FALLBACKS.length);
+check('y cada frase del pool cabe en su recuadro',
+    CIERRE_FALLBACKS.every(f => f.length <= CIERRE_MAX_CHARS));
+
+// La variedad tiene MECANISMO, no deseo: un ángulo distinto por generación.
+// Pedirle al modelo «sé variado» no es una instrucción; darle un enfoque
+// distinto cada vez sí — el mismo criterio que los MUSIC_STYLES de Reels.
+check('la variedad tiene mecanismo: ángulos de enfoque distintos',
+    MESSAGE_ANGLES.length >= 4 && new Set(MESSAGE_ANGLES).size === MESSAGE_ANGLES.length);
+
+// El campo derivado viaja con su valor por defecto hasta el portal: es de
+// donde el formulario arranca ya completo.
+check('el campo derivado lleva el valor por defecto',
+    /Gracias por marcar la diferencia/.test(P.buildPublicFields(docPub).find(f => f.key === 'cierre')?.defaultValue || ''));
+
+// El portal REESCRIBE los textos de IA en cada generación —es lo que hace que
+// varíen— pero nunca por encima de lo escrito a mano. Es una conducta del
+// navegador y desde acá sólo se puede leer el archivo: la marca `tocados` y el
+// modo `soloNoTocados` tienen que estar en el flujo de generar.
+const portal = readFileSync('src/pages/PlantillaPublica.tsx', 'utf8');
+check('generar reescribe los textos de IA que nadie tocó',
+    /soloNoTocados:\s*true/.test(portal) && /camposIA\.some\(f => !tocados\.has\(f\.key\)\)/.test(portal));
+check('lo escrito a mano se marca y no se pisa',
+    /setManual/.test(portal) && /tocados\.has\(k\)/.test(portal));
+check('regenerar manda la pieza anterior para no repetirla',
+    /previous: values\.mensaje/.test(portal));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);

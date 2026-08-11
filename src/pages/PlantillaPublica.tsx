@@ -136,6 +136,11 @@ const PlantillaPublica: React.FC = () => {
     // formulario: esconder «años» mientras alguien lo escribe a mano lo haría
     // desaparecer bajo sus dedos.
     const [autoLlenados, setAutoLlenados] = useState<string[]>([]);
+    // Qué campos de texto escribió LA PERSONA con sus dedos. Es lo que separa
+    // «regenerar varía los textos» de «regenerar me borró lo que escribí»: al
+    // generar, los campos de IA se reescriben SÓLO si nadie los tocó a mano —
+    // el mismo criterio que desligar un nodo de su variable al editarlo.
+    const [tocados, setTocados] = useState<Set<string>>(new Set());
     const stageRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -253,6 +258,13 @@ const PlantillaPublica: React.FC = () => {
     const set = useCallback((key: string, v: string) => {
         setValues(prev => (prev[key] === v ? prev : { ...prev, [key]: v }));
     }, []);
+
+    // La escritura A MANO: igual que `set`, pero deja marcado que ese campo es
+    // de la persona. La IA escribe con `set` a secas, así que no se marca sola.
+    const setManual = useCallback((key: string, v: string) => {
+        set(key, v);
+        setTocados(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+    }, [set]);
 
     // La CLAVE del campo viaja con el archivo, y es lo que hace que un logotipo
     // se trate como un logotipo: con ella el servidor resuelve el recuadro de
@@ -374,22 +386,41 @@ const PlantillaPublica: React.FC = () => {
         } finally { setUploadingKey(null); }
     }, [slug, set, esCampoDeFoto]);
 
-    const escribirIA = useCallback(async (tone: string | null) => {
+    // `soloNoTocados` es el modo de GENERAR: reescribe los textos de IA para que
+    // cada pieza varíe, pero nunca por encima de lo que la persona escribió a
+    // mano. El botón explícito «Generar mensaje con IA» va sin esa marca — quien
+    // lo pulsa pide que se reescriba, y eso además le devuelve el campo a la IA.
+    const escribirIA = useCallback(async (tone: string | null, { soloNoTocados = false } = {}) => {
         if (!slug) return;
         setBusy('ia'); setAiNote(null);
         try {
             const r = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/message`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ values, tone, text: tone ? values.mensaje || '' : '' }),
+                body: JSON.stringify({
+                    values, tone, text: tone ? values.mensaje || '' : '',
+                    // Lo que decía la pieza anterior: regenerar tiene que dar OTRA.
+                    previous: values.mensaje || '',
+                }),
             });
             const d = await r.json().catch(() => null);
             if (!r.ok) throw new Error(d?.error || 'No se pudo escribir el mensaje.');
-            set('mensaje', d.mensaje || '');
+            const escribibles = ['mensaje', ...(d.cierre ? ['cierre'] : [])]
+                .filter(k => !soloNoTocados || !tocados.has(k));
+            if (escribibles.includes('mensaje')) set('mensaje', d.mensaje || '');
+            if (escribibles.includes('cierre')) set('cierre', d.cierre || '');
+            // Lo que acaba de escribir la IA vuelve a ser de la IA.
+            if (!soloNoTocados && escribibles.length) {
+                setTocados(prev => {
+                    const next = new Set(prev);
+                    escribibles.forEach(k => next.delete(k));
+                    return next;
+                });
+            }
             if (d.degraded) setAiNote(d.note || 'El texto se escribió sin modelo de lenguaje.');
         } catch (e) {
             setAiNote(e instanceof Error ? e.message : 'No se pudo escribir el mensaje. Podés escribirlo a mano.');
         } finally { setBusy(null); }
-    }, [slug, values, set]);
+    }, [slug, values, set, tocados]);
 
     // ── El buscador de clubes ──────────────────────────────────────
     //
@@ -493,13 +524,17 @@ const PlantillaPublica: React.FC = () => {
     const generar = useCallback(async () => {
         if (!tpl || !slug) return;
         const campoFoto = (tpl.fields || []).find(f => f.type === 'image' && (f.kind === 'foto' || f.key === 'imagen'));
-        const campoMensaje = (tpl.fields || []).find(f => f.ai);
+        // Los textos de IA se escriben en CADA generación, no sólo cuando
+        // faltan: el pedido es que el mensaje y la frase de cierre varíen entre
+        // piezas, y «Regenerar» con los mismos textos no regenera nada. Lo que
+        // la persona escribió a mano (`tocados`) no se pisa.
+        const camposIA = (tpl.fields || []).filter(f => f.ai);
+        const escribeTextos = camposIA.some(f => !tocados.has(f.key));
         const hayFoto = !!(campoFoto && values[campoFoto.key]);
-        const faltaMensaje = !!(campoMensaje && !values[campoMensaje.key]?.trim());
         const componeIA = !!(tpl.composition?.enabled && hayFoto);
 
         const plan = [
-            faltaMensaje ? 'Escribiendo el mensaje' : null,
+            escribeTextos ? 'Escribiendo el mensaje' : null,
             componeIA ? 'Componiendo el diseño con la IA' : null,
             'Integrando la identidad del club',
         ].filter(Boolean) as string[];
@@ -512,7 +547,7 @@ const PlantillaPublica: React.FC = () => {
         });
 
         try {
-            if (faltaMensaje) { await escribirIA(null); avanzar(); }
+            if (escribeTextos) { await escribirIA(null, { soloNoTocados: true }); avanzar(); }
             if (componeIA) { await componer(values[campoFoto!.key]); avanzar(); }
             // El último paso es local e instantáneo: `applyPublicValues` ya
             // resolvió la pieza mientras se escribía. Se muestra igual porque es
@@ -523,7 +558,7 @@ const PlantillaPublica: React.FC = () => {
             setAiNote(e instanceof Error ? e.message : 'No se pudo generar la pieza.');
             setFase('form');
         }
-    }, [tpl, slug, values, escribirIA, componer]);
+    }, [tpl, slug, values, tocados, escribirIA, componer]);
 
     const faltantes = useMemo(
         () => (tpl?.fields || []).filter(f => f.required && !values[f.key]?.trim()).map(f => f.label),
@@ -596,7 +631,13 @@ const PlantillaPublica: React.FC = () => {
                         // de la publicación: siguen siendo campos reales, y si
                         // los años no se conocieron —un club fuera de la
                         // lista— la casilla vuelve a aparecer.
-                        if (field.ai && !values[field.key]?.trim()) return null;
+                        // Un campo de IA que sigue en su valor por defecto y que
+                        // nadie tocó cuenta como «todavía no escrito»: la frase
+                        // de cierre nace con la fórmula clásica para que la
+                        // pieza nunca salga sin ella, y eso no debe abultar el
+                        // formulario inicial, que pide sólo el club y la foto.
+                        if (field.ai && !tocados.has(field.key)
+                            && (!values[field.key]?.trim() || values[field.key] === field.defaultValue)) return null;
                         if (autoLlenados.includes(field.key) && values[field.key]?.trim()) return null;
                         if (field.type === 'image') {
                             const v = values[field.key];
@@ -664,7 +705,7 @@ const PlantillaPublica: React.FC = () => {
                                     )}
                                     <textarea className={`${box} min-h-[130px] resize-y leading-relaxed`} value={v}
                                         maxLength={field.maxChars || undefined} placeholder={field.placeholder}
-                                        onChange={e => set(field.key, e.target.value)} />
+                                        onChange={e => setManual(field.key, e.target.value)} />
                                     <div className="flex justify-between text-[10px] text-gray-400 mt-1">
                                         <span>{v.length}{field.maxChars ? ` / ${field.maxChars}` : ''} caracteres</span>
                                         {aiNote && <span className="text-amber-600">{aiNote}</span>}
@@ -704,7 +745,7 @@ const PlantillaPublica: React.FC = () => {
                                     value={values[field.key] || ''}
                                     onChange={e => {
                                         const v = field.type === 'number' ? e.target.value.replace(/\D/g, '') : e.target.value;
-                                        set(field.key, v);
+                                        setManual(field.key, v);
                                         if (esClub) buscarClub(v);
                                     }}
                                     onBlur={esClub ? () => window.setTimeout(() => setClubHits(null), 150) : undefined}
