@@ -35,7 +35,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom';
 import {
     Download, Loader2, Sparkles, Upload, Image as ImageIcon, X,
-    Share2, AlertTriangle, Check,
+    Share2, AlertTriangle, Check, Users,
 } from 'lucide-react';
 import DesignCanvas, { type SlotHint } from '../components/admin/design-studio/DesignCanvas';
 import { applyPublicValues, formatOf, isImage, type DesignDocument } from '../lib/designSpec';
@@ -43,6 +43,11 @@ import { withBackdrop, fusedPhotoId } from '../lib/designCompose';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
+
+// El logo de la plataforma para la cabecera: el MISMO criterio que el
+// Generador de Pendones — se pide al servidor y, si no responde, queda este
+// respaldo. Las dos pantallas públicas comparten la misma cara a propósito.
+const PLATFORM_LOGO_FALLBACK = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png';
 
 interface PublicField {
     key: string; type: 'text' | 'textarea' | 'number' | 'image';
@@ -141,7 +146,16 @@ const PlantillaPublica: React.FC = () => {
     // generar, los campos de IA se reescriben SÓLO si nadie los tocó a mano —
     // el mismo criterio que desligar un nodo de su variable al editarlo.
     const [tocados, setTocados] = useState<Set<string>>(new Set());
+    const [platformLogo, setPlatformLogo] = useState<string>(PLATFORM_LOGO_FALLBACK);
     const stageRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // Logo de Club Platform (el mismo que usa el Generador de Pendones).
+        fetch(`${API}/platform-config/logo`)
+            .then(r => r.json())
+            .then(d => { if (d?.url) setPlatformLogo(d.url); })
+            .catch(() => { /* se queda el respaldo */ });
+    }, []);
 
     useEffect(() => {
         // Sin slug —alguien entró a `/plantillas` a secas— no hay nada que
@@ -597,23 +611,31 @@ const PlantillaPublica: React.FC = () => {
     const fmt = formatOf(tpl.format);
 
     return (
-        <div className="min-h-screen bg-gray-100 flex flex-col">
-            <header className="bg-white border-b border-gray-200 px-5 py-4">
-                <h1 className="text-lg font-black text-gray-900">{tpl.name}</h1>
-                <p className="text-xs text-gray-500 mt-0.5">
-                    {tpl.intro || `Completá los datos y descargá tu pieza lista para publicar · ${fmt.width}×${fmt.height} px`}
-                </p>
+        <div className="min-h-screen flex flex-col bg-gray-100">
+            {/* La MISMA cabecera del Generador de Pendones: logo de la
+                plataforma, título de la pieza y el formato a la derecha. Las
+                dos pantallas públicas comparten la cara a propósito — dos
+                caras distintas para el mismo tipo de herramienta se leen como
+                dos sistemas distintos. */}
+            <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
+                <img src={platformLogo} alt="Club Platform for Rotary" className="h-9 w-auto max-w-[180px] object-contain" />
+                <h1 className="text-lg font-bold text-gray-900">{tpl.name}</h1>
+                <span className="ml-auto text-xs text-gray-500 hidden sm:block">{fmt.width} × {fmt.height} px · listo para compartir</span>
             </header>
 
-            <div className="flex-1 flex flex-col lg:flex-row max-w-6xl w-full mx-auto">
-                {/* ── Formulario ───────────────────────────────────── */}
-                <div className="w-full lg:w-[400px] shrink-0 p-5 space-y-5">
+            <div className="flex-1 flex flex-col lg:flex-row">
+                {/* ── Barra lateral: el formulario ─────────────────── */}
+                <aside className="w-full lg:w-[380px] bg-white border-r border-gray-200 p-5 overflow-y-auto flex flex-col">
+                    {tpl.intro && (
+                        <p className="text-xs text-gray-500 leading-relaxed mb-5">{tpl.intro}</p>
+                    )}
+
                     {/* Sin campos no hay nada que completar, y una columna con
                         sólo dos botones no explica por qué. Se dice: para quien
                         usa el enlace es una pieza fija, y para quien lo publicó
                         es la pista de que le faltó marcar los campos. */}
                     {tpl.fields.length === 0 && (
-                        <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-6">
                             <p className="text-sm font-bold text-gray-800 mb-1">Esta pieza no tiene datos para completar</p>
                             <p className="text-xs text-gray-500 leading-relaxed">
                                 Descargala tal como está. Si esperabas poder escribir el nombre de tu club o subir una
@@ -623,6 +645,10 @@ const PlantillaPublica: React.FC = () => {
                         </div>
                     )}
 
+                    {tpl.fields.length > 0 && (
+                    <section className="mb-6">
+                        <div className="flex items-center gap-2 mb-3 text-gray-800"><Users className="w-4 h-4" /><h2 className="text-sm font-bold">Datos del club</h2></div>
+                        <div className="space-y-5">
                     {tpl.fields.map(field => {
                         // El formulario pide SÓLO lo que el sistema no resuelve
                         // solo (Fase 3 de la reingeniería): el mensaje lo
@@ -778,8 +804,12 @@ const PlantillaPublica: React.FC = () => {
                             </div>
                         );
                     })}
+                        </div>
+                    </section>
+                    )}
 
-                    <div className="pt-2 space-y-2">
+                    {/* ── Generar / descargar ──────────────────────── */}
+                    <section className="border-t border-gray-100 pt-5 space-y-2">
                         {/* ── EL GESTO EXPLÍCITO ────────────────────────
                             Antes acá había «Descargar» a secas y la pieza se
                             resolvía sola mientras se escribía: nadie sabía en
@@ -893,42 +923,43 @@ const PlantillaPublica: React.FC = () => {
                         <p className="text-[11px] text-gray-400 text-center pt-1">
                             La imagen se genera en tu navegador, a {fmt.width * 2}×{fmt.height * 2} px.
                         </p>
-                    </div>
-                </div>
+                    </section>
 
-                {/* ── Vista previa ─────────────────────────────────── */}
-                <div className="flex-1 min-w-0 p-5 lg:pl-0">
-                    <div className="lg:sticky lg:top-5">
-                        <div ref={stageRef} className="flex justify-center">
-                            {/* El MISMO componente del editor, sin herramientas.
-                                Es lo que garantiza que esta vista previa sea la
-                                pieza que se descarga. */}
-                            <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} hints={hints} fusedId={fusedId} />
-                        </div>
-                        {/* La promesa del módulo es que la vista previa ES el
-                            archivo. Con los recuadros a la vista deja de ser
-                            literal, así que se dice — callarlo sería peor que no
-                            mostrarlos. */}
-                        <p className="mt-3 text-center text-[11px] text-gray-400 flex items-center justify-center gap-1.5">
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            {hints.length === 0
-                                ? 'Se actualiza mientras escribís. Es exactamente lo que vas a descargar.'
-                                : hints.some(h => h.sample)
-                                    // Con una imagen de ejemplo a la vista hay
-                                    // que decir DOS cosas, no una: que no es la
-                                    // suya y que no se descarga. Cualquiera de
-                                    // las dos sola deja a alguien creyendo que
-                                    // su pieza ya tiene ese logotipo.
-                                    ? 'Lo que está dentro de un recuadro punteado es un ejemplo de cómo va a quedar: no es tuyo y no se descarga.'
-                                    : 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'}
-                        </p>
+                    {/* Copyright — anclado al fondo del panel, como en el
+                        Generador de Pendones. */}
+                    <p className="mt-auto pt-6 text-center text-gray-400" style={{ fontSize: '10px' }}>
+                        Release {__APP_VERSION__} by{' '}
+                        <a href="https://valkomen.com/" target="_blank" rel="noreferrer" className="text-gray-400 no-underline hover:underline">Valkomen LLC</a>
+                    </p>
+                </aside>
+
+                {/* ── Mesa de trabajo ──────────────────────────────── */}
+                <main className="flex-1 flex flex-col items-center justify-center p-6 bg-gray-300/60 min-h-[60vh]">
+                    <div ref={stageRef} className="w-full flex justify-center">
+                        {/* El MISMO componente del editor, sin herramientas.
+                            Es lo que garantiza que esta vista previa sea la
+                            pieza que se descarga. */}
+                        <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} hints={hints} fusedId={fusedId} />
                     </div>
-                </div>
+                    {/* La promesa del módulo es que la vista previa ES el
+                        archivo. Con los recuadros a la vista deja de ser
+                        literal, así que se dice — callarlo sería peor que no
+                        mostrarlos. */}
+                    <p className="mt-3 text-center text-[11px] text-gray-600 flex items-center justify-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        {hints.length === 0
+                            ? 'Se actualiza mientras escribís. Es exactamente lo que vas a descargar.'
+                            : hints.some(h => h.sample)
+                                // Con una imagen de ejemplo a la vista hay
+                                // que decir DOS cosas, no una: que no es la
+                                // suya y que no se descarga. Cualquiera de
+                                // las dos sola deja a alguien creyendo que
+                                // su pieza ya tiene ese logotipo.
+                                ? 'Lo que está dentro de un recuadro punteado es un ejemplo de cómo va a quedar: no es tuyo y no se descarga.'
+                                : 'Los recuadros punteados marcan dónde va cada imagen. No se descargan.'}
+                    </p>
+                </main>
             </div>
-
-            <footer className="text-center py-6 text-[10px] text-gray-400">
-                Generado con <span className="font-semibold">Club Platform for Rotary</span>
-            </footer>
         </div>
     );
 };

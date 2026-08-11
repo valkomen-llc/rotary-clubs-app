@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.773.0 | 2026-08-11 (Textos dinámicos: mensaje y cierre varían por pieza)
-// Cache bust: 2026-08-11o
+// UI V4.774.0 | 2026-08-11 (El portal de plantillas con la cara del pendón)
+// Cache bust: 2026-08-11p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.774.0',
+        title: 'El portal de Plantillas IA toma la cara del Generador de Pendones 🎨',
+        description: 'Las dos herramientas públicas de la plataforma se veían distintas: el pendón con su cabecera blanca —logo de Club Platform, título y formato a la derecha— y su barra lateral izquierda con secciones, y el portal de plantillas con un formulario centrado de otro estilo. Dos caras distintas para el mismo tipo de herramienta se leen como dos sistemas distintos. Ahora el portal usa exactamente la misma estructura: cabecera con el logo de la plataforma (el mismo endpoint y el mismo respaldo que el pendón), barra lateral blanca de 380 px con la sección «Datos del club» —los campos de la plantilla de aniversario: club, fotografía, y el mensaje y la frase de cierre cuando la IA los escribió—, la sección de Generar/Descargar separada con su línea, el copyright de Valkomen anclado al fondo del panel, y la mesa de trabajo gris a la derecha con la pieza centrada. Las clases se tomaron del pendón tal cual, no se imitaron: si un día cambia esa cara, este portal es el recordatorio de dónde está la otra copia. Cuatro comprobaciones de navegador nuevas fijan la cabecera, la barra, el título de sección y el copyright, y el arnés guarda ahora una captura del portal junto a las de paridad.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'Cabecera blanca con el logo de la plataforma y el formato de la pieza.' },
+            { type: 'changed', text: 'Barra lateral izquierda con secciones, como el Generador de Pendones.' },
+            { type: 'added', text: 'Captura automática del portal en las pruebas de navegador.' },
+        ]
+    },
     {
         version: '4.773.0',
         title: 'Título, mensaje y frase de cierre: dinámicos y distintos en cada pieza 📝',

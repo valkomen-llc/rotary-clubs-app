@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.773.0",
-  "cache_bust": "2026-08-11o (Textos dinamicos: mensaje y cierre varian por pieza.)",
+  "version": "4.774.0",
+  "cache_bust": "2026-08-11p (El portal de plantillas con la cara del pendon.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

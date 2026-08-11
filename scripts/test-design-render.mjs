@@ -107,7 +107,7 @@ window.mount = (doc) => {
 const bundle = await build({
     stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
     bundle: true, write: false, format: 'iife', platform: 'browser',
-    define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+    define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0-test"' },
     external: ['jspdf'], jsx: 'automatic',
 });
 
@@ -241,7 +241,7 @@ window.go = () => createRoot(document.getElementById('root'))
     const panel = await build({
         stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
         bundle: true, write: false, format: 'iife', platform: 'browser',
-        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0-test"' },
         external: ['jspdf'], jsx: 'automatic',
     });
 
@@ -814,7 +814,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     const portal = await build({
         stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
         bundle: true, write: false, format: 'iife', platform: 'browser',
-        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0-test"' },
         external: ['jspdf'], jsx: 'automatic',
     });
 
@@ -825,6 +825,13 @@ window.go = () => createRoot(document.getElementById('root')).render(
 
     await page.route('**/api/**', r => r.fulfill({ json: {} }));
     await page.route('**/api/public/design/aniversario', r => r.fulfill({ json: RESP }));
+    // El logo de la cabecera (v4.774): su respaldo apunta al S3 real y en el
+    // arnés esa red no existe — sin esta ruta, el <img> falla con un error de
+    // consola que la comprobación de «sin errores» atrapa.
+    await page.route('**rotary-platform-assets**', r => r.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'),
+    }));
     await page.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
     await page.goto('http://localhost/');
     await page.addScriptTag({ content: portal.outputFiles[0].text });
@@ -834,6 +841,23 @@ window.go = () => createRoot(document.getElementById('root')).render(
     const txt = await page.locator('#root').innerText();
     check('el portal se pinta sin sesión', (await page.locator('#root').innerHTML()).length > 500);
     check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
+
+    // ── LA MISMA CARA QUE EL GENERADOR DE PENDONES (v4.774) ─────────
+    // Cabecera blanca con el logo de la plataforma y barra lateral izquierda
+    // con el formulario. Dos herramientas públicas con dos caras distintas se
+    // leen como dos sistemas distintos — el pedido fue unificarlas.
+    check('la cabecera lleva el logo de la plataforma',
+        await page.locator('header img[alt="Club Platform for Rotary"]').count() === 1);
+    check('el formulario vive en una barra lateral, como el pendón',
+        await page.locator('aside').count() === 1
+        && (await page.locator('aside').innerText()).includes('Nombre del club'));
+    check('la sección de datos lleva su título con icono',
+        (await page.locator('aside h2').allInnerTexts()).includes('Datos del club'));
+    check('el copyright de Valkomen ancla el panel',
+        /Valkomen LLC/.test(await page.locator('aside').innerText()));
+    // La captura queda junto a las de paridad: es la forma de MIRAR el portal
+    // sin levantar el sitio, que es como se escapó el defecto de v4.717.
+    await page.screenshot({ path: join(OUT, 'portal.png'), fullPage: true });
 
     // El formulario sale de las variables, no de una lista escrita a mano —
     // pero SÓLO pide lo que el sistema no resuelve solo (Fase 3): el club, el
@@ -1057,7 +1081,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     const portal = await build({
         stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
         bundle: true, write: false, format: 'iife', platform: 'browser',
-        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"' },
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0-test"' },
         external: ['jspdf'], jsx: 'automatic',
     });
 
@@ -1076,6 +1100,13 @@ window.go = () => createRoot(document.getElementById('root')).render(
 
     await page.route('**/api/**', r => r.fulfill({ json: {} }));
     await page.route('**/api/public/design/aniversario', r => r.fulfill({ json: RESP }));
+    // El logo de la cabecera (v4.774): su respaldo apunta al S3 real y en el
+    // arnés esa red no existe — sin esta ruta, el <img> falla con un error de
+    // consola que la comprobación de «sin errores» atrapa.
+    await page.route('**rotary-platform-assets**', r => r.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'),
+    }));
     await page.route('**/api/public/design/aniversario/photo', r =>
         r.fulfill({ json: { dataUrl: PIXEL, notes: [] } }));
     await page.route('**/api/public/design/aniversario/backdrop', r => {
