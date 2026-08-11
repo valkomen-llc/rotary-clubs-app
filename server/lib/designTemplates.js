@@ -89,7 +89,7 @@ export const TEMPLATES = [
             // personas— fundida sobre el lienzo, como la pieza de referencia
             // hecha en ChatGPT. No es un óvalo con la foto adentro: es la
             // silueta del grupo sobre la lámina.
-            masterPrompt: 'The people from the photograph are lifted out of their own background — their group silhouette stands directly on the canvas, feet and lower edge easing behind the bottom band, softly lit so they belong to the piece. The canvas is a bright pearl-white surface with soft flowing wave texture; royal blue and gold appear only in the sweeping band along the bottom. Everything above stays light, airy and uncluttered, in the visual language of Rotary stationery.',
+            masterPrompt: 'The canvas is a bright pearl-white surface with soft flowing wave texture; royal blue and gold appear only in the sweeping band along the bottom. Everything above the people stays light, airy and uncluttered, in the visual language of Rotary stationery.',
             // El encuadre se DECLARA: es dirección de arte, no una puntuación.
             // Sin esto, `plansFor` elegía el óvalo del medio —puntuaba mejor
             // contra la franja del texto— y la pieza salía con una miniatura
@@ -98,7 +98,7 @@ export const TEMPLATES = [
             // `foto_fondo`: la fotografía ocupa el lienzo entero — es el plan
             // que corresponde cuando el prompt maestro pide la silueta del
             // grupo sobre la lámina, no una forma que la contenga.
-            photo: { strategy: 'compose', plan: 'foto_fondo', edgeCrop: 'allow' },
+            photo: { strategy: 'compose', plan: 'silueta_inferior', edgeCrop: 'allow' },
             // Es una pieza de ANIVERSARIO y tiene que notarse, sin volverse una
             // tarjeta de cumpleaños: el acento va acotado —pocos, pequeños, en
             // los huecos, nunca sobre la gente ni sobre donde va el texto—
