@@ -884,6 +884,12 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('sin el club obligatorio no se puede generar',
         await page.getByRole('button', { name: /Generar mi pieza/ }).isDisabled());
     await page.getByPlaceholder('Rotary Club Bogotá Centro').fill('Club Rotario Pasto');
+    // El par fundación + años (v4.777): escribir la fecha calcula los años.
+    await page.getByPlaceholder('1974 o 1974-08-04').fill('1974');
+    await page.waitForTimeout(200);
+    check('la fundación calcula los años sola',
+        await page.getByPlaceholder('49').inputValue() === String(new Date().getUTCFullYear() - 1974),
+        await page.getByPlaceholder('49').inputValue());
     await page.getByPlaceholder('49').fill('52');
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: /Generar mi pieza/ }).click();

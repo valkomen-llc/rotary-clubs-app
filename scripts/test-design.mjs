@@ -1910,6 +1910,18 @@ check('el desplegable ofrece la salida «no está en la lista»',
 check('y sin lista el campo degrada al buscador de texto',
     /clubOptions && !clubManual/.test(portal));
 
+// La FUNDACIÓN acompaña a los años en el portal (v4.777): se escribe la fecha
+// y los años se calculan en vivo, con el criterio ESPEJADO del servidor. Si
+// cambia un espejo, cambiar el otro.
+check('la fundación se parsea igual en los dos espejos',
+    ['1974', '1974-08-04', '04/08/1974', 'Fundado en 1974', '', 'sin fecha']
+        .every(v => JSON.stringify(S.parseFoundation(v)) === JSON.stringify(C.parseFoundation(v))));
+check('y los años que cumple dan lo mismo',
+    [1974, 2026, 1800, 2100].every(y =>
+        S.yearsSince(y, new Date('2026-08-11')) === C.yearsSince(y, new Date('2026-08-11'))));
+check('el portal lleva el par fundación + años',
+    /Fundación del club/.test(portal) && /parseFoundation/.test(portal));
+
 grupo('Un marcador visible ES una declaración (v4.776)');
 
 // El caso real (11/8): la pieza pública imprimía «¡Feliz aniversario,

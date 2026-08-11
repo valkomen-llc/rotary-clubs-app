@@ -430,3 +430,28 @@ export const duplicateNode = <T extends DesignNode>(node: T): T => ({
     y: Math.min(0.95, node.y + 0.025),
     locked: false,
 });
+
+// ─── La fundación del club y los años que cumple ───────────────────────
+//
+// ESPEJO de `parseFoundation` / `yearsSince` del servidor
+// (`server/lib/designSpec.js`), duplicado a propósito como el resto del
+// criterio compartido: el portal público calcula los años EN VIVO mientras la
+// persona escribe la fundación, y una petición por pulsación para restar dos
+// números sería absurda. Si cambia uno, cambiar el otro — lo comprueba
+// `test:design` comparando las salidas.
+export const parseFoundation = (value: unknown): { iso: string | null; year: number | null } => {
+    const s = String(value || '').trim();
+    if (!s) return { iso: null, year: null };
+    if (/^\d{4}$/.test(s)) return { iso: null, year: +s };
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return { iso: `${iso[1]}-${iso[2]}-${iso[3]}`, year: +iso[1] };
+    const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) return { iso: `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`, year: +dmy[3] };
+    const loose = s.match(/\b(1[89]\d{2}|20\d{2})\b/);
+    return loose ? { iso: null, year: +loose[1] } : { iso: null, year: null };
+};
+
+export const yearsSince = (year: number | string, today: Date = new Date()): number | null => {
+    const y = today.getUTCFullYear() - Number(year);
+    return y >= 0 && y < 200 ? y : null;
+};
