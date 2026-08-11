@@ -569,6 +569,32 @@ const EmailManagement: React.FC = () => {
         } catch { /* noop */ }
     };
 
+    // Adjuntos que quedaron sin URL (el webhook de Resend no trae el contenido; hasta
+    // v4.779 el servidor no pedía la lista firmada). Este botón rehace la descarga.
+    const [repairingAttachments, setRepairingAttachments] = useState(false);
+    const handleRepairAttachments = async (email: EmailMessage) => {
+        setRepairingAttachments(true);
+        try {
+            const res = await fetch(`/api/email-accounts/messages/${email.id}/repair-attachments`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast.error(data?.error || 'No se pudieron recuperar los adjuntos');
+                return;
+            }
+            const atts = Array.isArray(data.attachments) ? data.attachments : [];
+            setMessages(prev => prev.map(m => m.id === email.id ? { ...m, attachments: atts } : m));
+            setSelectedEmail(prev => prev && prev.id === email.id ? { ...prev, attachments: atts } : prev);
+            toast.success(data.repaired ? `${data.repaired} adjunto(s) recuperado(s)` : 'Los adjuntos ya estaban disponibles');
+        } catch {
+            toast.error('No se pudieron recuperar los adjuntos');
+        } finally {
+            setRepairingAttachments(false);
+        }
+    };
+
     const handleTrashEmail = async (email: EmailMessage) => {
         try {
             await fetch(`/api/email-accounts/messages/${email.id}`, {
@@ -861,7 +887,19 @@ const EmailManagement: React.FC = () => {
 
                                         {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
                                             <div className="mt-6 pt-5 border-t border-gray-100">
-                                                <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2"><Paperclip className="w-3.5 h-3.5" />{selectedEmail.attachments.length} adjunto(s)</p>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <p className="text-xs font-black text-gray-400 uppercase tracking-wider flex items-center gap-2"><Paperclip className="w-3.5 h-3.5" />{selectedEmail.attachments.length} adjunto(s)</p>
+                                                    {selectedEmail.attachments.some(att => !att.url) && (
+                                                        <button
+                                                            onClick={() => handleRepairAttachments(selectedEmail)}
+                                                            disabled={repairingAttachments}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rotary-blue hover:bg-sky-50 border border-sky-200 disabled:opacity-50"
+                                                        >
+                                                            <RefreshCw className={`w-3.5 h-3.5 ${repairingAttachments ? 'animate-spin' : ''}`} />
+                                                            {repairingAttachments ? 'Recuperando…' : 'Recuperar adjuntos'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 <div className="flex flex-wrap gap-3">
                                                     {selectedEmail.attachments.map((att, i) => (
                                                         att.url ? (

@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.779.0 | 2026-08-11 (El editor previsualiza el tamaño real: redacción vigente y datos de ejemplo)
-// Cache bust: 2026-08-11u
+// UI V4.780.0 | 2026-08-11 (Adjuntos entrantes: descarga vía lista firmada de Resend + botón Recuperar adjuntos)
+// Cache bust: 2026-08-11v
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.780.0',
+        title: 'Los adjuntos de los correos recibidos ya se pueden descargar 📎',
+        description: 'Lo reportado: un correo entrante mostraba sus adjuntos como «No disponible». La causa: Resend Inbound NUNCA manda el contenido de los adjuntos — ni en el webhook ni en el cuerpo del correo—; solo manda su metadata (nombre y tipo), y el contenido hay que pedirlo a un endpoint aparte (la lista de adjuntos del correo), que devuelve por cada archivo una URL de descarga firmada que expira en ~1 hora. El servidor buscaba el contenido en el propio payload, no lo encontraba jamás, y guardaba los adjuntos sin URL. Ahora, al recibir un correo con adjuntos, se pide esa lista firmada, se descarga cada archivo en el momento y se copia a nuestro almacenamiento — la URL firmada expira, la nuestra no. Y para los correos que YA estaban guardados con adjuntos «No disponible», la bandeja muestra el botón «Recuperar adjuntos»: rehace la descarga desde Resend usando el id que cada correo guarda desde siempre, y repara todas las copias del correo (si llegó a varios buzones) de una vez. Detalle técnico que importa: la URL firmada se descarga SIN cabecera de autorización — mandarle el Bearer además de la firma la invalida—; el Bearer solo viaja cuando la URL es de la propia API de Resend.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'bandeja'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Los adjuntos de correos entrantes se descargan vía la lista firmada de Resend y se copian a S3 al recibir.' },
+            { type: 'added', text: 'Botón «Recuperar adjuntos» en la bandeja para reparar correos ya guardados con adjuntos sin URL.' },
+            { type: 'fixed', text: 'La descarga de una URL firmada ya no manda Authorization (rompía la firma); el Bearer solo va a api.resend.com.' },
+        ]
+    },
     {
         version: '4.779.0',
         title: 'El tamaño del título que ves en el editor es el que sale en el enlace 📏',
