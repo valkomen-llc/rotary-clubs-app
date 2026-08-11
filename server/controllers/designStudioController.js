@@ -25,7 +25,7 @@ import {
     FORMATS, availableFormats, TEMPLATE_CATEGORIES, VARIABLES, PALETTE, FONTS,
     compileTemplate, normalizeDocument, LIMITS,
 } from '../lib/designSpec.js';
-import { catalog, templateById, availableTemplates } from '../lib/designTemplates.js';
+import { catalog, templateById, availableTemplates, migrateTemplateTexts } from '../lib/designTemplates.js';
 import { elementsByCategory } from '../lib/designElements.js';
 import { searchClubs, brandingForClub, saveFoundationDate, yearsSince, rotaryPeriod } from '../lib/designBranding.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
@@ -33,7 +33,7 @@ import { buildPublication, buildPublicFields, variablesOf, isInstitutional, publ
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { VARIANT_PLANS, normalizeComposition, MAX_VARIANTS } from '../lib/designCompose.js';
 
-console.log('[designStudioController] v4.755.0 cargado — Plantillas IA. Texto de referencia y prompt maestro son dos cosas distintas.');
+console.log('[designStudioController] v4.779.0 cargado — Plantillas IA. El editor edita la redacción vigente, la misma que sirve el enlace público.');
 
 // El club sobre el que trabaja quien pide. Un administrador de plataforma puede
 // apuntar a cualquier sitio; el resto, sólo al suyo. Mismo criterio que
@@ -198,7 +198,14 @@ export const improve = async (req, res) => {
 
 const rowToProject = (r) => ({
     id: r.id, title: r.title, templateId: r.templateId, category: r.category, format: r.format,
-    document: r.document, variables: r.variables, branding: r.branding, copy: r.copy,
+    // La migración de redacción alcanza también al EDITOR, no sólo al enlace
+    // público (`derivePublicRow`). Sin esto el administrador edita el título
+    // viejo mientras el portal sirve el vigente: ajusta el tamaño sobre un
+    // texto corto que el público nunca va a ver, y `autoFit` le desmiente el
+    // resultado. Misma regla de procedencia: sólo migra el texto que sigue
+    // siendo, palabra por palabra, el del catálogo viejo.
+    document: r.document ? migrateTemplateTexts(r.document) : r.document,
+    variables: r.variables, branding: r.branding, copy: r.copy,
     imageUrl: r.imageUrl, thumbUrl: r.thumbUrl, mediaId: r.mediaId,
     subjectClubId: r.subjectClubId, status: r.status,
     // La Composición con IA vuelve con el diseño. Se guardaba desde v4.735 y

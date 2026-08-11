@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.778.0 | 2026-08-11 (Migración de redacción: los enlaces publicados se actualizan solos)
-// Cache bust: 2026-08-11t
+// UI V4.779.0 | 2026-08-11 (El editor previsualiza el tamaño real: redacción vigente y datos de ejemplo)
+// Cache bust: 2026-08-11u
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.779.0',
+        title: 'El tamaño del título que ves en el editor es el que sale en el enlace 📏',
+        description: 'Lo reportado: el título se configuraba grande en el editor y el enlace público lo mostraba chico. No se perdía ningún ajuste — era «Ajustar al recuadro» haciendo su trabajo sobre el texto REAL. En el editor, sin club elegido, el título se previsualizaba corto («¡Feliz aniversario, !») y cabía holgado al tamaño configurado; en el portal, el título resuelto —«¡Feliz aniversario número 30, Club Rotario Villa de Leyva y el Alto Ricaurte!»— es tres veces más largo y el ajuste lo encoge hasta que quepa en su recuadro. Dos pantallas, dos textos, dos tamaños: el editor estaba mintiendo. Dos correcciones: (1) la redacción vigente del catálogo llega ahora también al EDITOR, no sólo al enlace — se editaba el título viejo mientras el público servía el nuevo; (2) la vista previa rellena las variables vacías con DATOS DE EJEMPLO —un nombre de club deliberadamente largo, los años, el mensaje— para que el ajuste actúe delante del administrador, con un aviso que dice que son de ejemplo. El ejemplo no llega a ninguna parte: al guardar viaja lo que el usuario escribió de verdad, y el enlace público resuelve desde el texto con marcadores. Para agrandar el título de verdad: agrandá su RECUADRO en la mesa de trabajo — ahora vas a ver en vivo el tamaño real que va a salir.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El editor edita la redacción vigente del título, la misma que sirve el enlace público.' },
+            { type: 'fixed', text: 'La vista previa usa datos de ejemplo cuando faltan, y el ajuste al recuadro se ve en vivo.' },
+            { type: 'changed', text: 'Al guardar viajan los datos reales, nunca los de ejemplo — y el aviso lo dice en pantalla.' },
+        ]
+    },
     {
         version: '4.778.0',
         title: 'Los enlaces publicados adoptan solos la redacción nueva del título 🔁',
