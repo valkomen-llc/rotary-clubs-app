@@ -6,6 +6,8 @@ import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useSEO } from '../hooks/useSEO';
+import { siteName, siteSentence } from '../lib/siteName';
+import SiteSentence from '../components/SiteSentence';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { articulosDestacados, articulos } from '../data/news';
@@ -158,7 +160,13 @@ const Blog = () => {
               {getC('header', 'title', "Noticias y Blog")}
             </h1>
             <p className="text-white/80 text-lg md:text-xl">
-              {getC('header', 'description', "Actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos.")}
+              {sections.header?.description || (
+                <SiteSentence parts={siteSentence(siteName(club), {
+                  before: 'Actualizaciones de ',
+                  after: '. Mantente informado sobre nuestros proyectos.',
+                  withoutName: 'Mantente informado sobre nuestros proyectos y actividades.',
+                })} />
+              )}
             </p>
           </div>
         </div>
