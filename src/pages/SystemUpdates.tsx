@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.761.0 | 2026-08-11 (La foto se funde con el lienzo, sin hueco vacio)
-// Cache bust: 2026-08-11c
+// UI V4.762.0 | 2026-08-11 (Recortar no es borrar: la composicion ya sobrevive)
+// Cache bust: 2026-08-11d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.762.0',
+        title: 'Recortar no es borrar: la composición con IA ya sobrevive a una foto de grupo 🎯',
+        description: 'Fase 1 de la reingeniería. Se reportó que la fotografía terminaba pegada dentro de un rectángulo en vez de combinarse con el diseño. Investigando resultó que el motor de composición SÍ se estaba ejecutando: lo que pasaba es que su propio control de calidad descartaba el resultado, y el mensaje «se usó tu fotografía tal como la subiste» era el respaldo saltando en todas las generaciones. El motivo: componer una pieza es ENCUADRAR —el diseño mete la foto en una forma redondeada, en una columna o en un óvalo, y eso se lleva los bordes—, así que en una fotografía de treinta personas alguien de los extremos queda fuera siempre. El control trataba eso igual que si el modelo hubiera borrado a alguien, con lo cual la foto de grupo del club —el caso más común— no podía pasar nunca. Ahora se distinguen tres cosas que antes eran una sola: una persona INVENTADA descalifica siempre, como hasta ahora; una persona BORRADA del interior de la fotografía también, porque el encuadre no pudo llevársela —estaba rodeada de gente— y eso significa que el modelo la reemplazó; y una persona que estaba pegada a un borde y se la llevó el recorte ya no descalifica, porque es lo que hace cualquier diseño. Eso sí: cuando pasa, se avisa. La pieza se usa, pero quien la va a publicar ve que el encuadre recortó a alguien de los bordes y que puede volver a la fotografía en su recuadro si prefiere que salgan todos. Dos matices de criterio: ante la duda se sigue reprobando —si el modelo no confirma que quien falta estaba en el borde, se descarta— y el recuento dejó de ser simétrico: gente de MÁS es una persona inventada y descalifica, gente de MENOS es el encuadre haciendo su trabajo.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia', 'portal publico'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El recorte del encuadre ya no descarta la composición.' },
+            { type: 'added', text: 'Se distingue a quien se llevó el recorte de quien fue borrado del centro.' },
+            { type: 'added', text: 'Cuando el encuadre recorta a alguien, se avisa sin descartar la pieza.' },
+            { type: 'changed', text: 'El recuento ya no es simétrico: sobra descalifica, falta no.' },
+        ]
+    },
     {
         version: '4.761.0',
         title: 'La fotografía ya no deja media pieza vacía: se funde con el lienzo 🖼️',

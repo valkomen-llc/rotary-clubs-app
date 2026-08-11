@@ -1043,9 +1043,7 @@ check('una composición fiel se usa',
 
 check('una persona INVENTADA descarta la composición',
     G.decidePreservation({ semantic: { ...okSemantico, newSubjects: true } }).use === false);
-check('y una persona PERDIDA también',
-    G.decidePreservation({ semantic: { ...okSemantico, missingSubjects: true } }).use === false);
-check('el recuento que no cuadra descarta',
+check('una persona de MÁS en el recuento descarta',
     G.decidePreservation({ semantic: { ...okSemantico, rightPeople: 7 } }).use === false);
 check('unos rostros que no son los mismos descartan',
     G.decidePreservation({ semantic: { ...okSemantico, faceConsistency: 3 } }).use === false);
@@ -1056,6 +1054,54 @@ check('en multitud el recuento NO decide solo',
     G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 14, rightPeople: 15 } }).use === true);
 check('pero la señal explícita sigue valiendo en multitud',
     G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 14, rightPeople: 15, newSubjects: true } }).use === false);
+
+// ── RECORTAR NO ES BORRAR ─────────────────────────────────────────────
+//
+// La corrección de fondo. Componer una pieza es ENCUADRAR: el plan mete la foto
+// en una forma redondeada o en una columna, y eso se lleva los bordes. Con una
+// foto de treinta personas alguien de los extremos queda fuera SIEMPRE, así que
+// reprobar por «falta alguien» vetaba TODA composición de una foto de grupo —el
+// caso más común del cliente—. Se reportó como el respaldo saltando en todas
+// las generaciones.
+const recortada = { ...okSemantico, leftPeople: 30, rightPeople: 26, missingSubjects: true, missingAtEdge: true };
+check('el recorte del ENCUADRE ya no descarta la composición',
+    G.decidePreservation({ semantic: recortada }).use === true);
+check('y se DICE, aunque la pieza se use',
+    /recort[óo]/i.test(G.decidePreservation({ semantic: recortada }).notice || ''));
+check('el aviso NO es un fallo: viaja aparte del motivo',
+    G.decidePreservation({ semantic: recortada }).reason === null
+    && G.decidePreservation({ semantic: recortada }).state === 'ok');
+check('y queda marcado para quien lo quiera leer',
+    G.decidePreservation({ semantic: recortada }).cropped === true);
+check('una composición sin recorte no arrastra ningún aviso',
+    G.decidePreservation({ semantic: okSemantico }).notice === null
+    && G.decidePreservation({ semantic: okSemantico }).cropped === false);
+
+// Lo que sí descalifica: alguien del INTERIOR. El encuadre no pudo llevárselo
+// —estaba rodeado de gente—, así que el modelo lo borró o lo reemplazó.
+check('alguien BORRADO del centro descarta igual que una persona inventada',
+    G.decidePreservation({ semantic: { ...recortada, missingFromCentre: true } }).use === false);
+check('y se dice que fue del centro, no un recorte',
+    /centro/i.test(G.decidePreservation({ semantic: { ...recortada, missingFromCentre: true } }).reason || ''));
+
+// Ante la duda se reprueba: dar por bueno un borrado porque el modelo no
+// contestó dónde estaba quien falta sería al revés de lo que esto hace.
+check('falta gente y no consta que fuera del borde: se descarta',
+    G.decidePreservation({ semantic: { ...okSemantico, missingSubjects: true } }).use === false);
+check('un modelo que no contesta el campo no da permiso',
+    G.readPeopleVerdict('{"missingSubjects":true}')?.missingAtEdge === false);
+
+// `strict` es para una plantilla donde aparecer es el punto de la pieza.
+check('en modo estricto, perder a alguien del borde sí descarta',
+    G.decidePreservation({ semantic: recortada, edgeCrop: G.EDGE_CROP.STRICT }).use === false);
+check('y el recuento vuelve a ser simétrico',
+    G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 6, rightPeople: 5 }, edgeCrop: G.EDGE_CROP.STRICT }).use === false);
+check('mientras que por defecto una persona de menos no descarta',
+    G.decidePreservation({ semantic: { ...okSemantico, leftPeople: 6, rightPeople: 5 } }).use === true);
+// La asimetría es el punto: de más es una persona inventada, de menos es el
+// encuadre. Compararlo con `Math.abs` era lo que vetaba toda foto de grupo.
+check('el exceso descalifica en cualquier modo',
+    G.decidePreservation({ semantic: { ...okSemantico, rightPeople: 7 }, edgeCrop: G.EDGE_CROP.STRICT }).use === false);
 
 // La estructural sola sólo atrapa el caso extremo: acá el lienzo alrededor es
 // contenido NUEVO a propósito, así que un piso alto reprobaría toda composición

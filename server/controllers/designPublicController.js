@@ -366,6 +366,12 @@ export const publicVerify = async (req, res) => {
             use: veredicto.use,
             reason: veredicto.reason,
             consequence: veredicto.consequence,
+            // Se usó, pero el encuadre se llevó a alguien de los bordes. No es
+            // un fallo —por eso viaja aparte de `reason`— y tampoco se calla:
+            // quien descarga la pieza tiene que saber que puede no salir todo
+            // el mundo, y el módulo ya ofrece volver a la foto en su recuadro.
+            cropped: !!veredicto.cropped,
+            notice: veredicto.notice || null,
         });
     } catch (e) {
         console.error('[designPublic] verify:', e);

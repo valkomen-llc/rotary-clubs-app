@@ -308,6 +308,13 @@ const PlantillaPublica: React.FC = () => {
                         setBackdrop(sd.url);
                         // `unavailable` NO es un tipo de «bien»: se dice.
                         if (v?.state === 'unavailable') setComposeNote(`${v.reason} ${v.consequence}`);
+                        // Y la composición que SÍ se usa pero recortó a alguien
+                        // de los bordes también se dice. Encuadrar es lo que
+                        // hace el diseño, así que no descalifica; pero quien va
+                        // a publicar la pieza tiene que saber que puede no salir
+                        // todo el mundo, y volver a la foto en su recuadro es un
+                        // botón que ya está ahí.
+                        else if (v?.notice) setComposeNote(v.notice);
                     }
                     break;
                 }
