@@ -1267,11 +1267,15 @@ check('`auto` conserva el criterio del documento',
 // encuadre por descarte es peor que dejar decidir al documento.
 check('un plan inexistente cae en `auto`, no en el primero',
     CO.normalizeComposition({ photo: { plan: 'nope' } }).photo.plan === 'auto');
-check('la plantilla de aniversario declara el óvalo con brillo',
-    templateById('aniversario_foto').composition.photo.plan === 'foto_ovalo_brillo');
-check('y ese plan describe el halo blanco de la referencia',
-    /white glow/i.test(CO.planById('foto_ovalo_brillo').photo)
-    && /upper right/i.test(CO.planById('foto_ovalo_brillo').photo));
+// La referencia final (11/8, la pieza hecha en ChatGPT): la silueta del grupo
+// sobre la lámina, sin forma que la contenga. El plan es la foto a lienzo
+// entero y el prompt maestro pide el recorte del fondo.
+check('la plantilla de aniversario declara la fotografía de fondo',
+    templateById('aniversario_foto').composition.photo.plan === 'foto_fondo');
+check('y el prompt maestro pide la silueta recortada de su fondo',
+    /lifted out of their own background/i.test(templateById('aniversario_foto').composition.masterPrompt));
+check('el óvalo con brillo sigue en el repertorio, para quien lo elija',
+    /white glow/i.test(CO.planById('foto_ovalo_brillo').photo));
 
 // 2. EL LIENZO VUELVE INTACTO. «Conservá sus colores» sonaba suficiente y no lo
 //    era: el modelo devolvía el fondo aclarado y la curva redibujada.

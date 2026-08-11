@@ -81,18 +81,29 @@ export const TEMPLATES = [
             // reservados a la banda de abajo. Es lo que hace que la pieza se
             // reconozca como suya — y lo que faltaba cuando el fondo salía con
             // un gris apagado encima.
-            masterPrompt: 'The canvas is a bright pearl-white surface with soft flowing wave texture; royal blue and gold appear only in the sweeping band along the bottom. Everything above it stays light, airy and uncluttered, in the visual language of Rotary stationery.',
+            // Absorbe el prompt maestro que trajo el equipo (11/8): lo que el
+            // CÓDIGO ya impone —textos impresos por la plataforma, firma fija,
+            // preservación medida, franja limpia— no se repite acá. Lo que sí
+            // es dirección de arte va en estas tres frases, y la clave es la
+            // PRIMERA: la fotografía entra RECORTADA de su fondo —sólo las
+            // personas— fundida sobre el lienzo, como la pieza de referencia
+            // hecha en ChatGPT. No es un óvalo con la foto adentro: es la
+            // silueta del grupo sobre la lámina.
+            masterPrompt: 'The people from the photograph are lifted out of their own background — their group silhouette stands directly on the canvas, feet and lower edge easing behind the bottom band, softly lit so they belong to the piece. The canvas is a bright pearl-white surface with soft flowing wave texture; royal blue and gold appear only in the sweeping band along the bottom. Everything above stays light, airy and uncluttered, in the visual language of Rotary stationery.',
             // El encuadre se DECLARA: es dirección de arte, no una puntuación.
             // Sin esto, `plansFor` elegía el óvalo del medio —puntuaba mejor
             // contra la franja del texto— y la pieza salía con una miniatura
             // flotando. La forma grande mordida por la curva es la papelería
             // del Distrito, la referencia que trajo el equipo.
-            photo: { strategy: 'compose', plan: 'foto_ovalo_brillo', edgeCrop: 'allow' },
+            // `foto_fondo`: la fotografía ocupa el lienzo entero — es el plan
+            // que corresponde cuando el prompt maestro pide la silueta del
+            // grupo sobre la lámina, no una forma que la contenga.
+            photo: { strategy: 'compose', plan: 'foto_fondo', edgeCrop: 'allow' },
             // Es una pieza de ANIVERSARIO y tiene que notarse, sin volverse una
             // tarjeta de cumpleaños: el acento va acotado —pocos, pequeños, en
             // los huecos, nunca sobre la gente ni sobre donde va el texto—
             // porque un motivo sin acotar se come la pieza.
-            motifs: 'A small elegant cluster of gold and pearl-white balloons with thin gold ribbons, and a light scatter of fine gold confetti, gathered towards one edge of the canvas, never over the people and never over the calm area.',
+            motifs: 'An elegant cluster of gold and pearl-white balloons with thin gold ribbons rising along the right edge, and a light scatter of fine gold confetti, never over the people and never over the calm area.',
             variants: 4,
             publicVariants: 1,
             style: 'institucional',

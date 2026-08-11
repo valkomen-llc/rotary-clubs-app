@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.768.0 | 2026-08-11 (La plantilla sigue la maqueta de la lamina)
-// Cache bust: 2026-08-11j
+// UI V4.769.0 | 2026-08-11 (La silueta del grupo sobre la lamina)
+// Cache bust: 2026-08-11k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.769.0',
+        title: 'La fotografía entra recortada de su fondo, como la referencia 🪄',
+        description: 'El prompt maestro que trajo el equipo quedó absorbido en la configuración de la plantilla de aniversario, con un criterio: lo que el CÓDIGO ya impone no se repite en el prompt. Los textos los imprime la plataforma nítidos —nunca el modelo—, la firma del Gobernador es fija, la franja del texto se respeta y la preservación de las personas se mide; todo eso ya está garantizado por construcción. Lo genuinamente nuevo del prompt era el efecto de la referencia hecha en ChatGPT: la fotografía no entra en un recuadro ni en un óvalo, sino RECORTADA de su propio fondo — la silueta del grupo parada directamente sobre la lámina, con el borde inferior fundiéndose tras la banda azul. Esa instrucción quedó escrita como dirección de arte de la plantilla, el encuadre pasó a «Fotografía de fondo» (el plan que corresponde cuando no hay forma que contenga la foto) y los globos dorados y perlados suben por el borde derecho, como en la lámina. Todo es configuración: se ajusta desde el panel sin desplegar. Nota sobre los años: se calculan solos al elegir el club cuando su fecha de fundación está cargada, y alimentan el mensaje que escribe la IA — la lámina no imprime el número y no se afirma un aniversario sin verificar.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'improvement',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'La fotografía entra como silueta recortada de su fondo, sobre la lámina.' },
+            { type: 'changed', text: 'Los globos suben por el borde derecho, como la referencia.' },
+            { type: 'improved', text: 'El prompt del equipo quedó absorbido: lo que el código garantiza no se repite.' },
+        ]
+    },
     {
         version: '4.768.0',
         title: 'La plantilla de aniversario ya ES la maqueta de la lámina 📐',
