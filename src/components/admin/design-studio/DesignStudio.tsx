@@ -909,6 +909,7 @@ const DesignStudio: React.FC = () => {
                             format={doc.format}
                             palette={{ primary: branding?.primary, accent: branding?.accent }}
                             maxVariants={catalog?.maxVariants || 4}
+                            plans={catalog?.variantPlans || []}
                             hasBackdrop={hayBackdrop}
                             onApply={applyBackdrop}
                             onRemove={removeBackdrop}

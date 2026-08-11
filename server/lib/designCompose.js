@@ -171,18 +171,25 @@ const overlap = (a, b) => {
  *
  *  El orden sigue siendo determinista en los dos casos, que es lo que importa:
  *  quien regenera espera una alternativa, no un sorteo. */
-export const plansFor = (count, document = null) => {
+export const plansFor = (count, document = null, planId = 'auto') => {
     const n = Math.max(1, Math.min(MAX_VARIANTS, count || DEFAULT_VARIANTS));
-    const banda = textBandOf(document);
-    if (!banda) return VARIANT_PLANS.slice(0, n);
 
-    return VARIANT_PLANS
+    // El encuadre DECLARADO por la plantilla va primero, y con una sola
+    // variante es el único. Es dirección de arte: puntuar contra la franja del
+    // texto es un buen respaldo, pero no sabe que esta pieza quiere la forma
+    // grande mordida por la curva y no el óvalo del medio.
+    const declarado = planId && planId !== 'auto' ? VARIANT_PLANS.find(p => p.id === planId) : null;
+    const resto = VARIANT_PLANS.filter(p => p !== declarado);
+
+    const banda = textBandOf(document);
+    const ordenado = !banda ? resto : resto
         .map((p, i) => ({ p, i, score: overlap(p.textZone, banda) }))
         // A igual puntaje manda el orden declarado: sin este desempate, dos
         // planes empatados podrían salir en cualquier orden según el motor.
         .sort((a, b) => (b.score - a.score) || (a.i - b.i))
-        .slice(0, n)
         .map(x => x.p);
+
+    return (declarado ? [declarado, ...ordenado] : ordenado).slice(0, n);
 };
 
 /** La franja libre, dicha como la entiende un modelo de imagen. Nada de
@@ -224,6 +231,35 @@ export const COMPOSITION_DEFAULTS = {
     // generativo que escriba, que es justo lo que este módulo no le pide.
     referenceText: '',
     masterPrompt: '',
+    // ── CÓMO SE USA LA FOTOGRAFÍA, DECLARADO POR LA PLANTILLA ───────
+    //
+    // Hasta v4.762 el encuadre lo elegía `plansFor` sola, puntuando cada plan
+    // contra la franja del texto. Es un buen respaldo y no es una decisión de
+    // dirección de arte: con una sola variante salía el que mejor puntuara, y
+    // en la plantilla de aniversario eso daba el óvalo pequeño en el medio
+    // cuando lo que la pieza quiere es la forma grande mordida por la curva.
+    // Ahora la plantilla lo puede DECLARAR y `auto` conserva el respaldo.
+    photo: {
+        // `compose` manda la fotografía al modelo; `slot` la deja en su
+        // recuadro sin gastar créditos. Es el interruptor por plantilla del
+        // que habla el diagnóstico, no un modo escondido.
+        strategy: 'compose',
+        // Un id de `VARIANT_PLANS`, o `auto` para que lo decida el documento.
+        plan: 'auto',
+        // Qué hacer cuando el encuadre se lleva a alguien del borde (v4.762).
+        edgeCrop: 'allow',
+    },
+    // ── LOS MOTIVOS DE LA OCASIÓN ──────────────────────────────────
+    //
+    // Una pieza de aniversario no se ve igual que una de condolencias, y eso no
+    // se resuelve con el estilo genérico. Va aparte del prompt maestro porque
+    // responde otra pregunta —QUÉ ocasión es, no cómo se ve la marca— y porque
+    // se recorta antes que la dirección de arte del administrador.
+    //
+    // Se escribe EN POSITIVO y acotado, como todo prompt del sitio: «unos pocos
+    // confetis finos en las esquinas vacías», no «que haya fiesta». Un motivo
+    // sin acotar se come la pieza.
+    motifs: '',
     variants: DEFAULT_VARIANTS,
     // Cuántas variantes ve el público. Por defecto una: el portal es anónimo y
     // cada variante es una llamada al modelo que alguien paga.
@@ -237,11 +273,21 @@ export const normalizeComposition = (raw) => {
         const n = Math.round(Number(v));
         return Number.isFinite(n) ? Math.max(1, Math.min(MAX_VARIANTS, n)) : fb;
     };
+    const ph = c.photo && typeof c.photo === 'object' ? c.photo : {};
     return {
         enabled: !!c.enabled,
         baseImageUrl: typeof c.baseImageUrl === 'string' && c.baseImageUrl.trim() ? c.baseImageUrl.trim() : null,
         referenceText: String(c.referenceText || '').slice(0, REFERENCE_MAX_CHARS).trim(),
         masterPrompt: String(c.masterPrompt || '').slice(0, 1200).trim(),
+        photo: {
+            strategy: ph.strategy === 'slot' ? 'slot' : 'compose',
+            // Un plan que no existe cae en `auto`, no en el primero de la
+            // lista: el respaldo es el criterio del documento, no un encuadre
+            // elegido por descarte. Un id viejo se degrada solo.
+            plan: VARIANT_PLANS.some(p => p.id === ph.plan) ? ph.plan : 'auto',
+            edgeCrop: ph.edgeCrop === 'strict' ? 'strict' : 'allow',
+        },
+        motifs: String(c.motifs || '').slice(0, MOTIF_MAX_CHARS).trim(),
         variants: clampVariants(c.variants, DEFAULT_VARIANTS),
         publicVariants: clampVariants(c.publicVariants, DEFAULT_VARIANTS),
         style: String(c.style || 'institucional').slice(0, 40),
@@ -262,11 +308,18 @@ export const normalizeComposition = (raw) => {
 // se pierde es el final. Por eso el plan va ANTES del prompt maestro y el
 // maestro se acota.
 export const PROMPT_MAX_CHARS = 1400;
+// Los motivos de la ocasión son un ACENTO, no un párrafo: acotados para que no
+// desplacen lo que sostiene la composición y para que el modelo no los tome por
+// el tema de la pieza.
+export const MOTIF_MAX_CHARS = 240;
 
 // Lo único que NO puede aparecer, y va en su propio campo.
 export const NEGATIVE_PROMPT =
     'text, letters, words, typography, captions, watermark, signature, logo, emblem, numbers, '
-    + 'distorted faces, extra people, duplicated people, warped hands, harsh shadows, heavy vignette, cluttered collage';
+    + 'distorted faces, extra people, duplicated people, warped hands, harsh shadows, heavy vignette, cluttered collage, '
+    // Lo que salió de verdad al estrenar la composición: una miniatura con
+    // marco flotando en el medio, en vez de la forma grande integrada.
+    + 'framed inset, thumbnail, photo border, sticker, drop shadow box, polaroid';
 
 const STYLE_CLAUSES = {
     institucional: 'The mood is calm and institutional: soft light, generous white space, understated elegance.',
@@ -287,12 +340,24 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
     // 2. Las dos imágenes. El orden importa: el modelo entiende «la primera» y
     //    «la segunda» mejor que nombres inventados.
     if (hasBase && photo) {
-        partes.push('The first image is the brand canvas: keep its texture, its curves and its colours exactly as they are, and build on top of it.');
+        // EL LIENZO VUELVE INTACTO, y hay que decirlo con esas palabras.
+        //
+        // «Conservá su textura, sus curvas y sus colores» sonaba suficiente y no
+        // lo era: el modelo devolvía la pieza con el fondo aclarado y la curva
+        // redibujada — se reportó como «cambia el color del fondo de base». Un
+        // modelo de edición entiende «reproducilo sin cambios, lo único que se
+        // añade es la fotografía» mucho mejor que una lista de cualidades a
+        // respetar, porque lo segundo lo lee como una descripción de estilo.
+        partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Do not restyle it and do not redraw it. The only thing added is the photograph.');
         // Cómo se INTEGRA, no sólo que se integre. Es lo que separa una foto
         // pegada de una pieza de papelería: la fotografía va DENTRO de una
         // forma que pertenece al lienzo —un recorte de bordes curvos, con su
         // margen limpio alrededor— y la luz de las dos se encuentra.
-        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed institutional stationery does: it sits inside one large, softly rounded shape whose curve follows the curves already in the canvas, with a clean margin of canvas breathing around it, its edge easing into the surface instead of being cut, and its light and colour matched to the canvas so the two read as a single designed piece.');
+        //
+        // Y el TAMAÑO se dice: sin él salía una miniatura con marco flotando en
+        // el medio. «Grande» y «una parte sustancial de la lámina» es lo que
+        // entiende un modelo de imagen; un porcentaje no.
+        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed stationery does: it fills one LARGE softly rounded shape taking up a substantial part of the layout, its curve following the curves already in the canvas, a clean margin breathing around it, its edge easing into the surface instead of sitting in a frame, its light matched so the two read as a single designed piece.');
     } else if (photo) {
         partes.push('The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
     } else if (hasBase) {
@@ -327,28 +392,41 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
     // Lo que NO se puede desplazar es la preservación de las personas ni la
     // franja del texto: van antes, y no se recortan nunca. Un prompt maestro no
     // puede aflojar por lo bajo una garantía que la pieza promete.
-    if (c.masterPrompt) partes.push(c.masterPrompt);
-
-    // 5. Paleta y estilo, que es lo más prescindible: son la guinda cuando ya
-    //    hay un lienzo institucional y una dirección de arte escrita.
+    // 4-5. La COLA, en orden de importancia. Se recorta desde el final, así que
+    // este array ES el orden de sacrificio y conviene leerlo como tal:
+    //
+    //   · prompt maestro   — la dirección de arte del administrador. Se cae el
+    //                        último: entre su criterio y una cláusula escrita
+    //                        por nosotros, manda el suyo (v4.755).
+    //   · motivos          — la ocasión. Importan, y menos que su dirección.
+    //   · paleta y estilo  — la guinda cuando ya hay lienzo y dirección.
+    //
+    // Lo que NO está acá —la preservación del lienzo, la de las personas y la
+    // franja del texto— va antes y no se recorta nunca. Un recorte no puede
+    // aflojar por lo bajo una garantía que la pieza promete.
     const cols = [palette.primary, palette.accent].filter(Boolean);
-    if (cols.length) partes.push(`The palette leans on ${cols.join(' and ')} with plenty of white.`);
-    partes.push(STYLE_CLAUSES[c.style] || STYLE_CLAUSES.institucional);
+    const cola = [
+        c.masterPrompt ? { label: 'prompt maestro', text: c.masterPrompt } : null,
+        c.motifs ? { label: 'motivos de la ocasión', text: c.motifs } : null,
+        cols.length ? { label: 'paleta', text: `The palette leans on ${cols.join(' and ')} with plenty of white.` } : null,
+        { label: 'estilo', text: STYLE_CLAUSES[c.style] || STYLE_CLAUSES.institucional },
+    ].filter(Boolean);
 
-    const full = partes.join(' ');
+    const armar = (n) => [...partes, ...cola.slice(0, n).map(x => x.text)].join(' ');
+
+    const full = armar(cola.length);
     if (full.length <= PROMPT_MAX_CHARS) return { prompt: full, dropped: [] };
 
-    // Se recorta por el FINAL, que ahora es el estilo genérico y no la
-    // dirección de arte. Y se DICE lo que se dejó fuera: un recorte silencioso
-    // convierte «lo pedimos» en una afirmación falsa (misma regla que el prompt
-    // de escena del Creador de Reels).
+    // Se DICE lo que se dejó fuera: un recorte silencioso convierte «lo
+    // pedimos» en una afirmación falsa (misma regla que el prompt de escena del
+    // Creador de Reels).
     const dropped = [];
-    const sinEstilo = partes.slice(0, -(cols.length ? 2 : 1));
-    dropped.push('paleta y estilo');
-    let out = sinEstilo.join(' ');
-    if (out.length > PROMPT_MAX_CHARS && c.masterPrompt) {
-        out = sinEstilo.slice(0, -1).join(' ');
-        dropped.push('prompt maestro');
+    let n = cola.length;
+    let out = full;
+    while (n > 0 && out.length > PROMPT_MAX_CHARS) {
+        n -= 1;
+        dropped.push(cola[n].label);
+        out = armar(n);
     }
     if (out.length > PROMPT_MAX_CHARS) {
         out = out.slice(0, PROMPT_MAX_CHARS).replace(/\s+\S*$/, '');
@@ -538,7 +616,7 @@ export default {
     COMPOSE_MODEL, MAX_VARIANTS, DEFAULT_VARIANTS,
     VARIANT_PLANS, planById, plansFor,
     COMPOSITION_DEFAULTS, normalizeComposition,
-    buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS,
+    buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS, MOTIF_MAX_CHARS,
     textBandOf, clearClauseFor,
     BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
     BASE_ROLE, baseNode, withBase, hasBase,

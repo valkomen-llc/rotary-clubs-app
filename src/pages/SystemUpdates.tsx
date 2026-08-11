@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.762.0 | 2026-08-11 (Recortar no es borrar: la composicion ya sobrevive)
-// Cache bust: 2026-08-11d
+// UI V4.763.0 | 2026-08-11 (El encuadre y la ocasion los declara la plantilla)
+// Cache bust: 2026-08-11e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.763.0',
+        title: 'El encuadre y los motivos de la ocasión ya los decide la plantilla 🎨',
+        description: 'Fase 2 de la reingeniería, con lo que se reportó de la Fase 1 dentro. Con la composición ya sobreviviendo, aparecieron tres cosas distintas y ninguna era el control de calidad. La primera: la fotografía salía dentro de una forma pequeña con marco, flotando. El encuadre lo elegía el sistema puntuando cada plan contra la franja donde va el texto —buen respaldo, pero no es dirección de arte— y en esta pieza eso daba el óvalo del medio cuando lo que la plantilla quiere es la forma grande mordida por la curva, que es la papelería del Distrito. Ahora el encuadre se DECLARA en la plantilla y se elige desde el panel; «Automático» sigue estando como respaldo. La segunda: cambiaba el color del fondo de base. Pedirle al modelo que «conservara sus colores» sonaba suficiente y no lo era —lo leía como una descripción de estilo—, así que ahora se le dice que reproduzca el lienzo sin cambios y que lo único que se agrega es la fotografía. Y se dice el tamaño de la forma, que era lo que faltaba para que dejara de salir una miniatura. La tercera: es una pieza de aniversario y no se notaba. Se agregó un campo de «motivos de la ocasión» —unos pocos confetis finos, algún globo suave, en las esquinas vacías, nunca sobre la gente ni sobre donde va el texto— que la plantilla trae puesto y el administrador puede cambiar. Va acotado a propósito: un motivo sin acotar se come la pieza. Y un cuarto control, del que ya se hablaba en la versión anterior: qué hacer cuando el encuadre recorta a alguien del borde, porque hay piezas donde eso es diseño y otras donde aparecer es el punto.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'feature',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'El encuadre de la fotografía se declara en la plantilla y se elige desde el panel.' },
+            { type: 'added', text: 'Campo de «motivos de la ocasión»: el acento que hace que se note de qué es la pieza.' },
+            { type: 'fixed', text: 'El lienzo institucional vuelve intacto: ya no se le cambia el color de fondo.' },
+            { type: 'fixed', text: 'La fotografía entra en una forma grande, no en una miniatura con marco.' },
+        ]
+    },
     {
         version: '4.762.0',
         title: 'Recortar no es borrar: la composición con IA ya sobrevive a una foto de grupo 🎯',
