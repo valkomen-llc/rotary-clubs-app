@@ -274,7 +274,14 @@ export const COMPOSITION_DEFAULTS = {
         plan: 'auto',
         // Qué hacer cuando el encuadre se lleva a alguien del borde (v4.762).
         edgeCrop: 'allow',
+        // Cuánto ANCHO del lienzo ocupa el grupo (v4.771). Se dice en palabras
+        // —lo que un modelo entiende—, no en porcentajes.
+        width: 'medio',
     },
+    // Si la imagen base se reproduce FIEL o se deja VARIAR entre piezas
+    // (v4.771): misma familia de papelería, distinta lámina. Lo que nunca varía
+    // lo dice la cláusula: la estructura, la banda y dónde viven los globos.
+    baseVariation: 'fiel',
     // ── LOS MOTIVOS DE LA OCASIÓN ──────────────────────────────────
     //
     // Una pieza de aniversario no se ve igual que una de condolencias, y eso no
@@ -312,7 +319,9 @@ export const normalizeComposition = (raw) => {
             // elegido por descarte. Un id viejo se degrada solo.
             plan: VARIANT_PLANS.some(p => p.id === ph.plan) ? ph.plan : 'auto',
             edgeCrop: ph.edgeCrop === 'strict' ? 'strict' : 'allow',
+            width: ['compacto', 'medio', 'amplio'].includes(ph.width) ? ph.width : 'medio',
         },
+        baseVariation: c.baseVariation === 'variar' ? 'variar' : 'fiel',
         motifs: String(c.motifs || '').slice(0, MOTIF_MAX_CHARS).trim(),
         variants: clampVariants(c.variants, DEFAULT_VARIANTS),
         publicVariants: clampVariants(c.publicVariants, DEFAULT_VARIANTS),
@@ -383,7 +392,15 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
         // modelo de edición entiende «reproducilo sin cambios, lo único que se
         // añade es la fotografía» mucho mejor que una lista de cualidades a
         // respetar, porque lo segundo lo lee como una descripción de estilo.
-        partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Its surface stays bright and light throughout. Do not restyle it and do not redraw it. The only thing added is the photograph.');
+        if (c.baseVariation === 'variar') {
+            // Variar NO es rediseñar: la estructura, la banda y la posición de
+            // los globos se afirman fijas; lo que se suelta es la textura y el
+            // tamaño y tipo de los globos. Así cada pieza es de la misma
+            // familia sin ser la misma lámina.
+            partes.push('The first image is the brand canvas: keep its structure — the bright pearl surface, the sweeping band along the bottom in the same place and colours, and the balloons living along the right edge — but feel free to vary the texture curves and the size, number and style of the balloons, as a fresh piece from the same stationery family. The surface stays bright and light throughout.');
+        } else {
+            partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Its surface stays bright and light throughout. Do not restyle it and do not redraw it. The only thing added is the photograph.');
+        }
         // Cómo se INTEGRA, no sólo que se integre. Es lo que separa una foto
         // pegada de una pieza de papelería: la fotografía va DENTRO de una
         // forma que pertenece al lienzo —un recorte de bordes curvos, con su
@@ -408,6 +425,14 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
     // decidiendo DÓNDE va la fotografía; lo que se afina es qué se respeta.
     const banda = clearClauseFor(textBandOf(document));
     partes.push(`${cap(p.photo)}, and ${p.clear}.`);
+    // El ANCHO del grupo, en palabras. Sin esto la silueta salía de borde a
+    // borde y no había forma de acotarla sin tocar código.
+    const ancho = {
+        compacto: 'The group stays gathered and compact, taking up about half the width of the canvas, centred.',
+        medio: 'The group takes up about two thirds of the width of the canvas, centred, with air on both sides.',
+        amplio: null,
+    }[c.photo.width];
+    if (photo && ancho) partes.push(ancho);
     if (banda) partes.push(banda);
 
     // La gente de la foto es el motivo por el que existe la pieza.

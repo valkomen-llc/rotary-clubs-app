@@ -98,7 +98,9 @@ export const TEMPLATES = [
             // `foto_fondo`: la fotografía ocupa el lienzo entero — es el plan
             // que corresponde cuando el prompt maestro pide la silueta del
             // grupo sobre la lámina, no una forma que la contenga.
-            photo: { strategy: 'compose', plan: 'silueta_inferior', edgeCrop: 'allow' },
+            photo: { strategy: 'compose', plan: 'silueta_inferior', edgeCrop: 'allow', width: 'medio' },
+            // Cada club recibe su propia lámina de la misma familia (pedido 11/8).
+            baseVariation: 'variar',
             // Es una pieza de ANIVERSARIO y tiene que notarse, sin volverse una
             // tarjeta de cumpleaños: el acento va acotado —pocos, pequeños, en
             // los huecos, nunca sobre la gente ni sobre donde va el texto—

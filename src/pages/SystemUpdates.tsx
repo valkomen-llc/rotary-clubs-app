@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.770.0 | 2026-08-11 (Silueta inferior: el recorte vive en el encuadre)
-// Cache bust: 2026-08-11l
+// UI V4.771.0 | 2026-08-11 (Ancho del grupo y variacion de la lamina)
+// Cache bust: 2026-08-11m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.771.0',
+        title: 'El ancho del grupo y la variación de la lámina se configuran 🎚️',
+        description: 'Con la silueta ya funcionando, dos controles nuevos en la Composición con IA. El primero: el ANCHO de la fotografía en la pieza. La silueta salía de borde a borde y no había forma de acotarla; ahora la plantilla elige entre Compacto (cerca de la mitad del ancho), Medio (unos dos tercios, con aire a los lados — el nuevo valor por defecto del aniversario) y Amplio (lo que pida el encuadre). Se dice en palabras, que es lo que un modelo de imagen entiende. El segundo: la IMAGEN BASE entre piezas. Hasta ahora se reproducía sin cambios y todas las piezas llevaban exactamente la misma lámina; ahora se puede elegir «Con variaciones»: cada club recibe su propia lámina de la misma familia — cambian la textura y el tamaño, número y estilo de los globos, y lo que nunca cambia se afirma en la instrucción: la estructura, la banda azul y dorada en su lugar, y los globos siempre por el borde derecho. La silueta de la fotografía no se toca. La plantilla de aniversario ya viene con Medio y Con variaciones puestos; los dos controles se cambian desde el panel sin desplegar.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'feature',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Ancho de la fotografía en la pieza: compacto, medio o amplio.' },
+            { type: 'added', text: 'Imagen base con variaciones: misma familia, distinta lámina por club.' },
+            { type: 'changed', text: 'El aniversario viene con Medio y Con variaciones por defecto.' },
+        ]
+    },
     {
         version: '4.770.0',
         title: 'Encuadre «Silueta en la mitad inferior»: la contradicción que pegaba la foto arriba 🎯',

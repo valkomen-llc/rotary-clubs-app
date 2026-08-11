@@ -1281,6 +1281,46 @@ check('y el plan pide la silueta recortada, abajo, tras la banda',
     && /behind the bottom band/i.test(CO.planById('silueta_inferior').photo));
 check('su zona tranquila es la columna superior izquierda, donde va el texto',
     /upper left/i.test(CO.planById('silueta_inferior').clear));
+
+// ── El ancho del grupo y la variación de la base (v4.771) ─────────────
+check('el ancho del grupo se declara y se normaliza',
+    CO.normalizeComposition({ photo: { width: 'compacto' } }).photo.width === 'compacto'
+    && CO.normalizeComposition({ photo: { width: 'raro' } }).photo.width === 'medio'
+    && CO.normalizeComposition({}).photo.width === 'medio');
+const anchoMedio = CO.buildBackdropPrompt({
+    composition: { enabled: true, photo: { width: 'medio' } },
+    plan: CO.planById('silueta_inferior'), photo: { url: 'x' }, hasBase: true,
+});
+check('«medio» pide dos tercios con aire a los lados',
+    /two thirds of the width/i.test(anchoMedio.prompt));
+check('«amplio» no agrega cláusula: manda el encuadre',
+    !/width of the canvas, centred/i.test(CO.buildBackdropPrompt({
+        composition: { enabled: true, photo: { width: 'amplio' } },
+        plan: CO.planById('silueta_inferior'), photo: { url: 'x' }, hasBase: true,
+    }).prompt));
+
+check('la variación de la base se declara: sólo «variar» varía',
+    CO.normalizeComposition({ baseVariation: 'variar' }).baseVariation === 'variar'
+    && CO.normalizeComposition({ baseVariation: 'x' }).baseVariation === 'fiel'
+    && CO.normalizeComposition({}).baseVariation === 'fiel');
+const conVariacion = CO.buildBackdropPrompt({
+    composition: { enabled: true, baseVariation: 'variar' },
+    plan: CO.planById('silueta_inferior'), photo: { url: 'x' }, hasBase: true,
+});
+// Variar NO es rediseñar: lo fijo se AFIRMA — estructura, banda y el lado de
+// los globos — y lo que se suelta es la textura y los globos mismos.
+check('variar afirma lo que NO cambia: banda y globos a la derecha',
+    /balloons living along the right edge/i.test(conVariacion.prompt)
+    && /same stationery family/i.test(conVariacion.prompt));
+check('y suelta la textura y los globos',
+    /vary the texture curves/i.test(conVariacion.prompt));
+check('fiel sigue pidiendo reproducir sin cambios',
+    /reproduce it unchanged/i.test(CO.buildBackdropPrompt({
+        composition: { enabled: true }, plan: CO.planById('silueta_inferior'), photo: { url: 'x' }, hasBase: true,
+    }).prompt));
+check('la plantilla de aniversario declara medio + variar',
+    templateById('aniversario_foto').composition.photo.width === 'medio'
+    && templateById('aniversario_foto').composition.baseVariation === 'variar');
 check('el óvalo con brillo sigue en el repertorio, para quien lo elija',
     /white glow/i.test(CO.planById('foto_ovalo_brillo').photo));
 

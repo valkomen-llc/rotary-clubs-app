@@ -168,7 +168,9 @@ export interface Composition {
     /** Cómo se usa la fotografía. El ENCUADRE es dirección de arte y por eso lo
      *  declara la plantilla: puntuarlo contra la franja del texto es un buen
      *  respaldo (`plan: 'auto'`) que no sabe qué quiere esta pieza. */
-    photo?: { strategy?: string; plan?: string; edgeCrop?: string };
+    photo?: { strategy?: string; plan?: string; edgeCrop?: string; width?: string };
+    /** Si la imagen base se reproduce fiel o varía entre piezas. */
+    baseVariation?: string;
     /** El acento de la ocasión —confeti, globos— acotado y en positivo. Va
      *  aparte del prompt maestro: responde qué se celebra, no cómo se ve la
      *  marca, y se recorta antes que la dirección de arte del administrador. */

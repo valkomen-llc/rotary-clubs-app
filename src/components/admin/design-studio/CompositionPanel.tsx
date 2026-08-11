@@ -282,6 +282,34 @@ const CompositionPanel: React.FC<Props> = ({
                         </p>
                     </div>
 
+                    {/* El ANCHO del grupo (v4.771): sin esto la silueta salía
+                        de borde a borde y no había forma de acotarla. */}
+                    <div className="mb-3">
+                        <span className={lbl}>Ancho de la fotografía en la pieza</span>
+                        <select className={box} value={composition.photo?.width || 'medio'}
+                            onChange={e => set({ photo: { ...(composition.photo || {}), width: e.target.value } })}>
+                            <option value="compacto">Compacto · cerca de la mitad del ancho</option>
+                            <option value="medio">Medio · unos dos tercios, con aire a los lados</option>
+                            <option value="amplio">Amplio · lo que pida el encuadre</option>
+                        </select>
+                    </div>
+
+                    {/* La imagen base: fiel o de la misma familia (v4.771). Lo
+                        que nunca varía lo dice la cláusula — la estructura, la
+                        banda y dónde viven los globos. */}
+                    <div className="mb-3">
+                        <span className={lbl}>Imagen base entre piezas</span>
+                        <select className={box} value={composition.baseVariation || 'fiel'}
+                            onChange={e => set({ baseVariation: e.target.value })}>
+                            <option value="fiel">Fiel · se reproduce sin cambios</option>
+                            <option value="variar">Con variaciones · misma familia, distinta lámina</option>
+                        </select>
+                        <p className="mt-1 text-[10px] text-gray-400">
+                            Con variaciones, cada club recibe su propia lámina: cambian la textura y los globos,
+                            nunca la estructura, la banda ni el lado de los globos. La silueta no se toca.
+                        </p>
+                    </div>
+
                     {/* Recortar no es borrar (v4.762): componer es encuadrar, y
                         en una foto de grupo alguien de los bordes queda fuera
                         siempre. Hay piezas donde eso es diseño y otras donde
