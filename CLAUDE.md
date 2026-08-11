@@ -3446,6 +3446,68 @@ con la base sustituida en memoria). **Sin Postgres, credenciales ni red.**
   módulos y consulta el endpoint de verdad. Al tocar la resolución por dominio,
   correrla: es lo único que ve este tipo de fallo.
 
+## Redirecciones de enlaces por sitio — v4.781
+
+Direcciones cortas del propio dominio que llevan a otra parte
+(`rotary4281.org/conferencia` → el formulario de inscripción). Se configuran en
+Configuración → Identidad y se guardan en el ajuste `link_redirects`.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/linkRedirects.js` | El CRITERIO. **Puro**: qué regla se acepta, a dónde manda |
+| `src/lib/linkRedirects.ts` | Espejo en el navegador, para avisar mientras se escribe |
+| `server/lib/linkRedirectStore.js` | La I/O: resolución por dominio, caché e invalidación |
+| `api/index.js` (catch-all) | El salto, antes de servir el documento |
+
+Pruebas: `npm run test:redirects` (51 casos). **Sin Postgres, credenciales ni
+red**: la base se sustituye en memoria con un hook de resolución de módulos.
+
+**Reglas durables:**
+
+- **El salto lo hace el SERVIDOR, no un `<Navigate>` de React.** La vista previa
+  de WhatsApp, los rastreadores y `curl` no ejecutan JavaScript: con una
+  redirección del navegador verían la aplicación vacía. Es el mismo motivo por
+  el que el `<head>` se resuelve en el servidor (v4.702).
+- **Se resuelve ANTES de `renderPublicDocument`.** Una dirección corta no es una
+  página de la aplicación: si llegara al documento, el visitante vería la
+  pantalla de «no encontrado».
+- **`/admin` no se puede redirigir, y es la barrera que importa.** Una regla ahí
+  deja al administrador sin panel y sin forma de entrar a quitarla — la puerta
+  cerrada con la llave adentro. Lo mismo la portada, que dejaría el sitio
+  inaccesible desde su propio dominio. Se comprueba DOS veces: al validar y al
+  resolver, porque en la base puede haber reglas escritas antes de que la
+  validación existiera.
+- **Temporal por DEFECTO.** Un 301 lo cachea el navegador durante meses, así que
+  una redirección equivocada sigue actuando para quien ya la visitó AUNQUE se
+  corrija. Lo permanente se elige a propósito y la pantalla dice qué implica.
+  La temporal se sirve con `Cache-Control: no-store`, que es lo que hace que
+  corregirla se note en la visita siguiente.
+- **El destino sólo puede ser `http(s)` o una ruta interna.** El valor termina
+  en una cabecera `Location`: aceptar cualquier esquema convertiría un campo del
+  panel en un hueco por donde inyectar. `//otrositio.com` también se rechaza —
+  parece interno y el navegador lo trata como externo. Mismo criterio que el
+  mapa de la sede (v4.717).
+- **La resolución por dominio repite el camino de `by-domain`, NO el de
+  `resolveClubByHost`.** Ese atajo del módulo de SEO sólo mira `Club.domain`, y
+  el dominio propio de un distrito vive en la fila de `District` (v4.744): con
+  él, `rotary4281.org` no encontraría sitio y sus redirecciones no existirían,
+  en silencio.
+- **La coincidencia es EXACTA, sin comodines.** Un comodín es cómodo de escribir
+  y difícil de razonar cuando hay varios —¿gana el más largo, el primero?—, y
+  acá equivocarse significa que una página real del sitio deja de ser
+  alcanzable.
+- **La query de la visita viaja al destino**, igual que en `ctaTarget` (v4.657):
+  `?utm_source=…` es lo que distingue de dónde vino el clic. El ancla no: el
+  navegador nunca la manda al servidor, así que aceptarla en el formulario daría
+  una regla que no puede funcionar.
+- **Se SANEA en el servidor al guardar, no sólo en la pantalla.** El panel avisa
+  mientras se escribe con el MISMO criterio (`src/lib/linkRedirects.ts`), pero
+  quien decide qué se guarda es el servidor.
+- **Guardar limpia la caché** (`invalidateRedirectCache`). Quien acaba de crear
+  una redirección la prueba en seguida, no cuando venza el TTL.
+- **Una consulta fallida devuelve `[]`, no una excepción.** Esto corre en el
+  catch-all: si lanzara, se caería la página pública entera.
+
 ## Recursos que cambian con el idioma — v4.699
 
 Algunas piezas gráficas están **rotuladas** y por tanto tienen idioma: el logo
