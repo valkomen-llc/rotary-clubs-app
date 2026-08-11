@@ -442,7 +442,15 @@ const nodeHasContent = (node) => node.type === 'image'
 // donde el administrador va a poner algo y sin verlo no lo puede seleccionar.
 // Lo que se cae igual es el nodo DECORATIVO que dependía de él —la placa blanca
 // sola no se puede llenar con nada, sólo estorba—.
-export const visibleNodes = (nodes = [], { slots = false } = {}) => {
+// `fusedId` es el nodo que la Composición con IA va a FUNDIR con la imagen de
+// base. No se dibuja ni siquiera en modo editor: con la composición encendida
+// esa fotografía no ocupa un recuadro —la integra el modelo dentro del lienzo—,
+// así que pintar su hueco enseña algo que no va a pasar. El nodo sigue en el
+// documento porque es lo que DECLARA el campo del formulario público; lo que
+// cambia es cómo se ve. Quién es ese nodo lo decide `fusedPhotoId`, en
+// `designCompose.js`: acá sólo se obedece, para que la regla de «qué se dibuja»
+// siga estando en UN solo sitio.
+export const visibleNodes = (nodes = [], { slots = false, fusedId = null } = {}) => {
     const satisfied = new Map();
     for (const n of nodes) {
         const key = n.type === 'image' ? n.srcVar : null;
@@ -452,6 +460,7 @@ export const visibleNodes = (nodes = [], { slots = false } = {}) => {
 
     return nodes.filter(n => {
         if (n.hidden) return false;
+        if (fusedId && n.id === fusedId) return false;
         if (n.requiresVar && !satisfied.get(n.requiresVar)) return false;
         if (n.dropIfEmpty && !nodeHasContent(n) && !slots) return false;
         return true;

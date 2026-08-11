@@ -82,3 +82,34 @@ export const withoutBackdrop = (document: DesignDocument): DesignDocument => ({
 
 export const hasBackdrop = (document: DesignDocument): boolean =>
     (document?.nodes || []).some(n => n.role === BACKDROP_ROLE);
+
+// ─── La fotografía cuando se FUNDE con el lienzo ───────────────────────
+//
+// Con la Composición encendida la fotografía NO ocupa un recuadro: la IA la
+// integra dentro de la imagen de base. El nodo sigue existiendo porque es lo
+// que DECLARA el campo del formulario público, pero pintarlo como hueco enseña
+// algo que no va a pasar — un tablero gris en media pieza en el editor, y en el
+// portal un recuadro punteado prometiendo que la foto va justo ahí.
+//
+// Es una decisión de PINTADO. Marcar el nodo `hidden` lo dejaría apagado
+// también al apagar la composición, y la fotografía no volvería a su sitio.
+
+/** El nodo que declara la fotografía del club, o null. */
+export const photoNodeOf = (document: DesignDocument): DesignNode | null =>
+    (document?.nodes || []).find(esFoto) || null;
+
+/** El id de la fotografía que la composición va a absorber, o null. Con un
+ *  fondo ya generado devuelve null: ahí `withBackdrop` ya la apagó. */
+export const fusedPhotoId = (
+    document: DesignDocument,
+    composition?: { enabled?: boolean } | null,
+): string | null => {
+    if (!composition?.enabled) return null;
+    if (hasBackdrop(document)) return null;
+    const n = photoNodeOf(document);
+    // Sólo el hueco VACÍO: con una fotografía puesta y todavía sin fondo, esa
+    // fotografía en su recuadro es el RESPALDO declarado —lo que se entrega si
+    // componer falla o si el control de preservación descarta la composición—.
+    if (!n || (n as { src?: string | null }).src) return null;
+    return n.id;
+};

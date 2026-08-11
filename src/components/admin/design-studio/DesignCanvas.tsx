@@ -69,6 +69,11 @@ interface Props {
      *  segura. Es lo que permite que el portal público enseñe el sitio del
      *  logotipo sin meterlo en el archivo que se descarga. */
     hints?: SlotHint[];
+    /** El nodo de la fotografía que la Composición con IA va a fundir con la
+     *  imagen de base. No se dibuja: con la composición encendida esa foto no
+     *  ocupa un recuadro, y su hueco vacío hacía ver la pieza rota. Sale de
+     *  `fusedPhotoId`; acá sólo se obedece. */
+    fusedId?: string | null;
     onSelect?: (ids: string[]) => void;
     /** Confirmar el texto escrito EN EL LIENZO (doble clic sobre un texto).
      *
@@ -98,7 +103,7 @@ const cssFill = (fill: Fill): string => {
 };
 
 const DesignCanvas: React.FC<Props> = ({
-    doc, selectedIds = [], zoom, showGuides = true, interactive = true, hints, onSelect, onNodesChange, onEditText,
+    doc, selectedIds = [], zoom, showGuides = true, interactive = true, hints, fusedId = null, onSelect, onNodesChange, onEditText,
 }) => {
     const fmt = formatOf(doc.format);
     const W = fmt.width, H = fmt.height;
@@ -425,7 +430,7 @@ const DesignCanvas: React.FC<Props> = ({
                 {/* La MISMA regla que aplica el exportador. `slots` sólo en el
                     editor: ahí un hueco vacío se tiene que ver para poder
                     seleccionarlo y llenarlo; en el portal y en el archivo, no. */}
-                {visibleNodes(doc.nodes, { slots: interactive }).map(renderNode)}
+                {visibleNodes(doc.nodes, { slots: interactive, fusedId }).map(renderNode)}
 
                 {/* Guías: se dibujan DENTRO del lienzo y no se exportan nunca —
                     el exportador lee `doc.nodes`, y esto no es un nodo. */}

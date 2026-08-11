@@ -1221,6 +1221,65 @@ check('y conserva el lienzo institucional', CO.hasBase(CO.withoutBackdrop(compue
 check('sin lienzo, el fondo generado va al pie',
     CO.withBackdrop(docLienzo, 'https://x.amazonaws.com/ia.png').nodes[0].role === CO.BACKDROP_ROLE);
 
+// ── La fotografía que se FUNDE no ocupa un recuadro ────────────────────
+//
+// Lo reportado: «aparece la mitad Sin imagen… la idea no es que la plantilla
+// tenga estos espacios vacíos, la idea es que la fotografía se combine con la
+// imagen de base». Con la composición encendida el hueco de la fotografía es
+// una DECLARACIÓN de campo, no un elemento de la maquetación: el modelo mete la
+// foto dentro del lienzo y decide dónde queda. Dibujar el hueco enseñaba un
+// tablero gris ocupando media pieza y prometía un sitio que la foto no iba a
+// ocupar.
+const docVacio = S.normalizeDocument({
+    nodes: [
+        { type: 'image', id: 'foto', srcVar: 'imagen', src: null, dropIfEmpty: true, x: 0, y: 0, w: 1, h: 0.47 },
+        { type: 'image', id: 'logo', srcVar: 'logo', src: null, dropIfEmpty: true, x: 0.07, y: 0.05, w: 0.28, h: 0.1 },
+        { type: 'text', id: 'titulo', text: '¡Felices 49 años!', x: 0.1, y: 0.6, w: 0.8, h: 0.1 },
+    ],
+});
+check('con la composición encendida, la fotografía es el nodo fundido',
+    CO.fusedPhotoId(docVacio, { enabled: true }) === 'foto');
+check('apagada, no se funde nada',
+    CO.fusedPhotoId(docVacio, { enabled: false }) === null
+    && CO.fusedPhotoId(docVacio, null) === null);
+// Con un fondo ya generado manda `withBackdrop`, que apagó el nodo en el
+// documento. Dos mecanismos para lo mismo se contradirían al cambiar uno.
+check('con el fondo ya compuesto no hace falta: el documento ya lo apagó',
+    CO.fusedPhotoId(CO.withBackdrop(docVacio, 'https://x/ia.png'), { enabled: true }) === null);
+check('un diseño sin fotografía no funde nada',
+    CO.fusedPhotoId(S.normalizeDocument({ nodes: [{ type: 'text', id: 't', text: 'X', x: 0, y: 0, w: 1, h: 0.1 }] }), { enabled: true }) === null);
+// La distinción que decide si el respaldo del módulo funciona: con una
+// fotografía PUESTA y todavía sin fondo generado, esa foto en su recuadro es lo
+// que se entrega si componer falla o si el control de preservación descarta la
+// composición («se usó tu fotografía tal como la subiste, dentro del diseño»).
+// Ocultarla ahí dejaría la pieza sin la foto y sin nada que lo explicara.
+check('una fotografía YA PUESTA se sigue dibujando: es el respaldo declarado',
+    CO.fusedPhotoId(docLienzo, { enabled: true }) === null);
+check('sólo se funde el hueco VACÍO',
+    CO.fusedPhotoId(docVacio, { enabled: true }) === 'foto');
+// Se reconoce por la clave o por el rol: una plantilla puede llamar `portada` a
+// su fotografía. Misma condición que usa `withBackdrop`.
+check('la fotografía se reconoce también por su rol',
+    CO.fusedPhotoId(S.normalizeDocument({ nodes: [{ type: 'image', id: 'p', role: 'foto', srcVar: 'portada', x: 0, y: 0, w: 1, h: 0.4 }] }), { enabled: true }) === 'p');
+
+// Y lo que decide QUÉ SE DIBUJA sigue siendo `visibleNodes`, en un solo sitio:
+// la vista previa del editor, la exportación y el portal llaman a la misma
+// función, que es lo que sostiene que lo que se ve sea el archivo.
+const editor = S.visibleNodes(docVacio.nodes, { slots: true }).map(n => n.id);
+const fundido = S.visibleNodes(docVacio.nodes, { slots: true, fusedId: 'foto' }).map(n => n.id);
+check('en el editor, sin composición, el hueco se ve para poder llenarlo',
+    editor.includes('foto'));
+check('con la composición encendida NO se dibuja, ni siquiera en el editor',
+    !fundido.includes('foto'));
+check('el resto de la pieza se sigue dibujando',
+    fundido.includes('logo') && fundido.includes('titulo'));
+check('sin `fusedId` no cambia nada',
+    JSON.stringify(S.visibleNodes(docVacio.nodes, { slots: true, fusedId: null }).map(n => n.id)) === JSON.stringify(editor));
+// El nodo sigue EN el documento: es lo que declara el campo del formulario
+// público. Si desapareciera, nadie podría subir la fotografía.
+check('el nodo no se borra del documento, sólo no se pinta',
+    docVacio.nodes.some(n => n.id === 'foto'));
+
 grupo('La composición sabe dónde va a caer el texto');
 
 // Lo pedido: que la fotografía quede COMBINADA con el lienzo, como una pieza de
@@ -1310,6 +1369,23 @@ check('quitarlo también',
     casosDoc.every(d => JSON.stringify(CC.withoutBackdrop(d)) === JSON.stringify(CO.withoutBackdrop(d))));
 check('y las dos comprobaciones de presencia',
     casosDoc.every(d => CC.hasBase(d) === CO.hasBase(d) && CC.hasBackdrop(d) === CO.hasBackdrop(d)));
+
+// Quién es el nodo que se funde lo deciden las DOS puntas: el editor para no
+// pintar el hueco y el portal público para no pintar su guía. Si se separan,
+// una de las dos pantallas vuelve a mostrar media pieza vacía.
+check('el nodo que se funde es el mismo en los dos lados',
+    [docVacio, ...casosDoc].every(d =>
+        [{ enabled: true }, { enabled: false }, null].every(c =>
+            CC.fusedPhotoId(d, c) === CO.fusedPhotoId(d, c))));
+check('y el nodo de la fotografía se reconoce igual',
+    [docVacio, ...casosDoc].every(d => (CC.photoNodeOf(d)?.id || null) === (CO.photoNodeOf(d)?.id || null)));
+// `visibleNodes` es lo que sostiene que lo que se ve sea el archivo: si los dos
+// espejos filtraran distinto, la vista previa dejaría de ser lo que se descarga.
+check('y `visibleNodes` filtra igual con el nodo fundido',
+    [docVacio, ...casosDoc].every(d =>
+        [true, false].every(slots =>
+            JSON.stringify(C.visibleNodes(d.nodes, { slots, fusedId: 'foto' }).map(n => n.id))
+            === JSON.stringify(S.visibleNodes(d.nodes, { slots, fusedId: 'foto' }).map(n => n.id)))));
 
 grupo('Campos vinculados: el hueco de CADA campo');
 

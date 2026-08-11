@@ -165,6 +165,20 @@ const CompositionPanel: React.FC<Props> = ({
                         </div>
                     )}
 
+                    {/* Con la composición encendida, ese espacio deja de ser un
+                        recuadro de la maquetación: el modelo mete la fotografía
+                        DENTRO del lienzo y decide dónde queda. Se dice acá
+                        porque en la mesa de trabajo ya no se ve —antes se veía,
+                        como un tablero gris ocupando media pieza, prometiendo
+                        un sitio que la fotografía nunca iba a ocupar—. */}
+                    {hasPhotoSlot && !hasBackdrop && hayDiseno && (
+                        <p className="mb-3 rounded-lg bg-indigo-50 border border-indigo-100 p-2.5 text-[11px] text-indigo-900 leading-relaxed">
+                            La fotografía del club <strong>no ocupa un recuadro</strong>: se integra dentro de
+                            la imagen de base y es el modelo el que decide dónde queda. Por eso no ves un
+                            espacio vacío en la pieza. El formulario público la sigue pidiendo.
+                        </p>
+                    )}
+
                     {/* Imagen base */}
                     <div className="mb-3">
                         <span className={lbl}>Imagen base institucional</span>

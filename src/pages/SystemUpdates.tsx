@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.760.0 | 2026-08-11 (Mis disenos deja de fallar en silencio)
-// Cache bust: 2026-08-11b
+// UI V4.761.0 | 2026-08-11 (La foto se funde con el lienzo, sin hueco vacio)
+// Cache bust: 2026-08-11c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.761.0',
+        title: 'La fotografía ya no deja media pieza vacía: se funde con el lienzo 🖼️',
+        description: 'Se reportó que en la plantilla de aniversario aparecía media pieza con un tablero gris y el cartel «Sin imagen», y que la idea no es que la plantilla tenga espacios vacíos sino que la fotografía se combine con la imagen de base. Las dos cosas eran ciertas a la vez, y ahí estaba el defecto: con la Composición con IA encendida, el hueco de la fotografía deja de ser un elemento de la maquetación y pasa a ser sólo la DECLARACIÓN de que el formulario público va a pedir una foto. El modelo la integra dentro de la imagen de base y decide dónde queda. Dibujar ese hueco enseñaba un sitio que la fotografía nunca iba a ocupar: un tablero gris en el editor y, en el enlace público, un recuadro punteado prometiendo que la foto iba justo ahí. Ahora, con la composición encendida, ese hueco no se dibuja ni en el editor ni en el portal, y el panel lo explica en una línea — un espacio que desaparece sin decir nada se lee como que la función no quedó puesta. El nodo sigue existiendo y se puede configurar desde Capas: si se borrara, el formulario público dejaría de pedir la fotografía. Un matiz que decide si el respaldo del módulo sigue funcionando: una fotografía YA PUESTA se sigue dibujando en su recuadro, porque eso es exactamente lo que se entrega si componer falla o si el control de preservación descarta la composición. Se oculta el hueco vacío, no la foto.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia', 'portal publico'],
+        type: 'improvement',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'Con la composición encendida, el hueco vacío de la fotografía ya no se dibuja.' },
+            { type: 'fixed', text: 'El portal público tampoco marca un recuadro para esa foto.' },
+            { type: 'added', text: 'El panel explica que la fotografía se integra en la imagen de base.' },
+            { type: 'changed', text: 'Una fotografía ya puesta se sigue viendo: es el respaldo si la composición falla.' },
+        ]
+    },
     {
         version: '4.760.0',
         title: '«Mis diseños» ya no dice que no tenés ninguno cuando falla 🗂️',

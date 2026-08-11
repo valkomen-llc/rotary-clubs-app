@@ -42,7 +42,7 @@ import {
     type DesignDocument, type DesignNode, type TextNode, type ImageNode,
 } from '../../../lib/designSpec';
 import { newField, type LinkedField } from '../../../lib/designFields';
-import { withBase, withBackdrop, withoutBackdrop, hasBackdrop } from '../../../lib/designCompose';
+import { withBase, withBackdrop, withoutBackdrop, hasBackdrop, fusedPhotoId } from '../../../lib/designCompose';
 import { exportDocument, exportToFile, thumbnail, type ExportFormat } from '../../../lib/designRender';
 
 const EMPTY_DOC: DesignDocument = { format: 'post_1_1', background: PALETTE.white, nodes: [] };
@@ -530,6 +530,12 @@ const DesignStudio: React.FC = () => {
         [doc.nodes]
     );
 
+    // Con la Composición encendida la fotografía se FUNDE con la imagen de base
+    // en vez de ocupar un recuadro, así que su hueco no se dibuja. El nodo sigue
+    // en el documento —es lo que declara el campo del formulario público— y se
+    // puede seleccionar desde Capas.
+    const fusedId = useMemo(() => fusedPhotoId(doc, composition), [doc, composition]);
+
     const addPhotoNode = useCallback(() => {
         const box = { x: 0, y: 0, w: 1, h: 0.47 };
         const field = newField('imagen', 'image');
@@ -934,6 +940,11 @@ const DesignStudio: React.FC = () => {
                             selectedIds={selectedIds}
                             zoom={zoom}
                             showGuides={showGuides}
+                            // Con la Composición encendida, la fotografía no
+                            // ocupa un recuadro: la IA la integra en la imagen
+                            // de base. Su hueco vacío llenaba media pieza de
+                            // tablero gris y prometía algo que no iba a pasar.
+                            fusedId={fusedId}
                             onSelect={setSelectedIds}
                             onNodesChange={setNodes}
                             // Escribir en el lienzo pasa por `patchNode`, igual

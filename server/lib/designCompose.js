@@ -458,6 +458,47 @@ export const withoutBackdrop = (document) => ({
 
 export const hasBackdrop = (document) => (document?.nodes || []).some(n => n.role === BACKDROP_ROLE);
 
+// ─── La fotografía cuando se FUNDE con el lienzo ───────────────────────
+//
+// Con la Composición encendida, la fotografía del club NO ocupa un recuadro:
+// la IA la integra dentro de la imagen de base y lo que entra en la pieza es el
+// resultado. El nodo de la fotografía sigue existiendo —es lo que DECLARA el
+// campo del formulario público, y sin él nadie puede subir nada—, pero pintarlo
+// como un hueco es enseñar algo que no va a pasar: en el editor se veía un
+// tablero gris ocupando media pieza, y en el portal, un recuadro punteado
+// prometiendo que la foto va justo ahí. Ninguna de las dos cosas es cierta.
+//
+// Es una decisión de PINTADO, no del documento. Marcar el nodo `hidden` lo
+// dejaría apagado también al apagar la composición, y entonces la fotografía no
+// volvería nunca a su sitio. Por eso se resuelve al dibujar, como `slots`.
+
+/** El nodo que declara la fotografía del club, o null. Misma condición que usan
+ *  `withBackdrop` y el estudio: la clave o el rol, porque una plantilla puede
+ *  llamar `portada` a su fotografía. */
+export const photoNodeOf = (document) =>
+    (document?.nodes || []).find(n => n.type === 'image' && (n.srcVar === 'imagen' || n.role === 'foto')) || null;
+
+/**
+ * El id de la fotografía que la composición va a ABSORBER, o null.
+ *
+ * Con un fondo ya generado devuelve null a propósito: ahí la foto ya está
+ * dentro del fondo y `withBackdrop` la apagó en el documento — dos mecanismos
+ * para lo mismo se contradirían en cuanto uno cambiara.
+ */
+export const fusedPhotoId = (document, composition) => {
+    if (!composition?.enabled) return null;
+    if (hasBackdrop(document)) return null;
+    const n = photoNodeOf(document);
+    // Sólo el hueco VACÍO. Con una fotografía puesta y todavía sin fondo
+    // generado, esa fotografía dentro de su recuadro es el RESPALDO declarado
+    // del módulo —«se usó tu fotografía tal como la subiste, dentro del
+    // diseño»—: es lo que se entrega si componer falla o si el control de
+    // preservación descarta la composición. Ocultarla ahí dejaría la pieza sin
+    // la foto y sin nada que lo explicara.
+    if (!n || n.src) return null;
+    return n.id;
+};
+
 // ─── Qué se acepta de vuelta ───────────────────────────────────────────
 //
 // El modelo puede devolver algo de otra proporción o directamente fallar. Se
@@ -501,5 +542,6 @@ export default {
     textBandOf, clearClauseFor,
     BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
     BASE_ROLE, baseNode, withBase, hasBase,
+    photoNodeOf, fusedPhotoId,
     validateBackdrop, aspectFor,
 };
