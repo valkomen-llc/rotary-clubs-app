@@ -6,6 +6,7 @@ import {
     getAccountMessages,
     updateMessage,
     deleteMessage,
+    repairMessageAttachments,
     getEmailDiagnostics,
     testSendEmail,
     provisionInbound,
@@ -38,6 +39,8 @@ router.delete('/drafts/:id', deleteDraft);
 router.get('/messages', getAccountMessages);
 router.patch('/messages/:id', updateMessage);
 router.delete('/messages/:id', deleteMessage);
+// Recupera de Resend los adjuntos que quedaron guardados sin URL de descarga.
+router.post('/messages/:id/repair-attachments', repairMessageAttachments);
 
 router.get('/', getEmailAccounts);
 router.post('/', createEmailAccount);

@@ -8,13 +8,60 @@ import EmailService from '../services/EmailService.js';
 const ATT_BUCKET = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 const ATT_REGION = process.env.AWS_REGION || 'us-east-1';
 
+// Pide a Resend la lista de adjuntos de un correo entrante. Es el ÚNICO lugar de donde
+// sale el contenido: ni el webhook email.received ni GET /emails/receiving/:id traen los
+// bytes — solo metadata (filename/content_type)—. Cada entrada de esta lista llega con un
+// download_url FIRMADO que expira (~1 h), así que se descarga en el momento y se copia a S3.
+const fetchResendAttachmentList = async (emailId) => {
+    const apiKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+    if (!apiKey || !emailId) return [];
+    try {
+        const resp = await fetch(`https://api.resend.com/emails/receiving/${emailId}/attachments`, {
+            headers: { Authorization: `Bearer ${apiKey}` }
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            console.warn(`[inbound-email] no se pudo listar los adjuntos del correo ${emailId} (HTTP ${resp.status}): ${body?.message || 'error'}. ¿La API key tiene permiso de lectura?`);
+            return [];
+        }
+        return Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+    } catch (e) {
+        console.warn(`[inbound-email] error listando los adjuntos del correo ${emailId}:`, e.message);
+        return [];
+    }
+};
+
+// Descarga el contenido de un adjunto. El download_url de Resend viene FIRMADO: mandarle
+// además una cabecera Authorization rompe la firma en S3 ("only one auth mechanism
+// allowed"), así que el Bearer solo se manda cuando la URL es de la propia API de Resend.
+const downloadAttachment = async (url, apiKey) => {
+    const isResendApi = /^https:\/\/api\.resend\.com\//i.test(url);
+    const resp = await fetch(url, isResendApi && apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : undefined);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} al descargar`);
+    return Buffer.from(await resp.arrayBuffer());
+};
+
 // Sube a S3 los adjuntos de un correo entrante y devuelve metadata + URL pública.
-// Tolerante a las formas en que Resend entrega el contenido: base64 inline
-// (content/data) o una download_url protegida (se baja con la API key de lectura).
+// Tolerante a las formas en que llega el contenido: base64 inline (content/data),
+// una download_url ya presente, o —el caso real de Resend Inbound— SOLO metadata,
+// que obliga a pedir la lista firmada con fetchResendAttachmentList.
 // Si no logra obtener el contenido, guarda al menos la metadata (url: null).
 const storeInboundAttachments = async (emailId, rawList) => {
     if (!Array.isArray(rawList) || rawList.length === 0) return [];
     const apiKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+    // La lista firmada se pide UNA sola vez, y solo si algún adjunto la necesita.
+    let signedList = null;
+    const signedFor = async (a, i) => {
+        if (signedList === null) signedList = await fetchResendAttachmentList(emailId);
+        if (!signedList.length) return null;
+        const id = a.id || a.attachment_id || a.attachmentId || null;
+        const byId = id ? signedList.find((s) => s.id === id) : null;
+        if (byId) return byId;
+        const name = a.filename || a.name || a.fileName || null;
+        const byName = name ? signedList.filter((s) => (s.filename || s.name) === name) : [];
+        if (byName.length === 1) return byName[0];
+        return signedList[i] || null;
+    };
     const out = [];
     for (let i = 0; i < rawList.length; i++) {
         const a = rawList[i] || {};
@@ -25,12 +72,14 @@ const storeInboundAttachments = async (emailId, rawList) => {
             const b64 = a.content || a.data || (a.content && a.content.data);
             if (typeof b64 === 'string' && b64.length) {
                 buffer = Buffer.from(b64, 'base64');
-            } else {
-                const url = a.download_url || a.downloadUrl || a.url || a.path;
-                if (url) {
-                    const resp = await fetch(url, apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : undefined);
-                    if (resp.ok) buffer = Buffer.from(await resp.arrayBuffer());
+            }
+            if (!buffer) {
+                let url = a.download_url || a.downloadUrl || a.url || a.path || null;
+                if (!url) {
+                    const signed = await signedFor(a, i);
+                    url = signed?.download_url || signed?.downloadUrl || null;
                 }
+                if (url) buffer = await downloadAttachment(url, apiKey);
             }
             if (buffer) {
                 const safe = String(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
@@ -40,6 +89,7 @@ const storeInboundAttachments = async (emailId, rawList) => {
                 out.push({ filename, contentType, size: buffer.length, url: `https://${ATT_BUCKET}.s3.${ATT_REGION}.amazonaws.com/${encodedKey}` });
                 continue;
             }
+            console.warn(`[inbound-email] adjunto "${filename}" sin contenido ni download_url (correo ${emailId || '?'}) — se guarda solo la metadata`);
         } catch (e) {
             console.warn(`[inbound-email] no se pudo guardar el adjunto "${filename}":`, e.message);
         }
@@ -336,6 +386,57 @@ export const updateMessage = async (req, res) => {
     } catch (error) {
         console.error('Error updating message:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// POST /api/email-accounts/messages/:id/repair-attachments — recupera del proveedor los
+// adjuntos que quedaron guardados sin URL (url: null). Hasta v4.779 el webhook intentaba
+// leer el contenido del propio payload, pero Resend Inbound NUNCA lo manda ahí: hay que
+// pedir la lista firmada de adjuntos. Este endpoint rehace ese trabajo para los correos
+// que ya estaban en la base, usando el resendEmailId que la fila guarda desde siempre.
+export const repairMessageAttachments = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const clubId = req.user.clubId;
+        const existing = await prisma.receivedEmail.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Mensaje no encontrado' });
+        if (existing.clubId !== clubId && req.user.role !== 'administrator') {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const current = Array.isArray(existing.attachments) ? existing.attachments : [];
+        if (current.length && current.every((a) => a && a.url)) {
+            return res.json({ ok: true, repaired: 0, attachments: current, note: 'Los adjuntos ya estaban disponibles.' });
+        }
+        if (!existing.resendEmailId) {
+            return res.status(409).json({ error: 'Este correo no guardó su id de Resend, así que los adjuntos no se pueden recuperar del proveedor.' });
+        }
+
+        // La fuente autoritativa es la lista firmada de Resend (trae download_url fresco).
+        const signed = await fetchResendAttachmentList(existing.resendEmailId);
+        const source = signed.length ? signed : current;
+        if (!source.length) {
+            return res.status(502).json({ error: 'Resend no devolvió adjuntos para este correo. Puede que su retención haya vencido o que la API key no tenga permiso de lectura (RESEND_INBOUND_API_KEY).' });
+        }
+
+        const stored = await storeInboundAttachments(existing.resendEmailId, source);
+        const repaired = stored.filter((a) => a.url).length;
+        if (!repaired) {
+            return res.status(502).json({ error: 'No se pudo descargar ningún adjunto desde Resend. Revisa que RESEND_INBOUND_API_KEY tenga permiso de lectura y vuelve a intentar.' });
+        }
+
+        // El mismo correo entrante puede estar guardado en varios buzones del club:
+        // se reparan TODAS sus filas, no solo la que se está mirando.
+        await prisma.receivedEmail.updateMany({
+            where: { resendEmailId: existing.resendEmailId, clubId: existing.clubId },
+            data: { attachments: stored, hasAttachments: stored.length > 0 }
+        });
+
+        console.log(`[repair-attachments] correo ${existing.resendEmailId}: ${repaired}/${stored.length} adjunto(s) recuperado(s)`);
+        return res.json({ ok: true, repaired, attachments: stored });
+    } catch (error) {
+        console.error('[repair-attachments] error:', error);
+        return res.status(500).json({ error: error.message || 'Error interno' });
     }
 };
 
@@ -844,6 +945,7 @@ export default {
     getAccountMessages,
     updateMessage,
     deleteMessage,
+    repairMessageAttachments,
     getEmailDiagnostics,
     testSendEmail,
     provisionInbound,
@@ -852,4 +954,4 @@ export default {
     deleteDraft
 };
 
-console.log('[EmailAccountController] cargado (v4.489.0 — borradores persistentes (EmailDraft): guardar/retomar/eliminar desde la bandeja)');
+console.log('[EmailAccountController] cargado (v4.780.0 — adjuntos entrantes: descarga vía lista firmada de Resend + reparación de correos ya guardados)');
