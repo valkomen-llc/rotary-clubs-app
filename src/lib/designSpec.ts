@@ -398,7 +398,12 @@ const nodeHasContent = (n: DesignNode): boolean =>
 // donde el administrador va a poner algo y sin verlo no lo puede seleccionar.
 // Lo que se cae igual es el nodo DECORATIVO que dependía de él —la placa blanca
 // sola no se puede llenar con nada, sólo estorba—.
-export const visibleNodes = (nodes: DesignNode[], { slots = false } = {}): DesignNode[] => {
+// `fusedId` es el nodo que la Composición con IA va a FUNDIR con la imagen de
+// base. No se dibuja ni siquiera en modo editor: esa fotografía no ocupa un
+// recuadro, la integra el modelo dentro del lienzo, así que pintar su hueco
+// enseña algo que no va a pasar. Quién es ese nodo lo decide `fusedPhotoId`, en
+// `designCompose.ts`.
+export const visibleNodes = (nodes: DesignNode[], { slots = false, fusedId = null as string | null } = {}): DesignNode[] => {
     const satisfied = new Map<string, boolean>();
     for (const n of nodes) {
         if (!isImage(n) || !n.srcVar) continue;
@@ -406,6 +411,7 @@ export const visibleNodes = (nodes: DesignNode[], { slots = false } = {}): Desig
     }
     return nodes.filter(n => {
         if (n.hidden) return false;
+        if (fusedId && n.id === fusedId) return false;
         if (n.requiresVar && !satisfied.get(n.requiresVar)) return false;
         if (n.dropIfEmpty && !nodeHasContent(n) && !slots) return false;
         return true;

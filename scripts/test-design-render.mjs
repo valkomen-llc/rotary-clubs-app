@@ -315,10 +315,31 @@ window.go = () => createRoot(document.getElementById('root')).render(React.creat
         /no la va a pedir/i.test(await page.locator('aside').first().textContent()));
     await page.getByText('Agregar el espacio de la fotografía').click();
     await page.waitForTimeout(500);
-    check('y se puede agregar de un clic',
-        await page.locator('[data-node^="foto"]').count() === 1);
     check('el aviso desaparece cuando ya está',
         !/no la va a pedir/i.test(await page.locator('aside').first().textContent()));
+
+    // ── Y con la composición ENCENDIDA, ese hueco NO se dibuja ──────
+    //
+    // Lo reportado: «aparece la mitad Sin imagen… la idea no es que la
+    // plantilla tenga estos espacios vacíos, la idea es que la fotografía se
+    // combine con la imagen de base». Con la composición encendida el hueco es
+    // una DECLARACIÓN de campo, no un elemento de la maquetación: el modelo
+    // mete la foto dentro del lienzo y decide dónde queda. Pintarlo llenaba
+    // media pieza de tablero gris y prometía un sitio que no era el suyo.
+    check('con la composición encendida el hueco NO se dibuja',
+        await page.locator('[data-node^="foto"]').count() === 0);
+    check('y no queda el cartel «Sin imagen» en la pieza',
+        !/Sin imagen/.test(await page.locator('[data-node]').first().locator('xpath=ancestor::div[1]').textContent().catch(() => '')));
+    // Pero el nodo SIGUE en el documento: es lo que declara el campo del
+    // formulario público. Si desapareciera, nadie podría subir la fotografía.
+    await page.getByText('Capas', { exact: true }).click();
+    await page.waitForTimeout(300);
+    check('pero sigue existiendo como capa, para poder configurarlo',
+        /Fotografía del club/.test(await page.locator('aside').last().textContent()));
+    // Y se DICE por qué no se ve: un hueco que desaparece sin explicación se
+    // lee como que la función no quedó puesta.
+    check('el panel explica que la fotografía se integra en la imagen de base',
+        /no ocupa un recuadro/i.test(await page.locator('aside').first().textContent()));
     // Lo que hace que sirva: que quede marcado como campo del portal. Un hueco
     // que no es campo no lo puede llenar nadie — el defecto de v4.722.3. Se lee
     // en Propiedades, que es donde el administrador lo vería.

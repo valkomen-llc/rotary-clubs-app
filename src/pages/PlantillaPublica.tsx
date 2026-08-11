@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import DesignCanvas, { type SlotHint } from '../components/admin/design-studio/DesignCanvas';
 import { applyPublicValues, formatOf, isImage, type DesignDocument } from '../lib/designSpec';
-import { withBackdrop } from '../lib/designCompose';
+import { withBackdrop, fusedPhotoId } from '../lib/designCompose';
 import { exportDocument, canvasToBlob, renderDocumentToCanvas } from '../lib/designRender';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -196,6 +196,16 @@ const PlantillaPublica: React.FC = () => {
         return backdrop ? withBackdrop(resuelto, backdrop) : resuelto;
     }, [tpl, values, backdrop]);
 
+    // Con la Composición encendida la fotografía NO va a caer en un recuadro:
+    // la integra el modelo dentro de la imagen de base. Ni su hueco ni su guía
+    // se dibujan — enseñarlos prometería un sitio que no es el suyo, y hasta
+    // v4.760 el visitante veía media pieza vacía esperando una foto que iba a
+    // terminar en otra parte.
+    const fusedId = useMemo(
+        () => (doc ? fusedPhotoId(doc, tpl?.composition) : null),
+        [doc, tpl?.composition]
+    );
+
     // ── Dónde va a caer cada dato que todavía falta ────────────────
     //
     // Un hueco de imagen vacío no deja NADA en la pieza: el nodo declara
@@ -214,12 +224,16 @@ const PlantillaPublica: React.FC = () => {
         const out: SlotHint[] = [];
         for (const n of tpl.document?.nodes || []) {
             if (!isImage(n) || !n.srcVar) continue;
+            // La fotografía que se FUNDE con la imagen de base no lleva guía: no
+            // va a caer en ese recuadro, la integra el modelo dentro del lienzo.
+            // Marcarlo prometería un sitio que no es el suyo.
+            if (n.id === fusedId) continue;
             const campo = porClave.get(n.srcVar);
             if (!campo || values[n.srcVar]?.trim()) continue;
             out.push({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, label: campo.label, sample: campo.sample || null });
         }
         return out;
-    }, [tpl, values]);
+    }, [tpl, values, fusedId]);
 
     const set = useCallback((key: string, v: string) => {
         setValues(prev => (prev[key] === v ? prev : { ...prev, [key]: v }));
@@ -811,7 +825,7 @@ const PlantillaPublica: React.FC = () => {
                             {/* El MISMO componente del editor, sin herramientas.
                                 Es lo que garantiza que esta vista previa sea la
                                 pieza que se descarga. */}
-                            <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} hints={hints} />
+                            <DesignCanvas doc={doc} zoom={zoom} interactive={false} showGuides={false} hints={hints} fusedId={fusedId} />
                         </div>
                         {/* La promesa del módulo es que la vista previa ES el
                             archivo. Con los recuadros a la vista deja de ser
