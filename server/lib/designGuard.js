@@ -51,8 +51,9 @@ import { generateCopy } from '../services/copywritingService.js';
 // mandó.
 export const PRESERVATION = {
     minStructural: 0.18,
-    // Cuántas personas de diferencia se toleran. CERO: una pieza institucional
-    // no puede mostrar a alguien que no estuvo ahí, ni perder a alguien que sí.
+    // Cuántas personas de MÁS se toleran. CERO: una pieza institucional no puede
+    // mostrar a alguien que no estuvo ahí. No es simétrico con las que faltan —
+    // ver `edgeCrop`.
     maxPersonDelta: 0,
     // Por encima de esto, contar deja de ser fiable en cualquier modelo de
     // visión y el recuento no decide solo — misma regla que `RELIABLE_COUNT_MAX`
@@ -60,6 +61,36 @@ export const PRESERVATION = {
     reliableCountMax: 8,
     minFaceConsistency: 6,
 };
+
+// ─── RECORTAR NO ES BORRAR ─────────────────────────────────────────────
+//
+// Es la corrección de fondo de v4.762, y el motivo por el que este control
+// vetaba TODA composición de una fotografía de grupo.
+//
+// Componer una pieza es ENCUADRAR: el plan mete la fotografía en una forma
+// redondeada, en una columna o en un óvalo, y eso recorta los bordes. Con una
+// foto de treinta personas, alguien de los extremos queda fuera SIEMPRE. Hasta
+// v4.761 cualquier persona que faltara reprobaba la composición, así que el
+// caso más común del cliente —la foto de grupo del club— no podía sobrevivir
+// nunca. Se reportó como «se usó tu fotografía tal como la subiste»: el
+// respaldo saltando en todas las generaciones.
+//
+// Lo que sí descalifica sin apelación son dos cosas distintas de aquélla:
+//
+//   · una persona que NO ESTABA (el modelo la inventó);
+//   · una persona del INTERIOR de la foto que desapareció (la borró o la
+//     reemplazó por fondo).
+//
+// La primera es la regla de siempre. La segunda es la que hay que separar del
+// recorte, y por eso se le pregunta al modelo DÓNDE estaba quien falta: en el
+// borde es encuadre, en el medio es borrado.
+//
+//   · `allow`  — se permite perder a quien estaba en el BORDE. Es lo que hace
+//                que componer sirva, y se AVISA: la pieza puede no mostrar a
+//                todos, y quien la descarga tiene que saberlo.
+//   · `strict` — no se permite perder a nadie. Para una plantilla donde
+//                aparecer es el punto de la pieza.
+export const EDGE_CROP = { ALLOW: 'allow', STRICT: 'strict' };
 
 // ─── Qué se le pregunta al modelo ──────────────────────────────────────
 //
@@ -73,17 +104,22 @@ export const PEOPLE_SYSTEM = `Sos un control de calidad de piezas gráficas inst
 
 Tu trabajo es comparar SÓLO a las personas. El fondo, el encuadre, los colores, las curvas decorativas y el espacio alrededor son distintos A PROPÓSITO: eso no es un defecto y no se reporta.
 
+La pieza de la derecha ENCUADRA la fotografía dentro de un diseño, así que es normal que sus bordes queden recortados. Eso no es un defecto: lo que hay que distinguir es a quién se llevó el recorte y a quién se borró.
+
 Devolvé EXACTAMENTE este JSON, sin texto alrededor:
 {
   "leftPeople": número de personas visibles en la mitad izquierda,
   "rightPeople": número de personas visibles en la mitad derecha,
   "newSubjects": true si en la derecha hay alguna persona, rostro, extremidad o silueta que NO esté en la izquierda,
-  "missingSubjects": true si alguien de la izquierda desapareció en la derecha,
+  "missingSubjects": true si alguien de la izquierda no aparece en la derecha,
+  "missingAtEdge": true si TODOS los que faltan estaban pegados a un borde de la fotografía de la izquierda (arriba, abajo, izquierda o derecha), es decir, se los llevó el encuadre,
+  "missingFromCentre": true si alguno de los que faltan estaba en el INTERIOR de la fotografía, rodeado de otras personas: ése no lo pudo recortar el encuadre,
   "faceConsistency": 0 a 10, cuánto siguen siendo LAS MISMAS personas (rostros, edad, peinado, gafas, ropa),
   "notes": "una frase en español sobre lo que cambió en las personas, o vacío"
 }
 
-Una persona recortada por el borde del diseño sigue contando si se la reconoce. Un cambio de luz o de color en la piel no baja "faceConsistency" si la persona es la misma.`;
+Si no falta nadie, "missingSubjects", "missingAtEdge" y "missingFromCentre" van los tres en false.
+Una persona parcialmente recortada por el borde sigue contando como presente si se la reconoce. Un cambio de luz o de color en la piel no baja "faceConsistency" si la persona es la misma.`;
 
 /** Lo que se manda con la imagen. Corto: el sistema ya dice todo. */
 export const PEOPLE_USER = 'Compará las personas de las dos mitades y devolvé el JSON.';
@@ -113,6 +149,11 @@ export const readPeopleVerdict = (raw) => {
         rightPeople: num(o.rightPeople),
         newSubjects: o.newSubjects === true,
         missingSubjects: o.missingSubjects === true,
+        // Dónde estaba quien falta. Sin marca explícita se asume lo PEOR —que
+        // no fue el borde—: un modelo que no contesta el campo no puede
+        // convertirse en permiso para dar por bueno un borrado.
+        missingAtEdge: o.missingAtEdge === true,
+        missingFromCentre: o.missingFromCentre === true,
         faceConsistency: num(o.faceConsistency),
         notes: String(o.notes || '').slice(0, 240),
     };
@@ -127,7 +168,8 @@ export const readPeopleVerdict = (raw) => {
 // El motivo se dice con su CONSECUENCIA, no sólo con su nombre: «se detectó una
 // persona de más» no le explica a nadie que por eso su pieza salió sin el
 // diseño compuesto.
-export const decidePreservation = ({ semantic = null, structural = null } = {}) => {
+export const decidePreservation = ({ semantic = null, structural = null, edgeCrop = EDGE_CROP.ALLOW } = {}) => {
+    const permiteRecorte = edgeCrop !== EDGE_CROP.STRICT;
     // Sin ninguna señal no se afirma nada. `unavailable` no es un tipo de
     // «bien»: significa que no se pudo mirar, y se dice distinto.
     if (!semantic && !structural?.ok) {
@@ -157,21 +199,51 @@ export const decidePreservation = ({ semantic = null, structural = null } = {}) 
                 consequence: 'Se usó tu fotografía tal como la subiste, dentro del diseño.',
             };
         }
-        if (semantic.missingSubjects) {
+        // Alguien del INTERIOR que desapareció. El encuadre no puede haberlo
+        // hecho —estaba rodeado de gente—, así que el modelo lo borró o lo
+        // reemplazó por fondo. Descalifica siempre, como una persona inventada.
+        if (semantic.missingFromCentre) {
             return {
                 state: 'failed',
                 use: false,
-                reason: 'La composición dejó fuera a alguien de tu fotografía.',
+                reason: 'La composición borró a alguien del centro de tu fotografía.',
+                consequence: 'Se usó tu fotografía tal como la subiste, dentro del diseño.',
+            };
+        }
+        // Falta gente y NO consta que fuera por el borde. Ante la duda se
+        // reprueba: dar por bueno un borrado porque el modelo no contestó dónde
+        // estaba sería exactamente al revés de lo que este control existe para
+        // hacer.
+        if (semantic.missingSubjects && (!permiteRecorte || !semantic.missingAtEdge)) {
+            return {
+                state: 'failed',
+                use: false,
+                reason: !permiteRecorte
+                    ? 'La composición dejó fuera a alguien de tu fotografía.'
+                    : 'La composición dejó fuera a alguien y no se pudo confirmar que fuera por el recorte.',
                 consequence: 'Se usó tu fotografía tal como la subiste, dentro del diseño.',
             };
         }
         // El recuento sólo decide cuando es fiable. Contar catorce cabezas no lo
         // hace bien ningún modelo de visión, y descartar una composición por un
         // ±1 en una multitud sería gastar créditos en un problema inexistente.
+        //
+        // Y NO es simétrico: gente de MÁS es una persona inventada y descalifica
+        // siempre; gente de MENOS, con el recorte permitido, es el encuadre
+        // haciendo su trabajo. Compararlo con `Math.abs` era lo que vetaba toda
+        // composición de una foto de grupo.
         const l = semantic.leftPeople;
         const r = semantic.rightPeople;
         const contable = l != null && r != null && l <= PRESERVATION.reliableCountMax;
-        if (contable && Math.abs(l - r) > PRESERVATION.maxPersonDelta) {
+        if (contable && r - l > PRESERVATION.maxPersonDelta) {
+            return {
+                state: 'failed',
+                use: false,
+                reason: `Tu fotografía tiene ${l} personas y la composición muestra ${r}.`,
+                consequence: 'Se usó tu fotografía tal como la subiste, dentro del diseño.',
+            };
+        }
+        if (contable && !permiteRecorte && l - r > PRESERVATION.maxPersonDelta) {
             return {
                 state: 'failed',
                 use: false,
@@ -189,7 +261,22 @@ export const decidePreservation = ({ semantic = null, structural = null } = {}) 
         }
     }
 
-    return { state: 'ok', use: true, reason: null, consequence: null };
+    // Se usa. Y si el encuadre se llevó a alguien de los bordes, se DICE: la
+    // pieza puede no mostrar a todos, y quien la descarga tiene que saberlo
+    // antes de publicarla. `notice` no es un fallo —por eso va aparte de
+    // `reason`— pero tampoco se calla: el módulo ofrece volver a la fotografía
+    // en su recuadro, y esa decisión es del usuario, no nuestra.
+    const recortada = !!(semantic?.missingSubjects && semantic.missingAtEdge);
+    return {
+        state: 'ok',
+        use: true,
+        reason: null,
+        consequence: null,
+        cropped: recortada,
+        notice: recortada
+            ? 'El encuadre del diseño recortó a alguien de los bordes de tu fotografía. Si preferís que salgan todos, podés volver a la fotografía en su recuadro.'
+            : null,
+    };
 };
 
 // ─── La orquestación ───────────────────────────────────────────────────
@@ -202,7 +289,7 @@ export const decidePreservation = ({ semantic = null, structural = null } = {}) 
 // mismo camino que `reelQuality.js`. Sin ella queda sólo la señal estructural,
 // que por sí sola no distingue «se recompuso» de «se alteró» y por eso decide
 // únicamente el caso extremo.
-export const checkPreservation = async (originalBuffer, composedBuffer, { provider = null, publish = null } = {}) => {
+export const checkPreservation = async (originalBuffer, composedBuffer, { provider = null, publish = null, edgeCrop = EDGE_CROP.ALLOW } = {}) => {
     const structural = await structuralCompare(originalBuffer, composedBuffer).catch(() => null);
 
     let semantic = null;
@@ -228,10 +315,10 @@ export const checkPreservation = async (originalBuffer, composedBuffer, { provid
         }
     }
 
-    return { ...decidePreservation({ semantic, structural }), semantic, structural };
+    return { ...decidePreservation({ semantic, structural, edgeCrop }), semantic, structural };
 };
 
 export default {
-    PRESERVATION, PEOPLE_SYSTEM, PEOPLE_USER,
+    PRESERVATION, EDGE_CROP, PEOPLE_SYSTEM, PEOPLE_USER,
     readPeopleVerdict, decidePreservation, checkPreservation,
 };

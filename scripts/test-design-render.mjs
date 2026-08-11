@@ -1097,6 +1097,29 @@ window.go = () => createRoot(document.getElementById('root')).render(
     check('se dice el motivo y su consecuencia',
         /agregó una persona/i.test(avisoFinal) && /tal como la subiste/i.test(avisoFinal));
 
+    // ── Un RECORTE del encuadre se usa, y se dice ──────────────────
+    //
+    // La corrección de fondo: componer es encuadrar, así que en una foto de
+    // grupo alguien de los bordes queda fuera SIEMPRE. Reprobar por eso vetaba
+    // toda composición de una foto de club. Ahora la pieza se usa y el aviso
+    // sale igual, porque quien va a publicarla tiene que saber que puede no
+    // salir todo el mundo.
+    veredicto = {
+        state: 'ok', use: true, reason: null, consequence: null,
+        cropped: true,
+        notice: 'El encuadre del diseño recortó a alguien de los bordes de tu fotografía. Si preferís que salgan todos, podés volver a la fotografía en su recuadro.',
+    };
+    sondeos = 0;
+    await page.getByRole('button', { name: /Regenerar/ }).click();
+    await page.waitForTimeout(9000);
+    check('un recorte del encuadre NO descarta la composición',
+        await page.locator('[data-node="fondo_ia"]').count() === 1);
+    const avisoRecorte = await page.locator('#root').innerText();
+    check('y aun así se avisa del recorte',
+        /recort[óo] a alguien de los bordes/i.test(avisoRecorte));
+    check('sin decir que se usó la fotografía en su recuadro, porque no fue así',
+        !/tal como la subiste/i.test(avisoRecorte));
+
     check('componer no lanzó errores', fallos.length === 0, fallos.join(' | '));
     await page.close();
 }
