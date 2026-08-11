@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.769.0 | 2026-08-11 (La silueta del grupo sobre la lamina)
-// Cache bust: 2026-08-11k
+// UI V4.770.0 | 2026-08-11 (Silueta inferior: el recorte vive en el encuadre)
+// Cache bust: 2026-08-11l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.770.0',
+        title: 'Encuadre «Silueta en la mitad inferior»: la contradicción que pegaba la foto arriba 🎯',
+        description: 'La prueba real mostró la fotografía pegada como un rectángulo arriba a la izquierda, y la causa era una contradicción entre dos instrucciones nuestras: el prompt maestro pedía la silueta del grupo sobre el lienzo, pero el encuadre elegido —«Fotografía de fondo»— decía que la zona inferior quedara como un campo claro y tranquilo… exactamente donde tenía que estar la gente. Ante dos órdenes incompatibles, el modelo resolvió pegando la foto en otra parte. La corrección es estructural: el recorte del fondo ahora vive en el ENCUADRE, que es quien dice dónde va la fotografía, y en un solo lugar. El encuadre nuevo —«Silueta en la mitad inferior»— pide a las personas recortadas de su propio fondo, grandes y centradas a lo ancho de la mitad de abajo, con el borde inferior metido tras la banda del pie, y declara su zona tranquila arriba a la izquierda, que es donde se imprime el texto. El prompt maestro queda sólo con la descripción del lienzo. La plantilla de aniversario lo trae puesto; los demás encuadres siguen en el repertorio.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Encuadre «Silueta en la mitad inferior», el de la pieza de referencia.' },
+            { type: 'fixed', text: 'El recorte del fondo vive en un solo lugar: el encuadre, no el prompt maestro.' },
+            { type: 'fixed', text: 'La zona tranquila ya no contradice dónde va la gente.' },
+        ]
+    },
     {
         version: '4.769.0',
         title: 'La fotografía entra recortada de su fondo, como la referencia 🪄',

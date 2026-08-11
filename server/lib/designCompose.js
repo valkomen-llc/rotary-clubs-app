@@ -120,6 +120,20 @@ export const VARIANT_PLANS = [
         textZone: { y: 0.4, h: 0.5 },
     },
     {
+        // La referencia final del equipo (la pieza hecha en ChatGPT): las
+        // personas RECORTADAS de su propio fondo, paradas a lo ancho de la
+        // mitad inferior, con el borde de abajo metido tras la banda del pie.
+        // La instrucción del recorte vive ACÁ y no en el prompt maestro: el
+        // encuadre es quien dice dónde va la foto, y tenerla en dos lados era
+        // la contradicción que hacía que el modelo pegara la foto arriba.
+        id: 'silueta_inferior',
+        label: 'Silueta en la mitad inferior',
+        summary: 'Las personas recortadas de su fondo, a lo ancho de la mitad de abajo, tras la banda del pie.',
+        photo: 'the people from the photograph are cut out of their own background and stand together across the lower half of the canvas, large and centred, their lower edge tucked behind the bottom band, softly lit so they belong to the piece',
+        clear: 'the upper left column stays a calm, even surface with plenty of room to read',
+        textZone: { y: 0.08, h: 0.34 },
+    },
+    {
         id: 'foto_fondo',
         label: 'Fotografía de fondo',
         summary: 'La foto es el fondo entero, atenuada hacia abajo para que el texto se lea.',

@@ -1270,10 +1270,17 @@ check('un plan inexistente cae en `auto`, no en el primero',
 // La referencia final (11/8, la pieza hecha en ChatGPT): la silueta del grupo
 // sobre la lámina, sin forma que la contenga. El plan es la foto a lienzo
 // entero y el prompt maestro pide el recorte del fondo.
-check('la plantilla de aniversario declara la fotografía de fondo',
-    templateById('aniversario_foto').composition.photo.plan === 'foto_fondo');
-check('y el prompt maestro pide la silueta recortada de su fondo',
-    /lifted out of their own background/i.test(templateById('aniversario_foto').composition.masterPrompt));
+check('la plantilla de aniversario declara la silueta inferior',
+    templateById('aniversario_foto').composition.photo.plan === 'silueta_inferior');
+// El recorte del fondo vive en el PLAN, no en el prompt maestro: el encuadre es
+// quien dice dónde va la foto, y tenerlo en dos lados era la contradicción que
+// hacía que el modelo pegara la foto arriba.
+check('y el plan pide la silueta recortada, abajo, tras la banda',
+    /cut out of their own background/i.test(CO.planById('silueta_inferior').photo)
+    && /lower half/i.test(CO.planById('silueta_inferior').photo)
+    && /behind the bottom band/i.test(CO.planById('silueta_inferior').photo));
+check('su zona tranquila es la columna superior izquierda, donde va el texto',
+    /upper left/i.test(CO.planById('silueta_inferior').clear));
 check('el óvalo con brillo sigue en el repertorio, para quien lo elija',
     /white glow/i.test(CO.planById('foto_ovalo_brillo').photo));
 
