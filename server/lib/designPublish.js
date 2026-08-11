@@ -29,7 +29,7 @@
 // las REPORTA: si algo intenta mandar `logo`, el operador tiene que poder verlo.
 // ════════════════════════════════════════════════════════════════════
 
-import { VARIABLES, variablesUsedIn, resolveVariables, LIMITS } from './designSpec.js';
+import { VARIABLES, variablesUsedIn, resolveVariables, normalizeDocument, LIMITS } from './designSpec.js';
 import { FIELD_KINDS, declarationsOf, defaultKindFor, isImageKind } from './designFields.js';
 
 // ─── Qué es cada variable en un formulario público ─────────────────────
@@ -502,8 +502,33 @@ export const settingsForRefresh = (row) => {
     return s;
 };
 
+// ─── La fila publicada, DERIVADA de nuevo al servirla ──────────────────
+//
+// Una publicación guarda el documento Y los campos que se derivaron de él al
+// publicar, y las dos cosas pueden desalinearse: el caso real (11/8) fue un
+// título con `{{club}}` en el TEXTO pero sin `srcText` — el marcador se
+// imprimía literal en la pieza y el formulario no ofrecía la casilla, porque
+// los campos guardados se derivaron de un documento que no declaraba nada.
+//
+// Al servir, se deducen los ajustes mirando el documento TAL COMO SE GUARDÓ
+// (`settingsForRefresh` compara qué salió como campo ENTONCES — hacerlo
+// después de normalizar tomaría el marcador recién sanado por «bloqueado»),
+// se normaliza el documento —la autorreparación de `srcText` vive ahí— y se
+// derivan los campos otra vez. Los `sample` de los campos guardados se
+// conservan: el documento almacenado ya está sin los valores de ejemplo, así
+// que no se pueden recalcular.
+export const derivePublicRow = (row) => {
+    const ajustes = settingsForRefresh(row);
+    const document = normalizeDocument(row?.document || {});
+    const derivados = buildPublicFields(document, ajustes);
+    const previos = new Map((Array.isArray(row?.fields) ? row.fields : []).map(f => [f?.key, f]));
+    const fields = derivados.map(f => (previos.get(f.key)?.sample ? { ...f, sample: previos.get(f.key).sample } : f));
+    return { document, fields };
+};
+
 export default {
     FIELD_SPECS, ASSIGNABLE_FIELDS, isInstitutional, variablesOf, buildPublicFields, fieldFor,
     sanitizeValues, isAcceptableImage, bakeFrozen, applyPublicValues,
     stripPublicDefaults, slugify, validateSlug, publicUrl, buildPublication, settingsForRefresh,
+    derivePublicRow,
 };

@@ -154,7 +154,9 @@ export const TEMPLATES = [
                 // canvas y corrían la pieza 1 px — la vista previa dejaba de ser
                 // el archivo, que es la promesa del módulo. La celebración la
                 // ponen los motivos de la composición.
-                id: 'titulo', type: 'text', name: 'Título', text: '¡Felices {{anios}} años,\n{{club}}!',
+                // La redacción es la pedida textual: «feliz aniversario
+                // número, club rotario y el nombre del club».
+                id: 'titulo', type: 'text', name: 'Título', text: '¡Feliz aniversario número {{anios}},\n{{club}}!',
                 x: 0.06, y: 0.115, w: 0.64, h: 0.135,
                 fontSize: 0.049, fontWeight: 800, color: PALETTE.royal, align: 'left', lineHeight: 1.22, minFontSize: 0.028,
             },

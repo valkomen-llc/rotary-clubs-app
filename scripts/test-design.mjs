@@ -142,7 +142,7 @@ const compilado = S.compileTemplate({
 check('el título lleva el nombre real del club',
     /Club Rotario Cali San Fernando!/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
 check('y lleva el número de años afirmado (v4.775)',
-    /Felices 49 años/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
+    /aniversario número 49/.test(compilado.nodes.find(n => n.id === 'titulo')?.text || ''));
 check('la firma une gobernador, distrito y periodo',
     /Fabio Véjar/.test(compilado.nodes.find(n => n.id === 'firma')?.text || '')
     && /4281/.test(compilado.nodes.find(n => n.id === 'firma')?.text || ''));
@@ -1909,6 +1909,44 @@ check('el desplegable ofrece la salida «no está en la lista»',
     /Mi club no está en la lista/.test(portal) && /Volver a la lista/.test(portal));
 check('y sin lista el campo degrada al buscador de texto',
     /clubOptions && !clubManual/.test(portal));
+
+grupo('Un marcador visible ES una declaración (v4.776)');
+
+// El caso real (11/8): la pieza pública imprimía «¡Feliz aniversario,
+// {{club}}!» LITERAL y el formulario no ofrecía la casilla. El nodo había
+// quedado desligado (`srcText: null`) con el marcador dentro del texto, y los
+// campos guardados se derivaron de ese documento. Dos cierres:
+// (1) normalizar SANA: texto con marcador y sin fuente → el texto es la fuente;
+check('normalizar re-liga un texto que conserva su marcador',
+    S.normalizeDocument({ nodes: [{ type: 'text', text: '¡Feliz aniversario, {{club}}!', srcText: null }] })
+        .nodes[0].srcText === '¡Feliz aniversario, {{club}}!');
+check('un texto editado a mano SIN marcadores sigue desligado',
+    S.normalizeDocument({ nodes: [{ type: 'text', text: 'Un saludo fijo', srcText: null }] })
+        .nodes[0].srcText === null);
+// (2) la fila publicada se DERIVA de nuevo al servirla.
+const filaRota = {
+    document: {
+        format: 'post_1_1', background: '#fff',
+        nodes: [
+            { id: 'titulo', type: 'text', text: '¡Feliz aniversario, {{club}}!', srcText: null },
+            { id: 'foto', type: 'image', src: null, srcVar: 'imagen' },
+        ],
+    },
+    fields: [{ key: 'imagen', type: 'image', kind: 'foto', label: 'Fotografía del club', sample: 'https://ok.amazonaws.com/e.png' }],
+    frozen: {}, settings: {},
+};
+const sanada = P.derivePublicRow(filaRota);
+check('la fila desalineada recupera su casilla del club',
+    sanada.fields.some(f => f.key === 'club'), sanada.fields.map(f => f.key).join(','));
+check('y el documento servido vuelve a declarar la variable',
+    sanada.nodes === undefined && sanada.document.nodes[0].srcText === '¡Feliz aniversario, {{club}}!');
+check('los ejemplos guardados se conservan al derivar',
+    sanada.fields.find(f => f.key === 'imagen')?.sample === 'https://ok.amazonaws.com/e.png');
+// Los ajustes se deducen ANTES de sanar: el marcador recién re-ligado no puede
+// leerse como «no salió de campo, luego estaba bloqueado».
+check('el marcador sanado no se toma por bloqueado',
+    !P.settingsForRefresh(filaRota).locked.includes('club'),
+    P.settingsForRefresh(filaRota).locked.join(','));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
