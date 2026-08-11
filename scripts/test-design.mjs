@@ -1203,9 +1203,10 @@ check('pero la dirección de arte SÍ', /Elegante, con luz suave/.test(promptVis
 // administrador que escribía su dirección creativa podía quedarse sin ella
 // mientras sobrevivía una cláusula escrita por nosotros.
 const maestroGrande = CO.buildBackdropPrompt({
-    // Medido: la base con paleta y estilo ocupa 1038 de 1400, así que una
-    // dirección de arte de 400 sólo entra si se sacrifica el estilo.
-    composition: CO.normalizeComposition({ enabled: true, masterPrompt: 'D'.repeat(400) }),
+    // Medido: la base ocupa 935 de 2000, y 1055 con la paleta y el estilo. Una
+    // dirección de arte de 1000 sólo entra si se sacrifica el estilo — que es
+    // exactamente lo que hay que comprobar.
+    composition: CO.normalizeComposition({ enabled: true, masterPrompt: 'D'.repeat(1000) }),
     plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
     palette: { primary: '#17458F', accent: '#F7A81B' },
 });
@@ -1245,8 +1246,11 @@ check('`auto` conserva el criterio del documento',
 // encuadre por descarte es peor que dejar decidir al documento.
 check('un plan inexistente cae en `auto`, no en el primero',
     CO.normalizeComposition({ photo: { plan: 'nope' } }).photo.plan === 'auto');
-check('la plantilla de aniversario declara el recorte curvo',
-    templateById('aniversario_foto').composition.photo.plan === 'foto_recorte_curvo');
+check('la plantilla de aniversario declara el óvalo con brillo',
+    templateById('aniversario_foto').composition.photo.plan === 'foto_ovalo_brillo');
+check('y ese plan describe el halo blanco de la referencia',
+    /white glow/i.test(CO.planById('foto_ovalo_brillo').photo)
+    && /upper right/i.test(CO.planById('foto_ovalo_brillo').photo));
 
 // 2. EL LIENZO VUELVE INTACTO. «Conservá sus colores» sonaba suficiente y no lo
 //    era: el modelo devolvía el fondo aclarado y la curva redibujada.
@@ -1261,8 +1265,14 @@ check('y lo dice también en negativo, que es lo que falló',
 check('y afirma que lo ÚNICO que se agrega es la fotografía',
     /only thing added is the photograph/i.test(conBase.prompt));
 // 3. EL TAMAÑO. Sin decirlo salía una miniatura con marco flotando en el medio.
-check('la forma de la fotografía se pide GRANDE',
-    /LARGE softly rounded shape/.test(conBase.prompt) && /substantial part of the layout/i.test(conBase.prompt));
+check('la forma de la fotografía se pide GRANDE, y lo dice el PLAN',
+    /substantial part of the layout/i.test(conBase.prompt)
+    && /substantial part of the layout/i.test(CO.planById('foto_recorte_curvo').photo));
+check('la cláusula común describe cómo se integra, no qué forma tiene',
+    !/rounded shape/.test(CO.buildBackdropPrompt({
+        composition: { enabled: true }, plan: { photo: 'X', clear: 'Y' },
+        photo: { url: 'x' }, hasBase: true,
+    }).prompt.split('The photograph')[0].split('The second image')[1] || ''));
 check('y se dice que no va en un marco',
     /instead of sitting in a frame/i.test(conBase.prompt));
 check('lo que salió mal entra en el prompt negativo, no en el positivo',
@@ -1291,7 +1301,7 @@ check('sin motivos declarados no se inventa ninguno',
 const promptCola = CO.buildBackdropPrompt({
     composition: {
         enabled: true,
-        masterPrompt: 'M'.repeat(400),
+        masterPrompt: 'M'.repeat(900),
         motifs: 'C'.repeat(240),
     },
     plan: CO.VARIANT_PLANS[0], photo: { url: 'https://x/f.jpg' }, hasBase: true,
@@ -1483,7 +1493,7 @@ const conDoc = CO.buildBackdropPrompt({
 });
 check('el prompt lleva la franja del documento', /name and message are printed/.test(conDoc.prompt));
 check('y describe CÓMO se integra, no sólo que se integre',
-    /softly rounded shape/.test(conDoc.prompt) && /read as a single designed piece/.test(conDoc.prompt));
+    /easing into the surface/.test(conDoc.prompt) && /read as a single designed piece/.test(conDoc.prompt));
 check('el prompt entra en el presupuesto del modelo',
     conDoc.prompt.length <= CO.PROMPT_MAX_CHARS && !conDoc.dropped.length,
     `${conDoc.prompt.length} de ${CO.PROMPT_MAX_CHARS}`);
