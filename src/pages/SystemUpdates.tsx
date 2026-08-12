@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.781.0 | 2026-08-11 (Redirecciones de enlaces por sitio)
-// Cache bust: 2026-08-11w
+// UI V4.782.0 | 2026-08-12 (Plazo de postulación: 9 de noviembre de 2026)
+// Cache bust: 2026-08-12a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.782.0',
+        title: 'El plazo de postulación pasa al 9 de noviembre de 2026 🗓️',
+        description: 'La tarjeta «Plazo» del panel de Gestión de Proyectos decía «10 de agosto de 2026 — El plazo ya venció». La fecha nueva es el 9 de noviembre de 2026. Conviene saber de dónde sale ese dato, porque hay dos sitios y sólo uno manda: la fecha vive en la convocatoria guardada, y se cambia desde Postulaciones y Pagos → Convocatoria → «Fecha límite de postulación», sin necesidad de publicar una versión. Lo que se corrige aquí es el valor de RESPALDO, el que se aplica a una edición que todavía no tiene su propia fecha guardada — hasta ahora ese respaldo seguía siendo el 10 de agosto, así que una edición nueva nacía con un plazo ya vencido. La misma fecha gobierna las tres cosas que dependen del plazo: la tarjeta del panel del club, la cuenta regresiva de la página pública y el cierre de la edición de los formularios.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'postulaciones', 'plazo'],
+        type: 'changed',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'El plazo de postulación por defecto pasa del 10 de agosto al 9 de noviembre de 2026.' },
+            { type: 'fixed', text: 'Una edición sin fecha propia ya no nace con el plazo vencido.' },
+        ]
+    },
     {
         version: '4.781.0',
         title: 'Redirecciones de enlaces: direcciones cortas de tu propio dominio 🔗',

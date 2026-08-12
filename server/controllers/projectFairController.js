@@ -25,7 +25,7 @@ import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.683.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.782.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -66,7 +66,7 @@ export const DEFAULT_CONFIG = {
         dates: '',
         key: '12-valledupar',
     },
-    deadline: '2026-08-10',
+    deadline: '2026-11-09',
     presentation: { ...DEFAULT_PRESENTATION },
     registration: {
         // Moneda en la que el admin fija el precio (v4.612):
