@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.783
+## Creador de Reels IA — v4.785
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -989,6 +989,71 @@ ventanas de los rótulos—, separado de la orquestación.
 - **`estandar` reproduce el comportamiento anterior y es el default.** Un cliente
   con el bundle viejo que no mande `preset` cae ahí y no nota nada. Misma regla
   aditiva que `sessions` en v4.711 y `groups` en v4.708.
+
+### Fidelidad de imagen del motor de escenas (v4.785)
+
+Cuatro correcciones nacidas de un reporte con capturas: tres rescatistas
+inventados en una foto de escombros VACÍA, la fotografía duplicada en el lienzo
+9:16 con «91 % conservado», y el clip contaminado dentro del Reel publicable.
+Pruebas: `npm run test:reels:fidelity` (36 casos, sin base ni red — la parte de
+imágenes usa sharp).
+
+- **EL CENSO ES UNIVERSAL: cuenta también cuando es CERO.** Toda la protección
+  de v4.705 —censo, oclusión, prompt negativo de 20 términos— estaba detrás de
+  `strictPeopleFor()`, que exigía `analysis.hasPeople`. Una foto SIN personas no
+  recibía NINGUNA instrucción sobre personas, y el motor pobló los escombros
+  como puebla cualquier calle. «Que las 0 sigan siendo 0» también es un censo.
+  Al armar una protección, preguntarse qué pasa en su caso degenerado: una
+  protección sólo protege los casos para los que se armó.
+- **El ambiente de una escena vacía no puede nombrar gente.** La frase de
+  interior decía «anyone in the background carries on» sin mirar si había
+  personas: sobre una foto vacía es una INVITACIÓN a poblar el fondo. Las
+  frases del prompt se escriben para la escena que hay, no para la típica.
+- **La expansión EXTIENDE, no regenera.** El prompt arrancaba con «Regenerate
+  this photograph» y con bandas grandes (~25 % de lienzo) el modelo resolvía
+  «regenerar» duplicando la foto entera en el área añadida — el mosaico de
+  v4.317-v4.320 por la otra puerta. Ahora arranca «Extend the canvas», declara
+  que la foto aparece EXACTAMENTE UNA VEZ y que el área nueva es paisaje menos
+  detallado que el original.
+- **La expansión manda su propio prompt negativo** (`EXPANSION_NEGATIVE_PROMPT`:
+  anti-mosaico + bandas sin protagonistas). `createKieImageTask` lo aceptaba
+  desde v4.734 y la expansión nunca lo usó. El reintento sin el campo vive en
+  `startExpansion` —no en el servicio— porque el modelo es configurable por
+  entorno y uno alternativo puede rechazarlo.
+- **El mosaico se detecta comparando las bandas AÑADIDAS contra el original.**
+  `verifyExpansion` sólo miraba la región central y respondía «¿se conservó la
+  foto?» — con la foto duplicada en la banda inferior daba 91 % y el defecto era
+  invisible: la medición era correcta, la pregunta incompleta. Medido con la
+  huella perceptual: banda legítima ~0,34, copia ~0,99; el umbral (0,75,
+  `EXPANSION_TILING_THRESHOLD`) parte esa brecha. En `judgeExpansion` el mosaico
+  se juzga PRIMERO y reprueba solo: preguntarlo después de la preservación
+  taparía justo lo que busca.
+- **El prompt fija el INVENTARIO de la escena** (`analysis.inventory`, máx. 6
+  elementos con posición). Sólo se reforzaba marca, texto, personas y
+  naturaleza: en un plano de escombros, quitar un árbol no contradecía ninguna
+  instrucción. Lo que no se nombra, el modelo lo trata como negociable. En el
+  recorte del presupuesto cae después del mapa de sujetos y antes del
+  `motionHint`; el peor caso medido queda en 2431/2500.
+- **Agotados los reintentos, el clip con defecto descalificante NO entra al
+  Reel.** Caía en `conservados` como `needs_review` y EL CLIP SE USABA — las
+  capturas muestran la ficha diciendo «REQUIERE REGENERACIÓN» debajo de un Reel
+  que ya llevaba ese clip adentro. El control medía bien; la puerta no cerraba.
+  Ahora cae a `resolveSceneWithStillMotion` (la foto se mueve, no se regenera,
+  cero créditos), cuyo propio comentario documentaba este uso desde v4.676 sin
+  que nadie la llamara por esta vía. NO contradice la regla de v4.676: aquélla
+  protege las escenas de NOTA BAJA —criterio estético, decisión del usuario— y
+  sigue intacta; esto aplica sólo a los tres defectos sin criterio estético
+  posible (persona inventada, marca alterada, texto ilegible).
+- **Tras el rescate, la pasada TERMINA.** `finalScenes` se leyó antes del
+  rescate: seguir al montaje en la misma pasada pegaría el clip contaminado
+  desde la memoria — exactamente lo que el bloque existe para impedir. El
+  siguiente sondeo monta con las filas frescas.
+- **Kling no expone parámetros de preservación.** Ni `image adherence`, ni
+  `creativity`, ni `motion strength`, ni `seed`: el input es `{ prompt,
+  image_urls, duration, sound, negative_prompt? }` y nada más. Las únicas
+  palancas reales son los dos prompts y la duración; cualquier plan que dependa
+  de «bajar la creatividad» por parámetro no es implementable con este
+  proveedor.
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su

@@ -174,7 +174,18 @@ check('con personas hay prompt negativo', typeof neg === 'string' && neg.length 
 check('lleva los veinte términos del pedido, literales',
     PEOPLE_NEGATIVE_TERMS.every(t => neg.includes(t)), `${PEOPLE_NEGATIVE_TERMS.length} términos`);
 check('el negativo también cabe en 2500', (neg || '').length <= PROMPT_LIMIT);
-check('sin personas no se manda', buildSceneNegativePrompt({ analysis: { hasPeople: false } }) === null);
+// ── CAMBIO DE SIGNO DELIBERADO (v4.785) ──
+//
+// Esta afirmación decía «sin personas no se manda», y ese comportamiento es
+// exactamente el defecto que se reportó con capturas: una foto de escombros
+// SIN personas producía un clip con tres rescatistas inventados, porque toda
+// la protección exigía `hasPeople`. El censo pasó a ser universal — «que las
+// 0 sigan siendo 0» también es un censo — así que el negativo se manda
+// siempre. Lo único que lo apaga es la decisión explícita del usuario.
+check('sin personas TAMBIÉN se manda (censo universal, v4.785)',
+    buildSceneNegativePrompt({ analysis: { hasPeople: false } }) !== null);
+check('el apagado explícito sigue mandando',
+    buildSceneNegativePrompt({ analysis: { hasPeople: false }, strictPeople: false }) === null);
 check('apagado a mano no se manda', buildSceneNegativePrompt({ analysis: peopleAnalysis, strictPeople: false }) === null);
 
 process.env.REEL_PEOPLE_NEGATIVE_PROMPT = 'off';

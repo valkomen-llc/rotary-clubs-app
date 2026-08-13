@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.784.0 | 2026-08-13 (Subir fotos desde el Creador de Reels)
-// Cache bust: 2026-08-13b
+// UI V4.785.0 | 2026-08-13 (Fidelidad de imagen en el motor de escenas)
+// Cache bust: 2026-08-13c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.785.0',
+        title: 'La fotografía es la fuente de verdad: fidelidad de imagen reforzada 🎯',
+        description: 'Cuatro correcciones al motor que convierte una fotografía en una escena animada, nacidas de un reporte con capturas. Una: el censo de personas pasa a ser universal — hasta ahora la protección contra personas inventadas sólo se armaba si la foto YA tenía gente, así que una foto de escombros vacía producía un clip con tres rescatistas que no existen; ahora «hay exactamente cero personas y siguen siendo cero» también es una instrucción que el motor recibe, junto con el listado de exclusiones. Dos: la adaptación al formato vertical ya no puede duplicar la fotografía — el encargo al modelo pasa de «regenerá la foto» a «extendé el lienzo», lleva su propia lista de exclusiones, y sobre todo se COMPRUEBA: las bandas añadidas se comparan contra la foto original y una banda que la repite reprueba la adaptación y la rehace sola, aunque la región central esté intacta (que es justo por qué antes pasaba con 91 %). Tres: el prompt ahora nombra el inventario de la escena — el árbol, el camión, el edificio, cada cosa en su lugar — porque lo que no se nombra el modelo lo trata como negociable. Cuatro: una escena que agota sus reintentos con un defecto descalificante (personas inventadas, marca o texto alterados) YA NO ENTRA AL REEL — se resuelve moviendo el encuadre sobre la fotografía real, sin motor generativo, y la ficha lo dice. El control de calidad ya detectaba estos defectos; lo que faltaba era que la puerta cerrara.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'content-studio', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Una foto sin personas ya no puede producir un clip con personas: el censo cero viaja al motor con su lista de exclusiones.' },
+            { type: 'fixed', text: 'La adaptación a 9:16 ya no duplica la fotografía: se detecta el mosaico en las bandas añadidas y se rehace sola.' },
+            { type: 'fixed', text: 'Un clip con personas inventadas, marca o texto alterados ya no entra al Reel: agotados los reintentos cae a la vía sin IA.' },
+            { type: 'added', text: 'El prompt fija el inventario de la escena: edificios, árboles, vehículos y señales, cada uno en su lugar.' },
+            { type: 'improved', text: 'El ambiente de una escena vacía ya no invita al motor a poblar el fondo.' },
+        ]
+    },
     {
         version: '4.784.0',
         title: 'Subir fotos desde el Creador de Reels, sin pasar por Multimedia 📤',

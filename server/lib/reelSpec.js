@@ -790,18 +790,34 @@ export const isGroupSubject = (analysis) => {
     return true;
 };
 
-// Cuándo la preservación estricta se enciende sola. El pedido enumera
-// fotografías «grupales, institucionales, sociales, rotarias, corporativas,
-// médicas, comunitarias o de eventos»: todas ellas tienen en común que hay
-// PERSONAS RECONOCIBLES y que la pieza es institucional, que es exactamente
-// para lo que existe este módulo. Por eso la condición es «hay personas», y no
-// una clasificación de escenarios que el análisis no puede hacer con
-// fiabilidad.
+// Cuándo la preservación estricta se enciende sola.
+//
+// ── EL CENSO ES UNIVERSAL: cuenta también cuando es CERO (v4.785) ──
+//
+// Hasta v4.784 esta función exigía `analysis.hasPeople`, y esa única condición
+// dejaba fuera exactamente el caso que se reportó con capturas: una fotografía
+// de escombros SIN personas producía un clip con TRES rescatistas inventados.
+// El prompt de esa escena no llevaba censo, ni cláusula de oclusión, ni prompt
+// negativo — nada le decía al motor que no pusiera gente, porque toda la
+// protección de v4.705 estaba armada para «que las 3 sigan siendo 3» y nunca
+// para «que las 0 sigan siendo 0».
+//
+// Se verificó ejecutando `buildSceneNegativePrompt` y `buildScenePrompt` con
+// `hasPeople:false`: el negativo no se mandaba y el censo no aparecía. Es la
+// misma lección que quedó escrita en v4.705 — una nota alta sólo significa que
+// no se encontró lo que se preguntó; acá, una protección sólo protege los casos
+// para los que se armó.
+//
+// La preservación estricta pasa a estar SIEMPRE encendida (salvo apagado
+// explícito del usuario). Con personas fija cuántas y quiénes; sin personas
+// fija que no haya ninguna. `requested === true` tampoco exige ya `hasPeople`:
+// pedir preservación estricta sobre una foto vacía significa «que siga vacía»,
+// no «no hay nada que preservar».
 export const DEFAULT_STRICT_PEOPLE = true;
 export const strictPeopleFor = (analysis, requested = null) => {
     if (requested === false) return false;
-    if (requested === true) return Boolean(analysis?.hasPeople);
-    return DEFAULT_STRICT_PEOPLE && Boolean(analysis?.hasPeople);
+    if (requested === true) return true;
+    return DEFAULT_STRICT_PEOPLE;
 };
 
 /**
@@ -974,6 +990,28 @@ export const buildScenePrompt = ({
         'The only light is the light already in the photograph, the air stays clear, and nothing is added to the room that was photographed.'
     ];
 
+    // ── El inventario de la escena (v4.785) ──
+    //
+    // Nombra las COSAS que hay —edificios, árboles, vehículos, señales,
+    // escombros— para fijarlas. Hasta v4.784 sólo se reforzaba marca, texto,
+    // personas y naturaleza: en un plano de escombros, sin nada de eso, quitar
+    // un árbol o reordenar un edificio no contradecía ninguna instrucción del
+    // prompt. Lo que no se nombra, el modelo lo trata como negociable.
+    //
+    // Se dice en positivo y con la posición que vio el análisis: «the collapsed
+    // building on the right stays on the right». Es la misma técnica del mapa
+    // de sujetos, aplicada al decorado.
+    let inventory = null;
+    if (Array.isArray(analysis?.inventory) && analysis.inventory.length) {
+        const items = analysis.inventory
+            .filter(t => typeof t === 'string' && t.trim())
+            .slice(0, 6)
+            .map(t => t.trim().slice(0, 100));
+        if (items.length) {
+            inventory = `The scene keeps everything it holds, each thing in its place: ${items.join('; ')}. Nothing is added to the scene, nothing is removed from it, and nothing trades places.`;
+        }
+    }
+
     // Refuerzo específico según lo que trae la escena. Cada rama nombra lo que
     // se conserva y, cuando corresponde, a qué se le permite moverse.
     if (analysis?.hasBrand || analysis?.hasText) {
@@ -1024,14 +1062,40 @@ export const buildScenePrompt = ({
             // conservar para que el plano se lea igual.
             occlusion = 'What the photograph hides stays hidden: a face behind a shoulder stays behind that shoulder, and whatever the frame cuts off stays cut off. What cannot be seen simply stays out of view.';
         }
+    } else if (strict) {
+        // ── El censo CERO (v4.785) ──
+        //
+        // Una fotografía SIN personas también tiene censo: cero. Hasta v4.784
+        // esta rama no existía y es la que faltó en el caso reportado con
+        // capturas — una foto de escombros producía un clip con tres
+        // rescatistas, porque el prompt no decía una sola palabra sobre
+        // personas y el motor «pobló» la escena como puebla cualquier calle.
+        //
+        // Se dice en positivo y con el porqué —el lugar está vacío TAL COMO se
+        // fotografió—, que es lo que el modelo respeta mejor que una
+        // prohibición seca. La lista negra va aparte, en su campo negativo,
+        // como siempre.
+        census = 'There are no people in this photograph, and there are none in any frame of the clip: the place is exactly as empty of people as it was photographed, from the first frame to the last.';
+        occlusion = 'Nothing emerges from behind the rubble, the trees, the vehicles or the edges of the frame: what the photograph shows is all there is.';
     }
     // Ambiente. Es sabor: da vida al fondo, pero es lo primero que sobra si el
     // prompt no cabe.
+    //
+    // OJO: la frase de interior nombraba «anyone in the background carries on»
+    // y «loose hair moves» SIN mirar si había personas. Sobre una foto vacía
+    // eso es una INVITACIÓN a poblar el fondo — contribuyó al caso reportado
+    // (tres rescatistas inventados en una foto de escombros sin gente). Desde
+    // v4.785 el ambiente sin personas sólo nombra materia: polvo, tela, luz.
     const ambience = analysis?.hasNature
-        ? 'The air moves through the scene: leaves and branches sway, flags and fabric ripple, loose hair drifts, water carries small ripples, and clouds slide slowly across the sky.'
-        // Interior: también hay vida, sólo que menos. Sin esta rama, una escena
-        // de salón quedaba con las personas moviéndose sobre un fondo muerto.
-        : 'Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.';
+        ? (analysis?.hasPeople
+            ? 'The air moves through the scene: leaves and branches sway, flags and fabric ripple, loose hair drifts, water carries small ripples, and clouds slide slowly across the sky.'
+            : 'The air moves through the empty scene: leaves and branches sway, loose fabric and debris stir slightly, dust drifts, water carries small ripples, and clouds slide slowly across the sky.')
+        : (analysis?.hasPeople
+            // Interior: también hay vida, sólo que menos. Sin esta rama, una
+            // escena de salón quedaba con las personas moviéndose sobre un
+            // fondo muerto.
+            ? 'Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.'
+            : 'The scene still lives without anyone in it: fabric settles, dust drifts in the light, and small loose things shift where the air moves them.');
 
     // Lo que hace ESTA foto en concreto, según lo que vio el análisis. Va antes
     // que la cámara porque es la instrucción principal: sin ella, las tres
@@ -1092,8 +1156,11 @@ export const buildScenePrompt = ({
         return (sp > n * 0.6 ? cut.slice(0, sp) : cut).trimEnd();
     };
 
-    const build = ({ withSubjects = true, withAmbience = true, hintChars = Infinity } = {}) => [
+    const build = ({ withSubjects = true, withAmbience = true, withInventory = true, hintChars = Infinity } = {}) => [
         ...parts,
+        // El inventario va pegado a la identidad, antes del ambiente: es la
+        // lista de lo que NO es negociable, y lo que va primero pesa más.
+        withInventory ? inventory : null,
         withAmbience ? ambience : null,
         hint ? (hintChars === Infinity ? hint : trimWords(hint, hintChars)) : null,
         camera,
@@ -1103,11 +1170,17 @@ export const buildScenePrompt = ({
         occlusion
     ].filter(Boolean).join(' ');
 
+    // Orden del recorte (v4.785): el ambiente sigue siendo lo primero que
+    // sobra; el inventario cae DESPUÉS del mapa de sujetos y antes que el
+    // motionHint — las personas importan más que el decorado, y el hint es lo
+    // único que distingue el movimiento de ESTA foto. El censo y la oclusión
+    // no se tocan nunca, como siempre.
     const steps = [
         {},
-        { withSubjects: false },
+        { withAmbience: false },
         { withSubjects: false, withAmbience: false },
-        { withSubjects: false, withAmbience: false, hintChars: 90 }
+        { withSubjects: false, withAmbience: false, withInventory: false },
+        { withSubjects: false, withAmbience: false, withInventory: false, hintChars: 90 }
     ];
     let prompt = build();
     for (let i = 1; i < steps.length && prompt.length > limit; i++) {
