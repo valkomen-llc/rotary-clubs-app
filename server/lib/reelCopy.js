@@ -23,6 +23,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { generateCopy } from '../services/copywritingService.js';
+import { EMERGENCY_FACT_CLAUSE, buildEmergencyBrief, validateEmergencyCopy } from './emergencySpec.js';
 import { INSTITUTIONAL_VOICE, dateClause, identityClause } from './institutionalVoice.js';
 import { MOTION_STYLES, MUSIC_STYLES } from './reelSpec.js';
 
@@ -110,7 +111,12 @@ export const buildCopyPrompt = ({
     clubCity,
     eventDateHuman = null,
     locale = 'es',
-    context = null
+    context = null,
+    // Contexto de emergencia (v4.783). Cuando viene, el copy se escribe sobre
+    // los datos suministrados y NADA MAS, igual que el guion y los rotulos: es
+    // el mismo hecho real contado por tres canales, y seria absurdo que el texto
+    // de la publicacion pudiera inventar lo que la voz tiene prohibido.
+    emergency = null
 }) => {
     const hasSpecificClubName = Boolean(clubName && clubName.trim());
     const motion = MOTION_STYLES[scenes[0]?.style]?.label || 'cinematográfico';
@@ -126,7 +132,8 @@ ${dateClause(eventDateHuman)}
 ${context ? `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.
 Área de enfoque Rotary: ${context.areaDescription}.` : ''}
 
-Se trata de un REEL VERTICAL de ${reel.config?.timing?.finalDurationSec || 14} segundos, en ${reel.format}, con tres escenas:
+${emergency ? `\nDATOS DE LA EMERGENCIA (lo unico que podes afirmar):\n${emergency}\n` : ''}
+Se trata de un REEL VERTICAL de ${reel.config?.timing?.finalDurationSec || 14} segundos, en ${reel.format}, con ${scenes.length} escenas:
 ${describeScenes(scenes)}
 
 Estilo de movimiento: ${motion}.${music ? ` Banda sonora: ${music}.` : ''}${reel.direction?.rationale ? `\nIntención del montaje: ${reel.direction.rationale}` : ''}
@@ -246,10 +253,18 @@ export const sanitizeCopy = (raw, { locale = 'es' } = {}) => {
 
 export const generateReelCopy = async ({
     reel, scenes, clubName, clubCategory, clubCity, eventDateHuman = null,
-    locale = 'es', provider = null, context = null
+    locale = 'es', provider = null, context = null, emergencyContext = null
 }) => {
-    const system = buildSystemPrompt();
-    const userText = buildCopyPrompt({ reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale, context });
+    // La clausula de datos va ENCIMA de la voz institucional, no en su lugar:
+    // la regla 3 ya prohibe inventar fechas y cantidades, y esto agrega lo
+    // especifico de un desastre.
+    const system = emergencyContext
+        ? `${buildSystemPrompt()}\n\n${EMERGENCY_FACT_CLAUSE}`
+        : buildSystemPrompt();
+    const userText = buildCopyPrompt({
+        reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale, context,
+        emergency: emergencyContext ? buildEmergencyBrief(emergencyContext) : null
+    });
 
     const result = await generateCopy({
         ...(provider ? { provider } : {}),
@@ -265,8 +280,40 @@ export const generateReelCopy = async ({
     const raw = parseJsonObject(result);
     if (!raw) throw new Error('El generador de copy no devolvió JSON válido.');
 
+    const copy = sanitizeCopy(raw, { locale });
+
+    // ── Comprobacion de datos (v4.783) ──
+    //
+    // Se MIDE y se REPORTA, pero no se descarta el copy ni se reintenta acá.
+    // Es una decision distinta de la del guion y la de los rotulos, y conviene
+    // saber por que: el copy es texto EDITABLE desde la ficha, con historial de
+    // versiones (`ReelCopy`), asi que un problema se corrige en dos clics. El
+    // guion, en cambio, hay que volver a sintetizarlo, y un rotulo va horneado
+    // dentro del video.
+    //
+    // Tirar tres copies completos por una cifra dejaria al usuario sin nada que
+    // editar, que es peor que entregarselos con el aviso puesto.
+    const factIssues = [];
+    if (emergencyContext) {
+        // Se comprueba `fullText` —descripción + CTA + hashtags—, que es el
+        // texto COMPLETO que se va a publicar. Mirar sólo la descripción
+        // dejaría pasar una cifra inventada dentro de un hashtag, y
+        // «#10000Damnificados» afirma exactamente lo mismo que la frase.
+        // Es el mismo criterio con el que este módulo cuenta caracteres.
+        for (const [platform, data] of Object.entries(copy.platforms || {})) {
+            const text = data?.fullText;
+            if (!text) continue;
+            const check = validateEmergencyCopy(text, emergencyContext, { field: platform });
+            if (!check.ok) factIssues.push(...check.issues.map(i => `${platform}: ${i}`));
+        }
+        if (factIssues.length) {
+            console.warn(`[REEL] copy con ${factIssues.length} incumplimiento(s) de datos: ${factIssues[0]}`);
+        }
+    }
+
     return {
-        copy: sanitizeCopy(raw, { locale }),
+        copy,
+        factIssues,
         provider: result?.provider || null,
         model: result?.model || null,
         // Respuesta cruda: lleva el consumo real de tokens que audita el panel.

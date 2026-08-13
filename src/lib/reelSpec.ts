@@ -538,7 +538,46 @@ export interface ReelOptions {
         goals: string[];
         exportFormats: string[];
     };
-    timing: { sceneCount: number; targetTotalSec: number; minSceneSec: number; maxSceneSec: number };
+    timing: {
+        sceneCount: number;
+        minSceneCount?: number;
+        maxSceneCount?: number;
+        targetTotalSec: number;
+        minSceneSec: number;
+        maxSceneSec: number;
+    };
+    // ── Presets de pieza (v4.783) ──
+    //
+    // Opcionales en el TIPO a propósito: la pantalla tiene que seguir
+    // funcionando contra un servidor que todavía no los sirva —durante el
+    // despliegue conviven las dos versiones—, y sin `?` el typecheck obligaría
+    // a fingir que siempre están.
+    presets?: {
+        id: string;
+        label: string;
+        description: string;
+        sceneCounts: number[];
+        defaultSceneCount: number;
+        totalSec: Record<number, number>;
+        contextSchema: string | null;
+        motionStyle: string;
+        motionIntensity: string;
+        transition: string;
+        musicStyle: string;
+        onScreenText: boolean;
+        closingCard: boolean;
+        requireExpansion: boolean;
+        hasNarrative: boolean;
+        isDefault: boolean;
+    }[];
+    defaultPreset?: string;
+    emergency?: {
+        disasters: { id: string; label: string; magnitudeHint: string; freeText: boolean; isDefault: boolean }[];
+        needs: { id: string; label: string }[];
+        ctas: { id: string; label: string; isDefault: boolean }[];
+        defaultDisaster: string;
+        defaultCta: string;
+    };
     usage: { spent: number; generations: number; limit: number | null; remaining: number | null; exceeded: boolean };
 }
 

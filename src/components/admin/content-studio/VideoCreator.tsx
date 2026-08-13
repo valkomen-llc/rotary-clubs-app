@@ -33,10 +33,14 @@ import SceneBrandCheck from './SceneBrandCheck';
 import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
 import {
-    SCENE_COUNT, MIN_SCENE_SEC, MAX_SCENE_SEC,
+    MIN_SCENE_SEC, MAX_SCENE_SEC,
     isTerminal, timelineDuration, formatSeconds, formatBytes, formatEta,
     type Reel, type ReelScene, type ReelOptions, type ReelCopy
 } from '../../../lib/reelSpec';
+import {
+    DEFAULT_PRESET, narrativeRolesFor, targetTotalSecFor
+} from '../../../lib/reelPresets';
+import EmergencyForm, { type EmergencyContextInput } from './EmergencyForm';
 
 interface MediaItem {
     id: string;
@@ -96,6 +100,73 @@ const VideoCreator: React.FC = () => {
         interestArea: 'general'
     });
 
+    // ── Preset y cantidad de fotos (v4.783) ──
+    //
+    // Van FUERA de `config` a propósito: `config` se derrama entero en el
+    // cuerpo del POST con `...config`, y el preset necesita resolverse antes
+    // —decide cuántas fotos se piden y qué formulario se muestra—. Mezclarlos
+    // haría que un cambio de preset se leyera como un cambio de configuración.
+    const [preset, setPreset] = useState<string>(DEFAULT_PRESET);
+    const [sceneCount, setSceneCount] = useState<number>(3);
+
+    // El contexto de la emergencia. Vive acá y no en `config` por lo mismo, y
+    // porque sólo viaja cuando el preset lo declara.
+    const [emergency, setEmergency] = useState<EmergencyContextInput>({
+        disasterType: 'terremoto',
+        customDisaster: '',
+        country: '',
+        region: '',
+        eventDate: '',
+        magnitude: '',
+        description: '',
+        communities: '',
+        needs: [],
+        customNeed: '',
+        ctas: ['donar'],
+        contactUrl: ''
+    });
+
+    // El preset elegido, resuelto contra el catálogo del servidor. Mientras no
+    // llegue la respuesta se cae al espejo local, que es justamente para lo que
+    // existe: la pantalla tiene que poder pintarse antes del primer fetch.
+    const activePreset = useMemo(
+        () => options?.presets?.find(p => p.id === preset) || null,
+        [options, preset]
+    );
+    const allowedCounts = activePreset?.sceneCounts
+        || (preset === 'emergencia' ? [3, 4, 5] : [3]);
+    const isEmergency = activePreset?.contextSchema === 'emergency' || preset === 'emergencia';
+
+    // Los roles narrativos de cada posición. Se calculan en el navegador —no se
+    // piden al servidor— porque se repintan en cada movimiento del arrastre y
+    // un viaje a la API por movimiento sería inaceptable. El servidor los vuelve
+    // a calcular al crear y su resultado es el que manda.
+    const roles = useMemo(
+        () => narrativeRolesFor(preset, sceneCount),
+        [preset, sceneCount]
+    );
+
+    // ── Cambiar de preset puede dejar la selección imposible ──
+    //
+    // De «Campaña de Emergencia» con cinco fotos a «Reel estándar», que sólo
+    // admite tres: sin esto quedaban cinco fotos elegidas, el botón de generar
+    // deshabilitado y ninguna explicación de por qué. Se recorta la selección y
+    // se dice, en vez de dejar al usuario buscando qué está mal.
+    //
+    // Va en un efecto y no en el manejador del selector porque el preset también
+    // cambia al duplicar un Reel, y hacerlo en cada sitio deja al tercero sin
+    // hacerlo — el fallo es mudo.
+    useEffect(() => {
+        if (allowedCounts.includes(sceneCount)) return;
+        const next = allowedCounts.includes(3) ? 3 : allowedCounts[0];
+        setSceneCount(next);
+        setSelectedMedia(current => {
+            if (current.length <= next) return current;
+            toast.info(`«${activePreset?.label || 'Este preset'}» usa ${allowedCounts.join(' o ')} fotos: se quitaron las últimas ${current.length - next}.`);
+            return current.slice(0, next);
+        });
+    }, [preset, allowedCounts, sceneCount, activePreset?.label]);
+
     // Narración IA. Apagada por defecto: es la opción que gasta créditos de voz
     // y no todo Reel la quiere.
     const [narration, setNarration] = useState({
@@ -131,6 +202,20 @@ const VideoCreator: React.FC = () => {
                     publicationType: data.context?.defaultType || c.publicationType,
                     interestArea: data.context?.defaultArea || c.interestArea
                 }));
+                // El default del preset lo dice el servidor. Sólo se aplica si
+                // el usuario no eligió todavía: la respuesta puede llegar
+                // después de que haya tocado el selector, y pisarle la elección
+                // con un valor por omisión sería el peor momento para hacerlo.
+                if (data.defaultPreset) {
+                    setPreset(p => (p === DEFAULT_PRESET ? data.defaultPreset! : p));
+                }
+                if (data.emergency) {
+                    setEmergency(e => ({
+                        ...e,
+                        disasterType: data.emergency!.defaultDisaster || e.disasterType,
+                        ctas: e.ctas.length ? e.ctas : [data.emergency!.defaultCta]
+                    }));
+                }
                 if (data.narration) {
                     setNarration(n => ({
                         ...n,
@@ -163,7 +248,7 @@ const VideoCreator: React.FC = () => {
     // Mira las tres fotos ANTES de gastar créditos. Devuelve avisos, no
     // bloqueos: quien sube una foto un poco blanda puede querer generar igual.
     useEffect(() => {
-        if (selectedMedia.length !== SCENE_COUNT) { setPreflight(null); return; }
+        if (selectedMedia.length !== sceneCount) { setPreflight(null); return; }
         let cancelled = false;
         setChecking(true);
         (async () => {
@@ -175,7 +260,11 @@ const VideoCreator: React.FC = () => {
                         images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
                         format: config.format,
                         qualityTier: config.qualityTier,
-                        engine: config.engine || undefined
+                        engine: config.engine || undefined,
+                        // Sin el preset, el servidor valida contra `estandar` y
+                        // rechaza cuatro o cinco fotos: la comprobación previa
+                        // fallaba justo en el caso que se acaba de agregar.
+                        preset
                     })
                 });
                 if (!r.ok || cancelled) return;
@@ -186,7 +275,7 @@ const VideoCreator: React.FC = () => {
             }
         })();
         return () => { cancelled = true; };
-    }, [selectedMedia, config.format, config.qualityTier, config.engine]);
+    }, [selectedMedia, sceneCount, preset, config.format, config.qualityTier, config.engine]);
 
     // ── Sondeo ──
     // El flujo es asíncrono a propósito: cada clip tarda 1-3 minutos y la
@@ -217,9 +306,16 @@ const VideoCreator: React.FC = () => {
     // ── Acciones ──
 
     const handleGenerate = async () => {
-        if (selectedMedia.length !== SCENE_COUNT) {
-            toast.error(`Elegí exactamente ${SCENE_COUNT} imágenes`);
+        if (selectedMedia.length !== sceneCount) {
+            toast.error(`Elegí exactamente ${sceneCount} imágenes`);
             return;
+        }
+        // El contexto de la emergencia es lo que autoriza a decir algo concreto:
+        // sin descripcion el guion no tiene de donde salir y saldria generico.
+        // Se avisa y no se bloquea — un club que solo tiene fotos puede querer
+        // publicar igual, y el guion en general sigue siendo cierto.
+        if (isEmergency && !emergency.description.trim()) {
+            toast.warning('Sin describir qué ocurrió, el guion habla en términos muy generales.');
         }
         setIsCreating(true);
         const toastId = toast.loading('Analizando las fotos y armando la narrativa...');
@@ -232,6 +328,14 @@ const VideoCreator: React.FC = () => {
                     ...config,
                     engine: config.engine || undefined,
                     narration,
+                    // El preset va DESPUÉS de `...config` para que no se lo pise
+                    // una clave homónima: `config` se derrama entero y el orden
+                    // decide quién gana.
+                    preset,
+                    // El contexto sólo viaja si el preset lo usa. Mandarlo
+                    // siempre metería un objeto de emergencia en la `config` de
+                    // un Reel corriente, donde no significa nada.
+                    emergency: isEmergency ? emergency : undefined,
                     // El outro viaja aparte, no entra en `images`: no debe
                     // volver a pasar por la IA.
                     outro
@@ -383,11 +487,117 @@ const VideoCreator: React.FC = () => {
                     ENCONTRARLO — no volver a lanzarlo. */}
                 <ActiveReelsBanner />
 
+                {/* ── Qué clase de pieza (v4.783) ──
+                    Va PRIMERO porque decide todo lo de abajo: cuántas fotos se
+                    piden, qué formulario aparece y qué cuenta cada escena. Con
+                    un solo preset disponible la tarjeta no se pinta: un
+                    selector de una sola opción es ruido. */}
+                {(options?.presets?.length ?? 0) > 1 && (
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <h3 className="text-lg font-black text-gray-900 mb-1">Tipo de pieza</h3>
+                        <p className="text-sm text-gray-500 font-medium mb-5">
+                            Define la estructura del Reel y cuántas fotos hacen falta.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {options!.presets!.map(p => (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => setPreset(p.id)}
+                                    aria-pressed={preset === p.id}
+                                    className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                                        preset === p.id
+                                            ? 'border-indigo-500 bg-indigo-50/40'
+                                            : 'border-gray-100 hover:border-indigo-200'
+                                    }`}
+                                >
+                                    <span className="block text-sm font-black text-gray-900">{p.label}</span>
+                                    <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                                        {p.description}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* La cantidad de fotos sólo se ofrece si el preset da a
+                            elegir. Con una sola opción, un selector de un
+                            elemento haría creer que hay una decisión que tomar. */}
+                        {allowedCounts.length > 1 && (
+                            <div className="mt-6">
+                                <span className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                                    Cuántas fotografías
+                                </span>
+                                <div className="flex gap-2">
+                                    {allowedCounts.map(n => (
+                                        <button
+                                            key={n}
+                                            type="button"
+                                            onClick={() => setSceneCount(n)}
+                                            aria-pressed={sceneCount === n}
+                                            className={`flex-1 py-3 rounded-xl border-2 font-black text-sm transition-all ${
+                                                sceneCount === n
+                                                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                                    : 'border-gray-100 text-gray-500 hover:border-indigo-200'
+                                            }`}
+                                        >
+                                            {n} fotos
+                                            <span className="block text-[10px] font-bold text-gray-400 mt-0.5">
+                                                ~{Math.round(targetTotalSecFor(preset, n))} s
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* La vía sin motor generativo se DICE, con su motivo.
+                            Una foto que se mueve distinto de lo que el usuario
+                            espera, sin explicación, se lee como un fallo. */}
+                        {activePreset?.motionStyle === 'fotografico' && (
+                            <div className="mt-5 flex gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-emerald-900 leading-relaxed">
+                                    <strong>Las fotografías no se regeneran.</strong> Se anima el encuadre sobre la
+                                    imagen original, así que rostros, daños y contexto quedan exactamente como
+                                    fueron fotografiados. Cuesta cero créditos de video. Podés elegir animación con
+                                    IA en las opciones avanzadas, aunque en una emergencia real reinterpreta la
+                                    escena.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ── El contexto de la emergencia ──
+                    Antes de las fotos: lo que se escribe acá decide qué función
+                    narrativa cumple cada una, así que pedirlo después obligaría
+                    a repensar el orden ya elegido. */}
+                {isEmergency && (
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <h3 className="text-lg font-black text-gray-900 mb-1">Qué pasó</h3>
+                        <p className="text-sm text-gray-500 font-medium mb-5">
+                            Con esto se escribe el guion, la voz en off y los textos del video.
+                        </p>
+                        <EmergencyForm
+                            value={emergency}
+                            onChange={setEmergency}
+                            disasters={options?.emergency?.disasters}
+                            needs={options?.emergency?.needs}
+                            ctas={options?.emergency?.ctas}
+                            disabled={isCreating}
+                        />
+                    </div>
+                )}
+
                 {/* Selección de imágenes */}
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                     <div className="flex justify-between items-start mb-6">
                         <div>
-                            <h3 className="text-lg font-black text-gray-900">Las tres fotos del Reel</h3>
+                            <h3 className="text-lg font-black text-gray-900">
+                                {sceneCount === 3 ? 'Las tres fotos del Reel'
+                                    : sceneCount === 4 ? 'Las cuatro fotos del Reel'
+                                    : `Las ${sceneCount} fotos del Reel`}
+                            </h3>
                             <p className="text-sm text-gray-500 font-medium">
                                 Elegilas de la Biblioteca y ordenalas arrastrando. La IA hace el resto.
                             </p>
@@ -411,7 +621,7 @@ const VideoCreator: React.FC = () => {
                             </div>
                             <p className="text-sm text-gray-400 font-bold">Todavía no elegiste ninguna foto</p>
                             <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">
-                                Hacen falta {SCENE_COUNT}
+                                Hacen falta {sceneCount}
                             </p>
                         </div>
                     ) : (
@@ -431,9 +641,21 @@ const VideoCreator: React.FC = () => {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-bold text-gray-800 truncate">{item.filename}</p>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
-                                                Escena {i + 1} · la IA decide su duración
-                                            </p>
+                                            {/* Con estructura narrativa, cada posición dice QUÉ
+                                                cuenta. Es lo que convierte «ordená las fotos» en
+                                                una decisión con criterio: sin el rótulo, quien
+                                                arrastra no sabe que la tercera es el llamado a la
+                                                acción. Sin estructura (`libre`) se conserva el
+                                                texto de siempre. */}
+                                            {roles[i] && roles[i].id !== 'libre' ? (
+                                                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-0.5">
+                                                    Escena {i + 1} · {roles[i].label}
+                                                </p>
+                                            ) : (
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5">
+                                                    Escena {i + 1} · la IA decide su duración
+                                                </p>
+                                            )}
                                         </div>
                                         <button
                                             onClick={() => setSelectedMedia(prev => prev.filter(m => m.id !== item.id))}
@@ -445,19 +667,19 @@ const VideoCreator: React.FC = () => {
                                 ))}
                             </Reorder.Group>
 
-                            {selectedMedia.length !== SCENE_COUNT && (
+                            {selectedMedia.length !== sceneCount && (
                                 <p className="mt-4 text-xs font-bold text-amber-600 flex items-center gap-2">
                                     <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                                    {selectedMedia.length < SCENE_COUNT
-                                        ? `Faltan ${SCENE_COUNT - selectedMedia.length} foto(s).`
-                                        : `Sobran ${selectedMedia.length - SCENE_COUNT} foto(s).`}
+                                    {selectedMedia.length < sceneCount
+                                        ? `Faltan ${sceneCount - selectedMedia.length} foto(s).`
+                                        : `Sobran ${selectedMedia.length - sceneCount} foto(s).`}
                                 </p>
                             )}
 
                             {/* El orden de arrastre es una propuesta: si el
                                 estilo queda en automático, el director puede
                                 reordenar. Decirlo evita la sorpresa. */}
-                            {selectedMedia.length === SCENE_COUNT && (
+                            {selectedMedia.length === sceneCount && (
                                 <p className="mt-4 text-[11px] font-bold text-gray-400 flex items-start gap-2">
                                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
                                     La IA analiza las tres fotos y puede reordenarlas para que la pieza abra, desarrolle y cierre. Podrás ver el orden final antes de descargar.
@@ -472,7 +694,7 @@ const VideoCreator: React.FC = () => {
                             <Loader2 className="w-3.5 h-3.5 animate-spin" /> Revisando la calidad de las fotos...
                         </p>
                     )}
-                    {options?.expansion?.available && selectedMedia.length === SCENE_COUNT && (
+                    {options?.expansion?.available && selectedMedia.length === sceneCount && (
                         <p className="mt-4 text-[11px] font-bold text-indigo-500 flex items-start gap-2">
                             <Wand2 className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
                             Las fotos que no estén en {config.format} se adaptan con IA generando el lienzo que falta, sin recortar.
@@ -780,7 +1002,7 @@ const VideoCreator: React.FC = () => {
                     <div className="relative aspect-[9/16] bg-black rounded-[24px] border border-gray-800 overflow-hidden flex flex-col items-center justify-center">
                         {selectedMedia.length > 0 ? (
                             <div className="relative w-full h-full grid grid-rows-3">
-                                {selectedMedia.slice(0, SCENE_COUNT).map((m, i) => (
+                                {selectedMedia.slice(0, sceneCount).map((m, i) => (
                                     <div key={m.id} className="relative overflow-hidden">
                                         <img src={m.url} alt="" className="w-full h-full object-cover opacity-60" />
                                         <span className="absolute top-2 left-2 text-[9px] font-black text-white/70 bg-black/50 px-2 py-0.5 rounded-full">
@@ -807,7 +1029,7 @@ const VideoCreator: React.FC = () => {
 
                         <button
                             onClick={handleGenerate}
-                            disabled={selectedMedia.length !== SCENE_COUNT || isCreating}
+                            disabled={selectedMedia.length !== sceneCount || isCreating}
                             className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black text-lg hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-3"
                         >
                             {isCreating
@@ -837,7 +1059,7 @@ const VideoCreator: React.FC = () => {
 
             <MediaPicker
                 isOpen={showPicker}
-                maxSelection={SCENE_COUNT}
+                maxSelection={sceneCount}
                 initialSelection={selectedMedia.map(m => m.id)}
                 onClose={() => setShowPicker(false)}
                 onSelect={setSelectedMedia}

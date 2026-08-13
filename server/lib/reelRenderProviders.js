@@ -186,7 +186,15 @@ export const buildEditSpec = ({
     soundtrackUrl = null,
     soundtrackVolume = MUSIC_VOLUME_DEFAULT,
     voice = null,
-    callbackUrl = null
+    callbackUrl = null,
+    // Rotulos en pantalla: `[{ buffer, startSec, endSec }]`, ya compuestos.
+    // Viajan en el spec y NO se generan aca: este archivo decide COMO se monta,
+    // no que dice la pieza.
+    //
+    // Solo los consume el compositor local. Un proveedor alojado recibiria un
+    // buffer que no puede subir, asi que ahi se declara la limitacion en vez de
+    // montar en silencio una pieza sin sus rotulos — ver `submitRender`.
+    textOverlays = []
 }) => {
     const clips = scenes.map((scene, i) => {
         const prev = scenes[i - 1];
@@ -220,6 +228,10 @@ export const buildEditSpec = ({
         // La voz va aparte de la música: el montaje las mezcla con ducking, no
         // las suma sin más. Sólo el compositor local lo soporta hoy.
         voice,
+        // Los rótulos, igual: sólo los pega el compositor local. Van en el spec
+        // para que la decisión de si se pueden montar la tome quien elige el
+        // proveedor, y no se descubra a mitad del render.
+        textOverlays,
         callbackUrl
     };
 };
@@ -593,7 +605,8 @@ const ffmpegLocal = {
             height: spec.height,
             fps: spec.fps,
             musicVolume: spec.soundtrack?.volume ?? 0.85,
-            fadeSec: spec.soundtrack?.fadeIn ?? 1
+            fadeSec: spec.soundtrack?.fadeIn ?? 1,
+            textOverlays: spec.textOverlays || []
         });
 
         return {
@@ -633,6 +646,20 @@ export const submitRender = async (spec, providerId = null) => {
     if (spec.voice?.src && !providerId && isRenderProviderAvailable('ffmpeg')) {
         providerId = 'ffmpeg';
     }
+    // ── Los rótulos sólo los pega el compositor local (v4.783) ──
+    //
+    // Viajan como BUFFERS, y un proveedor alojado necesita una URL pública que
+    // pueda descargar. Sin esta preferencia, una campaña de emergencia montada
+    // en Shotstack salía SIN TEXTO EN PANTALLA y sin ningún aviso: el montaje
+    // termina correctamente, sólo que le falta la mitad del mensaje.
+    //
+    // Se prioriza el local igual que con la voz. Si el usuario pidió un
+    // proveedor concreto, manda su elección —silenciarla sería desobedecerlo—,
+    // pero entonces la limitación se DICE, más abajo.
+    const hasOverlays = Array.isArray(spec.textOverlays) && spec.textOverlays.length > 0;
+    if (hasOverlays && !providerId && isRenderProviderAvailable('ffmpeg')) {
+        providerId = 'ffmpeg';
+    }
     // Con proveedor explícito se usa ese y sólo ese —lo pidió el usuario desde
     // el panel, y silenciarlo con un respaldo sería desobedecerlo—. Sin él, la
     // cadena completa.
@@ -659,6 +686,16 @@ export const submitRender = async (spec, providerId = null) => {
             if (failures.length) {
                 console.warn(`[REEL] montaje: ${failures.join(' | ')} — resuelto con ${id}`);
             }
+            // Lo que este proveedor NO pudo montar. Se devuelve para que el
+            // controlador lo anote en el proyecto: una pieza a la que le falta
+            // el texto en pantalla tiene que decir por qué le falta, o se lee
+            // como que la función no funciona.
+            const limitations = [];
+            if (hasOverlays && id !== 'ffmpeg') {
+                limitations.push(
+                    `${RENDER_PROVIDERS[id].label} no puede pegar los rótulos en pantalla: se montó sin ellos. El montaje local (FFmpeg) sí los soporta.`
+                );
+            }
             console.log(`[REEL] montaje en ${id} (${mode}): ${spec.width}×${spec.height}, ${spec.totalSec}s, ${spec.clips.length} clips, música=${Boolean(spec.soundtrack)}`);
             return {
                 provider: id,
@@ -668,7 +705,8 @@ export const submitRender = async (spec, providerId = null) => {
                 // Qué se intentó antes. Va al historial técnico del proyecto:
                 // que el principal fallara y lo salvara el respaldo es
                 // justamente lo que hay que poder ver después.
-                attempted: failures
+                attempted: failures,
+                limitations
             };
         } catch (e) {
             failures.push(`${id}: ${e.message}`);

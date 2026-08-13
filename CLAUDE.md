@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.716
+## Creador de Reels IA — v4.783
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -179,6 +179,10 @@ en `config` sin que el servidor los leyera.
 | Archivo | Qué es |
 |---|---|
 | `server/lib/reelSpec.js` | Fuente de verdad: formatos y resoluciones, motores, estilos, transiciones, música, reparto de la duración y prompts |
+| `server/lib/reelPresets.js` | Los TIPOS DE PIEZA: cuántas fotos, cuánto dura, qué cuenta cada escena |
+| `server/lib/emergencySpec.js` | Campaña de Emergencia: catálogos, contexto y el control de datos |
+| `server/lib/reelSceneText.js` | Los rótulos: qué dicen y cuándo aparecen |
+| `server/lib/reelTextOverlay.js` | Los rótulos y la tarjeta de cierre: SVG rasterizado con sharp |
 | `server/lib/reelDirector.js` | Mira las tres fotos y decide orden, ritmo, estilo por escena y música |
 | `server/lib/reelRenderProviders.js` | Capa desacoplada del montaje: FFmpeg local + Shotstack, Creatomate, JSON2Video |
 | `server/lib/reelFfmpeg.js` | Compositor local: extracción de fotogramas, conformado y montaje |
@@ -874,11 +878,125 @@ hooks than during the previous render`, HTML vacío.
   a aviso si ESLint no se puede ejecutar — un despliegue no debe caerse por una
   dependencia de desarrollo ausente.
 
+### Presets de pieza y Campaña de Emergencia (v4.783)
+
+El módulo pasa de resolver UNA pieza a resolver CLASES de pieza. Un preset es
+DATOS (`REEL_PRESETS`): cuántas fotos admite, cuánto dura, qué función narrativa
+cumple cada escena, con qué se anima y qué lleva el cierre. Agregar «campaña
+ambiental» o «captación de socios» es una entrada más, sin tocar el compilador
+de prompts, la máquina de estados, el montaje ni el modelo de datos.
+
+Pruebas: `npm run test:reels:presets` (91 casos). **Sin base, credenciales ni
+red**: prueban el CRITERIO —presets, reparto de la duración, control de datos y
+ventanas de los rótulos—, separado de la orquestación.
+
+- **`SCENE_COUNT` es el DEFAULT, no el límite.** Hasta v4.782 era la única
+  cantidad posible y se comparaba con `!==` en quince sitios, así que una pieza
+  de cuatro fotos exigía un `if` por sitio. Quién decide es el PRESET.
+  `distributeDurations` ya aceptaba `count` y `totalSec`: sólo estaba llamada
+  con constantes.
+- **La cantidad de escenas del montaje sale de `config.sceneCount`, no de una
+  constante.** Con cuatro fotos, comparar contra 3 daba por COMPLETO un montaje
+  al que le falta una escena, y el Reel salía con un hueco. Lo comprueba la
+  prueba leyendo el archivo.
+- **Con cinco fotos la historia tiene cinco partes, no tres más relleno.** La
+  estructura no es la misma lista recortada: con tres, la movilización rotaria y
+  el llamado a la acción comparten escena (`accion_cta`); con cinco, cada una
+  tiene la suya. El director recibe los roles y decide QUÉ FOTO va en cada
+  posición — el orden deja de ser una preferencia estética y pasa a ser una
+  asignación.
+- **Con estructura declarada, la llamada al director se hace SIEMPRE**, aunque
+  el usuario haya fijado estilo, transición y música. El criterio propio ordena
+  por plano abierto y marca, que no dice nada sobre cuál foto muestra el impacto
+  humano.
+- **El prompt del director se construye con la CANTIDAD.** Decía «TRES
+  fotografías» y «Los tres, sin repetir»: con cuatro, el modelo devolvía órdenes
+  de tres, `sanitizeDirection` los descartaba por inválidos y el Reel salía
+  siempre con el criterio por defecto **sin que nada avisara**. Un prompt que
+  miente sobre su entrada no da un error, da una degradación silenciosa.
+- **NO SE INVENTA NADA sobre una emergencia real, y eso son TRES capas.** (1) Al
+  prompt sólo entra lo que el usuario escribió, y el brief dice explícitamente
+  qué NO se sabe —un hueco en silencio es una invitación a completarlo—. (2) La
+  cláusula `EMERGENCY_FACT_CLAUSE`, encima de la regla 3 de
+  `institutionalVoice.js`. (3) **`validateEmergencyCopy`, que es la que hace
+  verdadera la promesa**: el modelo ESCRIBE y el código DECIDE, rechazando
+  cifras no suministradas, cuantificadores vagos («miles de», «la mayoría de»),
+  atribuciones inventadas («según reportes», «fuentes oficiales»),
+  sensacionalismo y mayúsculas sostenidas, y reintentando con la REGLA CONCRETA
+  que se rompió. Sin la capa 3, «le pedimos que no invente» es una afirmación
+  que no se puede sostener.
+- **La atribución falsa se rechaza SIEMPRE, con ubicación o sin ella.** Estaba
+  dentro del `if (!hasFacts.location)` por haberla escrito junto a la de
+  topónimos, así que con la ubicación completa —el caso normal— «según reportes»
+  se colaba. Son dos cosas distintas: nombrar una ciudad que no se dio depende
+  de qué se dio; atribuir a «las autoridades» es inventar una fuente siempre.
+- **El guion se ENTREGA con sus avisos; los rótulos se DESCARTAN.** Agotados los
+  reintentos, un guion que no cumple se devuelve anotado —quitarlo dejaría la
+  pieza sin voz— y los rótulos no se publican —un Reel sin rótulos sigue siendo
+  correcto—. Los copies se entregan con el aviso porque son editables con
+  historial de versiones. La decisión depende de cuánto cuesta corregir cada uno.
+- **Una necesidad NO se deduce del tipo de desastre.** Sería cómodo («un
+  terremoto necesita alojamiento») y sería inventar. Si el usuario no marcó
+  ninguna, el guion no nombra ninguna.
+- **`fotografico` es el default del preset de emergencia, y es la decisión de
+  fondo.** Un motor image-to-video REINTERPRETA los píxeles: puede añadir una
+  persona que no está en la foto (defecto medido en v4.705), redibujar un rostro
+  o alterar los daños visibles. En una fotografía institucional eso es un
+  problema de calidad; en la de un desastre real es de VERACIDAD, y destruye la
+  credibilidad que la campaña necesita para pedir ayuda. Cuesta cero créditos y
+  segundos en vez de minutos, que es además lo que hace falta cuando hay que
+  publicar rápido. Es un default, no un cierre: el motor generativo se elige a
+  propósito, con su advertencia a la vista.
+- **La expansión de lienzo es obligatoria acá** (`requireExpansion`). Cuando la
+  adaptación no actúa, el montaje RECORTA AL CENTRO y ese recorte se lleva los
+  bordes, que es donde están las personas de los extremos. En una campaña de
+  emergencia esa pérdida es de la evidencia misma.
+- **El texto en pantalla se compone con sharp (SVG → PNG) y se pega con
+  `overlay`, NO con `drawtext`.** No es una preferencia: **el binario de
+  `ffmpeg-static` que empaqueta la plataforma NO trae `drawtext`** —comprobado
+  sobre el propio binario—, y además exigiría una fuente en el sistema, que en
+  Vercel no hay. `sharp` ya es dependencia y el reparto de líneas lo hace
+  `layoutText`, el MISMO de Plantillas IA.
+- **Los rótulos hay que DESPLAZARLOS en el tiempo** (`setpts=PTS+inicio/TB`).
+  `enable='between(t,…)'` se evalúa sobre el reloj de la entrada principal, pero
+  los fotogramas del rótulo empiezan en 0: sin desplazarlos, el de la segunda
+  escena ya terminó cuando su ventana se abre y `eof_action=pass` deja pasar el
+  video sin nada. Medido: **salía el primer rótulo y los otros dos no, sin una
+  sola advertencia de ffmpeg**. Sólo se ve extrayendo fotogramas y contando
+  píxeles de texto. Al tocar el grafo de rótulos, comprobarlo así.
+- **La tabla de anchos de `measureText` está MEDIDA, no estimada.** La primera
+  versión iba a ojo y daba 0,56 em a las minúsculas cuando son 0,671: un 19 % de
+  menos, y el texto se salía del margen lateral por los dos lados. Si se toca,
+  medirla otra vez rasterizando muestras — a ojo se subestima siempre.
+- **El scrim llega hasta el borde inferior del cuadro, siempre.** Recortarlo
+  antes deja una línea horizontal visible donde el degradado se interrumpe, que
+  se lee como una banda pegada encima.
+- **Los rótulos sólo los pega el compositor local.** Viajan como búferes y un
+  proveedor alojado necesita una URL: sin la preferencia por FFmpeg, una campaña
+  montada en Shotstack salía SIN TEXTO y sin aviso. Con proveedor pedido a mano
+  se respeta la elección y la limitación se DICE (`limitations`).
+- **El `renderSpec` se guarda SIN los búferes de los rótulos.** Un PNG de
+  1080×1920 en base64 son ~70 KB, y con cinco escenas eso mete 350 KB de imagen
+  en una fila que se lee en cada listado de la Biblioteca. Se guardan las
+  ventanas y el texto, que es lo que sirve para diagnosticar.
+- **Los textos se guardan por `sourceIndex`, no por posición.** Si alguien
+  reordena o regenera una escena, el rótulo tiene que seguir a SU foto; por
+  posición, un reordenamiento pondría el texto del contexto sobre el llamado a
+  la acción.
+- **Duplicar conserva el preset y el contexto.** Sin eso, duplicar una campaña
+  de emergencia devolvía un Reel estándar —y con cinco fotos, uno que el preset
+  estándar ni siquiera admite—.
+- **`estandar` reproduce el comportamiento anterior y es el default.** Un cliente
+  con el bundle viejo que no mande `preset` cae ahí y no nota nada. Misma regla
+  aditiva que `sessions` en v4.711 y `groups` en v4.708.
+
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
-clip al final de `buildEditSpec`—; y los motores `runway_gen4` y `luma_ray2`
+clip al final de `buildEditSpec`—; los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
-sólo existe el de KIE).
+sólo existe el de KIE); y el texto en pantalla **no tiene todavía una pantalla
+para editarlo a mano** — se escribe solo y se puede regenerar, pero corregir una
+palabra exige regenerar el rótulo entero.
 
 ## WhatsApp CRM — motor de automatización — v4.701
 

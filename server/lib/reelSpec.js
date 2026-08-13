@@ -85,10 +85,21 @@ export const resolveTier = (format, tier) => {
 
 // ─── Presupuesto de duración ───────────────────────────────────────────────
 //
-// Tres escenas y ~15 segundos, que es el pedido. Los límites por escena existen
-// porque un motor image-to-video pierde estabilidad temporal cuanto más largo
-// es el clip: por debajo de 4 s no da tiempo a leer la escena, y por encima de
-// 6 s la deriva del modelo empieza a notarse en rostros y textos.
+// Los límites por escena existen porque un motor image-to-video pierde
+// estabilidad temporal cuanto más largo es el clip: por debajo de 4 s no da
+// tiempo a leer la escena, y por encima de 6 s la deriva del modelo empieza a
+// notarse en rostros y textos.
+//
+// `SCENE_COUNT` y `TARGET_TOTAL_SEC` son el DEFAULT, no el límite (v4.783).
+// Hasta v4.782 eran la única cantidad posible y se comparaban con `!==` en
+// quince sitios, así que agregar una pieza de cuatro o cinco fotos significaba
+// un `if` por sitio. Quién decide cuántas escenas y cuánto duran es el PRESET
+// (`reelPresets.js`), que las recibe como parámetros — `distributeDurations` ya
+// aceptaba `count` y `totalSec`, sólo estaba llamada con constantes.
+//
+// Se conservan exportados porque son el valor de respaldo de las funciones que
+// reciben `scenesTotal` opcional (`computeProgress`, `estimateRemainingSec`) y
+// porque `estandar` sigue siendo exactamente esto.
 export const SCENE_COUNT = 3;
 export const TARGET_TOTAL_SEC = 15;
 export const MIN_SCENE_SEC = 4;

@@ -28,8 +28,9 @@ import {
     MOTION_STYLES, DEFAULT_MOTION_STYLE, AUTO_MOTION_STYLE,
     TRANSITIONS, DEFAULT_TRANSITION, AUTO_TRANSITION,
     MUSIC_STYLES, DEFAULT_MUSIC_STYLE, AUTO_MUSIC_STYLE,
-    SCENE_COUNT
+    TARGET_TOTAL_SEC
 } from './reelSpec.js';
+import { MIN_SCENE_COUNT, MAX_SCENE_COUNT } from './reelPresets.js';
 import { generateCopy } from '../services/copywritingService.js';
 
 // ─── Análisis de una imagen ────────────────────────────────────────────────
@@ -224,12 +225,18 @@ export const analyzeImages = async (images, { provider = null, usage = null } = 
 
 // ─── Dirección del conjunto ────────────────────────────────────────────────
 
-const DIRECTION_SYSTEM = `Eres un director de montaje publicitario. Recibes el análisis de TRES fotografías y construyes con ellas una pieza vertical de unos 15 segundos con estructura publicitaria: apertura que sitúa, desarrollo que muestra, cierre que deja la marca.
+// El sistema se construye con la CANTIDAD de fotos, que desde v4.783 va de 3 a
+// 5. Estaba escrita a mano —«TRES fotografías», «unos 15 segundos», «Los tres,
+// sin repetir»— y con cuatro fotos el modelo devolvía órdenes de tres: el
+// `sanitizeDirection` los descartaba por inválidos y el Reel salía siempre con
+// el criterio por defecto, sin que nada avisara. Un prompt que miente sobre la
+// entrada no da un error, da una degradación silenciosa.
+const directionSystem = (count, totalSec) => `Eres un director de montaje publicitario. Recibes el análisis de ${count} fotografías y construyes con ellas una pieza vertical de unos ${Math.round(totalSec)} segundos con estructura publicitaria: apertura que sitúa, desarrollo que muestra, cierre que deja la marca.
 
 Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin bloques de código:
 
 {
-  "order": [i, j, k],
+  "order": [${Array.from({ length: count }, (_, i) => i).join(', ')}],
   "scenes": [
     { "sourceIndex": 0, "style": "<id>", "weight": 0.5..1.5, "transitionOut": "<id>", "note": "por qué, en español, máximo 12 palabras" }
   ],
@@ -238,12 +245,12 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "rationale": "dos frases en español explicando la decisión de montaje"
 }
 
-- "order" son los índices de las fotos originales en el orden final. Los tres, sin repetir.
-- "scenes" va EN EL ORDEN FINAL y "sourceIndex" apunta a la foto original.
+- "order" son los índices de las fotos originales en el orden final. Los ${count}, sin repetir y sin saltarse ninguno.
+- "scenes" va EN EL ORDEN FINAL y tiene ${count} elementos; "sourceIndex" apunta a la foto original.
 - "transitionOut" de la última escena describe cómo cierra la pieza.
 - Elegí el ritmo según el contenido: más energía pide transiciones cortas y estilos con más movimiento.`;
 
-const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, context = null }) => {
+const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, context = null, narrativeRoles = null }) => {
     const lines = analyses.map((a, i) => (
         `Foto ${i}: ${a.summary}. tipo=${a.subject}, plano=${a.shotSize}, energía=${a.energy}, ` +
         `rol sugerido=${a.narrativeRole}, personas=${a.hasPeople}, marca=${a.hasBrand}, texto=${a.hasText}, ` +
@@ -253,7 +260,7 @@ const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, c
 
     const constraints = [];
     if (motionStyle !== AUTO_MOTION_STYLE) {
-        constraints.push(`El usuario fijó el estilo de animación "${motionStyle}": usalo en las tres escenas.`);
+        constraints.push(`El usuario fijó el estilo de animación "${motionStyle}": usalo en todas las escenas.`);
     }
     if (transition !== AUTO_TRANSITION) {
         constraints.push(`El usuario fijó la transición "${transition}": usala entre todas las escenas.`);
@@ -262,13 +269,34 @@ const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, c
         constraints.push(`El usuario fijó el estilo musical "${musicStyle}": respetalo.`);
     }
 
+    // ── Estructura narrativa declarada (v4.783) ──
+    //
+    // Cuando el preset la trae, cada POSICIÓN del montaje tiene una función
+    // asignada de antemano, y lo que decide el director es QUÉ FOTO va en cada
+    // una. Así el orden deja de ser una preferencia estética y pasa a ser una
+    // asignación: la foto que mejor muestre el contexto abre, la que muestre a
+    // las personas va segunda.
+    //
+    // Es lo que impide que cinco fotos den «tres escenas más dos de relleno»:
+    // cada posición tiene algo distinto que contar y el director tiene que
+    // encontrar la foto que lo cuente.
+    const narrative = Array.isArray(narrativeRoles) && narrativeRoles.some(r => r.id !== 'libre')
+        ? [
+            '',
+            'ESTRUCTURA NARRATIVA OBLIGATORIA. Cada posición del montaje tiene una función asignada:',
+            ...narrativeRoles.map(r => `  Posición ${r.index + 1} — ${r.label}: ${r.brief}`),
+            'Tu trabajo es decidir QUÉ FOTO va en cada posición: elegí para cada una la que mejor cumpla esa función. El orden que devuelvas ES esa asignación.',
+            'Si ninguna foto encaja del todo en una posición, poné la que más se acerque y explicalo en su "note". No dejes ninguna posición vacía ni repitas una foto.'
+        ].join('\n')
+        : '';
+
     return [
         // El contexto estratégico va PRIMERO: un Reel de "Recaudación de fondos"
         // sobre "Agua y Saneamiento" se monta distinto que uno "Estándar" de
         // "Impacto General", y esa decisión es del conjunto, no de una foto.
         context ? `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.` : '',
         context ? `Área de enfoque Rotary: ${context.areaDescription}.` : '',
-        
+        narrative,
         lines.join('\n'),
         '',
         `Estilos de animación disponibles: ${Object.entries(MOTION_STYLES).map(([id, s]) => `${id} (${s.description})`).join(', ')}.`,
@@ -395,20 +423,33 @@ export const buildDirection = async (analyses, {
     transition = AUTO_TRANSITION,
     musicStyle = AUTO_MUSIC_STYLE,
     context = null,
-    provider = null
+    provider = null,
+    narrativeRoles = null,
+    totalSec = TARGET_TOTAL_SEC
 } = {}) => {
-    const prefs = { motionStyle, transition, musicStyle, context };
+    const prefs = { motionStyle, transition, musicStyle, context, narrativeRoles };
 
     // Si el usuario fijó las tres cosas, el modelo sólo decidiría el orden y los
     // pesos. No vale una llamada: el criterio propio hace lo mismo.
-    if (motionStyle !== AUTO_MOTION_STYLE && transition !== AUTO_TRANSITION && musicStyle !== AUTO_MUSIC_STYLE) {
+    //
+    // SALVO que haya estructura narrativa (v4.783): ahí el orden NO es una
+    // preferencia estética sino la asignación de cada foto a su función, y eso
+    // el criterio propio no lo sabe hacer —ordena por plano abierto y marca, que
+    // no dice nada sobre cuál foto muestra el impacto humano—. Con estructura
+    // declarada la llamada se hace igual, porque es justamente lo que se le
+    // está pidiendo al modelo.
+    const hasNarrative = Array.isArray(narrativeRoles) && narrativeRoles.some(r => r.id !== 'libre');
+    if (!hasNarrative
+        && motionStyle !== AUTO_MOTION_STYLE
+        && transition !== AUTO_TRANSITION
+        && musicStyle !== AUTO_MUSIC_STYLE) {
         return fallbackDirection(analyses, prefs);
     }
 
     try {
         const result = await generateCopy({
             ...(provider ? { provider } : {}),
-            system: DIRECTION_SYSTEM,
+            system: directionSystem(analyses.length, totalSec),
             userText: buildDirectionPrompt(analyses, prefs),
             temperature: 0.5,
             maxTokens: 900,
@@ -431,9 +472,14 @@ export const buildDirection = async (analyses, {
 };
 
 // Análisis + dirección en un solo paso. Es lo que llama el controlador.
+//
+// La cantidad de fotos la valida el controlador contra el PRESET, que es quien
+// sabe cuántas admite cada clase de pieza. Acá sólo se comprueba el rango
+// absoluto del módulo: es la última red antes de gastar créditos de visión, y
+// tiene que existir aunque quien llame se olvide de validar.
 export const directReel = async (images, prefs = {}) => {
-    if (!Array.isArray(images) || images.length !== SCENE_COUNT) {
-        throw new Error(`El Reel se arma con exactamente ${SCENE_COUNT} imágenes.`);
+    if (!Array.isArray(images) || images.length < MIN_SCENE_COUNT || images.length > MAX_SCENE_COUNT) {
+        throw new Error(`El Reel se arma con entre ${MIN_SCENE_COUNT} y ${MAX_SCENE_COUNT} imágenes.`);
     }
     // Recolector del consumo de esta fase. Se devuelve para que el controlador
     // lo registre en cuanto el proyecto tenga fila.
