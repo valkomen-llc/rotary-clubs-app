@@ -3923,6 +3923,39 @@ elegir uno ya cargado en la Biblioteca Multimedia. Al agregar una casilla nueva,
 usar `src/components/admin/ImageSourceOverlay.tsx` y un `MediaPicker` con
 `maxSelection={1}` — no volver a poner sólo el `<input type="file">`.
 
+- **La SUBIDA vive en un solo sitio** (v4.784, `src/lib/mediaUpload.ts`). Hasta
+  v4.783 existía únicamente dentro de `MediaLibrary.tsx`, con sus tres pasos
+  —`presigned-url` → `PUT` a S3 → `save`— y su manejo de HEIC escritos ahí. Por
+  eso el Creador de Reels no podía cumplir la regla de arriba sin copiarlos, y
+  dos caminos hacia S3 se separan en silencio: es el problema que `sendCampaign`
+  arrastra en el CRM. Al agregar una subida, usar `uploadMediaFiles`.
+- **Los tres pasos no son ceremonia.** El `PUT` directo a S3 es lo que evita el
+  tope de ~4,5 MB del cuerpo de una función en Vercel —una foto de móvil pesa
+  2-5 MB—, y el `save` es lo que crea la fila en `Media`: sin él el objeto queda
+  en S3 sin fila, invisible en el panel e imposible de volver a elegir.
+- **Se usa lo que devuelve `/media/save`, NO lo que se mandó.** Con un HEIC el
+  servidor lo baja, lo convierte y guarda la fila con OTRO nombre y OTRA URL
+  (v4.739-741). Quedarse con los enviados deja una tarjeta apuntando al `.heic`
+  original, que ningún navegador salvo Safari dibuja: el usuario sube su foto y
+  ve un recuadro roto.
+- **Una conversión de HEIC fallida se REPORTA, no se entrega.** El servidor lo
+  dice en `conversion.error`; callarlo daría una foto que no se ve y sin motivo.
+- **El sitio no se manda desde el navegador**: los dos endpoints lo resuelven
+  desde el token y, para un administrador de sitio, ignoran lo que llegue.
+  Mandarlo daría dos fuentes para el mismo dato y sólo una manda.
+- **Un fallo no cancela la tanda**, y se informa con el NOMBRE del archivo:
+  «falló una de tres» sin decir cuál obliga a adivinar qué reintentar.
+- **El `<input type="file">` se limpia tras cada elección** (`e.target.value =
+  ''`). Sin eso, volver a elegir el MISMO archivo no dispara `change` —el valor
+  no cambió— y el botón parece roto justo cuando alguien reintenta tras un fallo.
+- **`MediaPicker` todavía NO tiene subida propia**, y lo usan nueve pantallas.
+  Agregársela es lo que daría la segunda vía a todas de una vez; hoy cada una
+  que la necesite pone su botón junto al de elegir, como el Creador de Reels.
+- Pruebas: `npm run test:media:upload` (21 casos, navegador con la API
+  interceptada). Comprueba el ORDEN de los tres pasos y que la pantalla no
+  repita el `fetch` a `presigned-url` — buscando la LLAMADA, no la mención, para
+  que un comentario pueda nombrar el endpoint sin hacer fallar la prueba.
+
 - **Por qué importa**: sin la segunda vía, reutilizar un logo que ya estaba en la
   Biblioteca obligaba a descargarlo del sitio y resubirlo, y quedaba duplicado
   con otro nombre y otra dirección. Es justo lo que pasa con los logos, que se

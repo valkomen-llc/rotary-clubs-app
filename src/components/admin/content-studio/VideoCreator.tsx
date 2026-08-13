@@ -24,7 +24,7 @@ import {
     Clapperboard, X, CheckCircle2, Volume2, AlertTriangle, RefreshCw,
     Download, Image as ImageIcon, Wand2, ShieldCheck, Film, Clock, VolumeX,
     Info, ChevronRight, Save, Copy, Check, Pencil, FileDown, History, FileText,
-    Mic, Target
+    Mic, Target, Upload
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
@@ -41,6 +41,7 @@ import {
     DEFAULT_PRESET, narrativeRolesFor, targetTotalSecFor
 } from '../../../lib/reelPresets';
 import EmergencyForm, { type EmergencyContextInput } from './EmergencyForm';
+import { uploadMediaFiles, IMAGE_ACCEPT } from '../../../lib/mediaUpload';
 
 interface MediaItem {
     id: string;
@@ -83,6 +84,12 @@ const VideoCreator: React.FC = () => {
 
     const [preflight, setPreflight] = useState<{ warnings: string[]; creditEstimate: number } | null>(null);
     const [checking, setChecking] = useState(false);
+
+    // Subida desde el dispositivo (v4.784). El `<input type="file">` va oculto y
+    // lo dispara el botón: el control nativo no se puede estilar y se vería como
+    // un cuerpo extraño al lado de «Elegir fotos».
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     const [config, setConfig] = useState({
         format: '9:16',
@@ -304,6 +311,79 @@ const VideoCreator: React.FC = () => {
     }, [reel?.id, reel?.status]);
 
     // ── Acciones ──
+
+    /**
+     * Sube las fotos elegidas del dispositivo y las AÑADE a la selección.
+     *
+     * Quedan guardadas en la Biblioteca Multimedia —van por el mismo camino que
+     * «Subir Nuevo» de esa pantalla—, así que se pueden volver a elegir después
+     * para otro Reel. Ése es el punto: subir acá no es un atajo que deje el
+     * archivo suelto, es la misma subida hecha desde donde hace falta.
+     */
+    const handleFilesChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const chosen = Array.from(e.target.files || []);
+        // El input se limpia SIEMPRE y en seguida: sin esto, volver a elegir el
+        // mismo archivo no dispara `change` —el valor no cambió— y el botón
+        // parece roto justo cuando alguien reintenta tras un fallo.
+        e.target.value = '';
+        if (!chosen.length) return;
+
+        // Nunca se suben más de las que caben. Subir siete fotos para un Reel de
+        // tres deja cuatro archivos en la Biblioteca que nadie pidió, y cuesta
+        // tiempo de subida por nada.
+        const room = sceneCount - selectedMedia.length;
+        if (room <= 0) {
+            toast.error(`Ya elegiste las ${sceneCount} fotos. Quitá alguna para subir otra.`);
+            return;
+        }
+        const files = chosen.slice(0, room);
+        if (chosen.length > room) {
+            toast.info(`Sólo caben ${room} foto(s) más: se suben las primeras ${room}.`);
+        }
+
+        setIsUploading(true);
+        const toastId = toast.loading(`Subiendo 1 de ${files.length}…`);
+        try {
+            const { uploaded, failed } = await uploadMediaFiles(files, {
+                // El sitio NO se manda: `/media/presigned-url` y `/media/save`
+                // lo resuelven desde el token, y para un administrador de sitio
+                // ignoran lo que llegue del navegador. Mandarlo daría dos
+                // fuentes para el mismo dato y sólo una manda.
+                onProgress: (done, total, name) => {
+                    if (done < total) {
+                        toast.loading(`Subiendo ${done + 1} de ${total}${name ? ` — ${name}` : ''}…`, { id: toastId });
+                    }
+                }
+            });
+
+            if (uploaded.length) {
+                // Se AÑADEN al final, no reemplazan: quien ya eligió dos de la
+                // Biblioteca y sube la tercera espera terminar con tres.
+                setSelectedMedia(prev => [...prev, ...uploaded.map(m => ({
+                    id: m.id, filename: m.filename, url: m.url, type: m.type
+                }))].slice(0, sceneCount));
+            }
+
+            if (failed.length) {
+                // Con su NOMBRE y su motivo: «falló una de tres» sin decir cuál
+                // obliga a adivinar qué reintentar.
+                toast.error(
+                    `No se pudo subir ${failed[0].name}: ${failed[0].reason}` +
+                    (failed.length > 1 ? ` (y ${failed.length - 1} más).` : ''),
+                    { id: toastId, duration: 8000 }
+                );
+            } else {
+                toast.success(
+                    `${uploaded.length} foto(s) subidas y guardadas en la Biblioteca.`,
+                    { id: toastId }
+                );
+            }
+        } catch (err) {
+            toast.error(`No se pudieron subir las fotos: ${err instanceof Error ? err.message : 'error desconocido'}`, { id: toastId });
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     const handleGenerate = async () => {
         if (selectedMedia.length !== sceneCount) {
@@ -602,13 +682,48 @@ const VideoCreator: React.FC = () => {
                                 Elegilas de la Biblioteca y ordenalas arrastrando. La IA hace el resto.
                             </p>
                         </div>
-                        <button
-                            onClick={() => setShowPicker(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50 flex-shrink-0"
-                        >
-                            <Plus className="w-4 h-4" />
-                            {selectedMedia.length ? 'Cambiar fotos' : 'Elegir fotos'}
-                        </button>
+                        {/* ── Las DOS vías (v4.784) ──
+                            Regla de v4.700: toda casilla de imagen ofrece subir
+                            un archivo nuevo Y elegir uno ya cargado. Sin la
+                            primera, usar una foto que no estuviera en la
+                            Biblioteca obligaba a salir del módulo, subirla en
+                            Multimedia y volver — el retroceso exacto que la
+                            regla existe para evitar.
+
+                            Van juntas y no en un menú: son dos gestos igual de
+                            frecuentes, y esconder uno detrás de un desplegable
+                            lo vuelve invisible. */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={IMAGE_ACCEPT}
+                                multiple
+                                className="hidden"
+                                onChange={handleFilesChosen}
+                            />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading || selectedMedia.length >= sceneCount}
+                                title={selectedMedia.length >= sceneCount
+                                    ? `Ya elegiste las ${sceneCount} fotos`
+                                    : 'Subir fotos desde este dispositivo'}
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-black text-xs hover:bg-emerald-100 transition-all border border-emerald-100/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {isUploading
+                                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                                    : <Upload className="w-4 h-4" />}
+                                {isUploading ? 'Subiendo…' : 'Subir fotos'}
+                            </button>
+                            <button
+                                onClick={() => setShowPicker(true)}
+                                disabled={isUploading}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50 disabled:opacity-40"
+                            >
+                                <Plus className="w-4 h-4" />
+                                {selectedMedia.length ? 'Cambiar fotos' : 'Elegir fotos'}
+                            </button>
+                        </div>
                     </div>
 
                     {selectedMedia.length === 0 ? (
