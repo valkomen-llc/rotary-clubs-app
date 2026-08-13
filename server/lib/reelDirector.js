@@ -52,6 +52,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "hasText": boolean,
   "hasFoodOrLiquid": boolean,
   "hasNature": boolean,
+  "inventory": ["los elementos fijos principales de la escena, EN INGLÉS, máximo 6"],
   "shotSize": "wide" | "medium" | "close",
   "energy": 1..5,
   "narrativeRole": "opening" | "development" | "closing",
@@ -69,6 +70,7 @@ Reglas:
 - "hasBrand" es true si hay logotipos, marcas, uniformes institucionales o packaging identificable.
 - "brandRegions" es DÓNDE está cada logotipo, emblema, escudo o texto institucional que se vea, en coordenadas NORMALIZADAS de 0 a 1 sobre la fotografía completa: "x" e "y" son la esquina superior izquierda, "w" y "h" el ancho y el alto. Incluye los estampados en camisetas y chaquetas (también los de la espalda), los de gorras, las credenciales, los pendones y el material impreso. Sé generoso con el recuadro: es mejor que sobre un poco de tela alrededor a que se corte una letra. Máximo 6, las más grandes y legibles. Lista vacía si no hay ninguno.
 - "hasText" es true si hay texto legible de cualquier tipo.
+- "inventory" es el CENSO DE COSAS de la escena: los elementos fijos principales que un video de este lugar tendría que conservar — edificios, árboles, vehículos, señales, mobiliario, escombros, estructuras. En inglés, cada uno con su posición aproximada: "a collapsed two-storey building on the right", "a large tree in the centre", "an orange truck behind". Máximo 6, los más notorios. NO incluyas a las personas (van en "subjects"). Lista vacía sólo si la escena es abstracta.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
 - "weight" es cuánto tiempo merece la escena: 1.0 es lo normal, 1.4 si tiene mucho que mostrar, 0.7 si es simple.
 - "motionHint" es la instrucción específica de ESTA foto y es lo más importante que devuelves: describe en inglés qué continúan haciendo las personas que aparecen —la acción concreta que ya están realizando, hacia dónde miran, qué hacen sus manos, con quién interactúan—. Escríbelo como la continuación natural del instante fotografiado: "the two women keep sorting the boxes while the man beside them looks over and says something". La cámara está fija: describe lo que hace la gente, nunca lo que hace el objetivo. Y describe únicamente lo que YA está en la fotografía — si algo no se ve en ella, no existe en el plano. Si no hay personas, di qué se mueve del entorno: tela, hojas, banderas, agua.
@@ -153,6 +155,13 @@ const sanitizeAnalysis = (raw, index) => ({
     hasText: bool(raw?.hasText),
     hasFoodOrLiquid: bool(raw?.hasFoodOrLiquid),
     hasNature: bool(raw?.hasNature),
+    // El censo de COSAS (v4.785). Hasta ahora el prompt sólo fijaba marca,
+    // texto, personas y naturaleza: en un plano de escombros —sin nada de eso—
+    // el modelo podía quitar un árbol o reordenar un edificio sin contradecir
+    // ninguna instrucción. El inventario nombra lo que hay para poder fijarlo.
+    inventory: Array.isArray(raw?.inventory)
+        ? raw.inventory.filter(s => typeof s === 'string' && s.trim()).slice(0, 6).map(s => s.trim().slice(0, 100))
+        : [],
     shotSize: ['wide', 'medium', 'close'].includes(raw?.shotSize) ? raw.shotSize : 'medium',
     energy: Math.round(clampNum(raw?.energy, 1, 5, 3)),
     narrativeRole: ['opening', 'development', 'closing'].includes(raw?.narrativeRole)
@@ -175,7 +184,7 @@ const neutralAnalysis = (index, reason = null) => ({
     hasPeople: false, hasBrand: false, hasText: false,
     personCount: 0, peopleDensity: 'none', occludedPeople: false, subjects: [],
     brandRegions: [],
-    hasFoodOrLiquid: false, hasNature: false,
+    hasFoodOrLiquid: false, hasNature: false, inventory: [],
     shotSize: 'medium', energy: 3, narrativeRole: 'development', weight: 1,
     motionHint: null, suggestedStyle: null,
     riskNotes: reason ? [`No se pudo analizar esta imagen: ${reason}`] : [],

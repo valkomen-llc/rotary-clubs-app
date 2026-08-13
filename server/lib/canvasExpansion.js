@@ -355,11 +355,19 @@ export const buildExpansionPrompt = ({ analysis, plan, targetLabel }) => {
     const type = PHOTO_TYPES[analysis.photoType] || PHOTO_TYPES.generico;
     const parts = [];
 
+    // «Extend the canvas», no «Regenerate this photograph» (v4.785). La
+    // palabra inicial es la instrucción que más pesa, y «regenerate» invita a
+    // REHACER la foto — que es lo contrario del encargo. Con bandas grandes
+    // (~25 % de lienzo nuevo) el modelo resolvía «regenerar» duplicando la
+    // fotografía entera en el área añadida: el mosaico de v4.317-v4.320,
+    // reaparecido por la otra puerta y reportado con captura (la foto del
+    // comedor comunitario repetida dos veces en vertical).
     parts.push(
-        `Regenerate this photograph in higher quality and convert it to ${targetLabel} aspect ratio, ` +
+        `Extend the canvas of this photograph to ${targetLabel} aspect ratio, ` +
         (plan.grows === 'vertical'
-            ? 'extending the scene upward and downward to fill the taller frame.'
-            : 'extending the scene to the left and right to fill the wider frame.')
+            ? 'adding new scenery above and below the original image only.'
+            : 'adding new scenery to the left and right of the original image only.') +
+        ' The photograph itself appears exactly once, untouched, in the middle of the new canvas.'
     );
 
     // Lo que se conserva. Va segundo porque en un prompt corto lo primero y lo
@@ -389,10 +397,41 @@ export const buildExpansionPrompt = ({ analysis, plan, targetLabel }) => {
         'Light, shadows, reflections, grain, colour temperature and focus fall-off run continuously across the whole image, with no visible seam or border.'
     );
 
-    parts.push('Output a single coherent natural photograph.');
+    // El área nueva es PAISAJE, no protagonistas. Las reglas de expansión del
+    // pedido (v4.785): se extiende cielo, suelo, paredes, vegetación y
+    // texturas; no se pueblan las bandas con gente, vehículos ni edificios
+    // protagonistas que la foto no muestra. Se dice en positivo — qué ES el
+    // área nueva — y la lista de exclusiones va al campo negativo.
+    parts.push(
+        'The added area contains only the continuation of the ground, sky, walls, vegetation and ambient surroundings: it stays quieter and less detailed than the photograph, so the original remains the subject.'
+    );
+    parts.push('Output a single coherent natural photograph, one continuous scene.');
 
     return parts.join(' ');
 };
+
+// ─── El prompt negativo de la expansión (v4.785) ───────────────────────────
+//
+// `createKieImageTask` acepta `negativePrompt` desde v4.734 —lo estrenó el
+// Motor de Composición de Plantillas IA— y la expansión NUNCA lo usó: cero
+// defensa contra el tiling y contra poblar las bandas. Es el mismo criterio
+// del sitio: lo prohibido va en su campo, no dentro de la descripción, porque
+// inline el modelo se obsesiona con ello y además consume el presupuesto del
+// positivo.
+//
+// La lista ataca los DOS defectos medidos:
+//   · el mosaico — la foto repetida dentro de su propio lienzo (la captura
+//     del comedor comunitario, y v4.317-v4.320 antes);
+//   · las bandas pobladas — gente, caras o vehículos inventados en el área
+//     nueva, que después el motor de video anima como si fueran reales.
+export const EXPANSION_NEGATIVE_TERMS = [
+    'duplicated photo', 'repeated image', 'image tiling', 'mirrored copy',
+    'picture-in-picture', 'photo collage', 'split screen', 'stacked copies',
+    'second copy of the scene', 'visible seam', 'frame within frame',
+    'new people', 'new person', 'human silhouette', 'crowd',
+    'new vehicles', 'new buildings', 'invented signage', 'invented text', 'new logos'
+];
+export const EXPANSION_NEGATIVE_PROMPT = EXPANSION_NEGATIVE_TERMS.join(', ');
 
 // Etiqueta de proporción tal como la entienden las pasarelas.
 export const aspectLabelFor = (width, height) => {
@@ -419,7 +458,17 @@ export const startExpansion = async ({ imageUrl, prompt, targetWidth, targetHeig
     }
     const spec = EXPANSION_PROVIDERS[chosen];
 
-    const taskId = await createKieImageTask({
+    // El negativo de la expansión (v4.785): anti-tiling y bandas sin
+    // protagonistas. Va en su campo, no pegado al positivo — regla del sitio.
+    //
+    // El REINTENTO SIN el campo vive acá y no en `createKieImageTask` porque el
+    // modelo de expansión es configurable por entorno (`EXPANSION_MODEL_*`):
+    // con el default (`nano-banana-edit`) el campo está probado en producción
+    // desde v4.734 por el Motor de Composición, pero un modelo alternativo
+    // puede no declararlo, y KIE rechaza el input entero con «This field is
+    // required» sin decir cuál (v4.646). Perder la expansión por el negativo
+    // sería perder lo principal por lo accesorio.
+    const baseTask = {
         model: spec.model,
         prompt,
         imageUrl,
@@ -428,7 +477,14 @@ export const startExpansion = async ({ imageUrl, prompt, targetWidth, targetHeig
         // entrar con artefactos de JPEG es entrar con ruido que el motor
         // amplifica.
         outputFormat: 'png'
-    });
+    };
+    let taskId;
+    try {
+        taskId = await createKieImageTask({ ...baseTask, negativePrompt: EXPANSION_NEGATIVE_PROMPT });
+    } catch (e) {
+        console.warn(`[EXPANSION] el modelo ${spec.model} rechazó la tarea con negative_prompt (${e.message}); se reintenta sin él.`);
+        taskId = await createKieImageTask(baseTask);
+    }
 
     return { provider: chosen, model: spec.model, taskId };
 };
@@ -492,6 +548,61 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
         report.ok = cmp.score != null;
 
         if (cmp.score == null) report.warnings.push('No se pudo comparar la región original con el resultado.');
+
+        // ── Detección de MOSAICO en el área nueva (v4.785) ──
+        //
+        // La comprobación de arriba mira SÓLO la región central y responde «¿se
+        // conservó la foto?». Con el defecto reportado —la fotografía duplicada
+        // en la banda inferior— esa pregunta daba 91 % y el mosaico pasaba
+        // invisible: la medición era correcta, la pregunta era incompleta.
+        //
+        // Acá se mira lo contrario: cada banda AÑADIDA se compara contra la
+        // fotografía original. Una banda que se parece mucho al original no es
+        // paisaje que continúa — es la foto repetida, y eso es exactamente lo
+        // que hay que rehacer. El umbral es alto (0,75 de estructura) porque
+        // una banda legítima COMPARTE paleta y grano con la foto: parecerse un
+        // poco es continuidad; parecerse tanto es una copia.
+        try {
+            const bands = [];
+            if (plan.grows === 'vertical') {
+                if (region.top > 24) {
+                    bands.push({ name: 'superior', left: 0, top: 0, width: exp.width, height: region.top });
+                }
+                const bottomTop = region.top + region.height;
+                if (exp.height - bottomTop > 24) {
+                    bands.push({ name: 'inferior', left: 0, top: bottomTop, width: exp.width, height: exp.height - bottomTop });
+                }
+            } else {
+                if (region.left > 24) {
+                    bands.push({ name: 'izquierda', left: 0, top: 0, width: region.left, height: exp.height });
+                }
+                const rightLeft = region.left + region.width;
+                if (exp.width - rightLeft > 24) {
+                    bands.push({ name: 'derecha', left: rightLeft, top: 0, width: exp.width - rightLeft, height: exp.height });
+                }
+            }
+
+            report.tiling = { checked: bands.length > 0, bands: [], detected: false };
+            for (const band of bands) {
+                const cut = await sharp(expandedBuffer, { failOn: 'none' })
+                    .extract({ left: band.left, top: band.top, width: band.width, height: band.height })
+                    .toBuffer();
+                const sim = await structuralCompare(originalBuffer, cut);
+                const duplicated = sim.structure != null && sim.structure >= TILING_STRUCTURE_THRESHOLD;
+                report.tiling.bands.push({
+                    name: band.name,
+                    structure: sim.structure,
+                    duplicated
+                });
+                if (duplicated) report.tiling.detected = true;
+            }
+        } catch (e) {
+            // Sin la comprobación de mosaico la verificación principal sigue
+            // valiendo; se anota para que «no se comprobó» no se lea como «no
+            // hay mosaico».
+            report.tiling = { checked: false, bands: [], detected: false };
+            report.warnings.push(`No se pudo comprobar el área añadida: ${e.message}`);
+        }
     } catch (e) {
         report.warnings.push(`No se pudo verificar la expansión: ${e.message}`);
     }
@@ -499,8 +610,29 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
     return report;
 };
 
+// Por encima de esta similitud estructural, una banda añadida no es paisaje
+// que continúa: es la fotografía repetida. Medido con la huella perceptual
+// 16×16 de `reelQuality.js`: dos fotos distintas de la misma escena rondan
+// 0,55-0,65; una copia reencuadrada de la misma imagen supera 0,8. El 0,75
+// parte esa brecha dejando margen hacia el lado seguro — un falso «mosaico»
+// cuesta una regeneración; un mosaico sin detectar cuesta la pieza publicada.
+export const TILING_STRUCTURE_THRESHOLD = Number(process.env.EXPANSION_TILING_THRESHOLD) || 0.75;
+
 // Veredicto final: junta la medición con el umbral configurado.
 export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) => {
+    // El mosaico se juzga PRIMERO y reprueba por sí solo (v4.785). Es el orden
+    // que importa: una expansión con la foto duplicada en la banda añadida
+    // conserva la región central intacta —91 % medido en el caso reportado—,
+    // así que el umbral de preservación la daba por BUENA. Preguntar primero
+    // por la conservación taparía justamente el defecto que esta comprobación
+    // existe para atrapar.
+    if (verification.tiling?.detected) {
+        const dup = verification.tiling.bands.filter(b => b.duplicated).map(b => b.name).join(' y ');
+        return {
+            verdict: 'failed',
+            reason: `El área añadida (banda ${dup}) repite la fotografía en vez de continuar el paisaje: la pieza se vería con la imagen duplicada. Se rehace la adaptación.`
+        };
+    }
     if (!verification.ok || verification.preservation == null) {
         return {
             verdict: 'unverified',

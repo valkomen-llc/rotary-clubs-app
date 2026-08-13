@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.783.0';
+export const REEL_MODULE_VERSION = '4.785.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -2431,10 +2431,81 @@ const advance = async (project) => {
         // escena igual que un logotipo redibujado. No es una cuestión de nota
         // —el clip puede estar impecable— sino de que una pieza institucional
         // no puede mostrar a alguien que no estuvo ahí.
-        const descalificados = infidel.filter(sc =>
-            (sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed')
-            && sc.attempts < MAX_AUTO_RETRIES);
-        const conservados = infidel.filter(sc => !descalificados.includes(sc));
+        const esDescalificante = (sc) =>
+            sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed';
+
+        const descalificados = infidel.filter(sc => esDescalificante(sc) && sc.attempts < MAX_AUTO_RETRIES);
+
+        // ── Agotados los reintentos, el clip contaminado NO entra al Reel (v4.785) ──
+        //
+        // Hasta v4.784, una escena descalificante que agotaba sus dos intentos
+        // caía en `conservados`: se marcaba `needs_review` y EL CLIP SE USABA.
+        // Es exactamente lo que muestran las capturas del reporte — la ficha
+        // diciendo «Personas en la fotografía · 0 / Personas en el clip · 3 /
+        // REQUIERE REGENERACIÓN» debajo de un Reel que ya llevaba ese clip
+        // adentro. El control medía bien; la puerta no cerraba.
+        //
+        // El respaldo es `resolveSceneWithStillMotion`: la fotografía adaptada
+        // se anima moviendo el encuadre, sin motor generativo, así que no puede
+        // inventar a nadie. Su propio comentario documenta este caso desde
+        // v4.676 («la medición dijo que el motor NO conservó a las personas...
+        // se cae a esta vía») — pero nadie la llamaba por esta vía: sólo por
+        // elección explícita del estilo Fotográfico. Este bloque cierra ese
+        // circuito.
+        //
+        // NO contradice la regla de v4.676. Aquella prohíbe sustituir por 2.5D
+        // una escena con NOTA BAJA —criterio estético, decisión del usuario— y
+        // sigue intacta abajo. Esto aplica sólo a los tres defectos que la
+        // propia regla declara sin criterio estético posible: una persona
+        // inventada, un logotipo redibujado, un texto ilegible. En una pieza
+        // institucional, y más en una campaña de emergencia, mostrar a alguien
+        // que no estuvo ahí no es una nota: es una falsedad.
+        const agotados = infidel.filter(sc => esDescalificante(sc) && sc.attempts >= MAX_AUTO_RETRIES);
+        const conservados = infidel.filter(sc => !esDescalificante(sc));
+
+        if (agotados.length) {
+            const results = await Promise.allSettled(agotados.map(sc =>
+                resolveSceneWithStillMotion(sc, {
+                    reason: sc.fidelity?.people?.verdict === 'failed'
+                        ? 'el motor insistió en mostrar personas que no están en la fotografía'
+                        : 'el motor insistió en alterar la marca o el texto'
+                })));
+
+            const rescatadas = results.filter(r => r.status === 'fulfilled').length;
+            if (rescatadas) {
+                await appendNote(project.id,
+                    `${rescatadas} escena(s) agotaron sus reintentos con un defecto descalificante ` +
+                    `(personas inventadas, marca o texto alterados): se resolvieron sin motor generativo ` +
+                    `—la fotografía se mueve, no se regenera— para que el defecto no entre al Reel. ` +
+                    `Se pueden reintentar con IA una a una desde la línea de tiempo.`);
+            }
+            // Si el respaldo falla (la imagen no se pudo descargar, ffmpeg no
+            // está), la escena queda en needs_review CON su clip — degradar es
+            // mejor que dejar el Reel sin montar, y la ficha ya dice qué tiene.
+            for (const [i, r] of results.entries()) {
+                if (r.status === 'rejected') {
+                    console.error(`[REEL] respaldo 2.5D de la escena ${agotados[i].position + 1} falló:`, r.reason?.message);
+                    await db.query(
+                        `UPDATE "ReelScene" SET status = 'needs_review', "updatedAt" = NOW() WHERE id = $1`,
+                        [agotados[i].id]
+                    );
+                    await appendNote(project.id,
+                        `La escena ${agotados[i].position + 1} tiene un defecto descalificante y el respaldo sin IA falló (${r.reason?.message}). Revisarla antes de publicar.`);
+                }
+            }
+
+            // La pasada TERMINA acá, como en la rama de regeneración. El
+            // motivo no es ceremonia: `finalScenes` se leyó ANTES del rescate,
+            // así que sus filas todavía apuntan al clip contaminado — seguir
+            // hacia el montaje en esta misma pasada lo pegaría igual, que es
+            // exactamente lo que este bloque existe para impedir. El siguiente
+            // sondeo (3 s) relee las escenas ya rescatadas y monta con ellas.
+            const { rows } = await db.query(
+                `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                [project.id]
+            );
+            return rows[0];
+        }
 
         if (descalificados.length) {
             await Promise.allSettled(descalificados.map(sc =>
