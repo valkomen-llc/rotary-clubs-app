@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.785
+## Creador de Reels IA — v4.787
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -849,7 +849,7 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 | `REEL_MUSIC_MODEL` | Modelo de Suno vía KIE, si se activa a propósito |
 | `REEL_MONTHLY_CREDIT_LIMIT` | Freno de gasto mensual |
 | `REEL_CREDITS_EXPANSION` | Créditos estimados por adaptación de lienzo (4 por defecto) |
-| `REEL_PEOPLE_NEGATIVE_PROMPT` | `off` apaga el prompt negativo de personas. El censo y la oclusión siguen |
+| `REEL_PEOPLE_NEGATIVE_PROMPT` | `off` apaga el bloque de PERSONAS del prompt negativo. El censo, la oclusión y el bloque anti-paneo siguen |
 | `REEL_PROMPT_MAX_CHARS` | Tope de caracteres del prompt de escena (2500, el que declara Kling) |
 | `REEL_RATE_KIE_CREDIT_USD` y compañía | Tarifas del panel de auditoría. Sin ellas no hay costo en dinero, a propósito |
 | `CRON_SECRET` | Protege `/api/cron/reels-tick`, igual que el resto de los crons |
@@ -1093,6 +1093,86 @@ imágenes usa sharp).
   palancas reales son los dos prompts y la duración; cualquier plan que dependa
   de «bajar la creatividad» por parámetro no es implementable con este
   proveedor.
+
+### Un paneo no es una escena viva (v4.787)
+
+Reporte con tres clips adjuntos: «no genera videos, solo les pone movimiento o
+desplazamiento a las imágenes». Los tres eran clips NUESTROS de 2.5D —el
+`-still-` de la clave de S3, `Lavc61 libx264`, 5,00 s exactos— y la ficha los
+presentaba con «Fidelidad: 10/10». La cadena completa: las escenas SÍ se
+despacharon a Kling, cada una se descalificó dos veces por recuento de personas,
+y el rescate de v4.785 las sustituyó por la fotografía en movimiento. Tres
+defectos encadenados y ninguno se veía solo.
+
+Pruebas: `npm run test:reels:life` (21 casos; la parte de imágenes usa sharp y
+se salta si no está).
+
+- **Un ±1 de recuento en UN fotograma es RUIDO, no evidencia.** Era la causa de
+  fondo. `buildPeopleReport` tomaba el peor fotograma, y con tres fotogramas y
+  un grupo de cuatro personas que alguno desvíe en uno es lo normal —una persona
+  medio tapada se cuenta o no según el fotograma; el propio archivo ya lo tenía
+  escrito y aun así decidía con el máximo—. En la práctica **casi toda escena
+  con gente agotaba sus dos intentos** y terminaba sustituida: la puerta estaba
+  tan cerrada que no pasaba nada vivo. Ahora el recuento exige CORROBORACIÓN:
+  |delta| ≥ 2 en un fotograma, o el mismo signo en dos. **De CERO a uno
+  descalifica en el acto** —nadie confunde una escena vacía con una habitada, y
+  es la exigencia expresa del cliente—, y `newSubjects`, la oclusión rota y los
+  rostros inconsistentes siguen descalificando solos: no se aflojó ninguna
+  señal explícita, sólo la aritmética dudosa.
+- **El indicador sigue al VEREDICTO y el desvío se DICE igual** (`countNoise`).
+  Pintar en rojo «Personas en el clip» bajo una cabecera verde es el defecto que
+  este mismo archivo se había propuesto evitar una vez; esconder que hubo desvío
+  sería el opuesto.
+- **La cámara se distingue de la escena SIN modelo de visión** (v4.787,
+  `compareAfterCameraShift`). `measureSceneLife` decía cuánto cambió el clip y un
+  paneo cambia mucho; distinguir paneo de vida se delegaba en `internalMotion`,
+  que **sólo existe cuando el proveedor de visión contesta**. Ahora se busca el
+  desplazamiento entero que minimiza la diferencia entre el primer y el último
+  fotograma: si compensarlo hace desaparecer el cambio, dentro del cuadro no
+  pasó nada. Medido sobre los tres clips del reporte: 0,900, 0,919 y 0,965 de
+  cambio explicado; una escena con vida real deja residuo y no llega a
+  `CAMERA_EXPLAINED_MIN` (0,8). `cameraOnly` fuerza `lifeScore: 0` con
+  `lifeSource: 'frames'`, así que la escena entra al rescate de congeladas y se
+  regenera.
+- **Se compara con un desenfoque suave, y no es cosmético.** Un paneo real no se
+  desplaza un número entero de píxeles de la imagen reducida, y sobre detalle
+  fino ese resto fraccionario deja residuo aunque el encuadre sea lo único que
+  se movió: se estaría midiendo el aliasing del reescalado. Sin el `blur(1)`,
+  un paneo sintético de ruido puro daba 0,63 y pasaba por vida.
+- **Dos fotogramas casi idénticos NO se declaran «cámara».** Sin desplazamiento
+  no hay desplazamiento que explicar, y de la escena congelada ya se ocupa
+  `score`. Afirmar que se movió la cámara sería inventar un movimiento.
+- **Un paneo CON algo moviéndose dentro cuenta como vida.** Lo que se castiga es
+  la ausencia de escena, no la presencia de cámara.
+- **El anti-paneo va en `negative_prompt` y va SIEMPRE**
+  (`MOTION_NEGATIVE_TERMS`). El positivo lleva desde v4.674 diciendo que la
+  cámara está fija, y aun así el motor entrega a veces la salida más barata que
+  satisface «hacé un video de esta foto». No se acota a las escenas con
+  personas —una foto de escombros vacía también tiene que moverse en vez de
+  deslizarse bajo la cámara: es la lección del censo universal de v4.785—, y
+  `REEL_PEOPLE_NEGATIVE_PROMPT=off` apaga sólo el bloque de personas.
+  `buildSceneNegativePrompt` ya nunca devuelve `null`.
+- **La escena resuelta sin motor DECLARA vida cero** (`lifeSource:
+  'still-motion'`). Su fidelidad es 10 porque los píxeles son los del original y
+  eso es cierto; su vida es 0 por la misma razón. Son preguntas opuestas
+  (v4.675) y declarar sólo una es lo que hacía que «Fidelidad: 10/10» se leyera
+  como una escena lograda.
+- **`SceneLifeCheck` es un componente COMPARTIDO**, como `ScenePeopleCheck`. El
+  Creador ya mostraba el nivel de vida y la Biblioteca no mostraba nada: la
+  ficha de la Biblioteca es la que el cliente fotografió. Distingue tres casos y
+  cada uno dice algo distinto —sustituida (ámbar, con motivo y botón de
+  regenerar), fotográfica por elección (descriptivo, no es un defecto) y animada
+  (nivel de vida, y si el cambio es cámara se dice)—.
+- **Un Reel con escenas sustituidas NO queda «listo»** (`foldSubstitutedScenes`,
+  en los DOS caminos de montaje). `validateReelFile` mira el CONTENEDOR
+  —resolución, duración, audio, tasa de bits— y por eso daba `ready` a una pieza
+  impecable cuyas tres escenas eran la fotografía paseando bajo la cámara. Baja
+  a `needs_review` y nombra las escenas. El archivo estaba bien; el contenido
+  no, y eso el validador del contenedor no lo puede ver.
+- **Al añadir un defecto al control, comprobar que alguna pregunta lo cubra** —y
+  al AJUSTAR un umbral, comprobar cuántas escenas legítimas descarta. La regla
+  de v4.705 tenía media lección: un control demasiado estricto no falla
+  ruidosamente, entrega otra cosa y la presenta como éxito.
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su

@@ -30,6 +30,7 @@ import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
 import ScenePeopleCheck from './ScenePeopleCheck';
 import SceneBrandCheck from './SceneBrandCheck';
+import SceneLifeCheck from './SceneLifeCheck';
 import { toast } from 'sonner';
 import type { Outro } from '../../../lib/outroSpec';
 import {
@@ -2198,21 +2199,13 @@ const SceneRow: React.FC<{
                                 perfectamente y estar congelada — es el defecto
                                 que motivó la medida, así que se muestra aparte
                                 y no mezclado con la nota de fidelidad. */}
-                            {scene.fidelity.lifeScore != null && (
-                                <p className={`text-[10px] font-bold mt-0.5 pl-4 ${
-                                    scene.fidelity.lifeScore >= 60 ? 'text-emerald-600'
-                                        : scene.fidelity.lifeScore >= 25 ? 'text-amber-600' : 'text-red-600'
-                                }`}>
-                                    Nivel de vida: {scene.fidelity.lifeScore} %
-                                    {scene.fidelity.lifeScore < 25 && ' — la escena quedó prácticamente estática'}
-                                </p>
-                            )}
-                            {scene.fidelity.state === 'ok' && scene.fidelity.lifeScore == null && (
-                                <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
-                                    Nivel de vida sin medir: hace falta el modelo de visión para distinguir
-                                    el movimiento de las personas del movimiento de encuadre.
-                                </p>
-                            )}
+                            <div className="mt-0.5 pl-4">
+                                <SceneLifeCheck
+                                    fidelity={scene.fidelity}
+                                    engine={scene.engine}
+                                    onRegenerate={busy ? undefined : () => onRegenerate(scene)}
+                                />
+                            </div>
                             {scene.fidelity.method === 'sólo estructural' && (
                                 <p className="text-[9px] font-bold text-gray-400 mt-0.5 pl-4">
                                     Comparación estructural únicamente: no se pudo consultar el modelo de visión.

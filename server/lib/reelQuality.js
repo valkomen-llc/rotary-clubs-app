@@ -386,13 +386,14 @@ export const structuralCompare = async (originalBuffer, frameBuffer) => {
  *
  * Lo que mide y lo que NO
  * -----------------------
- * Es una medida determinista de cambio, y por sí sola **no distingue** un
- * desplazamiento de cámara de un movimiento interno: las dos cosas cambian los
- * píxeles. Sirve para lo que motivó su existencia —detectar la escena
- * PRÁCTICAMENTE CONGELADA, donde no pasa nada de nada— y esa es la afirmación
- * que se hace en la interfaz. Distinguir paneo de vida es un juicio semántico y
- * lo emite el modelo de visión (`internalMotion`), que sí puede mirar QUÉ se
- * movió.
+ * Devuelve DOS cosas distintas y no hay que confundirlas: `score` es cuánto
+ * cambió el clip —sirve para detectar la escena PRÁCTICAMENTE CONGELADA— y
+ * `cameraOnly` dice si ese cambio se explica moviendo el encuadre. Desde v4.787
+ * el paneo se reconoce aquí, sin modelo de visión: hasta entonces esta medida
+ * no distinguía «se movió la gente» de «se movió la cámara» y delegaba en
+ * `internalMotion`, que sólo existe cuando el proveedor de visión contesta —así
+ * que un desplazamiento sobre una foto quieta pasaba por vida. El modelo sigue
+ * emitiendo el juicio fino; lo que ya no hace falta es que esté.
  *
  * Devuelve 0-100 para poder mostrarlo como porcentaje. `null` si no se pudo
  * medir: menos de dos fotogramas, o sharp falló.
@@ -421,9 +422,119 @@ export const measureSceneLife = async (frameBuffers = []) => {
         // punto en que un clip deja de parecer una foto fija. Se escala a 100
         // ahí para que la cifra sea legible, no porque 0,12 sea «perfecto».
         const score = Math.round(Math.min(1, change / 0.12) * 100);
-        return { score, pairs, endToEnd: Number(endToEnd.toFixed(4)) };
+
+        // ── Cámara o escena (v4.787) ──
+        //
+        // Hasta aquí la medida dice CUÁNTO cambió el clip, no QUÉ cambió, y por
+        // eso el comentario de arriba delegaba en el modelo de visión. Ya no
+        // hace falta delegar el caso que importa: un desplazamiento de encuadre
+        // mueve TODOS los píxeles a la vez y en la misma dirección, así que se
+        // reconoce compensándolo. Si al desplazar el último fotograma sobre el
+        // primero la diferencia casi desaparece, dentro del cuadro no pasó
+        // nada: es cámara.
+        const camera = await compareAfterCameraShift(sharp, frameBuffers[0], frameBuffers[frameBuffers.length - 1]);
+        return {
+            score, pairs, endToEnd: Number(endToEnd.toFixed(4)),
+            ...camera
+        };
     } catch (e) {
         return { score: null, pairs: [], reason: `No se pudo medir el movimiento: ${e.message}` };
+    }
+};
+
+// Cuánto del cambio tiene que explicar un simple desplazamiento del encuadre
+// para llamarlo cámara. Medido sobre los tres clips que el cliente adjuntó al
+// reporte —los tres, desplazamiento puro sobre una foto quieta—: 0,900, 0,919 y
+// 0,965. Un clip con vida real deja residuo donde las personas se movieron y no
+// llega aquí; en las pruebas sintéticas, un cambio interno del 15 % del cuadro
+// baja el explicado por debajo de 0,5. El margen entre las dos poblaciones es
+// ancho, que es lo que hace que 0,8 no sea un número delicado.
+export const CAMERA_EXPLAINED_MIN = 0.8;
+
+// Rejilla de búsqueda del desplazamiento, en píxeles de la imagen reducida.
+// ±12 sobre 96 px de ancho equivale a un octavo del cuadro: más que cualquier
+// paneo que la plataforma genera, y barato de recorrer.
+const SHIFT_WIDTH = 96;
+const SHIFT_RANGE = 12;
+const SHIFT_MARGIN = 14;
+
+/**
+ * ¿El cambio entre dos fotogramas se explica moviendo el encuadre?
+ *
+ * Busca el desplazamiento entero que MINIMIZA la diferencia media entre los dos
+ * fotogramas, en gris y muy reducidos —el detalle fino no aporta y sí ruido—, y
+ * compara ese residuo con la diferencia sin compensar.
+ *
+ * Es determinista y no depende de ningún proveedor, que es justamente lo que le
+ * faltaba a esta medición: `internalMotion` sólo existe cuando el modelo de
+ * visión contesta, y sin él un paneo pasaba por vida.
+ *
+ * El margen recortado no es decorativo: al desplazar entran píxeles nuevos por
+ * un borde y salen por el otro, y compararlos mediría el borde, no la escena.
+ */
+const compareAfterCameraShift = async (sharp, firstBuffer, lastBuffer) => {
+    try {
+        const grey = async (buf) => {
+            const { data, info } = await sharp(buf, { failOn: 'none' })
+                .greyscale()
+                .resize(SHIFT_WIDTH, null, { fit: 'inside' })
+                // Un desenfoque suave antes de comparar. Un paneo real no se
+                // desplaza un número entero de píxeles de la imagen reducida, y
+                // sobre detalle fino ese resto fraccionario deja residuo aunque
+                // el encuadre sea lo único que se movió: se estaría midiendo el
+                // aliasing, no la escena. Con el detalle fino atenuado, el
+                // desplazamiento entero explica lo que tiene que explicar.
+                .blur(1)
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+            return { d: data, w: info.width, h: info.height };
+        };
+        const A = await grey(firstBuffer);
+        const B = await grey(lastBuffer);
+        if (A.w !== B.w || A.h !== B.h) return { cameraOnly: false, explainedByCamera: null };
+        if (A.w <= SHIFT_MARGIN * 2 || A.h <= SHIFT_MARGIN * 2) return { cameraOnly: false, explainedByCamera: null };
+
+        const meanAbs = (dx, dy) => {
+            let sum = 0, n = 0;
+            for (let y = SHIFT_MARGIN; y < A.h - SHIFT_MARGIN; y++) {
+                const yy = y + dy;
+                if (yy < 0 || yy >= B.h) continue;
+                for (let x = SHIFT_MARGIN; x < A.w - SHIFT_MARGIN; x++) {
+                    const xx = x + dx;
+                    if (xx < 0 || xx >= B.w) continue;
+                    sum += Math.abs(A.d[y * A.w + x] - B.d[yy * B.w + xx]);
+                    n++;
+                }
+            }
+            return n ? sum / n : null;
+        };
+
+        const raw = meanAbs(0, 0);
+        if (raw == null) return { cameraOnly: false, explainedByCamera: null };
+
+        let best = { value: raw, dx: 0, dy: 0 };
+        for (let dy = -SHIFT_RANGE; dy <= SHIFT_RANGE; dy++) {
+            for (let dx = -SHIFT_RANGE; dx <= SHIFT_RANGE; dx++) {
+                const v = meanAbs(dx, dy);
+                if (v != null && v < best.value) best = { value: v, dx, dy };
+            }
+        }
+
+        // Un clip que ya era casi idéntico sin compensar no se juzga por esta
+        // vía: ahí no hay desplazamiento que explicar, hay una escena quieta, y
+        // de eso ya se ocupa `score`. Afirmar «es cámara» sobre dos fotogramas
+        // iguales sería inventar un movimiento que no existe.
+        if (raw < 1.5) return { cameraOnly: false, explainedByCamera: null, cameraShift: { dx: 0, dy: 0 } };
+
+        const explained = Number((1 - best.value / raw).toFixed(3));
+        return {
+            explainedByCamera: explained,
+            cameraShift: { dx: best.dx, dy: best.dy },
+            cameraOnly: explained >= CAMERA_EXPLAINED_MIN && (best.dx !== 0 || best.dy !== 0)
+        };
+    } catch {
+        // Sin medida no se afirma nada: `cameraOnly:false` deja decidir al resto.
+        return { cameraOnly: false, explainedByCamera: null };
     }
 };
 
@@ -894,8 +1005,40 @@ export const buildPeopleReport = (semantics, analysis) => {
 
     // El recuento sólo descalifica por sí solo en grupos donde contar es fiable.
     const countable = originalSeen != null && originalSeen <= RELIABLE_COUNT_MAX;
-    const countGrew = countable && maxDelta != null && maxDelta > 0;
-    const countShrank = countable && minDelta != null && minDelta < 0;
+
+    // ── Un ±1 en UN fotograma es ruido, no evidencia (v4.787) ──
+    //
+    // El comentario de abajo ya lo decía —«una persona casi tapada por otra se
+    // cuenta o no se cuenta según el fotograma»— y aun así el veredicto se
+    // tomaba del peor fotograma. Con tres fotogramas y un grupo de tres o
+    // cuatro personas, la probabilidad de que ALGUNO desvíe en uno es alta, así
+    // que en la práctica casi toda escena con gente se descalificaba: se
+    // gastaban los dos intentos y la escena terminaba sustituida por la
+    // fotografía en movimiento. Es la causa del defecto reportado —«no genera
+    // videos, solo les pone movimiento a las imágenes»—: la puerta estaba tan
+    // cerrada que no pasaba nada vivo.
+    //
+    // Lo que se exige ahora es CORROBORACIÓN, y el criterio sale de qué tan
+    // difícil es la cuenta:
+    //
+    //   · De CERO a uno no hay ruido posible: nadie confunde una escena vacía
+    //     con una habitada. Cualquier aparición descalifica en el acto — es la
+    //     exigencia expresa del cliente («si la fotografía tiene 0 personas, el
+    //     video debe mantener 0 personas») y no se toca.
+    //   · Un desvío de DOS o más en un fotograma ya no es un recuento dudoso.
+    //   · Un desvío de uno cuenta si se repite en al menos DOS fotogramas en la
+    //     MISMA dirección: el ruido de conteo no es sistemático, un sujeto
+    //     inventado sí — dura en el clip.
+    //
+    // No se afloja ninguna otra puerta: `newSubjects`, la oclusión rota y los
+    // rostros inconsistentes siguen descalificando solos.
+    const empty = originalSeen === 0;
+    const framesWithGrowth = deltas.filter(d => d > 0).length;
+    const framesWithLoss = deltas.filter(d => d < 0).length;
+    const countGrew = countable && maxDelta != null && maxDelta > 0
+        && (empty || maxDelta >= 2 || framesWithGrowth >= 2);
+    const countShrank = countable && minDelta != null && minDelta < 0
+        && (minDelta <= -2 || framesWithLoss >= 2);
     const facesBroken = faceConsistency != null && faceConsistency < MIN_FACE_CONSISTENCY;
 
     // El recuento descalifica en LAS DOS DIRECCIONES. Que sobre gente es el
@@ -924,7 +1067,13 @@ export const buildPeopleReport = (semantics, analysis) => {
         sourceCount,          // personas detectadas en la fotografía original
         originalSeen,         // ...vistas por el control en la mitad izquierda
         clipSeen,             // personas detectadas en el clip final
-        countStable: worstDelta != null ? worstDelta === 0 : null,
+        // El indicador sigue al VEREDICTO, no al número crudo. Un ±1 que no se
+        // repite se trata como ruido de conteo, y pintarlo en rojo dejaba un
+        // indicador rojo bajo una cabecera verde — que es lo que este archivo
+        // ya se había propuesto evitar una vez.
+        countStable: worstDelta != null ? !(countGrew || countShrank) : null,
+        // ...pero el desvío no se esconde: se dice que hubo y que no contó.
+        countNoise: worstDelta != null && worstDelta !== 0 && !(countGrew || countShrank),
         identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
         occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
         facesConsistent: faceConsistency != null ? !facesBroken : null,
@@ -1066,11 +1215,23 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         // presentar la medida determinista como si respondiera esa pregunta.
         // Fotogramas idénticos mandan sobre cualquier opinión: si el clip no
         // cambia un solo píxel entre el primero y el último, está congelado.
-        lifeScore: life.score === 0 ? 0
+        // Un clip cuyo cambio se explica desplazando el encuadre vale CERO de
+        // vida, diga lo que diga el modelo (v4.787). Es la corrección del
+        // defecto reportado —«solo les pone movimiento o desplazamiento a las
+        // imágenes»—: mover la cámara sobre una fotografía quieta no es animar
+        // la escena, y hasta ahora sólo lo veía el modelo de visión, cuando
+        // contestaba. Las dos señales deterministas mandan por el mismo motivo:
+        // no son una opinión.
+        lifeScore: (life.score === 0 || life.cameraOnly) ? 0
             : (semanticMotion != null ? Math.round(semanticMotion * 10) : null),
-        lifeSource: life.score === 0 ? 'frames'
+        lifeSource: (life.score === 0 || life.cameraOnly) ? 'frames'
             : (semanticMotion != null ? 'vision' : null),
         lifeChange: life.score,
+        // Qué parte del cambio explica un simple desplazamiento del encuadre.
+        // Se guarda para que la ficha pueda decir POR QUÉ una escena con mucho
+        // movimiento aparente puntúa cero de vida.
+        cameraOnly: life.cameraOnly === true,
+        cameraExplained: life.explainedByCamera ?? null,
         ...flags,
         people,
         brand,

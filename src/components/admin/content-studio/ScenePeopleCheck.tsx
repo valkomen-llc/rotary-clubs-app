@@ -78,6 +78,16 @@ const ScenePeopleCheck: React.FC<{ people?: PeopleFidelity | null; className?: s
             {/* Contar catorce cabezas en una foto de grupo no lo hace bien ningún
                 modelo de visión. Cuando el grupo es numeroso el recuento se
                 muestra igual, pero se dice que no es él quien decide. */}
+            {/* Un desvío de una persona en un solo fotograma es ruido de conteo
+                —alguien casi tapado por otro se cuenta o no según el
+                fotograma—, así que no descalifica. No se esconde: se dice que
+                lo hubo y por qué no contó. */}
+            {people.countNoise && (
+                <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
+                    El recuento varió en un fotograma y no se repitió: se trata como ruido de
+                    conteo, no como una persona de más.
+                </p>
+            )}
             {people.countReliable === false && (
                 <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
                     El grupo es numeroso: el recuento no decide por sí solo; sólo lo hace la
