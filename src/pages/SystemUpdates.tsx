@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.782.0 | 2026-08-12 (Plazo de postulación: 9 de noviembre de 2026)
-// Cache bust: 2026-08-12a
+// UI V4.783.0 | 2026-08-13 (Campaña de Emergencia en el Creador de Reels)
+// Cache bust: 2026-08-13a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.783.0',
+        title: 'Campañas de Emergencia: Reels de 3, 4 o 5 fotos ante un desastre 🆘',
+        description: 'El Creador de Reels pasa a tener TIPOS DE PIEZA. El primero nuevo es «Campaña de Emergencia», pensado para que un club comunique rápido una situación de desastre —terremoto, inundación, huracán, incendio forestal, erupción, sequía o cualquier otra— y movilice ayuda. Se eligen 3, 4 o 5 fotografías y la pieza se adapta sola: con tres dura unos 15 segundos, con cuatro unos 20 y con cinco unos 26. No son escenas de relleno: cada fotografía cumple una función narrativa declarada —contexto, impacto humano, necesidades, respuesta rotaria y llamado a la acción— y el director elige qué foto cuenta mejor cada parte. La regla que ordena todo el módulo es que NO SE INVENTA NADA sobre una emergencia real: ni fallecidos, ni damnificados, ni magnitudes, ni daños. Lo que el club no escribe en el formulario, el video no lo dice. Y no es sólo una instrucción al modelo: hay una comprobación por código que rechaza cifras no suministradas, cuantificadores vagos como «miles de familias», atribuciones a «fuentes oficiales» y lenguaje sensacionalista, y le devuelve al redactor la regla concreta que rompió para que lo reescriba. Las fotografías se animan SIN motor generativo: se mueve el encuadre sobre la imagen original, así que rostros, daños y contexto quedan exactamente como fueron fotografiados —y cuesta cero créditos de video—. Si una foto no está en formato vertical, se completan los bordes que faltan con IA en vez de recortarla, para no perder a las personas de los extremos. Se agregan además textos en pantalla por escena y una tarjeta de cierre con el logo del club, el distrito y el enlace de la campaña. El Reel de siempre —tres fotos, quince segundos— no cambia en nada.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'emergencias', 'content-studio', 'ia'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Tipos de pieza en el Creador de Reels: «Reel estándar» y «Campaña de Emergencia».' },
+            { type: 'added', text: 'Se puede elegir 3, 4 o 5 fotografías; la duración, el guion y el ritmo se adaptan solos.' },
+            { type: 'added', text: 'Formulario de contexto: tipo de desastre (con «Otro» libre), país, región, fecha, magnitud, descripción, comunidades, necesidades y llamado a la acción.' },
+            { type: 'added', text: 'Cada fotografía cumple una función narrativa; con cinco fotos la historia tiene cinco partes, no tres más relleno.' },
+            { type: 'added', text: 'Control de datos por código: se rechazan cifras no suministradas, «miles de», «según reportes» y el lenguaje sensacionalista, en el guion, los textos en pantalla y los copies.' },
+            { type: 'added', text: 'Textos en pantalla por escena y tarjeta de cierre con logo, club, distrito y enlace.' },
+            { type: 'added', text: 'Las fotos se animan sin IA generativa: se conserva la imagen original y cuesta cero créditos de video.' },
+            { type: 'improved', text: 'Una foto fuera de formato completa sus bordes con IA en vez de recortarse.' },
+            { type: 'fixed', text: 'El montaje ya no da por completo un Reel al que le falta una escena cuando tiene más de tres.' },
+        ]
+    },
     {
         version: '4.782.0',
         title: 'El plazo de postulación pasa al 9 de noviembre de 2026 🗓️',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.782.0",
-  "cache_bust": "2026-08-12a (Plazo de postulación por defecto: 9 de noviembre de 2026.)",
+  "version": "4.783.0",
+  "cache_bust": "2026-08-13a (Campaña de Emergencia: 3, 4 o 5 fotos, guion con control de datos, texto en pantalla y cierre institucional.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -23,6 +23,7 @@
     "test:assets": "node scripts/test-audience-assets.mjs",
     "test:seo": "node scripts/test-seo.mjs",
     "test:reels:people": "node scripts/test-reel-people.mjs",
+    "test:reels:presets": "node scripts/test-reel-presets.mjs",
     "test:clubes": "node scripts/test-rotary-clubs.mjs",
     "test:event-form": "node scripts/test-event-form.mjs",
     "test:event-venue": "node scripts/test-event-venue.mjs",

@@ -47,6 +47,18 @@ import {
 } from '../lib/reelSpec.js';
 import { directReel } from '../lib/reelDirector.js';
 import {
+    REEL_PRESETS, DEFAULT_PRESET, MIN_SCENE_COUNT, MAX_SCENE_COUNT,
+    resolvePreset, resolveSceneCount, targetTotalSecFor, narrativeRolesFor,
+    presetCatalog, applyPresetDefaults
+} from '../lib/reelPresets.js';
+import {
+    normalizeEmergencyContext, buildEmergencyBrief, defaultCampaignTitle,
+    disasterCatalog, needCatalog, ctaCatalog,
+    DEFAULT_DISASTER, DEFAULT_CTA, CTA_TYPES
+} from '../lib/emergencySpec.js';
+import { renderTextOverlay, renderClosingCard, defaultClosingCopy } from '../lib/reelTextOverlay.js';
+import { generateSceneTexts, sceneTextWindows } from '../lib/reelSceneText.js';
+import {
     probeMp4, inspectSourceImages, validateSceneFile, validateReelFile,
     checkSceneFidelity, summarizeFidelity, REEL_THRESHOLDS, FROZEN_LIFE_SCORE
 } from '../lib/reelQuality.js';
@@ -55,7 +67,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
-import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion } from '../lib/reelFfmpeg.js';
+import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
     EXPANSION_SETTINGS, PHOTO_TYPES,
@@ -92,9 +104,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.716.0';
+export const REEL_MODULE_VERSION = '4.783.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: 3 fotos → 3 escenas image-to-video (motor ${DEFAULT_ENGINE}), dirección con visión, preservación estricta de personas, fidelidad humana y visual sobre fotogramas extraídos, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -486,8 +498,32 @@ export const getReelOptions = async (req, res) => {
                 exportFormats: ['txt', 'csv', 'json', 'zip']
             },
 
+            // ── Presets de pieza (v4.783) ──
+            //
+            // El catálogo lo sirve el servidor, no el bundle, por la misma razón
+            // que los motores y los estilos: una copia en el navegador se
+            // desfasa en silencio y la pantalla acaba ofreciendo un preset que
+            // el servidor no conoce. `src/lib/reelPresets.ts` sólo guarda lo que
+            // hace falta ANTES de esta respuesta.
+            presets: presetCatalog(),
+            defaultPreset: DEFAULT_PRESET,
+
+            // Los catálogos del formulario de emergencia. Van dentro de la
+            // misma respuesta porque son parte de un preset: pedirlos aparte
+            // sería un segundo viaje para pintar una pantalla que ya se está
+            // pintando.
+            emergency: {
+                disasters: disasterCatalog(),
+                needs: needCatalog(),
+                ctas: ctaCatalog(),
+                defaultDisaster: DEFAULT_DISASTER,
+                defaultCta: DEFAULT_CTA
+            },
+
             timing: {
                 sceneCount: SCENE_COUNT,
+                minSceneCount: MIN_SCENE_COUNT,
+                maxSceneCount: MAX_SCENE_COUNT,
                 targetTotalSec: TARGET_TOTAL_SEC,
                 minSceneSec: MIN_SCENE_SEC,
                 maxSceneSec: MAX_SCENE_SEC
@@ -509,9 +545,12 @@ export const getReelOptions = async (req, res) => {
 // quien sube una foto un poco blanda puede querer generar igual.
 export const preflightReel = async (req, res) => {
     try {
-        const { images, format = DEFAULT_FORMAT } = req.body || {};
-        if (!Array.isArray(images) || images.length !== SCENE_COUNT) {
-            return res.status(400).json({ error: `El Reel se arma con exactamente ${SCENE_COUNT} imágenes.` });
+        const { images, format = DEFAULT_FORMAT, preset: presetId = DEFAULT_PRESET } = req.body || {};
+        const preset = resolvePreset(presetId);
+        if (!Array.isArray(images) || !preset.sceneCounts.includes(images.length)) {
+            return res.status(400).json({
+                error: `«${preset.label}» se arma con ${preset.sceneCounts.join(', ')} ${preset.sceneCounts.length === 1 ? 'fotografía' : 'fotografías'}.`
+            });
         }
 
         const buffers = await Promise.all(images.map(async (img) => {
@@ -534,10 +573,18 @@ export const preflightReel = async (req, res) => {
 
         const usage = await creditUsage(req.user);
 
+        // El estilo del preset decide el costo real: `fotografico` no despacha
+        // ninguna tarea de video, así que estimar por el motor diría 60 créditos
+        // de un Reel que va a costar 0. Un presupuesto que sobra por cinco veces
+        // es tan inútil como uno que falta.
+        const engineless = preset.motionStyle === 'fotografico';
+
         res.json({
             ...inspection,
+            preset: { id: preset.id, label: preset.label, sceneCount: images.length },
             engine: { id: engine.engineId, label: engine.engine.label, notes: engine.notes },
-            creditEstimate: engine.creditEstimatePerScene * SCENE_COUNT,
+            creditEstimate: engineless ? 0 : engine.creditEstimatePerScene * images.length,
+            engineless,
             usage,
             render: { provider: activeRenderProvider(), available: Boolean(activeRenderProvider()) }
         });
@@ -938,15 +985,47 @@ export const createReel = async (req, res) => {
             // Contexto estratégico, el mismo del Generador de Publicaciones.
             publicationType = DEFAULT_TYPE,
             interestArea = DEFAULT_AREA,
-            narration = null
+            narration = null,
+            // ── Preset de pieza (v4.783) ──
+            //
+            // Sin este campo se cae en `estandar`, que reproduce exactamente el
+            // comportamiento anterior. Es aditivo a propósito: un navegador con
+            // el bundle viejo sigue creando Reels de tres fotos y quince
+            // segundos sin enterarse de que existen los presets.
+            preset: requestedPreset = DEFAULT_PRESET,
+            emergency: emergencyInput = null
         } = req.body || {};
 
-        if (!Array.isArray(images) || images.length !== SCENE_COUNT) {
-            return res.status(400).json({ error: `El Reel se arma con exactamente ${SCENE_COUNT} imágenes.` });
+        const preset = resolvePreset(requestedPreset);
+        const presetNotes = [];
+
+        if (!Array.isArray(images) || images.length < MIN_SCENE_COUNT || images.length > MAX_SCENE_COUNT) {
+            return res.status(400).json({
+                error: `El Reel se arma con entre ${MIN_SCENE_COUNT} y ${MAX_SCENE_COUNT} imágenes.`
+            });
+        }
+        if (!preset.sceneCounts.includes(images.length)) {
+            return res.status(400).json({
+                error: `«${preset.label}» se arma con ${preset.sceneCounts.join(', ')} ${preset.sceneCounts.length === 1 ? 'fotografía' : 'fotografías'}, y llegaron ${images.length}.`
+            });
         }
         if (images.some(i => !i?.url)) {
             return res.status(400).json({ error: 'Cada imagen debe traer su URL.' });
         }
+
+        // La cantidad de escenas ES la cantidad de fotos: cada foto es una
+        // escena y no hay relleno. El reparto de la duración y los roles
+        // narrativos salen de acá.
+        const sceneCount = images.length;
+        const targetTotalSec = targetTotalSecFor(preset.id, sceneCount);
+        const narrativeRoles = narrativeRolesFor(preset.id, sceneCount);
+
+        // El contexto de la emergencia, normalizado contra los catálogos. Sólo
+        // se conserva si el preset lo declara: mandar `emergency` con el preset
+        // estándar no debe contaminar la configuración de un Reel corriente.
+        const emergencyContext = preset.contextSchema === 'emergency'
+            ? normalizeEmergencyContext(emergencyInput || {})
+            : null;
 
         const usage = await creditUsage(req.user);
         if (usage.exceeded) {
@@ -956,15 +1035,30 @@ export const createReel = async (req, res) => {
             });
         }
 
+        // ── El preset rellena lo que el usuario NO eligió ──
+        //
+        // Y sólo eso: una elección explícita manda sobre el preset, igual que
+        // manda sobre el director. Un `auto` explícito cuenta como «decidí vos»
+        // y por eso lo llena el preset; un id concreto no se toca.
+        const withDefaults = applyPresetDefaults(preset.id, {
+            motionStyle, transition, musicStyle,
+            motionIntensity: req.body?.motionIntensity,
+            narrationStyle: narration?.style
+        });
+        presetNotes.push(...withDefaults.notes);
+
         // Normalización contra los catálogos. Nada de confiar en el navegador.
         const safeFormat = REEL_FORMATS[format] ? format : DEFAULT_FORMAT;
-        const safeMotion = (motionStyle === AUTO_MOTION_STYLE || MOTION_STYLES[motionStyle]) ? motionStyle : AUTO_MOTION_STYLE;
-        const safeTransition = (transition === AUTO_TRANSITION || TRANSITIONS[transition]) ? transition : AUTO_TRANSITION;
-        const safeMusic = (musicStyle === AUTO_MUSIC_STYLE || MUSIC_STYLES[musicStyle]) ? musicStyle : AUTO_MUSIC_STYLE;
+        const presetMotion = withDefaults.config.motionStyle;
+        const presetTransition = withDefaults.config.transition;
+        const presetMusic = withDefaults.config.musicStyle;
+        const safeMotion = (presetMotion === AUTO_MOTION_STYLE || MOTION_STYLES[presetMotion]) ? presetMotion : AUTO_MOTION_STYLE;
+        const safeTransition = (presetTransition === AUTO_TRANSITION || TRANSITIONS[presetTransition]) ? presetTransition : AUTO_TRANSITION;
+        const safeMusic = (presetMusic === AUTO_MUSIC_STYLE || MUSIC_STYLES[presetMusic]) ? presetMusic : AUTO_MUSIC_STYLE;
         // Intensidad del movimiento: cuántas acciones se le piden al motor. Es
         // el mando de la cadencia — pedir de más da un clip acelerado.
-        const safeIntensity = MOTION_INTENSITY[req.body?.motionIntensity]
-            ? req.body.motionIntensity : DEFAULT_MOTION_INTENSITY;
+        const safeIntensity = MOTION_INTENSITY[withDefaults.config.motionIntensity]
+            ? withDefaults.config.motionIntensity : DEFAULT_MOTION_INTENSITY;
         // Preservación estricta de personas (v4.705). Encendida por defecto: lo
         // que apaga es una decisión explícita del usuario, no la ausencia del
         // campo — un cliente viejo que no lo mande sigue protegido. Sólo actúa
@@ -1013,6 +1107,22 @@ export const createReel = async (req, res) => {
                     requestedEngine: requestedEngine || null,
                     sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
                     copyLocale: req.body?.copyLocale || 'es',
+                    // ── Lo que define la CLASE de pieza (v4.783) ──
+                    //
+                    // Va en `config` y no en columnas nuevas porque la columna
+                    // ya existe y es `JSONB`: agregar campos a Prisma para esto
+                    // sería el riesgo de despliegue que documenta la regla de
+                    // `logo_intl` (v4.699) a cambio de nada. Lo que sí necesita
+                    // columna es lo que se filtra en un listado, y eso todavía
+                    // no hace falta.
+                    preset: preset.id,
+                    sceneCount,
+                    targetTotalSec,
+                    narrativeRoles: narrativeRoles.map(r => ({ index: r.index, id: r.id, label: r.label })),
+                    onScreenText: Boolean(preset.onScreenText),
+                    closingCard: Boolean(preset.closingCard),
+                    requireExpansion: Boolean(preset.requireExpansion),
+                    emergency: emergencyContext,
                     narration: {
                         enabled: Boolean(narration?.enabled),
                         language: NARRATION_LANGUAGES[narration?.language] ? narration.language : NARRATION_DEFAULT_LANGUAGE,
@@ -1036,7 +1146,11 @@ export const createReel = async (req, res) => {
         try {
             ({ analyses, direction: directionRaw, warnings, usage: directorUsage } = await directReel(images, {
                 motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
-                context
+                context,
+                // Con estructura declarada, el orden que devuelve el director ES
+                // la asignación de cada foto a su función narrativa.
+                narrativeRoles,
+                totalSec: targetTotalSec
             }));
         } catch (e) {
             // El Reel ya existe: se marca con el motivo en vez de desaparecer.
@@ -1059,19 +1173,30 @@ export const createReel = async (req, res) => {
         const transitionsUsed = direction.scenes.slice(0, -1).map(s => s.transitionOut);
         const timing = distributeDurations({
             weights: direction.scenes.map(s => s.weight),
-            totalSec: TARGET_TOTAL_SEC,
-            count: SCENE_COUNT,
+            totalSec: targetTotalSec,
+            count: sceneCount,
             transitions: transitionsUsed,
-            engineDurations: engineChoice.durations
+            // Un estilo sin motor no tiene duraciones que respetar: los clips
+            // los produce FFmpeg sobre la fotografía, así que puede entregar
+            // 5,33 s exactos. Pasarle las de Kling ahí acotaría a 5 s por
+            // escena y la pieza saldría más corta que su objetivo sin ningún
+            // motivo — el motor al que se está acotando no participa.
+            engineDurations: isEngineless(safeMotion) ? null : engineChoice.durations
         });
 
-        const resolvedTitle = title || buildReelTitle({
-            organizationName,
-            motionStyle: safeMotion === AUTO_MOTION_STYLE ? direction.scenes[0]?.style : safeMotion,
-            format: safeFormat
-        });
+        // El título de una campaña de emergencia se arma con SUS datos —el tipo
+        // de emergencia y el lugar—, que es lo que sirve para encontrarla en la
+        // Biblioteca dentro de seis meses. «Reel Documental 9:16» no distingue
+        // una campaña por el terremoto de otra por la inundación.
+        const resolvedTitle = title || (emergencyContext
+            ? defaultCampaignTitle(emergencyContext, organizationName)
+            : buildReelTitle({
+                organizationName,
+                motionStyle: safeMotion === AUTO_MOTION_STYLE ? direction.scenes[0]?.style : safeMotion,
+                format: safeFormat
+            }));
 
-        const notes = [...engineChoice.notes, ...warnings];
+        const notes = [...engineChoice.notes, ...warnings, ...presetNotes];
 
         // Que fallen LAS TRES no es mala suerte con una foto: es el módulo de
         // visión caído o mal configurado. El fallback deja el Reel en pie —y
@@ -1080,16 +1205,22 @@ export const createReel = async (req, res) => {
         // despliegue. Se dice arriba del todo, no sólo foto por foto.
         if (analyses.every(a => a.failed)) {
             notes.push(
-                'No se pudo analizar ninguna de las tres fotos: el Reel se armó con el criterio por defecto (abre la toma más abierta, cierra la que lleva la marca) y los prompts van sin refuerzo de marca ni de personas. Revisar las credenciales del proveedor de copy.'
+                `No se pudo analizar ninguna de las ${sceneCount} fotos: el Reel se armó con el criterio por defecto (abre la toma más abierta, cierra la que lleva la marca) y los prompts van sin refuerzo de marca ni de personas. Revisar las credenciales del proveedor de copy.`
             );
         }
         // La duración real se dice de frente. Con un motor que entrega clips de
         // 5 s exactos, tres escenas y dos fundidos dan 14 s, no 15: alargarlo
         // costaría generar clips de 10 s para tirar la mitad. Es la "duración
         // aproximada" del pedido, pero el número tiene que estar a la vista.
-        if (Math.abs(timing.finalDurationSec - TARGET_TOTAL_SEC) > 0.6) {
+        //
+        // Se compara contra el objetivo DEL PRESET, no contra los 15 s fijos:
+        // con cinco fotos el objetivo son 26 y comparar contra 15 avisaría de
+        // una desviación de once segundos que no existe.
+        if (Math.abs(timing.finalDurationSec - targetTotalSec) > 0.6) {
             notes.push(
-                `El Reel dura ${timing.finalDurationSec}s: ${engineChoice.engine.label} entrega clips de ${engineChoice.durations.join(' o ')}s y las transiciones solapan ${timing.overlapTotal}s.`
+                isEngineless(safeMotion)
+                    ? `El Reel dura ${timing.finalDurationSec}s frente a los ${targetTotalSec}s previstos: las transiciones solapan ${timing.overlapTotal}s.`
+                    : `El Reel dura ${timing.finalDurationSec}s frente a los ${targetTotalSec}s previstos: ${engineChoice.engine.label} entrega clips de ${engineChoice.durations.join(' o ')}s y las transiciones solapan ${timing.overlapTotal}s.`
             );
         }
         if (!activeRenderProvider()) {
@@ -1257,7 +1388,7 @@ export const createReel = async (req, res) => {
         }
 
         const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
-        console.log(`[REEL] ${projectId} creado — ${sceneRows.length - failures.length}/${SCENE_COUNT} escenas lanzadas, ${timing.finalDurationSec}s, ${engineChoice.engine.label}`);
+        console.log(`[REEL] ${projectId} creado — preset «${preset.id}», ${sceneRows.length - failures.length}/${sceneCount} escenas lanzadas, ${timing.finalDurationSec}s, ${isEngineless(safeMotion) ? 'sin motor generativo' : engineChoice.engine.label}`);
         await respondProject(res, rows[0], 201);
     } catch (e) {
         console.error('[REEL] create:', e);
@@ -1511,16 +1642,145 @@ const extractPosterUrl = (raw) => {
     } catch { return null; }
 };
 
+// ─── Rótulos en pantalla ───────────────────────────────────────────────────
+//
+// Compone los PNG de los rótulos y calcula su ventana en la línea de tiempo.
+// Devuelve `[]` cuando el preset no lleva texto, cuando no hay textos escritos
+// o cuando la composición falla: un Reel sin rótulos es una pieza válida, y
+// perder el montaje entero por un rótulo sería el intercambio equivocado.
+//
+// El mismo criterio de degradación que `fallbackDirection` y que la música: lo
+// accesorio no puede tumbar lo principal.
+const buildSceneOverlays = async (project, scenes) => {
+    if (!project.config?.onScreenText) return [];
+
+    const texts = project.config?.sceneTexts;
+    if (!Array.isArray(texts) || !texts.some(Boolean)) return [];
+
+    try {
+        const tier = resolveTier(project.format, project.qualityTier);
+        const ordered = [...scenes].sort((a, b) => a.position - b.position);
+
+        // Las ventanas se calculan sobre las duraciones REALES de las escenas,
+        // no sobre las previstas: si el usuario acortó una desde la
+        // previsualización, el rótulo tiene que moverse con ella.
+        const windows = sceneTextWindows({
+            scenes: ordered.map(s => ({ durationSec: Number(s.durationSec) })),
+            overlaps: ordered.slice(0, -1).map(s => TRANSITIONS[s.transitionOut]?.overlap ?? 0.5)
+        });
+
+        const out = [];
+        for (const [i, scene] of ordered.entries()) {
+            const text = texts[scene.sourceIndex] ?? texts[i];
+            const win = windows[i];
+            if (!text || !win) continue;
+            const png = await renderTextOverlay({
+                text, width: tier.width, height: tier.height
+            });
+            if (png) out.push({ buffer: png.buffer, ...win, text });
+        }
+        return out;
+    } catch (e) {
+        console.error('[REEL] no se pudieron componer los rótulos:', e.message);
+        await appendNote(project.id,
+            `Los textos en pantalla no se pudieron componer (${e.message}). El Reel se montó sin ellos.`);
+        return [];
+    }
+};
+
+// ─── Tarjeta de cierre ─────────────────────────────────────────────────────
+//
+// La placa institucional del final: quién convoca, qué se pide y a dónde ir.
+// Se compone, se convierte en un clip quieto y se sube; devuelve la forma que
+// espera `buildEditSpec` o `null`.
+//
+// DEGRADA COMO TODO LO ACCESORIO: si algo falla, se anota y el Reel se monta
+// sin cierre. Es una pieza válida sin él.
+//
+// NO INVENTA NADA: el nombre del club, el distrito y la URL salen de la base y
+// del formulario. Lo que no exista, no se escribe — un cierre con una URL
+// inventada es peor que un cierre sin URL.
+const CLOSING_CARD_SEC = 3;
+
+const buildClosingClip = async (project) => {
+    if (!project.config?.closingCard) return null;
+
+    try {
+        const entity = await entityFor(project);
+        const emergency = project.config?.emergency || null;
+        const tier = resolveTier(project.format, project.qualityTier);
+
+        // El mensaje sale del llamado a la acción que eligió el usuario. Con
+        // varios se toma el primero: una placa que se ve tres segundos admite
+        // una sola petición, y enumerar tres diluye las tres.
+        const firstCta = emergency?.ctas?.[0];
+        const ctaLabel = firstCta ? CTA_TYPES[firstCta]?.imperative : null;
+        const copy = defaultClosingCopy({ ctaLabel });
+
+        // El logotipo del club, si lo tiene. Se descarga acá y no se pasa por
+        // URL porque `renderClosingCard` compone píxeles, no documentos.
+        let logoBuffer = null;
+        if (entity.logoUrl) {
+            try {
+                const resp = await fetch(entity.logoUrl);
+                if (resp.ok) logoBuffer = Buffer.from(await resp.arrayBuffer());
+            } catch {
+                // Sin logotipo la tarjeta sigue diciendo quién convoca, por su
+                // nombre. No vale la pena perderla por una imagen.
+            }
+        }
+
+        const card = await renderClosingCard({
+            width: tier.width, height: tier.height,
+            headline: copy.headline,
+            message: copy.message,
+            clubName: entity.clubName || null,
+            districtName: entity.districtName || null,
+            url: emergency?.contactUrl || null,
+            logoBuffer
+        });
+
+        const clip = await renderCardClip(card.buffer, {
+            width: tier.width, height: tier.height,
+            fps: 30, durationSec: CLOSING_CARD_SEC
+        });
+
+        const upload = await uploadBuffer(
+            clip,
+            `clubs/${project.clubId || 'global'}/reels/closing/${project.id}-${Date.now()}.mp4`,
+            'video/mp4'
+        );
+
+        return {
+            videoUrl: upload.url,
+            durationSec: CLOSING_CARD_SEC,
+            transitionOut: 'fade'
+        };
+    } catch (e) {
+        console.error('[REEL] no se pudo componer la tarjeta de cierre:', e.message);
+        await appendNote(project.id,
+            `La tarjeta de cierre no se pudo componer (${e.message}). El Reel se montó sin ella.`);
+        return null;
+    }
+};
+
 // Lanza el montaje. Sólo se llama con todas las escenas terminadas.
 const submitAssembly = async (project, scenes) => {
     const usable = scenes
         .filter(s => s.videoUrl)
         .sort((a, b) => a.position - b.position);
 
-    if (usable.length < SCENE_COUNT) {
+    // Cuántas escenas TIENE que haber es lo que se guardó al crear el Reel, no
+    // una constante: con cuatro fotos, comparar contra 3 daba por completo un
+    // montaje al que le falta una escena, y el Reel salía con un hueco. Se cae
+    // al conteo de escenas de la propia fila para los Reels creados antes de
+    // que `sceneCount` existiera.
+    const expected = Number(project.config?.sceneCount) || scenes.length || SCENE_COUNT;
+
+    if (usable.length < expected) {
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id, `Sólo ${usable.length} de ${SCENE_COUNT} escenas se generaron: no hay con qué montar el Reel.`]
+            [project.id, `Sólo ${usable.length} de ${expected} escenas se generaron: no hay con qué montar el Reel.`]
         );
         return rows[0];
     }
@@ -1538,12 +1798,40 @@ const submitAssembly = async (project, scenes) => {
         narration = await produceNarration(project, usable);
     }
 
+    // ── Rótulos en pantalla (v4.783) ──
+    //
+    // Se componen ACÁ y no al crear el Reel, por dos motivos. Uno: dependen de
+    // la duración FINAL de cada escena, que puede haber cambiado si el usuario
+    // la ajustó desde la previsualización. Dos: no cuestan créditos de video ni
+    // esperan a ningún proveedor de imágenes, así que ponerlos en el camino
+    // crítico de la creación sólo alargaría la espera inicial.
+    //
+    // Los TEXTOS, en cambio, se escribieron en paralelo con los clips y viven en
+    // `config.sceneTexts`: volver a pedirlos en cada montaje gastaría una
+    // llamada de texto por reintento y podría cambiar lo que la pieza dice entre
+    // dos renders del MISMO Reel.
+    const textOverlays = await buildSceneOverlays(project, usable);
+
+    // ── La tarjeta de cierre ──
+    //
+    // Se compone acá y se sube a S3 como un clip más, porque `buildEditSpec`
+    // trabaja con URLs: los adaptadores alojados descargan cada clip, y el local
+    // también. Devolver un búfer obligaría a un camino especial en cada
+    // proveedor.
+    //
+    // Va DESPUÉS de las escenas y con fundido de entrada, como una escena más:
+    // no es un añadido pegado al final, es el último plano de la pieza.
+    const closingClip = await buildClosingClip(project);
+
     const spec = buildEditSpec({
-        scenes: usable.map(s => ({
-            videoUrl: s.videoUrl,
-            durationSec: Number(s.durationSec),
-            transitionOut: s.transitionOut
-        })),
+        scenes: [
+            ...usable.map(s => ({
+                videoUrl: s.videoUrl,
+                durationSec: Number(s.durationSec),
+                transitionOut: s.transitionOut
+            })),
+            ...(closingClip ? [closingClip] : [])
+        ],
         tier: resolveTier(project.format, project.qualityTier),
         soundtrackUrl: project.musicUrl || null,
         voice: narration ? {
@@ -1551,12 +1839,25 @@ const submitAssembly = async (project, scenes) => {
             leadIn: narration.timing?.leadInSec ?? 0.35,
             stretch: narration.timing?.stretch ?? 1
         } : null,
+        textOverlays,
         callbackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/reel-webhook`
     });
 
+    // El spec se guarda SIN los búferes de los rótulos. Un PNG de 1080×1920
+    // serializado a JSON son ~70 KB en base64, y con cinco escenas eso mete
+    // 350 KB de imagen en una fila que se lee en cada listado de la Biblioteca.
+    // Lo que hace falta para diagnosticar es CUÁNDO aparece cada rótulo y qué
+    // dice, no sus píxeles.
+    const specForStorage = {
+        ...spec,
+        textOverlays: (spec.textOverlays || []).map(o => ({
+            startSec: o.startSec, endSec: o.endSec, text: o.text || null
+        }))
+    };
+
     await db.query(
         `UPDATE "ReelProject" SET status = 'assembling', "statusDetail" = NULL, "renderSpec" = $2, "updatedAt" = NOW() WHERE id = $1`,
-        [project.id, JSON.stringify(spec)]
+        [project.id, JSON.stringify(specForStorage)]
     );
 
     let submitted;
@@ -1857,6 +2158,56 @@ const advanceSideTracks = async (project) => {
             locale: project.config?.copyLocale || 'es',
             createdBy: project.userId || null
         }));
+    }
+
+    // ── Los rótulos en pantalla (v4.783) ──
+    //
+    // Se escriben acá, en paralelo con los clips, por el mismo motivo que los
+    // copies: cuesta una llamada de texto y los clips tardan minutos, así que
+    // en tiempo de reloj es gratis. Componer las IMÁGENES es otra cosa y ocurre
+    // al montar, cuando ya se conocen las duraciones definitivas.
+    //
+    // Se guardan en `config.sceneTexts` indexados por `sourceIndex` —la foto
+    // original—, no por posición: si alguien reordena o regenera una escena, el
+    // rótulo tiene que seguir a SU foto. Por posición, un reordenamiento pondría
+    // el texto del contexto sobre el llamado a la acción.
+    if (project.config?.onScreenText && !project.config?.sceneTexts) {
+        jobs.push((async () => {
+            try {
+                const entity = await entityFor(project);
+                const ordered = [...scenes].sort((a, b) => a.position - b.position);
+                const result = await generateSceneTexts({
+                    scenes: ordered.map(s => ({ analysis: s.sourceReport || s.analysis || null })),
+                    narrativeRoles: project.config?.narrativeRoles || null,
+                    emergencyContext: project.config?.emergency || null,
+                    context: resolveContext({
+                        type: project.publicationType,
+                        interestArea: project.interestArea
+                    }),
+                    clubName: entity.clubName,
+                    clubCity: entity.clubCity
+                });
+
+                // Indexado por la foto de origen, no por el orden del montaje.
+                const bySource = [];
+                ordered.forEach((s, i) => { bySource[s.sourceIndex] = result.texts[i] ?? null; });
+
+                await db.query(
+                    `UPDATE "ReelProject" SET config = config || $2::jsonb, "updatedAt" = NOW() WHERE id = $1`,
+                    [project.id, JSON.stringify({ sceneTexts: bySource })]
+                );
+
+                if (result.failed) {
+                    await appendNote(project.id,
+                        result.reason
+                            ? `Textos en pantalla: ${result.reason} El Reel se monta sin ellos.`
+                            : 'No se pudieron escribir los textos en pantalla. El Reel se monta sin ellos.');
+                }
+            } catch (e) {
+                console.error(`[REEL] ${project.id} rótulos no se pudieron escribir:`, e.message);
+                await appendNote(project.id, `No se pudieron escribir los textos en pantalla: ${e.message} El Reel se monta sin ellos.`);
+            }
+        })());
     }
 
     // La locución también sale de acá, no del montaje. El Narrative Timing
@@ -2700,7 +3051,14 @@ const produceNarration = async (project, scenes, opts = {}) => {
             clubName: entity.clubName, clubCity: entity.clubCity,
             ttsProvider,
             measureAudio: measureAudioDuration,
-            scriptOverride: opts.scriptOverride || null
+            scriptOverride: opts.scriptOverride || null,
+            // Contexto de la emergencia y estructura narrativa. Salen de la
+            // `config` del proyecto, así que una locución regenerada meses
+            // después usa los MISMOS datos con los que se creó la campaña: si
+            // salieran de la petición, regenerar la voz podría cambiar lo que
+            // el video afirma.
+            emergencyContext: project.config?.emergency || null,
+            narrativeRoles: project.config?.narrativeRoles || null
         });
 
         const upload = await uploadBuffer(
@@ -2893,19 +3251,41 @@ export const regenerateNarration = async (req, res) => {
 
 // Datos de la entidad para el prompt. Sin club, el copy habla en primera
 // persona plural sin inventar nombres — lo resuelve `identityClause`.
+// `logo` y `district` se añadieron en v4.783 para la tarjeta de cierre. Es una
+// ampliación ADITIVA: quien ya usaba `clubName`, `clubCategory` y `clubCity`
+// —el guion, los copies— sigue recibiendo lo mismo.
+//
+// `district` es el número tal como lo guardó el sitio («4281», «Distrito 4281»,
+// «4271, 4281»), así que se rotula pero NO se interpreta: deducir a cuál
+// pertenece un sitio multi-distrito es exactamente lo que la regla de
+// `districtEcosystem.js` prohíbe hacer a ojo. Para una placa de cierre alcanza
+// con mostrar lo que el club declaró.
 const entityFor = async (project) => {
-    if (!project.clubId) {
-        return { clubName: project.organizationName || null, clubCategory: null, clubCity: null };
-    }
+    const fallback = {
+        clubName: project.organizationName || null,
+        clubCategory: null, clubCity: null,
+        logoUrl: null, districtName: null
+    };
+    if (!project.clubId) return fallback;
     try {
-        const { rows } = await db.query('SELECT name, type, city FROM "Club" WHERE id = $1', [project.clubId]);
+        const { rows } = await db.query(
+            'SELECT name, type, city, logo, district FROM "Club" WHERE id = $1',
+            [project.clubId]
+        );
+        const raw = String(rows[0]?.district || '').trim();
         return {
             clubName: rows[0]?.name || project.organizationName || null,
             clubCategory: rows[0]?.type || null,
-            clubCity: rows[0]?.city || null
+            clubCity: rows[0]?.city || null,
+            logoUrl: rows[0]?.logo || null,
+            // Si ya viene con la palabra, no se duplica: «Distrito Distrito
+            // 4281» es el resultado de anteponer sin mirar.
+            districtName: raw
+                ? (/distrito/i.test(raw) ? raw : `Distrito ${raw}`)
+                : null
         };
     } catch {
-        return { clubName: project.organizationName || null, clubCategory: null, clubCity: null };
+        return fallback;
     }
 };
 
@@ -2978,11 +3358,25 @@ const produceCopy = async (project, scenes, { locale = 'es', createdBy = null } 
     const copyStartedAt = Date.now();
     try {
         const entity = await entityFor(project);
-        const { copy, provider, model, prompt, rawResponse } = await generateReelCopy({
+        const { copy, provider, model, prompt, rawResponse, factIssues } = await generateReelCopy({
             reel: project, scenes, ...entity, locale,
-            context: resolveContext({ type: project.publicationType, interestArea: project.interestArea })
+            context: resolveContext({ type: project.publicationType, interestArea: project.interestArea }),
+            // Los mismos datos con los que se creó la campaña, no los de la
+            // petición: regenerar un copy meses después no puede cambiar lo que
+            // la pieza afirma sobre la emergencia.
+            emergencyContext: project.config?.emergency || null
         });
         await persistCopy(project, copy, { source: 'ai', provider, model, prompt, createdBy });
+
+        // Los incumplimientos se DICEN, no se corrigen solos. El copy es
+        // editable con historial de versiones, así que quien lo revise puede
+        // arreglarlo; callarlo dejaría una cifra inventada publicada a nombre
+        // del club sin que nadie se enterara.
+        if (factIssues?.length) {
+            await appendNote(project.id,
+                `Revisar los textos de publicación antes de publicar: ${factIssues[0]}` +
+                (factIssues.length > 1 ? ` (y ${factIssues.length - 1} aviso/s más).` : ''));
+        }
         await recordUsage({
             projectId: project.id, clubId: project.clubId,
             operation: 'copy.generate', provider: 'llm', model,
@@ -3484,9 +3878,14 @@ export const duplicateReel = async (req, res) => {
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
 
         const images = project.config?.sourceImages || [];
-        if (images.length !== SCENE_COUNT) {
+        // Se comprueba contra el preset del ORIGINAL, no contra una constante:
+        // un Reel de emergencia de cinco fotos no se puede duplicar si se le
+        // exigen tres. Y contra el preset y no contra `sourceImages.length` a
+        // secas, porque lo que hace inútil un duplicado es que le FALTEN fotos.
+        const originalPreset = resolvePreset(project.config?.preset || DEFAULT_PRESET);
+        if (!originalPreset.sceneCounts.includes(images.length)) {
             return res.status(400).json({
-                error: `El Reel original no conserva sus ${SCENE_COUNT} fotos de origen, así que no se puede duplicar. Se puede crear uno nuevo eligiéndolas otra vez.`
+                error: `El Reel original no conserva sus fotos de origen (tiene ${images.length} y «${originalPreset.label}» necesita ${originalPreset.sceneCounts.join(' o ')}), así que no se puede duplicar. Se puede crear uno nuevo eligiéndolas otra vez.`
             });
         }
 
@@ -3506,6 +3905,14 @@ export const duplicateReel = async (req, res) => {
                 interestArea: project.interestArea,
                 withMusic: Boolean(project.config?.withMusic),
                 narration: project.config?.narration || null,
+                // Sin esto, duplicar una campaña de emergencia devolvía un Reel
+                // estándar: se perdían el preset, el contexto de la emergencia y
+                // —con cinco fotos— la propia cantidad de escenas, que el preset
+                // estándar ni siquiera admite. Duplicar tiene que devolver la
+                // MISMA clase de pieza.
+                preset: originalPreset.id,
+                sceneCount: images.length,
+                emergency: project.config?.emergency || null,
                 title: `${project.title} (copia)`
             },
             from: { id: project.id, title: project.title }

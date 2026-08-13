@@ -35,6 +35,10 @@
 import { generateCopy } from '../services/copywritingService.js';
 import { INSTITUTIONAL_VOICE } from './institutionalVoice.js';
 import { resolveContext } from './publicationContext.js';
+import {
+    EMERGENCY_FACT_CLAUSE, buildEmergencyBrief,
+    validateEmergencyCopy, buildRetryInstruction
+} from './emergencySpec.js';
 
 // ─── Idiomas ───────────────────────────────────────────────────────────────
 //
@@ -214,41 +218,68 @@ const parseJsonObject = (result) => {
 };
 
 export const buildScriptPrompt = ({
-    scenes, budget, language, style, context, clubName, clubCity, durationSec
+    scenes, budget, language, style, context, clubName, clubCity, durationSec,
+    // ── Campaña de Emergencia (v4.783) ──
+    //
+    // `emergency` es el contexto normalizado y `narrativeRoles` la función de
+    // cada escena. Los dos son opcionales: sin ellos este prompt es exactamente
+    // el de siempre, que es lo que hace que el Reel estándar no cambie.
+    emergency = null, narrativeRoles = null, retryInstruction = null
 }) => {
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
     const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
 
     const sceneLines = scenes.map((s, i) => {
         const a = s.analysis || {};
-        return `  ${i + 1}. (${s.durationSec}s) ${a.summary || 'escena sin descripción'}${a.hasBrand ? ' — con marca visible' : ''}`;
+        // Con estructura declarada, cada escena dice QUÉ le toca contar. Sin
+        // eso, el modelo escribe tres frases sobre lo que ve en las fotos y la
+        // pieza pierde el arco —contexto, impacto, llamado— que es justamente
+        // lo que se le pidió al preset.
+        const role = narrativeRoles?.[i];
+        const roleTag = role && role.id !== 'libre' ? ` [${role.label}: ${role.brief}]` : '';
+        return `  ${i + 1}. (${s.durationSec}s) ${a.summary || 'escena sin descripción'}${a.hasBrand ? ' — con marca visible' : ''}${roleTag}`;
     }).join('\n');
 
-    return `Entidad: "${clubName || '(sin nombre)'}"${clubCity ? ` — ${clubCity}` : ''}.
-Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.
-Área de enfoque Rotary: ${context.areaDescription}.
+    const n = scenes.length;
+    const sceneWord = n === 1 ? 'una escena' : `${n === 2 ? 'dos' : n === 3 ? 'tres' : n === 4 ? 'cuatro' : n === 5 ? 'cinco' : n} escenas`;
 
-El Reel dura ${durationSec} segundos y tiene tres escenas:
-${sceneLines}
-
-Escribí el guion de la voz en off en ${lang.label}, con carácter ${st.descriptor}.
-
-PRESUPUESTO EXACTO: ${budget.targetWords} palabras. Nunca más de ${budget.maxWords}.
-Es una locución de ${budget.availableSec} segundos: cada palabra de más hace que la voz se pase del video.
-
-Devolvé este JSON exacto, sin texto alrededor y sin bloques de código:
-{
-  "script": "el guion completo, listo para leer en voz alta",
-  "wordCount": <número de palabras que escribiste>,
-  "rationale": "una frase en español explicando el enfoque"
-}`;
+    return [
+        `Entidad: "${clubName || '(sin nombre)'}"${clubCity ? ` — ${clubCity}` : ''}.`,
+        `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.`,
+        `Área de enfoque Rotary: ${context.areaDescription}.`,
+        '',
+        // El bloque de la emergencia va ANTES de las escenas: es el hecho del
+        // que trata la pieza, y las escenas son cómo se cuenta.
+        emergency ? `DATOS DE LA EMERGENCIA (lo único que podés afirmar):\n${emergency}\n` : '',
+        `El Reel dura ${durationSec} segundos y tiene ${sceneWord}:`,
+        sceneLines,
+        '',
+        `Escribí el guion de la voz en off en ${lang.label}, con carácter ${st.descriptor}.`,
+        '',
+        `PRESUPUESTO EXACTO: ${budget.targetWords} palabras. Nunca más de ${budget.maxWords}.`,
+        `Es una locución de ${budget.availableSec} segundos: cada palabra de más hace que la voz se pase del video.`,
+        // El reintento del validador. Va al final, que es lo último que lee el
+        // modelo, y nombra la regla concreta que rompió: «revisá el formato» no
+        // corrige nada.
+        retryInstruction ? `\n${retryInstruction}` : '',
+        '',
+        'Devolvé este JSON exacto, sin texto alrededor y sin bloques de código:',
+        '{',
+        '  "script": "el guion completo, listo para leer en voz alta",',
+        '  "wordCount": <número de palabras que escribiste>,',
+        '  "rationale": "una frase en español explicando el enfoque"',
+        '}'
+    ].filter(l => l !== '').join('\n');
 };
 
 // Genera el guion. `wordAdjustment` lo usa el motor de tiempos para pedir una
 // versión más corta o más larga cuando la medición real no encaja.
 export const generateScript = async ({
     scenes, durationSec, language = DEFAULT_LANGUAGE, style = DEFAULT_STYLE,
-    speed = 1, context, clubName, clubCity, wordAdjustment = 0, provider = null
+    speed = 1, context, clubName, clubCity, wordAdjustment = 0, provider = null,
+    // Contexto de emergencia. Cuando viene, se añade la cláusula de datos al
+    // sistema y se VALIDA la salida por código.
+    emergencyContext = null, narrativeRoles = null
 }) => {
     const base = computeWordBudget({ durationSec, language, style, speed });
     const budget = {
@@ -257,31 +288,75 @@ export const generateScript = async ({
         maxWords: Math.max(5, base.maxWords + wordAdjustment)
     };
 
-    const result = await generateCopy({
-        ...(provider ? { provider } : {}),
-        system: SCRIPT_SYSTEM,
-        userText: buildScriptPrompt({ scenes, budget, language, style, context, clubName, clubCity, durationSec }),
-        temperature: 0.7,
-        maxTokens: 800,
-        jsonMode: true
-    });
+    // La cláusula de emergencia va ENCIMA de la voz institucional, no en su
+    // lugar: la regla 3 de `INSTITUTIONAL_VOICE` ya prohíbe inventar fechas y
+    // cantidades, y esto agrega lo específico de un desastre.
+    const system = emergencyContext
+        ? `${SCRIPT_SYSTEM}\n\n${EMERGENCY_FACT_CLAUSE}`
+        : SCRIPT_SYSTEM;
+    const brief = emergencyContext ? buildEmergencyBrief(emergencyContext) : null;
 
-    const raw = parseJsonObject(result);
-    if (!raw?.script) throw new Error('El generador de guion no devolvió un texto utilizable.');
+    // ── El bucle de validación (v4.783) ──
+    //
+    // El modelo ESCRIBE, el código DECIDE. Se reintenta devolviéndole la regla
+    // concreta que rompió, que es el patrón de `templateComposer.js` y
+    // `seoAI.js`: pedirle «revisá el formato» no corrige nada.
+    //
+    // Dos intentos y no más: cada uno es una llamada de texto, y si a la tercera
+    // sigue inventando cifras el problema es del proveedor. Ahí NO se tira el
+    // trabajo —eso dejaría la campaña sin voz—: se devuelve lo último con sus
+    // incumplimientos anotados, y quien decide es el usuario, que puede editar
+    // el guion o regenerarlo. Un control de calidad que tumba la generación es
+    // peor que no tenerlo.
+    const MAX_FACT_RETRIES = 2;
+    let retryInstruction = null;
+    let last = null;
 
-    const script = String(raw.script).trim();
-    return {
-        script,
-        words: countWords(script),
-        budget,
-        estimatedSec: estimateDuration(script, { language, style, speed }),
-        rationale: typeof raw.rationale === 'string' ? raw.rationale.slice(0, 200) : null,
-        provider: result?.provider || null,
-        model: result?.model || null,
-        // Respuesta cruda del proveedor: es lo único que lleva el consumo real
-        // de tokens, y el registro de auditoría lo necesita.
-        rawResponse: result?.raw || null
-    };
+    for (let attempt = 0; attempt <= MAX_FACT_RETRIES; attempt++) {
+        const result = await generateCopy({
+            ...(provider ? { provider } : {}),
+            system,
+            userText: buildScriptPrompt({
+                scenes, budget, language, style, context, clubName, clubCity, durationSec,
+                emergency: brief, narrativeRoles, retryInstruction
+            }),
+            temperature: 0.7,
+            maxTokens: 800,
+            jsonMode: true
+        });
+
+        const raw = parseJsonObject(result);
+        if (!raw?.script) throw new Error('El generador de guion no devolvió un texto utilizable.');
+
+        const script = String(raw.script).trim();
+        last = {
+            script,
+            words: countWords(script),
+            budget,
+            estimatedSec: estimateDuration(script, { language, style, speed }),
+            rationale: typeof raw.rationale === 'string' ? raw.rationale.slice(0, 200) : null,
+            provider: result?.provider || null,
+            model: result?.model || null,
+            // Respuesta cruda del proveedor: es lo único que lleva el consumo
+            // real de tokens, y el registro de auditoría lo necesita.
+            rawResponse: result?.raw || null,
+            factIssues: [],
+            factAttempts: attempt + 1
+        };
+
+        if (!emergencyContext) return last;
+
+        const check = validateEmergencyCopy(script, emergencyContext, { field: 'guion' });
+        if (check.ok) return last;
+
+        last.factIssues = check.issues;
+        retryInstruction = buildRetryInstruction(check.issues);
+        console.warn(
+            `[REEL] guion de emergencia con ${check.issues.length} incumplimiento(s) (intento ${attempt + 1}): ${check.issues[0]}`
+        );
+    }
+
+    return last;
 };
 
 // ─── Síntesis ──────────────────────────────────────────────────────────────
@@ -374,7 +449,10 @@ export const fitNarrationToDuration = async ({
     provider = null, ttsProvider = null,
     measureAudio,                 // (buffer) => Promise<number>  — inyectado
     scriptOverride = null,        // guion escrito a mano: no se reescribe
-    maxAttempts = MAX_TIMING_ATTEMPTS
+    maxAttempts = MAX_TIMING_ATTEMPTS,
+    // Contexto de emergencia y roles narrativos. Viajan hasta `generateScript`,
+    // que es donde se aplican la clausula de datos y su validacion.
+    emergencyContext = null, narrativeRoles = null
 }) => {
     const budget = computeWordBudget({ durationSec, language, style, speed });
     const target = budget.availableSec;
@@ -394,7 +472,8 @@ export const fitNarrationToDuration = async ({
             }
             : await generateScript({
                 scenes, durationSec, language, style, speed, context,
-                clubName, clubCity, wordAdjustment, provider
+                clubName, clubCity, wordAdjustment, provider,
+                emergencyContext, narrativeRoles
             });
 
         const voice = await synthesize({ text: written.script, provider: ttsProvider, gender, speed, language });

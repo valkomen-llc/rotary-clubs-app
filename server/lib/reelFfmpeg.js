@@ -365,6 +365,39 @@ export const renderStillMotion = async (imageBuffer, {
     return readFile(output);
 });
 
+/**
+ * Convierte una imagen fija en un clip de vídeo QUIETO.
+ *
+ * Es la tarjeta de cierre: la placa institucional del final. No usa
+ * `renderStillMotion` a propósito —esa desplaza la ventana de encuadre, y en
+ * una placa con texto eso lo movería—. Acá lo correcto es que no se mueva nada:
+ * el logotipo, el nombre del club y la URL tienen que quedarse fijos para poder
+ * leerse y, si hace falta, fotografiarse con el teléfono.
+ *
+ * La imagen ya viene del tamaño del cuadro (`renderClosingCard`), así que sólo
+ * se conforma por si acaso y se codifica con los mismos ajustes que el resto:
+ * un clip con otro perfil o fps obligaría al montaje a recodificarlo.
+ */
+export const renderCardClip = async (imageBuffer, {
+    width = 1080, height = 1920, fps = 30, durationSec = 3, timeoutMs = 60_000
+} = {}) => withTempDir(async (dir) => {
+    const input = path.join(dir, 'card.png');
+    const output = path.join(dir, 'card.mp4');
+    await writeFile(input, imageBuffer);
+
+    const br = targetBitrate(width, height);
+    await runFfmpeg([
+        '-y', '-loop', '1', '-i', input, '-t', String(durationSec),
+        '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+               `crop=${width}:${height},setsar=1,fps=${fps},format=yuv420p`,
+        '-c:v', 'libx264', '-preset', 'veryfast',
+        '-b:v', br.v, '-maxrate', br.max, '-bufsize', br.buf,
+        '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', output
+    ], { timeoutMs, label: 'tarjeta de cierre' });
+
+    return readFile(output);
+});
+
 // ─── Montaje ───────────────────────────────────────────────────────────────
 
 // `xfade` es el fundido real entre dos clips: solapa las dos imágenes durante
@@ -395,7 +428,18 @@ const xfadeName = (transitionId) => {
 export const buildFilterGraph = ({
     clips, width, height, fps, hasMusic, totalSec,
     musicVolume = 0.85, fadeSec = 1,
-    hasVoice = false, voiceLeadIn = 0, voiceStretch = 1, voiceIndex = null
+    hasVoice = false, voiceLeadIn = 0, voiceStretch = 1, voiceIndex = null,
+    // ── Rótulos en pantalla (v4.783) ──
+    //
+    // `[{ inputIndex, startSec, endSec, fadeSec }]`, ya compuestos como PNG
+    // transparentes del tamaño del cuadro por `reelTextOverlay.js`. Acá sólo se
+    // pegan: la tipografía, la posición y el reparto de líneas se decidieron
+    // allá, en un solo sitio.
+    //
+    // ESTO NO ES POSTPROCESAR el clip. Es la misma categoría que los fundidos y
+    // la banda sonora: edición declarada de antemano sobre el montaje. Ningún
+    // píxel de la fotografía se reinterpreta.
+    overlays = []
 }) => {
     const parts = [];
 
@@ -415,9 +459,15 @@ export const buildFilterGraph = ({
     let last = 'c0';
     let elapsed = clips[0].durationSec;
 
+    // Con rótulos, la cadena de fundidos NO puede terminar en `vout`: ese
+    // nombre pasa a ser la salida de la última capa de texto. Se resuelve el
+    // nombre final una sola vez para que no queden dos sitios que decidirlo.
+    const hasOverlays = Array.isArray(overlays) && overlays.length > 0;
+    const videoAfterXfade = hasOverlays ? 'vbase' : 'vout';
+
     for (let i = 1; i < clips.length; i++) {
         const name = xfadeName(clips[i].transitionIn);
-        const out = i === clips.length - 1 ? 'vout' : `x${i}`;
+        const out = i === clips.length - 1 ? videoAfterXfade : `x${i}`;
 
         if (!name) {
             // Corte directo: concatenación simple, sin solapamiento.
@@ -432,7 +482,58 @@ export const buildFilterGraph = ({
         last = out;
     }
     // Con una sola escena no hay fundido y la salida sigue llamándose c0.
-    if (clips.length === 1) parts.push(`[c0]null[vout]`);
+    if (clips.length === 1) parts.push(`[c0]null[${videoAfterXfade}]`);
+
+    // ── Los rótulos ──
+    //
+    // Cada uno se pega con `overlay` acotado por `enable='between(t,a,b)'`, que
+    // es lo que hace que aparezca sólo durante su escena. Entra y sale con un
+    // fundido de opacidad propio: un rótulo que aparece de golpe se lee como un
+    // error de reproducción.
+    //
+    // El fundido se hace sobre el PNG (`format=rgba,fade=alpha=1`) y no sobre el
+    // video: `fade` sin `alpha=1` pondría el rótulo a negro en vez de
+    // transparente, y sobre una fotografía clara eso es una mancha.
+    //
+    // `overlay=0:0` porque el PNG ya viene del tamaño del cuadro con el texto en
+    // su sitio. La posición vive entera en `reelTextOverlay.js`.
+    if (hasOverlays) {
+        let chain = videoAfterXfade;
+        overlays.forEach((ov, n) => {
+            const isLast = n === overlays.length - 1;
+            const out = isLast ? 'vout' : `ov${n}`;
+            const fade = Math.max(0.15, Math.min(ov.fadeSec ?? 0.4, (ov.endSec - ov.startSec) / 3));
+            const dur = Number((ov.endSec - ov.startSec).toFixed(3));
+
+            // El PNG se convierte en un tramo de video de la duración del
+            // rótulo, con sus fundidos de opacidad, y SE DESPLAZA a su sitio en
+            // la línea de tiempo con `setpts=PTS+inicio/TB`.
+            //
+            // ── Ese desplazamiento es imprescindible y su ausencia no da error ──
+            //
+            // `enable='between(t,...)'` se evalúa sobre el reloj de la entrada
+            // PRINCIPAL, pero los fotogramas del rótulo llevan su propio tiempo,
+            // que empieza en 0. Sin desplazarlos, el rótulo de la segunda escena
+            // tiene contenido de 0 a 4,2 s y su ventana es de 4,9 a 9,1: cuando
+            // la ventana se abre, esa entrada ya terminó y `eof_action=pass`
+            // deja pasar el video sin nada encima.
+            //
+            // Medido: el primer rótulo salía y los otros dos NO, sin una sola
+            // advertencia de ffmpeg —el montaje termina «bien»—. Sólo se ve
+            // extrayendo fotogramas y contando píxeles de texto.
+            const shift = ov.startSec > 0 ? `,setpts=PTS+${ov.startSec}/TB` : '';
+            parts.push(
+                `[${ov.inputIndex}:v]format=rgba,fps=${fps},` +
+                `trim=duration=${dur},setpts=PTS-STARTPTS,` +
+                `fade=t=in:st=0:d=${fade}:alpha=1,` +
+                `fade=t=out:st=${Number((dur - fade).toFixed(3))}:d=${fade}:alpha=1${shift}[t${n}]`
+            );
+            parts.push(
+                `[${chain}][t${n}]overlay=0:0:enable='between(t,${ov.startSec},${ov.endSec})':eof_action=pass[${out}]`
+            );
+            chain = out;
+        });
+    }
 
     // ── Audio ──
     //
@@ -546,7 +647,10 @@ export const composeReel = async ({
     fps = 30,
     musicVolume = 0.85,
     fadeSec = 1,
-    timeoutMs = 100_000
+    timeoutMs = 100_000,
+    // Rótulos: `[{ buffer, startSec, endSec, fadeSec }]`. Los PNG ya vienen
+    // compuestos de `reelTextOverlay.js`, del tamaño del cuadro.
+    textOverlays = []
 }) => withTempDir(async (dir) => {
     if (!clips?.length) throw new Error('No hay clips que montar.');
 
@@ -557,7 +661,10 @@ export const composeReel = async ({
         inputs.push('-i', file);
     }
     // El ORDEN de las entradas define los índices del grafo: primero los clips,
-    // después la música y por último la voz. Cambiarlo rompe el filtro entero.
+    // después la música, después la voz y al final los rótulos. Cambiarlo rompe
+    // el filtro entero, así que los índices se calculan acá —donde se escriben
+    // los archivos— y viajan al grafo, en vez de recalcularse allá con la misma
+    // aritmética escrita por segunda vez.
     if (musicBuffer) {
         const file = path.join(dir, 'music.audio');
         await writeFile(file, musicBuffer);
@@ -568,6 +675,25 @@ export const composeReel = async ({
         const file = path.join(dir, 'voice.audio');
         await writeFile(file, voiceBuffer);
         inputs.push('-i', file);
+    }
+
+    // Los rótulos van ÚLTIMOS: así agregarlos no mueve el índice de la música ni
+    // el de la voz, que es lo que dejaría el audio mudo o cruzado.
+    const overlaySpecs = [];
+    let nextIndex = clips.length + (musicBuffer ? 1 : 0) + (voiceBuffer ? 1 : 0);
+    for (const [n, ov] of (textOverlays || []).entries()) {
+        if (!ov?.buffer) continue;
+        const file = path.join(dir, `t${n}.png`);
+        await writeFile(file, ov.buffer);
+        // `-loop 1` sobre un PNG: sin esto la imagen dura un fotograma y el
+        // rótulo parpadea en vez de sostenerse.
+        inputs.push('-loop', '1', '-i', file);
+        overlaySpecs.push({
+            inputIndex: nextIndex++,
+            startSec: Number(ov.startSec) || 0,
+            endSec: Number(ov.endSec) || 0,
+            fadeSec: ov.fadeSec
+        });
     }
 
     const totalSec = clips.reduce((sum, c, i) => {
@@ -582,7 +708,8 @@ export const composeReel = async ({
         hasMusic: Boolean(musicBuffer),
         totalSec: Number(totalSec.toFixed(3)),
         musicVolume, fadeSec,
-        hasVoice: Boolean(voiceBuffer), voiceLeadIn, voiceStretch, voiceIndex
+        hasVoice: Boolean(voiceBuffer), voiceLeadIn, voiceStretch, voiceIndex,
+        overlays: overlaySpecs
     });
 
     const out = path.join(dir, 'reel.mp4');
