@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.785.0';
+export const REEL_MODULE_VERSION = '4.786.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -573,11 +573,11 @@ export const preflightReel = async (req, res) => {
 
         const usage = await creditUsage(req.user);
 
-        // El estilo del preset decide el costo real: `fotografico` no despacha
-        // ninguna tarea de video, así que estimar por el motor diría 60 créditos
-        // de un Reel que va a costar 0. Un presupuesto que sobra por cinco veces
-        // es tan inútil como uno que falta.
-        const engineless = preset.motionStyle === 'fotografico';
+        // El MODO decide el costo real: `fotografico` no despacha ninguna tarea
+        // de video, así que estimar por el motor diría 60 créditos de un Reel
+        // que va a costar 0. Manda el que eligió el usuario en la pantalla y,
+        // sin elección, el del preset — el mismo orden que aplica `createReel`.
+        const engineless = (req.body?.motionStyle || preset.motionStyle) === 'fotografico';
 
         res.json({
             ...inspection,
@@ -822,7 +822,14 @@ const advanceSceneExpansion = async (scene, settings) => {
  * La fidelidad no se mide acá: no hay nada que medir. Los píxeles son los de la
  * fotografía, y decirlo es más honesto que inventar una nota del 100 %.
  */
-const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
+// `markForReview` distingue las dos entradas (v4.786). La elección expresa de
+// «Fotográfico» queda `ready`: es exactamente lo que el usuario pidió. El
+// RESCATE tras agotar reintentos queda `needs_review` con su motivo visible:
+// hasta v4.785 se marcaba `ready` y una campaña que pidió escenas VIVAS recibía
+// una foto con paneo leyéndose como éxito — el único rastro era la etiqueta del
+// método, que nadie tiene por qué ir a mirar. Una sustitución que no se ve no
+// es una degradación honesta, es un engaño amable.
+const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview = false } = {}) => {
     const startedAt = Date.now();
     const tier = resolveTier(scene.format || DEFAULT_FORMAT, DEFAULT_QUALITY_TIER);
     const sourceUrl = animationSourceOf(scene);
@@ -859,7 +866,7 @@ const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
 
     const { rows } = await db.query(
         `UPDATE "ReelScene"
-            SET status = 'ready', "statusDetail" = NULL, "videoUrl" = $2, "s3Key" = $3,
+            SET status = $6, "statusDetail" = $7, "videoUrl" = $2, "s3Key" = $3,
                 "durationSec" = $4, engine = 'still_motion', "engineModel" = 'ffmpeg-2.5d',
                 fidelity = $5, "updatedAt" = NOW()
           WHERE id = $1 RETURNING *`,
@@ -871,10 +878,20 @@ const resolveSceneWithStillMotion = async (scene, { reason = null } = {}) => {
                 // fotografía misma. Error de v4.672.
                 state: 'ok', score: 10, framesChecked: 0, issues: [], frames: [],
                 method: 'still-motion',
+                // La marca que la ficha usa para pintar el aviso ámbar. No se
+                // deduce del `engine`: una elección expresa de «Fotográfico»
+                // también es still_motion y NO es una sustitución.
+                substituted: markForReview,
                 // Se dice CÓMO se conservó, no una nota inventada: no hubo
                 // modelo que pudiera alterar nada.
-                reason: 'La escena es la fotografía en movimiento, sin pasar por un modelo generativo: rostros, manos, insignias y textos son los originales.'
-            })
+                reason: markForReview
+                    ? `Sustituida por la fotografía en movimiento: ${reason || 'el motor no conservó la escena tras los reintentos'}. Regenerala desde la línea de tiempo para volver a intentar la escena viva.`
+                    : 'La escena es la fotografía en movimiento, sin pasar por un modelo generativo: rostros, manos, insignias y textos son los originales.'
+            }),
+            markForReview ? 'needs_review' : 'ready',
+            markForReview
+                ? `Escena sustituida por foto en movimiento — ${reason || 'el motor no conservó la escena'}`
+                : null
         ]
     );
 
@@ -1705,6 +1722,19 @@ const CLOSING_CARD_SEC = 3;
 const buildClosingClip = async (project) => {
     if (!project.config?.closingCard) return null;
 
+    // ── La tarjeta se compone UNA vez por proyecto (v4.786) ──
+    //
+    // No depende de nada que cambie entre intentos de montaje —club, distrito,
+    // CTA y URL están fijados desde la creación—, y hasta v4.785 se
+    // re-renderizaba y re-subía EN CADA intento: otra corrida de ffmpeg dentro
+    // de la misma invocación que después necesita todo su presupuesto para el
+    // montaje. Con el clip cacheado, el reintento de un montaje que agotó el
+    // tiempo no vuelve a pagar este paso.
+    const cached = project.config?.closingClip;
+    if (cached?.videoUrl) {
+        return { videoUrl: cached.videoUrl, durationSec: cached.durationSec || CLOSING_CARD_SEC, transitionOut: 'fade' };
+    }
+
     try {
         const entity = await entityFor(project);
         const emergency = project.config?.emergency || null;
@@ -1751,6 +1781,14 @@ const buildClosingClip = async (project) => {
             'video/mp4'
         );
 
+        // Se guarda para los intentos siguientes. Si la escritura falla, el
+        // clip de este intento sirve igual — se pagará una vez más, no se
+        // pierde el montaje.
+        await db.query(
+            `UPDATE "ReelProject" SET config = config || $2::jsonb, "updatedAt" = NOW() WHERE id = $1`,
+            [project.id, JSON.stringify({ closingClip: { videoUrl: upload.url, durationSec: CLOSING_CARD_SEC } })]
+        ).catch(e => console.warn('[REEL] no se pudo cachear la tarjeta de cierre:', e.message));
+
         return {
             videoUrl: upload.url,
             durationSec: CLOSING_CARD_SEC,
@@ -1783,6 +1821,38 @@ const submitAssembly = async (project, scenes) => {
             [project.id, `Sólo ${usable.length} de ${expected} escenas se generaron: no hay con qué montar el Reel.`]
         );
         return rows[0];
+    }
+
+    // ── UN montaje a la vez (v4.786) ──
+    //
+    // El montaje local es SÍNCRONO dentro de la invocación y ahora puede durar
+    // hasta 4 minutos. Las tres vías que llaman a `advance` —el sondeo del
+    // navegador cada 3 s, el cron y el webhook— veían durante esos minutos un
+    // proyecto en `assembling` sin `renderJobId` (el modo local no crea job) y
+    // cada una relanzaba OTRO montaje completo del mismo Reel: invocaciones y
+    // codificaciones en paralelo para producir el mismo archivo.
+    //
+    // Es el mismo UPDATE condicional de `sideTracksAt`, con marca propia en
+    // `config` — no sobre `updatedAt`, que lo mueve cualquier nota y dejaría el
+    // candado sin vencer nunca. La ventana (6 min) supera al montaje más largo
+    // permitido (240 s): si el proceso murió sin liberar, el siguiente sondeo
+    // pasada la ventana lo reintenta solo. Todos los caminos que terminan un
+    // intento —éxito, fallo, job alojado creado, relanzamiento manual— liberan
+    // la marca para no hacer esperar 6 minutos a un reintento legítimo.
+    const { rows: claimed } = await db.query(
+        `UPDATE "ReelProject"
+            SET config = jsonb_set(COALESCE(config, '{}'::jsonb), '{renderClaimAt}', to_jsonb(NOW()::text)),
+                "updatedAt" = NOW()
+          WHERE id = $1
+            AND (config->>'renderClaimAt' IS NULL
+                 OR (config->>'renderClaimAt')::timestamptz < NOW() - INTERVAL '6 minutes')
+          RETURNING id`,
+        [project.id]
+    );
+    if (!claimed.length) {
+        // Otro proceso está montando este Reel ahora mismo. No es un error:
+        // se devuelve la fila tal cual y el sondeo siguiente verá el resultado.
+        return project;
     }
 
     // ── Narración ──
@@ -1899,9 +1969,11 @@ const submitAssembly = async (project, scenes) => {
             ).catch(() => { /* el diagnóstico no puede tumbar el manejo del error */ });
         }
         const { rows } = await db.query(
-            `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2,
+                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
+                    "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
             [project.id, e.code === 'NO_RENDER_PROVIDER'
-                ? `${e.message} Las tres escenas están listas y se pueden descargar por separado.`
+                ? `${e.message} Las escenas están listas y se pueden descargar por separado.`
                 : `No se pudo montar el Reel: ${e.message}`]
         );
         return rows[0];
@@ -1927,7 +1999,9 @@ const submitAssembly = async (project, scenes) => {
     // ── Montaje alojado: crea el trabajo y se sondea ──
     const { rows } = await db.query(
         `UPDATE "ReelProject"
-         SET status = 'assembling', "renderProvider" = $2, "renderJobId" = $3, "statusDetail" = NULL, "updatedAt" = NOW()
+         SET status = 'assembling', "renderProvider" = $2, "renderJobId" = $3, "statusDetail" = NULL,
+             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
+             "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
         [project.id, submitted.provider, submitted.jobId]
     );
@@ -1972,6 +2046,7 @@ const ingestLocalReel = async (project, output) => {
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = COALESCE($6, "posterUrl"),
              "durationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
              "sizeBytes" = $11, "hasAudio" = $12, quality = $13,
+             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
              "processingMs" = EXTRACT(EPOCH FROM (NOW() - "createdAt"))::int * 1000,
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
@@ -2047,6 +2122,7 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = COALESCE($6, "posterUrl"),
              "durationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
              "sizeBytes" = $11, "hasAudio" = $12, quality = $13,
+             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
              "processingMs" = EXTRACT(EPOCH FROM (NOW() - "createdAt"))::int * 1000,
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
@@ -2468,7 +2544,12 @@ const advance = async (project) => {
                 resolveSceneWithStillMotion(sc, {
                     reason: sc.fidelity?.people?.verdict === 'failed'
                         ? 'el motor insistió en mostrar personas que no están en la fotografía'
-                        : 'el motor insistió en alterar la marca o el texto'
+                        : 'el motor insistió en alterar la marca o el texto',
+                    // La sustitución SE VE (v4.786): queda `needs_review` con su
+                    // motivo, no `ready`. El Reel se completa igual —needs_review
+                    // conserva su videoUrl y el montaje lo usa—, pero quien pidió
+                    // escenas vivas se entera de cuál no lo es y puede regenerarla.
+                    markForReview: true
                 })));
 
             const rescatadas = results.filter(r => r.status === 'fulfilled').length;
@@ -2963,7 +3044,11 @@ export const renderReel = async (req, res) => {
             return res.status(400).json({ error: 'Todavía hay escenas sin generar.' });
         }
 
-        await db.query('UPDATE "ReelProject" SET "renderJobId" = NULL WHERE id = $1', [project.id]);
+        await db.query(
+            `UPDATE "ReelProject" SET "renderJobId" = NULL,
+                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt' WHERE id = $1`,
+            [project.id]
+        );
         const updated = await submitAssembly(current, scenes);
         await respondProject(res, updated);
     } catch (e) {
@@ -4071,6 +4156,7 @@ export const retryReel = async (req, res) => {
         const { rows } = await db.query(
             `UPDATE "ReelProject"
                 SET status = $2, "statusDetail" = NULL, "renderJobId" = NULL,
+                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
                     attempts = attempts + 1, "updatedAt" = NOW()
               WHERE id = $1 RETURNING *`,
             [project.id, nextStatus]
@@ -4107,10 +4193,17 @@ export const retryReel = async (req, res) => {
  * llaman al MISMO `advance`, y los UPDATE condicionales de dentro son los que
  * impiden que dos de ellas hagan el mismo trabajo a la vez.
  *
- * `timeBudgetMs` existe porque la función corta a los 120 s: se atienden los
+ * `timeBudgetMs` existe porque la función tiene un techo (300 s desde v4.786;
+ * era 120): se atienden los
  * Reels que quepan y el resto espera al minuto siguiente. Un Reel que no se
  * atiende no se pierde — sigue en la cola.
  */
+// El presupuesto del barrido NO cubre un montaje entero a propósito: el
+// `continue` sólo corta ENTRE Reels, así que un `advance` que entró antes del
+// corte puede correr sus ~4 minutos de montaje dentro de los 300 s de la
+// función. Subir este número haría que el barrido ARRANCARA montajes cerca del
+// techo de la función y los matara Vercel a mitad, que es peor que dejarlos
+// para el minuto siguiente.
 export const sweepActiveReels = async ({ limit = 10, timeBudgetMs = 90000 } = {}) => {
     await ensureReelSchema();
     const startedAt = Date.now();

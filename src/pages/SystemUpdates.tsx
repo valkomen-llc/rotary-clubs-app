@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.785.0 | 2026-08-13 (Fidelidad de imagen en el motor de escenas)
-// Cache bust: 2026-08-13c
+// UI V4.786.0 | 2026-08-13 (Escena Viva, montaje confiable, Biblioteca rápida)
+// Cache bust: 2026-08-13d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.786.0',
+        title: 'Escenas que respiran, montaje que termina y Biblioteca al instante 🎬',
+        description: 'Tres mejoras pedidas con capturas en mano. UNO: la Campaña de Emergencia pasa a animar las fotografías con IA por defecto —el contenido cobra vida: hojas, ropa, polvo, gestos— en vez del modo fotográfico estático. El cambio es seguro porque desde v4.785 la fidelidad se mide fotograma a fotograma: una escena que muestre personas que no están en la foto no entra al Reel, y si tras los reintentos el motor insiste, la escena se sustituye por la foto en movimiento y queda MARCADA para revisión con su motivo y su botón de regenerar — nada se disfraza de éxito. Los dos modos ahora son una elección visible en la pantalla, con su costo dicho. DOS: el montaje ya no muere a los 100 segundos: ese tope era nuestro (no de la plataforma), se subió el techo de la función a 300 s y el montaje dispone de hasta 240; además un candado impide que el sondeo del navegador y el cron lancen montajes duplicados del mismo Reel, la tarjeta de cierre se compone una sola vez, y cuando el montaje falla la pantalla desglosa qué está listo y qué no, con botón «Reintentar montaje — sin regenerar escenas». TRES: la Biblioteca Multimedia tiene por fin miniaturas: cada tarjeta pintaba el archivo original (2-8 MB) para mostrarse a 200 px — pintar una pantalla eran ~180 MB. Ahora cada imagen tiene su variante WebP de ~400 px (15-40 KB), lo ya subido se va completando solo en tandas, y el selector pide la lista por páginas en vez de las 3.300 filas de golpe.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'emergencias', 'multimedia', 'rendimiento'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'Campaña de Emergencia: las escenas se animan con IA por defecto; el modo fotográfico queda como elección explícita.' },
+            { type: 'added', text: 'Selector visible de modo por campaña: «Escena viva — IA» / «Fotográfico — sin IA», con costos a la vista.' },
+            { type: 'changed', text: 'Una escena sustituida tras agotar reintentos queda marcada para revisión con su motivo — ya no se lee como éxito.' },
+            { type: 'fixed', text: 'El montaje ya no se corta a los 100 s: dispone de hasta 240 s dentro de una función de 300.' },
+            { type: 'fixed', text: 'Un candado impide montajes duplicados del mismo Reel lanzados por el sondeo y el cron a la vez.' },
+            { type: 'improved', text: 'Al fallar el montaje, la pantalla desglosa escenas/música/montaje y ofrece reintentar sin regenerar nada.' },
+            { type: 'added', text: 'Miniaturas WebP en la Biblioteca: ~100 veces menos peso por tarjeta, con backfill automático de lo existente.' },
+            { type: 'improved', text: 'El selector de imágenes carga por páginas: la primera pantalla no espera a la fila tres mil.' },
+        ]
+    },
     {
         version: '4.785.0',
         title: 'La fotografía es la fuente de verdad: fidelidad de imagen reforzada 🎯',

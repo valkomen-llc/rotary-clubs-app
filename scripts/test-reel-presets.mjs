@@ -108,16 +108,38 @@ check('la expansión de lienzo es obligatoria en emergencia',
 check('lleva texto en pantalla y tarjeta de cierre',
     REEL_PRESETS.emergencia.onScreenText && REEL_PRESETS.emergencia.closingCard);
 
-// La vía sin motor generativo es la decisión de fondo del preset: sobre una
-// fotografía de un desastre real, un motor image-to-video REINTERPRETA los
-// píxeles y puede añadir a alguien que no estuvo ahí.
-check('el estilo por defecto es `fotografico` (sin motor generativo)',
-    REEL_PRESETS.emergencia.motionStyle === 'fotografico');
+// El default es la ESCENA VIVA (v4.786, decisión del cliente con resultados a
+// la vista). v4.783 arrancó con `fotografico` porque evitar el motor era la
+// única protección contra la invención; v4.785 la reemplazó por MEDICIÓN
+// —censo universal, inventario, descarte estricto— y el resultado estático
+// dejó de justificarse: fiel y muerto no comunica una emergencia.
+check('el estilo por defecto es la escena viva (`auto`), no `fotografico`',
+    REEL_PRESETS.emergencia.motionStyle === 'auto');
+check('la intensidad parte de `natural` (la acota `resolveSceneIntensity` por escena)',
+    REEL_PRESETS.emergencia.motionIntensity === 'natural');
 {
     const r = applyPresetDefaults('emergencia', {});
-    check('y se DICE en las notas, con su motivo',
-        r.notes.some(n => /sin motor generativo/i.test(n) && /cero créditos/i.test(n)),
+    check('la nota dice QUÉ protege la escena viva: medición y sustitución visible',
+        r.notes.some(n => /se mide/i.test(n) && /no entra al Reel/i.test(n)),
         JSON.stringify(r.notes));
+
+    // El modo sin IA sigue existiendo como elección EXPRESA, con su nota.
+    const foto = applyPresetDefaults('emergencia', { motionStyle: 'fotografico' });
+    check('elegir «Fotográfico» a mano se respeta y se anota',
+        foto.config.motionStyle === 'fotografico'
+        && foto.notes.some(n => /sin animación IA/i.test(n) && /cero créditos/i.test(n)),
+        JSON.stringify(foto.notes));
+}
+// La sustitución tras agotar reintentos SE VE: el rescate marca needs_review,
+// no ready. Se comprueba sobre el archivo porque es una escritura a la base
+// que ninguna prueba pura puede ejecutar.
+{
+    const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+    check('el rescate por defecto descalificante viaja con `markForReview: true`',
+        /resolveSceneWithStillMotion\(sc, \{[\s\S]{0,900}?markForReview: true/.test(ctrl));
+    check('la elección expresa de «Fotográfico» NO se marca para revisión',
+        /reason: 'estilo Fotográfico elegido por el usuario' \}\)/.test(ctrl)
+        || /estilo Fotográfico elegido por el usuario/.test(ctrl));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

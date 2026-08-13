@@ -38,6 +38,9 @@ interface MediaItem {
     id: string;
     filename: string;
     url: string;
+    // Miniatura WebP de ~400 px (v4.786). Cadena vacía = «se intentó y no se
+    // pudo» (un HEIC heredado); en los dos casos la tarjeta usa el original.
+    thumbUrl?: string | null;
     type: 'image' | 'video' | 'document';
     sourceType?: string | null;
     sourceId?: string | null;
@@ -131,8 +134,21 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
 
     const API = import.meta.env.VITE_API_URL || '/api';
 
-    const fetchMedia = useCallback(async () => {
-        setLoading(true);
+    // ── Páginas del SERVIDOR (v4.786) ──
+    //
+    // Hasta v4.785 se pedía la biblioteca ENTERA (3.300+ filas) en una sola
+    // respuesta y la ventana era sólo del navegador. Ahora se piden tandas de
+    // 200 y el resto llega al hacer scroll: la primera pintura no espera a la
+    // fila tres mil. `offset = 0` reemplaza la lista (cambio de filtro);
+    // mayor, la extiende.
+    const SERVER_PAGE = 200;
+    const [hasMore, setHasMore] = useState(false);
+    const cargandoMas = useRef(false);
+
+    const fetchMedia = useCallback(async (offset = 0) => {
+        if (offset === 0) setLoading(true);
+        else if (cargandoMas.current) return;
+        cargandoMas.current = offset > 0;
         try {
             const token = localStorage.getItem('rotary_token');
             const params = new URLSearchParams({ type: 'image' });
@@ -140,17 +156,21 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
             if (selectedSourceId) params.set('sourceId', selectedSourceId);
             if (currentFolder) params.set('folderId', currentFolder);
             if (searchQuery.trim()) params.set('search', searchQuery.trim());
+            params.set('limit', String(SERVER_PAGE));
+            params.set('offset', String(offset));
             const response = await fetch(`${API}/media?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                setMedia(data);
+                setHasMore(response.headers.get('X-Media-Has-More') === '1');
+                setMedia(prev => offset === 0 ? data : [...prev, ...data]);
             }
         } catch {
             toast.error('Error al cargar la librería');
         } finally {
             setLoading(false);
+            cargandoMas.current = false;
         }
     }, [API, selectedCategory, selectedSourceId, currentFolder, searchQuery]);
 
@@ -272,20 +292,31 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     useEffect(() => { setPagina(1); }, [selectedCategory, selectedSourceId, currentFolder, searchQuery]);
 
     const visibles = useMemo(() => media.slice(0, pagina * PAGE_SIZE), [media, pagina]);
-    const faltan = media.length - visibles.length;
+    // «Faltan» ahora cuenta también lo que el servidor aún no mandó: sin eso el
+    // centinela se apagaba al agotar lo cargado y el scroll moría en la fila 200.
+    const faltan = (media.length - visibles.length) + (hasMore ? 1 : 0);
 
     useEffect(() => {
         const el = centinela.current;
         if (!el || faltan <= 0) return;
         const obs = new IntersectionObserver(
-            entradas => { if (entradas.some(e => e.isIntersecting)) setPagina(p => p + 1); },
+            entradas => {
+                if (!entradas.some(e => e.isIntersecting)) return;
+                setPagina(p => p + 1);
+                // La página siguiente del servidor se pide ANTES de agotar la
+                // local: el margen de 600 px + esta anticipación hacen el
+                // scroll continuo sin huecos.
+                if (hasMore && (pagina + 1) * PAGE_SIZE >= media.length - PAGE_SIZE) {
+                    fetchMedia(media.length);
+                }
+            },
             // Un margen generoso: la tanda siguiente se pide ANTES de llegar al
             // final, así el desplazamiento no se corta.
             { root: null, rootMargin: '600px' }
         );
         obs.observe(el);
         return () => obs.disconnect();
-    }, [faltan, visibles.length]);
+    }, [faltan, visibles.length, hasMore, pagina, media.length, fetchMedia]);
 
     if (!isOpen) return null;
 
@@ -449,7 +480,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                                                 <span className="text-[8px] font-bold text-gray-400 leading-tight">Sin archivo</span>
                                             </div>
                                         ) : (
-                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover bg-gray-50" loading="lazy"
+                                            <img src={item.thumbUrl || item.url} alt={item.filename} className="w-full h-full object-cover bg-gray-50" loading="lazy" decoding="async"
                                                 onError={e => {
                                                     // Una imagen que el navegador no puede traer deja
                                                     // el hueco vacío. Se marca, en vez de dejar una

@@ -299,6 +299,14 @@ model Media {
   sourceId    String?
   sourceLabel String?
 
+  // Miniatura optimizada (v4.786): WebP de ~400 px generada al subir, servida
+  // en las rejillas en lugar del original. Sin ella, cada tarjeta de la
+  // Biblioteca descargaba la foto completa (2-8 MB) para pintarse a 200 px:
+  // pintar la primera pantalla eran ~180 MB. NULL = todavía sin miniatura (el
+  // backfill la genera; mientras tanto la pantalla usa el original, como
+  // siempre). Declarada acá por la misma regla que `folderId`, abajo.
+  thumbUrl String?
+
   // Carpeta de la Librería de Medios a la que pertenece el archivo (v4.738).
   // NULL = está en la raíz de su sitio.
   //

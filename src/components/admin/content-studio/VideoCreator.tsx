@@ -271,7 +271,11 @@ const VideoCreator: React.FC = () => {
                         // Sin el preset, el servidor valida contra `estandar` y
                         // rechaza cuatro o cinco fotos: la comprobación previa
                         // fallaba justo en el caso que se acaba de agregar.
-                        preset
+                        preset,
+                        // El modo decide el presupuesto: «Fotográfico» cuesta 0
+                        // y «Escena viva» ~20/escena. Sin mandarlo, el estimado
+                        // no reacciona al toggle.
+                        motionStyle: config.motionStyle
                     })
                 });
                 if (!r.ok || cancelled) return;
@@ -282,7 +286,7 @@ const VideoCreator: React.FC = () => {
             }
         })();
         return () => { cancelled = true; };
-    }, [selectedMedia, sceneCount, preset, config.format, config.qualityTier, config.engine]);
+    }, [selectedMedia, sceneCount, preset, config.format, config.qualityTier, config.engine, config.motionStyle]);
 
     // ── Sondeo ──
     // El flujo es asíncrono a propósito: cada clip tarda 1-3 minutos y la
@@ -630,19 +634,56 @@ const VideoCreator: React.FC = () => {
                             </div>
                         )}
 
-                        {/* La vía sin motor generativo se DICE, con su motivo.
-                            Una foto que se mueve distinto de lo que el usuario
-                            espera, sin explicación, se lee como un fallo. */}
-                        {activePreset?.motionStyle === 'fotografico' && (
-                            <div className="mt-5 flex gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                                <p className="text-xs text-emerald-900 leading-relaxed">
-                                    <strong>Las fotografías no se regeneran.</strong> Se anima el encuadre sobre la
-                                    imagen original, así que rostros, daños y contexto quedan exactamente como
-                                    fueron fotografiados. Cuesta cero créditos de video. Podés elegir animación con
-                                    IA en las opciones avanzadas, aunque en una emergencia real reinterpreta la
-                                    escena.
-                                </p>
+                        {/* ── Los DOS MODOS de escena, como decisión visible (v4.786) ──
+                            «Escena viva IA» y «Fotográfico» no son un estilo más
+                            del desplegable avanzado: son la decisión que define
+                            qué se recibe — una escena que respira o la foto con
+                            un desplazamiento de encuadre. Escondida en opciones
+                            avanzadas produjo el reporte de «las escenas no
+                            tienen vida»: el usuario no sabía que estaba en el
+                            modo sin IA. Se escribe sobre `config.motionStyle`,
+                            que es el mismo eje que ya consume el servidor. */}
+                        {isEmergency && (
+                            <div className="mt-6">
+                                <span className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                                    Cómo se animan las fotografías
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfig(c => ({ ...c, motionStyle: 'auto' }))}
+                                        aria-pressed={config.motionStyle !== 'fotografico'}
+                                        className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                                            config.motionStyle !== 'fotografico'
+                                                ? 'border-indigo-500 bg-indigo-50/40'
+                                                : 'border-gray-100 hover:border-indigo-200'
+                                        }`}
+                                    >
+                                        <span className="block text-sm font-black text-gray-900">Escena viva — IA</span>
+                                        <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                                            El contenido de la foto cobra vida: hojas, ropa, polvo, gestos.
+                                            La fidelidad se mide fotograma a fotograma y una escena con
+                                            personas inventadas no entra al Reel. ~20 créditos por escena.
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfig(c => ({ ...c, motionStyle: 'fotografico' }))}
+                                        aria-pressed={config.motionStyle === 'fotografico'}
+                                        className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                                            config.motionStyle === 'fotografico'
+                                                ? 'border-emerald-500 bg-emerald-50/40'
+                                                : 'border-gray-100 hover:border-emerald-200'
+                                        }`}
+                                    >
+                                        <span className="block text-sm font-black text-gray-900">Fotográfico — sin IA</span>
+                                        <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                                            La fotografía se mueve, no se regenera: identidad garantizada al
+                                            100 %, pero la escena no cobra vida. Cero créditos, listo en
+                                            segundos.
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1446,6 +1487,38 @@ const PreviewPanel: React.FC<{
                             <p className="text-white/70 text-xs font-bold leading-relaxed">
                                 {reel.statusDetail || 'El montaje no se completó.'}
                             </p>
+                            {/* ── El desglose que separa «fallaron las escenas» de
+                                «falló el montaje» (v4.786) ──
+                                Con los clips listos y sólo el montaje caído, el
+                                mensaje genérico hacía creer que se perdió todo.
+                                Los clips ya están pagados: el reintento sólo
+                                vuelve a montar, y eso hay que DECIRLO donde está
+                                el error, no esperar que alguien lo sepa. */}
+                            {reel.status === 'error' && (
+                                <div className="w-full max-w-[220px] text-left space-y-1 mt-1">
+                                    {[
+                                        ['Escenas', `${reel.scenes.filter(s => s.videoUrl).length}/${reel.scenes.length}`,
+                                            reel.scenes.every(s => s.videoUrl)],
+                                        ['Música', reel.musicUrl ? 'lista' : (reel.config?.withMusic ? 'pendiente' : 'sin música'),
+                                            Boolean(reel.musicUrl || !reel.config?.withMusic)],
+                                        ['Montaje', 'falló', false]
+                                    ].map(([label, value, ok]) => (
+                                        <div key={String(label)} className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider">
+                                            <span className="text-white/40">{String(label)}</span>
+                                            <span className={ok ? 'text-emerald-400' : 'text-amber-400'}>{String(value)}</span>
+                                        </div>
+                                    ))}
+                                    {reel.scenes.length > 0 && reel.scenes.every(s => s.videoUrl) && (
+                                        <button
+                                            onClick={onReRender}
+                                            className="w-full mt-3 bg-amber-500/90 text-gray-900 py-2.5 rounded-xl font-black text-xs hover:bg-amber-400 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            Reintentar montaje — sin regenerar escenas
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
