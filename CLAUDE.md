@@ -706,6 +706,32 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 - **`ScenePeopleCheck` es un componente compartido**, no una copia en cada
   pantalla: lo usan el Creador y la Biblioteca, y duplicarlo los dejaría
   separarse en silencio.
+- **El timeout del montaje NO es el default de `runFfmpeg`** (v4.786). El
+  adaptador local llamaba a `composeReel` sin `timeoutMs` y caía a los 100 s
+  del default, dentro de una función que permite 300 (`vercel.json`, subido de
+  120): al proceso lo matábamos NOSOTROS. Con 4-5 escenas, rótulos y tarjeta
+  de cierre sobre la vCPU de Vercel, 100 s no alcanzan — es el «se agotó el
+  tiempo (100s)» reportado con capturas. Ahora el montaje dispone de 240 s
+  (`REEL_FFMPEG_TIMEOUT_MS`), que deja margen para lo que la invocación gastó
+  antes y para subir el resultado después. Al añadir un paso costoso al
+  montaje, MEDIRLO contra ese presupuesto.
+- **UN montaje a la vez** (v4.786, `renderClaimAt` en `config`). El montaje
+  local es síncrono y dura minutos; el sondeo cada 3 s, el cron y el webhook
+  veían `assembling` sin `renderJobId` y cada uno relanzaba OTRO montaje del
+  mismo Reel. El candado es el mismo UPDATE condicional de `sideTracksAt` —
+  con marca propia, NO sobre `updatedAt`, que lo mueve cualquier nota y
+  dejaría la ventana sin vencer nunca—. Ventana de 6 min > montaje más largo;
+  TODOS los finales de intento la liberan (éxito, fallo, job alojado,
+  relanzamiento manual): un final que no libere hace esperar 6 minutos a un
+  reintento legítimo.
+- **La tarjeta de cierre se compone UNA vez por proyecto**
+  (`config.closingClip`). No depende de nada que cambie entre intentos, y
+  re-renderizarla en cada montaje era otra corrida de ffmpeg dentro de la
+  invocación que después necesita todo su presupuesto.
+- **Un fallo de montaje se DESGLOSA en la pantalla**: escenas N/N, música,
+  montaje ✗ con su motivo, y el botón «Reintentar montaje — sin regenerar
+  escenas» donde está el error. El mensaje genérico hacía creer que se perdió
+  todo cuando los clips ya estaban pagados.
 
 - El medidor de créditos es **propio** (`REEL_MONTHLY_CREDIT_LIMIT`), no el saldo
   real de KIE. No presentarlo como el saldo del proveedor.
@@ -938,15 +964,28 @@ ventanas de los rótulos—, separado de la orquestación.
 - **Una necesidad NO se deduce del tipo de desastre.** Sería cómodo («un
   terremoto necesita alojamiento») y sería inventar. Si el usuario no marcó
   ninguna, el guion no nombra ninguna.
-- **`fotografico` es el default del preset de emergencia, y es la decisión de
-  fondo.** Un motor image-to-video REINTERPRETA los píxeles: puede añadir una
-  persona que no está en la foto (defecto medido en v4.705), redibujar un rostro
-  o alterar los daños visibles. En una fotografía institucional eso es un
-  problema de calidad; en la de un desastre real es de VERACIDAD, y destruye la
-  credibilidad que la campaña necesita para pedir ayuda. Cuesta cero créditos y
-  segundos en vez de minutos, que es además lo que hace falta cuando hay que
-  publicar rápido. Es un default, no un cierre: el motor generativo se elige a
-  propósito, con su advertencia a la vista.
+- **El default del preset de emergencia es la ESCENA VIVA (v4.786), y el
+  cambio tiene historia que conviene no perder.** v4.783 estrenó con
+  `fotografico`: un motor image-to-video REINTERPRETA los píxeles —puede añadir
+  una persona que no está en la foto, defecto medido en v4.705— y evitar el
+  motor era la única protección disponible. v4.785 cambió la ecuación: la
+  veracidad ahora SE MIDE (censo universal, inventario, descarte estricto), y
+  con esas defensas desplegadas el cliente decidió —con los resultados a la
+  vista— que el resultado estático era técnicamente fiel y comunicativamente
+  muerto. Los dos modos son ahora una ELECCIÓN VISIBLE en la pantalla
+  («Escena viva — IA» / «Fotográfico — sin IA»), con su costo dicho; el estilo
+  dejó de ser un ajuste enterrado en opciones avanzadas, que es como se
+  produjo el reporte de «las escenas no tienen vida» sin que nadie supiera por
+  qué. `fotografico` sigue siendo la elección indicada cuando la identidad
+  manda sobre la vida.
+- **Una escena SUSTITUIDA no se lee como éxito** (v4.786, `markForReview` en
+  `resolveSceneWithStillMotion`). El rescate de v4.785 marcaba `ready`: quien
+  pidió escenas vivas recibía una foto con paneo presentada como escena
+  correcta, y el único rastro era la etiqueta del método. Ahora el rescate
+  queda `needs_review` con el motivo en `statusDetail` y `substituted: true`
+  en la fidelidad; la elección EXPRESA de «Fotográfico» sigue siendo `ready`,
+  porque ahí la foto en movimiento es exactamente lo pedido. El Reel se
+  completa igual — `needs_review` conserva su clip y el montaje lo usa.
 - **La expansión de lienzo es obligatoria acá** (`requireExpansion`). Cuando la
   adaptación no actúa, el montaje RECORTA AL CENTRO y ese recorte se lleva los
   bordes, que es donde están las personas de los extremos. En una campaña de
@@ -3870,6 +3909,37 @@ una barra con «Convertir a JPG (N)» y «Eliminar (N)».
   resolver a cuál de los siete botones apuntaba.
 - **Con una selección en curso, pulsar la baldosa marca en vez de abrir la
   ficha.** Quien está eligiendo varios espera seguir eligiendo.
+
+### Miniaturas de las rejillas (v4.786)
+
+Cada imagen tiene una variante WebP de ~400 px (`Media."thumbUrl"`) que es la
+que pintan las rejillas; el original sólo se descarga al verlo en detalle o al
+usarlo para generar.
+
+- **El defecto que esto corrige no era el lazy loading.** La ventana de 60
+  tarjetas, el `IntersectionObserver` y `loading="lazy"` ya existían; el
+  problema era el PESO: cada tarjeta cargaba el archivo original (2-8 MB) para
+  pintarse a 200 px — la primera pantalla del selector eran ~180 MB y las
+  tarjetas se llenaban de a una. Al diagnosticar una rejilla lenta, mirar
+  primero QUÉ pesa cada imagen, no cuándo se pide.
+- **El criterio vive en `mediaThumbs.js` (puro)**: SVG no (escala solo), GIF no
+  (la miniatura congelaría la animación), HEIC no (su camino es la conversión
+  de v4.739 y el JPEG resultante sí pasa). La clave vive en la carpeta hermana
+  `thumbs/` para poder regenerarla con una regla de ciclo de vida sin tocar
+  originales.
+- **La miniatura NUNCA tumba la subida**: `tryMakeThumb` atrapa todo y
+  devuelve null — la fila queda sin miniatura y la rejilla usa el original,
+  que es exactamente lo que había antes.
+- **El backfill distingue pendiente de descartado**: un archivo que no se pudo
+  miniaturizar se marca con cadena VACÍA para no reintentarlo en cada pasada
+  para siempre. Tandas con presupuesto de tiempo (patrón `bulk-convert`),
+  disparadas al abrir la Biblioteca con tope de vueltas.
+- **La paginación de `GET /media` es ADITIVA**: sin `limit` responde como
+  siempre (array completo — nueve pantallas la consumen); con `limit` acota y
+  avisa si hay más por la cabecera `X-Media-Has-More`, pidiendo una fila de
+  más en vez de pagar un COUNT. El selector pide tandas de 200.
+- Pruebas: `npm run test:media:thumbs` (27 casos; la generación usa sharp y se
+  salta si no está).
 
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 

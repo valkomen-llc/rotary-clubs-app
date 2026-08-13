@@ -374,6 +374,35 @@ const publicUrlFor = (bucket, key) => {
 };
 
 /** Baja un objeto de S3 a memoria. */
+// ── Miniatura (v4.786) ──
+//
+// Genera la variante WebP de ~400 px y la sube junto al original. NUNCA lanza:
+// una miniatura que falla deja `thumbUrl` en NULL y la rejilla usa el original,
+// que es exactamente lo que había antes — perder la subida por la miniatura
+// sería el intercambio equivocado. El criterio (qué se miniaturiza, con qué
+// clave) vive en `mediaThumbs.js`, que es puro y está probado.
+const tryMakeThumb = async ({ buffer, s3Key, bucket, type, filename, mimetype }) => {
+    try {
+        const { shouldThumbnail, thumbKeyFor, generateThumbBuffer } = await import('../lib/mediaThumbs.js');
+        if (!shouldThumbnail({ type, filename, mimetype })) return null;
+        const key = thumbKeyFor(s3Key);
+        if (!key) return null;
+        const source = buffer || await fetchFromS3(bucket, s3Key);
+        const thumb = await generateThumbBuffer(source);
+        const { s3, PutObjectCommand } = await getUploadDeps();
+        await s3.send(new PutObjectCommand({
+            Bucket: bucket, Key: key, Body: thumb, ContentType: 'image/webp',
+            // Inmutable: la clave deriva del original, que no cambia. Es lo que
+            // deja al navegador y al CDN cachearla para siempre.
+            CacheControl: 'public, max-age=31536000, immutable'
+        }));
+        return publicUrlFor(bucket, key);
+    } catch (e) {
+        console.warn('[Media] miniatura no generada para', s3Key, '—', e.message);
+        return null;
+    }
+};
+
 const fetchFromS3 = async (bucket, key) => {
     const { s3, GetObjectCommand } = await getUploadDeps();
     const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -552,10 +581,19 @@ router.post('/save', authMiddleware, async (req, res) => {
             }
         }
 
+        // La miniatura se genera sobre el archivo FINAL (el JPEG si hubo
+        // conversión), bajándolo de S3 cuando el navegador lo subió directo.
+        // Cuesta ~0,5 s en la misma región y es lo que hace que la Biblioteca
+        // pinte con 15-40 KB por tarjeta en vez de 2-8 MB.
+        const thumbUrl = await tryMakeThumb({
+            buffer: null, s3Key: finalKey, bucket,
+            type: fileTypeLocal, filename: finalName, mimetype: fileType
+        });
+
         const result = await db.query(
-            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "originalS3Key", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING *`,
-            [finalName, finalUrl, fileTypeLocal, finalSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, finalKey, folderId, originalKey]
+            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "originalS3Key", "thumbUrl", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING *`,
+            [finalName, finalUrl, fileTypeLocal, finalSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, finalKey, folderId, originalKey, thumbUrl]
         );
 
         res.json({ ...result.rows[0], conversion });
@@ -646,14 +684,22 @@ router.post('/upload', authMiddleware, async (req, res) => {
                 await ensureMediaFolderSchema();
                 const folderId = await resolveTargetFolder(req.query.folderId || req.body.folderId, targetClubId);
 
+                // Acá el buffer está en memoria: la miniatura no paga viaje a S3.
+                const thumbUrl = await tryMakeThumb({
+                    buffer: display.buffer, s3Key, bucket,
+                    type: fileTypeLocal,
+                    filename: display.converted ? jpegNameFor(req.file.originalname) : req.file.originalname,
+                    mimetype: display.contentType
+                });
+
                 const result = await db.query(
-                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "folderId", "createdAt")
-                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()) RETURNING *`,
+                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "folderId", "thumbUrl", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW()) RETURNING *`,
                     // El nombre y el tamaño son los del archivo GUARDADO, no los
                     // del que llegó: si se convirtió, la ficha diría «.heic» y
                     // el peso del original sobre un archivo que ya es un JPEG.
                     [display.converted ? jpegNameFor(req.file.originalname) : req.file.originalname,
-                    fileUrl, fileTypeLocal, display.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel, folderId]
+                    fileUrl, fileTypeLocal, display.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel, folderId, thumbUrl]
                 );
                 res.json(result.rows[0]);
             } catch (dbError) {
@@ -838,6 +884,24 @@ router.get('/', authMiddleware, async (req, res) => {
         if (where.length) query += ' WHERE ' + where.join(' AND ');
         query += ' ORDER BY "createdAt" DESC';
 
+        // ── Paginación ADITIVA (v4.786) ──
+        //
+        // Sin `limit` la respuesta es la de siempre —todas las filas, un
+        // array—: nueve pantallas consumen esta ruta y ninguna espera otra
+        // forma. Con `limit` se acota y se pide UNA fila de más: si vuelve, hay
+        // otra página (`X-Media-Has-More`), sin pagar un COUNT aparte. La señal
+        // va en cabecera y no en el cuerpo para no cambiarle la forma a nadie.
+        const limit = Number(req.query.limit);
+        const offset = Math.max(0, Number(req.query.offset) || 0);
+        if (Number.isInteger(limit) && limit > 0) {
+            query += ` LIMIT $${p} OFFSET $${p + 1}`;
+            params.push(limit + 1, offset);
+            const result = await db.query(query, params);
+            const hasMore = result.rows.length > limit;
+            res.set('X-Media-Has-More', hasMore ? '1' : '0');
+            return res.json(hasMore ? result.rows.slice(0, limit) : result.rows);
+        }
+
         const result = await db.query(query, params);
         res.json(result.rows);
     } catch (error) {
@@ -1013,6 +1077,72 @@ const BULK_TIME_BUDGET_MS = 90_000;
 // que quepa y se devuelve lo que falta, para que la pantalla siga pidiendo y
 // pueda mostrar el avance. Cortar en silencio dejaría al usuario creyendo que
 // terminó.
+// ── POST /media/backfill-thumbs — miniaturas para lo ya subido (v4.786) ──
+//
+// La generación al subir sólo alcanza a lo que venga después; la Biblioteca
+// del cliente ya tiene ~3.300 imágenes sin miniatura. Mismo patrón que
+// `bulk-convert`: PRESUPUESTO DE TIEMPO y respuesta con lo que falta — la
+// función corta a los 300 s y una tanda grande no entra en una petición. El
+// navegador vuelve a llamar hasta que `pending` llegue a 0.
+//
+// Idempotente y sin candado a propósito: dos llamadas simultáneas pueden
+// duplicar el trabajo de una misma imagen —se pierde CPU, no datos— y un
+// candado por fila costaría más que lo que protege. El WHERE por `thumbUrl IS
+// NULL` hace que cada pasada atienda sólo lo pendiente.
+router.post('/backfill-thumbs', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const startedAt = Date.now();
+        const timeBudgetMs = 55_000;
+        const batch = 40;
+
+        // Sólo imágenes del alcance del usuario: el operador de la plataforma
+        // barre todo; un administrador de sitio, lo suyo. Mismo criterio de
+        // aislamiento que el resto del archivo.
+        const scope = req.user.role === 'administrator' ? '' : ' AND "clubId" = $1';
+        const scopeParams = req.user.role === 'administrator' ? [] : [req.user.clubId];
+
+        const { rows: candidates } = await db.query(
+            `SELECT id, "s3Key", bucket, filename, type FROM "Media"
+              WHERE "thumbUrl" IS NULL AND type = 'image' AND "s3Key" IS NOT NULL${scope}
+              ORDER BY "createdAt" DESC LIMIT ${batch}`,
+            scopeParams
+        );
+
+        let done = 0, skipped = 0;
+        for (const row of candidates) {
+            if (Date.now() - startedAt > timeBudgetMs) break;
+            const bucket = row.bucket || process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+            const url = await tryMakeThumb({
+                buffer: null, s3Key: row.s3Key, bucket,
+                type: row.type, filename: row.filename, mimetype: null
+            });
+            if (url) {
+                await db.query('UPDATE "Media" SET "thumbUrl" = $2 WHERE id = $1', [row.id, url]);
+                done += 1;
+            } else {
+                // Un HEIC heredado o un archivo ilegible no puede reintentar en
+                // cada pasada para siempre: se marca con cadena vacía —«se miró
+                // y no se pudo»— y la rejilla lo trata igual que NULL. Es la
+                // diferencia entre pendiente y descartado.
+                await db.query(`UPDATE "Media" SET "thumbUrl" = '' WHERE id = $1`, [row.id]);
+                skipped += 1;
+            }
+        }
+
+        const { rows: [{ pending }] } = await db.query(
+            `SELECT COUNT(*)::int AS pending FROM "Media"
+              WHERE "thumbUrl" IS NULL AND type = 'image' AND "s3Key" IS NOT NULL${scope}`,
+            scopeParams
+        );
+
+        res.json({ done, skipped, pending, ms: Date.now() - startedAt });
+    } catch (error) {
+        console.error('[Media] backfill-thumbs:', error);
+        res.status(500).json({ error: 'No se pudieron generar las miniaturas', details: error.message });
+    }
+});
+
 router.post('/bulk-convert', authMiddleware, async (req, res) => {
     try {
         const items = await ownedMedia(req.body?.mediaIds, req.user);

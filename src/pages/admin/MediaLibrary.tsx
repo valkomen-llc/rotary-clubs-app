@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Trash2, Search, FileText, ImageIcon,
@@ -17,6 +17,8 @@ interface MediaItem {
     id: string;
     filename: string;
     url: string;
+    // Miniatura WebP de ~400 px (v4.786); vacía o ausente, se usa el original.
+    thumbUrl?: string | null;
     type: 'image' | 'video' | 'document';
     size: number;
     createdAt: string;
@@ -116,6 +118,36 @@ const MediaLibrary: React.FC = () => {
         setSelected(new Set());
         fetchMedia();
     }, [user, selectedClubId, currentFolder]);
+
+    // ── Backfill de miniaturas (v4.786) ──
+    //
+    // La generación al subir sólo alcanza a lo nuevo; esto va completando lo
+    // heredado, en tandas con presupuesto del lado del servidor, mientras el
+    // administrador tiene la pantalla abierta. Tope de vueltas por visita: un
+    // bucle sin tope que gira contra un error persistente es peor que dejar
+    // miniaturas pendientes para la próxima visita. Silencioso a propósito —
+    // es mantenimiento, no una acción del usuario— y con una sola pasada por
+    // montaje (el ref), para que un repintado no lo relance.
+    const backfillStarted = useRef(false);
+    useEffect(() => {
+        if (backfillStarted.current) return;
+        backfillStarted.current = true;
+        let cancelado = false;
+        (async () => {
+            const token = localStorage.getItem('rotary_token');
+            for (let ronda = 0; ronda < 8 && !cancelado; ronda++) {
+                try {
+                    const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/backfill-thumbs`, {
+                        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!r.ok) break;
+                    const { done, pending } = await r.json();
+                    if (!pending || (!done && pending)) break;
+                } catch { break; }
+            }
+        })();
+        return () => { cancelado = true; };
+    }, []);
 
     const fetchFolders = async () => {
         setLoading(true);
@@ -466,7 +498,7 @@ const MediaLibrary: React.FC = () => {
                     continue;
                 }
 
-                const { uploadUrl, fileUrl, key, fileTypeLocal } = await presignRes.json();
+                const { uploadUrl, fileUrl, key } = await presignRes.json();
 
                 // 2. Subir directo a S3
                 const s3Res = await fetch(uploadUrl, {
@@ -958,7 +990,7 @@ const MediaLibrary: React.FC = () => {
                                             </button>
                                         </div>
                                     ) : item.type === 'image' ? (
-                                        <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
+                                        <img src={item.thumbUrl || item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : item.type === 'video' ? (
                                         <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gray-900 overflow-hidden relative">
                                             <Video className="w-10 h-10 text-white/20" />
@@ -1052,7 +1084,7 @@ const MediaLibrary: React.FC = () => {
                                                         {isHeicFile({ filename: item.filename }) ? (
                                                             <FileImage className="w-5 h-5 text-amber-400" />
                                                         ) : item.type === 'image' ? (
-                                                            <img src={item.url} className="w-full h-full object-cover" />
+                                                            <img src={item.thumbUrl || item.url} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                                         ) : item.type === 'video' ? (
                                                             <Video className="w-5 h-5 text-rotary-blue" />
                                                         ) : (

@@ -169,26 +169,34 @@ export const REEL_PRESETS = {
         // Qué formulario se le pide al usuario antes de generar.
         contextSchema: 'emergency',
 
-        // ── Por qué `fotografico` y no un motor generativo ──
+        // ── El default es la ESCENA VIVA, y el cambio tiene historia ──
         //
-        // Es la decisión más importante del preset. Un motor image-to-video
-        // REINTERPRETA los píxeles: puede añadir una persona que no está en la
-        // foto —defecto medido y documentado en v4.705—, redibujar un rostro o
-        // alterar los daños visibles. En una fotografía institucional eso es un
-        // problema de calidad; en la fotografía de un desastre real es un
-        // problema de VERACIDAD, y destruye exactamente la credibilidad que una
-        // campaña solidaria necesita para pedir ayuda.
+        // v4.783 estrenó este preset con `fotografico`: un motor image-to-video
+        // REINTERPRETA los píxeles —puede añadir una persona que no está en la
+        // foto, defecto medido en v4.705— y en la fotografía de un desastre
+        // real eso es un problema de VERACIDAD, no de calidad. Evitar el motor
+        // era la única protección disponible entonces.
         //
-        // `fotografico` (`renderStillMotion`) mueve la ventana de encuadre sobre
-        // la fotografía con FFmpeg: los píxeles son los del original, así que
-        // rostros, daños y contexto no se reinterpretan. Cuesta CERO créditos y
-        // segundos en vez de minutos, que además es lo que hace falta cuando hay
-        // que publicar rápido.
+        // v4.785 cambió esa ecuación: la veracidad ahora se MIDE en vez de
+        // evitarse. El censo cuenta también cuando es cero, el inventario fija
+        // los elementos de la escena, y una escena con un sujeto inventado NO
+        // entra al Reel por ninguna vía —agotados los reintentos, se sustituye
+        // y se marca para revisión—. Con esas defensas desplegadas, el cliente
+        // decidió (v4.786, con los resultados a la vista) que el default sea la
+        // escena que RESPIRA: el resultado estático de `fotografico` era
+        // técnicamente fiel y comunicativamente muerto.
         //
-        // Es un DEFAULT, no un cierre: quien quiera animación generativa la
-        // elige a propósito en la pantalla, con su advertencia a la vista.
-        motionStyle: 'fotografico',
-        motionIntensity: 'sutil',
+        // `auto` deja que el director elija el estilo VIVO por escena según lo
+        // que ve en cada foto (`fotografico` está excluido de su repertorio, es
+        // elección expresa del usuario). El modo sin IA sigue disponible en la
+        // pantalla, rotulado como lo que es.
+        motionStyle: AUTO_MOTION_STYLE,
+        // `natural`, no `sutil`: la intensidad se ACOTA sola por escena
+        // (`resolveSceneIntensity` baja con caras tapadas o grupo denso, que en
+        // fotos de emergencia es lo habitual). Partir de `sutil` fue parte de la
+        // postura conservadora de v4.783; con el descarte estricto vigente, el
+        // techo por defecto es el del módulo.
+        motionIntensity: 'natural',
         transition: 'fade',
         musicStyle: 'institucional',
         narrationStyle: 'institucional',
@@ -344,13 +352,19 @@ export const applyPresetDefaults = (presetId, requested = {}) => {
     fill('motionIntensity', preset.motionIntensity, undefined);
     fill('narrationStyle', preset.narrationStyle, undefined);
 
-    // El aviso de la vía sin IA. Se dice acá y no en la pantalla porque el
-    // servidor es quien resuelve el estilo efectivo, y porque la nota tiene que
-    // quedar en el proyecto: quien abra el Reel dentro de un mes tiene que poder
-    // saber por qué esas fotos se mueven así.
-    if (preset.motionStyle === 'fotografico' && out.motionStyle === 'fotografico') {
+    // El aviso del MODO efectivo. Se dice acá y no en la pantalla porque el
+    // servidor es quien resuelve el estilo, y porque la nota tiene que quedar
+    // en el proyecto: quien abra el Reel dentro de un mes tiene que poder saber
+    // por qué esas fotos se mueven así (o por qué no).
+    if (out.motionStyle === 'fotografico') {
         notes.push(
-            'Las fotografías se animan sin motor generativo: se mueve el encuadre sobre la imagen original, así que rostros, daños y contexto no se reinterpretan. Cuesta cero créditos de video.'
+            'Modo Fotográfico — sin animación IA: se mueve el encuadre sobre la imagen original, así que rostros, daños y contexto no se reinterpretan, pero la escena no cobra vida. Cuesta cero créditos de video.'
+        );
+    } else if (preset.factGuard === 'strict') {
+        // Escena viva sobre una emergencia real: se dice qué la protege, porque
+        // la pregunta legítima de quien publica es «¿y si la IA inventa algo?».
+        notes.push(
+            'Las escenas se animan con IA y la fidelidad se mide fotograma a fotograma: una escena que muestre personas que no están en la fotografía, altere la marca o vuelva ilegible un texto no entra al Reel — se sustituye por la fotografía en movimiento y queda marcada para revisión.'
         );
     }
 

@@ -606,7 +606,21 @@ const ffmpegLocal = {
             fps: spec.fps,
             musicVolume: spec.soundtrack?.volume ?? 0.85,
             fadeSec: spec.soundtrack?.fadeIn ?? 1,
-            textOverlays: spec.textOverlays || []
+            textOverlays: spec.textOverlays || [],
+            // ── El timeout del montaje deja de ser el default de 100 s (v4.786) ──
+            //
+            // Sin este campo, `composeReel` caía al default de `runFfmpeg`
+            // (100 s) dentro de una función que YA permitía 120 y ahora permite
+            // 300: el proceso lo matábamos NOSOTROS, no la plataforma. Con
+            // cuatro escenas, rótulos y tarjeta de cierre sobre la vCPU
+            // compartida de Vercel, 100 s no alcanzaban — es el «se agotó el
+            // tiempo (100s)» reportado con capturas.
+            //
+            // 240 s deja ~60 s de margen para lo que la invocación ya gastó
+            // antes del montaje (descargar clips, componer rótulos) y para
+            // subir el resultado después. Configurable por entorno porque el
+            // plan de Vercel puede cambiar el techo sin que se despliegue.
+            timeoutMs: Number(process.env.REEL_FFMPEG_TIMEOUT_MS) || 240_000
         });
 
         return {
