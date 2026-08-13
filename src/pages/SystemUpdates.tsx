@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.783.0 | 2026-08-13 (Campaña de Emergencia en el Creador de Reels)
-// Cache bust: 2026-08-13a
+// UI V4.784.0 | 2026-08-13 (Subir fotos desde el Creador de Reels)
+// Cache bust: 2026-08-13b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.784.0',
+        title: 'Subir fotos desde el Creador de Reels, sin pasar por Multimedia 📤',
+        description: 'Junto a «Elegir fotos» hay ahora un botón «Subir fotos». Se toman del computador o del teléfono y se usan en el acto, sin tener que ir antes a Multimedia, subirlas allá y volver. Quedan guardadas en la Biblioteca Multimedia igual que si se hubieran subido desde esa pantalla, así que se pueden volver a elegir después para otro Reel: subir desde aquí no es un atajo que deje el archivo suelto, es la misma subida hecha desde donde hace falta. Las fotos de iPhone en formato HEIC se aceptan y se convierten solas, y si alguna no se puede convertir se avisa en vez de dejar una imagen que no se ve. Si se eligen más fotos de las que caben en el Reel, se suben sólo las que faltan y se dice cuántas — subir siete para un Reel de tres dejaría cuatro archivos en la Biblioteca que nadie pidió.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'multimedia', 'content-studio'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Botón «Subir fotos» junto a «Elegir fotos» en el Creador de Reels.' },
+            { type: 'added', text: 'Lo subido queda guardado en la Biblioteca Multimedia y se puede reutilizar.' },
+            { type: 'improved', text: 'Las fotos HEIC del iPhone se aceptan y se convierten solas; si falla, se dice.' },
+            { type: 'improved', text: 'Un archivo que falla no cancela los demás de la tanda, y se informa con su nombre.' },
+        ]
+    },
     {
         version: '4.783.0',
         title: 'Campañas de Emergencia: Reels de 3, 4 o 5 fotos ante un desastre 🆘',
