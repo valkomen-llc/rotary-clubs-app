@@ -927,6 +927,30 @@ export const PEOPLE_NEGATIVE_PROMPT = PEOPLE_NEGATIVE_TERMS.join(', ');
 export const peopleNegativeEnabled = () =>
     String(process.env.REEL_PEOPLE_NEGATIVE_PROMPT || '').toLowerCase() !== 'off';
 
+// ─── Lo que NO es animar una escena (v4.787) ────────────────────────────────
+//
+// El defecto reportado con tres clips de muestra: «no genera videos, solo les
+// pone movimiento o desplazamiento a las imágenes». El prompt positivo lleva
+// desde v4.674 diciendo que la cámara está fija y que lo que se mueve es la
+// escena, y aun así el motor entrega a veces la salida más barata que satisface
+// «hacé un video de esta foto»: la foto con la cámara paseando por encima.
+//
+// Va en `negative_prompt` y no en el positivo por la razón de siempre: dentro
+// de la descripción de la escena, una prohibición fija al modelo en lo
+// prohibido; en su campo la lee como una exclusión.
+//
+// Y va SIEMPRE, no sólo con personas: una fotografía de escombros sin nadie
+// también tiene que moverse —polvo, tela, vegetación, luz— en vez de deslizarse
+// bajo la cámara. Es la lección del censo universal de v4.785: una protección
+// sólo protege los casos para los que se armó.
+export const MOTION_NEGATIVE_TERMS = [
+    'camera pan', 'camera zoom', 'zoom in', 'zoom out', 'dolly move', 'camera push',
+    'ken burns effect', 'parallax slideshow', 'slideshow', 'panning still photograph',
+    'static photograph', 'frozen frame', 'motionless subjects', 'immobile people',
+    'photo animation with camera movement only', 'cropping drift', 'moving frame'
+];
+export const MOTION_NEGATIVE_PROMPT = MOTION_NEGATIVE_TERMS.join(', ');
+
 // ─── Prompts ───────────────────────────────────────────────────────────────
 //
 // Cortos y en positivo, igual que en el resto del sitio. Aprendizaje del
@@ -1210,13 +1234,22 @@ export const buildScenePrompt = ({
  *     de la descripción de la escena es exactamente lo que produce esa
  *     fijación. En un campo aparte el modelo la lee como lo que es.
  *
- * Devuelve `null` cuando no aplica —sin personas, sin preservación estricta, o
- * apagado por entorno— y entonces el campo no se manda.
+ * Lleva SIEMPRE el bloque anti-paneo: pedirle a un motor image-to-video que
+ * anime una fotografía y recibir la fotografía con la cámara paseando por
+ * encima es el fallo del módulo, no un caso raro, y no depende de que haya
+ * personas. El bloque de personas se suma cuando corresponde y se puede apagar
+ * con `REEL_PEOPLE_NEGATIVE_PROMPT=off`; el anti-paneo no, porque apagarlo
+ * significaría aceptar justo lo que el módulo no entrega.
+ *
+ * Nunca devuelve `null`: siempre hay algo que excluir. Si la pasarela rechaza
+ * el campo, `createKieVideoTask` reintenta sin él.
  */
 export const buildSceneNegativePrompt = ({ analysis = null, strictPeople = null } = {}) => {
-    if (!strictPeopleFor(analysis, strictPeople)) return null;
-    if (!peopleNegativeEnabled()) return null;
-    return PEOPLE_NEGATIVE_PROMPT;
+    const blocks = [MOTION_NEGATIVE_PROMPT];
+    if (strictPeopleFor(analysis, strictPeople) && peopleNegativeEnabled()) {
+        blocks.push(PEOPLE_NEGATIVE_PROMPT);
+    }
+    return blocks.join(', ');
 };
 
 export const buildReelTitle = ({ organizationName, motionStyle, format }) => {

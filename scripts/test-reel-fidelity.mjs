@@ -74,7 +74,10 @@ check('el apagado explícito sigue mandando', strictPeopleFor(escombros, false) 
         (p.match(/anyone in the background|loose hair/) || [''])[0]);
 
     const neg = buildSceneNegativePrompt({ analysis: escombros });
-    check('el prompt negativo SE MANDA con cero personas', neg === PEOPLE_NEGATIVE_PROMPT);
+    // Desde v4.787 el negativo lleva DOS bloques —el de personas y el
+    // anti-paneo—, así que ya no es idéntico al de personas: se comprueba que
+    // lo CONTENGA. El anti-paneo se probó aparte, en `test:reels:life`.
+    check('el prompt negativo SE MANDA con cero personas', (neg || '').includes(PEOPLE_NEGATIVE_PROMPT));
     check('y trae los términos que atacan el defecto («no new people», «no ghost figure»)',
         /no new people/.test(neg || '') && /no ghost figure/.test(neg || ''));
 }
@@ -87,7 +90,7 @@ check('el apagado explícito sigue mandando', strictPeopleFor(escombros, false) 
     check('con 3 personas el censo sigue siendo «Exactly 3»', /Exactly 3 people/.test(p));
     check('y su ambiente sí puede nombrar gente de fondo', true); // documental: sin regresión medible acá
     check('el negativo también se manda con personas',
-        buildSceneNegativePrompt({ analysis: grupo }) === PEOPLE_NEGATIVE_PROMPT);
+        (buildSceneNegativePrompt({ analysis: grupo }) || '').includes(PEOPLE_NEGATIVE_PROMPT));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

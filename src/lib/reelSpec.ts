@@ -75,6 +75,8 @@ export interface PeopleFidelity {
     /** Personas que contó en el fotograma del clip. */
     clipSeen: number | null;
     countStable: boolean | null;
+    /** Hubo desvío de recuento y no se corroboró: ruido de conteo, no un sujeto de más. */
+    countNoise?: boolean;
     identitiesPreserved: boolean | null;
     occlusionsPreserved: boolean | null;
     facesConsistent: boolean | null;
@@ -132,10 +134,21 @@ export interface BrandFidelity {
 export interface FidelityReport {
     /** Nivel de vida de la escena, 0-100. `null` si no se pudo juzgar. */
     lifeScore?: number | null;
-    /** De dónde salió: sólo `vision` sabe distinguir vida de movimiento de cámara. */
-    lifeSource?: 'vision' | 'frames' | null;
+    /**
+     * De dónde salió el juicio. `frames` es determinista: o el clip no cambia
+     * un píxel, o su cambio se explica desplazando el encuadre (v4.787).
+     * `still-motion` es la escena resuelta sin motor: no tiene vida interna por
+     * construcción y no se finge medirla.
+     */
+    lifeSource?: 'vision' | 'frames' | 'still-motion' | null;
     /** Cambio medido entre fotogramas, 0-100. Determinista, sin proveedor. */
     lifeChange?: number | null;
+    /** El cambio del clip se explica moviendo el encuadre: es cámara, no escena. */
+    cameraOnly?: boolean;
+    /** Qué parte del cambio explica ese desplazamiento, 0-1. */
+    cameraExplained?: number | null;
+    /** La escena se resolvió sustituyéndola por la fotografía en movimiento. */
+    substituted?: boolean;
     state: 'ok' | 'failed' | 'unavailable';
     score: number | null;
     semanticScore?: number | null;

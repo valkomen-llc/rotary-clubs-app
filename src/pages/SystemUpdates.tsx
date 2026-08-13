@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.786.0 | 2026-08-13 (Escena Viva, montaje confiable, Biblioteca rápida)
-// Cache bust: 2026-08-13d
+// UI V4.787.0 | 2026-08-13 (Un paneo no es una escena viva)
+// Cache bust: 2026-08-13e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.787.0',
+        title: 'Un paneo no es una escena viva 🎥',
+        description: 'Se reportaron tres clips en los que la fotografía sólo se desplazaba: «no genera videos, solo les pone movimiento a las imágenes». Analizados uno a uno, los tres eran clips resueltos SIN motor generativo —la foto con el encuadre paseando por encima— y la ficha los presentaba con «Fidelidad: 10/10», así que se leían como escenas logradas. Tres correcciones. UNA, la causa de fondo: el control de personas descalificaba una escena cuando el recuento variaba en UNA persona en UN solo fotograma, y eso en un grupo es ruido normal —alguien medio tapado se cuenta o no según el fotograma—, de modo que casi toda escena con gente agotaba sus dos intentos y terminaba sustituida por la foto en movimiento. Ahora el recuento tiene que estar CORROBORADO: dos personas de diferencia, o la misma diferencia repetida en dos fotogramas. Lo que no se tocó: de cero a una persona descalifica en el acto, igual que antes, y las señales explícitas del control (un sujeto nuevo, una oclusión rota, rostros que cambian) siguen descalificando solas. DOS: el sistema ya sabe distinguir por sí mismo si lo que se movió fue la escena o la cámara, comparando los fotogramas del propio clip y compensando el desplazamiento del encuadre; hasta ahora eso sólo lo juzgaba el modelo de visión, y cuando no contestaba un paneo pasaba por vida. Una escena que sólo panea puntúa CERO de vida y se regenera. Además el motor recibe la instrucción explícita de no entregar paneos, zooms ni efecto diapositiva. TRES: una escena sustituida ya no puede leerse como éxito — se ve en la Biblioteca y en el Creador con su motivo y su botón de regenerar, y el Reel completo queda «Requiere revisión» diciendo cuáles escenas no se animaron.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'content-studio', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El recuento de personas exige corroboración: un ±1 en un solo fotograma es ruido de conteo y ya no quema los reintentos de la escena.' },
+            { type: 'fixed', text: 'De cero personas a una sigue descalificando en el acto, sin corroboración: eso no es ruido.' },
+            { type: 'added', text: 'Se distingue el movimiento de la escena del movimiento de cámara sin depender del modelo de visión: un paneo puntúa cero de vida y se regenera.' },
+            { type: 'added', text: 'El motor recibe la exclusión explícita de paneos, zooms, efecto Ken Burns y diapositiva.' },
+            { type: 'fixed', text: 'Una escena sustituida se ve como tal en la Biblioteca —antes sólo decía «Fidelidad: 10/10»— con su motivo y su botón de regenerar.' },
+            { type: 'changed', text: 'Un Reel con escenas sustituidas queda «Requiere revisión» y nombra cuáles: el archivo estaba bien, el contenido no.' },
+        ]
+    },
     {
         version: '4.786.0',
         title: 'Escenas que respiran, montaje que termina y Biblioteca al instante 🎬',

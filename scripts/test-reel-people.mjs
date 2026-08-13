@@ -23,7 +23,7 @@
  */
 
 import { buildPeopleReport, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
-import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS, MOTION_INTENSITY } from '../server/lib/reelSpec.js';
+import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS, MOTION_NEGATIVE_TERMS, MOTION_INTENSITY } from '../server/lib/reelSpec.js';
 import { resolveEditFps } from '../server/lib/reelRenderProviders.js';
 
 let pass = 0, fail = 0;
@@ -55,13 +55,53 @@ check('nota 8 con un sujeto nuevo → falla',
 check('escena limpia → verificada',
     buildPeopleReport(three(), PEOPLE).verdict === 'ok');
 
-// La deriva de un motor generativo es progresiva: el último fotograma es donde
-// aparece la figura. Un solo fotograma malo condena la escena.
-check('el recuento crece sólo en el último fotograma → falla',
-    buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).verdict === 'failed');
+// ── CAMBIO DE SIGNO DELIBERADO (v4.787) ──
+//
+// Estas dos afirmaciones decían que un ±1 en UN fotograma descalifica, con el
+// argumento de que la deriva de un motor generativo es progresiva. El
+// argumento sigue siendo cierto y la conclusión era demasiado ancha: con tres
+// fotogramas y un grupo de cuatro personas, que alguno desvíe en uno es lo
+// normal —una persona medio tapada se cuenta o no según el fotograma—, así que
+// en la práctica casi toda escena con gente agotaba sus dos intentos y
+// terminaba sustituida por la fotografía en movimiento. Ése es el defecto que
+// el cliente reportó con tres clips: «no genera videos, solo les pone
+// movimiento a las imágenes».
+//
+// Ahora el recuento descalifica cuando está CORROBORADO. Nada más se aflojó.
+check('un +1 en un solo fotograma es ruido de conteo, no descalifica',
+    buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).verdict === 'ok');
+check('...pero se DICE que lo hubo, no se esconde',
+    buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).countNoise === true);
+check('...y el indicador no queda en rojo bajo una cabecera verde',
+    buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).countStable === true);
 
-check('el recuento baja en un fotograma → falla',
-    buildPeopleReport([frame({ peopleRight: 3 }), frame(), frame()], PEOPLE).verdict === 'failed');
+check('un +2 en un fotograma sí descalifica: eso ya no es un recuento dudoso',
+    buildPeopleReport([frame(), frame(), frame({ peopleRight: 6 })], PEOPLE).verdict === 'failed');
+check('un +1 repetido en DOS fotogramas sí descalifica: el ruido no es sistemático',
+    buildPeopleReport([frame(), frame({ peopleRight: 5 }), frame({ peopleRight: 5 })], PEOPLE).verdict === 'failed');
+
+// La exigencia expresa del cliente, y no depende de la corroboración: nadie
+// confunde una escena vacía con una habitada.
+const EMPTY = { hasPeople: true, personCount: 0 };
+const emptyFrame = (o = {}) => frame({ peopleLeft: 0, peopleRight: 0, ...o });
+check('de CERO a uno descalifica en el acto, aunque sea un solo fotograma',
+    buildPeopleReport([emptyFrame(), emptyFrame(), emptyFrame({ peopleRight: 1 })], EMPTY).verdict === 'failed');
+check('cero y cero sigue estando bien',
+    buildPeopleReport([emptyFrame(), emptyFrame(), emptyFrame()], EMPTY).verdict === 'ok');
+
+check('un -1 en un fotograma es ruido',
+    buildPeopleReport([frame({ peopleRight: 3 }), frame(), frame()], PEOPLE).verdict === 'ok');
+check('un -1 repetido sí descalifica: alguien desaparece',
+    buildPeopleReport([frame({ peopleRight: 3 }), frame({ peopleRight: 3 }), frame()], PEOPLE).verdict === 'failed');
+check('un -2 en un fotograma también',
+    buildPeopleReport([frame({ peopleRight: 2 }), frame(), frame()], PEOPLE).verdict === 'failed');
+
+// Las otras puertas NO se tocaron: son señales explícitas del modelo, no
+// aritmética de conteo.
+check('un sujeto nuevo declarado descalifica sin corroboración ninguna',
+    buildPeopleReport([frame(), frame(), frame({ newSubjects: true })], PEOPLE).verdict === 'failed');
+check('la oclusión rota sigue descalificando sola',
+    buildPeopleReport([frame(), frame(), frame({ occlusionBroken: true })], PEOPLE).verdict === 'failed');
 
 // Contar catorce cabezas no lo hace bien ningún modelo de visión: en multitud
 // el recuento no puede decidir solo, o se regenerarían escenas perfectas.
@@ -184,14 +224,31 @@ check('el negativo también cabe en 2500', (neg || '').length <= PROMPT_LIMIT);
 // siempre. Lo único que lo apaga es la decisión explícita del usuario.
 check('sin personas TAMBIÉN se manda (censo universal, v4.785)',
     buildSceneNegativePrompt({ analysis: { hasPeople: false } }) !== null);
-check('el apagado explícito sigue mandando',
-    buildSceneNegativePrompt({ analysis: { hasPeople: false }, strictPeople: false }) === null);
-check('apagado a mano no se manda', buildSceneNegativePrompt({ analysis: peopleAnalysis, strictPeople: false }) === null);
+
+// ── El bloque anti-paneo va SIEMPRE (v4.787) ──
+//
+// Estas tres afirmaciones comprobaban que el negativo se puede dejar en `null`.
+// Ya no puede: siempre hay algo que excluir, porque el fallo del módulo no es
+// sólo inventar gente — es entregar la fotografía con la cámara paseando por
+// encima, y eso pasa haya o no personas. Lo que se apaga sigue siendo el bloque
+// de PERSONAS; el anti-paneo no, porque apagarlo sería aceptar justo lo que el
+// módulo no entrega.
+check('lleva los términos anti-paneo', MOTION_NEGATIVE_TERMS.every(t => neg.includes(t)));
+check('nunca es null: siempre hay algo que excluir',
+    buildSceneNegativePrompt({ analysis: { hasPeople: false }, strictPeople: false }) !== null);
+
+const soloPaneo = buildSceneNegativePrompt({ analysis: peopleAnalysis, strictPeople: false });
+check('apagado a mano quita los términos de personas y deja el anti-paneo',
+    !PEOPLE_NEGATIVE_TERMS.some(t => soloPaneo.includes(t))
+    && MOTION_NEGATIVE_TERMS.every(t => soloPaneo.includes(t)));
 
 process.env.REEL_PEOPLE_NEGATIVE_PROMPT = 'off';
-check('se puede apagar por entorno, sin desplegar',
-    buildSceneNegativePrompt({ analysis: peopleAnalysis }) === null);
+const porEntorno = buildSceneNegativePrompt({ analysis: peopleAnalysis });
+check('se puede apagar por entorno, sin desplegar — y el anti-paneo sigue',
+    !PEOPLE_NEGATIVE_TERMS.some(t => porEntorno.includes(t))
+    && MOTION_NEGATIVE_TERMS.every(t => porEntorno.includes(t)));
 delete process.env.REEL_PEOPLE_NEGATIVE_PROMPT;
+check('los dos bloques juntos siguen cabiendo en 2500', neg.length <= PROMPT_LIMIT, `${neg.length}`);
 
 
 console.log('\n── Marca: la intensidad cede ante el logotipo ──');

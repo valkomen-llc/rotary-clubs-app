@@ -104,9 +104,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.786.0';
+export const REEL_MODULE_VERSION = '4.787.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -878,6 +878,16 @@ const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview
                 // fotografía misma. Error de v4.672.
                 state: 'ok', score: 10, framesChecked: 0, issues: [], frames: [],
                 method: 'still-motion',
+                // La fidelidad es 10 porque los píxeles SON los del original.
+                // La vida es 0 por la misma razón: dentro del cuadro no pasa
+                // nada, lo que se mueve es el encuadre. Son dos preguntas
+                // opuestas (v4.675) y declararlas juntas es lo que evita que
+                // una ficha con «Fidelidad 10/10» se lea como una escena
+                // lograda — que es exactamente cómo se leyó el defecto
+                // reportado en v4.786.
+                lifeScore: 0,
+                lifeSource: 'still-motion',
+                cameraOnly: true,
                 // La marca que la ficha usa para pintar el aviso ámbar. No se
                 // deduce del `engine`: una elección expresa de «Fotográfico»
                 // también es still_motion y NO es una sustitución.
@@ -2008,6 +2018,47 @@ const submitAssembly = async (project, scenes) => {
     return rows[0];
 };
 
+/**
+ * Un Reel con escenas SUSTITUIDAS no queda «listo» (v4.787).
+ *
+ * `validateReelFile` mira el archivo —resolución, duración, audio, tasa de
+ * bits— y por eso daba `ready` a una pieza impecable cuyas tres escenas eran la
+ * fotografía con la cámara paseando por encima. La ficha decía «Reel listo» y
+ * cada escena «Fidelidad: 10/10»: es literalmente la captura del defecto
+ * reportado. El archivo estaba bien; lo que no estaba bien era el contenido, y
+ * eso el validador del contenedor no lo puede ver.
+ *
+ * Baja el veredicto a `needs_review` y lo DICE con el número de escenas. El
+ * Reel se entrega igual —tiene archivo y se puede publicar—; lo que cambia es
+ * que quien pidió escenas vivas se entera de cuáles no lo son.
+ */
+const foldSubstitutedScenes = async (projectId, quality) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT position FROM "ReelScene"
+              WHERE "projectId" = $1 AND fidelity->>'substituted' = 'true'
+              ORDER BY position`,
+            [projectId]
+        );
+        if (!rows.length) return quality;
+        const cuales = rows.map(r => r.position + 1).join(', ');
+        return {
+            ...quality,
+            verdict: 'needs_review',
+            substitutedScenes: rows.length,
+            failures: [
+                ...(quality.failures || []),
+                `${rows.length} escena(s) (${cuales}) no se animaron: el motor no conservó la fotografía tras los ` +
+                `reintentos y se resolvieron moviendo el encuadre. Regeneralas desde la línea de tiempo.`
+            ]
+        };
+    } catch (e) {
+        // El estado del Reel no puede depender de esta consulta.
+        console.warn(`[REEL] ${projectId}: no se pudo comprobar si hay escenas sustituidas: ${e.message}`);
+        return quality;
+    }
+};
+
 // Guarda el resultado de un montaje LOCAL. Mismo destino que `ingestReel` pero
 // sin descarga: el buffer ya está en memoria.
 const ingestLocalReel = async (project, output) => {
@@ -2020,6 +2071,7 @@ const ingestLocalReel = async (project, output) => {
         // Lo codificamos nosotros, con objetivo de bitrate conocido.
         encoder: 'local'
     });
+    const verdict = await foldSubstitutedScenes(project.id, quality);
 
     const upload = await uploadBuffer(
         output.buffer,
@@ -2051,15 +2103,15 @@ const ingestLocalReel = async (project, output) => {
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
         [
-            project.id, quality.verdict,
-            quality.failures.length ? quality.failures.join(' · ') : null,
+            project.id, verdict.verdict,
+            verdict.failures.length ? verdict.failures.join(' · ') : null,
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
-            probe.sizeBytes, probe.hasAudio, JSON.stringify(quality)
+            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict)
         ]
     );
 
-    console.log(`[REEL] ${project.id} montado localmente → ${quality.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
+    console.log(`[REEL] ${project.id} montado localmente → ${verdict.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
     await autoSaveToLibrary(rows[0]);
     return rows[0];
 };
@@ -2110,6 +2162,7 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
         expectedDurationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
         expectAudio: Boolean(project.musicUrl)
     });
+    const verdict = await foldSubstitutedScenes(project.id, quality);
 
     const upload = await uploadBuffer(
         buffer,
@@ -2127,15 +2180,15 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
         [
-            project.id, quality.verdict,
-            quality.failures.length ? quality.failures.join(' · ') : null,
+            project.id, verdict.verdict,
+            verdict.failures.length ? verdict.failures.join(' · ') : null,
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
-            probe.sizeBytes, probe.hasAudio, JSON.stringify(quality)
+            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict)
         ]
     );
 
-    console.log(`[REEL] ${project.id} → ${quality.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
+    console.log(`[REEL] ${project.id} → ${verdict.verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, ${probe.bitrateKbps} kbps, audio=${probe.hasAudio})`);
     await autoSaveToLibrary(rows[0]);
     return rows[0];
 };
@@ -2453,9 +2506,16 @@ const advance = async (project) => {
     if (frozen.length) {
         console.warn(`[REEL] ${project.id}: ${frozen.length} escena(s) sin movimiento interno; se regeneran.`);
         await Promise.allSettled(frozen.map(sc =>
-            relaunchScene(sc, { auto: true, reason: 'la escena quedó prácticamente estática' })));
+            relaunchScene(sc, {
+                auto: true,
+                reason: sc.fidelity?.cameraOnly
+                    ? 'el clip sólo desplazaba el encuadre: la escena no se movió'
+                    : 'la escena quedó prácticamente estática'
+            })));
+        const paneadas = frozen.filter(sc => sc.fidelity?.cameraOnly).length;
         await appendNote(project.id,
-            `Se regeneraron ${frozen.length} escena(s) que quedaron sin movimiento interno: el motor conservó la fotografía pero no la animó.`);
+            `Se regeneraron ${frozen.length} escena(s) sin movimiento interno: el motor conservó la fotografía pero no la animó`
+            + (paneadas ? ` (${paneadas} entregaron sólo un desplazamiento de encuadre).` : '.'));
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
             [project.id]

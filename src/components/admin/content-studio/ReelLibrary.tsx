@@ -29,6 +29,7 @@ import { isTerminal, formatEta } from '../../../lib/reelSpec';
 import ReelUsagePanel from './ReelUsagePanel';
 import ScenePeopleCheck from './ScenePeopleCheck';
 import SceneBrandCheck from './SceneBrandCheck';
+import SceneLifeCheck from './SceneLifeCheck';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = (): Record<string, string> => ({
@@ -365,16 +366,28 @@ const ReelDetail: React.FC<{
                                         </div>
                                         {sc.fidelity && (
                                             <div className={`text-[10px] font-bold ${
-                                                sc.fidelity.state === 'ok' ? 'text-emerald-600'
+                                                sc.fidelity.method === 'still-motion' ? 'text-gray-500'
+                                                    : sc.fidelity.state === 'ok' ? 'text-emerald-600'
                                                     : sc.fidelity.state === 'failed' ? 'text-red-600' : 'text-gray-400'
                                             }`}>
                                                 {/* La escala de fidelidad es 0-10, no 0-1: mostrarla como
                                                     porcentaje daba «800 %». Se muestra igual que en el
                                                     Creador, que es donde el usuario la ve primero. */}
-                                                Fidelidad: {sc.fidelity.state === 'ok' ? `${sc.fidelity.score ?? '—'}/10`
+                                                {/* Una escena resuelta sin motor no se puntúa como
+                                                    una animada: «10/10» sobre la fotografía misma
+                                                    es cierto y se lee como una escena lograda, que
+                                                    es justo la confusión reportada. */}
+                                                Fidelidad: {sc.fidelity.method === 'still-motion' ? 'es la fotografía original'
+                                                    : sc.fidelity.state === 'ok' ? `${sc.fidelity.score ?? '—'}/10`
                                                     : sc.fidelity.state === 'failed' ? 'no conservó la foto' : 'no comprobada'}
                                             </div>
                                         )}
+                                        {/* Que la escena VIVA es otra pregunta que la fidelidad,
+                                            y hasta v4.786 esta ficha no la hacía: una escena
+                                            sustituida por la fotografía en movimiento se leía
+                                            como lograda porque sólo se veía «Fidelidad: 10/10».
+                                            Es el mismo componente que el Creador, a propósito. */}
+                                        <SceneLifeCheck fidelity={sc.fidelity} engine={sc.engine} />
                                         <ScenePeopleCheck people={sc.fidelity?.people} />
                                         <SceneBrandCheck brand={sc.fidelity?.brand} />
                                         {sc.sourceImageUrl && (
