@@ -169,6 +169,51 @@ check('los seis indicadores viajan en el informe',
 check('un fallo lleva su motivo escrito',
     typeof buildPeopleReport(dos({ newSubjects: true }), PEOPLE).reason === 'string');
 
+console.log('\n── Una escena SIN personas también cobra vida (v4.796) ──');
+
+// Pedido literal del cliente: «no necesariamente tiene que tener personas; el
+// entorno o el contexto de la imagen debe cobrar vida». La cláusula anterior
+// era corta y genérica y un modelo la cumple con un temblor mínimo.
+{
+    const vacia = {
+        hasPeople: false, personCount: 0, summary: 'escombros de un edificio',
+        motionHint: 'dust drifts through the shaft of light over the rubble while the torn blue tarp lifts and settles'
+    };
+    const p = buildScenePrompt({ style: 'documental', durationSec: 5, analysis: vacia });
+
+    check('el prompt afirma que la escena vive sin nadie dentro',
+        /fully alive even with nobody in it/.test(p));
+    check('...y que algo está SIEMPRE en movimiento (continuidad, no un temblor)',
+        /always in motion/.test(p));
+    check('...nombrando lo que de verdad se mueve en una foto así',
+        /dust/.test(p) && /smoke|haze/.test(p) && /tarpaulin/.test(p) && /leaves/.test(p) && /water/.test(p));
+    check('...sin inventar: sólo se mueve lo que la fotografía ya muestra',
+        /Only the things already visible/.test(p) && /nothing new enters the frame/.test(p));
+    check('el motionHint de ESA foto sobrevive: es lo único específico de ella',
+        /torn blue tarp/.test(p));
+    check('y el prompt sigue cabiendo en el tope de Kling',
+        p.length <= 2500, `${p.length}/2500`);
+
+    // El censo cero sigue viajando: que no haya gente NO es excusa para poblar.
+    check('el censo de CERO personas sigue en el prompt',
+        /Exactly 0 people|no people|nobody/i.test(p));
+}
+
+// La instrucción del director tiene que pedir el entorno SIEMPRE, no sólo
+// cuando faltan personas: es lo que hace que cada foto reciba su propia
+// animación en vez de una descripción genérica.
+{
+    const dir = readFileSync(path.join(root, 'server/lib/reelDirector.js'), 'utf8');
+    check('el director pide qué se mueve del entorno HAYA O NO personas',
+        /HAYA O NO personas/.test(dir));
+    check('...nombrando categorías concretas para mirarlas en la foto',
+        /polvo suspendido/.test(dir) && /humo/.test(dir) && /lona/.test(dir));
+    check('...y exige movimiento CONTINUO, no un gesto aislado',
+        /MOVIMIENTO CONTINUO/.test(dir));
+    check('la cámara sigue declarada fija, sin desplazamientos ni acercamientos',
+        /cámara está SIEMPRE fija/.test(dir) && /Nada de desplazamientos, acercamientos ni recorridos/.test(dir));
+}
+
 console.log('\n── Quién NO estaba vs cómo está DIBUJADO (v4.794) ──');
 
 // `verdict` junta seis comprobaciones, y v4.792 lo tomó ENTERO para decidir si

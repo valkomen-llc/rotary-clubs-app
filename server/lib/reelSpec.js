@@ -1119,7 +1119,24 @@ export const buildScenePrompt = ({
             // escena de salón quedaba con las personas moviéndose sobre un
             // fondo muerto.
             ? 'Indoors the scene still lives: fabric and lanyards settle, loose hair moves, and anyone in the background carries on with what they were doing.'
-            : 'The scene still lives without anyone in it: fabric settles, dust drifts in the light, and small loose things shift where the air moves them.');
+            // ── Una escena SIN personas también cobra vida (v4.796) ──
+            //
+            // El cliente lo pidió con estas palabras: «no necesariamente tiene
+            // que tener personas; el entorno o el contexto de la imagen debe
+            // cobrar vida». La cláusula anterior era corta y genérica —«fabric
+            // settles, dust drifts»— y un modelo la cumple con un temblor
+            // mínimo. Se nombran las cosas que de verdad se mueven en una foto
+            // de exteriores o de escombros y se exige que el movimiento sea
+            // CONTINUO, que es lo que separa un vídeo de una foto con temblor.
+            // Sigue siendo positivo y sin inventar: sólo actúa sobre lo que la
+            // fotografía ya muestra.
+            : 'The scene is fully alive even with nobody in it, and something is '
+              + 'always in motion: dust and fine particles drift through the air, '
+              + 'smoke or haze rises and thins, loose fabric, tarpaulins and plastic '
+              + 'sheeting lift and settle, leaves and branches sway, hanging cables, '
+              + 'flags and cloth swing, water runs or ripples, and light shifts across '
+              + 'the surfaces. Only the things already visible in the photograph move; '
+              + 'nothing new enters the frame.');
 
     // Lo que hace ESTA foto en concreto, según lo que vio el análisis. Va antes
     // que la cámara porque es la instrucción principal: sin ella, las tres

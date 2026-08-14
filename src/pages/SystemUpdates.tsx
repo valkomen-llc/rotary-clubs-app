@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.795.0 | 2026-08-14 (Una lectura suelta ya no descarta la escena animada)
-// Cache bust: 2026-08-14h
+// UI V4.796.0 | 2026-08-14 (Una escena sin personas también cobra vida)
+// Cache bust: 2026-08-14i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.796.0',
+        title: 'Una escena sin personas también cobra vida 🌿',
+        description: 'Pedido con estas palabras: «no necesariamente tiene que tener personas; el entorno o el contexto de la imagen debe cobrar vida», y con la instrucción de analizar primero la fotografía para saber qué animar. Eso era justamente lo que faltaba. El sistema ya miraba cada foto y escribía una instrucción de movimiento propia para ella, pero esa instrucción estaba escrita para las PERSONAS: qué hacen sus manos, hacia dónde miran, con quién interactúan. El entorno aparecía sólo como una nota al final —«si no hay personas, di qué se mueve: tela, hojas, banderas»— y la frase que recibía el motor para una escena vacía era corta y genérica, de esas que un modelo cumple con un temblor mínimo. Ahora el análisis describe qué se mueve en el entorno SIEMPRE, haya o no gente, y lo nombra mirando esa foto concreta: el polvo suspendido en el haz de luz, el humo que sube, la lona rota que ondea, las ramas contra el cielo, el agua que corre, el reflejo que cambia en un vidrio. Y se exige que el movimiento sea CONTINUO, que es lo que separa un video de una foto con temblor. Lo que no cambia: la cámara sigue fija —nada de desplazamientos, acercamientos ni recorridos— y sólo se mueve lo que la fotografía ya muestra, sin que entre nada nuevo al cuadro.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'emergencias', 'ia'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'improved', text: 'El análisis describe qué se mueve del entorno siempre, no sólo cuando la foto no tiene personas.' },
+            { type: 'improved', text: 'Lo nombra mirando esa foto: polvo, humo, lonas, ramas, agua, reflejos — no en genérico.' },
+            { type: 'changed', text: 'Se exige movimiento continuo: algo tiene que estar en marcha todo el tiempo.' },
+            { type: 'changed', text: 'La cámara sigue fija y sólo se anima lo que la fotografía ya muestra.' },
+        ]
+    },
     {
         version: '4.795.0',
         title: 'Una lectura suelta ya no descarta la escena animada 🎥',
