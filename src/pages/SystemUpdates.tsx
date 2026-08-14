@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.798.0 | 2026-08-14 (El modo sin IA no viaja en silencio)
-// Cache bust: 2026-08-14k
+// UI V4.799.0 | 2026-08-14 (La dirección se juzga sobre la secuencia)
+// Cache bust: 2026-08-14l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.799.0',
+        title: 'La entrega no se invierte, nadie se duplica y sin líneas negras 🎯',
+        description: 'Cuatro correcciones nacidas del reporte con los dos clips y la ficha delante. UNO: la inversión de una acción (los niños entregándole los mercados a los rotarios) pasaba el control porque la pregunta se hacía FOTOGRAMA a fotograma — y un fotograma quieto no puede mostrar hacia dónde viaja una entrega: una mano extendida con la bolsa a mitad de camino se ve idéntica en los dos sentidos. La dirección es una propiedad temporal, así que ahora se pregunta sobre la SECUENCIA: los fotogramas del clip en orden, en una sola composición, con la dirección fotografiada como dato («el rotario entrega la bolsa a la niña — ¿el video la conserva o la invierte?»). Una inversión vista en la secuencia descalifica la escena y se regenera. DOS: el personaje duplicado (el mismo hombre dos veces con distinta ropa) entraba por la ADAPTACIÓN del lienzo — y ahí había un hueco estructural: la fidelidad del clip se mide contra la imagen adaptada, así que un duplicado que ya venía en ella estaba en el clip Y en su referencia y todos los controles daban bien. Ahora la adaptación misma se compara contra la FOTO ORIGINAL con una pregunta específica: ¿el lienzo añadido agrega personas o repite a alguien? Si sí, se rehace antes de gastar los créditos de video. TRES: la línea negra en el borde superior — una banda añadida con paisaje real que muere en negro en el borde del cuadro pasaba las tres mediciones existentes, porque todas miran la banda entera. Se mide ahora la franja exterior: plana Y negra (un cielo nocturno real nunca es negro puro, siempre lleva grano y luz) reprueba la adaptación y se rehace. CUATRO: la insignia del Reel ya no puede decir «Reel listo» mientras una escena dice «Requiere regeneración» — cualquier escena conservada con un defecto medido baja el estado del Reel a «Requiere revisión» y el aviso nombra cuáles.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'expansion', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La dirección de cada acción se juzga siguiendo la secuencia completa del clip: una entrega invertida descalifica y regenera.' },
+            { type: 'added', text: 'La adaptación de lienzo se compara contra la foto original: personas agregadas o duplicadas la mandan a rehacer antes de animar.' },
+            { type: 'added', text: 'El borde exterior de las bandas añadidas se mide aparte: plano y negro reprueba — se acabaron las líneas negras en el borde del Reel.' },
+            { type: 'fixed', text: 'Un Reel con escenas en revisión ya no se presenta como «Reel listo»: el estado nombra qué escenas mirar.' },
+            { type: 'added', text: 'El prompt negativo excluye además el cambio de ropa a mitad de escena y la persona repetida.' },
+        ]
+    },
     {
         version: '4.798.0',
         title: 'El modo Fotográfico se dice antes de gastar el gesto 📸',

@@ -87,6 +87,16 @@ const ScenePeopleCheck: React.FC<{ people?: PeopleFidelity | null; className?: s
                 —alguien casi tapado por otro se cuenta o no según el
                 fotograma—, así que no descalifica. No se esconde: se dice que
                 lo hubo y por qué no contó. */}
+            {/* v4.799: la dirección se comprueba además sobre la SECUENCIA
+                ordenada — un fotograma quieto no puede mostrar hacia dónde
+                viaja una entrega. Se dice, para que «Acciones coherentes» no
+                parezca la misma pregunta por fotograma que no podía verlo. */}
+            {people.sequenceChecked && (
+                <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
+                    La dirección de las acciones se comprobó siguiendo la secuencia completa
+                    del clip, no sólo fotograma a fotograma.
+                </p>
+            )}
             {people.signalNoise && (
                 <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
                     Una señal se vio en un solo fotograma y no se corroboró: se trata como

@@ -254,6 +254,45 @@ console.log('\n── La animación no puede invertir una acción (v4.797) ─�
         && buildPeopleReport(three(), PEOPLE).actionsConsistent === null);
 }
 
+console.log('\n── La dirección se pregunta sobre la SECUENCIA (v4.799) ──');
+
+{
+    // Un fotograma quieto no puede mostrar hacia dónde viaja una entrega: la
+    // escena del comedor pasó con todo en verde —por fotograma, «¿se invirtió?»
+    // se contestaba «false» con honestidad— mientras los niños terminaban
+    // entregándole los mercados a los rotarios. El juicio TEMPORAL, sobre los
+    // fotogramas en orden, decide solo: es una medición diseñada para el
+    // defecto, no una señal por fotograma que necesite corroborarse.
+    const seq = (reversed, checked = true) => ({ checked, reversed, detail: reversed ? 'la niña entrega la bolsa al rotario' : null });
+
+    check('la secuencia invertida descalifica aunque ningún fotograma lo marque',
+        buildPeopleReport(three(), PEOPLE, seq(true)).verdict === 'failed');
+    check('...y es INVENCIÓN: sustituye, no es una nota',
+        buildPeopleReport(three(), PEOPLE, seq(true)).invented === true);
+    check('...con lo visto en la secuencia dentro del motivo',
+        /Visto en la secuencia: la niña entrega/.test(buildPeopleReport(three(), PEOPLE, seq(true)).reason));
+    check('la secuencia comprobada y limpia deja el indicador en verde',
+        buildPeopleReport(three(), PEOPLE, seq(false)).actionsConsistent === true);
+    check('sin secuencia, nada cambia (aditivo)',
+        buildPeopleReport(three(), PEOPLE).verdict === 'ok'
+        && buildPeopleReport(three(), PEOPLE, null).actionsConsistent === null);
+    check('una secuencia que no se pudo mirar no afirma nada',
+        buildPeopleReport(three(), PEOPLE, { checked: false, reversed: false }).actionsConsistent === null);
+    check('el juicio de la secuencia viaja declarado a la ficha',
+        buildPeopleReport(three(), PEOPLE, seq(true)).sequenceReversed === true
+        && buildPeopleReport(three(), PEOPLE, seq(false)).sequenceChecked === true);
+}
+
+// El cableado: la secuencia se pregunta desde la verificación de la escena y
+// sólo cuando el análisis capturó interacciones.
+{
+    const quality = readFileSync(path.join(root, 'server/lib/reelQuality.js'), 'utf8');
+    check('checkSceneFidelity llama al juicio de secuencia con las interacciones del análisis',
+        /judgeSequenceDirection\(\{ frames, interactions: analysis\.interactions \}\)/.test(quality));
+    check('...y el reporte de personas lo recibe',
+        /buildPeopleReport\(semantics, analysis, sequence\)/.test(quality));
+}
+
 console.log('\n── En grupos grandes, todo desvío de recuento pide dos fotogramas (v4.797) ──');
 
 {
@@ -382,6 +421,17 @@ check('una escena limpia tampoco',
         && /await analyzeImages\(\[\{ url: nextImage \}\]/.test(ctrl));
     check('...y si la visión falla, se degrada al análisis guardado en vez de romper la regeneración',
         /re-análisis de la escena .* falló, se usa el análisis guardado/.test(ctrl));
+
+    // v4.799: el lienzo añadido por la expansión no puede agregar ni duplicar
+    // personas — y este es el ÚNICO punto que puede verlo, porque la fidelidad
+    // del clip se mide contra la imagen ADAPTADA (v4.664): un duplicado que ya
+    // venía en ella está en el clip Y en su referencia, y todos los controles
+    // de escena dan bien. Es el hombre repetido con otra ropa del reporte.
+    check('la expansión se juzga también por PERSONAS, contra la foto original',
+        /judgeExpansionPeople\(\{\s*\n?\s*originalBuffer, expandedBuffer/.test(ctrl));
+    check('...y un duplicado o un agregado la manda a rehacer',
+        /REPITE a una persona de la fotografía/.test(ctrl)
+        && /AGREGA personas que no están en la fotografía/.test(ctrl));
 }
 
 console.log('\n── Texto: la proporción de palabras no descalifica sola (v4.790) ──');

@@ -925,7 +925,10 @@ export const PEOPLE_NEGATIVE_TERMS = [
     // La coherencia de ACCIÓN (v4.797): la animación no puede invertir quién
     // entrega y quién recibe, ni mover un objeto al dueño equivocado.
     'no reversed interaction', 'no role switching', 'no swapped giver and receiver',
-    'no object transfer in the wrong direction', 'no invented action'
+    'no object transfer in the wrong direction', 'no invented action',
+    // La ropa es parte de la identidad (v4.799): en el clip del reporte una
+    // niña cambió de camiseta y de falda a mitad de la escena.
+    'no clothing change', 'no wardrobe swap', 'no outfit morphing'
 ];
 export const PEOPLE_NEGATIVE_PROMPT = PEOPLE_NEGATIVE_TERMS.join(', ');
 export const peopleNegativeEnabled = () =>

@@ -90,6 +90,10 @@ export interface PeopleFidelity {
     /** ¿La animación conserva quién hace qué? `null` = sin dato del modelo. */
     actionsConsistent?: boolean | null;
     actionReversed?: boolean;
+    /** El juicio TEMPORAL de la dirección (v4.799): sobre la secuencia ordenada. */
+    sequenceChecked?: boolean;
+    sequenceReversed?: boolean;
+    sequenceDetail?: string | null;
     /** Señal explícita vista una sola vez: ruido de lectura, no defecto. */
     signalNoise?: boolean;
     framesChecked?: number;

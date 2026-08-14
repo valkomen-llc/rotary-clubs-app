@@ -429,6 +429,10 @@ export const EXPANSION_NEGATIVE_TERMS = [
     'picture-in-picture', 'photo collage', 'split screen', 'stacked copies',
     'second copy of the scene', 'visible seam', 'frame within frame',
     'new people', 'new person', 'human silhouette', 'crowd',
+    // El duplicado del reporte (v4.799): la misma persona repetida en el lienzo
+    // añadido, con otra ropa. No es «new person» para el modelo — la persona SÍ
+    // está en la foto—, así que se nombra aparte.
+    'duplicated person', 'same person twice', 'cloned person', 'repeated subject',
     'new vehicles', 'new buildings', 'invented signage', 'invented text', 'new logos'
 ];
 export const EXPANSION_NEGATIVE_PROMPT = EXPANSION_NEGATIVE_TERMS.join(', ');
@@ -582,7 +586,7 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
                 }
             }
 
-            report.tiling = { checked: bands.length > 0, bands: [], detected: false, empty: false };
+            report.tiling = { checked: bands.length > 0, bands: [], detected: false, empty: false, emptyEdge: false };
             for (const band of bands) {
                 const cut = await sharp(expandedBuffer, { failOn: 'none' })
                     .extract({ left: band.left, top: band.top, width: band.width, height: band.height })
@@ -629,22 +633,75 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
                 } catch { /* sin medida no se acusa: `flat` queda en false */ }
                 const flat = detail != null && detail < BAND_MIN_DETAIL;
 
+                // ── ¿El BORDE exterior de la banda muere en NEGRO? (v4.799) ──
+                //
+                // La medición de arriba mira la banda ENTERA: una banda con
+                // paisaje real que muere en una franja negra en el borde del
+                // cuadro pasa con nota alta —el contenido levanta la
+                // desviación— y el Reel sale con una línea negra arriba, que es
+                // exactamente lo que se reportó con captura.
+                //
+                // El criterio es DOBLE a propósito —plano Y oscuro—, no sólo
+                // plano: un cielo despejado o una pared lisa pueden dar poca
+                // desviación en una franja de 32 px y descartarlos costaría una
+                // regeneración por nada (la lección del umbral de v4.793). Lo
+                // que ningún cielo fotografiado da es NEGRO PURO: hasta el
+                // cielo nocturno de una foto real lleva contaminación lumínica
+                // y grano; el relleno del modelo da desviación ~0 y luminancia
+                // ~0. Un borde plano CLARO se deja pasar a sabiendas: el
+                // defecto reportado es la línea negra, y hacia lo raro se
+                // prefiere no acusar.
+                let edgeDetail = null;
+                let edgeLuma = null;
+                try {
+                    // 12 px: bastante para una estadística estable y bastante
+                    // poco para que una línea de relleno visible en un móvil
+                    // no se diluya entre filas con contenido.
+                    const S = Math.min(12, plan.grows === 'vertical' ? band.height : band.width);
+                    const strip = plan.grows === 'vertical'
+                        ? {
+                            left: band.left, width: band.width, height: S,
+                            top: band.name === 'superior' ? 0 : band.top + band.height - S
+                        }
+                        : {
+                            top: band.top, height: band.height, width: S,
+                            left: band.name === 'izquierda' ? 0 : band.left + band.width - S
+                        };
+                    // El recorte se MATERIALIZA antes de medir: `stats()` opera
+                    // sobre la imagen de entrada e ignora el `extract` en
+                    // cadena — medido: devolvía la estadística de la imagen
+                    // entera, idéntica para las dos franjas.
+                    const stripBuf = await sharp(expandedBuffer, { failOn: 'none' }).extract(strip).toBuffer();
+                    const stripStats = await sharp(stripBuf, { failOn: 'none' }).stats();
+                    const ch = (stripStats.channels || []).slice(0, 3);
+                    if (ch.length) {
+                        edgeDetail = Number((ch.reduce((a, c) => a + (c.stdev || 0), 0) / ch.length).toFixed(2));
+                        edgeLuma = Number((ch.reduce((a, c) => a + (c.mean || 0), 0) / ch.length).toFixed(1));
+                    }
+                } catch { /* sin medida no se acusa */ }
+                const edgeFlat = edgeDetail != null && edgeLuma != null
+                    && edgeDetail < BAND_MIN_DETAIL && edgeLuma < EDGE_MAX_BLACK_LUMA;
+
                 report.tiling.bands.push({
                     name: band.name,
                     structure: sim.structure,
                     partialMatch: partial.best,
                     duplicated,
                     detail,
-                    flat
+                    flat,
+                    edgeDetail,
+                    edgeLuma,
+                    edgeFlat
                 });
                 if (duplicated) report.tiling.detected = true;
                 if (flat) report.tiling.empty = true;
+                if (edgeFlat) report.tiling.emptyEdge = true;
             }
         } catch (e) {
             // Sin la comprobación de mosaico la verificación principal sigue
             // valiendo; se anota para que «no se comprobó» no se lea como «no
             // hay mosaico».
-            report.tiling = { checked: false, bands: [], detected: false, empty: false };
+            report.tiling = { checked: false, bands: [], detected: false, empty: false, emptyEdge: false };
             report.warnings.push(`No se pudo comprobar el área añadida: ${e.message}`);
         }
     } catch (e) {
@@ -809,6 +866,12 @@ export const TILING_STRUCTURE_THRESHOLD = Number(process.env.EXPANSION_TILING_TH
 // nada. El relleno da cero exacto, así que hacia ese lado sobra margen.
 export const BAND_MIN_DETAIL = Number(process.env.EXPANSION_MIN_BAND_DETAIL) || 2;
 
+// Luminancia máxima para acusar un borde de banda como «línea negra» (v4.799).
+// El relleno del modelo da ~0; el cielo nocturno de una fotografía real lleva
+// contaminación lumínica y grano y queda muy por encima. Va junto con la
+// desviación (< BAND_MIN_DETAIL): plano Y oscuro, nunca uno solo.
+export const EDGE_MAX_BLACK_LUMA = Number(process.env.EXPANSION_EDGE_MAX_LUMA) || 18;
+
 // Veredicto final: junta la medición con el umbral configurado.
 export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) => {
     // El mosaico se juzga PRIMERO y reprueba por sí solo (v4.785). Es el orden
@@ -828,6 +891,17 @@ export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) =>
             // Con su CONSECUENCIA, no sólo con el motivo: «banda plana» no le
             // explica a nadie que el Reel va a salir con franjas negras.
             reason: `El área añadida (banda ${vacias}) quedó vacía: el modelo rellenó en vez de extender la fotografía. La escena saldría con franjas negras arriba y abajo en vez de ocupar el formato vertical. Se rehace la adaptación.`
+        };
+    }
+    // El borde plano se juzga con la banda vacía y por el mismo motivo: la
+    // banda entera tiene contenido y toda medición global la aprueba, pero el
+    // Reel sale con una línea negra en el borde del cuadro (v4.799, reportado
+    // con captura: «una línea negra en la parte superior»).
+    if (verification.tiling?.emptyEdge) {
+        const bordes = (verification.tiling.bands || []).filter(b => b.edgeFlat).map(b => b.name).join(' y ');
+        return {
+            verdict: 'failed',
+            reason: `El borde exterior del área añadida (banda ${bordes}) quedó plano: el modelo dejó de extender antes de llegar al borde del cuadro y la escena saldría con una línea negra en ese borde. Se rehace la adaptación.`
         };
     }
     if (verification.tiling?.detected) {

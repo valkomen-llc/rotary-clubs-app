@@ -1220,6 +1220,54 @@ fuera un video».
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
 
+### La dirección es TEMPORAL y el lienzo también miente (v4.799)
+
+Del reporte con los dos clips delante: la entrega seguía invirtiéndose con
+v4.797 desplegado, el mismo hombre aparecía dos veces con otra ropa, y el Reel
+salía con una línea negra en el borde superior — con la insignia en «Reel
+listo».
+
+- **La dirección de una acción NO se puede juzgar fotograma a fotograma.** Un
+  fotograma es una imagen quieta y una entrega detenida a mitad de camino se ve
+  idéntica en los dos sentidos: la pregunta `actionReversed` por fotograma se
+  contestaba «false» con honestidad mientras el clip invertía la entrega. Es
+  una propiedad TEMPORAL y se pregunta sobre la SECUENCIA
+  (`judgeSequenceDirection`): los fotogramas en orden, en una sola composición,
+  con la dirección fotografiada como dato. El juicio de secuencia descalifica
+  SOLO —no es una señal binaria por fotograma que necesite corroborarse; tiene
+  su salida honesta («no se distingue»)—. La vía por fotograma se conserva:
+  son dos caminos al mismo `actionReversed`.
+- **La imagen ADAPTADA es la referencia de TODOS los controles de escena
+  (v4.664), así que lo que la expansión invente es invisible para ellos POR
+  CONSTRUCCIÓN.** El duplicado del reporte venía en el lienzo (62 % nuevo): el
+  clip y su referencia lo tenían los dos y todo daba verde. El único punto que
+  puede verlo es la adaptación contra la FOTO ORIGINAL: `judgeExpansionPeople`
+  (visión, lado a lado) pregunta si el lienzo añadido agrega personas o REPITE
+  a alguien — un duplicado redibujado con otra ropa no correlaciona como copia,
+  así que las mediciones deterministas no lo ven. Falla → se rehace ANTES de
+  gastar créditos de video. Al agregar una medición de escena, preguntarse si
+  su referencia ya trae el defecto.
+- **El borde exterior de la banda se mide APARTE de la banda** (`edgeFlat`).
+  Tres mediciones miraban la banda entera y una banda con paisaje real que
+  muere en negro en el borde del cuadro las pasaba todas. El criterio es DOBLE
+  a propósito —plano (< `BAND_MIN_DETAIL`) Y oscuro (< `EDGE_MAX_BLACK_LUMA`,
+  18)—: un cielo despejado puede ser plano en 12 px, pero ningún cielo
+  fotografiado es negro puro — hasta el nocturno lleva contaminación lumínica y
+  grano, y el relleno da ~0 en las dos medidas. Un borde plano CLARO se deja
+  pasar a sabiendas.
+- **`sharp.stats()` IGNORA el `extract()` encadenado.** Devolvía la estadística
+  de la imagen ENTERA, idéntica para las dos franjas — el recorte se
+  MATERIALIZA a buffer antes de medir. Al medir un recorte con sharp, primero
+  `toBuffer()`.
+- **Un Reel con escenas conservadas en revisión NO dice «listo».**
+  `foldSubstitutedScenes` pliega también las `needs_review` no sustituidas y
+  las nombra: la insignia verde sobre una tarjeta que grita «REQUIERE
+  REGENERACIÓN» es la contradicción que este archivo ya prohibió una vez
+  (v4.787, indicador rojo bajo cabecera verde).
+- El prompt negativo de personas excluye además `no clothing change` (la niña
+  del clip cambió de camiseta a mitad de escena) y el de expansión,
+  `duplicated person / same person twice`.
+
 ### El modo sin IA no viaja en silencio (v4.798)
 
 Diagnóstico del reporte «las fotos no tienen motor generativo»: el Reel entero

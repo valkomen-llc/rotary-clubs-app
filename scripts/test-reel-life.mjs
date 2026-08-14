@@ -163,6 +163,13 @@ console.log('\n▸ El cableado: la medición tiene que DECIDIR (leído sobre los
         && /verdict: 'needs_review',\s*\n\s*substitutedScenes/.test(controller));
     check('...y se aplica en los DOS caminos de montaje, local y alojado',
         (controller.match(/await foldSubstitutedScenes\(/g) || []).length === 2);
+    // v4.799: tampoco queda «listo» con una escena CONSERVADA en revisión — la
+    // insignia decía «Reel listo» mientras la tarjeta de la escena gritaba
+    // «REQUIERE REGENERACIÓN», reportado con captura.
+    check('...ni con escenas conservadas en revisión: el pliegue las nombra',
+        /status = 'needs_review'/.test(controller)
+        && /reviewScenes: revisar\.length/.test(controller)
+        && /animadas pero con un defecto medido/.test(controller));
 
     const life = readFileSync(path.join(root, 'src/components/admin/content-studio/SceneLifeCheck.tsx'), 'utf8');
     check('la sustitución se pinta como lo que es: una escena SIN animar',

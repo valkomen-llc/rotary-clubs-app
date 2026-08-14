@@ -355,6 +355,141 @@ export const buildComparisonImage = async (originalBuffer, frameBuffer, { height
         .toBuffer();
 };
 
+// Composición de VARIOS fotogramas en orden temporal, de izquierda a derecha,
+// para las preguntas que un fotograma solo no puede responder (v4.799): la
+// DIRECCIÓN de una acción es temporal — una entrega congelada a mitad de camino
+// se ve idéntica en los dos sentidos, y por eso la pregunta por fotograma
+// contestaba «false» con honestidad mientras el clip invertía la entrega.
+export const buildSequenceImage = async (buffers, { height = 520 } = {}) => {
+    const sharp = (await import('sharp')).default;
+    const fitted = await Promise.all(buffers.map(buf =>
+        sharp(buf, { failOn: 'none' })
+            .resize({ height, fit: 'contain', background: { r: 12, g: 12, b: 12 } })
+            .toBuffer({ resolveWithObject: true })
+    ));
+    const gap = 10;
+    const width = fitted.reduce((w, f) => w + f.info.width, 0) + gap * (fitted.length - 1);
+    let left = 0;
+    const layers = fitted.map(f => {
+        const layer = { input: f.data, left, top: 0 };
+        left += f.info.width + gap;
+        return layer;
+    });
+    return sharp({ create: { width, height, channels: 3, background: { r: 12, g: 12, b: 12 } } })
+        .composite(layers)
+        .jpeg({ quality: 88 })
+        .toBuffer();
+};
+
+/**
+ * ¿El vídeo conserva la DIRECCIÓN de las acciones fotografiadas? (v4.799)
+ *
+ * La pregunta por fotograma (`actionReversed` en `checkFrame`) no puede verlo:
+ * un fotograma es una imagen quieta y una entrega detenida a mitad de camino se
+ * ve igual en los dos sentidos — es el motivo por el que la escena del comedor
+ * pasó con todo en verde mientras los niños terminaban entregándole los
+ * mercados a los rotarios. La dirección es una propiedad TEMPORAL, así que se
+ * pregunta sobre la SECUENCIA: los fotogramas del clip en orden, en una sola
+ * composición, con la dirección fotografiada como dato.
+ *
+ * No necesita la corroboración de dos lecturas: no es una señal binaria sobre
+ * un fotograma reducido, es una pregunta directa con su salida honesta («no se
+ * distingue») y con el dato de referencia delante. Si demostrara ruido, el
+ * siguiente paso es corroborarla — no aflojarla en silencio.
+ */
+export const judgeSequenceDirection = async ({ frames = [], interactions = [] }) => {
+    const acts = (interactions || []).slice(0, 3).filter(i => i?.from && i?.action && i?.to);
+    if (!acts.length || frames.length < 2) return { checked: false, reversed: false, detail: null };
+    try {
+        const strip = await buildSequenceImage(frames.map(f => f.buffer).filter(Boolean));
+        const url = await frames[0].publish?.(strip);
+        if (!url) throw new Error('no se pudo publicar la secuencia');
+
+        const result = await generateCopy({
+            system: `Eres un control de calidad de vídeo institucional. Recibes UNA imagen con ${frames.length} fotogramas de un vídeo EN ORDEN TEMPORAL, de izquierda a derecha, separados por franjas oscuras. El vídeo lo generó una IA a partir de una fotografía real y no puede cambiar lo que ocurrió.
+
+La dirección REAL de las acciones fotografiadas es:
+${acts.map((i, n) => `${n + 1}. ${i.from} ${i.action} ${i.to}`).join('\n')}
+
+Seguí cada acción a través de los fotogramas EN ORDEN y decí si el vídeo conserva esa dirección. Una acción se INVIERTE cuando quien entregaba termina recibiendo, quien recibía termina entregando, o un objeto viaja hacia la persona contraria a la fotografiada. Que la acción simplemente avance —el objeto más cerca de la mano que lo recibe— NO es una inversión: es la acción transcurriendo.
+
+Devolvé SOLO este JSON:
+{ "reversed": boolean, "which": "qué acción y qué se ve a lo largo de la secuencia, en una frase" }
+
+"reversed" es true SOLO si la inversión se ve con claridad siguiendo la secuencia completa. Si no se distingue, false.`,
+            userText: 'Analizá la secuencia y devolvé únicamente el JSON.',
+            imageUrl: url,
+            temperature: 0.1,
+            maxTokens: 300,
+            jsonMode: true
+        });
+        const raw = parseJsonObject(result);
+        if (!raw) return { checked: false, reversed: false, detail: null };
+        return {
+            checked: true,
+            reversed: raw.reversed === true,
+            detail: typeof raw.which === 'string' ? raw.which.slice(0, 300) : null
+        };
+    } catch (e) {
+        console.warn('[REEL] dirección de la acción en secuencia:', e.message);
+        return { checked: false, reversed: false, detail: null };
+    }
+};
+
+/**
+ * ¿El lienzo AÑADIDO por la expansión agrega o duplica personas? (v4.799)
+ *
+ * El hueco es estructural y por eso ningún control de escena podía verlo: la
+ * fidelidad del clip se mide contra la imagen que SE ANIMÓ (`animationSourceOf`,
+ * regla de v4.664) — si el duplicado ya venía en el lienzo adaptado, el clip y
+ * su referencia lo tienen los dos y todas las comparaciones dan bien. Es el
+ * caso reportado: el mismo hombre dos veces, con distinta ropa, en una escena
+ * cuyo lienzo era 62 % nuevo. La única comparación que puede verlo es la
+ * adaptación contra la FOTO ORIGINAL, así que se mide acá, antes de gastar los
+ * créditos de video.
+ *
+ * `publish` sube la composición y devuelve la URL que el modelo de visión
+ * necesita — lo inyecta quien llama, igual que en `checkFrame`.
+ */
+export const judgeExpansionPeople = async ({ originalBuffer, expandedBuffer, publish }) => {
+    try {
+        const comparison = await buildComparisonImage(originalBuffer, expandedBuffer);
+        const url = await publish?.(comparison);
+        if (!url) return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
+
+        const result = await generateCopy({
+            system: `Eres un control de calidad de imagen institucional. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA una fotografía ORIGINAL, a la DERECHA la misma fotografía con el LIENZO EXTENDIDO por una IA para llegar a un formato vertical. El área añadida debe ser paisaje o entorno que continúa la escena, SIN personas nuevas.
+
+Comparás a las PERSONAS de las dos mitades y devolvés SOLO este JSON:
+{
+  "addedPeople": boolean,
+  "duplicatedPerson": boolean,
+  "which": "qué persona y dónde, en una frase"
+}
+
+- "addedPeople" es true si en la mitad derecha aparece alguna persona, rostro o silueta que NO está en la fotografía original.
+- "duplicatedPerson" es true si alguna persona de la original aparece REPETIDA en la derecha — la misma persona dos veces, aunque tenga otra ropa u otra pose. Dos personas distintas que se parecen NO son un duplicado.
+- Ante la duda, false en las dos.`,
+            userText: 'Compará las dos mitades y devolvé únicamente el JSON.',
+            imageUrl: url,
+            temperature: 0.1,
+            maxTokens: 300,
+            jsonMode: true
+        });
+        const raw = parseJsonObject(result);
+        if (!raw) return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
+        return {
+            checked: true,
+            addedPeople: raw.addedPeople === true,
+            duplicatedPerson: raw.duplicatedPerson === true,
+            detail: typeof raw.which === 'string' ? raw.which.slice(0, 300) : null
+        };
+    } catch (e) {
+        console.warn('[REEL] personas en el lienzo expandido:', e.message);
+        return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
+    }
+};
+
 // Compara la foto original con UN fotograma, sólo con sharp. Nunca lanza.
 export const structuralCompare = async (originalBuffer, frameBuffer) => {
     try {
@@ -1039,7 +1174,12 @@ export const judgeTextFidelity = (textChecks = []) => {
  * Devuelve `null` cuando no hay personas o no hubo modelo de visión: no se
  * afirma haber comprobado lo que no se comprobó.
  */
-export const buildPeopleReport = (semantics, analysis) => {
+// `sequence` es el juicio TEMPORAL de la dirección (v4.799,
+// `judgeSequenceDirection`): opcional y aditivo, para que el criterio siga
+// siendo puro y probable sin visión. Un `reversed` de la secuencia descalifica
+// por sí solo — es una medición diseñada para el defecto, no una señal por
+// fotograma que necesite corroborarse.
+export const buildPeopleReport = (semantics, analysis, sequence = null) => {
     if (!analysis?.hasPeople) return null;
     const withCount = semantics.filter(s => s.peopleLeft != null && s.peopleRight != null);
     const withFlags = semantics.filter(s => s.newSubjects != null);
@@ -1102,7 +1242,14 @@ export const buildPeopleReport = (semantics, analysis) => {
     const CORROBORACION = fotoVacia ? 1 : 2;
     const newSubjects = framesSinSujeto >= CORROBORACION;
     const occlusionBroken = framesConOclusion >= CORROBORACION;
-    const actionReversed = framesConInversion >= 2;
+    // La inversión tiene DOS caminos y el segundo es el que la ve (v4.799): la
+    // pregunta por fotograma —que necesita corroborarse en dos— y el juicio de
+    // la SECUENCIA ordenada, que decide solo. Un fotograma quieto no puede
+    // mostrar hacia dónde viaja una entrega: la escena del comedor pasó con
+    // todo en verde mientras los niños terminaban entregándole los mercados a
+    // los rotarios, y por fotograma esa pregunta se contestaba «false» con
+    // honestidad.
+    const actionReversed = framesConInversion >= 2 || sequence?.reversed === true;
     // Lo que se vio una sola vez no se esconde: se declara como lo que es.
     const signalNoise = (framesSinSujeto > 0 && !newSubjects)
         || (framesConOclusion > 0 && !occlusionBroken)
@@ -1170,7 +1317,7 @@ export const buildPeopleReport = (semantics, analysis) => {
     const failed = newSubjects || countGrew || countShrank || occlusionBroken || facesBroken || actionReversed;
 
     const reason = actionReversed
-        ? 'La animación invirtió la dirección de una acción: quien entregaba aparece recibiendo, o un objeto cambió de manos al revés de lo fotografiado.'
+        ? `La animación invirtió la dirección de una acción: quien entregaba aparece recibiendo, o un objeto cambió de manos al revés de lo fotografiado.${sequence?.reversed && sequence?.detail ? ` Visto en la secuencia: ${sequence.detail}` : ''}`
         : newSubjects
         ? 'Aparece en el clip alguna persona, rostro o silueta que no está en la fotografía.'
         : countGrew
@@ -1219,10 +1366,18 @@ export const buildPeopleReport = (semantics, analysis) => {
         signalNoise,
         framesWithNewSubjects: framesSinSujeto,
         framesWithOcclusion: framesConOclusion,
-        // Coherencia de acción (v4.797): tres estados, como todo lo demás.
-        actionsConsistent: semantics.some(s => s.actionReversed != null) ? !actionReversed : null,
+        // Coherencia de acción (v4.797): tres estados, como todo lo demás. La
+        // secuencia comprobada también cuenta como «se miró» (v4.799).
+        actionsConsistent: (semantics.some(s => s.actionReversed != null) || sequence?.checked)
+            ? !actionReversed : null,
         actionReversed,
         framesWithReversal: framesConInversion,
+        // El juicio temporal, declarado aparte para que la ficha pueda decir
+        // POR DÓNDE se vio la inversión (o que la secuencia se miró y estaba
+        // bien).
+        sequenceChecked: sequence?.checked === true,
+        sequenceReversed: sequence?.reversed === true,
+        sequenceDetail: sequence?.detail || null,
         identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
         occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
         facesConsistent: faceConsistency != null ? !facesBroken : null,
@@ -1330,7 +1485,15 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     // perfectamente ella misma—, así que el modelo podía contestar «todo bien»
     // con honestidad mientras el clip tenía un sujeto de más. Es exactamente lo
     // que hacía que una escena con una cara fantasma pasara con 8/10.
-    const people = buildPeopleReport(semantics, analysis);
+    //
+    // La DIRECCIÓN de las acciones se pregunta aparte y sobre la SECUENCIA
+    // (v4.799): es temporal, y la pregunta por fotograma no puede verla. Sólo
+    // corre cuando el análisis capturó interacciones — sin dato de referencia
+    // no hay dirección que comprobar.
+    const sequence = Array.isArray(analysis?.interactions) && analysis.interactions.length
+        ? await judgeSequenceDirection({ frames, interactions: analysis.interactions })
+        : null;
+    const people = buildPeopleReport(semantics, analysis, sequence);
 
     // Control de marca de cerca. Sólo actúa si el análisis declaró dónde están
     // los logotipos: sin regiones no se afirma haber mirado ninguno.
