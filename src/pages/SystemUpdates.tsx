@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.787.0 | 2026-08-13 (Un paneo no es una escena viva)
-// Cache bust: 2026-08-13e
+// UI V4.788.0 | 2026-08-14 (Presupuesto de la Formulación sin los conceptos internacionales)
+// Cache bust: 2026-08-14a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.788.0',
+        title: 'El presupuesto de la Formulación pide sólo lo que aplica 📋',
+        description: 'A pedido del comité, el paso 5 (Presupuesto) del formulario de Formulación del Proyecto deja de pedir tres conceptos que en la práctica no aplican a esta convocatoria: «Aporte clubes internacionales», «Distrito Internacional» y «Fundación Rotaria». La tabla queda con Costo del Proyecto, Aporte Club local y Distrito Colombiano. Lo que algún club ya hubiera diligenciado en esas filas NO se pierde: sigue guardado y se sigue viendo en la ficha administrativa, en el PDF y en el documento de Word, marcado como «retirado del formulario» — dejar de pedir un dato no es dejar de mostrarlo. El cambio se aplica también a las convocatorias que tuvieran su propia copia guardada de la plantilla, que de otro modo habrían seguido mostrando las filas viejas.',
+        date: new Date().toISOString(),
+        tags: ['feria', 'formularios', 'proyectos'],
+        type: 'changed',
+        impact: 'Medio',
+        changes: [
+            { type: 'removed', text: 'El paso 5 ya no pide «Aporte clubes internacionales», «Distrito Internacional» ni «Fundación Rotaria».' },
+            { type: 'improved', text: 'Lo ya diligenciado en esas filas se conserva y se sigue viendo en la ficha, el PDF y el Word, marcado como retirado.' },
+            { type: 'fixed', text: 'El cambio alcanza también a las convocatorias con una copia guardada de la plantilla.' },
+        ]
+    },
     {
         version: '4.787.0',
         title: 'Un paneo no es una escena viva 🎥',

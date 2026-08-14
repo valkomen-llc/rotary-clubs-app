@@ -21,7 +21,7 @@
 import Stripe from 'stripe';
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
-import { DEFAULT_MASTER_FORM } from '../lib/projectFairMasterForm.js';
+import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
@@ -865,6 +865,18 @@ const normalizeSavedConfig = (saved) => {
     if (isPlainObject(out?.masterForm) && out.masterForm.version === undefined) {
         const { masterForm, ...rest } = out;
         out = rest;
+    }
+
+    // El comité retiró del presupuesto los tres conceptos internacionales
+    // (v4.788). Quitarlos de `projectFairMasterForm.js` no basta: si la
+    // convocatoria tiene su propia copia de la plantilla, el merge reemplaza el
+    // array de secciones entero y el cambio del código no llegaría nunca —la
+    // misma trampa del catálogo de clubes en v4.707—. Se limpian al leer, como
+    // la etiqueta de los CADRES y el orden de los distritos, así que se
+    // autorrepara sin escribir en la base durante un despliegue.
+    if (isPlainObject(out?.masterForm)) {
+        const limpio = dropRetiredBudgetRows(out.masterForm);
+        if (limpio !== out.masterForm) out = { ...out, masterForm: limpio };
     }
 
     // Los dos distritos venían en el orden equivocado por defecto (4281 antes

@@ -15,6 +15,7 @@ import {
     Document, Packer, Paragraph, TextRun, AlignmentType,
     Table, TableRow, TableCell, WidthType, BorderStyle, ImageRun,
 } from 'docx';
+import { matrixRowsToShow } from './projectFormEngine.js';
 
 const BLUE = '1F4E9B';          // azul de los títulos y etiquetas
 const TABLE_FILL = 'CCCCFF';    // relleno lila de las tablas del formulario
@@ -88,7 +89,9 @@ const areasTable = (options, selected) => {
 /** Tabla de filas fijas (presupuesto): concepto + una columna por valor. */
 const matrixTable = (field, value) => {
     const columns = field.columns || [];
-    const rows = field.rows || [];
+    // Incluye las filas retiradas que el club alcanzó a diligenciar: se dejan
+    // de pedir, no de mostrar.
+    const rows = matrixRowsToShow(field, value);
     if (!rows.length || !columns.length) return [new Paragraph({ children: [txt('—')] })];
 
     const conceptWidth = 40;

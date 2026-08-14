@@ -198,6 +198,38 @@ export const sectionProgress = (template: FormTemplate | null | undefined, answe
     return out;
 };
 
+/**
+ * Espejo de `matrixRowsToShow` (`server/lib/projectFormEngine.js`). Al tocar
+ * uno, tocar el otro.
+ *
+ * Las filas vigentes de una tabla de filas fijas, más las RETIRADAS que ya
+ * tengan un valor escrito: un club pudo diligenciar un concepto que después se
+ * quitó del formulario, y las vistas administrativas dibujan la tabla
+ * recorriendo `rows`. Retirar un campo es dejar de pedirlo, no dejar de
+ * mostrarlo.
+ */
+export const matrixRowsToShow = (field: any, value: any): any[] => {
+    const rows: any[] = Array.isArray(field?.rows) ? field.rows : [];
+    const retired: any[] = Array.isArray(field?.retiredRows) ? field.retiredRows : [];
+    if (!retired.length) return rows;
+
+    const vigentes = new Set(rows.map(r => r?.key));
+    const conValor = retired.filter(r =>
+        r?.key && !vigentes.has(r.key)
+        && value?.[r.key]
+        && Object.values(value[r.key]).some((v: any) => String(v ?? '').trim() !== '')
+    ).map(r => ({
+        ...r, retired: true,
+        // Se rotula en la propia etiqueta y no en cada vista: son tres —ficha,
+        // PDF y Word— y escribirlo tres veces las deja separarse. Sin el
+        // rótulo, un concepto retirado se lee como si el formulario todavía lo
+        // pidiera.
+        label: `${r.label} (retirado del formulario)`
+    }));
+
+    return conValor.length ? [...rows, ...conValor] : rows;
+};
+
 // ── Formato ──────────────────────────────────────────────────────────
 export const fmtUsd = (n?: number | string | null) => {
     const v = Number(n);

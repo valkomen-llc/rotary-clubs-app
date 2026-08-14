@@ -16,7 +16,8 @@ import { toast } from 'sonner';
 import { FormField } from '../../project-forms/FormFields';
 import {
     FORM_STATE_META, computeValue, districtSectionOf, fmtDay, fmtDateTime,
-    hasValue, isDistrictSection, type Answers, type FormState, type FormTemplate,
+    hasValue, isDistrictSection, matrixRowsToShow,
+    type Answers, type FormState, type FormTemplate,
 } from '../../../lib/projectForms';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -286,7 +287,7 @@ const renderAnswer = (field: any, value: any) => {
         );
     }
     if (field.type === 'matrix') {
-        const rows = Array.isArray(field.rows) ? field.rows : [];
+        const rows = matrixRowsToShow(field, value);
         return (
             <ul className="ml-4 list-disc">
                 {rows.map((row: any) => (

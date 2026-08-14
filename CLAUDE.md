@@ -2370,7 +2370,7 @@ suyos, conservados para un navegador con el panel viejo en caché.
   van ahí: ya tienen su tarjeta y en el encabezado convertirían el dinero en el
   titular de una pantalla que trata del proyecto.
 
-## Formularios del proyecto (Gestión de Proyectos) — v4.642
+## Formularios del proyecto (Gestión de Proyectos) — v4.788
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en
 `server/lib/projectFormsRegistry.js`:
@@ -2415,6 +2415,40 @@ club (`src/pages/MiProyecto.tsx`) dibuja una tarjeta por lo que devuelve
 - El motor común (avance, validación, campos derivados) está en
   `server/lib/projectFormEngine.js`, con su espejo en `src/lib/projectForms.ts`.
   El servidor valida siempre, aunque el navegador ya lo haya hecho.
+
+### Retirar un campo de una plantilla (v4.788)
+
+El comité quitó del paso 5 (Presupuesto) de la Formulación los tres conceptos
+internacionales: «Aporte clubes internacionales», «Distrito Internacional» y
+«Fundación Rotaria». Parece un cambio de tres líneas y tiene dos trampas.
+Pruebas: `npm run test:project-form` (31 casos, sin base ni red).
+
+- **Borrarlo del código NO alcanza: lo guardado manda.** `templateFor` mezcla la
+  plantilla de `projectFairMasterForm.js` con la copia que la convocatoria tenga
+  en `ProjectFairConfig`, y el merge **reemplaza los arrays enteros**: si la fila
+  guardada trae su propio `masterForm.sections`, el cambio del archivo no llega
+  nunca a producción. Es la misma trampa del catálogo de clubes (v4.707) y del
+  Generador de Pendones. `dropRetiredBudgetRows` lo limpia **al leer**, dentro de
+  `normalizeSavedConfig`, junto a la etiqueta de los CADRES y el orden de los
+  distritos: así se autorrepara y **no hay que escribir en la base durante un
+  despliegue**, que es lo que prohíbe la sección de base de datos de este
+  archivo. Sólo toca las filas nombradas y devuelve la misma referencia cuando
+  no hay nada que quitar.
+- **Retirar un campo es dejar de PEDIRLO, no dejar de mostrarlo.** La ficha
+  administrativa, el PDF y el Word dibujan la tabla recorriendo `rows`, así que
+  una fila borrada se lleva con ella el valor que un club ya hubiera escrito:
+  seguiría en la base, invisible, en una postulación que se paga. Las filas
+  retiradas se DECLARAN en el campo (`retiredRows`) y `matrixRowsToShow` las
+  añade **si tienen valor** — vacías no, nadie necesita ver un concepto muerto y
+  en blanco. Misma regla que `RETIRED_LABELS` en el registro de eventos.
+- **El rótulo «(retirado del formulario)» se pone UNA vez**, dentro de
+  `matrixRowsToShow`. Son tres vistas y escribirlo tres veces las deja
+  separarse; sin él, un concepto retirado se lee como si todavía se pidiera.
+- **Quitar filas no puede bajarle el avance a nadie.** Una tabla cuenta como
+  diligenciada con CUALQUIER celda llena (`anyCellFilled`), así que una
+  postulación que sólo había llenado un concepto ya retirado sigue contando.
+  Comprobarlo al retirar un campo de otro tipo, donde la regla puede no valer.
+- Al retirar otra fila: agregarla a `RETIRED_BUDGET_ROWS`, no borrarla y ya.
 
 ## Plantillas IA (Generador de Diseños) — v4.729
 
