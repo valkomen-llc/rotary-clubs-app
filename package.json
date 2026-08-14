@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.791.0",
-  "cache_bust": "2026-08-14d (Una pestana con el documento viejo en cache se recupera sola: el archivo que falta devuelve un modulo que recarga.)",
+  "version": "4.792.0",
+  "cache_bust": "2026-08-14e (Un logotipo redibujado ya no tira la escena animada: solo una persona inventada la sustituye.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
