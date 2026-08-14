@@ -48,6 +48,64 @@ const ASSET_PREFIXES = ['/assets/'];
  * `robots.txt` y `sitemap.xml` no llegan hasta acá —tienen su propia ruta— y
  * si llegaran, un 404 sería la respuesta correcta igualmente.
  */
+/**
+ * ¿Es un archivo de PROGRAMA del build? (`.js` / `.mjs` bajo `/assets/`)
+ *
+ * Se distingue del resto porque es el único que se puede rescatar: un módulo
+ * que falta se puede sustituir por un módulo que recarga (ver `reloadShim`).
+ * Con una imagen o una fuente no hay nada que hacer.
+ */
+export const isBuildScriptPath = (pathname) => {
+    const p = String(pathname || '');
+    if (!p.startsWith('/assets/')) return false;
+    const last = p.split('?')[0].split('/').pop() || '';
+    return /\.(js|mjs)$/i.test(last);
+};
+
+/**
+ * El módulo que se devuelve en lugar de un programa que ya no existe.
+ *
+ * Por qué hace falta, y por qué un 404 no alcanza
+ * -----------------------------------------------
+ * v4.789 hizo que el documento se sirviera con `no-store`, así que a partir de
+ * ahí nadie vuelve a quedarse con una lista de archivos vieja. Pero eso NO
+ * rescata a quien ya tenía el documento anterior guardado en caché —servido
+ * antes de la corrección, sin instrucciones de caché—: esa pestaña sigue
+ * pidiendo los archivos de una versión que ya no está, y con un 404 limpio
+ * queda igual de en blanco, sólo que sin ruido. El código que sabría
+ * recuperarse vive justamente en el archivo que no llega.
+ *
+ * Lo único que se ejecuta en ese navegador es lo que le devolvamos en el lugar
+ * del módulo. Así que se le devuelve un módulo de verdad, mínimo, que recarga
+ * la página: la recarga trae el documento nuevo —que ya no se cachea— y con él
+ * los archivos que sí existen. Se cura de una vez y no vuelve a pasar.
+ *
+ * Va con estado 200 a propósito: el navegador no ejecuta el cuerpo de un 404.
+ * El `Content-Type` es honesto —es JavaScript— y sólo se usa cuando la petición
+ * viene de un `<script type="module">` o de un `import()`.
+ *
+ * El freno es el mismo que el del cliente y comparte su contador, así que entre
+ * los dos no pueden sumar más recargas de las permitidas: un archivo que falte
+ * DE VERDAD tiene que terminar en un error a la vista, no en un bucle.
+ */
+export const reloadShim = () => `// Módulo de rescate: este archivo pertenece a una versión anterior del sitio.
+try {
+  var K = 'app:chunk-reloads', V = 60000, MAX = 2, now = Date.now();
+  var m = JSON.parse(sessionStorage.getItem(K) || '[]');
+  m = (Array.isArray(m) ? m : []).filter(function (t) { return typeof t === 'number' && now - t < V; });
+  if (m.length < MAX) {
+    sessionStorage.setItem(K, JSON.stringify(m.concat(now)));
+    console.warn('[chunk] este archivo es de una versión anterior; se recarga para tomar la nueva.');
+    location.reload();
+  } else {
+    console.error('[chunk] falta un archivo del sitio y ya se recargó ' + m.length + ' veces; no se insiste.');
+    throw new Error('Falta un archivo de esta versión del sitio.');
+  }
+} catch (e) {
+  throw new Error('Falta un archivo de esta versión del sitio: ' + (e && e.message ? e.message : e));
+}
+`;
+
 export const isBuildAssetPath = (pathname) => {
     const p = String(pathname || '');
     if (!p.startsWith('/')) return false;

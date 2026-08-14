@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.790.0 | 2026-08-14 (El texto de la foto ya no descalifica escenas por ruido)
-// Cache bust: 2026-08-14c
+// UI V4.791.0 | 2026-08-14 (La pestaña vieja se recupera sola)
+// Cache bust: 2026-08-14d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.791.0',
+        title: 'Una pestaña con la versión anterior guardada se recupera sola 🔄',
+        description: 'La corrección anterior hizo que el documento principal del sitio dejara de guardarse en caché, para que cada carga tome la lista de archivos vigente. Pero eso sólo protege de ahí en adelante: quien ya tuviera guardado el documento viejo —servido antes de la corrección, sin instrucciones de caché— seguía pidiendo archivos de una versión que ya no existe, y su pantalla seguía en blanco. Peor: el código que sabría recuperarse vive justamente dentro del archivo que no llega, así que no había nada que pudiera actuar. Ahora, cuando el navegador pide un programa del sitio que ya no está, el servidor le devuelve en su lugar un módulo mínimo cuya única función es recargar la página; la recarga trae el documento nuevo —que ya no se cachea— y con él los archivos correctos. Se cura de una vez y no vuelve a pasar. Lleva un freno compartido con el de la aplicación para que un archivo que falte de verdad termine en un mensaje de error y nunca en un bucle de recargas, y sólo actúa sobre programas: una imagen o una hoja de estilos que falten siguen respondiendo «no encontrado».',
+        date: new Date().toISOString(),
+        tags: ['panel', 'estabilidad', 'rendimiento'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Una pestaña que quedó con la versión anterior guardada se recarga sola y entra, sin recarga forzada.' },
+            { type: 'added', text: 'El archivo que falta devuelve un módulo de rescate, porque el navegador no ejecuta el cuerpo de un «no encontrado».' },
+            { type: 'improved', text: 'El rescate comparte el freno con la aplicación: como mucho una recarga, nunca un bucle.' },
+            { type: 'changed', text: 'Sólo se rescatan programas: una imagen o un estilo que falten siguen dando «no encontrado».' },
+        ]
+    },
     {
         version: '4.790.0',
         title: 'Las escenas dejan de descartarse por un cartel mal leído 🔤',
