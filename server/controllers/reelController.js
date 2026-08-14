@@ -105,7 +105,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.800.0';
+export const REEL_MODULE_VERSION = '4.801.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -818,12 +818,18 @@ const advanceSceneExpansion = async (scene, settings) => {
                 }
             });
             verification.people = gente;
-            if (gente.checked && (gente.addedPeople || gente.duplicatedPerson)) {
+            if (gente.checked && (gente.addedPeople || gente.duplicatedPerson || gente.seam)) {
                 judgement = {
                     verdict: 'failed',
                     reason: gente.duplicatedPerson
                         ? `El lienzo añadido REPITE a una persona de la fotografía${gente.detail ? ` (${gente.detail})` : ''}: la escena mostraría a la misma persona dos veces. Se rehace la adaptación.`
-                        : `El lienzo añadido AGREGA personas que no están en la fotografía${gente.detail ? ` (${gente.detail})` : ''}: la escena mostraría gente que no estuvo ahí. Se rehace la adaptación.`
+                        : gente.addedPeople
+                            ? `El lienzo añadido AGREGA personas que no están en la fotografía${gente.detail ? ` (${gente.detail})` : ''}: la escena mostraría gente que no estuvo ahí. Se rehace la adaptación.`
+                            // La regla del cliente (v4.801): UNA fotografía →
+                            // UNA composición. Dos imágenes pegadas, un cambio
+                            // de escala o un trozo repetido como relleno no son
+                            // una adaptación: son un collage.
+                            : `El área añadida no continúa la fotografía: se ve una costura, un cambio de escala o un trozo repetido${gente.detail ? ` (${gente.detail})` : ''} — la escena se vería como dos imágenes pegadas. Se rehace la adaptación.`
                 };
             }
         }
@@ -1572,7 +1578,12 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
 
         let frames = [];
         if (await isFfmpegAvailable()) {
-            const raw = await extractFrames(videoBuffer, { durationSec, count: 3 });
+            // CINCO fotogramas repartidos (v4.801, regla de consistencia
+            // temporal del cliente): con tres, una persona que desaparece a
+            // mitad del clip y vuelve cerca del final podía caer entre los
+            // muestreos. Cinco cubren inicio, cuartos y fin; la corroboración
+            // de dos fotogramas no cambia.
+            const raw = await extractFrames(videoBuffer, { durationSec, count: 5 });
             // Cada fotograma se sube: el modelo de visión los pide por URL, y
             // además quedan en el historial técnico de la escena.
             frames = await Promise.all(raw.map(async (f, i) => {
@@ -2808,52 +2819,41 @@ const advance = async (project) => {
             || (!esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES));
 
         if (agotados.length) {
-            const results = await Promise.allSettled(agotados.map(sc =>
-                resolveSceneWithStillMotion(sc, {
-                    // Con su medida concreta: «alteró la marca o el texto»
-                    // obligaba a adivinar cuál de las dos y con qué número.
-                    reason: sc.fidelity?.people?.reason
-                        || 'el motor insistió en mostrar personas que no están en la fotografía',
-                    // La sustitución SE VE (v4.786): queda `needs_review` con su
-                    // motivo, no `ready`. El Reel se completa igual —needs_review
-                    // conserva su videoUrl y el montaje lo usa—, pero quien pidió
-                    // escenas vivas se entera de cuál no lo es y puede regenerarla.
-                    markForReview: true
-                })));
-
-            const rescatadas = results.filter(r => r.status === 'fulfilled').length;
-            if (rescatadas) {
-                await appendNote(project.id,
-                    `${rescatadas} escena(s) mostraban personas que no están en la fotografía y siguieron ` +
-                    `haciéndolo tras los reintentos: se resolvieron sin motor generativo —la fotografía se ` +
-                    `mueve, no se regenera— porque eso no se puede publicar. ` +
-                    // El gasto se DICE: esas escenas consumieron sus dos
-                    // generaciones de video y terminaron sin animar. Callarlo
-                    // hace que el medidor de créditos parezca equivocado.
-                    `Cada una consumió sus ${MAX_AUTO_RETRIES} generaciones de video antes de descartarse. ` +
-                    `Se pueden reintentar con IA una a una desde la línea de tiempo.`);
+            // ── REGLA DEL CLIENTE (v4.801): SIN respaldo Ken Burns automático ──
+            //
+            // Hasta v4.800 la escena agotada se sustituía por la fotografía en
+            // movimiento marcada para revisión (v4.785/v4.792). El cliente lo
+            // vetó con estas palabras: «Prefiero una escena marcada como
+            // fallida antes que un falso resultado animado» — y tiene razón: el
+            // paneo presentado como escena fue el centro de tres reportes
+            // seguidos. Ahora la escena queda en ERROR con su medida concreta y
+            // el proyecto lo agrega con su desglose; «Reintentar» relanza sólo
+            // las rotas y la línea de tiempo permite regenerarlas una a una.
+            // El clip contaminado NO viaja al montaje por ninguna vía.
+            //
+            // La elección EXPRESA del modo «Fotográfico — sin IA» no cambia:
+            // ahí la foto en movimiento es exactamente lo pedido.
+            for (const sc of agotados) {
+                await db.query(
+                    `UPDATE "ReelScene" SET status = 'error', "videoUrl" = NULL,
+                         "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`,
+                    [sc.id,
+                        `No fue posible animar esta escena conservando la fotografía: ` +
+                        `${sc.fidelity?.people?.reason || 'el motor insistió en mostrar personas que no están en la fotografía'} ` +
+                        // El gasto se DICE: callarlo hace que el medidor de
+                        // créditos parezca equivocado.
+                        `Consumió sus ${MAX_AUTO_RETRIES} generaciones de video. Regenerala desde la línea de tiempo.`]
+                );
             }
-            // Si el respaldo falla (la imagen no se pudo descargar, ffmpeg no
-            // está), la escena queda en needs_review CON su clip — degradar es
-            // mejor que dejar el Reel sin montar, y la ficha ya dice qué tiene.
-            for (const [i, r] of results.entries()) {
-                if (r.status === 'rejected') {
-                    console.error(`[REEL] respaldo 2.5D de la escena ${agotados[i].position + 1} falló:`, r.reason?.message);
-                    await db.query(
-                        `UPDATE "ReelScene" SET status = 'needs_review', "updatedAt" = NOW() WHERE id = $1`,
-                        [agotados[i].id]
-                    );
-                    await appendNote(project.id,
-                        `La escena ${agotados[i].position + 1} tiene un defecto descalificante y el respaldo sin IA falló (${r.reason?.message}). Revisarla antes de publicar.`);
-                }
-            }
+            await appendNote(project.id,
+                `${agotados.length} escena(s) no conservaron a las personas de la fotografía tras los ` +
+                `reintentos y quedaron marcadas como fallidas — sin sustituciones automáticas: un paneo ` +
+                `presentado como escena animada es un falso resultado. Se pueden regenerar una a una ` +
+                `desde la línea de tiempo.`);
 
-            // La pasada TERMINA acá, como en la rama de regeneración. El
-            // motivo no es ceremonia: `finalScenes` se leyó ANTES del rescate,
-            // así que sus filas todavía apuntan al clip contaminado — seguir
-            // hacia el montaje en esta misma pasada lo pegaría igual, que es
-            // exactamente lo que este bloque existe para impedir. El siguiente
-            // sondeo (3 s) relee las escenas ya rescatadas y monta con ellas.
+            // La pasada TERMINA acá: `finalScenes` se leyó antes de marcar y
+            // sus filas todavía apuntan al clip contaminado. El siguiente
+            // sondeo relee las escenas y deja el proyecto con su desglose.
             const { rows } = await db.query(
                 `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
                 [project.id]

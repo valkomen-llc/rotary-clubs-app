@@ -419,35 +419,34 @@ console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el cont
 
 {
     const src = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
-    check('los agotados van al respaldo sin IA',
-        /agotados\.map\(sc =>\s*\n?\s*resolveSceneWithStillMotion/.test(src));
 
-    // ── CAMBIO DE SIGNO DELIBERADO (v4.792) ──
+    // ── CAMBIO DE SIGNO DELIBERADO (v4.801) ──
     //
-    // Esta afirmación decía que los conservados son SÓLO los de nota baja, o
-    // sea que los tres defectos descalificantes se sustituían por igual. Con
-    // fotografías reales de una campaña de emergencia —pendones, cajas
-    // rotuladas, chalecos— eso descartó TRES de cuatro escenas por «marca o
-    // texto» y devolvió el Reel entero en paneos, habiendo pagado dos
-    // generaciones de video por escena.
-    //
-    // Los tres defectos no son equivalentes: una persona inventada es una
-    // falsedad sobre quién estuvo ahí y no se publica; un logotipo redibujado
-    // al animar es un defecto de calidad sobre una parte de la imagen, y ahí la
-    // decisión es del usuario, que puede mirar el clip. Es la regla de v4.676,
-    // que v4.785 se llevó puesta sin notarlo.
-    check('sólo la INVENCIÓN HUMANA se sustituye tras agotar los reintentos',
+    // Hasta v4.800 esta sección afirmaba que los agotados iban al respaldo
+    // 2.5D («los agotados van al respaldo sin IA»). El CLIENTE vetó ese
+    // respaldo con estas palabras: «Prefiero una escena marcada como fallida
+    // antes que un falso resultado animado» — el paneo presentado como escena
+    // fue el centro de tres reportes seguidos. Ahora la escena agotada queda
+    // en ERROR con su medida concreta y sin clip; la única vía del 2.5D es la
+    // elección expresa del modo «Fotográfico — sin IA».
+    check('los agotados quedan en ERROR con su motivo, sin respaldo Ken Burns',
+        /No fue posible animar esta escena conservando la fotografía/.test(src)
+        && !/agotados\.map\(sc =>\s*\n?\s*resolveSceneWithStillMotion/.test(src));
+    check('...y sin clip: el contaminado no viaja al montaje por ninguna vía',
+        /SET status = 'error', "videoUrl" = NULL/.test(src));
+
+    // La distinción de v4.792 sigue viva: sólo la invención humana llega a
+    // agotados; marca y texto conservan su clip animado en revisión.
+    check('sólo la INVENCIÓN HUMANA falla tras agotar los reintentos',
         /agotados = infidel\.filter\(sc => esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES\)/.test(src));
     check('marca y texto agotados CONSERVAN su clip animado',
         /conservados = infidel\.filter\(sc =>[\s\S]{0,200}!esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES/.test(src));
     check('mientras queden reintentos, marca y texto se siguen regenerando',
         /descalificados = infidel\.filter\(sc => esDescalificante\(sc\) && sc\.attempts < MAX_AUTO_RETRIES\)/.test(src));
-    check('el gasto de las escenas descartadas se DICE, no se calla',
-        /generaciones de video antes de descartarse/.test(src));
-    check('tras el rescate la pasada TERMINA (el montaje esperaría filas frescas)',
-        /finalScenes` se leyó ANTES del rescate/.test(src));
-    check('el respaldo que falla degrada a needs_review, no tumba el Reel',
-        /el respaldo sin IA falló/.test(src));
+    check('el gasto de las escenas fallidas se DICE, no se calla',
+        /Consumió sus \$\{MAX_AUTO_RETRIES\} generaciones de video/.test(src));
+    check('tras marcar las fallidas la pasada TERMINA (el montaje esperaría filas frescas)',
+        /finalScenes` se leyó antes de marcar/.test(src));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

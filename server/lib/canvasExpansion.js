@@ -807,9 +807,14 @@ export const detectPartialCopy = async (sharp, originalBuffer, bandBuffer) => {
         };
 
         // Gruesa (paso 0,065 ≈ la mitad del error que decorrelaciona), con
-        // corte en cuanto algo supera el umbral.
+        // corte en cuanto algo supera el umbral. Arranca en 0,18 y no en 0,35
+        // (v4.801): la banda del reporte era un trozo de la foto AMPLIADO —el
+        // balde y los escombros a 3× con piernas gigantes en los bordes— y para
+        // casar con su región de origen la plantilla tiene que encogerse por
+        // debajo de 0,35. Sólo hacia abajo probaba escalas de reducción y el
+        // zoom-in pasaba de largo.
         const FRACS = [];
-        for (let f = 0.35; f <= 1.001; f += 0.065) FRACS.push(Number(f.toFixed(3)));
+        for (let f = 0.18; f <= 1.001; f += 0.065) FRACS.push(Number(f.toFixed(3)));
         let bestFw = null, bestFh = null;
         for (const fw of FRACS) {
             for (const fh of FRACS) {
