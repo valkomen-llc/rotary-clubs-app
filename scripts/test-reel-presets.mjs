@@ -148,16 +148,19 @@ check('la intensidad parte de `natural` (la acota `resolveSceneIntensity` por es
         && foto.notes.some(n => /sin animación IA/i.test(n) && /cero créditos/i.test(n)),
         JSON.stringify(foto.notes));
 }
-// La sustitución tras agotar reintentos SE VE: el rescate marca needs_review,
-// no ready. Se comprueba sobre el archivo porque es una escritura a la base
-// que ninguna prueba pura puede ejecutar.
+// v4.801 — CAMBIO DE SIGNO DELIBERADO: el rescate automático por defecto
+// descalificante ya NO existe. El cliente lo vetó («prefiero una escena
+// marcada como fallida antes que un falso resultado animado»): la escena
+// agotada queda en ERROR sin clip, y el 2.5D queda sólo para la elección
+// expresa del modo «Fotográfico — sin IA».
 {
     const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
-    check('el rescate por defecto descalificante viaja con `markForReview: true`',
-        /resolveSceneWithStillMotion\(sc, \{[\s\S]{0,900}?markForReview: true/.test(ctrl));
-    check('la elección expresa de «Fotográfico» NO se marca para revisión',
-        /reason: 'estilo Fotográfico elegido por el usuario' \}\)/.test(ctrl)
-        || /estilo Fotográfico elegido por el usuario/.test(ctrl));
+    check('no queda ningún rescate automático con still-motion',
+        !/resolveSceneWithStillMotion\(sc, \{[\s\S]{0,900}?markForReview: true/.test(ctrl));
+    check('la escena agotada queda fallida con su motivo, a la vista',
+        /No fue posible animar esta escena conservando la fotografía/.test(ctrl));
+    check('la elección expresa de «Fotográfico» sigue intacta',
+        /estilo Fotográfico elegido por el usuario/.test(ctrl));
 }
 
 // ───────────────────────────────────────────────────────────────────────────

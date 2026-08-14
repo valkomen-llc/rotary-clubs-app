@@ -82,6 +82,9 @@ export interface PeopleFidelity {
     facesConsistent: boolean | null;
     noNewSubjects: boolean | null;
     newSubjects?: boolean;
+    /** Nadie desaparece (v4.801): quien está en la foto sigue en el clip. */
+    noMissingPersons?: boolean | null;
+    missingPerson?: boolean;
     occlusionBroken?: boolean;
     faceConsistency: number | null;
     countDelta: number | null;

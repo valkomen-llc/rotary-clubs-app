@@ -1220,6 +1220,37 @@ fuera un video».
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
 
+### Las reglas globales del cliente (v4.801) — REGLA EXPRESA: sin respaldo Ken Burns
+
+El cliente entregó una especificación formal («Arquitecto Senior…») con reglas
+globales y una decisión de producto que SUPERSEDE el final del camino de
+v4.785/v4.792: *«Prefiero una escena marcada como fallida antes que un falso
+resultado animado»*.
+
+- **SIN respaldo Ken Burns automático.** La escena agotada por invención humana
+  queda en `error`, SIN clip (`videoUrl = NULL`) y con su medida concreta en
+  `statusDetail`; el proyecto la agrega con su desglose y «Reintentar» /
+  la línea de tiempo permiten regenerarla. `resolveSceneWithStillMotion` tiene
+  UNA sola vía —la elección expresa del modo «Fotográfico — sin IA»— y las
+  pruebas cuentan las llamadas: una segunda es el respaldo reintroducido. Las
+  reglas de v4.785 («cae a resolveSceneWithStillMotion») y v4.786/v4.792 sobre
+  el rescate marcado quedan superadas en ese punto; el resto de aquellas
+  secciones sigue vigente.
+- **«Nadie desaparece» es una señal EXPLÍCITA** (`missingPerson`), corroborada
+  en dos fotogramas, y descalifica como invención — también en MULTITUDES,
+  donde el recuento no decide por diseño. Era el hueco del reporte: el hombre
+  de gorra del fondo desaparecía y `newSubjects` sólo mira a quien APARECE; el
+  recuento con 15 personas no opina. La pregunta simétrica faltaba.
+- **La costura se pregunta con visión** (`seam` en `judgeExpansionPeople`): dos
+  imágenes pegadas, un cambio brusco de escala o un trozo de la foto repetido
+  como relleno reprueban la adaptación. Es lo que las mediciones deterministas
+  no ven — el collage del reporte era un trozo de la foto AMPLIADO, y el
+  detector de copia parcial sólo probaba escalas hacia abajo (corregido: la
+  rejilla arranca en 0,18).
+- **CINCO fotogramas de consistencia temporal**, no tres: una persona que
+  desaparece a mitad del clip y vuelve cerca del final caía entre los
+  muestreos. La corroboración de dos fotogramas no cambia.
+
 ### El despacho de una escena lleva RECLAMO (v4.800)
 
 Del reporte «se queda pegado en 53 % y consume todos los créditos» — dos

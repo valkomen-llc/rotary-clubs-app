@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.800.0 | 2026-08-14 (Ni Reels pegados ni escenas cobradas dos veces)
-// Cache bust: 2026-08-14m
+// UI V4.801.0 | 2026-08-14 (Las reglas globales del cliente, aplicadas)
+// Cache bust: 2026-08-14n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.801.0',
+        title: 'Reglas globales: sin falsos animados, nadie desaparece, una sola composición 🎯',
+        description: 'Implementación de las reglas globales definidas por el cliente sobre los tres clips del reporte, como comportamiento permanente para toda fotografía futura. UNO — SIN RESPALDO KEN BURNS (Regla 13): hasta hoy, una escena que agotaba sus reintentos por defecto descalificante se sustituía por la fotografía en movimiento marcada para revisión; por regla expresa del cliente («prefiero una escena marcada como fallida antes que un falso resultado animado») ese respaldo automático se eliminó — la escena queda FALLIDA con su medida concreta a la vista y se regenera desde la línea de tiempo; el clip contaminado no viaja al montaje por ninguna vía. El modo «Fotográfico — sin IA» sigue disponible como elección expresa. DOS — NADIE DESAPARECE (Reglas 4, 5 y 11): el hombre de gorra del fondo de la escena nocturna desaparecía a mitad del clip y ninguna medida lo veía — el recuento no decide en multitudes (por diseño) y la señal de sujetos nuevos sólo mira a quien APARECE. Se agregó la pregunta simétrica y explícita: una persona de la fotografía que falta en el clip, corroborada en dos fotogramas, descalifica la escena igual que una inventada — funciona también en multitudes. TRES — UNA SOLA COMPOSICIÓN (Reglas 1 y 2): el «collage» de la escena de escombros —un trozo de la propia foto AMPLIADO como relleno, con un corte de escala visible— pasaba las mediciones porque el detector de copia sólo probaba escalas hacia abajo; ahora prueba también el zoom-in, y además el juez de visión de la adaptación pregunta directamente por costuras, cortes y cambios de escala: dos imágenes pegadas reprueban la adaptación y se rehace antes de animar. CUATRO — CONSISTENCIA TEMPORAL (Regla 11): la verificación pasa de tres a CINCO fotogramas repartidos a lo largo del clip, para que una persona que desaparece a mitad y reaparece no caiga entre los muestreos.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'reglas-globales', 'ia'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'removed', text: 'Eliminado el respaldo Ken Burns automático: una escena que no se pudo animar queda FALLIDA con su motivo, nunca un paneo presentado como video.' },
+            { type: 'added', text: 'Señal «Nadie desaparece»: una persona de la foto que falta en el clip descalifica la escena, también en multitudes.' },
+            { type: 'added', text: 'La adaptación 9:16 reprueba si se ve costura, cambio de escala o un trozo de la foto como relleno: una sola composición, siempre.' },
+            { type: 'added', text: 'El detector de copia parcial ahora también atrapa el trozo AMPLIADO de la foto (zoom-in).' },
+            { type: 'changed', text: 'La consistencia temporal se verifica sobre cinco fotogramas repartidos, no tres.' },
+        ]
+    },
     {
         version: '4.800.0',
         title: 'Ni Reels pegados en 53 % ni escenas cobradas dos veces 🔒',

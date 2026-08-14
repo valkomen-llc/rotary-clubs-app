@@ -74,6 +74,10 @@ const ScenePeopleCheck: React.FC<{ people?: PeopleFidelity | null; className?: s
                 detail={people.faceConsistency != null ? `${people.faceConsistency}/10` : null}
             />
             <Flag label="Sin sujetos nuevos" value={people.noNewSubjects} />
+            {/* La pregunta simétrica (v4.801): quien está en la fotografía
+                tiene que seguir estando en el clip. El recuento no la cubre en
+                multitudes, y `newSubjects` sólo mira a quien aparece. */}
+            <Flag label="Nadie desaparece" value={people.noMissingPersons ?? null} />
             {/* Coherencia de acción (v4.797): la animación no puede invertir
                 quién entrega y quién recibe. Es una pregunta distinta de la
                 identidad: las mismas personas, la misma composición, y aun así

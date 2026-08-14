@@ -458,18 +458,20 @@ export const judgeExpansionPeople = async ({ originalBuffer, expandedBuffer, pub
         if (!url) return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
 
         const result = await generateCopy({
-            system: `Eres un control de calidad de imagen institucional. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA una fotografía ORIGINAL, a la DERECHA la misma fotografía con el LIENZO EXTENDIDO por una IA para llegar a un formato vertical. El área añadida debe ser paisaje o entorno que continúa la escena, SIN personas nuevas.
+            system: `Eres un control de calidad de imagen institucional. Recibes UNA imagen dividida en dos mitades: a la IZQUIERDA una fotografía ORIGINAL, a la DERECHA la misma fotografía con el LIENZO EXTENDIDO por una IA para llegar a un formato vertical. El área añadida debe ser paisaje o entorno que CONTINÚA la escena con naturalidad, SIN personas nuevas: una única composición visual, como si la fotografía siempre hubiera sido vertical.
 
-Comparás a las PERSONAS de las dos mitades y devolvés SOLO este JSON:
+Comparás las dos mitades y devolvés SOLO este JSON:
 {
   "addedPeople": boolean,
   "duplicatedPerson": boolean,
-  "which": "qué persona y dónde, en una frase"
+  "seam": boolean,
+  "which": "qué se ve y dónde, en una frase"
 }
 
 - "addedPeople" es true si en la mitad derecha aparece alguna persona, rostro o silueta que NO está en la fotografía original.
 - "duplicatedPerson" es true si alguna persona de la original aparece REPETIDA en la derecha — la misma persona dos veces, aunque tenga otra ropa u otra pose. Dos personas distintas que se parecen NO son un duplicado.
-- Ante la duda, false en las dos.`,
+- "seam" es true si la mitad derecha se ve como DOS imágenes pegadas en vez de una sola: un corte o costura visible entre la fotografía y el área añadida, un cambio brusco de escala (objetos o personas mucho más grandes o más chicos que en la zona vecina), un trozo de la propia fotografía repetido o ampliado como relleno, o un fondo que no conecta con la escena. Una transición suave y coherente NO es una costura.
+- Ante la duda, false en las tres.`,
             userText: 'Compará las dos mitades y devolvé únicamente el JSON.',
             imageUrl: url,
             temperature: 0.1,
@@ -477,16 +479,21 @@ Comparás a las PERSONAS de las dos mitades y devolvés SOLO este JSON:
             jsonMode: true
         });
         const raw = parseJsonObject(result);
-        if (!raw) return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
+        if (!raw) return { checked: false, addedPeople: false, duplicatedPerson: false, seam: false, detail: null };
         return {
             checked: true,
             addedPeople: raw.addedPeople === true,
             duplicatedPerson: raw.duplicatedPerson === true,
+            // La COSTURA (v4.801): el collage que las mediciones deterministas
+            // no ven — un trozo de la foto AMPLIADO como relleno correlaciona
+            // poco (otra escala) y no es banda vacía ni banda negra. Un modelo
+            // de visión ve el corte al instante, igual que el usuario.
+            seam: raw.seam === true,
             detail: typeof raw.which === 'string' ? raw.which.slice(0, 300) : null
         };
     } catch (e) {
         console.warn('[REEL] personas en el lienzo expandido:', e.message);
-        return { checked: false, addedPeople: false, duplicatedPerson: false, detail: null };
+        return { checked: false, addedPeople: false, duplicatedPerson: false, seam: false, detail: null };
     }
 };
 
@@ -687,6 +694,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "peopleLeft": 0,
   "peopleRight": 0,
   "newSubjects": boolean,
+  "missingPerson": boolean,
   "occlusionBroken": boolean,
   "actionReversed": boolean,
   "faceConsistency": 0..10,
@@ -704,6 +712,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - "score" 10 = la mitad derecha es indistinguible de la izquierda salvo por el movimiento natural; 7 = diferencias mínimas aceptables; por debajo de 7 = hay que regenerar.
 - "peopleLeft" y "peopleRight": cuenta las personas de cada mitad, incluyendo las que se ven a medias —media cara detrás de un hombro, alguien cortado por el borde, una silueta al fondo—. Cuenta las DOS mitades en la misma pasada y con el mismo criterio: lo que importa es la diferencia entre ambos números, no su valor exacto.
 - "newSubjects" es true si en la mitad derecha hay alguna persona, rostro, cuerpo, extremidad o silueta que NO esté en la izquierda: alguien de más, una cara duplicada, una figura que asoma donde antes no había nadie, un brazo o una mano que no pertenece a nadie visible. Es el defecto más grave que puedes reportar.
+- "missingPerson" es true si una persona claramente visible en la izquierda YA NO ESTÁ en la derecha, o fue reemplazada por otra persona distinta, sin haber salido del encuadre de forma física y visible. Fijate especialmente en las personas del fondo y de los bordes: son las que los generadores borran o cambian. Una persona parcialmente tapada por el movimiento de otra NO falta: sigue ahí.
 - "occlusionBroken" es true si algo que en la izquierda estaba tapado —una cara detrás de un hombro, un cuerpo detrás de otra persona, algo cortado por el borde— aparece completo o revelado en la derecha.
 - "actionReversed" es true SOLO si la dirección de una interacción se invirtió de forma inequívoca entre las dos mitades: quien ENTREGABA un objeto ahora lo recibe, quien atendía ahora espera en la fila, un objeto pasó a manos de la persona contraria sin que la izquierda sugiera ese traspaso. Que alguien continúe la MISMA acción más avanzada —la bolsa más cerca de la mano que la recibe— NO es una inversión: es la acción transcurriendo. Ante la duda, false.
 - "faceConsistency" 0..10: cuánto se parecen los rostros de la derecha a los de la izquierda, persona por persona. 10 = son las mismas caras; 0 = hay rostros distintos o mezclados.
@@ -815,6 +824,7 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
                 peopleLeft: Number.isFinite(Number(raw?.peopleLeft)) ? Math.max(0, Math.round(Number(raw.peopleLeft))) : null,
                 peopleRight: Number.isFinite(Number(raw?.peopleRight)) ? Math.max(0, Math.round(Number(raw.peopleRight))) : null,
                 newSubjects: raw.newSubjects === true,
+                missingPerson: raw.missingPerson === true,
                 occlusionBroken: raw.occlusionBroken === true,
                 actionReversed: raw.actionReversed === true,
                 faceConsistency: Number.isFinite(Number(raw?.faceConsistency))
@@ -1227,6 +1237,15 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
     // cliente —«si la fotografía tiene 0 personas, el video debe mantener 0»—.
     const framesSinSujeto = semantics.filter(s => s.newSubjects === true).length;
     const framesConOclusion = semantics.filter(s => s.occlusionBroken === true).length;
+    // ── La persona que DESAPARECE, como señal explícita (v4.801) ──
+    //
+    // El caso del reporte: en la escena nocturna, el hombre de gorra del fondo
+    // desaparece a mitad del clip y otro distinto ocupa su lugar. El recuento
+    // no podía verlo —con más de RELIABLE_COUNT_MAX personas no decide, por
+    // diseño—, y `newSubjects` pregunta por quien APARECE, no por quien falta.
+    // Es la pregunta simétrica y se corrobora igual: la deriva es persistente,
+    // quien desaparece no vuelve.
+    const framesConFaltante = semantics.filter(s => s.missingPerson === true).length;
     // ── Coherencia de ACCIÓN (v4.797) ──
     //
     // La pregunta que ninguna medida hacía: ¿la animación conserva QUIÉN hace
@@ -1242,6 +1261,7 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
     const CORROBORACION = fotoVacia ? 1 : 2;
     const newSubjects = framesSinSujeto >= CORROBORACION;
     const occlusionBroken = framesConOclusion >= CORROBORACION;
+    const missingPerson = framesConFaltante >= 2;
     // La inversión tiene DOS caminos y el segundo es el que la ve (v4.799): la
     // pregunta por fotograma —que necesita corroborarse en dos— y el juicio de
     // la SECUENCIA ordenada, que decide solo. Un fotograma quieto no puede
@@ -1253,6 +1273,7 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
     // Lo que se vio una sola vez no se esconde: se declara como lo que es.
     const signalNoise = (framesSinSujeto > 0 && !newSubjects)
         || (framesConOclusion > 0 && !occlusionBroken)
+        || (framesConFaltante > 0 && !missingPerson)
         || (framesConInversion > 0 && !actionReversed);
     const faces = semantics.map(s => s.faceConsistency).filter(v => v != null);
     const faceConsistency = faces.length ? Math.min(...faces) : null;
@@ -1314,10 +1335,12 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
     // persona casi tapada por otra se cuenta o no se cuenta según el fotograma,
     // igual de fácil en un sentido que en el otro. Tratar sólo un lado dejaba
     // además un indicador en rojo bajo una cabecera en verde.
-    const failed = newSubjects || countGrew || countShrank || occlusionBroken || facesBroken || actionReversed;
+    const failed = newSubjects || missingPerson || countGrew || countShrank || occlusionBroken || facesBroken || actionReversed;
 
     const reason = actionReversed
         ? `La animación invirtió la dirección de una acción: quien entregaba aparece recibiendo, o un objeto cambió de manos al revés de lo fotografiado.${sequence?.reversed && sequence?.detail ? ` Visto en la secuencia: ${sequence.detail}` : ''}`
+        : missingPerson
+        ? 'Una persona de la fotografía desaparece del clip —o fue reemplazada por otra— sin salir del encuadre.'
         : newSubjects
         ? 'Aparece en el clip alguna persona, rostro o silueta que no está en la fotografía.'
         : countGrew
@@ -1348,7 +1371,7 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
         //
         // Mezclarlos hizo que TRES de cuatro escenas se sustituyeran por
         // «los rostros no se conservan». `invented` separa las dos preguntas.
-        invented: newSubjects || countGrew || countShrank || occlusionBroken || actionReversed,
+        invented: newSubjects || missingPerson || countGrew || countShrank || occlusionBroken || actionReversed,
         // Los seis indicadores que se muestran en la ficha, uno por uno.
         sourceCount,          // personas detectadas en la fotografía original
         originalSeen,         // ...vistas por el control en la mitad izquierda
@@ -1366,6 +1389,10 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
         signalNoise,
         framesWithNewSubjects: framesSinSujeto,
         framesWithOcclusion: framesConOclusion,
+        // Nadie desaparece (v4.801): tres estados, como todo lo demás.
+        noMissingPersons: semantics.some(s => s.missingPerson != null) ? !missingPerson : null,
+        missingPerson,
+        framesWithMissing: framesConFaltante,
         // Coherencia de acción (v4.797): tres estados, como todo lo demás. La
         // secuencia comprobada también cuenta como «se miró» (v4.799).
         actionsConsistent: (semantics.some(s => s.actionReversed != null) || sequence?.checked)
@@ -1378,7 +1405,7 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
         sequenceChecked: sequence?.checked === true,
         sequenceReversed: sequence?.reversed === true,
         sequenceDetail: sequence?.detail || null,
-        identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
+        identitiesPreserved: (newSubjects || missingPerson) ? false : (countGrew || countShrank ? false : true),
         occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
         facesConsistent: faceConsistency != null ? !facesBroken : null,
         noNewSubjects: withFlags.length ? !newSubjects : null,
