@@ -286,6 +286,80 @@ console.log('\n▸ 2b. Una banda VACÍA tampoco es una expansión (v4.793)');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ 2b-bis. El borde de la banda no puede morir en NEGRO (v4.799)');
+
+{
+    // La secuela del anti-vacío, con la misma forma: había mediciones sobre la
+    // banda ENTERA y todas daban bien — una banda con paisaje real que muere en
+    // una franja negra en el borde del cuadro tiene desviación alta y no repite
+    // la foto. El Reel salía con una línea negra arriba, reportado con captura.
+    // El criterio es plano Y oscuro: un cielo despejado puede ser plano en una
+    // franja de 32 px, pero ningún cielo fotografiado es negro puro.
+    const { EDGE_MAX_BLACK_LUMA } = await import('../server/lib/canvasExpansion.js');
+    const juez = (tiling, preservation = 0.9) =>
+        judgeExpansion({ ok: true, preservation, tiling });
+
+    check('un borde plano y negro reprueba la adaptación',
+        juez({ checked: true, detected: false, empty: false, emptyEdge: true, bands: [{ name: 'superior', edgeFlat: true }] }).verdict === 'failed');
+    check('...con su CONSECUENCIA: la línea negra en el borde',
+        /línea negra/.test(juez({ checked: true, detected: false, empty: false, emptyEdge: true, bands: [{ name: 'superior', edgeFlat: true }] }).reason));
+    check('...aunque el centro se haya conservado perfecto',
+        juez({ checked: true, detected: false, empty: false, emptyEdge: true, bands: [{ name: 'superior', edgeFlat: true }] }, 0.99).verdict === 'failed');
+    check('el umbral de luminancia está declarado y es NEGRO, no oscuro',
+        typeof EDGE_MAX_BLACK_LUMA === 'number' && EDGE_MAX_BLACK_LUMA > 0 && EDGE_MAX_BLACK_LUMA < 40,
+        String(EDGE_MAX_BLACK_LUMA));
+
+    let sharpEdge = true;
+    try { await import('sharp'); } catch { sharpEdge = false; }
+    if (!sharpEdge) {
+        console.log('  SALTA la medición — sharp no está instalado.');
+    } else {
+        const sharp = (await import('sharp')).default;
+        const W = 1080, H = 720, targetH = 1920;
+        const foto = await sharp({ create: { width: W, height: H, channels: 3, background: '#3a5a40' } })
+            .composite([
+                { input: await sharp({ create: { width: 400, height: 300, channels: 3, background: '#c0a060' } }).png().toBuffer(), left: 80, top: 200 },
+                { input: await sharp({ create: { width: 200, height: 500, channels: 3, background: '#28354b' } }).png().toBuffer(), left: 700, top: 100 }
+            ]).png().toBuffer();
+        const banda = await sharp({ create: { width: W, height: 600, channels: 3, background: '#4a6a50' } })
+            .composite([{ input: await sharp({ create: { width: W, height: 200, channels: 3, background: '#5a7a60' } }).png().toBuffer(), left: 0, top: 200 }])
+            .png().toBuffer();
+        const franjaNegra = await sharp({ create: { width: W, height: 24, channels: 3, background: '#000' } }).png().toBuffer();
+
+        // La banda superior tiene paisaje... y muere en negro en el borde.
+        const conLinea = await sharp({ create: { width: W, height: targetH, channels: 3, background: '#4a6a50' } })
+            .composite([
+                { input: banda, left: 0, top: 0 },
+                { input: franjaNegra, left: 0, top: 0 },
+                { input: foto, left: 0, top: 600 },
+                { input: banda, left: 0, top: 1320 }
+            ]).png().toBuffer();
+
+        const v = await verifyExpansion(foto, conLinea, { grows: 'vertical' });
+        const j = judgeExpansion(v, { minPreservation: 0.82 });
+        check('la línea negra en el borde superior se DETECTA',
+            v.tiling?.emptyEdge === true && v.tiling.bands.some(b => b.name === 'superior' && b.edgeFlat),
+            JSON.stringify(v.tiling?.bands?.map(b => ({ n: b.name, e: b.edgeDetail, l: b.edgeLuma }))));
+        check('...y REPRUEBA aunque la banda entera tenga contenido',
+            j.verdict === 'failed' && /línea negra/.test(j.reason), j.reason);
+
+        // Un borde plano pero OSCURO-AZUL (cielo nocturno plausible) NO se
+        // acusa: el criterio doble existe para no regenerar noches legítimas.
+        const nocturno = await sharp({ create: { width: W, height: targetH, channels: 3, background: '#4a6a50' } })
+            .composite([
+                { input: banda, left: 0, top: 0 },
+                { input: await sharp({ create: { width: W, height: 24, channels: 3, background: '#28304a' } }).png().toBuffer(), left: 0, top: 0 },
+                { input: foto, left: 0, top: 600 },
+                { input: banda, left: 0, top: 1320 }
+            ]).png().toBuffer();
+        const vNoche = await verifyExpansion(foto, nocturno, { grows: 'vertical' });
+        check('un borde oscuro pero NO negro (cielo nocturno) no se acusa',
+            vNoche.tiling?.emptyEdge !== true,
+            JSON.stringify(vNoche.tiling?.bands?.map(b => ({ n: b.name, e: b.edgeDetail, l: b.edgeLuma }))));
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ 2c. Una copia PARCIAL de la foto tampoco es una expansión (v4.797)');
 
 {

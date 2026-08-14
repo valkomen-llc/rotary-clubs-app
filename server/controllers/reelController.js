@@ -60,7 +60,8 @@ import { renderTextOverlay, renderClosingCard, defaultClosingCopy } from '../lib
 import { generateSceneTexts, sceneTextWindows } from '../lib/reelSceneText.js';
 import {
     probeMp4, inspectSourceImages, validateSceneFile, validateReelFile,
-    checkSceneFidelity, summarizeFidelity, REEL_THRESHOLDS, FROZEN_LIFE_SCORE
+    checkSceneFidelity, summarizeFidelity, REEL_THRESHOLDS, FROZEN_LIFE_SCORE,
+    judgeExpansionPeople
 } from '../lib/reelQuality.js';
 import {
     RENDER_PROVIDERS, activeRenderProvider, availableRenderProviders,
@@ -104,7 +105,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.798.0';
+export const REEL_MODULE_VERSION = '4.799.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -758,7 +759,41 @@ const advanceSceneExpansion = async (scene, settings) => {
         const originalBuffer = Buffer.from(await originalResp.arrayBuffer());
 
         const verification = await verifyExpansion(originalBuffer, expandedBuffer, report);
-        const judgement = judgeExpansion(verification, settings);
+        let judgement = judgeExpansion(verification, settings);
+
+        // ── El lienzo añadido no puede AGREGAR ni DUPLICAR personas (v4.799) ──
+        //
+        // Este es el ÚNICO punto donde el defecto se puede ver: la fidelidad
+        // del clip se mide contra la imagen que SE ANIMÓ (v4.664), así que una
+        // persona que la expansión metió en el lienzo está en el clip Y en su
+        // referencia, y todos los controles de escena dan bien — es el hombre
+        // duplicado con otra ropa del reporte, en un lienzo 62 % nuevo. Las
+        // mediciones deterministas tampoco lo ven: un duplicado REDIBUJADO no
+        // correlaciona como copia. Se pregunta con visión, contra la FOTO
+        // ORIGINAL, antes de gastar los créditos de video. Si la visión no
+        // responde, las mediciones deterministas siguen decidiendo solas.
+        if (judgement.verdict !== 'failed') {
+            const gente = await judgeExpansionPeople({
+                originalBuffer, expandedBuffer,
+                publish: async (composite) => {
+                    const c = await uploadBuffer(
+                        composite,
+                        `clubs/${scene.clubId || 'global'}/reels/expanded/${scene.id}-people-${Date.now()}.jpg`,
+                        'image/jpeg'
+                    );
+                    return c.url;
+                }
+            });
+            verification.people = gente;
+            if (gente.checked && (gente.addedPeople || gente.duplicatedPerson)) {
+                judgement = {
+                    verdict: 'failed',
+                    reason: gente.duplicatedPerson
+                        ? `El lienzo añadido REPITE a una persona de la fotografía${gente.detail ? ` (${gente.detail})` : ''}: la escena mostraría a la misma persona dos veces. Se rehace la adaptación.`
+                        : `El lienzo añadido AGREGA personas que no están en la fotografía${gente.detail ? ` (${gente.detail})` : ''}: la escena mostraría gente que no estuvo ahí. Se rehace la adaptación.`
+                };
+            }
+        }
 
         // Por debajo del umbral se rehace, mientras queden intentos. Es el
         // único uso legítimo de un reintento: no se reintenta "por si acaso",
@@ -2043,19 +2078,45 @@ const foldSubstitutedScenes = async (projectId, quality) => {
               ORDER BY position`,
             [projectId]
         );
-        if (!rows.length) return quality;
-        const cuales = rows.map(r => r.position + 1).join(', ');
-        return {
-            ...quality,
-            verdict: 'needs_review',
-            substitutedScenes: rows.length,
-            failures: [
-                ...(quality.failures || []),
+        // ── Las escenas CONSERVADAS con defecto también bajan el veredicto ──
+        //
+        // (v4.799) Hasta acá sólo plegaban las sustituidas, y el reporte trajo
+        // la contradicción con captura: la insignia decía «Reel listo» mientras
+        // una tarjeta de escena gritaba «REQUIERE REGENERACIÓN» — un clip
+        // animado conservado en `needs_review` (marca alterada, rostros) no
+        // plegaba nada. Las dos cosas no pueden decirse a la vez: el Reel se
+        // entrega igual, pero su estado dice que hay algo que mirar y CUÁLES.
+        const { rows: revisar } = await db.query(
+            `SELECT position, "statusDetail" FROM "ReelScene"
+              WHERE "projectId" = $1 AND status = 'needs_review'
+                AND COALESCE(fidelity->>'substituted', 'false') <> 'true'
+              ORDER BY position`,
+            [projectId]
+        );
+        if (!rows.length && !revisar.length) return quality;
+        const failures = [...(quality.failures || [])];
+        if (rows.length) {
+            const cuales = rows.map(r => r.position + 1).join(', ');
+            failures.push(
                 `${rows.length} escena(s) (${cuales}) no se animaron: el motor mostró personas que no están en ` +
                 `la fotografía y siguió haciéndolo tras los reintentos, así que se resolvieron moviendo el ` +
                 `encuadre —eso no se puede publicar—. Consumieron sus créditos de video igual. ` +
                 `Regeneralas desde la línea de tiempo.`
-            ]
+            );
+        }
+        if (revisar.length) {
+            const cuales = revisar.map(r => r.position + 1).join(', ');
+            failures.push(
+                `${revisar.length} escena(s) (${cuales}) quedaron animadas pero con un defecto medido — ` +
+                `revisá su tarjeta antes de publicar.`
+            );
+        }
+        return {
+            ...quality,
+            verdict: 'needs_review',
+            substitutedScenes: rows.length,
+            reviewScenes: revisar.length,
+            failures
         };
     } catch (e) {
         // El estado del Reel no puede depender de esta consulta.
