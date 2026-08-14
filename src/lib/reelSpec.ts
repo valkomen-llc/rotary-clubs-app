@@ -87,6 +87,11 @@ export interface PeopleFidelity {
     countDelta: number | null;
     /** Por encima de ocho personas el recuento no decide solo. */
     countReliable: boolean | null;
+    /** ¿La animación conserva quién hace qué? `null` = sin dato del modelo. */
+    actionsConsistent?: boolean | null;
+    actionReversed?: boolean;
+    /** Señal explícita vista una sola vez: ruido de lectura, no defecto. */
+    signalNoise?: boolean;
     framesChecked?: number;
 }
 

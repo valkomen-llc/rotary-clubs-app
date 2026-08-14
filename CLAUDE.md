@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.796
+## Creador de Reels IA — v4.797
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1219,6 +1219,48 @@ fuera un video».
   v4.790 el texto, v4.792 el destino de lo descalificado. En las tres, un
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
+
+### El orden del usuario, la coherencia de acción y la copia parcial (v4.797)
+
+Corrección de fondo pedida con un diagnóstico previo aprobado. Cinco piezas.
+
+- **El orden del USUARIO es la fuente de verdad** (`lockedOrder`, default). El
+  director reordenaba a propósito desde el origen del módulo —la pantalla lo
+  avisaba en letra pequeña— y aun así se reportó como error: quien elige foto
+  1, 2 y 3 espera verlas así. `position` siempre se persistió y TODO el
+  pipeline ordena por `position ASC`; lo que cambió es quién la asigna. El
+  reordenamiento de la IA es ahora `autoOrder: true`, casilla explícita apagada
+  por defecto, y al director se le DICE que el orden está fijado — sin eso
+  asignaría los roles narrativos a un montaje que no es el que se va a hacer.
+- **La animación no puede INVERTIR una acción** (`interactions` en el análisis,
+  `actionReversed` en el control). El defecto real: la fila que RECIBÍA
+  mercados terminó entregándolos — mismas personas, misma composición, y una
+  falsedad sobre lo que ocurrió que ninguna medida veía. El análisis captura la
+  dirección (quién entrega, quién recibe, quién sostiene qué; máximo 3 y sólo
+  las inequívocas — un mapa equivocado es peor que ninguno); viaja al prompt en
+  positivo, va con el núcleo QUE NO SE RECORTA (junto al censo y la oclusión),
+  al `negative_prompt`, y al verificador como dato («la dirección fotografiada
+  es X→Y; marcá `actionReversed` sólo si se invirtió de forma inequívoca»).
+  Corroborada en 2 fotogramas descalifica y sustituye: es invención, no nota.
+- **La copia PARCIAL en las bandas 9:16 se detecta con CORRELACIÓN, no con
+  huella** (`detectPartialCopy`). El anti-mosaico comparaba la banda contra la
+  foto ENTERA: un trozo estirado, o la foto desenfocada de fondo, quedaba por
+  debajo del umbral. La huella por recortes tampoco sirve —es demasiado
+  sensible a la alineación y a la escala—. Se hace template matching real: la
+  banda en gris reducida se desliza sobre el original a varias escalas
+  independientes en X e Y, con refinamiento grueso→fino (un 4 % de error de
+  escala ya decorrelaciona, medido). Copia estirada 0,90; fondo blur 0,99;
+  paisaje nuevo 0,3-0,5; umbral 0,9. El caso caro es la banda LEGÍTIMA (~7 s,
+  una vez por adaptación); la copia corta temprano.
+- **En grupos de ≥5 personas (`BIG_GROUP_MIN`), TODO desvío de recuento pide
+  dos fotogramas.** v4.787 dejó que |±2| descalificara con una lectura; con 7
+  figuras entre escombros el modelo contó 9 en un fotograma y la escena entera
+  se sustituyó. Con pocas personas nada se aflojó (contar 4 donde hay 2 no es
+  ruido) y la foto vacía sigue absoluta.
+- **Que Estándar y Emergencia comparten motor se COMPRUEBA por prueba**, no se
+  afirma: ningún preset declara `engine`/`pipeline`, hay un solo constructor de
+  prompt de escena, y el 2.5D tiene exactamente sus dos vías (elección expresa
+  y rescate). Si aparece una tercera llamada, la prueba falla.
 
 ### Una escena SIN personas también cobra vida (v4.796)
 

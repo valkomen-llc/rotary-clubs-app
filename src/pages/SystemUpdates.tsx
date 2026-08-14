@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.796.0 | 2026-08-14 (Una escena sin personas también cobra vida)
-// Cache bust: 2026-08-14i
+// UI V4.797.0 | 2026-08-14 (Tu orden manda y la acción no se invierte)
+// Cache bust: 2026-08-14j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.797.0',
+        title: 'Tu orden manda, y la animación no puede invertir una acción 🎬',
+        description: 'Cinco correcciones de fondo al Creador de Video, aprobadas sobre un diagnóstico técnico completo. UNO: el orden en que pones las fotos es ahora la fuente de verdad — la primera abre y la última cierra. Hasta hoy el director de IA las reordenaba a propósito (lo avisaba una nota en letra pequeña) y eso se percibía, con razón, como un error; el reordenamiento quedó como una casilla explícita, apagada por defecto. DOS: la animación ya no puede invertir quién hace qué. El análisis de cada foto captura la dirección de las interacciones —quién entrega, quién recibe, quién sostiene qué— y esa dirección viaja al motor como instrucción y al control de calidad como pregunta: un clip donde la fila que recibía mercados termina entregándolos se detecta (corroborado en dos fotogramas, como todas las señales) y se descarta como lo que es, una falsedad sobre lo que ocurrió. TRES: la adaptación al formato vertical detecta ahora la copia PARCIAL — un trozo de la foto estirado en la banda, o la foto entera desenfocada de fondo, que la detección anterior no veía porque comparaba contra la imagen completa; se detecta con correlación real a varias escalas, medida: la copia da 0,90-0,99 y un paisaje legítimo 0,3-0,5. CUATRO: en grupos de cinco o más personas, ningún desvío de recuento descarta la escena con una sola lectura — la escena nocturna con 7 personas que el modelo contó como 9 en un fotograma ya no se sustituye. CINCO: quedó verificado por prueba que la Campaña de Emergencia y el Reel estándar usan exactamente el mismo motor de animación: ningún preset puede declarar un camino propio.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'emergencias', 'ia'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'El orden de tus fotos es el orden del Reel; la IA sólo reordena si marcás la casilla.' },
+            { type: 'added', text: 'Coherencia de acción: quien entrega sigue entregando y quien recibe sigue recibiendo — medido, no prometido.' },
+            { type: 'added', text: 'La copia parcial de la foto en las bandas 9:16 se detecta con correlación a varias escalas y se rehace.' },
+            { type: 'fixed', text: 'En grupos de 5 o más, un error de conteo en un solo fotograma ya no descarta la escena animada.' },
+            { type: 'added', text: 'Verificado por prueba: Estándar y Emergencia comparten el mismo motor de animación.' },
+        ]
+    },
     {
         version: '4.796.0',
         title: 'Una escena sin personas también cobra vida 🌿',

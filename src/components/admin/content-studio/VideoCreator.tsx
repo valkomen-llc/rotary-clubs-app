@@ -99,6 +99,8 @@ const VideoCreator: React.FC = () => {
         motionIntensity: 'natural',
         // Preservación estricta de personas: encendida por defecto (v4.705).
         strictPeople: true,
+        // El orden del usuario manda (v4.797): la IA sólo reordena si se pide.
+        autoOrder: false,
         transition: AUTO,
         musicStyle: AUTO,
         engine: '',
@@ -833,14 +835,34 @@ const VideoCreator: React.FC = () => {
                                 </p>
                             )}
 
-                            {/* El orden de arrastre es una propuesta: si el
-                                estilo queda en automático, el director puede
-                                reordenar. Decirlo evita la sorpresa. */}
+                            {/* ── El orden del usuario es la fuente de verdad (v4.797) ──
+                                Hasta v4.796 el director reordenaba a propósito y
+                                esta nota lo avisaba en letra pequeña — y aun así
+                                el resultado se reportó como error: quien elige
+                                foto 1, 2 y 3 espera verlas en ese orden. Ahora
+                                el orden elegido MANDA y el reordenamiento de la
+                                IA es una casilla explícita, apagada por defecto. */}
                             {selectedMedia.length === sceneCount && (
-                                <p className="mt-4 text-[11px] font-bold text-gray-400 flex items-start gap-2">
-                                    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-                                    La IA analiza las tres fotos y puede reordenarlas para que la pieza abra, desarrolle y cierre. Podrás ver el orden final antes de descargar.
-                                </p>
+                                <div className="mt-4 space-y-2">
+                                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.autoOrder === true}
+                                            onChange={e => setConfig(c => ({ ...c, autoOrder: e.target.checked }))}
+                                            className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span className="text-[11px] font-bold text-gray-500 leading-snug">
+                                            Dejar que la IA ordene las fotos (abre, desarrolla y cierra según lo que ve).
+                                            Apagado, el Reel respeta exactamente el orden en que las pusiste.
+                                        </span>
+                                    </label>
+                                    <p className="text-[11px] font-bold text-gray-400 flex items-start gap-2">
+                                        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                                        {config.autoOrder
+                                            ? 'La IA analizará las fotos y decidirá el orden final; podrás verlo antes de descargar.'
+                                            : 'Tu orden es el orden del Reel: la primera foto abre y la última cierra.'}
+                                    </p>
+                                </div>
                             )}
                         </>
                     )}

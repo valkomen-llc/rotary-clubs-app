@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.796.0",
-  "cache_bust": "2026-08-14i (Una escena sin personas tambien cobra vida: el entorno se anima segun lo que el analisis ve en la foto.)",
+  "version": "4.797.0",
+  "cache_bust": "2026-08-14j (Tu orden manda, la accion no se invierte, la copia parcial se detecta y el recuento en grupos pide corroboracion.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
