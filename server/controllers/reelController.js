@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.796.0';
+export const REEL_MODULE_VERSION = '4.797.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -1174,9 +1174,12 @@ export const createReel = async (req, res) => {
             ({ analyses, direction: directionRaw, warnings, usage: directorUsage } = await directReel(images, {
                 motionStyle: safeMotion, transition: safeTransition, musicStyle: safeMusic,
                 context,
-                // Con estructura declarada, el orden que devuelve el director ES
-                // la asignación de cada foto a su función narrativa.
                 narrativeRoles,
+                // El orden del USUARIO es la fuente de verdad (v4.797): la foto
+                // que eligió primera abre y la última cierra, y los roles
+                // narrativos se asignan a ESE orden. Reordenar es una elección
+                // explícita (`autoOrder: true`), nunca el default.
+                lockedOrder: req.body?.autoOrder !== true,
                 totalSec: targetTotalSec
             }));
         } catch (e) {

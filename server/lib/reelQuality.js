@@ -553,6 +553,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "peopleRight": 0,
   "newSubjects": boolean,
   "occlusionBroken": boolean,
+  "actionReversed": boolean,
   "faceConsistency": 0..10,
   "deformation": boolean,
   "identityDrift": boolean,
@@ -569,6 +570,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - "peopleLeft" y "peopleRight": cuenta las personas de cada mitad, incluyendo las que se ven a medias —media cara detrás de un hombro, alguien cortado por el borde, una silueta al fondo—. Cuenta las DOS mitades en la misma pasada y con el mismo criterio: lo que importa es la diferencia entre ambos números, no su valor exacto.
 - "newSubjects" es true si en la mitad derecha hay alguna persona, rostro, cuerpo, extremidad o silueta que NO esté en la izquierda: alguien de más, una cara duplicada, una figura que asoma donde antes no había nadie, un brazo o una mano que no pertenece a nadie visible. Es el defecto más grave que puedes reportar.
 - "occlusionBroken" es true si algo que en la izquierda estaba tapado —una cara detrás de un hombro, un cuerpo detrás de otra persona, algo cortado por el borde— aparece completo o revelado en la derecha.
+- "actionReversed" es true SOLO si la dirección de una interacción se invirtió de forma inequívoca entre las dos mitades: quien ENTREGABA un objeto ahora lo recibe, quien atendía ahora espera en la fila, un objeto pasó a manos de la persona contraria sin que la izquierda sugiera ese traspaso. Que alguien continúe la MISMA acción más avanzada —la bolsa más cerca de la mano que la recibe— NO es una inversión: es la acción transcurriendo. Ante la duda, false.
 - "faceConsistency" 0..10: cuánto se parecen los rostros de la derecha a los de la izquierda, persona por persona. 10 = son las mismas caras; 0 = hay rostros distintos o mezclados.
 - Una persona que se MUEVE, gira la cabeza o cambia de expresión sigue siendo la misma persona: eso no es "newSubjects" ni baja "faceConsistency".
 - "internalMotion" responde a OTRA pregunta, independiente de "score": ¿la escena VIVE? 10 = las personas u objetos se han movido de verdad —una cabeza girada, una mano en otra posición, una expresión distinta, tela o vegetación desplazada—. 5 = apenas se aprecia algún cambio. 0 = la mitad derecha es la misma escena congelada, o lo único que cambió es el ENCUADRE (la imagen se ve desplazada, acercada o recortada, pero nadie se ha movido dentro de ella). Un paneo o un zoom, por marcado que sea, es 0: no es vida, es cámara.
@@ -629,6 +631,16 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
         const focus = [];
         if (analysis?.hasBrand) focus.push('Hay logotipos o marca institucional: revisá su forma, su tipografía y sus colores con especial cuidado.');
         if (analysis?.hasText) focus.push('Hay texto legible: transcribí las dos mitades y comprobá que diga lo mismo.');
+        // La dirección fotografiada se le DICE al verificador (v4.797): sin
+        // ella, «¿se invirtió una acción?» obliga a deducir de la mitad
+        // izquierda reducida quién entregaba. Con el mapa del análisis, la
+        // pregunta se responde comparando contra un dato, no contra una
+        // impresión.
+        if (Array.isArray(analysis?.interactions) && analysis.interactions.length) {
+            const acts = analysis.interactions.slice(0, 3)
+                .map(i => `${i.from} ${i.action} ${i.to}`).join('; ');
+            focus.push(`La dirección de las acciones fotografiadas es: ${acts}. Comprobá que el fotograma la conserve — marcá "actionReversed" sólo si se invirtió de forma inequívoca.`);
+        }
         if (analysis?.hasPeople) focus.push('Hay personas: revisá rostros, manos y proporciones.');
         // El censo de la foto se le da como referencia, no como respuesta: lo
         // que decide es lo que él CUENTA en las dos mitades. Dárselo hecho
@@ -669,6 +681,7 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
                 peopleRight: Number.isFinite(Number(raw?.peopleRight)) ? Math.max(0, Math.round(Number(raw.peopleRight))) : null,
                 newSubjects: raw.newSubjects === true,
                 occlusionBroken: raw.occlusionBroken === true,
+                actionReversed: raw.actionReversed === true,
                 faceConsistency: Number.isFinite(Number(raw?.faceConsistency))
                     ? Math.min(10, Math.max(0, Number(raw.faceConsistency))) : null,
                 deformation: raw.deformation === true,
@@ -971,6 +984,12 @@ const RELIABLE_TEXT_WORDS = 4;
 // en v4.675.
 const RELIABLE_COUNT_MAX = 8;
 
+// A partir de este censo, contar es lo bastante ruidoso como para que ningún
+// desvío descalifique con una sola lectura (v4.797). Por debajo, un ±2 en un
+// fotograma sigue decidiendo solo: contar 4 donde hay 2 no es un error de
+// conteo plausible.
+const BIG_GROUP_MIN = 5;
+
 /**
  * ¿El texto de la fotografía sigue siendo legible en el clip? (v4.790)
  *
@@ -1068,14 +1087,26 @@ export const buildPeopleReport = (semantics, analysis) => {
     // cliente —«si la fotografía tiene 0 personas, el video debe mantener 0»—.
     const framesSinSujeto = semantics.filter(s => s.newSubjects === true).length;
     const framesConOclusion = semantics.filter(s => s.occlusionBroken === true).length;
+    // ── Coherencia de ACCIÓN (v4.797) ──
+    //
+    // La pregunta que ninguna medida hacía: ¿la animación conserva QUIÉN hace
+    // QUÉ? El defecto reportado con el comedor —la fila que recibía mercados
+    // terminó entregándolos— puede verse perfectamente realista, con las mismas
+    // personas y la misma composición: sólo la DIRECCIÓN de la acción cambió, y
+    // eso en una pieza institucional es una falsedad sobre lo que ocurrió.
+    // Misma corroboración que el resto: la inversión de un rol es persistente,
+    // así que dos fotogramas la confirman y uno solo es ruido de lectura.
+    const framesConInversion = semantics.filter(s => s.actionReversed === true).length;
     const fotoVacia = Number(analysis?.personCount) === 0
         || (withCount.length > 0 && withCount.every(s => s.peopleLeft === 0));
     const CORROBORACION = fotoVacia ? 1 : 2;
     const newSubjects = framesSinSujeto >= CORROBORACION;
     const occlusionBroken = framesConOclusion >= CORROBORACION;
+    const actionReversed = framesConInversion >= 2;
     // Lo que se vio una sola vez no se esconde: se declara como lo que es.
     const signalNoise = (framesSinSujeto > 0 && !newSubjects)
-        || (framesConOclusion > 0 && !occlusionBroken);
+        || (framesConOclusion > 0 && !occlusionBroken)
+        || (framesConInversion > 0 && !actionReversed);
     const faces = semantics.map(s => s.faceConsistency).filter(v => v != null);
     const faceConsistency = faces.length ? Math.min(...faces) : null;
 
@@ -1111,10 +1142,23 @@ export const buildPeopleReport = (semantics, analysis) => {
     const empty = originalSeen === 0;
     const framesWithGrowth = deltas.filter(d => d > 0).length;
     const framesWithLoss = deltas.filter(d => d < 0).length;
+    // ── En grupos grandes, TODO desvío de recuento pide dos fotogramas (v4.797) ──
+    //
+    // v4.787 dejó que un |delta| ≥ 2 descalificara con UNA sola lectura. Con
+    // pocas personas eso es razonable —contar 4 donde hay 2 no es ruido—, pero
+    // en la escena nocturna del reporte, con 7 figuras entre escombros y a
+    // contraluz, el modelo contó 9 en un fotograma y la escena entera terminó
+    // sustituida por un paneo. Contar de más en una foto así es tan fácil como
+    // contar de menos. A partir de BIG_GROUP_MIN personas, cualquier desvío
+    // necesita verse en DOS fotogramas — el argumento es el de siempre: una
+    // persona que el motor inventa no aparece y desaparece, se queda.
+    //
+    // La foto VACÍA no cambia: de cero a uno descalifica en el acto.
+    const bigGroup = originalSeen != null && originalSeen >= BIG_GROUP_MIN;
     const countGrew = countable && maxDelta != null && maxDelta > 0
-        && (empty || maxDelta >= 2 || framesWithGrowth >= 2);
+        && (empty || (bigGroup ? framesWithGrowth >= 2 : (maxDelta >= 2 || framesWithGrowth >= 2)));
     const countShrank = countable && minDelta != null && minDelta < 0
-        && (minDelta <= -2 || framesWithLoss >= 2);
+        && (bigGroup ? framesWithLoss >= 2 : (minDelta <= -2 || framesWithLoss >= 2));
     const facesBroken = faceConsistency != null && faceConsistency < MIN_FACE_CONSISTENCY;
 
     // El recuento descalifica en LAS DOS DIRECCIONES. Que sobre gente es el
@@ -1123,9 +1167,11 @@ export const buildPeopleReport = (semantics, analysis) => {
     // persona casi tapada por otra se cuenta o no se cuenta según el fotograma,
     // igual de fácil en un sentido que en el otro. Tratar sólo un lado dejaba
     // además un indicador en rojo bajo una cabecera en verde.
-    const failed = newSubjects || countGrew || countShrank || occlusionBroken || facesBroken;
+    const failed = newSubjects || countGrew || countShrank || occlusionBroken || facesBroken || actionReversed;
 
-    const reason = newSubjects
+    const reason = actionReversed
+        ? 'La animación invirtió la dirección de una acción: quien entregaba aparece recibiendo, o un objeto cambió de manos al revés de lo fotografiado.'
+        : newSubjects
         ? 'Aparece en el clip alguna persona, rostro o silueta que no está en la fotografía.'
         : countGrew
             ? `El clip llegó a mostrar ${clipSeen} persona(s) donde la fotografía tiene ${originalSeen}.`
@@ -1155,7 +1201,7 @@ export const buildPeopleReport = (semantics, analysis) => {
         //
         // Mezclarlos hizo que TRES de cuatro escenas se sustituyeran por
         // «los rostros no se conservan». `invented` separa las dos preguntas.
-        invented: newSubjects || countGrew || countShrank || occlusionBroken,
+        invented: newSubjects || countGrew || countShrank || occlusionBroken || actionReversed,
         // Los seis indicadores que se muestran en la ficha, uno por uno.
         sourceCount,          // personas detectadas en la fotografía original
         originalSeen,         // ...vistas por el control en la mitad izquierda
@@ -1173,6 +1219,10 @@ export const buildPeopleReport = (semantics, analysis) => {
         signalNoise,
         framesWithNewSubjects: framesSinSujeto,
         framesWithOcclusion: framesConOclusion,
+        // Coherencia de acción (v4.797): tres estados, como todo lo demás.
+        actionsConsistent: semantics.some(s => s.actionReversed != null) ? !actionReversed : null,
+        actionReversed,
+        framesWithReversal: framesConInversion,
         identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
         occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
         facesConsistent: faceConsistency != null ? !facesBroken : null,

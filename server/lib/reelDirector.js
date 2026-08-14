@@ -53,6 +53,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "hasFoodOrLiquid": boolean,
   "hasNature": boolean,
   "inventory": ["los elementos fijos principales de la escena, EN INGLÉS, máximo 6"],
+  "interactions": [{ "from": "quién", "action": "qué hace", "to": "a quién o a qué" }],
   "shotSize": "wide" | "medium" | "close",
   "energy": 1..5,
   "narrativeRole": "opening" | "development" | "closing",
@@ -71,6 +72,7 @@ Reglas:
 - "brandRegions" es DÓNDE está cada logotipo, emblema, escudo o texto institucional que se vea, en coordenadas NORMALIZADAS de 0 a 1 sobre la fotografía completa: "x" e "y" son la esquina superior izquierda, "w" y "h" el ancho y el alto. Incluye los estampados en camisetas y chaquetas (también los de la espalda), los de gorras, las credenciales, los pendones y el material impreso. Sé generoso con el recuadro: es mejor que sobre un poco de tela alrededor a que se corte una letra. Máximo 6, las más grandes y legibles. Lista vacía si no hay ninguno.
 - "hasText" es true si hay texto legible de cualquier tipo.
 - "inventory" es el CENSO DE COSAS de la escena: los elementos fijos principales que un video de este lugar tendría que conservar — edificios, árboles, vehículos, señales, mobiliario, escombros, estructuras. En inglés, cada uno con su posición aproximada: "a collapsed two-storey building on the right", "a large tree in the centre", "an orange truck behind". Máximo 6, los más notorios. NO incluyas a las personas (van en "subjects"). Lista vacía sólo si la escena es abstracta.
+- "interactions" es el MAPA DE ACCIONES entre las personas de la foto, EN INGLÉS, máximo 3 y sólo las inequívocas. Cada una dice QUIÉN hace QUÉ y HACIA QUIÉN o QUÉ, usando las mismas descripciones de "subjects": {"from": "the man in the white shirt", "action": "hands a food bag", "to": "the girl in the pink top"}. Importa la DIRECCIÓN: quién entrega y quién recibe, quién sostiene qué, quién atiende y quién espera en la fila. Si la dirección no se distingue con claridad, NO la incluyas — un mapa equivocado es peor que ninguno. Lista vacía si no hay interacciones claras.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
 - "weight" es cuánto tiempo merece la escena: 1.0 es lo normal, 1.4 si tiene mucho que mostrar, 0.7 si es simple.
 - "motionHint" es la instrucción específica de ESTA foto y es lo más importante que devuelves. La cámara está SIEMPRE fija: describe lo que se mueve DENTRO del cuadro, nunca lo que hace el objetivo. Nada de desplazamientos, acercamientos ni recorridos.
@@ -165,6 +167,22 @@ const sanitizeAnalysis = (raw, index) => ({
     // texto, personas y naturaleza: en un plano de escombros —sin nada de eso—
     // el modelo podía quitar un árbol o reordenar un edificio sin contradecir
     // ninguna instrucción. El inventario nombra lo que hay para poder fijarlo.
+    // El mapa de interacciones (v4.797): quién entrega, quién recibe, quién
+    // sostiene qué. Es lo que evita que la animación INVIERTA una acción — el
+    // defecto reportado: la fila que recibía mercados terminó entregándolos.
+    // Sólo entradas completas: una interacción a medias no fija ninguna
+    // dirección y ocuparía presupuesto del prompt para nada.
+    interactions: Array.isArray(raw?.interactions)
+        ? raw.interactions
+            .filter(i => i && typeof i.from === 'string' && typeof i.action === 'string' && typeof i.to === 'string'
+                && i.from.trim() && i.action.trim() && i.to.trim())
+            .slice(0, 3)
+            .map(i => ({
+                from: i.from.trim().slice(0, 80),
+                action: i.action.trim().slice(0, 80),
+                to: i.to.trim().slice(0, 80),
+            }))
+        : [],
     inventory: Array.isArray(raw?.inventory)
         ? raw.inventory.filter(s => typeof s === 'string' && s.trim()).slice(0, 6).map(s => s.trim().slice(0, 100))
         : [],
@@ -188,7 +206,7 @@ const neutralAnalysis = (index, reason = null) => ({
     summary: 'No se pudo analizar la imagen',
     subject: 'abstract',
     hasPeople: false, hasBrand: false, hasText: false,
-    personCount: 0, peopleDensity: 'none', occludedPeople: false, subjects: [],
+    personCount: 0, peopleDensity: 'none', occludedPeople: false, subjects: [], interactions: [],
     brandRegions: [],
     hasFoodOrLiquid: false, hasNature: false, inventory: [],
     shotSize: 'medium', energy: 3, narrativeRole: 'development', weight: 1,
@@ -265,7 +283,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - "transitionOut" de la última escena describe cómo cierra la pieza.
 - Elegí el ritmo según el contenido: más energía pide transiciones cortas y estilos con más movimiento.`;
 
-const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, context = null, narrativeRoles = null }) => {
+const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, context = null, narrativeRoles = null, lockedOrder = true }) => {
     const lines = analyses.map((a, i) => (
         `Foto ${i}: ${a.summary}. tipo=${a.subject}, plano=${a.shotSize}, energía=${a.energy}, ` +
         `rol sugerido=${a.narrativeRole}, personas=${a.hasPeople}, marca=${a.hasBrand}, texto=${a.hasText}, ` +
@@ -274,6 +292,16 @@ const buildDirectionPrompt = (analyses, { motionStyle, transition, musicStyle, c
     ));
 
     const constraints = [];
+    // El orden fijado se le DICE al modelo: sin esto asignaría roles narrativos
+    // pensando que puede mover las fotos, y sus notas hablarían de un montaje
+    // que no es el que se va a hacer.
+    if (lockedOrder !== false) {
+        constraints.push(
+            'EL ORDEN DE LAS FOTOS ESTÁ FIJADO POR EL USUARIO y no se puede cambiar: '
+            + 'la foto 0 abre, la última cierra. Devolvé "order" tal cual '
+            + `[${analyses.map((_, i) => i).join(', ')}] y asigná los roles narrativos a ese orden.`
+        );
+    }
     if (motionStyle !== AUTO_MOTION_STYLE) {
         constraints.push(`El usuario fijó el estilo de animación "${motionStyle}": usalo en todas las escenas.`);
     }
@@ -338,8 +366,16 @@ const fallbackOrder = (analyses) => {
 
 // Dirección construida sin modelo. Se usa cuando la llamada falla o devuelve
 // algo inservible: el Reel se genera igual, con criterio propio.
-export const fallbackDirection = (analyses, { motionStyle, transition, musicStyle }) => {
-    const order = fallbackOrder(analyses);
+export const fallbackDirection = (analyses, { motionStyle, transition, musicStyle, lockedOrder = true }) => {
+    // ── El orden del USUARIO es la fuente de verdad (v4.797) ──
+    //
+    // Hasta v4.796 el director reordenaba las fotos a propósito («abre la toma
+    // más abierta, cierra la que lleva la marca») y `position` se asignaba con
+    // ese orden. Era una decisión de diseño, la pantalla lo avisaba en letra
+    // pequeña — y aun así el resultado se reportó como error: quien eligió
+    // foto 1, 2 y 3 espera verlas en ese orden. La selección del usuario manda;
+    // el reordenamiento de la IA quedó como opción explícita (`autoOrder`).
+    const order = lockedOrder ? analyses.map((_, i) => i) : fallbackOrder(analyses);
     const style = motionStyle !== AUTO_MOTION_STYLE ? motionStyle : DEFAULT_MOTION_STYLE;
     const trans = transition !== AUTO_TRANSITION ? transition : DEFAULT_TRANSITION;
 
@@ -384,8 +420,12 @@ const sanitizeDirection = (raw, analyses, prefs) => {
         && order.length === analyses.length
         && new Set(order).size === analyses.length
         && order.every(i => Number.isInteger(i) && i >= 0 && i < analyses.length);
-    const finalOrder = validOrder ? order : fallback.order;
-    if (!validOrder && order) {
+    // Con el orden FIJADO por el usuario, lo que el modelo proponga de orden se
+    // ignora sin aviso: no se le pidió. Sus estilos, pesos y notas sí valen.
+    const finalOrder = prefs.lockedOrder !== false
+        ? analyses.map((_, i) => i)
+        : (validOrder ? order : fallback.order);
+    if (prefs.lockedOrder === false && !validOrder && order) {
         console.warn('[REEL] el director devolvió un orden inválido; se usó el criterio por defecto');
     }
 
@@ -440,9 +480,10 @@ export const buildDirection = async (analyses, {
     context = null,
     provider = null,
     narrativeRoles = null,
-    totalSec = TARGET_TOTAL_SEC
+    totalSec = TARGET_TOTAL_SEC,
+    lockedOrder = true
 } = {}) => {
-    const prefs = { motionStyle, transition, musicStyle, context, narrativeRoles };
+    const prefs = { motionStyle, transition, musicStyle, context, narrativeRoles, lockedOrder };
 
     // Si el usuario fijó las tres cosas, el modelo sólo decidiría el orden y los
     // pesos. No vale una llamada: el criterio propio hace lo mismo.

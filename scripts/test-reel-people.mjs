@@ -169,6 +169,128 @@ check('los seis indicadores viajan en el informe',
 check('un fallo lleva su motivo escrito',
     typeof buildPeopleReport(dos({ newSubjects: true }), PEOPLE).reason === 'string');
 
+console.log('\n── El orden del usuario es la fuente de verdad (v4.797) ──');
+
+{
+    const { fallbackDirection } = await import('../server/lib/reelDirector.js');
+    const an = [
+        { summary: 'a', subject: 'people', shotSize: 'close', energy: 3, narrativeRole: 'closing', hasPeople: true, hasBrand: true, hasText: false, hasFoodOrLiquid: false, hasNature: false, riskNotes: [] },
+        { summary: 'b', subject: 'venue', shotSize: 'wide', energy: 2, narrativeRole: 'opening', hasPeople: false, hasBrand: false, hasText: false, hasFoodOrLiquid: false, hasNature: false, riskNotes: [] },
+        { summary: 'c', subject: 'people', shotSize: 'medium', energy: 3, narrativeRole: 'development', hasPeople: true, hasBrand: false, hasText: false, hasFoodOrLiquid: false, hasNature: false, riskNotes: [] },
+    ];
+    const base = { motionStyle: 'auto', transition: 'auto', musicStyle: 'auto' };
+
+    // Estas fotos están elegidas para que el criterio propio QUIERA reordenar
+    // (la abierta iría primera): si aun así respeta [0,1,2], el orden manda.
+    check('por defecto el orden del usuario se respeta tal cual',
+        JSON.stringify(fallbackDirection(an, base).order) === '[0,1,2]');
+    check('la IA sólo reordena cuando se le pide (`lockedOrder: false`)',
+        JSON.stringify(fallbackDirection(an, { ...base, lockedOrder: false }).order) !== '[0,1,2]');
+
+    const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+    check('el controlador fija el orden salvo `autoOrder: true` explícito',
+        /lockedOrder: req\.body\?\.autoOrder !== true/.test(ctrl));
+    const ui = readFileSync(path.join(root, 'src/components/admin/content-studio/VideoCreator.tsx'), 'utf8');
+    check('la pantalla ofrece el reordenamiento como casilla, apagada por defecto',
+        /autoOrder: false/.test(ui) && /Dejar que la IA ordene las fotos/.test(ui));
+    const dir = readFileSync(path.join(root, 'server/lib/reelDirector.js'), 'utf8');
+    check('al director se le DICE que el orden está fijado (o asignaría roles a otro montaje)',
+        /EL ORDEN DE LAS FOTOS ESTÁ FIJADO POR EL USUARIO/.test(dir));
+}
+
+console.log('\n── La animación no puede invertir una acción (v4.797) ──');
+
+{
+    // El defecto reportado con el comedor: la fila que RECIBÍA mercados
+    // terminó entregándolos. Las mismas personas, la misma composición — y una
+    // falsedad sobre lo que ocurrió.
+    const conAccion = {
+        hasPeople: true, personCount: 5, peopleDensity: 'sparse',
+        subjects: ['volunteer in white', 'girl in pink'],
+        interactions: [{ from: 'the volunteer in white', action: 'hands a food bag to', to: 'the girl in pink' }],
+        summary: 'comedor'
+    };
+    const p = buildScenePrompt({ style: 'documental', durationSec: 5, analysis: conAccion });
+    check('el prompt fija la dirección de cada interacción fotografiada',
+        /direction of every interaction stays exactly as photographed/.test(p));
+    check('...con la interacción CONCRETA de esa foto',
+        /the volunteer in white/.test(p) && /the girl in pink/.test(p));
+    check('...y la regla general: quien entrega sigue entregando',
+        /Whoever is giving keeps giving, whoever is receiving keeps receiving/.test(p));
+    check('el prompt cabe en el tope de Kling', p.length <= 2500, `${p.length}`);
+
+    // La cláusula va con el núcleo PROTEGIDO: no puede ser lo que se sacrifica
+    // cuando el prompt no cabe.
+    const enorme = {
+        ...conAccion, personCount: 8, occludedPeople: true, hasBrand: true, hasText: true, hasNature: true,
+        subjects: Array.from({ length: 8 }, (_, i) => `person number ${i + 1} wearing distinctive clothing item ${i + 1}`),
+        inventory: Array.from({ length: 6 }, (_, i) => `a large distinctive landmark element number ${i + 1} on the side`),
+        motionHint: 'everyone keeps doing what they were doing while the environment moves around them continuously'
+    };
+    const p2 = buildScenePrompt({ style: 'documental', durationSec: 5, analysis: enorme });
+    check('sobrevive incluso al peor recorte',
+        /direction of every interaction/.test(p2) && p2.length <= 2500, `${p2.length}`);
+
+    const neg = buildSceneNegativePrompt({ analysis: conAccion });
+    check('el negativo excluye la inversión de roles',
+        /no reversed interaction/.test(neg) && /no swapped giver and receiver/.test(neg)
+        && /no object transfer in the wrong direction/.test(neg));
+
+    // El veredicto: la inversión corroborada descalifica y sustituye; una
+    // lectura suelta es ruido, como todas las señales del control.
+    check('inversión en UN fotograma → ruido de lectura',
+        buildPeopleReport([frame({ actionReversed: true }), frame(), frame()], PEOPLE).verdict === 'ok');
+    check('inversión en DOS fotogramas → descalifica',
+        buildPeopleReport(dos({ actionReversed: true }), PEOPLE).verdict === 'failed');
+    check('...y ES invención: una acción invertida es una falsedad, no una nota',
+        buildPeopleReport(dos({ actionReversed: true }), PEOPLE).invented === true);
+    check('...con su motivo escrito',
+        /invirtió la dirección/.test(buildPeopleReport(dos({ actionReversed: true }), PEOPLE).reason));
+    // Tres estados: contestado y bien (true), contestado y mal (false), y SIN
+    // dato del modelo (null) — que no se pinta como verde.
+    check('el indicador viaja en tres estados',
+        buildPeopleReport([frame({ actionReversed: false }), frame({ actionReversed: false }), frame({ actionReversed: false })], PEOPLE).actionsConsistent === true
+        && buildPeopleReport(dos({ actionReversed: true }), PEOPLE).actionsConsistent === false
+        && buildPeopleReport(three(), PEOPLE).actionsConsistent === null);
+}
+
+console.log('\n── En grupos grandes, todo desvío de recuento pide dos fotogramas (v4.797) ──');
+
+{
+    // La escena nocturna del reporte: 7 figuras entre escombros, el modelo
+    // contó 9 en UN fotograma y la escena entera terminó sustituida.
+    const g7 = (o = {}) => frame({ peopleLeft: 7, peopleRight: 7, ...o });
+    const P7 = { hasPeople: true, personCount: 7 };
+    check('7 personas: +2 en un solo fotograma es ruido',
+        buildPeopleReport([g7({ peopleRight: 9 }), g7(), g7()], P7).verdict === 'ok');
+    check('...y se declara', buildPeopleReport([g7({ peopleRight: 9 }), g7(), g7()], P7).countNoise === true);
+    check('7 personas: crecimiento en DOS fotogramas sí descalifica',
+        buildPeopleReport([g7({ peopleRight: 9 }), g7({ peopleRight: 8 }), g7()], P7).verdict === 'failed');
+    // Con pocas personas nada se aflojó: contar 4 donde hay 2 no es ruido.
+    const g2 = (o = {}) => frame({ peopleLeft: 2, peopleRight: 2, ...o });
+    const P2 = { hasPeople: true, personCount: 2 };
+    check('2 personas: +2 en un fotograma sigue descalificando en el acto',
+        buildPeopleReport([g2({ peopleRight: 4 }), g2(), g2()], P2).verdict === 'failed');
+}
+
+console.log('\n── El mismo motor para Estándar y Emergencia (v4.797) ──');
+
+{
+    // No es una promesa: se comprueba que ningún preset declare su propio
+    // motor ni su propio camino de animación.
+    const presets = readFileSync(path.join(root, 'server/lib/reelPresets.js'), 'utf8');
+    check('ningún preset declara motor ni pipeline propio',
+        !/engine\s*:/.test(presets) && !/pipeline\s*:/.test(presets));
+    const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+    // Dos llamadas y son las mismas para todos los presets: la creación y el
+    // relanzamiento de una escena. Si aparece una tercera, alguien está
+    // armando un prompt por fuera del camino común.
+    check('el constructor de prompt de escena es el mismo para todos los presets',
+        (ctrl.match(/buildScenePrompt\(/g) || []).length === 2);
+    check('el 2.5D sólo tiene sus dos vías conocidas: elección expresa y rescate',
+        (ctrl.match(/resolveSceneWithStillMotion\(/g) || []).length === 2);
+}
+
 console.log('\n── Una escena SIN personas también cobra vida (v4.796) ──');
 
 // Pedido literal del cliente: «no necesariamente tiene que tener personas; el

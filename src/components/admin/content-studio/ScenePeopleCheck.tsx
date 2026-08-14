@@ -74,6 +74,11 @@ const ScenePeopleCheck: React.FC<{ people?: PeopleFidelity | null; className?: s
                 detail={people.faceConsistency != null ? `${people.faceConsistency}/10` : null}
             />
             <Flag label="Sin sujetos nuevos" value={people.noNewSubjects} />
+            {/* Coherencia de acción (v4.797): la animación no puede invertir
+                quién entrega y quién recibe. Es una pregunta distinta de la
+                identidad: las mismas personas, la misma composición, y aun así
+                una falsedad sobre lo que ocurrió. */}
+            <Flag label="Acciones coherentes" value={people.actionsConsistent ?? null} />
 
             {/* Contar catorce cabezas en una foto de grupo no lo hace bien ningún
                 modelo de visión. Cuando el grupo es numeroso el recuento se
@@ -82,6 +87,12 @@ const ScenePeopleCheck: React.FC<{ people?: PeopleFidelity | null; className?: s
                 —alguien casi tapado por otro se cuenta o no según el
                 fotograma—, así que no descalifica. No se esconde: se dice que
                 lo hubo y por qué no contó. */}
+            {people.signalNoise && (
+                <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
+                    Una señal se vio en un solo fotograma y no se corroboró: se trata como
+                    ruido de lectura del modelo, no como defecto del clip.
+                </p>
+            )}
             {people.countNoise && (
                 <p className="text-[9px] text-gray-500 leading-tight pt-0.5">
                     El recuento varió en un fotograma y no se repitió: se trata como ruido de

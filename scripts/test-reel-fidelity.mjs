@@ -286,6 +286,61 @@ console.log('\n▸ 2b. Una banda VACÍA tampoco es una expansión (v4.793)');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ 2c. Una copia PARCIAL de la foto tampoco es una expansión (v4.797)');
+
+{
+    // El hueco que quedaba tras el anti-mosaico: una banda que copia un TROZO
+    // de la foto —o la foto entera desenfocada de fondo— queda por debajo del
+    // umbral de similitud global. Se detecta con correlación de verdad: la
+    // banda se desliza sobre el original a varias escalas.
+    const { detectPartialCopy, PARTIAL_COPY_THRESHOLD } = await import('../server/lib/canvasExpansion.js');
+    check('el umbral está declarado y es correlación alta',
+        typeof PARTIAL_COPY_THRESHOLD === 'number' && PARTIAL_COPY_THRESHOLD >= 0.85);
+
+    let sharpOk2 = true;
+    try { await import('sharp'); } catch { sharpOk2 = false; }
+    if (!sharpOk2) {
+        console.log('  SALTA la medición — sharp no está instalado.');
+    } else {
+        const sharp = (await import('sharp')).default;
+        // Una «fotografía» con estructura gruesa y suave, como las reales.
+        const lo = Buffer.alloc(24 * 18 * 3);
+        let s0 = 42;
+        for (let i = 0; i < 24 * 18; i++) {
+            s0 = (s0 * 1103515245 + 12345) & 0x7fffffff;
+            const v = 40 + (s0 % 180);
+            lo[i * 3] = v; lo[i * 3 + 1] = (v * 2) % 256; lo[i * 3 + 2] = (v * 5) % 256;
+        }
+        const foto = await sharp(lo, { raw: { width: 24, height: 18, channels: 3 } })
+            .resize(800, 600).blur(2).png().toBuffer();
+
+        const copia = await sharp(foto).extract({ left: 200, top: 150, width: 400, height: 300 })
+            .resize(800, 300).png().toBuffer();
+        const fondoBlur = await sharp(foto).resize(800, 300, { fit: 'fill' }).blur(6).png().toBuffer();
+        const lo2 = Buffer.alloc(24 * 9 * 3);
+        let s1 = 999;
+        for (let i = 0; i < 24 * 9; i++) {
+            s1 = (s1 * 1103515245 + 12345) & 0x7fffffff;
+            const v = 50 + (s1 % 160);
+            lo2[i * 3] = (v * 3) % 256; lo2[i * 3 + 1] = v; lo2[i * 3 + 2] = (v * 7) % 256;
+        }
+        const nueva = await sharp(lo2, { raw: { width: 24, height: 9, channels: 3 } })
+            .resize(800, 300).png().toBuffer();
+        const cielo = await sharp({ create: { width: 800, height: 300, channels: 3, background: '#7fa8d0' } })
+            .png().toBuffer();
+
+        check('un trozo de la foto, estirado a la banda, se detecta',
+            (await detectPartialCopy(sharp, foto, copia)).detected === true);
+        check('la foto entera desenfocada de fondo también',
+            (await detectPartialCopy(sharp, foto, fondoBlur)).detected === true);
+        check('un paisaje nuevo con paleta parecida NO se acusa',
+            (await detectPartialCopy(sharp, foto, nueva)).detected === false);
+        check('una banda lisa no vota (de la vacía ya se ocupa BAND_MIN_DETAIL)',
+            (await detectPartialCopy(sharp, foto, cielo)).best === null);
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el controlador)');
 
 {

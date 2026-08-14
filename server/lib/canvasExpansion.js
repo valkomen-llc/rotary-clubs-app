@@ -588,7 +588,21 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
                     .extract({ left: band.left, top: band.top, width: band.width, height: band.height })
                     .toBuffer();
                 const sim = await structuralCompare(originalBuffer, cut);
-                const duplicated = sim.structure != null && sim.structure >= TILING_STRUCTURE_THRESHOLD;
+                // ── Copia PARCIAL (v4.797) ──
+                //
+                // Comparar la banda contra la foto ENTERA atrapa la foto
+                // duplicada completa (v4.785), pero no un TROZO de ella —ni la
+                // copia desenfocada o reescalada que algunos modelos ponen de
+                // fondo—: la similitud global queda por debajo del umbral
+                // aunque medio protagonista esté repetido en la banda. Se
+                // compara además por VENTANAS: recortes de la banda contra
+                // recortes del interior de la foto. Una ventana sin detalle no
+                // vota —un cielo liso se parece a cualquier cielo y sólo daría
+                // falsos positivos—; el umbral por ventana es MÁS ALTO que el
+                // global porque una ventana chica coincide por azar más fácil.
+                const partial = await detectPartialCopy(sharp, originalBuffer, cut);
+                const duplicated = (sim.structure != null && sim.structure >= TILING_STRUCTURE_THRESHOLD)
+                    || partial.detected;
 
                 // ── ¿La banda tiene CONTENIDO? (v4.793) ──
                 //
@@ -618,6 +632,7 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
                 report.tiling.bands.push({
                     name: band.name,
                     structure: sim.structure,
+                    partialMatch: partial.best,
                     duplicated,
                     detail,
                     flat
@@ -637,6 +652,142 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
     }
 
     return report;
+};
+
+// Umbral de CORRELACIÓN de la copia parcial. Medido con imágenes sintéticas de
+// estructura gruesa: una copia estirada del original correlaciona 0,95-1,0 en
+// su posición —y la copia desenfocada también, porque la comparación ya reduce
+// y desenfoca—; un paisaje nuevo con paleta parecida ronda 0,3-0,5. El 0,9
+// parte esa brecha por el lado seguro: un falso positivo cuesta rehacer una
+// adaptación; una copia sin detectar cuesta la pieza publicada con la foto
+// repetida de fondo.
+export const PARTIAL_COPY_THRESHOLD = Number(process.env.EXPANSION_PARTIAL_COPY_THRESHOLD) || 0.9;
+
+// Una ventana sin detalle no vota: un parche liso se parece a cualquier parche
+// liso. Mismo criterio (y misma escala) que `BAND_MIN_DETAIL`.
+const WINDOW_MIN_DETAIL = 6;
+
+/**
+ * ¿La banda añadida es un TROZO reescalado de la fotografía original?
+ *
+ * La copia parcial que producen estos modelos casi nunca es a tamaño natural:
+ * es un recorte ESTIRADO al ancho de la banda, o la foto entera desenfocada de
+ * fondo. Una huella perceptual por recortes no la atrapa —es demasiado sensible
+ * a la alineación y la rejilla nunca cae justo donde está el trozo—, así que se
+ * hace CORRELACIÓN de verdad: la banda, reducida y en gris, se desliza sobre el
+ * original píxel a píxel y a varias escalas independientes en X e Y (la copia
+ * viene estirada), y se mide la correlación normalizada en la mejor posición.
+ * Una copia correlaciona por encima de 0,9 aunque venga desenfocada; un paisaje
+ * nuevo con la misma paleta ronda 0,3-0,5.
+ *
+ * El caso de la foto COMPLETA duplicada (v4.785) queda subsumido: es la escala
+ * del 100 %. Vive aparte para poder probarla con imágenes sintéticas, y
+ * cualquier fallo devuelve `detected: false`: sin medida no se acusa.
+ */
+export const detectPartialCopy = async (sharp, originalBuffer, bandBuffer) => {
+    try {
+        const gray = async (buf, width) => {
+            const { data, info } = await sharp(buf, { failOn: 'none' })
+                .greyscale().resize(width, null, { fit: 'inside' })
+                .blur(1).raw().toBuffer({ resolveWithObject: true });
+            return { d: data, w: info.width, h: info.height };
+        };
+
+        // Una banda sin detalle no se compara: de la banda VACÍA ya se ocupa
+        // `BAND_MIN_DETAIL`, y un parche liso correlaciona con cualquier cosa.
+        const st = await sharp(bandBuffer, { failOn: 'none' }).stats();
+        const canales = (st.channels || []).slice(0, 3);
+        const bandDetail = canales.length
+            ? canales.reduce((a, c) => a + (c.stdev || 0), 0) / canales.length : 0;
+        if (bandDetail < WINDOW_MIN_DETAIL) return { detected: false, best: null };
+
+        const O = await gray(originalBuffer, 128);
+        if (O.w < 40 || O.h < 40) return { detected: false, best: null };
+
+        // Correlación normalizada (media cero) entre la plantilla T colocada en
+        // (ox, oy) sobre O. Devuelve -1..1; 1 es la copia exacta.
+        const ncc = (T, ox, oy) => {
+            let sa = 0, sb = 0, n = 0;
+            for (let y = 0; y < T.h; y++) for (let x = 0; x < T.w; x++) {
+                sa += O.d[(oy + y) * O.w + (ox + x)]; sb += T.d[y * T.w + x]; n++;
+            }
+            const ma = sa / n, mb = sb / n;
+            let num = 0, da = 0, dbb = 0;
+            for (let y = 0; y < T.h; y++) for (let x = 0; x < T.w; x++) {
+                const a = O.d[(oy + y) * O.w + (ox + x)] - ma;
+                const b = T.d[y * T.w + x] - mb;
+                num += a * b; da += a * a; dbb += b * b;
+            }
+            const den = Math.sqrt(da * dbb);
+            return den > 0 ? num / den : 0;
+        };
+
+        let best = -1;
+        // La plantilla es la BANDA reescalada, con estiramiento independiente en
+        // X e Y: así una copia estirada casa con la región del original de la
+        // que salió. La rejilla de escalas es FINA a propósito —un 10 % de error
+        // de escala ya decorrelaciona una copia real, medido en la prueba— y el
+        // barrido de posición va de a 3 px sobre 128 de ancho. Con el corte
+        // temprano, una copia se encuentra en las primeras vueltas; el caso caro
+        // es la banda LEGÍTIMA, que recorre todo sin encontrar nada (~4 s una
+        // vez por adaptación, dentro de una función de 300).
+        const probar = async (fw, fh, paso = 3) => {
+            const tw = Math.round(O.w * fw);
+            const th = Math.round(O.h * fh);
+            if (tw < 16 || th < 12 || tw > O.w || th > O.h) return -1;
+            const { data, info } = await sharp(bandBuffer, { failOn: 'none' })
+                .greyscale().resize(tw, th, { fit: 'fill' })
+                .blur(1).raw().toBuffer({ resolveWithObject: true });
+            const T = { d: data, w: info.width, h: info.height };
+            let mejor = -1;
+            for (let oy = 0; oy + T.h <= O.h; oy += paso) {
+                for (let ox = 0; ox + T.w <= O.w; ox += paso) {
+                    const c = ncc(T, ox, oy);
+                    if (c > mejor) mejor = c;
+                }
+            }
+            return mejor;
+        };
+
+        // Gruesa (paso 0,065 ≈ la mitad del error que decorrelaciona), con
+        // corte en cuanto algo supera el umbral.
+        const FRACS = [];
+        for (let f = 0.35; f <= 1.001; f += 0.065) FRACS.push(Number(f.toFixed(3)));
+        let bestFw = null, bestFh = null;
+        for (const fw of FRACS) {
+            for (const fh of FRACS) {
+                const c = await probar(fw, fh);
+                if (c > best) { best = c; bestFw = fw; bestFh = fh; }
+                if (best >= PARTIAL_COPY_THRESHOLD) {
+                    return { detected: true, best: Number(best.toFixed(3)) };
+                }
+            }
+        }
+        // Refinamiento alrededor del mejor candidato. Una copia con la escala
+        // 4 % corrida y la posición a medio paso puntúa ~0,7 en la gruesa
+        // —medido—, así que el gatillo va bajo (0,6) y el refinamiento barre a
+        // paso 1: es la pasada que decide si el 0,7 era una copia desalineada o
+        // un parecido de paleta.
+        if (best >= 0.6 && bestFw != null) {
+            // Dos vueltas de ajuste, cada una más fina: la escala se acerca por
+            // bisección al valor real y la posición se barre a paso 1.
+            for (const delta of [0.03, 0.015]) {
+                let vueltaFw = bestFw, vueltaFh = bestFh;
+                for (const dfw of [-delta, 0, delta]) {
+                    for (const dfh of [-delta, 0, delta]) {
+                        const c = await probar(vueltaFw + dfw, vueltaFh + dfh, 1);
+                        if (c > best) { best = c; bestFw = vueltaFw + dfw; bestFh = vueltaFh + dfh; }
+                        if (best >= PARTIAL_COPY_THRESHOLD) {
+                            return { detected: true, best: Number(best.toFixed(3)) };
+                        }
+                    }
+                }
+            }
+        }
+        return { detected: false, best: Number(best.toFixed(3)) };
+    } catch {
+        return { detected: false, best: null };
+    }
 };
 
 // Por encima de esta similitud estructural, una banda añadida no es paisaje

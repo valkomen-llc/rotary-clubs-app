@@ -921,7 +921,11 @@ export const PEOPLE_NEGATIVE_TERMS = [
     'no invented background characters', 'no transient silhouettes',
     'no reconstructed hidden body', 'no hallucinated limbs', 'no crowd expansion',
     'no face replacement', 'no body replacement', 'no flickering person',
-    'no temporal inconsistency'
+    'no temporal inconsistency',
+    // La coherencia de ACCIÓN (v4.797): la animación no puede invertir quién
+    // entrega y quién recibe, ni mover un objeto al dueño equivocado.
+    'no reversed interaction', 'no role switching', 'no swapped giver and receiver',
+    'no object transfer in the wrong direction', 'no invented action'
 ];
 export const PEOPLE_NEGATIVE_PROMPT = PEOPLE_NEGATIVE_TERMS.join(', ');
 export const peopleNegativeEnabled = () =>
@@ -1033,6 +1037,25 @@ export const buildScenePrompt = ({
             .map(t => t.trim().slice(0, 100));
         if (items.length) {
             inventory = `The scene keeps everything it holds, each thing in its place: ${items.join('; ')}. Nothing is added to the scene, nothing is removed from it, and nothing trades places.`;
+        }
+    }
+
+    // ── El mapa de INTERACCIONES (v4.797) ──
+    //
+    // La dirección de cada acción, fijada en positivo. Es la corrección del
+    // defecto reportado con el comedor: la fila que RECIBÍA mercados terminó
+    // entregándolos — la animación invirtió los roles. La foto es la verdad
+    // semántica, no sólo la visual: quien entrega sigue entregando, quien
+    // recibe sigue recibiendo, y cada objeto se queda con quien lo sostiene.
+    let interactions = null;
+    if (Array.isArray(analysis?.interactions) && analysis.interactions.length) {
+        const acts = analysis.interactions
+            .filter(i => i && i.from && i.action && i.to)
+            .slice(0, 3)
+            .map(i => `${i.from} keeps ${String(i.action).replace(/^keeps /, '')} ${i.to}`);
+        if (acts.length) {
+            interactions = `The direction of every interaction stays exactly as photographed: ${acts.join('; ')}. `
+                + 'Whoever is giving keeps giving, whoever is receiving keeps receiving, every object stays with the person holding it, and anyone waiting in line stays in line.';
         }
     }
 
@@ -1208,7 +1231,12 @@ export const buildScenePrompt = ({
         audio,
         census,
         withSubjects ? subjectMap : null,
-        occlusion
+        occlusion,
+        // Las interacciones van con el núcleo que NO se recorta, junto al censo
+        // y la oclusión: invertir quién entrega y quién recibe es una falsedad
+        // del mismo orden que una persona inventada, y la cláusula que lo
+        // impide no puede ser la que se sacrifica cuando el prompt no cabe.
+        interactions
     ].filter(Boolean).join(' ');
 
     // Orden del recorte (v4.785): el ambiente sigue siendo lo primero que
@@ -1231,7 +1259,7 @@ export const buildScenePrompt = ({
     if (prompt.length > limit) {
         // Última red. Se recorta la descripción fija y se vuelven a pegar el
         // censo y la oclusión, que van al final y no se sacrifican.
-        const keep = [census, occlusion].filter(Boolean).join(' ');
+        const keep = [census, occlusion, interactions].filter(Boolean).join(' ');
         console.warn(`[REEL] prompt de ${prompt.length} caracteres aún sobre el tope de ${limit}: se recorta la descripción fija.`);
         prompt = `${trimWords(prompt, Math.max(0, limit - keep.length - 1))} ${keep}`.trim();
     }
