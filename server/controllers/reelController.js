@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.790.0';
+export const REEL_MODULE_VERSION = '4.792.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -2048,8 +2048,10 @@ const foldSubstitutedScenes = async (projectId, quality) => {
             substitutedScenes: rows.length,
             failures: [
                 ...(quality.failures || []),
-                `${rows.length} escena(s) (${cuales}) no se animaron: el motor no conservó la fotografía tras los ` +
-                `reintentos y se resolvieron moviendo el encuadre. Regeneralas desde la línea de tiempo.`
+                `${rows.length} escena(s) (${cuales}) no se animaron: el motor mostró personas que no están en ` +
+                `la fotografía y siguió haciéndolo tras los reintentos, así que se resolvieron moviendo el ` +
+                `encuadre —eso no se puede publicar—. Consumieron sus créditos de video igual. ` +
+                `Regeneralas desde la línea de tiempo.`
             ]
         };
     } catch (e) {
@@ -2596,15 +2598,47 @@ const advance = async (project) => {
         // inventada, un logotipo redibujado, un texto ilegible. En una pieza
         // institucional, y más en una campaña de emergencia, mostrar a alguien
         // que no estuvo ahí no es una nota: es una falsedad.
-        const agotados = infidel.filter(sc => esDescalificante(sc) && sc.attempts >= MAX_AUTO_RETRIES);
-        const conservados = infidel.filter(sc => !esDescalificante(sc));
+        //
+        // ── Y agotados los reintentos, sólo la INVENCIÓN HUMANA se sustituye
+        //    (v4.792) ──
+        //
+        // v4.785 metió los tres defectos en la misma bolsa y el resultado, con
+        // fotografías reales de una campaña de emergencia —pendones, cajas
+        // rotuladas, chalecos—, fue que TRES de cuatro escenas se descartaron
+        // por «marca o texto» y el Reel entero salió en paneos. El cliente lo
+        // reportó tres veces, y la tercera con la ficha delante: «no cobran
+        // vida... y encima el motor cobra los créditos como si fuera un video».
+        // Tenía razón en las dos cosas: se pagaban DOS generaciones por escena
+        // y se tiraban las dos para entregar una foto que se desplaza.
+        //
+        // Los tres defectos no son equivalentes, y confundirlos fue el error:
+        //
+        //   · Una PERSONA INVENTADA es una falsedad sobre quién estuvo ahí. En
+        //     una pieza institucional no se publica, no hay criterio estético
+        //     que valga, y el cliente lo pidió explícitamente. Se sustituye.
+        //   · Un LOGOTIPO o un TEXTO que el motor redibuja al animar es un
+        //     defecto de calidad sobre una parte de la imagen. La escena sigue
+        //     mostrando a las personas reales y lo que de verdad pasó. Ahí la
+        //     decisión es del usuario, que puede MIRAR el clip — que es
+        //     exactamente lo que dice la regla de v4.676, revertida a medias
+        //     por v4.785 sin notar que se llevaba puesto este caso.
+        //
+        // Así que el clip animado se conserva, queda `needs_review` con su
+        // motivo y su botón de regenerar, y lo que se descarta es sólo lo que
+        // no se puede publicar.
+        const esInvencionHumana = (sc) => sc.fidelity?.people?.verdict === 'failed';
+        const agotados = infidel.filter(sc => esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES);
+        const conservados = infidel.filter(sc =>
+            !esDescalificante(sc)
+            || (!esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES));
 
         if (agotados.length) {
             const results = await Promise.allSettled(agotados.map(sc =>
                 resolveSceneWithStillMotion(sc, {
-                    reason: sc.fidelity?.people?.verdict === 'failed'
-                        ? 'el motor insistió en mostrar personas que no están en la fotografía'
-                        : 'el motor insistió en alterar la marca o el texto',
+                    // Con su medida concreta: «alteró la marca o el texto»
+                    // obligaba a adivinar cuál de las dos y con qué número.
+                    reason: sc.fidelity?.people?.reason
+                        || 'el motor insistió en mostrar personas que no están en la fotografía',
                     // La sustitución SE VE (v4.786): queda `needs_review` con su
                     // motivo, no `ready`. El Reel se completa igual —needs_review
                     // conserva su videoUrl y el montaje lo usa—, pero quien pidió
@@ -2615,9 +2649,13 @@ const advance = async (project) => {
             const rescatadas = results.filter(r => r.status === 'fulfilled').length;
             if (rescatadas) {
                 await appendNote(project.id,
-                    `${rescatadas} escena(s) agotaron sus reintentos con un defecto descalificante ` +
-                    `(personas inventadas, marca o texto alterados): se resolvieron sin motor generativo ` +
-                    `—la fotografía se mueve, no se regenera— para que el defecto no entre al Reel. ` +
+                    `${rescatadas} escena(s) mostraban personas que no están en la fotografía y siguieron ` +
+                    `haciéndolo tras los reintentos: se resolvieron sin motor generativo —la fotografía se ` +
+                    `mueve, no se regenera— porque eso no se puede publicar. ` +
+                    // El gasto se DICE: esas escenas consumieron sus dos
+                    // generaciones de video y terminaron sin animar. Callarlo
+                    // hace que el medidor de créditos parezca equivocado.
+                    `Cada una consumió sus ${MAX_AUTO_RETRIES} generaciones de video antes de descartarse. ` +
                     `Se pueden reintentar con IA una a una desde la línea de tiempo.`);
             }
             // Si el respaldo falla (la imagen no se pudo descargar, ffmpeg no
@@ -2671,8 +2709,13 @@ const advance = async (project) => {
                 `UPDATE "ReelScene" SET status = 'needs_review', "updatedAt" = NOW() WHERE id = ANY($1)`,
                 [conservados.map(sc => sc.id)]
             );
-            await appendNote(project.id,
-                `${conservados.length} escena(s) se apartan de la fotografía más de lo habitual —normal cuando el motor anima mucho—. Se conservan animadas; se pueden regenerar una a una desde la línea de tiempo.`);
+            const porMarca = conservados.filter(sc => esDescalificante(sc)).length;
+            const porNota = conservados.length - porMarca;
+            await appendNote(project.id, [
+                porNota ? `${porNota} escena(s) se apartan de la fotografía más de lo habitual —normal cuando el motor anima mucho—.` : '',
+                porMarca ? `${porMarca} escena(s) conservan su clip ANIMADO aunque un logotipo o un texto quedó alterado tras los reintentos: la escena muestra a las personas y lo que ocurrió, así que la decisión de rehacerla es tuya —podés mirarla—.` : '',
+                'Se conservan animadas; se pueden regenerar una a una desde la línea de tiempo.'
+            ].filter(Boolean).join(' '));
         }
 
         if (descalificados.length) {

@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.791.0 | 2026-08-14 (La pestaña vieja se recupera sola)
-// Cache bust: 2026-08-14d
+// UI V4.792.0 | 2026-08-14 (Un logotipo redibujado ya no tira la escena animada)
+// Cache bust: 2026-08-14e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.792.0',
+        title: 'Las escenas se entregan animadas: sólo una persona inventada las descarta 🎬',
+        description: 'Con la ficha del Reel delante quedó claro qué estaba pasando: de cuatro escenas, TRES se descartaron por «marca o texto» —pendones, cajas rotuladas, chalecos, que es lo que hay en cualquier fotografía de una campaña de emergencia— y sólo una por personas. El sistema generaba la escena con IA, medía, la descartaba, la volvía a generar, la descartaba otra vez, y entregaba una fotografía con desplazamiento de encuadre: dos generaciones pagadas por escena para no recibir ninguna animación. El error de fondo fue meter tres defectos distintos en la misma bolsa. Una persona que no estuvo ahí es una falsedad y no se publica: eso se mantiene igual de estricto. Pero un logotipo o un texto que el motor redibuja al animar es un defecto de calidad sobre una parte de la imagen — la escena sigue mostrando a las personas reales y lo que de verdad ocurrió, así que esa decisión es de quien puede MIRAR el clip, no de una medición automática. Desde ahora, agotados los reintentos, sólo la invención de personas sustituye la escena; la marca y el texto conservan el clip animado, marcado para revisión con su motivo y su botón de regenerar. Además, cuando una escena sí se descarta, la ficha dice que consumió sus generaciones de video igual: el medidor de créditos no parece equivocado, está contando un gasto que ocurrió.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'emergencias', 'ia'],
+        type: 'changed',
+        impact: 'Alto',
+        changes: [
+            { type: 'changed', text: 'Agotados los reintentos, sólo una persona inventada sustituye la escena por la foto en movimiento.' },
+            { type: 'fixed', text: 'Un logotipo o un texto alterado ya no tira el clip animado: se conserva, marcado para revisión con su motivo.' },
+            { type: 'changed', text: 'Mientras queden reintentos, la marca y el texto se siguen regenerando como antes.' },
+            { type: 'improved', text: 'El motivo del descarte lleva su medida concreta en vez de «alteró la marca o el texto».' },
+            { type: 'added', text: 'Se dice cuándo una escena descartada consumió sus créditos de video, para que el medidor se entienda.' },
+        ]
+    },
     {
         version: '4.791.0',
         title: 'Una pestaña con la versión anterior guardada se recupera sola 🔄',

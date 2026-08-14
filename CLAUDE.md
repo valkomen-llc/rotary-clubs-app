@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.790
+## Creador de Reels IA — v4.792
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1173,6 +1173,37 @@ se salta si no está).
   al AJUSTAR un umbral, comprobar cuántas escenas legítimas descarta. La regla
   de v4.705 tenía media lección: un control demasiado estricto no falla
   ruidosamente, entrega otra cosa y la presenta como éxito.
+
+### Los tres defectos descalificantes NO son equivalentes (v4.792)
+
+Tercer reporte, esta vez con la ficha delante: de cuatro escenas, **tres** se
+descartaron por «marca o texto» y una por personas. El módulo generaba con IA,
+medía, descartaba, regeneraba, descartaba otra vez y entregaba un paneo: **dos
+generaciones pagadas por escena para no recibir ninguna animación**. El cliente
+lo dijo con las dos mitades — «no cobran vida» y «cobra los créditos como si
+fuera un video».
+
+- **Sólo la INVENCIÓN HUMANA sustituye la escena.** v4.785 metió los tres
+  defectos en la misma bolsa y con fotografías reales de una campaña de
+  emergencia —pendones, cajas rotuladas, chalecos— eso alcanza a casi todo. No
+  son equivalentes: una persona que no estuvo ahí es una FALSEDAD y no se
+  publica; un logotipo que el motor redibuja al animar es un defecto de calidad
+  sobre una parte de la imagen, y la escena sigue mostrando a las personas
+  reales y lo que ocurrió. Ahí decide quien puede MIRAR el clip. Es la regla de
+  v4.676, que v4.785 se llevó puesta sin notarlo.
+- **Mientras queden reintentos, marca y texto se siguen regenerando.** Lo que
+  cambia es el final del camino, no el criterio: agotados los intentos el clip
+  animado se CONSERVA en `needs_review` con su motivo, en vez de tirarse.
+- **El gasto se DICE.** Una escena que consumió sus dos generaciones y terminó
+  sustituida tiene que declararlo, o el medidor de créditos parece equivocado
+  cuando está contando un gasto que de verdad ocurrió.
+- **El motivo del rescate lleva la medida concreta** (`people.reason`), no una
+  disyuntiva: «alteró la marca o el texto» obliga a adivinar cuál de las dos.
+- **Al endurecer una puerta, mirar a cuántas escenas LEGÍTIMAS alcanza.** Van
+  tres versiones seguidas corrigiendo el mismo patrón: v4.787 el recuento,
+  v4.790 el texto, v4.792 el destino de lo descalificado. En las tres, un
+  control demasiado estricto no falló ruidosamente — entregó otra cosa y la
+  presentó como resultado.
 
 ### El texto tampoco descalifica por ruido (v4.790)
 

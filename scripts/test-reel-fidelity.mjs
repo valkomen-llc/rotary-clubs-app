@@ -232,10 +232,31 @@ console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el cont
 
 {
     const src = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
-    check('los agotados con defecto descalificante van al respaldo sin IA',
+    check('los agotados van al respaldo sin IA',
         /agotados\.map\(sc =>\s*\n?\s*resolveSceneWithStillMotion/.test(src));
-    check('los conservados son SÓLO los de nota baja, no los descalificantes',
-        /conservados = infidel\.filter\(sc => !esDescalificante\(sc\)\)/.test(src));
+
+    // ── CAMBIO DE SIGNO DELIBERADO (v4.792) ──
+    //
+    // Esta afirmación decía que los conservados son SÓLO los de nota baja, o
+    // sea que los tres defectos descalificantes se sustituían por igual. Con
+    // fotografías reales de una campaña de emergencia —pendones, cajas
+    // rotuladas, chalecos— eso descartó TRES de cuatro escenas por «marca o
+    // texto» y devolvió el Reel entero en paneos, habiendo pagado dos
+    // generaciones de video por escena.
+    //
+    // Los tres defectos no son equivalentes: una persona inventada es una
+    // falsedad sobre quién estuvo ahí y no se publica; un logotipo redibujado
+    // al animar es un defecto de calidad sobre una parte de la imagen, y ahí la
+    // decisión es del usuario, que puede mirar el clip. Es la regla de v4.676,
+    // que v4.785 se llevó puesta sin notarlo.
+    check('sólo la INVENCIÓN HUMANA se sustituye tras agotar los reintentos',
+        /agotados = infidel\.filter\(sc => esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES\)/.test(src));
+    check('marca y texto agotados CONSERVAN su clip animado',
+        /conservados = infidel\.filter\(sc =>[\s\S]{0,200}!esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES/.test(src));
+    check('mientras queden reintentos, marca y texto se siguen regenerando',
+        /descalificados = infidel\.filter\(sc => esDescalificante\(sc\) && sc\.attempts < MAX_AUTO_RETRIES\)/.test(src));
+    check('el gasto de las escenas descartadas se DICE, no se calla',
+        /generaciones de video antes de descartarse/.test(src));
     check('tras el rescate la pasada TERMINA (el montaje esperaría filas frescas)',
         /finalScenes` se leyó ANTES del rescate/.test(src));
     check('el respaldo que falla degrada a needs_review, no tumba el Reel',
