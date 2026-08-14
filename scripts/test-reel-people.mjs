@@ -370,6 +370,18 @@ check('una escena limpia tampoco',
     const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
     check('la sustitución se decide por `invented`, no por `people.verdict`',
         /esInvencionHumana = \(sc\) => sc\.fidelity\?\.people\?\.invented === true/.test(ctrl));
+
+    // v4.798: un análisis anterior a v4.797 no trae `interactions`, así que la
+    // protección contra la acción invertida quedaba MUDA al regenerar una
+    // escena de un proyecto viejo — exactamente el clip del reporte, donde la
+    // fila que recibía mercados terminó entregándolos. `sanitizeAnalysis`
+    // siempre escribe el campo (aunque vacío), de modo que su AUSENCIA
+    // identifica el análisis viejo sin ambigüedad.
+    check('regenerar una escena RE-ANALIZA la foto si el análisis no trae el mapa de acciones',
+        /analysis\.interactions === undefined/.test(ctrl)
+        && /await analyzeImages\(\[\{ url: nextImage \}\]/.test(ctrl));
+    check('...y si la visión falla, se degrada al análisis guardado en vez de romper la regeneración',
+        /re-análisis de la escena .* falló, se usa el análisis guardado/.test(ctrl));
 }
 
 console.log('\n── Texto: la proporción de palabras no descalifica sola (v4.790) ──');

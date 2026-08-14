@@ -178,5 +178,34 @@ console.log('\n▸ El cableado: la medición tiene que DECIDIR (leído sobre los
     }
 }
 
+console.log('\n▸ El modo sin IA no viaja en silencio (v4.798, leído sobre los archivos)');
+
+{
+    // El reporte real: tres escenas «Fotográfico — sin IA» presentadas como
+    // Reel listo, con el usuario preguntando por qué las fotos sólo se
+    // desplazan. El modo era legítimo — lo que faltaba era que se DIJERA en el
+    // momento de generar, no sólo en la casilla de arriba.
+    const creator = readFileSync(path.join(root, 'src/components/admin/content-studio/VideoCreator.tsx'), 'utf8');
+    check('el creador AVISA junto al botón de generar cuando el modo es Fotográfico',
+        /config\.motionStyle === 'fotografico' && \(/.test(creator)
+        && /sin animación IA/.test(creator));
+    check('la tarjeta del modo sin IA no se pinta en verde: el color no recomienda',
+        !/motionStyle === 'fotografico'\s*\n?\s*\? 'border-emerald/.test(creator));
+
+    // Duplicar tiene que abrir el creador YA RELLENO: `duplicateReel` devuelve
+    // la configuración desde v4.669 y hasta v4.797 nadie la escuchaba — el
+    // aviso «Ajustes copiados al creador» era falso.
+    check('el creador acepta y aplica el prefill del duplicado',
+        /prefill\?: ReelPrefill \| null/.test(creator)
+        && /if \(!prefill\) return;/.test(creator));
+
+    const studio = readFileSync(path.join(root, 'src/pages/admin/ContentStudio.tsx'), 'utf8');
+    check('ContentStudio cablea onDuplicate → prefill del creador',
+        /onDuplicate=\{/.test(studio) && /setReelPrefill\(/.test(studio)
+        && /prefill=\{reelPrefill\}/.test(studio));
+    check('...y cambia a la pestaña del creador al duplicar',
+        /setTab\('create'\)/.test(studio));
+}
+
 console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass} pruebas pasan, ${fail} fallan\n`);
 process.exit(fail === 0 ? 0 : 1);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Video, 
@@ -13,7 +13,7 @@ import {
     Palette
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import VideoCreator from '../../components/admin/content-studio/VideoCreator';
+import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
 import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
@@ -25,10 +25,18 @@ import OutroGenerator from '../../components/admin/content-studio/OutroGenerator
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
 
 const ContentStudio: React.FC = () => {
-    // v4.720: se quitó `activeTab`. Las pestañas son NO controladas
-    // (`defaultValue`), así que nadie leía ese estado — sólo se escribía. Era
-    // uno de los identificadores sin usar que arrastra el proyecto; al tocar
-    // este archivo se deja sin errores propios, como manda la regla del sitio.
+    // v4.798: las pestañas vuelven a ser CONTROLADAS, y esta vez el estado sí
+    // se lee — «Duplicar» en la Biblioteca tiene que abrir el Creador de Video
+    // ya relleno, y para eso hay que cambiar de pestaña desde acá. (v4.720 las
+    // había dejado no controladas porque el estado de entonces no lo leía
+    // nadie: quitar estado muerto estaba bien; éste no lo es.)
+    const [tab, setTab] = useState('create');
+
+    // La configuración que devuelve «Duplicar» un Reel. Hasta v4.797 se emitía
+    // por `onDuplicate` y NADIE la escuchaba: el aviso «Ajustes copiados al
+    // creador» era falso y el creador se abría vacío.
+    const [reelPrefill, setReelPrefill] = useState<ReelPrefill | null>(null);
+
     return (
         <AdminLayout>
             <div className="flex flex-col gap-8">
@@ -53,7 +61,7 @@ const ContentStudio: React.FC = () => {
                 </div>
 
                 {/* Main Content Areas */}
-                <Tabs defaultValue="create" className="w-full">
+                <Tabs value={tab} onValueChange={setTab} className="w-full">
                     <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100 overflow-x-auto flex-nowrap scrollbar-hide">
                         <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Sparkles className="w-4 h-4" />
@@ -90,7 +98,7 @@ const ContentStudio: React.FC = () => {
                     </TabsList>
 
                     <TabsContent value="create" className="mt-0 focus-visible:outline-none">
-                        <VideoCreator />
+                        <VideoCreator prefill={reelPrefill} />
                     </TabsContent>
 
                     <TabsContent value="post" className="mt-0 focus-visible:outline-none">
@@ -117,7 +125,12 @@ const ContentStudio: React.FC = () => {
                             pintaba las publicaciones sociales y, colapsada al fondo, la
                             videoteca del Creador de Video anterior (VideoProject), así que
                             ningún Reel aparecía en ninguna parte pese a estar guardado. */}
-                        <ReelLibrary />
+                        <ReelLibrary onDuplicate={p => {
+                            // El objeto llega tal cual lo devolvió el servidor;
+                            // el creador valida cada campo al aplicarlo.
+                            setReelPrefill(p as ReelPrefill);
+                            setTab('create');
+                        }} />
                         {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas).
                             La videoteca histórica queda accesible al final para no romper el
                             flujo de los videos AI. */}

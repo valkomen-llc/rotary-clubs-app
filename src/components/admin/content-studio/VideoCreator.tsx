@@ -72,7 +72,28 @@ const authHeaders = (): Record<string, string> => ({
 
 const AUTO = 'auto';
 
-const VideoCreator: React.FC = () => {
+// Lo que `duplicateReel` devuelve para abrir el creador ya relleno. Es la
+// configuración del Reel original, no sus clips: duplicar no gasta créditos
+// hasta que el usuario confirma.
+export interface ReelPrefill {
+    images?: { id?: string; url: string }[];
+    format?: string;
+    qualityTier?: string;
+    motionStyle?: string | null;
+    transition?: string | null;
+    musicStyle?: string | null;
+    engine?: string | null;
+    publicationType?: string | null;
+    interestArea?: string | null;
+    withMusic?: boolean;
+    narration?: Partial<{ enabled: boolean; language: string; style: string; gender: string; speed: number }> | null;
+    preset?: string;
+    sceneCount?: number;
+    emergency?: Partial<EmergencyContextInput> | null;
+    title?: string;
+}
+
+const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = null }) => {
     const [options, setOptions] = useState<ReelOptions | null>(null);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
@@ -186,6 +207,46 @@ const VideoCreator: React.FC = () => {
         gender: 'female',
         speed: 1
     });
+
+    // ── Duplicar abre el creador YA RELLENO (v4.798) ──
+    //
+    // `duplicateReel` devuelve esta configuración desde v4.669 y la pantalla
+    // nunca la recibió: `ReelLibrary` la emitía por `onDuplicate` y nadie la
+    // escuchaba, así que el aviso «Ajustes copiados al creador» era falso — no
+    // se copiaba nada y el creador se abría vacío. El efecto aplica TODO lo que
+    // la ficha guardó, incluido `motionStyle`: si el original era Fotográfico,
+    // el duplicado lo hereda A LA VISTA — el aviso del modo sin IA junto al
+    // botón de generar es lo que impide que se herede en silencio.
+    useEffect(() => {
+        if (!prefill) return;
+        setReel(null);
+        if (prefill.preset) setPreset(prefill.preset);
+        if (Array.isArray(prefill.images) && prefill.images.length) {
+            setSceneCount(prefill.sceneCount || prefill.images.length);
+            setSelectedMedia(prefill.images
+                .filter(i => i && typeof i.url === 'string')
+                .map((i, idx) => ({
+                    id: i.id || `prefill-${idx}`,
+                    url: i.url,
+                    filename: i.url.split('/').pop() || `foto-${idx + 1}`,
+                    type: 'image' as const
+                })));
+        }
+        setConfig(c => ({
+            ...c,
+            format: prefill.format || c.format,
+            qualityTier: prefill.qualityTier || c.qualityTier,
+            motionStyle: prefill.motionStyle || AUTO,
+            transition: prefill.transition || AUTO,
+            musicStyle: prefill.musicStyle || AUTO,
+            engine: prefill.engine || '',
+            withMusic: prefill.withMusic !== false,
+            publicationType: prefill.publicationType || c.publicationType,
+            interestArea: prefill.interestArea || c.interestArea
+        }));
+        if (prefill.narration) setNarration(n => ({ ...n, ...prefill.narration }));
+        if (prefill.emergency) setEmergency(e => ({ ...e, ...prefill.emergency }));
+    }, [prefill]);
 
     // Outro adjunto (v4.645). Se conserva: es una pieza aparte que ya funciona.
     const [outro, setOutro] = useState<AttachedOutro | null>(null);
@@ -674,9 +735,14 @@ const VideoCreator: React.FC = () => {
                                         onClick={() => setConfig(c => ({ ...c, motionStyle: 'fotografico' }))}
                                         aria-pressed={config.motionStyle === 'fotografico'}
                                         className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                                            // Neutro a propósito, no verde (v4.798): pintada
+                                            // en esmeralda, la tarjeta del modo sin IA se leía
+                                            // como «la opción segura» y se elegía sin registrar
+                                            // la consecuencia — las fotos no cobran vida. El
+                                            // color no puede recomendar lo que el texto avisa.
                                             config.motionStyle === 'fotografico'
-                                                ? 'border-emerald-500 bg-emerald-50/40'
-                                                : 'border-gray-100 hover:border-emerald-200'
+                                                ? 'border-gray-500 bg-gray-50'
+                                                : 'border-gray-100 hover:border-gray-300'
                                         }`}
                                     >
                                         <span className="block text-sm font-black text-gray-900">Fotográfico — sin IA</span>
@@ -1205,6 +1271,26 @@ const VideoCreator: React.FC = () => {
                             </span>
                             <span className="text-[10px] font-black uppercase tracking-widest">~15 s · {config.format}</span>
                         </div>
+
+                        {/* El modo sin IA se DICE donde se decide (v4.798). El
+                            modo viaja con la configuración y Duplicar la
+                            conserva, así que «Fotográfico» puede llegar hasta
+                            acá sin que nadie lo haya elegido HOY — es
+                            exactamente como una campaña salió con las fotos
+                            paseando bajo la cámara, rotulada «Reel listo», sin
+                            que el usuario supiera por qué. La casilla del modo
+                            ya lo muestra arriba; esto lo repite en el momento
+                            de gastar el gesto, que es cuando se lee. */}
+                        {config.motionStyle === 'fotografico' && (
+                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3">
+                                <p className="text-[10px] font-bold text-amber-300 leading-relaxed">
+                                    Este Reel se generará <span className="uppercase">sin animación IA</span> (modo
+                                    Fotográfico): cada foto se moverá desplazando el encuadre, pero la escena
+                                    no cobrará vida. Para que las fotos se animen, elegí «Escena viva — IA»
+                                    en el modo de animación.
+                                </p>
+                            </div>
+                        )}
 
                         <button
                             onClick={handleGenerate}
