@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.794.0",
-  "cache_bust": "2026-08-14g (Emergencia sin rotulos ni tarjeta de cierre, y un rostro mal medido ya no descarta la escena animada.)",
+  "version": "4.795.0",
+  "cache_bust": "2026-08-14h (Las dos ultimas senales que descartaban solas ahora piden corroboracion: la escena animada llega.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

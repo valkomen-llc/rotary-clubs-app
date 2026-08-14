@@ -48,6 +48,10 @@ const frame = (o = {}) => ({
     ...o
 });
 const three = (first = {}) => [frame(first), frame(), frame()];
+// Desde v4.795 una señal explícita necesita verse en DOS fotogramas: la deriva
+// de un motor generativo es persistente, así que un `true` suelto es tan
+// probable que venga de la duda del modelo como del clip.
+const dos = (o = {}) => [frame(o), frame(o), frame()];
 const PEOPLE = { hasPeople: true, personCount: 4 };
 
 console.log('\n── Fidelidad humana: el criterio ──');
@@ -55,7 +59,7 @@ console.log('\n── Fidelidad humana: el criterio ──');
 // El caso reportado: nota alta y aun así un rostro de más. Es exactamente lo
 // que no se medía hasta v4.704, y por eso una escena así pasaba con 8/10.
 check('nota 8 con un sujeto nuevo → falla',
-    buildPeopleReport(three({ score: 8, newSubjects: true }), PEOPLE).verdict === 'failed');
+    buildPeopleReport(dos({ score: 8, newSubjects: true }), PEOPLE).verdict === 'failed');
 
 check('escena limpia → verificada',
     buildPeopleReport(three(), PEOPLE).verdict === 'ok');
@@ -103,23 +107,47 @@ check('un -2 en un fotograma también',
 
 // Las otras puertas NO se tocaron: son señales explícitas del modelo, no
 // aritmética de conteo.
-check('un sujeto nuevo declarado descalifica sin corroboración ninguna',
-    buildPeopleReport([frame(), frame(), frame({ newSubjects: true })], PEOPLE).verdict === 'failed');
-check('la oclusión rota sigue descalificando sola',
-    buildPeopleReport([frame(), frame(), frame({ occlusionBroken: true })], PEOPLE).verdict === 'failed');
+// ── CAMBIO DE SIGNO DELIBERADO (v4.795) ──
+//
+// Estas dos decían que una señal explícita descalifica vista en UN fotograma.
+// Es la cuarta puerta con la misma forma —tras el recuento, el texto y los
+// rostros—: una pregunta binaria que el modelo contesta sobre la composición
+// reducida a 640 px, y en una escena de emergencia con figuras pequeñas y a
+// contraluz un `true` suelto es tan probable que venga de su duda como del
+// clip. La deriva de un motor generativo es persistente: si inventó a alguien,
+// se queda. Exigir DOS fotogramas no deja pasar el defecto real.
+check('un sujeto nuevo en UN solo fotograma es ruido de lectura',
+    buildPeopleReport([frame(), frame(), frame({ newSubjects: true })], PEOPLE).verdict === 'ok');
+check('...y se DICE que se vio, no se esconde',
+    buildPeopleReport([frame(), frame(), frame({ newSubjects: true })], PEOPLE).signalNoise === true);
+check('un sujeto nuevo en DOS fotogramas sí descalifica',
+    buildPeopleReport(dos({ newSubjects: true }), PEOPLE).verdict === 'failed');
+check('una oclusión rota en UN fotograma es ruido',
+    buildPeopleReport([frame(), frame(), frame({ occlusionBroken: true })], PEOPLE).verdict === 'ok');
+check('en DOS sí descalifica',
+    buildPeopleReport(dos({ occlusionBroken: true }), PEOPLE).verdict === 'failed');
+
+// La foto SIN personas no necesita corroboración: nadie confunde una escena
+// vacía con una habitada, y es la exigencia expresa del cliente.
+check('en una foto VACÍA basta un fotograma con alguien',
+    buildPeopleReport([emptyFrame({ newSubjects: true }), emptyFrame(), emptyFrame()], EMPTY).verdict === 'failed');
 
 // Contar catorce cabezas no lo hace bien ningún modelo de visión: en multitud
 // el recuento no puede decidir solo, o se regenerarían escenas perfectas.
 const crowd = { hasPeople: true, personCount: 14 };
 check('multitud: +1 sobre 14 NO descalifica',
     buildPeopleReport(three({ peopleLeft: 14, peopleRight: 15 }), crowd).verdict === 'ok');
-check('multitud: la señal explícita SÍ descalifica',
-    buildPeopleReport(three({ peopleLeft: 14, peopleRight: 15, newSubjects: true }), crowd).verdict === 'failed');
+check('multitud: la señal explícita corroborada SÍ descalifica',
+    buildPeopleReport([
+        frame({ peopleLeft: 14, peopleRight: 15, newSubjects: true }),
+        frame({ peopleLeft: 14, peopleRight: 15, newSubjects: true }),
+        frame({ peopleLeft: 14, peopleRight: 14 })
+    ], crowd).verdict === 'failed');
 check('multitud: se declara que el recuento no decide',
     buildPeopleReport(three({ peopleLeft: 14, peopleRight: 14 }), crowd).countReliable === false);
 
-check('oclusión rota → falla',
-    buildPeopleReport(three({ occlusionBroken: true }), PEOPLE).verdict === 'failed');
+check('oclusión rota corroborada → falla',
+    buildPeopleReport(dos({ occlusionBroken: true }), PEOPLE).verdict === 'failed');
 check('rostros inconsistentes (4/10) → falla',
     buildPeopleReport(three({ faceConsistency: 4 }), PEOPLE).verdict === 'failed');
 
@@ -139,7 +167,7 @@ check('los seis indicadores viajan en el informe',
     ['countStable', 'identitiesPreserved', 'occlusionsPreserved', 'facesConsistent', 'noNewSubjects', 'clipSeen']
         .every(k => k in r), JSON.stringify(Object.keys(r)));
 check('un fallo lleva su motivo escrito',
-    typeof buildPeopleReport(three({ newSubjects: true }), PEOPLE).reason === 'string');
+    typeof buildPeopleReport(dos({ newSubjects: true }), PEOPLE).reason === 'string');
 
 console.log('\n── Quién NO estaba vs cómo está DIBUJADO (v4.794) ──');
 
@@ -155,14 +183,16 @@ check('...pero NO es una persona inventada: el clip animado se conserva',
     buildPeopleReport(three({ faceConsistency: 2 }), PEOPLE).invented === false);
 
 // Lo que sí responde «quién está en el cuadro» descalifica como siempre.
-check('un sujeto nuevo SÍ es invención',
-    buildPeopleReport(three({ newSubjects: true }), PEOPLE).invented === true);
-check('la oclusión rota SÍ: revela a alguien que la foto tapa',
-    buildPeopleReport(three({ occlusionBroken: true }), PEOPLE).invented === true);
+check('un sujeto nuevo corroborado SÍ es invención',
+    buildPeopleReport(dos({ newSubjects: true }), PEOPLE).invented === true);
+check('la oclusión rota corroborada SÍ: revela a alguien que la foto tapa',
+    buildPeopleReport(dos({ occlusionBroken: true }), PEOPLE).invented === true);
 check('un recuento corroborado que crece SÍ',
     buildPeopleReport([frame(), frame({ peopleRight: 5 }), frame({ peopleRight: 5 })], PEOPLE).invented === true);
 check('de cero a uno SÍ, sin corroboración',
     buildPeopleReport([emptyFrame(), emptyFrame(), emptyFrame({ peopleRight: 1 })], EMPTY).invented === true);
+check('una escena vacía que se puebla en un solo fotograma también',
+    buildPeopleReport([emptyFrame({ newSubjects: true }), emptyFrame(), emptyFrame()], EMPTY).invented === true);
 check('un ±1 de ruido no es invención',
     buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).invented === false);
 check('una escena limpia tampoco',

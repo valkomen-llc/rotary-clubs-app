@@ -1048,8 +1048,34 @@ export const buildPeopleReport = (semantics, analysis) => {
         : null;
     const clipSeen = worstFrame ? worstFrame.peopleRight : null;
 
-    const newSubjects = semantics.some(s => s.newSubjects === true);
-    const occlusionBroken = semantics.some(s => s.occlusionBroken === true);
+    // ── También estas dos señales piden CORROBORACIÓN (v4.795) ──
+    //
+    // Es la cuarta puerta con la misma forma —tras el recuento (v4.787), el
+    // texto (v4.790) y los rostros (v4.794)—: una pregunta binaria que el
+    // modelo contesta mirando la composición lado a lado reducida a 640 px. En
+    // una escena de emergencia, con nueve o trece figuras pequeñas y a
+    // contraluz, «¿aparece alguien que no estaba?» y «¿se destapó algo?» son
+    // juicios difíciles, y un `true` suelto en uno de tres fotogramas es tan
+    // probable que venga de la duda del modelo como del clip.
+    //
+    // Y la deriva de un motor generativo es PROGRESIVA y persistente: un sujeto
+    // que el motor inventa no aparece en un fotograma y desaparece en el
+    // siguiente, se queda. Así que exigir que se vea en DOS no deja pasar el
+    // defecto real y sí descarta la duda de una sola lectura.
+    //
+    // La excepción es la foto SIN personas: ahí basta un fotograma. Nadie
+    // confunde una escena vacía con una habitada, y es la exigencia expresa del
+    // cliente —«si la fotografía tiene 0 personas, el video debe mantener 0»—.
+    const framesSinSujeto = semantics.filter(s => s.newSubjects === true).length;
+    const framesConOclusion = semantics.filter(s => s.occlusionBroken === true).length;
+    const fotoVacia = Number(analysis?.personCount) === 0
+        || (withCount.length > 0 && withCount.every(s => s.peopleLeft === 0));
+    const CORROBORACION = fotoVacia ? 1 : 2;
+    const newSubjects = framesSinSujeto >= CORROBORACION;
+    const occlusionBroken = framesConOclusion >= CORROBORACION;
+    // Lo que se vio una sola vez no se esconde: se declara como lo que es.
+    const signalNoise = (framesSinSujeto > 0 && !newSubjects)
+        || (framesConOclusion > 0 && !occlusionBroken);
     const faces = semantics.map(s => s.faceConsistency).filter(v => v != null);
     const faceConsistency = faces.length ? Math.min(...faces) : null;
 
@@ -1141,6 +1167,12 @@ export const buildPeopleReport = (semantics, analysis) => {
         countStable: worstDelta != null ? !(countGrew || countShrank) : null,
         // ...pero el desvío no se esconde: se dice que hubo y que no contó.
         countNoise: worstDelta != null && worstDelta !== 0 && !(countGrew || countShrank),
+        // Una señal explícita que se vio en UN solo fotograma y no se
+        // corroboró. Se dice, igual que el desvío de recuento: esconderla es el
+        // defecto opuesto al de descartar por ruido.
+        signalNoise,
+        framesWithNewSubjects: framesSinSujeto,
+        framesWithOcclusion: framesConOclusion,
         identitiesPreserved: newSubjects ? false : (countGrew || countShrank ? false : true),
         occlusionsPreserved: semantics.some(s => s.occlusionBroken != null) ? !occlusionBroken : null,
         facesConsistent: faceConsistency != null ? !facesBroken : null,

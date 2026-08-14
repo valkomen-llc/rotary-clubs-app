@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.794.0 | 2026-08-14 (Emergencia con la configuración del Reel estándar)
-// Cache bust: 2026-08-14g
+// UI V4.795.0 | 2026-08-14 (Una lectura suelta ya no descarta la escena animada)
+// Cache bust: 2026-08-14h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.795.0',
+        title: 'Una lectura suelta ya no descarta la escena animada 🎥',
+        description: 'La versión anterior dejó pasar la escena animada cuando el defecto era de calidad —un logotipo redibujado, un rostro mal medido—, y se notó: en la última prueba una de las cuatro escenas llegó animada con 90 % de vida, con su fidelidad humana verificada, y se conservó pese a tener la identidad visual alterada. Las otras tres cayeron por las dos únicas señales que todavía descalificaban con una sola lectura: «aparece alguien que no está en la foto» y «el clip destapó algo que la foto mantiene oculto». Son preguntas que el modelo responde mirando una composición reducida, y en una escena de emergencia —figuras pequeñas, a contraluz, entre escombros— una respuesta suelta en uno de tres fotogramas es tan probable que venga de su duda como del video. Ahora se exige verlo en DOS fotogramas, que es el mismo criterio que ya se aplicó al recuento de personas, al texto y a los rostros. El razonamiento es el mismo en los cuatro casos: cuando un motor generativo inventa algo, no lo hace aparecer y desaparecer entre fotogramas — se queda, así que pedir corroboración no deja pasar el defecto real. Y lo que no cambia: si la fotografía NO tiene personas, basta un solo fotograma con alguien para descartar la escena. Esa regla sigue siendo absoluta.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'emergencias', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: '«Aparece alguien que no está» exige verse en dos fotogramas: una lectura suelta ya no descarta la escena.' },
+            { type: 'fixed', text: 'Lo mismo para «el clip destapó algo oculto», por el mismo motivo de medición.' },
+            { type: 'changed', text: 'En una foto SIN personas basta un fotograma: esa regla sigue siendo absoluta.' },
+            { type: 'improved', text: 'La señal vista una sola vez se declara igual en la ficha, en vez de esconderse.' },
+        ]
+    },
     {
         version: '4.794.0',
         title: 'La Campaña de Emergencia se arma como el Reel estándar 🎬',
