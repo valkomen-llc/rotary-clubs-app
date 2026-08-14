@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.794
+## Creador de Reels IA — v4.795
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1219,6 +1219,35 @@ fuera un video».
   v4.790 el texto, v4.792 el destino de lo descalificado. En las tres, un
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
+
+### La cuarta puerta con la misma forma (v4.795)
+
+Con v4.794 la escena con la marca alterada llegó ANIMADA —90 % de vida,
+fidelidad humana verificada, clip conservado—: la corrección funcionó. Las otras
+tres cayeron por las dos únicas señales que aún descalificaban con UNA lectura:
+`newSubjects` y `occlusionBroken`.
+
+- **Una señal explícita en UN solo fotograma es ruido de lectura.** Son
+  preguntas binarias que el modelo contesta sobre la composición lado a lado
+  reducida a 640 px, y en una escena de emergencia —figuras pequeñas, a
+  contraluz, entre escombros— un `true` suelto es tan probable que venga de su
+  duda como del clip. Se exige verlo en DOS fotogramas.
+- **El argumento que lo hace seguro: la deriva de un motor generativo es
+  PERSISTENTE.** Un sujeto inventado no aparece en un fotograma y desaparece en
+  el siguiente, se queda. Así que la corroboración no deja pasar el defecto real
+  y sí descarta la duda de una sola lectura.
+- **La foto SIN personas no necesita corroboración.** Cualquier aparición en un
+  solo fotograma descalifica: nadie confunde una escena vacía con una habitada,
+  y es la exigencia expresa del cliente. `personCount === 0` —o todos los
+  fotogramas con `peopleLeft === 0`— baja la corroboración a 1.
+- **Lo visto una sola vez se DICE** (`signalNoise`), como `countNoise` y
+  `text.noise`.
+- **Van CUATRO puertas con la misma forma**: el recuento (v4.787), el texto
+  (v4.790), los rostros (v4.794) y estas dos (v4.795). Todas eran una medida
+  tomada por un modelo de visión sobre una imagen reducida, y todas entregaban
+  otra cosa en silencio en vez de fallar ruidosamente. Al añadir una puerta que
+  descalifique sin apelación, la pregunta obligatoria es cuál es su ruido de
+  medición y cuántas escenas legítimas alcanza.
 
 ### Quién NO estaba vs cómo está DIBUJADO (v4.794)
 
