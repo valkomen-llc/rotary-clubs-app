@@ -25,6 +25,11 @@
 import { buildPeopleReport, judgeTextFidelity, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
 import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS, MOTION_NEGATIVE_TERMS, MOTION_INTENSITY } from '../server/lib/reelSpec.js';
 import { resolveEditFps } from '../server/lib/reelRenderProviders.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 let pass = 0, fail = 0;
 const check = (name, cond, extra = '') => {
@@ -135,6 +140,40 @@ check('los seis indicadores viajan en el informe',
         .every(k => k in r), JSON.stringify(Object.keys(r)));
 check('un fallo lleva su motivo escrito',
     typeof buildPeopleReport(three({ newSubjects: true }), PEOPLE).reason === 'string');
+
+console.log('\n── Quién NO estaba vs cómo está DIBUJADO (v4.794) ──');
+
+// `verdict` junta seis comprobaciones, y v4.792 lo tomó ENTERO para decidir si
+// una escena se sustituye por la fotografía en movimiento. El resultado: tres
+// de cuatro escenas sustituidas por «los rostros no se conservan (2/10)» — una
+// nota de un modelo mirando caras diminutas dentro de una composición reducida
+// a 640 px, que es la misma limitación de medición ya corregida para el
+// logotipo (v4.715) y para el texto (v4.790).
+check('un rostro inconsistente SIGUE siendo un defecto...',
+    buildPeopleReport(three({ faceConsistency: 2 }), PEOPLE).verdict === 'failed');
+check('...pero NO es una persona inventada: el clip animado se conserva',
+    buildPeopleReport(three({ faceConsistency: 2 }), PEOPLE).invented === false);
+
+// Lo que sí responde «quién está en el cuadro» descalifica como siempre.
+check('un sujeto nuevo SÍ es invención',
+    buildPeopleReport(three({ newSubjects: true }), PEOPLE).invented === true);
+check('la oclusión rota SÍ: revela a alguien que la foto tapa',
+    buildPeopleReport(three({ occlusionBroken: true }), PEOPLE).invented === true);
+check('un recuento corroborado que crece SÍ',
+    buildPeopleReport([frame(), frame({ peopleRight: 5 }), frame({ peopleRight: 5 })], PEOPLE).invented === true);
+check('de cero a uno SÍ, sin corroboración',
+    buildPeopleReport([emptyFrame(), emptyFrame(), emptyFrame({ peopleRight: 1 })], EMPTY).invented === true);
+check('un ±1 de ruido no es invención',
+    buildPeopleReport([frame(), frame(), frame({ peopleRight: 5 })], PEOPLE).invented === false);
+check('una escena limpia tampoco',
+    buildPeopleReport(three(), PEOPLE).invented === false);
+
+// El controlador tiene que decidir por `invented`, no por el veredicto entero.
+{
+    const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+    check('la sustitución se decide por `invented`, no por `people.verdict`',
+        /esInvencionHumana = \(sc\) => sc\.fidelity\?\.people\?\.invented === true/.test(ctrl));
+}
 
 console.log('\n── Texto: la proporción de palabras no descalifica sola (v4.790) ──');
 

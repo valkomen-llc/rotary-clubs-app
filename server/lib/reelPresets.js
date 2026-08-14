@@ -201,8 +201,30 @@ export const REEL_PRESETS = {
         musicStyle: 'institucional',
         narrationStyle: 'institucional',
 
-        onScreenText: true,
-        closingCard: true,
+        // ── Sin rótulos ni tarjeta de cierre (v4.794) ──
+        //
+        // Se apagan por DOS motivos y los dos bastan por separado.
+        //
+        // 1. El cliente los pidió fuera, con la captura delante: «a lo último
+        //    del video aparece una escena azul con la rueda de Rotary, quita
+        //    esto», y pidió que la campaña de emergencia se arme con la misma
+        //    configuración del Reel estándar — que no lleva ninguno de los dos.
+        //
+        // 2. Y aunque no los hubiera pedido fuera, hoy salen ILEGIBLES. El
+        //    texto se compone con sharp rasterizando un SVG, y eso necesita una
+        //    fuente del SISTEMA: en el entorno de Vercel NO HAY NINGUNA
+        //    instalada, así que cada glifo se dibuja como un cuadrito. Se ve en
+        //    las capturas del reporte, tanto en la tarjeta de cierre como en
+        //    los rótulos sobre las fotos. Publicar texto en cuadritos es peor
+        //    que no publicar texto.
+        //
+        // Para volver a encenderlos hay que resolver ANTES la fuente: empaquetar
+        // un .ttf en el repositorio y apuntarle `FONTCONFIG_PATH`, o convertir
+        // el texto a trazos. Mientras eso no esté, encenderlos devuelve los
+        // cuadritos. La maquinaria de `reelTextOverlay.js` y `reelSceneText.js`
+        // se conserva entera: lo que cambia es que este preset no la usa.
+        onScreenText: false,
+        closingCard: false,
 
         // ── La expansión de lienzo es OBLIGATORIA acá ──
         //
