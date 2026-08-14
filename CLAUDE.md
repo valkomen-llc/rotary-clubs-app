@@ -4385,7 +4385,7 @@ sin pasar por esta capa y van siempre en español. Para traducirlos hay que
 llamar a `translateBatch` desde el propio envío, con el idioma que el visitante
 dejó en la cookie `site_language`.
 
-## La pantalla en blanco del panel — v4.789
+## La pantalla en blanco del panel — v4.791
 
 Reporte: «cada vez que intento ingresar al administrador de contenidos la página
 se queda en blanco; tengo que cargarla de manera forzada varias veces». Es la
@@ -4441,6 +4441,19 @@ Pruebas: `npm run test:spa` (39 casos; la parte de navegador pide `playwright` y
 - **Ningún `React.lazy` a secas.** Al agregar una página, usar `lazyWithRetry`
   —lo comprueba `test:spa` contando: la conversión no puede quedar a medias, y
   una sola página cruda reintroduce el defecto justo en esa pantalla.
+- **Un 404 limpio NO rescata a la pestaña que ya tenía el documento viejo**
+  (v4.791, `reloadShim`). `no-store` protege de ahí en adelante; quien ya tenía
+  guardado el documento anterior sigue pidiendo archivos de una versión que no
+  existe, y el código que sabría recuperarse vive DENTRO del archivo que no
+  llega. Lo único que ese navegador va a ejecutar es lo que se le devuelva en
+  lugar del módulo, así que se le devuelve un módulo mínimo que recarga. Va con
+  **200** a propósito —el navegador no ejecuta el cuerpo de un 404— y sólo para
+  `Sec-Fetch-Dest: script`: una imagen o una hoja de estilos siguen dando 404,
+  ahí no hay nada que rescatar. Comprobado de punta a punta en un navegador: la
+  pestaña vieja recarga una vez y entra.
+- **El rescate comparte el contador con el cliente** (`app:chunk-reloads`). Con
+  dos frenos independientes se sumarían y volvería el bucle que el freno existe
+  para impedir; agotado, el módulo LANZA y el error llega al límite.
 - **Un fallo que se ve y se explica es aceptable; uno mudo, no.**
   `ChunkErrorBoundary` va dentro del enrutador y por fuera del `<Suspense>`, así
   que conserva la navegación: quien lo vea puede irse a otra sección sin

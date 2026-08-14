@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
-import { isBuildAssetPath } from '../server/lib/staticAssets.js';
+import { isBuildAssetPath, isBuildScriptPath, reloadShim } from '../server/lib/staticAssets.js';
 import prisma from '../server/lib/prisma.js';
 import Stripe from 'stripe';
 import authRoutes from '../server/routes/auth.js';
@@ -433,6 +433,27 @@ app.get('*', async (req, res) => {
     // Con un 404 de verdad el cliente puede atraparlo y recuperarse solo.
     if (isBuildAssetPath(req.path)) {
         res.setHeader('Cache-Control', 'no-store');
+
+        // ── Rescate de una pestaña con el documento viejo en caché (v4.791) ──
+        //
+        // El 404 limpio corrige el diagnóstico pero no rescata a quien YA tenía
+        // guardado el documento anterior a v4.789 —el que se servía sin
+        // instrucciones de caché—: esa pestaña sigue pidiendo archivos de una
+        // versión que no existe y se queda en blanco igual, porque el código
+        // que sabría recuperarse vive justamente en el archivo que no llega.
+        //
+        // Lo único que ese navegador va a ejecutar es lo que le devolvamos en
+        // el lugar del módulo. Se le devuelve un módulo mínimo que recarga: la
+        // recarga trae el documento nuevo, que ya no se cachea, y con él los
+        // archivos que sí existen.
+        //
+        // Sólo para peticiones de PROGRAMA (`Sec-Fetch-Dest: script`), que son
+        // las de un `<script type="module">` o un `import()`. Una imagen o una
+        // hoja de estilos siguen dando 404: ahí no hay nada que rescatar.
+        if (isBuildScriptPath(req.path) && req.get('sec-fetch-dest') === 'script') {
+            return res.status(200).type('application/javascript').send(reloadShim());
+        }
+
         return res.status(404).type('text/plain')
             .send('Archivo no encontrado. Probablemente pertenece a una versión anterior del sitio.');
     }

@@ -73,10 +73,13 @@ console.log('\n▸ El servidor: 404 de verdad, y el documento sin caché');
 
 {
     const api = readFileSync(path.join(root, 'api/index.js'), 'utf8');
+    // La ventana es ancha a propósito: entre la comprobación y el 404 vive el
+    // comentario del rescate de v4.791, y una ventana justa se rompe cada vez
+    // que alguien explica algo ahí en medio.
     check('el catch-all devuelve 404 para un archivo que no existe',
-        /isBuildAssetPath\(req\.path\)[\s\S]{0,400}res\.status\(404\)/.test(api));
+        /isBuildAssetPath\(req\.path\)[\s\S]{0,2200}res\.status\(404\)/.test(api));
     check('...y NO como HTML: quien lo pide espera un módulo',
-        /isBuildAssetPath\(req\.path\)[\s\S]{0,400}type\('text\/plain'\)/.test(api));
+        /isBuildAssetPath\(req\.path\)[\s\S]{0,2400}type\('text\/plain'\)/.test(api));
     // Se compara contra la LLAMADA, no contra la mención: el comentario que
     // explica el catch-all nombra `renderPublicDocument` mucho antes.
     check('...antes de servir el documento, o no serviría de nada',
@@ -212,6 +215,95 @@ createRoot(document.getElementById('root')!).render(
             recargas === 1, `cargas de página: ${recargas}`);
         check('no quedó ninguna recarga anotada',
             await page.evaluate(() => sessionStorage.getItem('app:chunk-reloads')) === null);
+
+        await browser.close();
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ El rescate de una pestaña con el documento viejo en caché (v4.791)');
+
+{
+    const { isBuildScriptPath, reloadShim } = await import('../server/lib/staticAssets.js');
+
+    check('un programa del build se distingue del resto de los archivos',
+        isBuildScriptPath('/assets/ContentStudio-a1b2.js') === true
+        && isBuildScriptPath('/assets/index-9f8e.css') === false
+        && isBuildScriptPath('/assets/logo.svg') === false);
+    check('sólo bajo /assets/: no se rescata cualquier .js del sitio',
+        isBuildScriptPath('/algo.js') === false);
+    check('el rescate lleva su propio freno, compartido con el del cliente',
+        /app:chunk-reloads/.test(reloadShim()) && /location\.reload\(\)/.test(reloadShim()));
+    check('...y agotado el freno LANZA, para que no gire para siempre',
+        /throw new Error/.test(reloadShim()));
+
+    const api = readFileSync(path.join(root, 'api/index.js'), 'utf8');
+    check('sólo se rescata una petición de PROGRAMA, no una imagen ni una hoja de estilos',
+        /sec-fetch-dest'\) === 'script'/.test(api));
+    check('el rescate va con 200: el navegador no ejecuta el cuerpo de un 404',
+        /isBuildScriptPath\(req\.path\)[\s\S]{0,200}status\(200\)[\s\S]{0,80}application\/javascript/.test(api));
+
+    let playwright = null;
+    try { playwright = await import('playwright'); } catch { /* opcional */ }
+    const dist = path.join(root, 'dist/index.html');
+    let hayDist = true;
+    try { readFileSync(dist); } catch { hayDist = false; }
+
+    if (!playwright || !hayDist) {
+        console.log('  SALTA — hace falta playwright y un `dist/` construido.');
+    } else {
+        // La pestaña vieja: un documento que pide un programa que ya no existe.
+        // Es exactamente lo reportado, y lo único que puede rescatarlo es lo
+        // que el servidor devuelva en lugar de ese programa.
+        const real = readFileSync(dist, 'utf8');
+        let servidas = 0;
+        const browser = await playwright.chromium.launch({
+            executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+        }).catch(() => playwright.chromium.launch());
+        const page = await browser.newPage();
+
+        let cargas = 0;
+        page.on('load', () => { cargas++; });
+
+        await page.route('**/*', async route => {
+            const url = new URL(route.request().url());
+            if (url.pathname === '/') {
+                servidas++;
+                // La PRIMERA vez, el documento viejo. La segunda —tras la
+                // recarga— el de verdad, que es lo que pasa en producción
+                // ahora que el documento se sirve con `no-store`.
+                return route.fulfill({
+                    status: 200, contentType: 'text/html',
+                    headers: { 'cache-control': 'no-store' },
+                    body: servidas === 1
+                        ? '<!doctype html><html><body><div id="root"></div>'
+                          + '<script type="module" src="/assets/VIEJO-abc123.js"></script></body></html>'
+                        : '<!doctype html><html><body><div id="root">'
+                          + '<h1 id="vivo">Panel cargado</h1></div></body></html>',
+                });
+            }
+            if (url.pathname === '/assets/VIEJO-abc123.js') {
+                return route.fulfill({
+                    status: 200, contentType: 'application/javascript',
+                    headers: { 'cache-control': 'no-store' },
+                    body: reloadShim(),
+                });
+            }
+            return route.fulfill({ status: 404, body: '' });
+        });
+
+        await page.goto('http://localhost/');
+        await page.waitForSelector('#vivo', { timeout: 8000 }).catch(() => { });
+
+        check('la pestaña vieja se recarga sola y termina cargando el panel',
+            await page.locator('#vivo').count() === 1);
+        // Lo que importa es que NO gire: el documento se pide dos veces —la
+        // vieja y la nueva— y ahí termina. El contador de `load` del navegador
+        // no es fiable acá, porque la recarga puede reemplazar la página antes
+        // de que la primera carga llegue a emitirlo.
+        check('...sin bucle: la recarga ocurre una vez y para', cargas <= 2, `cargas: ${cargas}`);
+        check('...y el documento se pidió dos veces: la vieja y la nueva',
+            servidas === 2, `documentos servidos: ${servidas}`);
 
         await browser.close();
     }
