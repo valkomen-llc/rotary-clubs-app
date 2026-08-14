@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.799.0",
-  "cache_bust": "2026-08-14l (La expansion no agrega ni duplica personas, la direccion de la accion se juzga sobre la secuencia, el borde negro de la banda se detecta y un Reel en revision no dice listo.)",
+  "version": "4.800.0",
+  "cache_bust": "2026-08-14m (La escena pendiente se despacha con reclamo: ni Reels pegados en 53 por ciento ni escenas cobradas dos veces.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
