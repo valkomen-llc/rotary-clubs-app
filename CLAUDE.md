@@ -1220,6 +1220,37 @@ fuera un video».
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
 
+### El despacho de una escena lleva RECLAMO (v4.800)
+
+Del reporte «se queda pegado en 53 % y consume todos los créditos» — dos
+defectos con la misma raíz, presentes desde el origen del módulo y
+manifestándose al azar según qué vía ganara la carrera:
+
+- **Una escena `pending` SIN `kieJobId` la despacha `advanceScene`**
+  (`dispatchPendingScene`), no sólo el bloque de expansión. Hasta v4.799
+  `advanceScene` la devolvía intacta («no hay tarea que sondear») y el único
+  despacho post-adaptación vivía dentro del `if (expanding.length)`: si fallaba
+  una vez —o la invocación moría entre adaptar y despachar—, ningún tick la
+  retomaba y el Reel quedaba clavado en «Generando escenas» para siempre.
+  Agotados los intentos queda `error` CON el motivo del proveedor: un error
+  visible se arregla; un «pendiente» eterno sólo se puede mirar.
+- **El reclamo optimista va sobre `attempts`, NO sobre `updatedAt`**: el driver
+  de pg trunca los microsegundos del timestamp y la igualdad no casaría nunca.
+  `attempts` es un entero exacto: dos vueltas leen el mismo valor y sólo la que
+  gana el `UPDATE ... AND attempts = $n` crea la tarea.
+- **TODO punto que crea una tarea de video reclama la fila**: el despacho de la
+  escena pendiente, la finalización de la expansión (`AND "expansionTaskId" =
+  $2` — la descarga del clip ya lo tenía con `ingestScene` y la expansión no) y
+  el relanzamiento tras un fallo de tarea. Sin candado, el sondeo cada 3 s, el
+  cron y el webhook creaban DOS tareas para la misma escena: dos cobros. Al
+  agregar una vía que gaste créditos, preguntarse quién más puede llegar a la
+  vez.
+- **Un reclamo que murió a mitad se rescata con ventana** (5 min, la misma de
+  `ingestScene`): una escena `expanding` sin `expansionTaskId` es una vuelta
+  que reclamó y no terminó — pasada la ventana se degrada a `pending` y se
+  anima la imagen que haya. Un candado sin salida de emergencia convierte un
+  crash en un cuelgue eterno.
+
 ### La dirección es TEMPORAL y el lienzo también miente (v4.799)
 
 Del reporte con los dos clips delante: la entrega seguía invirtiéndose con

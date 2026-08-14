@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.799.0 | 2026-08-14 (La dirección se juzga sobre la secuencia)
-// Cache bust: 2026-08-14l
+// UI V4.800.0 | 2026-08-14 (Ni Reels pegados ni escenas cobradas dos veces)
+// Cache bust: 2026-08-14m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.800.0',
+        title: 'Ni Reels pegados en 53 % ni escenas cobradas dos veces 🔒',
+        description: 'Diagnóstico del reporte «se queda pegado en el 53 % y consume todos los créditos»: eran DOS defectos con la misma raíz, presentes desde el origen del módulo, y se manifestaban al azar según qué proceso ganara la carrera — por eso un video salía bien y el siguiente mal. UNO: una escena que quedaba «Pendiente» sin tarea creada en el proveedor no la retomaba nadie. El único punto que la despachaba después de adaptar su lienzo vivía dentro del paso de adaptación: si ese despacho fallaba una sola vez (un error pasajero del proveedor, o la función muriendo justo entre adaptar y despachar), ningún sondeo posterior lo reintentaba y el Reel quedaba clavado en «Generando escenas» para siempre, con las otras escenas ya pagadas. Ahora el sondeo despacha cualquier escena pendiente sin tarea, con reintentos contados: si el proveedor rechaza varias veces, la escena queda en error CON el motivo del proveedor a la vista — un error visible se arregla; un «pendiente» eterno sólo se puede mirar. DOS: ese despacho, la finalización de la adaptación y el relanzamiento tras un fallo no tenían candado. El sondeo del navegador (cada 3 segundos), el cron (cada minuto) y el webhook de KIE podían ver la misma escena lista A LA VEZ y cada uno creaba su propia tarea de video: dos tareas, dos cobros por la misma escena. Ahora los tres puntos toman la fila con un UPDATE condicional —el mismo candado que ya protege la descarga del clip y el montaje— y sólo el primero paga; los demás se van sin gastar nada. El Reel que quedó pegado se recupera solo: el barrido lo retoma y despacha la escena que faltaba.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'creditos', 'estabilidad'],
+        type: 'fixed',
+        impact: 'Crítico',
+        changes: [
+            { type: 'fixed', text: 'Una escena pendiente sin tarea se despacha en el siguiente sondeo: se acabó el Reel clavado en «Generando escenas».' },
+            { type: 'fixed', text: 'El despacho, la adaptación y el relanzamiento llevan candado: una escena ya no puede cobrarse dos veces por una carrera entre procesos.' },
+            { type: 'added', text: 'Si el proveedor rechaza el despacho varias veces, la escena queda en error con el motivo textual, no en «pendiente» para siempre.' },
+            { type: 'fixed', text: 'Una adaptación cuyo proceso murió a mitad se rescata sola tras 5 minutos, en vez de esperar eternamente.' },
+        ]
+    },
     {
         version: '4.799.0',
         title: 'La entrega no se invierte, nadie se duplica y sin líneas negras 🎯',

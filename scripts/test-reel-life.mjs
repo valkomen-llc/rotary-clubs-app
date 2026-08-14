@@ -185,6 +185,33 @@ console.log('\n▸ El cableado: la medición tiene que DECIDIR (leído sobre los
     }
 }
 
+console.log('\n▸ El Reel no se queda pegado ni paga dos veces (v4.800, leído sobre el controlador)');
+
+{
+    // El reporte: «se queda pegado en 53 % y consume todos los créditos». Dos
+    // defectos con la misma raíz — una escena `pending` sin tarea no la
+    // retomaba nadie, y la finalización de la expansión no tenía candado, así
+    // que el sondeo, el cron y el webhook podían despachar la MISMA escena a la
+    // vez: dos tareas de video, dos cobros.
+    const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+
+    check('una escena pendiente sin tarea SE DESPACHA en el sondeo, no se ignora',
+        /if \(!scene\.kieJobId\) return dispatchPendingScene\(scene\);/.test(ctrl));
+    check('el despacho lleva RECLAMO optimista sobre `attempts`',
+        /SET attempts = attempts \+ 1[\s\S]{0,120}AND attempts = \$2/.test(ctrl));
+    check('agotados los intentos queda en error CON motivo, no en pendiente eterno',
+        /no pudo despacharse al proveedor tras varios intentos/.test(ctrl));
+    check('la finalización de la expansión también reclama la fila',
+        /WHERE id = \$1 AND "expansionTaskId" = \$2/.test(ctrl));
+    check('un reclamo de expansión que murió se rescata tras la ventana',
+        /5 \* 60 \* 1000/.test(ctrl)
+        && /status = 'expanding' AND "expansionTaskId" IS NULL/.test(ctrl));
+    check('el relanzamiento por fallo de tarea también reclama',
+        /WHERE id = \$1 AND attempts = \$3/.test(ctrl));
+    check('el bloque de expansión despacha por la vía reclamada, no a pelo',
+        /ready\.map\(sc =>\s*\n\s*dispatchPendingScene\(/.test(ctrl));
+}
+
 console.log('\n▸ El modo sin IA no viaja en silencio (v4.798, leído sobre los archivos)');
 
 {

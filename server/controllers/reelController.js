@@ -105,7 +105,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.799.0';
+export const REEL_MODULE_VERSION = '4.800.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -735,10 +735,43 @@ const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings 
 // Hace avanzar la adaptación de UNA escena: consulta, descarga, verifica y
 // decide si vale o hay que rehacerla.
 const advanceSceneExpansion = async (scene, settings) => {
-    if (scene.status !== 'expanding' || !scene.expansionTaskId) return scene;
+    if (scene.status !== 'expanding') return scene;
+
+    // Una escena `expanding` SIN tarea es un reclamo que murió a mitad (v4.800):
+    // la vuelta que lo tomó limpió `expansionTaskId` y no llegó a escribir el
+    // resultado. Se le da la misma ventana de emergencia que `ingestScene` (5
+    // minutos) y después se degrada a `pending` — se anima la imagen que haya,
+    // adaptada o la original, en vez de esperar para siempre.
+    if (!scene.expansionTaskId) {
+        const ageMs = Date.now() - new Date(scene.updatedAt).getTime();
+        if (ageMs < 5 * 60 * 1000) return scene; // la que reclamó sigue trabajando
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending', "updatedAt" = NOW()
+              WHERE id = $1 AND status = 'expanding' AND "expansionTaskId" IS NULL RETURNING *`,
+            [scene.id]
+        );
+        return rows[0] || scene;
+    }
 
     const task = await pollExpansion(scene.expansionTaskId);
     if (task.state === 'queued' || task.state === 'running') return scene;
+
+    // ── RECLAMO de la finalización (v4.800) ──
+    //
+    // La descarga del clip ya lo tenía (`ingestScene`) y la expansión no: el
+    // sondeo cada 3 s, el cron y el webhook veían «success» a la vez, y cada
+    // uno descargaba, verificaba —una llamada de visión por cabeza— y
+    // despachaba el video. La fila la toma el primero; los demás se van sin
+    // gastar nada.
+    const { rows: claimedExp } = await db.query(
+        `UPDATE "ReelScene" SET "expansionTaskId" = NULL, "updatedAt" = NOW()
+          WHERE id = $1 AND "expansionTaskId" = $2 RETURNING id`,
+        [scene.id, scene.expansionTaskId]
+    );
+    if (!claimedExp.length) {
+        const { rows } = await db.query('SELECT * FROM "ReelScene" WHERE id = $1', [scene.id]);
+        return rows[0] || scene;
+    }
 
     const report = scene.expansionReport || {};
 
@@ -1632,14 +1665,76 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
     }
 };
 
-// Relanza una escena conservando su dirección.
+/**
+ * Despacha una escena `pending` SIN tarea en el proveedor, con RECLAMO (v4.800).
+ *
+ * Dos defectos reportados juntos («se queda pegado en 53 % y consume los
+ * créditos») y los dos viven acá:
+ *
+ *  · `advanceScene` ignoraba una escena sin `kieJobId`, y el único punto que
+ *    despachaba tras la adaptación estaba dentro del bloque de `expanding`:
+ *    si el despacho fallaba una vez —o la invocación moría entre adaptar y
+ *    despachar—, ningún tick posterior la retomaba y el Reel quedaba clavado
+ *    en «Generando escenas» con la escena en «Pendiente» para siempre.
+ *  · Ese despacho no tenía candado: el sondeo (cada 3 s), el cron y el webhook
+ *    podían ver la misma escena lista A LA VEZ y crear DOS tareas de video —
+ *    dos cobros por la misma escena.
+ *
+ * El reclamo optimista va sobre `attempts` porque es un entero exacto: dos
+ * vueltas leen el mismo valor y sólo la que gana el UPDATE condicional crea la
+ * tarea. (No sobre `updatedAt`: el driver de pg trunca los microsegundos y la
+ * igualdad no casaría nunca.) Agotados los intentos, la escena queda en
+ * `error` CON su motivo — un error visible se arregla; un «pendiente» eterno
+ * sólo se puede mirar.
+ */
+const dispatchPendingScene = async (scene, { engineId = null, model = null } = {}) => {
+    if (scene.status !== 'pending' || scene.kieJobId) return scene;
+
+    if (scene.attempts > MAX_AUTO_RETRIES) {
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'error',
+                 "statusDetail" = COALESCE("statusDetail", $2), "updatedAt" = NOW()
+              WHERE id = $1 AND status = 'pending' RETURNING *`,
+            [scene.id, 'La escena no pudo despacharse al proveedor tras varios intentos.']
+        );
+        return rows[0] || scene;
+    }
+
+    const { rows: claimed } = await db.query(
+        `UPDATE "ReelScene" SET attempts = attempts + 1, "updatedAt" = NOW()
+          WHERE id = $1 AND status = 'pending' AND "kieJobId" IS NULL AND attempts = $2
+          RETURNING *`,
+        [scene.id, scene.attempts]
+    );
+    if (!claimed.length) return scene; // otra vuelta la tomó: no se paga dos veces
+
+    try {
+        return await dispatchScene(claimed[0], {
+            engineId: engineId || claimed[0].engine,
+            model: model || claimed[0].engineModel
+        });
+    } catch (e) {
+        console.error(`[REEL] escena ${scene.id} no se pudo despachar:`, e.message);
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, `No se pudo crear la tarea en el proveedor: ${e.message}`]
+        );
+        return rows[0] || scene;
+    }
+};
+
+// Relanza una escena conservando su dirección. El `AND attempts = $3` es el
+// mismo reclamo optimista de `dispatchPendingScene` (v4.800): dos vueltas que
+// ven el mismo fallo de tarea a la vez relanzaban DOS veces — dos tareas, dos
+// cobros. Sólo la que gana el UPDATE despacha.
 const relaunchScene = async (scene, { auto = false, reason = null } = {}) => {
     const { rows } = await db.query(
         `UPDATE "ReelScene"
          SET attempts = attempts + 1, status = 'pending', "statusDetail" = $2, "updatedAt" = NOW()
-         WHERE id = $1 RETURNING *`,
-        [scene.id, auto ? `Reintento automático tras: ${reason}` : null]
+         WHERE id = $1 AND attempts = $3 RETURNING *`,
+        [scene.id, auto ? `Reintento automático tras: ${reason}` : null, scene.attempts]
     );
+    if (!rows.length) return scene; // otra vuelta la relanzó primero
     return dispatchScene(rows[0], { engineId: rows[0].engine, model: rows[0].engineModel });
 };
 
@@ -1648,7 +1743,12 @@ const advanceScene = async (scene) => {
     if (SCENE_STATUSES[scene.status]?.terminal) return scene;
     // La adaptación del lienzo la resuelve `advanceSceneExpansion`, antes.
     if (scene.status === 'expanding') return scene;
-    if (!scene.kieJobId) return scene;
+    // Sin tarea creada no hay nada que sondear — pero una escena `pending` sin
+    // tarea es una escena que NADIE despachó (v4.800): se despacha acá, con
+    // reclamo, en vez de devolverla intacta para siempre. Era el «pegado en
+    // 53 %» reportado: el despacho tras la adaptación falló una vez y ningún
+    // tick posterior lo reintentaba.
+    if (!scene.kieJobId) return dispatchPendingScene(scene);
 
     const task = await getKieVideoTask(scene.kieJobId);
 
@@ -2490,8 +2590,11 @@ const advance = async (project) => {
                 await appendNote(project.id, `Escena ${sc.position + 1}: ${r.reason}`);
             }
         }
+        // Con RECLAMO (v4.800): el sondeo, el cron y el webhook pasan por acá a
+        // la vez, y sin candado cada carrera creaba DOS tareas de video para la
+        // misma escena — dos cobros. `dispatchPendingScene` deja pasar a uno.
         await Promise.allSettled(ready.map(sc =>
-            dispatchScene(sc, { engineId: sc.engine || project.engine, model: sc.engineModel || project.engineModel })
+            dispatchPendingScene(sc, { engineId: sc.engine || project.engine, model: sc.engineModel || project.engineModel })
         ));
         // Estas escenas se despachan DESPUÉS de crear el Reel, así que su
         // consumo no estaba en el total que se calculó entonces.
