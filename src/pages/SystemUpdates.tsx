@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.801.0 | 2026-08-14 (Las reglas globales del cliente, aplicadas)
-// Cache bust: 2026-08-14n
+// UI V4.802.0 | 2026-08-14 (El logotipo se juzga donde está, y sólo si se ve)
+// Cache bust: 2026-08-14o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.802.0',
+        title: 'El logotipo se juzga donde está, y sólo si se ve 🔍',
+        description: 'Diagnóstico de las fichas del reporte: «San Simón HOTEL — 0/10 — el logotipo no es visible en ninguna de las imágenes», con el recorte mostrando BALDOSAS. Eran dos errores de medición encadenados que reprobaban escenas —y gastaban regeneraciones— por un defecto que nadie midió. UNO: las coordenadas de cada logotipo se detectan sobre la fotografía ORIGINAL, pero cuando la escena se anima desde el lienzo adaptado a 9:16, el clip tiene otra geometría (la foto vive centrada, con áreas nuevas alrededor) — aplicar las coordenadas crudas recortaba otro lugar de la imagen. Ahora las regiones se REMAPEAN con la geometría exacta que guardó la verificación de la adaptación, así que el recorte cae sobre el logotipo de verdad. DOS: cuando el modelo de visión decía honestamente «no veo ningún logotipo en este recorte», esa respuesta se puntuaba como 0/10 → identidad alterada → escena descalificada y regenerada. «No lo veo» no es «está alterado»: es una comprobación que NO SE PUDO HACER, y ahora se declara así — en gris, «sin comprobar», sin tumbar la escena y sin gastar créditos en regenerar por un espejismo. Lo no visto se dice en el resumen para que no se lea como verificado.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'marca'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Las regiones de los logotipos se remapean a la geometría del lienzo adaptado: el recorte cae sobre el logotipo, no sobre otra parte de la imagen.' },
+            { type: 'fixed', text: '«No veo el logotipo en el recorte» ya no puntúa 0/10: queda «sin comprobar», sin descalificar la escena ni gastar regeneraciones.' },
+            { type: 'added', text: 'La ficha pinta en gris el logotipo que no se pudo ver, con su explicación — nunca en rojo como si fuera un defecto del clip.' },
+        ]
+    },
     {
         version: '4.801.0',
         title: 'Reglas globales: sin falsos animados, nadie desaparece, una sola composición 🎯',

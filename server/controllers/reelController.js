@@ -105,7 +105,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.801.0';
+export const REEL_MODULE_VERSION = '4.802.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -1662,10 +1662,37 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
         }
         const originalBuffer = Buffer.from(await srcResp.arrayBuffer());
 
+        // ── Las regiones de marca se REMAPEAN al lienzo adaptado (v4.802) ──
+        //
+        // `brandRegions` se declara sobre la FOTO ORIGINAL (0-1), pero cuando la
+        // escena se animó desde el lienzo adaptado, el clip y su referencia
+        // tienen OTRA geometría: la foto vive centrada dentro del lienzo, con
+        // bandas nuevas alrededor. Aplicar las coordenadas crudas recorta otro
+        // lugar — el «San Simón HOTEL 0/10 · no es visible en ninguna de las
+        // imágenes» del reporte era un recorte de baldosas, y ese falso 0/10
+        // descalificaba y regeneraba la escena. La geometría exacta la guardó la
+        // verificación de la expansión (`region` + tamaño del lienzo).
+        let analysisForCheck = scene.analysis;
+        const expGeo = scene.expansionReport?.verification;
+        if (scene.expandedImageUrl && expGeo?.region && expGeo.width && expGeo.height
+            && Array.isArray(scene.analysis?.brandRegions) && scene.analysis.brandRegions.length) {
+            const r = expGeo.region;
+            analysisForCheck = {
+                ...scene.analysis,
+                brandRegions: scene.analysis.brandRegions.map(b => ({
+                    ...b,
+                    x: (r.left + b.x * r.width) / expGeo.width,
+                    y: (r.top + b.y * r.height) / expGeo.height,
+                    w: b.w * r.width / expGeo.width,
+                    h: b.h * r.height / expGeo.height
+                }))
+            };
+        }
+
         return await checkSceneFidelity({
             originalBuffer,
             frames,
-            analysis: scene.analysis
+            analysis: analysisForCheck
         });
     } catch (e) {
         console.error(`[REEL] fidelidad de la escena ${scene.id}:`, e.message);

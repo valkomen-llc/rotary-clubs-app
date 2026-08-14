@@ -39,6 +39,24 @@ const Row: React.FC<{ label: string; value: boolean | null; detail?: string | nu
 
 const Logo: React.FC<{ logo: BrandLogoCheck }> = ({ logo }) => {
     const ok = !logo.altered;
+    // «No lo veo» no es «está alterado» (v4.802): si el modelo no ve el
+    // logotipo en el recorte, la comprobación no se hizo y se dice así, en
+    // gris — puntuarla 0/10 mandaba a regenerar escenas por un defecto que
+    // nadie midió.
+    if (logo.notVisible) {
+        return (
+            <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-2">
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black text-gray-700 truncate">{logo.label}</span>
+                    <span className="text-[10px] font-black shrink-0 text-gray-400">sin comprobar</span>
+                </div>
+                <p className="text-[9px] text-gray-500 leading-tight mt-1">
+                    El logotipo no se pudo ver en su recorte —quedó tapado o el recorte cayó en
+                    otro lugar—, así que no se juzgó. No es un defecto del clip.
+                </p>
+            </div>
+        );
+    }
     return (
         <div className={`rounded-lg border p-2 space-y-1 ${ok ? 'border-emerald-200 bg-white' : 'border-red-200 bg-white'}`}>
             <div className="flex items-center justify-between gap-2">

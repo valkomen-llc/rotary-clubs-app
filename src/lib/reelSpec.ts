@@ -109,6 +109,8 @@ export interface PeopleFidelity {
  */
 export interface BrandLogoCheck {
     label: string;
+    /** El logotipo no se pudo ver en su recorte: no se juzgó (v4.802). */
+    notVisible?: boolean;
     region?: { label?: string; x: number; y: number; w: number; h: number };
     framesChecked: number;
     /** Parecido del recorte al original, 0-1. Determinista (sharp). */

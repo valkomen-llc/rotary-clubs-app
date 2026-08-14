@@ -919,6 +919,7 @@ const BRAND_SYSTEM = `Eres un control de calidad de identidad visual de marca. R
 Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin bloques de código:
 
 {
+  "visible": boolean,
   "textLeft": "el texto que leas en el logotipo de la izquierda, o cadena vacía",
   "textRight": "el texto que leas en el logotipo de la derecha, o cadena vacía",
   "sameDesign": boolean,
@@ -929,6 +930,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "issues": ["descripción breve en español de cada problema real"]
 }
 
+- "visible" es false si el logotipo NO se distingue en NINGUNA de las dos mitades — el recorte muestra otra cosa (una pared, un piso, un fondo) o el logotipo quedó fuera del encuadre. En ese caso devolvé visible:false y NO evalúes nada más: no se puede juzgar lo que no se ve.
 - "sameDesign" es true si es el MISMO logotipo: mismo símbolo, misma tipografía, mismas proporciones. Que esté más borroso, más pequeño, en otro ángulo o parcialmente tapado por un brazo NO lo hace distinto.
 - "inventedGlyphs" es true si en la derecha hay letras o signos que no están en la izquierda, o si las letras se volvieron garabatos sin sentido.
 - "geometryBroken" es true si el símbolo perdió su forma: un engranaje al que le cambian los dientes, un círculo que se volvió óvalo irregular, trazos que se funden entre sí.
@@ -1014,6 +1016,12 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
                     if (raw) {
                         const sc = Number(raw.score);
                         semantic = {
+                            // Un logotipo que el modelo NO VE en el recorte no
+                            // se puede juzgar (v4.802): «no visible» significa
+                            // que el recorte cayó en otro lugar o el emblema
+                            // quedó tapado — puntuar eso 0/10 mandaba a
+                            // regenerar escenas por un defecto que nadie midió.
+                            visible: raw.visible !== false,
                             score: Number.isFinite(sc) ? Math.min(10, Math.max(0, sc)) : null,
                             sameDesign: raw.sameDesign !== false,
                             inventedGlyphs: raw.inventedGlyphs === true,
@@ -1059,7 +1067,16 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
             (worstStructural != null && worstStructural < BRAND_MIN_STRUCTURE)
             || (temporal != null && temporal < BRAND_MIN_TEMPORAL)
         );
-        const altered = semantic ? alteredByVision : alteredByMetrics;
+        // ── «No lo veo» no es «está alterado» (v4.802) ──
+        //
+        // El caso del reporte: «El logotipo 'San Simón HOTEL' no es visible en
+        // ninguna de las imágenes» puntuado 0/10 → identidad alterada →
+        // regeneración. Si el modelo no ve el logotipo en el recorte, la
+        // comprobación no se HIZO — el recorte cayó en otro lugar o el emblema
+        // quedó tapado— y las métricas deterministas tampoco valen: comparan
+        // dos recortes de la misma zona equivocada. Se declara sin juzgar.
+        const notVisible = semantic ? semantic.visible === false : false;
+        const altered = notVisible ? false : (semantic ? alteredByVision : alteredByMetrics);
 
         logos.push({
             label: region.label || 'Marca',
@@ -1067,8 +1084,13 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
             framesChecked: valid.length,
             structuralScore: worstStructural,
             temporalScore: temporal,
-            score: semantic?.score ?? (worstStructural != null ? Number((worstStructural * 10).toFixed(1)) : null),
-            method: semantic ? 'estructural + visión' : 'sólo estructural',
+            notVisible,
+            score: notVisible
+                ? null
+                : (semantic?.score ?? (worstStructural != null ? Number((worstStructural * 10).toFixed(1)) : null)),
+            method: notVisible
+                ? 'no se pudo ver el logotipo en el recorte'
+                : (semantic ? 'estructural + visión' : 'sólo estructural'),
             sameDesign: semantic?.sameDesign ?? null,
             inventedGlyphs: semantic?.inventedGlyphs ?? null,
             geometryBroken: semantic?.geometryBroken ?? null,
@@ -1091,11 +1113,13 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
     if (!logos.length) return null;
 
     const altered = logos.filter(l => l.altered);
+    const sinVer = logos.filter(l => l.notVisible);
     return {
         state: altered.length ? 'failed' : 'ok',
         label: altered.length ? 'Identidad visual alterada' : 'Identidad visual conservada',
         logos,
         alteredCount: altered.length,
+        notVisibleCount: sinVer.length,
         total: logos.length,
         // El peor logotipo manda: una pieza institucional con UN emblema roto
         // está rota. No se promedia.
@@ -1103,7 +1127,10 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
             ? Math.min(...logos.map(l => l.score).filter(v => v != null)) : null,
         reason: altered.length
             ? `${altered.length} de ${logos.length} logotipo(s) no conservan su diseño: ${altered.map(l => l.label).join(', ')}.`
-            : null
+            // Lo no visto se DICE: «no se pudo comprobar» no es un tipo de bien.
+            : (sinVer.length
+                ? `${sinVer.length} logotipo(s) no se pudieron ver en su recorte y no se juzgaron: ${sinVer.map(l => l.label).join(', ')}.`
+                : null)
     };
 };
 
