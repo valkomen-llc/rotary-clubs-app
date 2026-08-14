@@ -1,4 +1,6 @@
 import React, { useEffect, Suspense } from 'react';
+import { lazyWithRetry } from './lib/lazyWithRetry';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 // Componente para manejar redirecciones de enlaces antiguos con hash (/#/blog...)
@@ -82,114 +84,114 @@ import { isPlatformSuperAdmin } from './lib/platformAdmin';
 // 823 kB: quien sólo miraba la portada descargaba también el catálogo de la
 // tienda, el checkout y la galería del distrito. Van dentro del <Suspense>
 // que ya envuelve a <Routes>, igual que las del panel.
-const QuienesSomos = React.lazy(() => import('./pages/QuienesSomos'));
-const NuestraHistoria = React.lazy(() => import('./pages/NuestraHistoria'));
-const NuestrosSocios = React.lazy(() => import('./pages/NuestrosSocios'));
-const NuestraJuntaDirectiva = React.lazy(() => import('./pages/NuestraJuntaDirectiva'));
-const CategoryDirectory = React.lazy(() => import('./pages/CategoryDirectory'));
-const IntercambioJovenes = React.lazy(() => import('./pages/IntercambioJovenes'));
-const Blog = React.lazy(() => import('./pages/Blog'));
-const BlogPost = React.lazy(() => import('./pages/BlogPost'));
-const Proyectos = React.lazy(() => import('./pages/Proyectos'));
-const ProyectoDetalle = React.lazy(() => import('./pages/ProyectoDetalle'));
-const Contacto = React.lazy(() => import('./pages/Contacto'));
-const EstadosFinancieros = React.lazy(() => import('./pages/EstadosFinancieros'));
-const Descargas = React.lazy(() => import('./pages/Descargas'));
-const NuestrasCausas = React.lazy(() => import('./pages/NuestrasCausas'));
-const ManerasDeContribuir = React.lazy(() => import('./pages/ManerasDeContribuir'));
-const DonacionExito = React.lazy(() => import('./pages/DonacionExito'));
-const DonacionCancelada = React.lazy(() => import('./pages/DonacionCancelada'));
-const Rotaract = React.lazy(() => import('./pages/Rotaract'));
-const Interact = React.lazy(() => import('./pages/Interact'));
-const Rotex = React.lazy(() => import('./pages/Rotex'));
-const FundacionRotaria = React.lazy(() => import('./pages/FundacionRotaria'));
-const Involucrate = React.lazy(() => import('./pages/Involucrate'));
-const Eventos = React.lazy(() => import('./pages/Eventos'));
-const EventoDetalle = React.lazy(() => import('./pages/EventoDetalle'));
-const Aportes = React.lazy(() => import('./pages/Aportes'));
-const Checkout = React.lazy(() => import('./pages/Checkout'));
-const OrderSuccess = React.lazy(() => import('./pages/OrderSuccess'));
-const Shop = React.lazy(() => import('./pages/Shop'));
-const ProductDetail = React.lazy(() => import('./pages/ProductDetail'));
-const DistrictMultimediaGallery = React.lazy(() => import('./pages/DistrictMultimediaGallery'));
-const ClubPreview = React.lazy(() => import('./pages/ClubPreview'));
-const LandingPage = React.lazy(() => import('./pages/LandingPage'));
-const RegistroPage = React.lazy(() => import('./pages/RegistroPage'));
-const VerifyEmail = React.lazy(() => import('./pages/VerifyEmail'));
-const AppLogin = React.lazy(() => import('./pages/AppLogin'));
-const ComingSoon = React.lazy(() => import('./pages/ComingSoon'));
+const QuienesSomos = lazyWithRetry(() => import('./pages/QuienesSomos'), 'QuienesSomos');
+const NuestraHistoria = lazyWithRetry(() => import('./pages/NuestraHistoria'), 'NuestraHistoria');
+const NuestrosSocios = lazyWithRetry(() => import('./pages/NuestrosSocios'), 'NuestrosSocios');
+const NuestraJuntaDirectiva = lazyWithRetry(() => import('./pages/NuestraJuntaDirectiva'), 'NuestraJuntaDirectiva');
+const CategoryDirectory = lazyWithRetry(() => import('./pages/CategoryDirectory'), 'CategoryDirectory');
+const IntercambioJovenes = lazyWithRetry(() => import('./pages/IntercambioJovenes'), 'IntercambioJovenes');
+const Blog = lazyWithRetry(() => import('./pages/Blog'), 'Blog');
+const BlogPost = lazyWithRetry(() => import('./pages/BlogPost'), 'BlogPost');
+const Proyectos = lazyWithRetry(() => import('./pages/Proyectos'), 'Proyectos');
+const ProyectoDetalle = lazyWithRetry(() => import('./pages/ProyectoDetalle'), 'ProyectoDetalle');
+const Contacto = lazyWithRetry(() => import('./pages/Contacto'), 'Contacto');
+const EstadosFinancieros = lazyWithRetry(() => import('./pages/EstadosFinancieros'), 'EstadosFinancieros');
+const Descargas = lazyWithRetry(() => import('./pages/Descargas'), 'Descargas');
+const NuestrasCausas = lazyWithRetry(() => import('./pages/NuestrasCausas'), 'NuestrasCausas');
+const ManerasDeContribuir = lazyWithRetry(() => import('./pages/ManerasDeContribuir'), 'ManerasDeContribuir');
+const DonacionExito = lazyWithRetry(() => import('./pages/DonacionExito'), 'DonacionExito');
+const DonacionCancelada = lazyWithRetry(() => import('./pages/DonacionCancelada'), 'DonacionCancelada');
+const Rotaract = lazyWithRetry(() => import('./pages/Rotaract'), 'Rotaract');
+const Interact = lazyWithRetry(() => import('./pages/Interact'), 'Interact');
+const Rotex = lazyWithRetry(() => import('./pages/Rotex'), 'Rotex');
+const FundacionRotaria = lazyWithRetry(() => import('./pages/FundacionRotaria'), 'FundacionRotaria');
+const Involucrate = lazyWithRetry(() => import('./pages/Involucrate'), 'Involucrate');
+const Eventos = lazyWithRetry(() => import('./pages/Eventos'), 'Eventos');
+const EventoDetalle = lazyWithRetry(() => import('./pages/EventoDetalle'), 'EventoDetalle');
+const Aportes = lazyWithRetry(() => import('./pages/Aportes'), 'Aportes');
+const Checkout = lazyWithRetry(() => import('./pages/Checkout'), 'Checkout');
+const OrderSuccess = lazyWithRetry(() => import('./pages/OrderSuccess'), 'OrderSuccess');
+const Shop = lazyWithRetry(() => import('./pages/Shop'), 'Shop');
+const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'), 'ProductDetail');
+const DistrictMultimediaGallery = lazyWithRetry(() => import('./pages/DistrictMultimediaGallery'), 'DistrictMultimediaGallery');
+const ClubPreview = lazyWithRetry(() => import('./pages/ClubPreview'), 'ClubPreview');
+const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'), 'LandingPage');
+const RegistroPage = lazyWithRetry(() => import('./pages/RegistroPage'), 'RegistroPage');
+const VerifyEmail = lazyWithRetry(() => import('./pages/VerifyEmail'), 'VerifyEmail');
+const AppLogin = lazyWithRetry(() => import('./pages/AppLogin'), 'AppLogin');
+const ComingSoon = lazyWithRetry(() => import('./pages/ComingSoon'), 'ComingSoon');
 
-const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
+const GeneradorPendones = lazyWithRetry(() => import('./pages/GeneradorPendones'), 'GeneradorPendones');
 // v4.721 — Portal público de Plantillas IA. Perezosa como el resto de las
 // páginas públicas (regla de rendimiento de v4.659).
-const PlantillaPublica = React.lazy(() => import('./pages/PlantillaPublica'));
-const FeriaProyectos = React.lazy(() => import('./pages/FeriaProyectos'));
-const MiProyecto = React.lazy(() => import('./pages/MiProyecto'));
-const MiInscripcion = React.lazy(() => import('./pages/MiInscripcion'));
-const RegistroFeria = React.lazy(() => import('./pages/RegistroFeria'));
-const RegistroEvento = React.lazy(() => import('./pages/RegistroEvento'));
-const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
-const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
-const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
-const ZonasManagement = React.lazy(() => import('./pages/admin/Zonas'));
-const EventosManagement = React.lazy(() => import('./pages/admin/Eventos'));
-const FeriasManagement = React.lazy(() => import('./pages/admin/Ferias'));
-const PostulacionesPagos = React.lazy(() => import('./pages/admin/PostulacionesPagos'));
-const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
-const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
-const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
-const NewsManagement = React.lazy(() => import('./pages/admin/News'));
-const Publicaciones = React.lazy(() => import('./pages/admin/Publicaciones'));
-const ProjectsManagement = React.lazy(() => import('./pages/admin/Projects'));
-const UsersManagement = React.lazy(() => import('./pages/admin/Users'));
-const StoreManagement = React.lazy(() => import('./pages/admin/StoreManagement'));
-const PaymentBlocksManager = React.lazy(() => import('./pages/admin/PaymentBlocksManager'));
-const ManerasContribuirEditor = React.lazy(() => import('./pages/admin/ManerasContribuirEditor'));
-const OrdersManagement = React.lazy(() => import('./pages/admin/OrdersManagement'));
-const WalletManagement = React.lazy(() => import('./pages/admin/WalletManagement'));
-const NotificationSettings = React.lazy(() => import('./pages/admin/NotificationSettings'));
-const CRMManagement = React.lazy(() => import('./pages/admin/CRM'));
-const AIAssistant = React.lazy(() => import('./pages/admin/AIAssistant'));
-const MediaLibrary = React.lazy(() => import('./pages/admin/MediaLibrary'));
-const ContentCalendar = React.lazy(() => import('./pages/admin/ContentCalendar'));
-const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
-const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
-const Translations = React.lazy(() => import('./pages/admin/Translations'));
-const SeoIntelligence = React.lazy(() => import('./pages/admin/SeoIntelligence'));
-const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
-const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
-const EmailManagement = React.lazy(() => import('./pages/admin/EmailManagement'));
-const EmailMarketing = React.lazy(() => import('./pages/admin/EmailMarketing'));
-const FAQManagement = React.lazy(() => import('./pages/admin/FAQs'));
-const AgentsManagement = React.lazy(() => import('./pages/admin/Agents'));
-const MissionControlVIP = React.lazy(() => import('./pages/admin/MissionControlVIP'));
-const SystemUpdates = React.lazy(() => import('./pages/SystemUpdates'));
-const ImageDistribution = React.lazy(() => import('./pages/admin/ImageDistribution'));
-const OnboardingFlow = React.lazy(() => import('./pages/admin/OnboardingFlow'));
-const MembersPage = React.lazy(() => import('./pages/admin/MembersPage'));
-const RotaractPage = React.lazy(() => import('./pages/admin/RotaractPage'));
-const InteractPage = React.lazy(() => import('./pages/admin/InteractPage'));
-const FinancialPage = React.lazy(() => import('./pages/admin/FinancialPage'));
-const DownloadsManagement = React.lazy(() => import('./pages/admin/DownloadsPage'));
-const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePage'));
-const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
-const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
-const EventsManagement = React.lazy(() => import('./pages/admin/Events'));
-const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
-const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistantChat'));
-const ContentStudio = React.lazy(() => import('./pages/admin/ContentStudio'));
-const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
-const SocialHub = React.lazy(() => import('./pages/admin/SocialHub'));
-const TechnicalRequests = React.lazy(() => import('./pages/admin/TechnicalRequests'));
-const DistrictIQ = React.lazy(() => import('./pages/admin/DistrictIQ'));
-const CrowdfundWallet = React.lazy(() => import('./pages/admin/CrowdfundWallet'));
-const AICore = React.lazy(() => import('./pages/admin/AICore'));
-const ClubPlatformInsights = React.lazy(() => import('./pages/admin/ClubPlatformInsights'));
-const AgendaSoporte = React.lazy(() => import('./pages/admin/AgendaSoporte'));
-const CapacitacionesAdmin = React.lazy(() => import('./pages/admin/CapacitacionesAdmin'));
-const AgendarCapacitacion = React.lazy(() => import('./pages/AgendarCapacitacion'));
-const MiCapacitacion = React.lazy(() => import('./pages/MiCapacitacion'));
-const SharedReport = React.lazy(() => import('./pages/SharedReport'));
+const PlantillaPublica = lazyWithRetry(() => import('./pages/PlantillaPublica'), 'PlantillaPublica');
+const FeriaProyectos = lazyWithRetry(() => import('./pages/FeriaProyectos'), 'FeriaProyectos');
+const MiProyecto = lazyWithRetry(() => import('./pages/MiProyecto'), 'MiProyecto');
+const MiInscripcion = lazyWithRetry(() => import('./pages/MiInscripcion'), 'MiInscripcion');
+const RegistroFeria = lazyWithRetry(() => import('./pages/RegistroFeria'), 'RegistroFeria');
+const RegistroEvento = lazyWithRetry(() => import('./pages/RegistroEvento'), 'RegistroEvento');
+const Dashboard = lazyWithRetry(() => import('./pages/admin/Dashboard'), 'Dashboard');
+const ClubsManagement = lazyWithRetry(() => import('./pages/admin/Clubs'), 'Clubs');
+const AsociacionesManagement = lazyWithRetry(() => import('./pages/admin/Asociaciones'), 'Asociaciones');
+const ZonasManagement = lazyWithRetry(() => import('./pages/admin/Zonas'), 'Zonas');
+const EventosManagement = lazyWithRetry(() => import('./pages/admin/Eventos'), 'Eventos');
+const FeriasManagement = lazyWithRetry(() => import('./pages/admin/Ferias'), 'Ferias');
+const PostulacionesPagos = lazyWithRetry(() => import('./pages/admin/PostulacionesPagos'), 'PostulacionesPagos');
+const ProgramasManagement = lazyWithRetry(() => import('./pages/admin/Programas'), 'Programas');
+const DistrictsManagement = lazyWithRetry(() => import('./pages/admin/Districts'), 'Districts');
+const ClubSettings = lazyWithRetry(() => import('./pages/admin/ClubSettings'), 'ClubSettings');
+const NewsManagement = lazyWithRetry(() => import('./pages/admin/News'), 'News');
+const Publicaciones = lazyWithRetry(() => import('./pages/admin/Publicaciones'), 'Publicaciones');
+const ProjectsManagement = lazyWithRetry(() => import('./pages/admin/Projects'), 'Projects');
+const UsersManagement = lazyWithRetry(() => import('./pages/admin/Users'), 'Users');
+const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagement'), 'StoreManagement');
+const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
+const ManerasContribuirEditor = lazyWithRetry(() => import('./pages/admin/ManerasContribuirEditor'), 'ManerasContribuirEditor');
+const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
+const WalletManagement = lazyWithRetry(() => import('./pages/admin/WalletManagement'), 'WalletManagement');
+const NotificationSettings = lazyWithRetry(() => import('./pages/admin/NotificationSettings'), 'NotificationSettings');
+const CRMManagement = lazyWithRetry(() => import('./pages/admin/CRM'), 'CRM');
+const AIAssistant = lazyWithRetry(() => import('./pages/admin/AIAssistant'), 'AIAssistant');
+const MediaLibrary = lazyWithRetry(() => import('./pages/admin/MediaLibrary'), 'MediaLibrary');
+const ContentCalendar = lazyWithRetry(() => import('./pages/admin/ContentCalendar'), 'ContentCalendar');
+const KnowledgeBase = lazyWithRetry(() => import('./pages/admin/KnowledgeBase'), 'KnowledgeBase');
+const Integrations = lazyWithRetry(() => import('./pages/admin/Integrations'), 'Integrations');
+const Translations = lazyWithRetry(() => import('./pages/admin/Translations'), 'Translations');
+const SeoIntelligence = lazyWithRetry(() => import('./pages/admin/SeoIntelligence'), 'SeoIntelligence');
+const AnalyticsPage = lazyWithRetry(() => import('./pages/admin/Analytics'), 'Analytics');
+const LeadsManagement = lazyWithRetry(() => import('./pages/admin/Leads'), 'Leads');
+const EmailManagement = lazyWithRetry(() => import('./pages/admin/EmailManagement'), 'EmailManagement');
+const EmailMarketing = lazyWithRetry(() => import('./pages/admin/EmailMarketing'), 'EmailMarketing');
+const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
+const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
+const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
+const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
+const ImageDistribution = lazyWithRetry(() => import('./pages/admin/ImageDistribution'), 'ImageDistribution');
+const OnboardingFlow = lazyWithRetry(() => import('./pages/admin/OnboardingFlow'), 'OnboardingFlow');
+const MembersPage = lazyWithRetry(() => import('./pages/admin/MembersPage'), 'MembersPage');
+const RotaractPage = lazyWithRetry(() => import('./pages/admin/RotaractPage'), 'RotaractPage');
+const InteractPage = lazyWithRetry(() => import('./pages/admin/InteractPage'), 'InteractPage');
+const FinancialPage = lazyWithRetry(() => import('./pages/admin/FinancialPage'), 'FinancialPage');
+const DownloadsManagement = lazyWithRetry(() => import('./pages/admin/DownloadsPage'), 'DownloadsPage');
+const YouthExchangePage = lazyWithRetry(() => import('./pages/admin/YouthExchangePage'), 'YouthExchangePage');
+const NGSEPage = lazyWithRetry(() => import('./pages/admin/NGSEPage'), 'NGSEPage');
+const RotexPage = lazyWithRetry(() => import('./pages/admin/RotexPage'), 'RotexPage');
+const EventsManagement = lazyWithRetry(() => import('./pages/admin/Events'), 'Events');
+const WhatsAppQR = lazyWithRetry(() => import('./pages/admin/WhatsAppQR'), 'WhatsAppQR');
+const SuperAssistantChat = lazyWithRetry(() => import('./pages/admin/SuperAssistantChat'), 'SuperAssistantChat');
+const ContentStudio = lazyWithRetry(() => import('./pages/admin/ContentStudio'), 'ContentStudio');
+const FooterSystem = lazyWithRetry(() => import('./pages/admin/FooterSystem'), 'FooterSystem');
+const SocialHub = lazyWithRetry(() => import('./pages/admin/SocialHub'), 'SocialHub');
+const TechnicalRequests = lazyWithRetry(() => import('./pages/admin/TechnicalRequests'), 'TechnicalRequests');
+const DistrictIQ = lazyWithRetry(() => import('./pages/admin/DistrictIQ'), 'DistrictIQ');
+const CrowdfundWallet = lazyWithRetry(() => import('./pages/admin/CrowdfundWallet'), 'CrowdfundWallet');
+const AICore = lazyWithRetry(() => import('./pages/admin/AICore'), 'AICore');
+const ClubPlatformInsights = lazyWithRetry(() => import('./pages/admin/ClubPlatformInsights'), 'ClubPlatformInsights');
+const AgendaSoporte = lazyWithRetry(() => import('./pages/admin/AgendaSoporte'), 'AgendaSoporte');
+const CapacitacionesAdmin = lazyWithRetry(() => import('./pages/admin/CapacitacionesAdmin'), 'CapacitacionesAdmin');
+const AgendarCapacitacion = lazyWithRetry(() => import('./pages/AgendarCapacitacion'), 'AgendarCapacitacion');
+const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'MiCapacitacion');
+const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
 
 import ChatBot from './components/ChatBot';
 
@@ -528,6 +530,7 @@ function App() {
                 molesta más que el propio retraso—. Aparece con un retardo, así
                 que en una conexión normal no llega a verse.
               */}
+              <ChunkErrorBoundary>
               <Suspense fallback={
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', background: '#fff' }}>
                   <div style={{ width: 34, height: 34, border: '3px solid #e2e8f0', borderTopColor: '#17458F', borderRadius: '50%', animation: 'spin 0.8s linear infinite', opacity: 0, animationName: 'spin, fadeInLoader', animationDuration: '0.8s, 0.2s', animationDelay: '0s, 0.25s', animationFillMode: 'none, forwards' }} />
@@ -1110,6 +1113,7 @@ function App() {
                 <Route path="/informe/:token" element={<SharedReport />} />
               </Routes>
               </Suspense>
+              </ChunkErrorBoundary>
             </Router>
             <ChatBot />
             <Toaster position="top-right" richColors />
