@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.793
+## Creador de Reels IA — v4.794
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1219,6 +1219,30 @@ fuera un video».
   v4.790 el texto, v4.792 el destino de lo descalificado. En las tres, un
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
+
+### Quién NO estaba vs cómo está DIBUJADO (v4.794)
+
+Cuarto reporte, con la ficha delante otra vez: tres de cuatro escenas
+sustituidas por «los rostros no se conservan (2/10 y 3/10)».
+
+- **`people.verdict` junta SEIS comprobaciones y no todas significan lo mismo.**
+  v4.792 lo tomó entero como «persona inventada» para decidir la sustitución.
+  `newSubjects`, el recuento y la oclusión responden QUIÉN está en el cuadro —una
+  persona que no estuvo ahí es una falsedad—; `faceConsistency` responde cómo
+  está DIBUJADA una cara, que es calidad, del mismo orden que un logotipo
+  redibujado. Y está medido igual de mal: los rostros de un grupo de trece
+  personas llegan diminutos a la composición de 640 px, así que un 2/10 dice más
+  de lo que el modelo pudo mirar que del clip — la misma limitación de v4.715 y
+  v4.790. `invented` separa las dos preguntas y es la que decide.
+- **Sin rótulos ni tarjeta de cierre en la campaña de emergencia.** Dos motivos
+  independientes: el cliente los pidió fuera y pidió que la campaña se arme con
+  la configuración del Reel estándar; y **hoy salen ilegibles** — componer texto
+  con sharp rasteriza un SVG, eso necesita una fuente del SISTEMA, y el entorno
+  de Vercel **no tiene ninguna instalada**: cada glifo sale como un cuadrito. Se
+  ve en las capturas, en la tarjeta y en los rótulos. Para reactivarlos hay que
+  resolver ANTES la fuente —empaquetar un `.ttf` y apuntarle `FONTCONFIG_PATH`,
+  o convertir el texto a trazos—; encenderlos sin eso devuelve los cuadritos.
+  `reelTextOverlay.js` y `reelSceneText.js` se conservan enteros.
 
 ### El texto tampoco descalifica por ruido (v4.790)
 

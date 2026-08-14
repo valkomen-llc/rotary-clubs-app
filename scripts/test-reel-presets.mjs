@@ -105,8 +105,26 @@ check('las duraciones caen en los rangos pedidos (3→~15, 4→18-22, 5→22-30)
 
 check('la expansión de lienzo es obligatoria en emergencia',
     REEL_PRESETS.emergencia.requireExpansion === true);
-check('lleva texto en pantalla y tarjeta de cierre',
-    REEL_PRESETS.emergencia.onScreenText && REEL_PRESETS.emergencia.closingCard);
+// ── CAMBIO DE SIGNO DELIBERADO (v4.794) ──
+//
+// Esta afirmación exigía rótulos y tarjeta de cierre. Se apagan por dos
+// motivos independientes: el cliente los pidió fuera con la captura delante
+// —«a lo último aparece una escena azul con la rueda de Rotary, quita esto»— y
+// pidió que la campaña se arme con la configuración del Reel estándar, que no
+// lleva ninguno de los dos; y además hoy salen ILEGIBLES, porque componer el
+// texto con sharp exige una fuente del sistema y el entorno de Vercel no tiene
+// ninguna instalada: cada glifo sale como un cuadrito. Publicar texto en
+// cuadritos es peor que no publicar texto.
+check('la campaña de emergencia NO lleva rótulos ni tarjeta de cierre',
+    REEL_PRESETS.emergencia.onScreenText === false && REEL_PRESETS.emergencia.closingCard === false);
+check('...igual que el preset estándar, que es el que el cliente pidió replicar',
+    REEL_PRESETS.estandar.onScreenText === REEL_PRESETS.emergencia.onScreenText
+    && REEL_PRESETS.estandar.closingCard === REEL_PRESETS.emergencia.closingCard);
+// La maquinaria se conserva entera: lo que cambia es que este preset no la usa.
+check('el compositor de rótulos sigue existiendo para cuando haya fuente',
+    readFileSync(path.join(root, 'server/lib/reelTextOverlay.js'), 'utf8').includes('renderClosingCard'));
+check('y el motivo queda escrito donde se apagó',
+    readFileSync(path.join(root, 'server/lib/reelPresets.js'), 'utf8').includes('FONTCONFIG_PATH'));
 
 // El default es la ESCENA VIVA (v4.786, decisión del cliente con resultados a
 // la vista). v4.783 arrancó con `fotografico` porque evitar el motor era la

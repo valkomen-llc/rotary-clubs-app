@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.793.0 | 2026-08-14 (Una banda vacía ya no pasa por expansión)
-// Cache bust: 2026-08-14f
+// UI V4.794.0 | 2026-08-14 (Emergencia con la configuración del Reel estándar)
+// Cache bust: 2026-08-14g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.794.0',
+        title: 'La Campaña de Emergencia se arma como el Reel estándar 🎬',
+        description: 'Tres correcciones pedidas con la ficha delante. UNA: fuera la tarjeta azul con la rueda de Rotary al final, y fuera también los rótulos sobre las fotos. Además de que se pidieron fuera, salían ILEGIBLES: el texto se compone rasterizando un SVG y eso necesita una fuente instalada en el servidor, que en nuestro entorno no hay — por eso cada palabra aparecía como una fila de cuadritos, tanto en la tarjeta de cierre como en los rótulos. Publicar texto en cuadritos es peor que no publicar texto. La maquinaria se conserva entera para cuando se resuelva la fuente; lo que cambia es que la campaña de emergencia ahora usa la misma configuración que el Reel estándar, que es justo lo que se pidió. DOS: las escenas volvían a salir sin vida, y el motivo era nuestro otra vez. El control de personas junta seis comprobaciones en un solo veredicto, y la versión anterior lo tomó entero como «persona inventada» para decidir si descartar la escena. No lo es: si alguien aparece o desaparece del cuadro, eso es una falsedad y no se publica; pero «los rostros no se conservan» es cómo está DIBUJADA una cara, y se mide sobre una composición reducida donde las caras de un grupo de trece personas llegan diminutas — un 2/10 ahí dice más de lo que el modelo pudo mirar que del clip. Con eso, tres de cuatro escenas se estaban descartando. Ahora la consistencia de rostros conserva el clip animado y queda marcada para revisión. TRES: el aviso general ya no dice «no conservan la fotografía» cuando lo que pasó fue otra cosa.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'emergencias', 'fidelidad', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'removed', text: 'La tarjeta de cierre con la rueda de Rotary se retira de la Campaña de Emergencia.' },
+            { type: 'removed', text: 'Los rótulos sobre las fotos también: sin fuente en el servidor salían como cuadritos.' },
+            { type: 'changed', text: 'La campaña usa ahora la misma configuración del Reel estándar, como se pidió.' },
+            { type: 'fixed', text: 'Un rostro con consistencia baja ya no descarta la escena: es calidad, no una persona inventada.' },
+            { type: 'changed', text: 'Sólo aparecer o desaparecer del cuadro cuenta como invención y sustituye la escena.' },
+        ]
+    },
     {
         version: '4.793.0',
         title: 'Se acabaron los bordes negros: una banda vacía ya no cuenta como lienzo 🖼️',

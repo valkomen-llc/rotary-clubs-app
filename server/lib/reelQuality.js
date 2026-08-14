@@ -1113,6 +1113,23 @@ export const buildPeopleReport = (semantics, analysis) => {
 
     return {
         verdict: failed ? 'failed' : 'ok',
+        // ── Quién NO ESTABA vs cómo está DIBUJADO (v4.794) ──
+        //
+        // `verdict` junta seis comprobaciones, y v4.792 lo tomó entero como
+        // «persona inventada» para decidir si la escena se sustituye. No lo es:
+        //
+        //   · `newSubjects`, el recuento y la oclusión responden QUIÉN está en
+        //     el cuadro. Una persona que no estuvo ahí es una falsedad y no se
+        //     publica.
+        //   · `faceConsistency` responde cómo está DIBUJADA una cara. Es un
+        //     defecto de calidad, del mismo orden que un logotipo redibujado —y
+        //     medido igual de mal: los rostros de un grupo de trece personas
+        //     llegan diminutos a la composición de 640 px, así que un 2/10 dice
+        //     más de lo que el modelo pudo mirar que del clip.
+        //
+        // Mezclarlos hizo que TRES de cuatro escenas se sustituyeran por
+        // «los rostros no se conservan». `invented` separa las dos preguntas.
+        invented: newSubjects || countGrew || countShrank || occlusionBroken,
         // Los seis indicadores que se muestran en la ficha, uno por uno.
         sourceCount,          // personas detectadas en la fotografía original
         originalSeen,         // ...vistas por el control en la mitad izquierda

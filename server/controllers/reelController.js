@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.792.0';
+export const REEL_MODULE_VERSION = '4.794.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -2626,7 +2626,15 @@ const advance = async (project) => {
         // Así que el clip animado se conserva, queda `needs_review` con su
         // motivo y su botón de regenerar, y lo que se descarta es sólo lo que
         // no se puede publicar.
-        const esInvencionHumana = (sc) => sc.fidelity?.people?.verdict === 'failed';
+        //
+        // Y «invención humana» es QUIÉN está en el cuadro, no cómo está
+        // dibujada una cara (v4.794). `people.verdict` junta seis
+        // comprobaciones y tomarlo entero sustituyó tres de cuatro escenas por
+        // «los rostros no se conservan (2/10)» — una nota de un modelo mirando
+        // caras diminutas en una composición reducida, que es la misma
+        // limitación de medición que ya se corrigió para el logotipo y para el
+        // texto. La consistencia de rostros es calidad: se conserva el clip.
+        const esInvencionHumana = (sc) => sc.fidelity?.people?.invented === true;
         const agotados = infidel.filter(sc => esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES);
         const conservados = infidel.filter(sc =>
             !esDescalificante(sc)
