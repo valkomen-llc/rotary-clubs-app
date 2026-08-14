@@ -582,25 +582,54 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
                 }
             }
 
-            report.tiling = { checked: bands.length > 0, bands: [], detected: false };
+            report.tiling = { checked: bands.length > 0, bands: [], detected: false, empty: false };
             for (const band of bands) {
                 const cut = await sharp(expandedBuffer, { failOn: 'none' })
                     .extract({ left: band.left, top: band.top, width: band.width, height: band.height })
                     .toBuffer();
                 const sim = await structuralCompare(originalBuffer, cut);
                 const duplicated = sim.structure != null && sim.structure >= TILING_STRUCTURE_THRESHOLD;
+
+                // ── ¿La banda tiene CONTENIDO? (v4.793) ──
+                //
+                // La comprobación de arriba pregunta «¿esta banda repite la
+                // foto?». Le faltaba la pregunta opuesta y igual de importante:
+                // «¿esta banda tiene algo?». Una franja NEGRA —el modelo
+                // rellenando en vez de extender— se parece poquísimo al
+                // original, así que pasaba la prueba del mosaico con nota
+                // perfecta y la conservación del centro también, porque el
+                // centro estaba intacto. Las dos mediciones eran correctas y
+                // entre las dos dejaban pasar exactamente el defecto
+                // reportado: el clip con bordes negros arriba y abajo.
+                //
+                // Se mide la desviación típica de la banda. Un relleno plano da
+                // prácticamente cero; hasta un cielo despejado o una pared
+                // lisa tienen grano y gradiente muy por encima del umbral.
+                let detail = null;
+                try {
+                    const stats = await sharp(cut, { failOn: 'none' }).stats();
+                    const canales = (stats.channels || []).slice(0, 3);
+                    detail = canales.length
+                        ? Number((canales.reduce((a, c) => a + (c.stdev || 0), 0) / canales.length).toFixed(2))
+                        : null;
+                } catch { /* sin medida no se acusa: `flat` queda en false */ }
+                const flat = detail != null && detail < BAND_MIN_DETAIL;
+
                 report.tiling.bands.push({
                     name: band.name,
                     structure: sim.structure,
-                    duplicated
+                    duplicated,
+                    detail,
+                    flat
                 });
                 if (duplicated) report.tiling.detected = true;
+                if (flat) report.tiling.empty = true;
             }
         } catch (e) {
             // Sin la comprobación de mosaico la verificación principal sigue
             // valiendo; se anota para que «no se comprobó» no se lea como «no
             // hay mosaico».
-            report.tiling = { checked: false, bands: [], detected: false };
+            report.tiling = { checked: false, bands: [], detected: false, empty: false };
             report.warnings.push(`No se pudo comprobar el área añadida: ${e.message}`);
         }
     } catch (e) {
@@ -618,6 +647,17 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
 // cuesta una regeneración; un mosaico sin detectar cuesta la pieza publicada.
 export const TILING_STRUCTURE_THRESHOLD = Number(process.env.EXPANSION_TILING_THRESHOLD) || 0.75;
 
+// Por debajo de esta desviación típica, una banda añadida no es paisaje: es
+// relleno plano —una franja negra, el borde que el modelo no extendió—.
+//
+// Medido sobre bandas sintéticas: un negro puro da **0,00**, un gris plano
+// también; el degradado más pobre que se puede llamar cielo da 4,0 y un
+// recorte de fotografía real, 10 o más. El umbral va en 2 —en medio de esa
+// brecha— y no en 4: pegado al primer contenido real, un cielo despejado o una
+// pared lisa se leerían como banda vacía y costarían una regeneración por
+// nada. El relleno da cero exacto, así que hacia ese lado sobra margen.
+export const BAND_MIN_DETAIL = Number(process.env.EXPANSION_MIN_BAND_DETAIL) || 2;
+
 // Veredicto final: junta la medición con el umbral configurado.
 export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) => {
     // El mosaico se juzga PRIMERO y reprueba por sí solo (v4.785). Es el orden
@@ -626,6 +666,19 @@ export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) =>
     // así que el umbral de preservación la daba por BUENA. Preguntar primero
     // por la conservación taparía justamente el defecto que esta comprobación
     // existe para atrapar.
+    // La banda VACÍA se juzga junto al mosaico y antes que la conservación, por
+    // el mismo motivo: con el centro intacto, la conservación da nota alta y
+    // tapa el defecto. Son los dos modos de fallar de una expansión —repetir la
+    // foto o no poner nada— y ninguno se ve mirando la región central.
+    if (verification.tiling?.empty) {
+        const vacias = (verification.tiling.bands || []).filter(b => b.flat).map(b => b.name).join(' y ');
+        return {
+            verdict: 'failed',
+            // Con su CONSECUENCIA, no sólo con el motivo: «banda plana» no le
+            // explica a nadie que el Reel va a salir con franjas negras.
+            reason: `El área añadida (banda ${vacias}) quedó vacía: el modelo rellenó en vez de extender la fotografía. La escena saldría con franjas negras arriba y abajo en vez de ocupar el formato vertical. Se rehace la adaptación.`
+        };
+    }
     if (verification.tiling?.detected) {
         const dup = verification.tiling.bands.filter(b => b.duplicated).map(b => b.name).join(' y ');
         return {

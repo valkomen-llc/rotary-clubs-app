@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.792
+## Creador de Reels IA — v4.793
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1087,6 +1087,21 @@ imágenes usa sharp).
   rescate: seguir al montaje en la misma pasada pegaría el clip contaminado
   desde la memoria — exactamente lo que el bloque existe para impedir. El
   siguiente sondeo monta con las filas frescas.
+- **Una banda VACÍA tampoco es una expansión** (v4.793, `BAND_MIN_DETAIL`). Es
+  la secuela directa del anti-mosaico y la misma lección otra vez: había DOS
+  mediciones sobre el área añadida y las dos daban bien. El anti-mosaico
+  pregunta «¿esta banda repite la foto?» y una franja negra no se parece en
+  nada al original, así que pasaba con nota perfecta; la preservación pregunta
+  «¿se conservó la foto?» y el centro estaba intacto, así que también pasaba.
+  Entre las dos faltaba la pregunta más simple —«¿esta banda tiene algo?»— y por
+  ahí salían los clips con bordes negros arriba y abajo. Se mide la desviación
+  típica de cada banda: relleno plano da **0,00**, el degradado más pobre que se
+  puede llamar cielo da 4, una fotografía real 10 o más. El umbral va en **2**,
+  en medio de esa brecha: pegado a 4 se descartaría un cielo despejado.
+- **Se juzga junto al mosaico y ANTES que la preservación**, por el mismo motivo
+  que el mosaico: con el centro intacto la conservación da nota alta y tapa el
+  defecto. Son los dos modos de fallar de una expansión —repetir la foto o no
+  poner nada— y ninguno se ve mirando la región central.
 - **Kling no expone parámetros de preservación.** Ni `image adherence`, ni
   `creativity`, ni `motion strength`, ni `seed`: el input es `{ prompt,
   image_urls, duration, sound, negative_prompt? }` y nada más. Las únicas
