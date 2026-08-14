@@ -57,7 +57,7 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "energy": 1..5,
   "narrativeRole": "opening" | "development" | "closing",
   "weight": 0.5..1.5,
-  "motionHint": "una frase EN INGLÉS describiendo qué hacen las PERSONAS de esta foto concreta durante los próximos segundos",
+  "motionHint": "una frase EN INGLÉS describiendo qué SE MUEVE en esta foto concreta durante los próximos segundos: las personas si las hay, y siempre el entorno",
   "suggestedStyle": "<id de estilo>",
   "riskNotes": ["avisos en español sobre qué es delicado de animar acá"]
 }
@@ -73,7 +73,13 @@ Reglas:
 - "inventory" es el CENSO DE COSAS de la escena: los elementos fijos principales que un video de este lugar tendría que conservar — edificios, árboles, vehículos, señales, mobiliario, escombros, estructuras. En inglés, cada uno con su posición aproximada: "a collapsed two-storey building on the right", "a large tree in the centre", "an orange truck behind". Máximo 6, los más notorios. NO incluyas a las personas (van en "subjects"). Lista vacía sólo si la escena es abstracta.
 - "narrativeRole": "opening" para la toma más abierta o contextual, "closing" para la que cierra o lleva la marca.
 - "weight" es cuánto tiempo merece la escena: 1.0 es lo normal, 1.4 si tiene mucho que mostrar, 0.7 si es simple.
-- "motionHint" es la instrucción específica de ESTA foto y es lo más importante que devuelves: describe en inglés qué continúan haciendo las personas que aparecen —la acción concreta que ya están realizando, hacia dónde miran, qué hacen sus manos, con quién interactúan—. Escríbelo como la continuación natural del instante fotografiado: "the two women keep sorting the boxes while the man beside them looks over and says something". La cámara está fija: describe lo que hace la gente, nunca lo que hace el objetivo. Y describe únicamente lo que YA está en la fotografía — si algo no se ve en ella, no existe en el plano. Si no hay personas, di qué se mueve del entorno: tela, hojas, banderas, agua.
+- "motionHint" es la instrucción específica de ESTA foto y es lo más importante que devuelves. La cámara está SIEMPRE fija: describe lo que se mueve DENTRO del cuadro, nunca lo que hace el objetivo. Nada de desplazamientos, acercamientos ni recorridos.
+
+  · Si hay PERSONAS: qué continúan haciendo —la acción concreta que ya están realizando, hacia dónde miran, qué hacen sus manos, con quién interactúan—, como la continuación natural del instante fotografiado: "the two women keep sorting the boxes while the man beside them looks over and says something".
+
+  · HAYA O NO personas, di también qué se mueve del ENTORNO, y NÓMBRALO mirando la foto, no en genérico. Una escena sin gente tiene que cobrar vida igual: polvo suspendido en el haz de luz, humo que sube, una lona o un plástico que ondea, ramas y hojas que se mecen, ropa tendida, banderas, cortinas, papeles sueltos, agua que corre o gotea, vapor, el reflejo que cambia en un vidrio, el follaje contra el cielo. Escribe SÓLO lo que se ve en esta fotografía: "dust drifts through the shaft of light over the rubble while the torn blue tarp lifts and settles and the tree branches sway above the street".
+
+  · Y describe MOVIMIENTO CONTINUO, no un gesto aislado: algo tiene que estar en marcha todo el tiempo. Nunca inventes objetos, personas ni elementos que no aparezcan en la fotografía.
 - "riskNotes" en español: qué podría deformarse (rostros de perfil, texto pequeño, manos, logotipos finos). Lista vacía si no hay riesgo.`;
 
 // El director elige sólo entre estilos que ANIMAN. `fotografico` no entra

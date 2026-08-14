@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.795
+## Creador de Reels IA — v4.796
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1219,6 +1219,30 @@ fuera un video».
   v4.790 el texto, v4.792 el destino de lo descalificado. En las tres, un
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
+
+### Una escena SIN personas también cobra vida (v4.796)
+
+Pedido literal: «no necesariamente tiene que tener personas; el entorno o el
+contexto de la imagen debe cobrar vida», y «analizá primero la imagen y después
+animala».
+
+- **El `motionHint` estaba escrito para las PERSONAS.** Pedía qué hacen las
+  manos, hacia dónde miran, con quién interactúan; el entorno aparecía como una
+  nota al final —«si no hay personas, di qué se mueve»—. Una foto de escombros
+  recibía, en la práctica, una instrucción genérica. Ahora el entorno se pide
+  SIEMPRE, haya o no gente, y NOMBRADO sobre esa foto concreta: polvo en el haz
+  de luz, humo que sube, lona que ondea, ramas, agua, reflejos.
+- **La cláusula de ambiente sin personas era corta y genérica** —«fabric
+  settles, dust drifts»— y un modelo la cumple con un temblor mínimo. Se nombran
+  las cosas que de verdad se mueven y se exige que algo esté SIEMPRE en marcha:
+  la continuidad es lo que separa un vídeo de una foto temblando (misma lección
+  que v4.716).
+- **Sigue sin inventar**: «only the things already visible in the photograph
+  move; nothing new enters the frame». Es la contracara del censo universal de
+  v4.785 — el entorno se anima, no se puebla.
+- **La cámara sigue fija.** El pedido dice explícitamente «ni de un lado a otro,
+  ni arriba y abajo, ni zoom»: no reintroducir ejes de cámara ni en el prompt
+  del director ni en `MOTION_STYLES`.
 
 ### La cuarta puerta con la misma forma (v4.795)
 
