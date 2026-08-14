@@ -33,7 +33,8 @@ import {
 } from '../server/lib/reelSpec.js';
 import {
     buildExpansionPrompt, verifyExpansion, judgeExpansion,
-    EXPANSION_NEGATIVE_PROMPT, EXPANSION_NEGATIVE_TERMS, TILING_STRUCTURE_THRESHOLD
+    EXPANSION_NEGATIVE_PROMPT, EXPANSION_NEGATIVE_TERMS, TILING_STRUCTURE_THRESHOLD,
+    BAND_MIN_DETAIL
 } from '../server/lib/canvasExpansion.js';
 
 import { readFileSync } from 'fs';
@@ -225,6 +226,63 @@ console.log('\n▸ 3. El inventario fija el decorado');
     check(`el peor caso cabe en el tope de Kling (${p.length}/2500)`, p.length <= 2500);
     check('el censo sobrevive al recorte', /Exactly 8 people/.test(p));
     check('la oclusión sobrevive al recorte', /stays hidden/.test(p));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ 2b. Una banda VACÍA tampoco es una expansión (v4.793)');
+
+{
+    // La comprobación de mosaico pregunta «¿esta banda repite la foto?». Le
+    // faltaba la opuesta: «¿esta banda tiene algo?». Una franja negra —el
+    // modelo rellenando en vez de extender— se parece poquísimo al original,
+    // así que pasaba el anti-mosaico con nota perfecta, y la conservación del
+    // centro también pasaba porque el centro estaba intacto. Entre las dos
+    // dejaban pasar el clip con bordes negros arriba y abajo.
+    const juez = (tiling, preservation = 0.9) =>
+        judgeExpansion({ ok: true, preservation, tiling });
+
+    check('una banda vacía reprueba la adaptación',
+        juez({ checked: true, detected: false, empty: true, bands: [{ name: 'superior', flat: true }] }).verdict === 'failed');
+    check('...y se dice con su CONSECUENCIA, no sólo con el motivo',
+        /franjas negras/.test(juez({ checked: true, detected: false, empty: true, bands: [{ name: 'superior', flat: true }] }).reason));
+    check('...aunque el centro se haya conservado perfecto',
+        juez({ checked: true, detected: false, empty: true, bands: [{ name: 'inferior', flat: true }] }, 0.99).verdict === 'failed');
+    check('el mosaico sigue reprobando igual',
+        juez({ checked: true, detected: true, empty: false, bands: [{ name: 'inferior', duplicated: true }] }).verdict === 'failed');
+    check('una banda con contenido pasa',
+        juez({ checked: true, detected: false, empty: false, bands: [{ name: 'superior', flat: false, detail: 18 }] }).verdict === 'ok');
+
+    // El umbral tiene que dejar fuera el relleno y no tocar el contenido real.
+    check('el umbral está declarado y deja margen sobre el relleno plano',
+        typeof BAND_MIN_DETAIL === 'number' && BAND_MIN_DETAIL > 0 && BAND_MIN_DETAIL < 4,
+        String(BAND_MIN_DETAIL));
+
+    let sharpOk = true;
+    try { await import('sharp'); } catch { sharpOk = false; }
+    if (!sharpOk) {
+        console.log('  SALTA la medición — sharp no está instalado.');
+    } else {
+        const sharp = (await import('sharp')).default;
+        const desvio = async (buf) => {
+            const st = await sharp(buf).stats();
+            const c = st.channels.slice(0, 3);
+            return c.reduce((a, x) => a + x.stdev, 0) / c.length;
+        };
+        const negro = await sharp({ create: { width: 300, height: 150, channels: 3, background: '#000' } }).png().toBuffer();
+        const ruido = Buffer.alloc(300 * 150 * 3);
+        let semilla = 11;
+        for (let i = 0; i < 300 * 150; i++) {
+            semilla = (semilla * 1103515245 + 12345) & 0x7fffffff;
+            const v = 60 + (semilla % 140);
+            ruido[i * 3] = v; ruido[i * 3 + 1] = (v * 2) % 256; ruido[i * 3 + 2] = (v * 3) % 256;
+        }
+        const foto = await sharp(ruido, { raw: { width: 300, height: 150, channels: 3 } }).blur(2).png().toBuffer();
+
+        const dNegro = await desvio(negro);
+        const dFoto = await desvio(foto);
+        check(`una franja negra queda por debajo del umbral (${dNegro.toFixed(2)} < ${BAND_MIN_DETAIL})`, dNegro < BAND_MIN_DETAIL);
+        check(`una banda con contenido queda por encima (${dFoto.toFixed(2)} > ${BAND_MIN_DETAIL})`, dFoto > BAND_MIN_DETAIL);
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────────────

@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.792.0 | 2026-08-14 (Un logotipo redibujado ya no tira la escena animada)
-// Cache bust: 2026-08-14e
+// UI V4.793.0 | 2026-08-14 (Una banda vacía ya no pasa por expansión)
+// Cache bust: 2026-08-14f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.793.0',
+        title: 'Se acabaron los bordes negros: una banda vacía ya no cuenta como lienzo 🖼️',
+        description: 'Con las escenas ya animándose de verdad apareció el defecto siguiente: los clips salían con franjas negras arriba y abajo en vez de ocupar el formato vertical completo. La adaptación al lienzo 9:16 SÍ se estaba ejecutando —la ficha decía «62 % de lienzo nuevo»—, pero lo que el modelo devolvía era relleno plano en vez de fotografía extendida, y ninguna de nuestras comprobaciones lo veía. Y el motivo es interesante: teníamos dos mediciones sobre el área añadida y las dos daban bien. Una pregunta «¿esta banda repite la fotografía?» (el defecto de mosaico que se corrigió antes) y una franja negra no se parece en nada al original, así que pasaba con nota perfecta. La otra pregunta «¿se conservó la foto original?» y la foto estaba intacta en el centro, así que también pasaba. Las dos mediciones eran correctas; entre las dos faltaba la pregunta más simple: «¿esta banda tiene algo?». Ahora se mide, y una banda plana reprueba la adaptación y la manda a rehacerse, diciendo la consecuencia con todas las letras: que la escena saldría con franjas negras. El umbral está medido, no estimado: un relleno plano da cero exacto y hasta el cielo más liso queda muy por encima, así que no descarta contenido real.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'emergencias', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Una banda añadida que quedó vacía reprueba la adaptación y la rehace: se acabaron los bordes negros.' },
+            { type: 'improved', text: 'El motivo dice la consecuencia — «la escena saldría con franjas negras» — no sólo la medición.' },
+            { type: 'added', text: 'La comprobación se hace junto a la de mosaico y antes que la de conservación, que es la que tapaba el defecto.' },
+        ]
+    },
     {
         version: '4.792.0',
         title: 'Las escenas se entregan animadas: sólo una persona inventada las descarta 🎬',

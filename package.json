@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.792.0",
-  "cache_bust": "2026-08-14e (Un logotipo redibujado ya no tira la escena animada: solo una persona inventada la sustituye.)",
+  "version": "4.793.0",
+  "cache_bust": "2026-08-14f (Una banda vacia ya no pasa por expansion: el borde negro se detecta y la adaptacion se rehace.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
