@@ -415,6 +415,37 @@ console.log('\n▸ 2c. Una copia PARCIAL de la foto tampoco es una expansión (v
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ 3b. El logotipo se juzga donde ESTÁ, y sólo si se VE (v4.802)');
+
+{
+    // El caso del reporte: «San Simón HOTEL — 0/10 — no es visible en ninguna
+    // de las imágenes», con el recorte mostrando baldosas. Dos defectos: las
+    // regiones se declaran sobre la FOTO ORIGINAL y se aplicaban crudas sobre
+    // el lienzo ADAPTADO (el recorte caía en otro lugar), y «no lo veo» se
+    // puntuaba 0/10 → identidad alterada → regeneración pagada por un defecto
+    // que nadie midió.
+    const quality = readFileSync(path.join(root, 'server/lib/reelQuality.js'), 'utf8');
+    check('el verificador de marca pregunta si el logotipo SE VE',
+        /"visible": boolean/.test(quality) && /visible: raw\.visible !== false/.test(quality));
+    check('«no visible» deja la comprobación SIN JUZGAR, nunca alterada',
+        /const notVisible = semantic \? semantic\.visible === false : false;/.test(quality)
+        && /notVisible \? false : \(semantic \? alteredByVision : alteredByMetrics\)/.test(quality));
+    check('...y lo no visto se DICE en el resumen, no se calla',
+        /no se pudieron ver en su recorte y no se juzgaron/.test(quality));
+
+    const ctrl2 = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
+    check('las regiones de marca se REMAPEAN a la geometría del lienzo adaptado',
+        /\(r\.left \+ b\.x \* r\.width\) \/ expGeo\.width/.test(ctrl2)
+        && /\(r\.top \+ b\.y \* r\.height\) \/ expGeo\.height/.test(ctrl2));
+    check('...sólo cuando la escena se animó desde el lienzo adaptado',
+        /scene\.expandedImageUrl && expGeo\?\.region/.test(ctrl2));
+
+    const ui = readFileSync(path.join(root, 'src/components/admin/content-studio/SceneBrandCheck.tsx'), 'utf8');
+    check('la ficha pinta el logotipo no visto en gris («sin comprobar»), no en rojo',
+        /logo\.notVisible/.test(ui) && /sin comprobar/.test(ui));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el controlador)');
 
 {

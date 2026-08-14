@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.801.0",
-  "cache_bust": "2026-08-14n (Reglas globales del cliente: sin respaldo Ken Burns, nadie desaparece, sin costuras en el lienzo, cinco fotogramas de consistencia temporal.)",
+  "version": "4.802.0",
+  "cache_bust": "2026-08-14o (El logotipo se juzga donde esta y solo si se ve: regiones remapeadas al lienzo adaptado y no-visible sin juzgar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

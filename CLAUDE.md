@@ -1220,6 +1220,26 @@ fuera un video».
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
 
+### El logotipo se juzga donde ESTÁ, y sólo si se VE (v4.802)
+
+De las fichas del reporte: «San Simón HOTEL — 0/10 — no es visible en ninguna
+de las imágenes», con el recorte mostrando baldosas. Dos errores de medición
+encadenados que descalificaban y REGENERABAN por un defecto que nadie midió.
+
+- **`brandRegions` se declara sobre la FOTO ORIGINAL y la escena se compara
+  contra el lienzo ADAPTADO** (v4.664): con lienzo nuevo alrededor, las
+  coordenadas crudas recortan otro lugar. Se REMAPEAN con la geometría que
+  guardó `verifyExpansion` (`verification.region` + tamaño del lienzo), en el
+  único punto que llama a `checkSceneFidelity`. Al añadir una medición por
+  coordenadas, preguntarse sobre QUÉ imagen se declararon.
+- **«No lo veo» no es «está alterado»** (`visible` en `BRAND_SYSTEM`,
+  `notVisible` en el logo). La respuesta honesta del modelo —«el recorte no
+  muestra ningún logotipo»— se puntuaba 0/10 → `brandAltered` → regeneración
+  pagada. Un logotipo no visto queda `sin comprobar`, no decide, y las métricas
+  deterministas tampoco (comparan dos recortes del mismo lugar equivocado). Lo
+  no visto se DICE en el resumen — misma regla que `unknown` en el CRM: «no se
+  pudo comprobar» no es un tipo de «bien», pero tampoco un tipo de «mal».
+
 ### Las reglas globales del cliente (v4.801) — REGLA EXPRESA: sin respaldo Ken Burns
 
 El cliente entregó una especificación formal («Arquitecto Senior…») con reglas
