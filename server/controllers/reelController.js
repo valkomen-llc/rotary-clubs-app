@@ -45,7 +45,7 @@ import {
     distributeDurations, resolveEngine, buildScenePrompt, buildSceneNegativePrompt,
     buildReelTitle, computeProgress
 } from '../lib/reelSpec.js';
-import { directReel } from '../lib/reelDirector.js';
+import { directReel, analyzeImages } from '../lib/reelDirector.js';
 import {
     REEL_PRESETS, DEFAULT_PRESET, MIN_SCENE_COUNT, MAX_SCENE_COUNT,
     resolvePreset, resolveSceneCount, targetTotalSecFor, narrativeRolesFor,
@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.797.0';
+export const REEL_MODULE_VERSION = '4.798.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -2910,7 +2910,34 @@ export const regenerateScene = async (req, res) => {
         // Si cambió la imagen, el análisis viejo ya no describe nada: se
         // descarta y el prompt se arma sin refuerzos. Mantenerlo sería peor —
         // reforzaría la conservación de una marca que quizá ya no está.
-        const analysis = nextImage === scene.sourceImageUrl ? scene.analysis : null;
+        let analysis = nextImage === scene.sourceImageUrl ? scene.analysis : null;
+
+        // Un análisis anterior a v4.797 no trae el mapa de acciones —quién
+        // entrega, quién recibe, quién sostiene qué—, así que la protección
+        // contra la acción invertida quedaría MUDA justo al regenerar, que es
+        // cuando más se la necesita: `sanitizeAnalysis` siempre escribe
+        // `interactions` (aunque sea vacío), de modo que su ausencia identifica
+        // sin ambigüedad un análisis viejo. Se re-analiza ESTA foto — una
+        // llamada de visión — y si la visión falla se degrada al análisis que
+        // había: regenerar no puede fallar por una mejora accesoria.
+        if (analysis && analysis.interactions === undefined) {
+            try {
+                const reUsage = [];
+                const [fresh] = await analyzeImages([{ url: nextImage }], { usage: reUsage });
+                if (fresh && !fresh.failed) analysis = { ...fresh, index: scene.sourceIndex };
+                for (const u of reUsage) {
+                    await recordUsage({
+                        projectId: project.id, clubId: scene.clubId || null, sceneId: scene.id,
+                        operation: u.operation, provider: 'llm', model: u.model,
+                        units: tokensOf(u.raw), unit: 'tokens', ms: u.ms, status: u.status,
+                        target: u.target,
+                        detail: 'Re-análisis al regenerar: el análisis guardado era anterior al mapa de acciones (v4.797)'
+                    });
+                }
+            } catch (e) {
+                console.warn(`[REEL] re-análisis de la escena ${scene.id} falló, se usa el análisis guardado: ${e.message}`);
+            }
+        }
 
         const engineId = isEngineAvailable(scene.engine) ? scene.engine : DEFAULT_ENGINE;
         const engineChoice = resolveEngine({ engine: engineId, format: project.format, qualityTier: project.qualityTier });

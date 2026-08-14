@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.797.0 | 2026-08-14 (Tu orden manda y la acción no se invierte)
-// Cache bust: 2026-08-14j
+// UI V4.798.0 | 2026-08-14 (El modo sin IA no viaja en silencio)
+// Cache bust: 2026-08-14k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.798.0',
+        title: 'El modo Fotográfico se dice antes de gastar el gesto 📸',
+        description: 'Diagnóstico del reporte «las fotos no tienen motor generativo»: ese Reel se generó en modo «Fotográfico — sin IA», el modo que a propósito NO anima las escenas — mueve el encuadre sobre cada foto (por eso una iba de arriba a abajo y otra de lado a lado: es la alternancia declarada del modo). El modo es legítimo y sigue disponible; lo que estaba mal era cómo se ofrecía y cuán fácil era quedar en él sin registrarlo. TRES correcciones. UNO: al generar con el modo Fotográfico activo, el creador lo AVISA junto al botón —«este Reel se generará sin animación IA»— en vez de decirlo sólo en la casilla de arriba; y esa casilla ya no se pinta en verde, porque el color recomendaba justo lo que el texto advertía. DOS: «Duplicar» un Reel ahora abre el creador RELLENO de verdad —fotos, formato, preset, contexto de emergencia y modo—; hasta hoy el aviso «Ajustes copiados al creador» era falso: la configuración se emitía y ninguna pantalla la escuchaba, así que el creador se abría vacío. TRES: regenerar una escena de un proyecto anterior a v4.797 vuelve a analizar su fotografía antes de animarla, porque el análisis guardado de esos proyectos no trae el mapa de acciones (quién entrega, quién recibe) y la protección contra la acción invertida quedaba muda exactamente cuando más se la necesita. Con esto, el clip donde los niños terminaban entregándole los mercados a los rotarios queda cubierto también al regenerar sobre proyectos viejos.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'ux', 'fidelidad'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Aviso explícito junto al botón de generar cuando el Reel saldrá sin animación IA (modo Fotográfico).' },
+            { type: 'changed', text: 'La tarjeta del modo sin IA deja el verde: el color ya no recomienda lo que el texto advierte.' },
+            { type: 'fixed', text: '«Duplicar» abre el creador ya relleno; hasta hoy el aviso de copiado era falso y el creador quedaba vacío.' },
+            { type: 'fixed', text: 'Regenerar una escena re-analiza la foto si su análisis es anterior al mapa de acciones (v4.797).' },
+        ]
+    },
     {
         version: '4.797.0',
         title: 'Tu orden manda, y la animación no puede invertir una acción 🎬',

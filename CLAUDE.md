@@ -1220,6 +1220,35 @@ fuera un video».
   control demasiado estricto no falló ruidosamente — entregó otra cosa y la
   presentó como resultado.
 
+### El modo sin IA no viaja en silencio (v4.798)
+
+Diagnóstico del reporte «las fotos no tienen motor generativo»: el Reel entero
+se generó en modo «Fotográfico — sin IA» — el paneo vertical de la escena 1 y
+el horizontal de la 2 son la alternancia declarada del 2.5D
+(`['up','left','down'][position % 3]`), no un fallo del motor. El modo es
+legítimo; lo silencioso no.
+
+- **El modo Fotográfico se AVISA junto al botón de generar**, no sólo en la
+  casilla de arriba: quien va a gastar el gesto es quien tiene que leerlo. Y la
+  tarjeta del modo sin IA **no se pinta en verde** — pintada en esmeralda con
+  «identidad garantizada al 100 %» se leía como la opción segura y se elegía
+  sin registrar la consecuencia. El color no puede recomendar lo que el texto
+  advierte.
+- **`onDuplicate` estaba SIN CABLEAR.** `duplicateReel` devuelve el prefill
+  desde v4.669 y `ContentStudio` montaba `<ReelLibrary />` sin el prop: el
+  aviso «Ajustes copiados al creador» era falso y el creador se abría vacío.
+  Ahora las pestañas del estudio son controladas, duplicar cambia a la pestaña
+  del creador y `VideoCreator` acepta `prefill` y lo aplica entero — incluido
+  `motionStyle`, que si es `fotografico` queda A LA VISTA por el aviso de
+  arriba. Al agregar un callback entre pantallas, comprobar que ALGUIEN lo
+  escuche: emitirlo compila igual sin receptor.
+- **Regenerar una escena RE-ANALIZA la foto si el análisis no trae
+  `interactions`.** `sanitizeAnalysis` siempre escribe el campo (aunque vacío),
+  así que su ausencia identifica sin ambigüedad un análisis anterior a v4.797 —
+  y con él la protección contra la acción invertida quedaba muda justo al
+  regenerar, que es cuando más se la necesita. Si la visión falla se degrada al
+  análisis guardado: regenerar no puede fallar por una mejora accesoria.
+
 ### El orden del usuario, la coherencia de acción y la copia parcial (v4.797)
 
 Corrección de fondo pedida con un diagnóstico previo aprobado. Cinco piezas.
