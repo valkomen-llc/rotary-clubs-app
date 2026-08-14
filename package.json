@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.788.0",
-  "cache_bust": "2026-08-14a (Presupuesto de la Formulacion sin los tres conceptos internacionales.)",
+  "version": "4.789.0",
+  "cache_bust": "2026-08-14b (El panel ya no queda en blanco tras un despliegue: un archivo que falta da 404, el documento no se cachea y la carga se recupera sola.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -37,6 +37,7 @@
     "test:domains": "node scripts/test-domains.mjs",
     "test:district-site": "node scripts/test-district-site.mjs",
     "test:redirects": "node scripts/test-redirects.mjs",
+    "test:spa": "node scripts/test-spa-loading.mjs",
     "test:media": "node scripts/test-media-folders.mjs",
     "test:heic": "node scripts/test-heic.mjs",
     "test:projects-page": "node scripts/test-projects-page.mjs",

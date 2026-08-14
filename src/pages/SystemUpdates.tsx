@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.788.0 | 2026-08-14 (Presupuesto de la Formulación sin los conceptos internacionales)
-// Cache bust: 2026-08-14a
+// UI V4.789.0 | 2026-08-14 (El panel ya no queda en blanco tras un despliegue)
+// Cache bust: 2026-08-14b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.789.0',
+        title: 'El panel ya no queda en blanco: entra a la primera 🩹',
+        description: 'Se reportó que últimamente entrar al Content Studio o al panel dejaba la pantalla en blanco y había que recargar forzado varias veces. La causa: desde que las pantallas se cargan por separado (para que el sitio abra rápido), cada una es un archivo con un código de versión en el nombre, y ese código cambia en CADA despliegue —acá se despliega varias veces al día—. Una pestaña abierta desde hace rato pedía el archivo de la versión anterior y, en vez de un «no existe» limpio, recibía la página web entera; el navegador intentaba leer eso como programa, fallaba, y como esa falla queda cacheada la pantalla no volvía a cargar por más que se navegara. Encima el documento principal —el que dice qué archivos van— se guardaba en caché, así que una recarga normal devolvía otra vez la lista vieja: de ahí el «varias veces». Tres correcciones: un archivo que no existe ahora responde «no encontrado» de verdad; el documento principal deja de cachearse (los archivos pesados siguen cacheados, no se pierde velocidad); y si aun así falta un archivo, la aplicación reintenta sola y, como mucho, recarga una vez por su cuenta. Si algo quedara realmente roto, ahora aparece un mensaje que lo explica con un botón para recargar, en vez de una pantalla vacía sin explicación.',
+        date: new Date().toISOString(),
+        tags: ['rendimiento', 'panel', 'estabilidad'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un archivo de una versión anterior devuelve «no encontrado» en vez de la página web, que es lo que dejaba el panel en blanco.' },
+            { type: 'fixed', text: 'El documento principal ya no se cachea: una recarga normal basta, no hace falta forzarla varias veces.' },
+            { type: 'added', text: 'La aplicación reintenta sola y, si hace falta, recarga una vez — con freno, para no entrar en un bucle.' },
+            { type: 'added', text: 'Un fallo de carga muestra un mensaje con su motivo y un botón para recargar, nunca una pantalla vacía.' },
+        ]
+    },
     {
         version: '4.788.0',
         title: 'El presupuesto de la Formulación pide sólo lo que aplica 📋',

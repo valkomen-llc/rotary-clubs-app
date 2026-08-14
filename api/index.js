@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
+import { isBuildAssetPath } from '../server/lib/staticAssets.js';
 import prisma from '../server/lib/prisma.js';
 import Stripe from 'stripe';
 import authRoutes from '../server/routes/auth.js';
@@ -416,6 +417,26 @@ app.get('*', async (req, res) => {
     // `renderPublicDocument` resuelve la entidad real de la dirección, retira lo
     // que va a escribir y escribe una sola vez, escapado, con canonical, JSON-LD
     // y Twitter Cards. Ver `server/lib/seoRender.js`.
+    // ── Un archivo que no existe da 404, NO el documento (v4.789) ──
+    //
+    // `vercel.json` manda a esta función todo lo que no sea `/api/`, así que un
+    // `/assets/ContentStudio-VIEJO.js` —que pide un navegador con el
+    // `index.html` de un despliegue anterior— llegaba hasta abajo y recibía la
+    // aplicación entera con estado 200 y `Content-Type: text/html`.
+    //
+    // Ese es el defecto del panel en blanco: el `import()` de `React.lazy`
+    // intenta interpretar HTML como módulo, falla, y React CACHEA la promesa
+    // rechazada — el componente ya no carga en toda la sesión, por más veces
+    // que se navegue. Sólo lo arregla recargar, que es exactamente lo que se
+    // reportó.
+    //
+    // Con un 404 de verdad el cliente puede atraparlo y recuperarse solo.
+    if (isBuildAssetPath(req.path)) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(404).type('text/plain')
+            .send('Archivo no encontrado. Probablemente pertenece a una versión anterior del sitio.');
+    }
+
     try {
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) return res.status(404).send('Frontend not built.');
@@ -438,6 +459,19 @@ app.get('*', async (req, res) => {
         // saberlo. Sin `Vary: Host` un proxy podría servirle a un sitio el <head>
         // de otro.
         res.setHeader('Vary', 'Host');
+        // ── El documento NO se cachea (v4.789) ──
+        //
+        // Es la otra mitad del panel en blanco. El documento nombra los
+        // archivos del build por su hash, y esos hashes cambian en cada
+        // despliegue: un documento guardado en caché manda al navegador a pedir
+        // archivos que ya no existen. Y como se sirve desde una función, sin
+        // esta cabecera queda a merced de la caché heurística del navegador —
+        // por eso una recarga normal no bastaba y hacía falta forzarla varias
+        // veces.
+        //
+        // No encarece nada: lo pesado son los archivos de `/assets/`, que
+        // llevan hash en el nombre, son inmutables y siguen cacheándose.
+        res.setHeader('Cache-Control', 'no-store, must-revalidate');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(doc.html);
     } catch (err) {
