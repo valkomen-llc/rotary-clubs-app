@@ -39,6 +39,71 @@ const lines = (n) => n * CHARS_PER_LINE;
 // reemplaza al leerla. A partir de aquí, lo guardado manda siempre.
 export const MASTER_FORM_VERSION = 2;
 
+// ── Filas del presupuesto que ya no se piden (v4.788) ──────────────────────
+//
+// El comité pidió quitar del paso 5 los tres conceptos internacionales: el
+// formulario los preguntaba a todos los clubes y en la práctica no aplican a
+// esta convocatoria.
+//
+// Se declaran aquí, y no simplemente se borran, porque hacen falta en DOS
+// sitios distintos:
+//
+//   · La ficha administrativa y el PDF dibujan la tabla recorriendo `rows` de
+//     la plantilla. Un valor ya escrito por un club en una de estas filas
+//     dejaría de verse —seguiría en la base, invisible—, y eso es perder
+//     información de una postulación que se paga.
+//   · `dropRetiredBudgetRows` las usa para limpiar la copia de la plantilla
+//     que la convocatoria pueda tener guardada: sin eso, el cambio de este
+//     archivo no llegaría a producción (lo guardado manda sobre el código).
+export const RETIRED_BUDGET_ROWS = [
+    { key: 'internationalClubs', label: 'Aporte clubes internacionales' },
+    { key: 'internationalDistrict', label: 'Distrito Internacional' },
+    { key: 'rotaryFoundation', label: 'Fundación Rotaria' },
+];
+export const RETIRED_BUDGET_ROW_KEYS = RETIRED_BUDGET_ROWS.map(r => r.key);
+
+/**
+ * Quita las filas retiradas de una copia GUARDADA de la plantilla.
+ *
+ * Por qué hace falta: `templateFor` mezcla la plantilla del código con la que
+ * el administrador tenga guardada en la convocatoria, y el merge REEMPLAZA los
+ * arrays enteros. Si la fila de `ProjectFairConfig` trae su propio
+ * `masterForm.sections`, editar este archivo no cambia nada en producción — es
+ * exactamente la trampa que ya documentó el catálogo de clubes (v4.707) y el
+ * Generador de Pendones antes que él.
+ *
+ * Se hace al LEER, como el resto de las correcciones de `normalizeSavedConfig`
+ * (la etiqueta de los CADRES, el orden de los distritos): así se autorrepara y
+ * no hace falta escribir en la base durante un despliegue, que es justo lo que
+ * la sección de base de datos de CLAUDE.md prohíbe.
+ *
+ * Sólo toca las tres filas nombradas y sólo dentro del presupuesto. Devuelve la
+ * MISMA referencia cuando no hay nada que quitar, para no invalidar en balde lo
+ * que el administrador haya personalizado.
+ */
+export const dropRetiredBudgetRows = (masterForm) => {
+    const sections = masterForm?.sections;
+    if (!Array.isArray(sections)) return masterForm;
+
+    let tocado = false;
+    const limpio = sections.map((section) => {
+        if (!Array.isArray(section?.fields)) return section;
+        let seccionTocada = false;
+        const fields = section.fields.map((field) => {
+            if (field?.type !== 'matrix' || !Array.isArray(field.rows)) return field;
+            const rows = field.rows.filter(r => !RETIRED_BUDGET_ROW_KEYS.includes(r?.key));
+            if (rows.length === field.rows.length) return field;
+            seccionTocada = true;
+            return { ...field, rows, retiredRows: RETIRED_BUDGET_ROWS };
+        });
+        if (!seccionTocada) return section;
+        tocado = true;
+        return { ...section, fields };
+    });
+
+    return tocado ? { ...masterForm, sections: limpio } : masterForm;
+};
+
 export const DEFAULT_MASTER_FORM = {
     version: MASTER_FORM_VERSION,
     enabled: true,
@@ -147,11 +212,16 @@ export const DEFAULT_MASTER_FORM = {
                   rows: [
                       { key: 'projectCost', label: 'Costo del Proyecto' },
                       { key: 'localClub', label: 'Aporte Club local' },
-                      { key: 'internationalClubs', label: 'Aporte clubes internacionales' },
                       { key: 'colombianDistrict', label: 'Distrito Colombiano' },
-                      { key: 'internationalDistrict', label: 'Distrito Internacional' },
-                      { key: 'rotaryFoundation', label: 'Fundación Rotaria' },
-                  ] },
+                  ],
+                  // Filas retiradas del formulario (v4.788, pedido del comité).
+                  // No se borran del archivo: la ficha administrativa y el PDF
+                  // dibujan la tabla a partir de `rows`, así que sin esta lista
+                  // el valor que un club YA escribió desaparecería de la vista
+                  // aunque siga en la base. Misma regla que `RETIRED_LABELS` en
+                  // el registro de eventos: un campo retirado se deja de pedir,
+                  // no se deja de mostrar. Al retirar una fila, agregarla aquí.
+                  retiredRows: RETIRED_BUDGET_ROWS },
             ],
         },
         {

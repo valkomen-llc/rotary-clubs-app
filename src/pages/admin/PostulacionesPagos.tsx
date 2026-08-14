@@ -22,6 +22,7 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
     LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { matrixRowsToShow } from '../../lib/projectForms';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
@@ -498,7 +499,7 @@ const PostulacionesPagos: React.FC = () => {
                     } else if (field.type === 'matrix') {
                         // Filas fijas de la plantilla: se imprimen todas, con guion
                         // en las celdas sin diligenciar.
-                        const defs = Array.isArray(field.rows) ? field.rows : [];
+                        const defs = matrixRowsToShow(field, value);
                         if (!defs.length) write('—', 9, 150, 52);
                         defs.forEach((row: any) => write(
                             `${row.label}: ` + (field.columns || [])

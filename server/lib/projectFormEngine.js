@@ -44,6 +44,41 @@ const anyCellFilled = (obj) =>
     );
 
 /** ¿El campo tiene contenido? Depende del tipo: una tabla vacía no cuenta. */
+/**
+ * Las filas que hay que DIBUJAR de una tabla de filas fijas.
+ *
+ * Son las vigentes más las RETIRADAS que ya tengan algún valor escrito. Un club
+ * pudo haber diligenciado un concepto que después se quitó del formulario, y
+ * las tres vistas administrativas —la ficha, el PDF y el Word— dibujan la tabla
+ * recorriendo `rows`: sin esto, ese valor seguiría en la base y no lo vería
+ * nadie. Retirar un campo es dejar de PEDIRLO, no dejar de mostrarlo — misma
+ * regla que `RETIRED_LABELS` en el registro de eventos.
+ *
+ * Una fila retirada sin valor no se dibuja: nadie necesita ver un concepto que
+ * ya no se pide y que además está vacío.
+ */
+export const matrixRowsToShow = (field, value) => {
+    const rows = Array.isArray(field?.rows) ? field.rows : [];
+    const retired = Array.isArray(field?.retiredRows) ? field.retiredRows : [];
+    if (!retired.length) return rows;
+
+    const vigentes = new Set(rows.map(r => r?.key));
+    const conValor = retired.filter(r =>
+        r?.key && !vigentes.has(r.key)
+        && value?.[r.key]
+        && Object.values(value[r.key]).some(v => String(v ?? '').trim() !== '')
+    ).map(r => ({
+        ...r, retired: true,
+        // Se rotula en la propia etiqueta y no en cada vista: son tres —ficha,
+        // PDF y Word— y escribirlo tres veces las deja separarse. Sin el
+        // rótulo, un concepto retirado se lee como si el formulario todavía lo
+        // pidiera.
+        label: `${r.label} (retirado del formulario)`
+    }));
+
+    return conValor.length ? [...rows, ...conValor] : rows;
+};
+
 export const hasValue = (value, type) => {
     if (value === null || value === undefined) return false;
     if (type === 'repeater') {

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.787.0",
-  "cache_bust": "2026-08-13e (Un paneo ya no cuenta como vida: se mide sin modelo, el recuento de personas exige corroboracion y la escena sustituida se ve.)",
+  "version": "4.788.0",
+  "cache_bust": "2026-08-14a (Presupuesto de la Formulacion sin los tres conceptos internacionales.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -30,6 +30,7 @@
     "test:reels:life": "node scripts/test-reel-life.mjs",
     "test:clubes": "node scripts/test-rotary-clubs.mjs",
     "test:event-form": "node scripts/test-event-form.mjs",
+    "test:project-form": "node scripts/test-project-form.mjs",
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",
