@@ -348,6 +348,34 @@ const ReelDetail: React.FC<{
                         </div>
                     )}
 
+                    {/* ── Por qué una escena no se animó, ARRIBA (v4.790) ──
+                        v4.787 puso el aviso en la tarjeta de cada escena y aun
+                        así el reporte siguiente fue «no veo ninguna de las
+                        dos»: hay que bajar hasta la tarjeta y saber qué se
+                        busca. El resumen va antes de la rejilla, que es lo
+                        primero que se mira al abrir la pestaña. */}
+                    {tab === 'escenas' && (reel.scenes || []).some(sc => sc.fidelity?.substituted) && (
+                        <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/70 p-4">
+                            <div className="text-xs font-black uppercase tracking-wide text-amber-800">
+                                {(reel.scenes || []).filter(sc => sc.fidelity?.substituted).length} de {(reel.scenes || []).length} escenas
+                                no se animaron
+                            </div>
+                            <p className="text-[11px] text-amber-800 mt-1 leading-snug">
+                                El motor generó estas escenas, el control de calidad las descartó y se
+                                resolvieron moviendo el encuadre sobre la fotografía. Se pueden regenerar
+                                una por una.
+                            </p>
+                            <ul className="mt-2 space-y-1">
+                                {(reel.scenes || []).filter(sc => sc.fidelity?.substituted).map(sc => (
+                                    <li key={sc.id} className="text-[11px] text-amber-900 leading-snug">
+                                        <b>Escena {sc.position + 1}:</b>{' '}
+                                        {sc.fidelity?.reason || sc.statusDetail || 'sin motivo registrado'}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     {tab === 'escenas' && (
                         <div className="grid sm:grid-cols-3 gap-4">
                             {(reel.scenes || []).map(sc => (

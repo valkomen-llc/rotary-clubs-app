@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.789.0",
-  "cache_bust": "2026-08-14b (El panel ya no queda en blanco tras un despliegue: un archivo que falta da 404, el documento no se cachea y la carga se recupera sola.)",
+  "version": "4.790.0",
+  "cache_bust": "2026-08-14c (El control de texto deja de descalificar escenas por ruido de transcripcion, y la ficha dice arriba por que una escena no se anim\u00f3.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

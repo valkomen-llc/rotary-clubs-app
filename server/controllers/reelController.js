@@ -104,7 +104,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.787.0';
+export const REEL_MODULE_VERSION = '4.790.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 

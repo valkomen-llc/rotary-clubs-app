@@ -22,7 +22,7 @@
  *   npm run test:reels:people
  */
 
-import { buildPeopleReport, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
+import { buildPeopleReport, judgeTextFidelity, BRAND_MIN_STRUCTURE, BRAND_MIN_TEMPORAL } from '../server/lib/reelQuality.js';
 import { buildScenePrompt, buildSceneNegativePrompt, resolveSceneIntensity, PEOPLE_NEGATIVE_TERMS, MOTION_NEGATIVE_TERMS, MOTION_INTENSITY } from '../server/lib/reelSpec.js';
 import { resolveEditFps } from '../server/lib/reelRenderProviders.js';
 
@@ -135,6 +135,44 @@ check('los seis indicadores viajan en el informe',
         .every(k => k in r), JSON.stringify(Object.keys(r)));
 check('un fallo lleva su motivo escrito',
     typeof buildPeopleReport(three({ newSubjects: true }), PEOPLE).reason === 'string');
+
+console.log('\n── Texto: la proporción de palabras no descalifica sola (v4.790) ──');
+
+// Es el mismo defecto del recuento, en otra puerta. La proporción sale de dos
+// TRANSCRIPCIONES que el modelo hace sobre una composición reducida a 640 px de
+// alto: cada palabra que no alcanza a leer baja la nota sin que el vídeo haya
+// tocado nada. Y se tomaba el peor de tres fotogramas, así que en una campaña
+// de emergencia —donde casi toda foto lleva un cartel o un chaleco— se
+// descalificaban casi todas las escenas y terminaban sustituidas por la
+// fotografía en movimiento.
+const t = (ratio, words = 8) => ({ ratio, words });
+
+check('un fotograma con transcripción floja es RUIDO, no texto roto',
+    judgeTextFidelity([t(0.4), t(1), t(0.9)]).failed === false);
+check('...y se dice que lo hubo, no se esconde',
+    judgeTextFidelity([t(0.4), t(1), t(0.9)]).noise === true);
+check('dos fotogramas por debajo del umbral sí descalifican',
+    judgeTextFidelity([t(0.4), t(0.45), t(0.9)]).failed === true);
+check('un desplome no se explica por una lectura incompleta: descalifica solo',
+    judgeTextFidelity([t(0.1), t(1), t(1)]).failed === true);
+
+// Sobre tres palabras, perder una es el 33 %: una proporción así no significa
+// nada. Mismo criterio que la multitud en el recuento de personas.
+check('con muy pocas palabras el texto NO decide',
+    judgeTextFidelity([t(0.33, 3), t(0.33, 3)]).failed === false);
+check('...y se declara que no era fiable',
+    judgeTextFidelity([t(0.33, 3), t(0.33, 3)]).reliable === false);
+check('con vocabulario suficiente sí decide',
+    judgeTextFidelity([t(0.3, 12), t(0.3, 12)]).failed === true);
+
+check('texto conservado → ni falla ni avisa',
+    judgeTextFidelity([t(1), t(0.95), t(0.9)]).failed === false
+    && judgeTextFidelity([t(1), t(0.95), t(0.9)]).noise === false);
+check('sin texto en la foto no se afirma nada',
+    judgeTextFidelity([]).worst === null && judgeTextFidelity([]).failed === false);
+check('una entrada corrupta no rompe el criterio',
+    judgeTextFidelity([null, undefined, { words: 5 }, t(1)]).failed === false);
+
 
 console.log('\n── Intensidad: se acota sola, nunca sube ──');
 

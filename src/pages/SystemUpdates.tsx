@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.789.0 | 2026-08-14 (El panel ya no queda en blanco tras un despliegue)
-// Cache bust: 2026-08-14b
+// UI V4.790.0 | 2026-08-14 (El texto de la foto ya no descalifica escenas por ruido)
+// Cache bust: 2026-08-14c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.790.0',
+        title: 'Las escenas dejan de descartarse por un cartel mal leído 🔤',
+        description: 'Se reportaron tres clips nuevos de una Campaña de Emergencia en los que las fotos sólo se desplazaban de un lado a otro sin cobrar vida. Analizados uno a uno: eran otra vez escenas resueltas SIN motor generativo, o sea que la IA sí las generó y el control de calidad las descartó dos veces. La causa es la misma clase de defecto que se corrigió en la versión anterior con el recuento de personas, pero en otra puerta: el control de TEXTO. Funciona pidiéndole al modelo que transcriba lo que dice el cartel, el chaleco o la placa en la foto y en el video, y comparando palabra por palabra; el problema es que esa comparación se hace sobre una imagen reducida a un tercio de su tamaño, así que cada palabra que el modelo no alcanza a leer bajaba la nota aunque el video no hubiera tocado nada. Bastaba UN fotograma con una lectura floja para descalificar la escena, y en una campaña de emergencia casi toda foto lleva texto: se descartaban casi todas. Ahora el texto descalifica sólo cuando está CORROBORADO —dos fotogramas por debajo del umbral, o un desplome que no se explica por una lectura incompleta— y no decide cuando hay muy pocas palabras, porque perder una de tres no significa nada. Lo que no se tocó: si el modelo dice explícitamente que el texto quedó ilegible, sigue descalificando solo. Y la ficha del Reel ahora explica ARRIBA de las escenas cuáles no se animaron y por qué, con el número medido — antes había que bajar hasta cada tarjeta y saber qué se estaba buscando.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'fidelidad', 'emergencias', 'ia'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'El control de texto exige corroboración: una transcripción floja en un fotograma ya no descarta la escena.' },
+            { type: 'fixed', text: 'Con muy pocas palabras el texto no decide: perder una de tres no es evidencia de nada.' },
+            { type: 'changed', text: 'La marca explícita del modelo («este texto no se lee») sigue descalificando sola, sin corroboración.' },
+            { type: 'improved', text: 'El motivo del descarte nombra la puerta que se cerró y su número medido, en vez de «alteró la marca o el texto».' },
+            { type: 'added', text: 'La ficha del Reel resume arriba qué escenas no se animaron y por qué, antes de la rejilla de escenas.' },
+        ]
+    },
     {
         version: '4.789.0',
         title: 'El panel ya no queda en blanco: entra a la primera 🩹',

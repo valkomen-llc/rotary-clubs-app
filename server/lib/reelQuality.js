@@ -607,7 +607,13 @@ const compareText = (left, right) => {
     if (!wa.size) return null;
     const wb = new Set(b.split(' ').filter(w => w.length > 2));
     const kept = [...wa].filter(w => wb.has(w)).length;
-    return { ratio: Number((kept / wa.size).toFixed(2)), original: a.slice(0, 200), rendered: b.slice(0, 200) };
+    return {
+        ratio: Number((kept / wa.size).toFixed(2)),
+        // Cuántas palabras se compararon. Una proporción sobre tres palabras no
+        // dice nada, y sin este dato no hay forma de saberlo después.
+        words: wa.size,
+        original: a.slice(0, 200), rendered: b.slice(0, 200)
+    };
 };
 
 // Evalúa UN fotograma. Devuelve la parte estructural aunque el modelo falle.
@@ -946,6 +952,17 @@ export const checkBrandFidelity = async ({ originalBuffer, frames = [], regions 
 // Un rostro por debajo de esto ya no es la misma cara.
 const MIN_FACE_CONSISTENCY = 6;
 
+// ── Umbrales del control de TEXTO (v4.790) ──
+//
+// `TEXT_KEPT_MIN` es el punto por debajo del cual la transcripción del clip ya
+// no se parece a la del original; `TEXT_KEPT_COLLAPSE` es el desplome que no
+// se explica por una lectura incompleta —el texto no está borroso, no está—.
+// `RELIABLE_TEXT_WORDS` es el vocabulario mínimo para que una proporción
+// signifique algo: sobre tres palabras, perder una es el 33 %.
+const TEXT_KEPT_MIN = 0.5;
+const TEXT_KEPT_COLLAPSE = 0.2;
+const RELIABLE_TEXT_WORDS = 4;
+
 // Por encima de este censo el recuento de un modelo de visión deja de ser
 // fiable —contar catorce cabezas en una foto de grupo no lo hace bien ningún
 // modelo—, así que en multitudes sólo vale la señal explícita `newSubjects`, no
@@ -953,6 +970,39 @@ const MIN_FACE_CONSISTENCY = 6;
 // créditos en un problema inexistente, que es el error que ya costó dos rondas
 // en v4.675.
 const RELIABLE_COUNT_MAX = 8;
+
+/**
+ * ¿El texto de la fotografía sigue siendo legible en el clip? (v4.790)
+ *
+ * Vive aparte y es PURA por el mismo motivo que `buildPeopleReport`: es un
+ * CRITERIO —cuándo una proporción de palabras significa algo— y un criterio que
+ * sólo se ejercita contra un proveedor real acaba sin pruebas, y entonces nadie
+ * se entera de que cambió de signo.
+ *
+ * Recibe la comparación de transcripciones POR FOTOGRAMA y decide. No mira la
+ * marca explícita del modelo: ésa descalifica sola y se agrega aparte.
+ */
+export const judgeTextFidelity = (textChecks = []) => {
+    const checks = (Array.isArray(textChecks) ? textChecks : []).filter(t => t && t.ratio != null);
+    if (!checks.length) return { worst: null, words: 0, failed: false, noise: false, reliable: null };
+
+    const worst = Math.min(...checks.map(t => t.ratio));
+    const words = Math.max(...checks.map(t => t.words || 0));
+    const bajos = checks.filter(t => t.ratio < TEXT_KEPT_MIN).length;
+    const reliable = words >= RELIABLE_TEXT_WORDS;
+
+    const failed = reliable
+        && (worst <= TEXT_KEPT_COLLAPSE || (worst < TEXT_KEPT_MIN && bajos >= 2));
+
+    return {
+        worst, words, reliable, failed,
+        // Hubo desvío y no contó. Se dice, igual que `countNoise` con las
+        // personas: esconderlo es el defecto opuesto al de descalificar por
+        // ruido de transcripción.
+        noise: !failed && worst < TEXT_KEPT_MIN,
+        framesBelow: bajos,
+    };
+};
 
 /**
  * Fidelidad humana de la escena: seis comprobaciones sobre las personas.
@@ -1140,12 +1190,38 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     const semanticMotion = motionSeen.length ? Math.max(...motionSeen) : null;
     const structuralScore = structurals.length ? Math.min(...structurals.map(s => s.score)) : null;
 
-    // Texto: si el original tenía texto y en el vídeo se conserva menos de la
-    // mitad de las palabras, se considera ilegible aunque el modelo no lo haya
-    // marcado. Es una comprobación aparte y comparable, no una opinión.
+    // ── Texto: la proporción de palabras NO descalifica sola (v4.790) ──
+    //
+    // Es el mismo defecto que el recuento de personas tenía hasta v4.787, en
+    // otra puerta y con la misma forma. La proporción sale de comparar dos
+    // TRANSCRIPCIONES que hace el modelo de visión sobre la composición lado a
+    // lado, y esa composición se reduce a 640 px de alto: en un fotograma de
+    // 1080×1920 el texto llega a un tercio de su tamaño y recomprimido a JPEG
+    // —es exactamente la limitación que v4.715 midió para los logotipos («no
+    // era un error de criterio del modelo, es que no se le estaba enseñando el
+    // logotipo»)—. Cada palabra que el modelo no alcanza a leer en la mitad
+    // derecha baja la proporción sin que el vídeo haya tocado nada.
+    //
+    // Y se tomaba el PEOR fotograma de tres, así que bastaba una transcripción
+    // floja para marcar `textIllegible`, que descalifica sin apelación: la
+    // escena gastaba sus dos intentos y terminaba sustituida por la fotografía
+    // en movimiento. En una campaña de emergencia —donde casi toda foto lleva
+    // un cartel, un chaleco o una placa— eso alcanzaba a casi todas.
+    //
+    // Se exige CORROBORACIÓN, igual que en el recuento:
+    //
+    //   · la marca EXPLÍCITA del modelo (`textIllegible`) sigue descalificando
+    //     sola: ahí el modelo está diciendo que no se lee, no contando mal;
+    //   · la proporción descalifica cuando cae por debajo del umbral en DOS
+    //     fotogramas, o cuando el desplome es tan grande que no se explica por
+    //     una transcripción incompleta;
+    //   · y no decide cuando hay MUY POCAS palabras: sobre un vocabulario de
+    //     tres, perder una es el 33 % y no significa nada. Mismo criterio que
+    //     `RELIABLE_COUNT_MAX` con las multitudes.
     const textChecks = semantics.map(s => s.text).filter(Boolean);
-    const worstText = textChecks.length ? Math.min(...textChecks.map(t => t.ratio)) : null;
-    if (worstText != null && worstText < 0.5) flags.textIllegible = true;
+    const textVerdict = judgeTextFidelity(textChecks);
+    const { worst: worstText, words: textWords, failed: textRatioFalla, noise: textNoise } = textVerdict;
+    if (textRatioFalla) flags.textIllegible = true;
 
     // ── Fidelidad humana (v4.705) ──
     //
@@ -1235,7 +1311,9 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         ...flags,
         people,
         brand,
-        text: worstText != null ? { keptRatio: worstText, samples: textChecks.slice(0, 2) } : null,
+        text: worstText != null
+            ? { keptRatio: worstText, words: textWords, noise: textNoise, samples: textChecks.slice(0, 2) }
+            : null,
         issues,
         frames: results.map(({ at, position, frameUrl, structural, semantic }) => ({
             at, position, frameUrl,
@@ -1250,6 +1328,13 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
                 ? people.reason
                 : (brand?.state === 'failed'
                     ? brand.reason
+                    // Se NOMBRA la puerta que se cerró, con su número. «Alteró
+                    // la marca o el texto» obliga a adivinar cuál de las dos, y
+                    // es lo que hizo falta para diagnosticar el reporte de las
+                    // escenas sustituidas: el motivo llegaba a la ficha sin
+                    // decir qué se había medido.
+                    : flags.textIllegible
+                    ? `El texto de la fotografía no se conserva en el clip: quedó el ${Math.round((worstText ?? 0) * 100)} % de las palabras sobre ${textWords} comparadas.`
                     : disqualifying
                     ? 'El clip alteró la marca o el texto de la fotografía.'
                     : `La fidelidad quedó en ${Number(score.toFixed(1))}/10, por debajo del mínimo de ${REEL_THRESHOLDS.minFidelityScore}.`))

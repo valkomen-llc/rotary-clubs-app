@@ -166,7 +166,7 @@ Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
 del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
 clip independiente.
 
-## Creador de Reels IA — v4.787
+## Creador de Reels IA — v4.790
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con
 movimiento cinematográfico, transiciones, banda sonora y montaje automático.
@@ -1173,6 +1173,48 @@ se salta si no está).
   al AJUSTAR un umbral, comprobar cuántas escenas legítimas descarta. La regla
   de v4.705 tenía media lección: un control demasiado estricto no falla
   ruidosamente, entrega otra cosa y la presenta como éxito.
+
+### El texto tampoco descalifica por ruido (v4.790)
+
+Segundo reporte con tres clips, ya con v4.787 desplegado: las fotos seguían
+desplazándose sin cobrar vida. Eran otra vez clips 2.5D —o sea que las escenas
+SÍ se despacharon y el control las descartó dos veces—. La causa es la misma
+clase de defecto que el recuento de personas, en la puerta de al lado.
+
+- **La proporción de palabras NO descalifica sola.** `compareText` compara dos
+  TRANSCRIPCIONES que el modelo hace sobre la composición lado a lado, y esa
+  composición se reduce a 640 px de alto: el texto llega a un tercio de su
+  tamaño y recomprimido a JPEG. Es la limitación que v4.715 ya midió para los
+  logotipos —«no era un error de criterio del modelo, es que no se le estaba
+  enseñando el logotipo»— y que nadie trasladó al texto. Cada palabra que el
+  modelo no alcanza a leer bajaba la proporción sin que el vídeo tocara nada, se
+  tomaba el PEOR de tres fotogramas, y `textIllegible` descalifica sin
+  apelación. En una campaña de emergencia —donde casi toda foto lleva un cartel,
+  un chaleco o una placa— alcanzaba a casi todas las escenas.
+- **Corroboración, con las mismas tres formas que el recuento**
+  (`judgeTextFidelity`, pura y probada): por debajo del umbral en DOS
+  fotogramas, o un desplome (`TEXT_KEPT_COLLAPSE`) que no se explica por una
+  lectura incompleta. La marca EXPLÍCITA del modelo sigue descalificando sola:
+  ahí está diciendo que no se lee, no contando mal.
+- **Con muy pocas palabras el texto no decide** (`RELIABLE_TEXT_WORDS`). Sobre
+  un vocabulario de tres, perder una es el 33 % y no significa nada. Mismo
+  criterio que `RELIABLE_COUNT_MAX` con las multitudes, y por eso `compareText`
+  publica ahora `words`: sin ese dato no hay forma de saber si la proporción se
+  calculó sobre algo.
+- **El desvío que no descalifica se DICE** (`text.noise`), igual que
+  `countNoise`. Esconderlo es el defecto opuesto al de descartar por ruido.
+- **El motivo NOMBRA la puerta y su número.** «El clip alteró la marca o el
+  texto» obliga a adivinar cuál de las dos y con qué medida: es lo que faltó
+  para diagnosticar este reporte sin acceso a la base.
+- **El resumen va ARRIBA de las escenas, no sólo en cada tarjeta.** v4.787 puso
+  el aviso en la tarjeta y la respuesta del cliente fue «no veo ninguna de las
+  dos»: hay que bajar hasta ella y saber qué se busca. Al hacer visible un
+  diagnóstico, ponerlo donde se mira primero.
+- **Al añadir una puerta que descalifique sin apelación, preguntarse cuál es su
+  ruido de medición.** Van dos: el recuento (v4.787) y el texto (v4.790), las
+  dos con la misma forma —una medida sobre un modelo de visión mirando una
+  imagen reducida— y las dos entregando otra cosa en silencio en vez de fallar
+  ruidosamente.
 
 **Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
 se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su

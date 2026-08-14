@@ -160,7 +160,14 @@ export interface FidelityReport {
     issues: string[];
     reason?: string | null;
     frames?: FrameCheck[];
-    text?: { keptRatio: number; samples: { ratio: number; original: string; rendered: string }[] } | null;
+    text?: {
+        keptRatio: number;
+        /** Palabras comparadas. Sobre tres, una proporción no significa nada. */
+        words?: number;
+        /** Hubo desvío y no descalificó: ruido de transcripción, no texto roto. */
+        noise?: boolean;
+        samples: { ratio: number; original: string; rendered: string }[];
+    } | null;
     deformation?: boolean;
     identityDrift?: boolean;
     brandAltered?: boolean;
