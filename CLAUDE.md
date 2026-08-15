@@ -2391,6 +2391,85 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
+## Campañas de Contribución — v4.803 (Fase 1 de 5)
+
+«Maneras de Contribuir» se convierte en una landing de campañas configurable
+desde el Administrador Central y desplegable a los sitios por targeting. La
+Fase 1 entrega el modelo, el criterio puro y el editor central; la página
+pública toma la campaña en la Fase 2 — hasta entonces NADA cambia en ningún
+sitio.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/contributionSpec.js` | El CRITERIO. **Puro**: tipos, estados, targeting, validación de indicadores, whitelist de overrides, mezcla por sitio |
+| `src/lib/contributionSpec.ts` | Espejo mínimo en el navegador (catálogos del editor, estado efectivo, avisos en vivo) |
+| `server/lib/ensureContributionSchema.js` | Crea las 5 tablas en runtime |
+| `server/controllers/contributionCampaignController.js` | CRUD, estados con historial, caché de lectura pública, token de vista previa |
+| `server/routes/contribution-campaigns.js` | Gestión (operador) + lectura pública |
+| `src/pages/admin/ContributionCampaigns.tsx` | La pantalla del Administrador Central |
+
+Pruebas: `npm run test:contribution` (84 casos). **Sin base, credenciales ni
+red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
+
+**Reglas durables:**
+
+- **La campaña es una REFERENCIA, no un clon.** Todos los sitios comparten una
+  base: la campaña es UNA fila y cada sitio la resuelve al leer
+  (`/api/contribution-campaigns/active?clubId=`). Es la decisión contraria al
+  ecosistema del Distrito (v4.747) y con motivo: aquellos contenidos son del
+  club de origen y el clon da autonomía; una campaña es de la plataforma y
+  corregir una cifra debe reflejarse en todos los sitios al instante.
+- **Sin campaña activa, la página genérica se pinta EXACTAMENTE igual.** El
+  fallback es el rollout: todo se despliega apagado por construcción y la
+  lectura pública DEGRADA a `{ campaign: null }` ante cualquier fallo — esto
+  corre en cada visita de la página de aportes y no puede responder 500.
+- **El estado efectivo se DERIVA, no se empuja** (`effectiveStatus`, con `now`
+  como parámetro — pureza). `scheduled` con inicio vencido se sirve como
+  activa; `active` con fin vencido, como finalizada. Sin cron. `paused` no se
+  reactiva sola: es una decisión del operador, no del calendario.
+- **Un indicador sin fuente NO se publica.** `source` y `updatedAt` son
+  obligatorios por indicador; lo decide `validateForPublish` en el servidor
+  (la capa 3 de emergencySpec: el administrador escribe, el código decide) y
+  el editor avisa en vivo con el MISMO criterio y los MISMOS mensajes del
+  espejo. `resolveForSite` además filtra: un indicador activo sin fuente no
+  viaja al público aunque esté guardado.
+- **Los tipos de desastre salen de `emergencySpec.js`** (`DISASTER_TYPES`),
+  no de una segunda lista: dos catálogos de desastres se separan en silencio.
+  El `otro` de los desastres se excluye a propósito — el catálogo cierra con
+  su propio `otro` genérico.
+- **El targeting por distrito usa el criterio DOBLE** de v4.744/v4.748:
+  `districtId` O el número dentro de `Club.district`, que es una LISTA
+  («4271, 4281», partida con `parseDistrictTags`). «42811» no cuenta como
+  4281. Si dos campañas alcanzan un sitio, gana la de mayor `priority`
+  (desempate: `publishedAt` más reciente, luego id — estable a propósito) y
+  nunca se decide en silencio.
+- **La frontera de lo local es ESTRUCTURAL** (`OVERRIDE_WHITELIST`:
+  `contact`, `localNote`, `qrImage`). `sanitizeOverride` descarta cualquier
+  otra clave — lo que no está en la lista no se puede ni expresar en la
+  petición (patrón `stripProtected`). El override viaja en su propia clave
+  (`local`), nunca mezclado con el contenido central.
+- **El estado no se escribe sin historial** (`ContributionCampaignHistory`,
+  patrón EventRegistrationHistory). Publicar/programar valida y devuelve los
+  motivos CONCRETOS (422 con la lista). Una campaña que estuvo al aire no se
+  borra: se archiva — sólo se elimina un borrador que nunca se publicó.
+- **El único camino de cobro es `/financial/donate`** (modal → Stripe
+  Checkout → webhook). El camino del carrito (`PaymentBlockCard` → `/orders`)
+  **no cobra** — crea la orden y muestra éxito sin pasar por Stripe (defecto
+  preexistente, documentado en el diagnóstico) — y la campaña no debe
+  apoyarse en él. Ojo además con la moneda: el modal rotula «USD» pero
+  `createDonationCheckout` cobra en la moneda del club (Colombia → COP);
+  verificar `club_currency` del sitio receptor ANTES de publicar una campaña.
+- **La lectura pública va cacheada** (TTL 60 s) y TODA escritura la invalida.
+- **Las cinco tablas viven fuera de Prisma** y están en la lista del guardián
+  de `db:push` — al agregar una tabla al módulo, sumarla allí y acá.
+
+**Fases pendientes:** F2 — la página pública toma la campaña (componentes,
+fallback, modal parametrizado con moneda real y `campaignId`, OG por campaña
+vía seoServe). F3 — centros de acopio estructurados + aliados en la página.
+F4 — indicadores en la página + overrides locales con su pantalla. F5 —
+métricas (`ContributionCampaignMetric`) + panel + CTA nacional/exterior si la
+verificación de moneda lo respalda.
+
 ## La agenda del Distrito: traer eventos del ecosistema — v4.747
 
 El sitio de un Distrito trae a su propia agenda los eventos próximos de las
@@ -3740,14 +3819,17 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 34 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 39 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,
-`SeoAudit`, `SeoIssue`, `SeoKeyword`, `SeoMetric`)
-y las once `ProjectFair*`.
+`SeoAudit`, `SeoIssue`, `SeoKeyword`, `SeoMetric`),
+las once `ProjectFair*`
+y las cinco de Campañas de Contribución (`ContributionCampaign`,
+`ContributionCenter`, `ContributionCampaignOverride`,
+`ContributionCampaignHistory`, `ContributionCampaignMetric`).
 (Más las seis del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory` y

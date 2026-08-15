@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.802.0 | 2026-08-14 (El logotipo se juzga donde está, y sólo si se ve)
-// Cache bust: 2026-08-14o
+// UI V4.803.0 | 2026-08-15 (Campañas de Contribución — Fase 1: modelo, criterio puro y editor central)
+// Cache bust: 2026-08-15a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.803.0',
+        title: 'Campañas de Contribución: el editor central 🤝',
+        description: 'Primera fase de la reingeniería de «Maneras de Contribuir»: la página deja de ser un texto fijo y pasa a poder tomar una CAMPAÑA configurada desde el Administrador Central — la del terremoto del Valle del Cauca será la primera. Esta fase entrega la infraestructura: el modelo de campaña (tipos de emergencia reutilizando el catálogo del Creador de Reels más los institucionales), los seis estados (borrador, programada, activa, pausada, finalizada, archivada) con el estado efectivo DERIVADO de las fechas —programar no necesita que nadie venga a activar el lunes—, el alcance multi-sitio (todos / por distritos / sitios específicos, con el mismo criterio doble de pertenencia a distrito del ecosistema), y el editor completo: hero, tarjeta de aporte, cómo ayudar, elementos requeridos, bloques informativos, cierre, aliados e indicadores. REGLA CENTRAL: un indicador sin fuente y sin fecha NO se publica — lo bloquea el servidor con el motivo concreto, no un aviso de pantalla. Cada cambio de estado queda en el historial de auditoría. IMPORTANTE: la página pública de los sitios NO cambia todavía — eso llega en la Fase 2 con los componentes de campaña y su fallback a la página de siempre. Todo lo que se configure ahora queda guardado y listo para publicarse entonces.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'admin-central', 'emergencia'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Pantalla «Campañas de Contribución» en el Administrador Central: crear, editar por secciones, programar, publicar, pausar y archivar.' },
+            { type: 'added', text: 'Alcance multi-sitio: todos los sitios, por distritos («4271, 4281» cuenta para los dos) o sitios elegidos uno a uno.' },
+            { type: 'added', text: 'Indicadores de emergencia con fuente y fecha obligatorias: sin fuente no se publica, y el motivo se dice concreto.' },
+            { type: 'added', text: 'Historial de auditoría: quién creó, qué cambió y cada cambio de estado, con fecha.' },
+            { type: 'added', text: 'Cinco tablas nuevas creadas en runtime y protegidas por el guardián de db:push.' },
+        ]
+    },
     {
         version: '4.802.0',
         title: 'El logotipo se juzga donde está, y sólo si se ve 🔍',
