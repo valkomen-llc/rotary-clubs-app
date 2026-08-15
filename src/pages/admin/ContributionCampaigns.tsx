@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
+import IconPicker from '../../components/admin/IconPicker';
 import { toast } from 'sonner';
 import {
     Megaphone, Plus, Save, ArrowLeft, Eye, Trash2, Clock, History,
@@ -806,12 +807,10 @@ const ContributionCampaigns: React.FC = () => {
                                         onDown={() => patchContent({ waysToHelp: moveIn(ways, i, 1) })}
                                         onRemove={() => patchContent({ waysToHelp: ways.filter((_, j) => j !== i) })} />
                                 </div>
-                                <div className="grid md:grid-cols-2 gap-3">
-                                    <input className={field} placeholder="Título" value={w.title}
-                                        onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
-                                    <input className={field} placeholder="Icono (ej: heart, globe, gift)" value={w.icon}
-                                        onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, icon: e.target.value } : x) })} />
-                                </div>
+                                <input className={field} placeholder="Título" value={w.title}
+                                    onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
+                                <IconPicker value={w.icon}
+                                    onChange={key => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, icon: key } : x) })} />
                                 <textarea rows={2} className={`${field} resize-none`} placeholder="Descripción" value={w.description}
                                     onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, description: e.target.value } : x) })} />
                                 <CtaEditor label="Botón" value={w.cta || emptyCta()}
@@ -842,12 +841,10 @@ const ContributionCampaigns: React.FC = () => {
                                         onDown={() => patchContent({ requiredItems: moveIn(reqItems, i, 1) })}
                                         onRemove={() => patchContent({ requiredItems: reqItems.filter((_, j) => j !== i) })} />
                                 </div>
-                                <div className="grid md:grid-cols-2 gap-3">
-                                    <input className={field} placeholder="Título (ej: Alimentos no perecederos)" value={it.title}
-                                        onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
-                                    <input className={field} placeholder="Icono" value={it.icon}
-                                        onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, icon: e.target.value } : x) })} />
-                                </div>
+                                <input className={field} placeholder="Título (ej: Alimentos no perecederos)" value={it.title}
+                                    onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
+                                <IconPicker value={it.icon}
+                                    onChange={key => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, icon: key } : x) })} />
                                 <input className={field} placeholder="Descripción (opcional)" value={it.description}
                                     onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, description: e.target.value } : x) })} />
                             </div>

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.809.0",
-  "cache_bust": "2026-08-15g (Campanas de Contribucion a ancho completo, como los demas modulos del panel.)",
+  "version": "4.810.0",
+  "cache_bust": "2026-08-15h (El icono de cada caja se elige viendo el icono, con catalogo de ayuda humanitaria.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

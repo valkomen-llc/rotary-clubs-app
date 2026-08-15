@@ -1,6 +1,15 @@
 import {
     Globe2, Heart, Users, HandHeart, Gift, Award, Sparkles, DollarSign,
     ShieldCheck, Star, Trophy, HeartHandshake, Landmark, Handshake,
+    // v4.810 — Ayuda humanitaria. Con los catorce originales —todos de sabor
+    // «donación»: corazón, trofeo, estrella— no había ninguno para alimentos,
+    // higiene o botiquín, así que una campaña de emergencia terminaba usando
+    // el regalo para todo. Se AMPLÍA el registro existente en vez de abrir
+    // uno nuevo: un segundo catálogo es la copia que se queda atrás.
+    Utensils, ShoppingBasket, GlassWater, Droplets, SprayCan, Baby,
+    BriefcaseMedical, Stethoscope, Pill, HeartPulse, BedDouble, Shirt,
+    Home, Tent, Siren, LifeBuoy, Truck, Package, Boxes,
+    GraduationCap, BookOpen, Megaphone, Share2, MapPin, Phone, Wrench, Zap,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -59,11 +68,59 @@ export const BLOCK_ICONS: Record<string, LucideIcon> = {
     dollar: DollarSign,
     shield: ShieldCheck,
     landmark: Landmark,
+    // ── Ayuda humanitaria (v4.810) ──
+    food: Utensils,
+    basket: ShoppingBasket,
+    water: GlassWater,
+    hygiene: Droplets,
+    cleaning: SprayCan,
+    baby: Baby,
+    firstaid: BriefcaseMedical,
+    health: Stethoscope,
+    medicine: Pill,
+    vitals: HeartPulse,
+    bedding: BedDouble,
+    clothing: Shirt,
+    home: Home,
+    shelter: Tent,
+    emergency: Siren,
+    rescue: LifeBuoy,
+    transport: Truck,
+    supplies: Package,
+    warehouse: Boxes,
+    education: GraduationCap,
+    book: BookOpen,
+    megaphone: Megaphone,
+    share: Share2,
+    location: MapPin,
+    phone: Phone,
+    tools: Wrench,
+    energy: Zap,
+};
+
+// Cómo se llama cada icono para quien lo elige. Sin esto, el selector muestra
+// la CLAVE («handheart», «firstaid»), que es el nombre interno y no dice nada
+// — es la diferencia entre un catálogo usable y una lista de identificadores.
+export const BLOCK_ICON_LABELS: Record<string, string> = {
+    globe: 'Mundo', heart: 'Corazón', users: 'Personas', handheart: 'Mano solidaria',
+    handshake: 'Apretón de manos', hearthandshake: 'Manos con corazón', gift: 'Regalo',
+    award: 'Reconocimiento', trophy: 'Trofeo', star: 'Estrella', sparkles: 'Destellos',
+    dollar: 'Aporte económico', shield: 'Protección', landmark: 'Institución',
+    food: 'Alimentos', basket: 'Canasta básica', water: 'Agua', hygiene: 'Higiene',
+    cleaning: 'Aseo y limpieza', baby: 'Niñez y pañales', firstaid: 'Botiquín',
+    health: 'Salud', medicine: 'Medicamentos', vitals: 'Atención médica',
+    bedding: 'Colchonetas y cobijas', clothing: 'Ropa', home: 'Vivienda',
+    shelter: 'Albergue', emergency: 'Emergencia', rescue: 'Rescate',
+    transport: 'Transporte', supplies: 'Suministros', warehouse: 'Centro de acopio',
+    education: 'Educación', book: 'Libros', megaphone: 'Difusión', share: 'Compartir',
+    location: 'Ubicación', phone: 'Contacto', tools: 'Herramientas', energy: 'Energía',
 };
 
 export const BLOCK_ICON_KEYS = Object.keys(BLOCK_ICONS);
 
 export const getBlockIcon = (key: string): LucideIcon => BLOCK_ICONS[key] || Heart;
+
+export const getBlockIconLabel = (key: string): string => BLOCK_ICON_LABELS[key] || key;
 
 // ── Registro de temas de color ───────────────────────────────────────────────
 // bubble: fondo+color del ícono. button: botón sólido del CTA.
