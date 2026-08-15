@@ -481,6 +481,11 @@ check('el panel dice que son cifras de ATRIBUCIÓN, no de causalidad',
     /ATRIBUCIÓN, no de causalidad/.test(panel5));
 check('sin actividad, el panel lo dice en vez de mostrar ceros como logro',
     /Todavía no hay actividad registrada/.test(panel5));
+// El ancho lo pone AdminLayout (max-w-7xl), igual que Proyectos, Biblioteca y
+// Analíticas: un envoltorio propio encima encajona la pantalla contra el
+// borde izquierdo y deja media ventana vacía (reportado en v4.808).
+check('la pantalla NO impone su propio ancho — lo pone AdminLayout',
+    !/<div className="max-w-\w+ space-y-6">/.test(panel5));
 
 // ─── v4.808: un solo camino de cobro ───────────────────────────────────────
 grupo('Un solo camino de cobro para los aportes');
