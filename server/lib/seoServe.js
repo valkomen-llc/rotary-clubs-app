@@ -69,6 +69,26 @@ export async function renderPublicDocument({ html, host, path, protocol = 'https
         indexable: override.indexable ?? undefined,
     } : {};
 
+    // v4.807 — Campaña de Contribución activa: su tarjeta social manda sobre
+    // la ficha genérica del sitio en /maneras-de-contribuir. Va en el
+    // SERVIDOR porque los rastreadores de WhatsApp y las redes no ejecutan
+    // JavaScript (regla v4.702): compuesta en el navegador no la ve nadie.
+    // Lo escrito A MANO en SeoPageMeta sigue mandando sobre la campaña —
+    // misma regla que `putAuto` con las traducciones corregidas.
+    if (club?.id && pathname === '/maneras-de-contribuir') {
+        try {
+            const { campaignSeoFor } = await import('../controllers/contributionCampaignController.js');
+            const campaignSeo = await campaignSeoFor(club.id);
+            if (campaignSeo) {
+                if (!overrides.title && campaignSeo.title) overrides.title = campaignSeo.title;
+                if (!overrides.description && campaignSeo.description) overrides.description = campaignSeo.description;
+                if (!overrides.image && campaignSeo.image) overrides.image = campaignSeo.image;
+            }
+        } catch {
+            // Esto corre en el catch-all de toda página pública: degradar.
+        }
+    }
+
     const { html: out, meta, jsonLd } = renderHead({
         html, page, club, origin, config, overrides,
     });

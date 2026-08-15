@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import {
     Megaphone, Plus, Save, ArrowLeft, Eye, Trash2, Clock, History,
     AlertTriangle, Image as ImageIcon, Upload, ChevronUp, ChevronDown, X,
+    BarChart3,
 } from 'lucide-react';
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
@@ -141,6 +142,9 @@ const ContributionCampaigns: React.FC = () => {
     const [centersDirty, setCentersDirty] = useState(false);
     const [savingCenters, setSavingCenters] = useState(false);
 
+    // Métricas (F5): contadores agregados de la campaña abierta.
+    const [metrics, setMetrics] = useState<{ type: string; count: number; amountSum: number; currency: string | null }[] | null>(null);
+
     // Imágenes: UN MediaPicker por pantalla, con pickerField diciendo a dónde
     // va lo elegido (regla v4.700). La subida comparte el mismo destino.
     const [pickerField, setPickerField] = useState<string | null>(null);
@@ -182,12 +186,17 @@ const ContributionCampaigns: React.FC = () => {
             setDirty(false);
             // Los centros viven en su tabla: se cargan aparte y un fallo acá
             // no impide editar el resto de la campaña.
-            setCenters([]); setCentersDirty(false);
+            setCenters([]); setCentersDirty(false); setMetrics(null);
             try {
                 const rc = await fetch(`${API}/contribution-campaigns/${id}/centers`, { headers: authHeaders() });
                 const dc = rc.ok ? await rc.json() : null;
                 if (Array.isArray(dc?.centers)) setCenters(dc.centers);
             } catch { /* la card avisa vacía; guardar sigue funcionando */ }
+            try {
+                const rm = await fetch(`${API}/contribution-campaigns/${id}/metrics`, { headers: authHeaders() });
+                const dm = rm.ok ? await rm.json() : null;
+                if (Array.isArray(dm?.totals)) setMetrics(dm.totals);
+            } catch { /* sin métricas, la tarjeta lo dice */ }
         } catch {
             toast.error('No se pudo abrir la campaña');
         }
@@ -584,6 +593,46 @@ const ContributionCampaigns: React.FC = () => {
                         )}
                     </Card>
                 )}
+
+                {/* Métricas (F5) */}
+                <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+                    <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                        <BarChart3 className="w-5 h-5 text-rotary-blue" /> Resultados de la campaña
+                    </h3>
+                    <p className="text-xs text-gray-400 mb-5">
+                        Contadores propios, sin cookies ni datos personales. El monto es lo que Stripe cobró de verdad.
+                        Son cifras de ATRIBUCIÓN, no de causalidad: dicen cuántos de los que vieron esta campaña aportaron después, no que la campaña sea la causa.
+                    </p>
+                    {!metrics || metrics.length === 0 ? (
+                        <p className="text-sm text-gray-400 italic">Todavía no hay actividad registrada para esta campaña.</p>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {([
+                                ['view', 'Vistas de la página'],
+                                ['cta_donate_click', 'Abrieron el aporte'],
+                                ['checkout_started', 'Iniciaron el pago'],
+                                ['donation_completed', 'Aportes completados'],
+                                ['cta_centers_click', 'Fueron a los centros'],
+                                ['share_click', 'Compartieron'],
+                            ] as [string, string][]).map(([type, label]) => {
+                                const m = metrics.find(x => x.type === type);
+                                const amount = type === 'donation_completed' && m?.amountSum
+                                    ? new Intl.NumberFormat(m.currency === 'COP' ? 'es-CO' : 'en-US', {
+                                        style: 'currency', currency: m.currency || 'USD',
+                                        maximumFractionDigits: m.currency === 'COP' ? 0 : 2,
+                                    }).format(Number(m.amountSum))
+                                    : null;
+                                return (
+                                    <div key={type} className="rounded-2xl bg-gray-50/70 p-5">
+                                        <p className="text-2xl font-black text-gray-900 tabular-nums">{m?.count ?? 0}</p>
+                                        <p className="text-xs font-bold text-gray-500 mt-0.5">{label}</p>
+                                        {amount && <p className="text-sm font-bold text-emerald-600 mt-1 tabular-nums">{amount}</p>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
 
                 {/* Identidad */}
                 <Card title="Identidad y vigencia">

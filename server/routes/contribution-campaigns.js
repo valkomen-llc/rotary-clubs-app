@@ -13,6 +13,7 @@ import {
     getActiveCampaign, getPreviewCampaign,
     listCenters, saveCenters,
     getSiteCampaign, saveSiteOverride, saveSiteCenters,
+    trackCampaignEvent, getCampaignMetrics,
 } from '../controllers/contributionCampaignController.js';
 
 const router = express.Router();
@@ -30,6 +31,9 @@ router.put('/site/override', authMiddleware, requireSiteAdmin, saveSiteOverride)
 router.put('/site/centers', authMiddleware, requireSiteAdmin, saveSiteCenters);
 
 router.get('/:id/preview', getPreviewCampaign);
+// F5 — la página reporta vista y clics. Público y sin PII; los eventos que
+// valen dinero (checkout, donación) los escribe el servidor, no el navegador.
+router.post('/:id/track', trackCampaignEvent);
 
 // Gestión — operador de la plataforma.
 router.get('/', authMiddleware, superAdminOnly, listCampaigns);
@@ -43,6 +47,7 @@ router.post('/:id/preview-token', authMiddleware, superAdminOnly, issuePreviewTo
 // haría fácil que el batch central pisara filas ajenas).
 router.get('/:id/centers', authMiddleware, superAdminOnly, listCenters);
 router.put('/:id/centers', authMiddleware, superAdminOnly, saveCenters);
+router.get('/:id/metrics', authMiddleware, superAdminOnly, getCampaignMetrics);
 router.delete('/:id', authMiddleware, superAdminOnly, deleteCampaign);
 
 export default router;

@@ -94,7 +94,8 @@ const ManerasDeContribuir = () => {
                         <Eye className="w-4 h-4" /> Vista previa de la campaña — así se verá publicada. Nada de esto está publicado todavía.
                     </div>
                 )}
-                <CampaignLanding campaign={camp} onDonate={() => setIsModalOpen(true)} />
+                <CampaignLanding campaign={camp} onDonate={() => setIsModalOpen(true)}
+                    clubId={club.id} preview={campaignState.preview} />
                 <DonationModal
                     open={isModalOpen}
                     onClose={() => setIsModalOpen(false)}
