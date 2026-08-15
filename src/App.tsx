@@ -147,6 +147,7 @@ const UsersManagement = lazyWithRetry(() => import('./pages/admin/Users'), 'User
 const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagement'), 'StoreManagement');
 const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
 const ManerasContribuirEditor = lazyWithRetry(() => import('./pages/admin/ManerasContribuirEditor'), 'ManerasContribuirEditor');
+const ContributionCampaigns = lazyWithRetry(() => import('./pages/admin/ContributionCampaigns'), 'ContributionCampaigns');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
 const WalletManagement = lazyWithRetry(() => import('./pages/admin/WalletManagement'), 'WalletManagement');
 const NotificationSettings = lazyWithRetry(() => import('./pages/admin/NotificationSettings'), 'NotificationSettings');
@@ -823,6 +824,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ManerasContribuirEditor />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/campanas-contribucion"
+                  element={
+                    <PrivateRoute>
+                      <ContributionCampaigns />
                     </PrivateRoute>
                   }
                 />

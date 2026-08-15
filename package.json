@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.802.0",
-  "cache_bust": "2026-08-14o (El logotipo se juzga donde esta y solo si se ve: regiones remapeadas al lienzo adaptado y no-visible sin juzgar.)",
+  "version": "4.803.0",
+  "cache_bust": "2026-08-15a (Campañas de Contribución — Fase 1: modelo, criterio puro y editor central; la página pública no cambia hasta la Fase 2.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -42,6 +42,7 @@
     "test:heic": "node scripts/test-heic.mjs",
     "test:projects-page": "node scripts/test-projects-page.mjs",
     "test:site-name": "node scripts/test-site-name.mjs",
+    "test:contribution": "node scripts/test-contribution.mjs",
     "test:ecosystem": "node scripts/test-ecosystem.mjs",
     "test:ecosystem:ui": "node scripts/test-ecosystem-ui.mjs",
     "test:design": "node scripts/test-design.mjs",

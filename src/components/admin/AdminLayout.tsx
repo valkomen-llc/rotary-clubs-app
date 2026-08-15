@@ -427,6 +427,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
+                { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'Management', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] },

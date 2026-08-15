@@ -1,0 +1,412 @@
+// ════════════════════════════════════════════════════════════════════
+// Campañas de Contribución — orquestación
+// v4.803.0
+//
+// El CRITERIO vive en server/lib/contributionSpec.js (puro y probado); acá
+// sólo hay I/O: filas, historial, caché y tokens de vista previa. Si una
+// decisión nueva aparece en este archivo, probablemente pertenece al spec.
+//
+// Reglas que este archivo hace cumplir:
+// - El estado NO se escribe sin historial (patrón EventRegistrationHistory).
+// - Publicar valida con validateForPublish y devuelve los motivos CONCRETOS:
+//   un indicador sin fuente no sale, y se dice cuál.
+// - Una campaña con historial no se borra: se archiva. Sólo un borrador que
+//   nunca se publicó se puede eliminar.
+// - La lectura pública va cacheada con TTL corto e invalidación al escribir
+//   (patrón linkRedirectStore): esto corre en cada visita de la página de
+//   aportes y sin campaña activa debe costar ~0.
+// ════════════════════════════════════════════════════════════════════
+import crypto from 'crypto';
+import db from '../lib/db.js';
+import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
+import {
+    CAMPAIGN_TYPES, DEFAULT_CAMPAIGN_TYPE, campaignTypeCatalog,
+    CAMPAIGN_STATUSES, canTransition, effectiveStatus,
+    normalizeTargeting, pickCampaignForSite, normalizeContent, normalizeStats,
+    validateForPublish, sanitizeOverride, resolveForSite, slugify,
+} from '../lib/contributionSpec.js';
+
+console.log('[CONTRIBUTION v4.803] Controller cargado — campañas de contribución (Fase 1: modelo + editor central)');
+
+// ─── Historial ─────────────────────────────────────────────────────────────
+const recordHistory = async (campaignId, action, actor, detail = {}) => {
+    await db.query(
+        `INSERT INTO "ContributionCampaignHistory" ("campaignId", action, actor, detail)
+         VALUES ($1, $2, $3, $4)`,
+        [campaignId, action, actor || null, JSON.stringify(detail)]
+    );
+};
+
+// ─── Caché de la lectura pública ───────────────────────────────────────────
+//
+// Un mapa clubId → { at, payload }. TTL corto porque la campaña puede
+// corregirse durante una emergencia; toda escritura lo vacía entero — es más
+// simple que invalidar por targeting y el costo es una consulta.
+const CACHE_TTL_MS = 60 * 1000;
+const activeCache = new Map();
+const invalidateCache = () => activeCache.clear();
+
+// ─── Vista previa con token ────────────────────────────────────────────────
+//
+// «Ver página sin obligar a publicar»: el operador recibe un enlace firmado
+// (HMAC con JWT_SECRET, vencimiento corto). El token sólo abre ESA campaña —
+// no es una sesión ni da acceso a nada más.
+const PREVIEW_TTL_MS = 60 * 60 * 1000; // 1 hora
+const previewSecret = () => process.env.JWT_SECRET || 'dev-secret';
+
+export const signPreviewToken = (campaignId, now = Date.now()) => {
+    const exp = now + PREVIEW_TTL_MS;
+    const sig = crypto.createHmac('sha256', previewSecret())
+        .update(`${campaignId}.${exp}`).digest('base64url');
+    return `${exp}.${sig}`;
+};
+
+export const verifyPreviewToken = (campaignId, token, now = Date.now()) => {
+    const [expRaw, sig] = String(token || '').split('.');
+    const exp = Number(expRaw);
+    if (!exp || !sig || now > exp) return false;
+    const expected = crypto.createHmac('sha256', previewSecret())
+        .update(`${campaignId}.${exp}`).digest('base64url');
+    try {
+        return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    } catch {
+        return false;
+    }
+};
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+const rowToCampaign = (r) => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    campaignType: r.campaignType,
+    status: r.status,
+    startAt: r.startAt,
+    endAt: r.endAt,
+    priority: r.priority,
+    content: r.content || {},
+    stats: r.stats || [],
+    targeting: r.targeting || {},
+    recipientClubId: r.recipientClubId,
+    createdBy: r.createdBy,
+    updatedBy: r.updatedBy,
+    publishedAt: r.publishedAt,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+});
+
+const actorOf = (req) => req.user?.email || req.user?.id || null;
+
+// El slug es la identidad pública de la campaña (métricas, preview): único.
+// Si el derivado del nombre ya existe, sufijo numérico — patrón freeSlug.
+const freeSlug = async (base) => {
+    const { rows } = await db.query(
+        `SELECT slug FROM "ContributionCampaign" WHERE slug = $1 OR slug LIKE $2`,
+        [base, `${base}-%`]
+    );
+    if (!rows.some(r => r.slug === base)) return base;
+    for (let i = 2; i < 1000; i++) {
+        if (!rows.some(r => r.slug === `${base}-${i}`)) return `${base}-${i}`;
+    }
+    return `${base}-${Date.now()}`;
+};
+
+// ─── CRUD (operador de la plataforma) ──────────────────────────────────────
+
+// GET /api/contribution-campaigns
+export const listCampaigns = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(
+            `SELECT * FROM "ContributionCampaign" ORDER BY "updatedAt" DESC LIMIT 200`
+        );
+        const now = new Date();
+        res.json({
+            campaigns: rows.map(r => ({
+                ...rowToCampaign(r),
+                effectiveStatus: effectiveStatus(r, now),
+            })),
+            catalog: campaignTypeCatalog(),
+        });
+    } catch (e) {
+        console.error('[CONTRIBUTION] listCampaigns:', e);
+        res.status(500).json({ error: 'No se pudieron cargar las campañas' });
+    }
+};
+
+// GET /api/contribution-campaigns/:id
+export const getCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const history = await db.query(
+            `SELECT action, actor, detail, "createdAt" FROM "ContributionCampaignHistory"
+             WHERE "campaignId" = $1 ORDER BY "createdAt" DESC LIMIT 100`,
+            [req.params.id]
+        );
+        res.json({
+            campaign: { ...rowToCampaign(rows[0]), effectiveStatus: effectiveStatus(rows[0], new Date()) },
+            history: history.rows,
+            publishErrors: validateForPublish(rowToCampaign(rows[0])),
+        });
+    } catch (e) {
+        console.error('[CONTRIBUTION] getCampaign:', e);
+        res.status(500).json({ error: 'No se pudo cargar la campaña' });
+    }
+};
+
+// POST /api/contribution-campaigns  — nace SIEMPRE en borrador
+export const createCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const name = String(req.body?.name || '').trim().slice(0, 200);
+        if (!name) return res.status(400).json({ error: 'La campaña necesita un nombre' });
+        const campaignType = CAMPAIGN_TYPES[req.body?.campaignType] ? req.body.campaignType : DEFAULT_CAMPAIGN_TYPE;
+        const slug = await freeSlug(slugify(name));
+        const actor = actorOf(req);
+
+        const { rows } = await db.query(
+            `INSERT INTO "ContributionCampaign"
+                (slug, name, "campaignType", status, content, stats, targeting, "createdBy", "updatedBy")
+             VALUES ($1, $2, $3, 'draft', $4, '[]'::jsonb, $5, $6, $6)
+             RETURNING *`,
+            [
+                slug, name, campaignType,
+                JSON.stringify(normalizeContent(req.body?.content)),
+                JSON.stringify(normalizeTargeting(req.body?.targeting)),
+                actor,
+            ]
+        );
+        await recordHistory(rows[0].id, 'created', actor, { name, campaignType });
+        invalidateCache();
+        res.status(201).json({ campaign: rowToCampaign(rows[0]) });
+    } catch (e) {
+        console.error('[CONTRIBUTION] createCampaign:', e);
+        res.status(500).json({ error: 'No se pudo crear la campaña' });
+    }
+};
+
+// PUT /api/contribution-campaigns/:id — edita contenido y metadatos.
+// El ESTADO no se toca por acá: tiene su propia ruta, con historial.
+export const updateCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows: existing } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!existing[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+        const b = req.body || {};
+        const changed = [];
+        const prev = existing[0];
+
+        const name = typeof b.name === 'string' && b.name.trim() ? b.name.trim().slice(0, 200) : prev.name;
+        if (name !== prev.name) changed.push('name');
+        const campaignType = CAMPAIGN_TYPES[b.campaignType] ? b.campaignType : prev.campaignType;
+        if (campaignType !== prev.campaignType) changed.push('campaignType');
+
+        const startAt = b.startAt === undefined ? prev.startAt : (b.startAt ? new Date(b.startAt) : null);
+        const endAt = b.endAt === undefined ? prev.endAt : (b.endAt ? new Date(b.endAt) : null);
+        if (String(startAt) !== String(prev.startAt)) changed.push('startAt');
+        if (String(endAt) !== String(prev.endAt)) changed.push('endAt');
+
+        const priority = Number.isFinite(Number(b.priority)) ? Math.trunc(Number(b.priority)) : prev.priority;
+        if (priority !== prev.priority) changed.push('priority');
+
+        const content = b.content === undefined ? prev.content : normalizeContent(b.content);
+        if (b.content !== undefined) changed.push('content');
+        const stats = b.stats === undefined ? prev.stats : normalizeStats(b.stats);
+        if (b.stats !== undefined) changed.push('stats');
+        const targeting = b.targeting === undefined ? prev.targeting : normalizeTargeting(b.targeting);
+        if (b.targeting !== undefined) changed.push('targeting');
+
+        const recipientClubId = b.recipientClubId === undefined
+            ? prev.recipientClubId
+            : (b.recipientClubId ? String(b.recipientClubId) : null);
+        if (recipientClubId !== prev.recipientClubId) changed.push('recipientClubId');
+
+        const actor = actorOf(req);
+        const { rows } = await db.query(
+            `UPDATE "ContributionCampaign" SET
+                name = $2, "campaignType" = $3, "startAt" = $4, "endAt" = $5,
+                priority = $6, content = $7, stats = $8, targeting = $9,
+                "recipientClubId" = $10, "updatedBy" = $11, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [
+                req.params.id, name, campaignType, startAt, endAt, priority,
+                JSON.stringify(content), JSON.stringify(stats), JSON.stringify(targeting),
+                recipientClubId, actor,
+            ]
+        );
+        if (changed.length > 0) await recordHistory(req.params.id, 'updated', actor, { changed });
+        invalidateCache();
+        res.json({
+            campaign: rowToCampaign(rows[0]),
+            publishErrors: validateForPublish(rowToCampaign(rows[0])),
+        });
+    } catch (e) {
+        console.error('[CONTRIBUTION] updateCampaign:', e);
+        res.status(500).json({ error: 'No se pudo guardar la campaña' });
+    }
+};
+
+// POST /api/contribution-campaigns/:id/status  { status }
+// La única puerta de los estados. Publicar (draft/scheduled → active, o
+// programar) exige pasar validateForPublish; los motivos vuelven redactados.
+export const transitionCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const to = String(req.body?.status || '');
+        if (!CAMPAIGN_STATUSES.includes(to)) return res.status(400).json({ error: 'Estado desconocido' });
+
+        const { rows: existing } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!existing[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const from = existing[0].status;
+        if (from === to) return res.json({ campaign: rowToCampaign(existing[0]) });
+        if (!canTransition(from, to)) {
+            return res.status(400).json({ error: `Una campaña ${from} no puede pasar a ${to}` });
+        }
+
+        if (to === 'active' || to === 'scheduled') {
+            const errors = validateForPublish(rowToCampaign(existing[0]));
+            if (errors.length > 0) return res.status(422).json({ error: 'La campaña no está lista para publicarse', errors });
+        }
+
+        const actor = actorOf(req);
+        const publishedAt = (to === 'active' || to === 'scheduled') && !existing[0].publishedAt
+            ? new Date() : existing[0].publishedAt;
+        const { rows } = await db.query(
+            `UPDATE "ContributionCampaign"
+             SET status = $2, "publishedAt" = $3, "updatedBy" = $4, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [req.params.id, to, publishedAt, actor]
+        );
+        await recordHistory(req.params.id, `status:${to}`, actor, { from, to });
+        invalidateCache();
+        res.json({ campaign: { ...rowToCampaign(rows[0]), effectiveStatus: effectiveStatus(rows[0], new Date()) } });
+    } catch (e) {
+        console.error('[CONTRIBUTION] transitionCampaign:', e);
+        res.status(500).json({ error: 'No se pudo cambiar el estado' });
+    }
+};
+
+// DELETE /api/contribution-campaigns/:id — sólo un borrador que NUNCA se
+// publicó. Todo lo demás se archiva: borrar una campaña que estuvo al aire
+// borraría la única traza de qué vio la gente y por qué (misma regla que los
+// recorridos del CRM con inscripciones vivas).
+export const deleteCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        if (rows[0].status !== 'draft' || rows[0].publishedAt) {
+            return res.status(400).json({ error: 'Sólo se elimina un borrador que nunca se publicó. Para retirar esta campaña, archivala.' });
+        }
+        await db.query(`DELETE FROM "ContributionCampaignHistory" WHERE "campaignId" = $1`, [req.params.id]);
+        await db.query(`DELETE FROM "ContributionCenter" WHERE "campaignId" = $1`, [req.params.id]);
+        await db.query(`DELETE FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        invalidateCache();
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[CONTRIBUTION] deleteCampaign:', e);
+        res.status(500).json({ error: 'No se pudo eliminar la campaña' });
+    }
+};
+
+// POST /api/contribution-campaigns/:id/preview-token
+export const issuePreviewToken = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(`SELECT id, slug FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        res.json({ token: signPreviewToken(rows[0].id), expiresInMinutes: 60 });
+    } catch (e) {
+        console.error('[CONTRIBUTION] issuePreviewToken:', e);
+        res.status(500).json({ error: 'No se pudo emitir la vista previa' });
+    }
+};
+
+// ─── Lectura pública ───────────────────────────────────────────────────────
+
+// Los sitios que la campaña alcanza se resuelven contra la MISMA forma de
+// club que usa el resto de la plataforma: id, districtId y el texto district
+// (que es una LISTA, v4.748).
+const siteOf = async (clubId) => {
+    const { rows } = await db.query(
+        `SELECT id, "districtId", district FROM "Club" WHERE id = $1 LIMIT 1`,
+        [clubId]
+    );
+    return rows[0] || null;
+};
+
+const servableCampaigns = async () => {
+    const { rows } = await db.query(
+        `SELECT * FROM "ContributionCampaign" WHERE status IN ('scheduled', 'active')`
+    );
+    return rows.map(rowToCampaign);
+};
+
+// GET /api/contribution-campaigns/active?clubId=…  (público)
+// La página de aportes lo consultará en Fase 2: sin campaña activa devuelve
+// { campaign: null } y la página genérica se pinta igual que siempre.
+export const getActiveCampaign = async (req, res) => {
+    try {
+        const clubId = String(req.query.clubId || '').trim();
+        if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+
+        const cached = activeCache.get(clubId);
+        if (cached && Date.now() - cached.at < CACHE_TTL_MS) return res.json(cached.payload);
+
+        await ensureContributionSchema();
+        const site = await siteOf(clubId);
+        // Un fallo acá no puede tumbar la página pública: sin sitio, sin campaña.
+        if (!site) {
+            const payload = { campaign: null };
+            activeCache.set(clubId, { at: Date.now(), payload });
+            return res.json(payload);
+        }
+
+        const now = new Date();
+        const winner = pickCampaignForSite(await servableCampaigns(), site, now);
+        let payload = { campaign: null };
+        if (winner) {
+            const { rows: ov } = await db.query(
+                `SELECT content FROM "ContributionCampaignOverride" WHERE "campaignId" = $1 AND "clubId" = $2`,
+                [winner.id, clubId]
+            );
+            payload = { campaign: resolveForSite(winner, ov[0] ? { content: ov[0].content } : null, now) };
+        }
+        activeCache.set(clubId, { at: Date.now(), payload });
+        res.json(payload);
+    } catch (e) {
+        // Esto corre en cada visita de la página de aportes: degradar, nunca 500.
+        console.error('[CONTRIBUTION] getActiveCampaign (degrada a null):', e?.message);
+        res.json({ campaign: null });
+    }
+};
+
+// GET /api/contribution-campaigns/:id/preview?t=…&clubId=…  (token firmado)
+// Renderiza el BORRADOR con la misma forma que la lectura pública, ignorando
+// el estado: es la vista previa, no la publicación.
+export const getPreviewCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        if (!verifyPreviewToken(req.params.id, req.query.t)) {
+            return res.status(403).json({ error: 'Vista previa vencida o inválida' });
+        }
+        const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const campaign = rowToCampaign(rows[0]);
+        // resolveForSite exige estado activo; la vista previa lo simula sin
+        // escribirlo: el borrador sigue siendo borrador.
+        const preview = resolveForSite({ ...campaign, status: 'active', startAt: null, endAt: null }, null, new Date());
+        res.json({ campaign: preview, preview: true, savedStatus: campaign.status });
+    } catch (e) {
+        console.error('[CONTRIBUTION] getPreviewCampaign:', e);
+        res.status(500).json({ error: 'No se pudo cargar la vista previa' });
+    }
+};
+
+// La sobrescritura local (Fase 4) usará sanitizeOverride: se exporta desde el
+// spec y el endpoint llegará con su pantalla. Dejar acá un endpoint sin
+// consumidor sería una puerta abierta sin nadie mirándola.
+export { sanitizeOverride };
