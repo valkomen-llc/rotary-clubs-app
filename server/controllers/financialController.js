@@ -9,8 +9,34 @@ import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_PAYMENT_BLOCKS } from '../lib/paymentBlockDefaults.js';
+import { isServable, targetsSite } from '../lib/contributionSpec.js';
+import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
 
-console.log('[FINANCIAL v4.422] Controller cargado — donaciones Stripe Checkout + sync retroactivo');
+console.log('[FINANCIAL v4.804] Controller cargado — donaciones Stripe Checkout + atribución de Campañas de Contribución');
+
+// v4.804 — Si el aporte nace de una campaña, se valida y se ata a la metadata
+// de Stripe. DEGRADA a donación normal si la campaña no vale (venció mientras
+// el formulario estaba abierto, o no alcanza a este club): una campaña
+// vencida no es motivo para rechazar un aporte legítimo — se cobra igual y
+// sólo se pierde la atribución.
+const resolveCampaignRef = async (campaignId, clubId) => {
+    if (!campaignId) return null;
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(
+            'SELECT id, slug, name, status, "startAt", "endAt", targeting FROM "ContributionCampaign" WHERE id = $1 LIMIT 1',
+            [String(campaignId)]
+        );
+        const campaign = rows[0];
+        if (!campaign || !isServable(campaign, new Date())) return null;
+        const site = await db.query('SELECT id, "districtId", district FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
+        if (!site.rows[0] || !targetsSite(campaign.targeting, site.rows[0])) return null;
+        return { id: campaign.id, slug: campaign.slug, name: campaign.name };
+    } catch (e) {
+        console.warn('[FINANCIAL] Campaña no resuelta (se dona sin atribución):', e?.message);
+        return null;
+    }
+};
 
 // v4.422 — Margen Valkomen para retiro (debe coincidir con paymentController)
 const PLATFORM_HOLDING_DAYS = 6;
@@ -55,6 +81,7 @@ export const createDonationCheckout = async (req, res) => {
             message = '',
             isAnonymous = false,
             projectId = null, // v4.416 — donación asociada a proyecto (opcional)
+            campaignId = null, // v4.804 — aporte nacido de una Campaña de Contribución (opcional)
             returnUrl
         } = req.body || {};
 
@@ -101,9 +128,12 @@ export const createDonationCheckout = async (req, res) => {
         // Moneda autoritativa del club (ignora lo que mande el cliente).
         const normalizedCurrency = (await resolveClubCurrency(clubId)).toLowerCase();
 
+        // v4.804 — atribución de campaña (o null si no vale; nunca bloquea).
+        const campaign = await resolveCampaignRef(campaignId, clubId);
+
         const productName = project
             ? `Aporte al proyecto: ${project.title}`
-            : `Donación a ${club.name}`;
+            : (campaign ? `Aporte — ${campaign.name}` : `Donación a ${club.name}`);
 
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
@@ -133,7 +163,12 @@ export const createDonationCheckout = async (req, res) => {
                 donorEmail,
                 donorName: String(donorName || '').slice(0, 150),
                 message: String(message || '').slice(0, 500),
-                isAnonymous: isAnonymous ? 'true' : 'false'
+                isAnonymous: isAnonymous ? 'true' : 'false',
+                // v4.804 — la atribución viaja en la metadata de Stripe y queda
+                // en Payment.rawPayload vía webhook: el modelo Donation no se
+                // toca. Los contadores del panel llegan en la Fase 5.
+                campaignId: campaign?.id || '',
+                campaignSlug: campaign?.slug || ''
             }
         });
 

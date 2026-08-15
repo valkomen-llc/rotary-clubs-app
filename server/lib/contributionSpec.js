@@ -425,6 +425,24 @@ export function latestStatDate(stats) {
     return latest ? latest.toISOString() : null;
 }
 
+// ─── Montos sugeridos del formulario de aporte ─────────────────────────────
+//
+// EL DEFECTO QUE ESTO CORRIGE (v4.804): el modal rotulaba «(USD)» y ofrecía
+// $10–$100 mientras el servidor cobra en la MONEDA DEL CLUB (Colombia → COP):
+// un «$50» en un club COP intentaba cobrar 50 pesos (~US$0,012), por debajo
+// del mínimo de Stripe. Los montos sugeridos tienen que ser DE la moneda que
+// de verdad se cobra, y el mínimo también: 1 USD es un piso razonable; 1 COP
+// no es un aporte, es un error de interfaz.
+export const DONATION_PRESETS = {
+    COP: { amounts: [20000, 50000, 100000, 200000], min: 5000 },
+    USD: { amounts: [10, 25, 50, 100], min: 1 },
+};
+
+export function donationPresets(currency) {
+    const c = String(currency || '').toUpperCase();
+    return DONATION_PRESETS[c] || DONATION_PRESETS.USD;
+}
+
 // ─── Slug ──────────────────────────────────────────────────────────────────
 export function slugify(name) {
     return String(name || '')
@@ -442,4 +460,5 @@ export default {
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
+    DONATION_PRESETS, donationPresets,
 };

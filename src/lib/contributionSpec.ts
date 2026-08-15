@@ -142,6 +142,19 @@ export function hexOrEmpty(v: string | undefined): string {
     return /^#[0-9a-fA-F]{6}$/.test(s) ? s : '';
 }
 
+// Montos sugeridos del formulario de aporte, POR MONEDA. La lección de la
+// v4.804: los montos tienen que ser de la moneda que de verdad se cobra —
+// «$50» en un club COP eran 50 pesos, bajo el mínimo de Stripe.
+export const DONATION_PRESETS: Record<string, { amounts: number[]; min: number }> = {
+    COP: { amounts: [20000, 50000, 100000, 200000], min: 5000 },
+    USD: { amounts: [10, 25, 50, 100], min: 1 },
+};
+
+export function donationPresets(currency: string | undefined): { amounts: number[]; min: number } {
+    const c = String(currency || '').toUpperCase();
+    return DONATION_PRESETS[c] || DONATION_PRESETS.USD;
+}
+
 export function slugify(name: string): string {
     return String(name || '')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')

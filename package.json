@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.803.0",
-  "cache_bust": "2026-08-15a (Campañas de Contribución — Fase 1: modelo, criterio puro y editor central; la página pública no cambia hasta la Fase 2.)",
+  "version": "4.804.0",
+  "cache_bust": "2026-08-15b (Campañas de Contribución — Fase 2: la página pública toma la campaña; el modal de donación rotula la moneda real del club.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

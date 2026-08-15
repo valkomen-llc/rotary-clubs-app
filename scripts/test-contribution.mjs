@@ -28,6 +28,7 @@ import {
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
+    donationPresets,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -202,6 +203,14 @@ check('el override llega saneado y en su propia clave (`local`), nunca mezclado'
 check('una campaña pausada no se resuelve', resolveForSite({ ...activa, status: 'paused' }, null, t0) === null);
 check('statsUpdatedAt es la última actualización visible', resolved.statsUpdatedAt?.slice(0, 10) === '2026-08-14');
 
+// ─── Montos por moneda (v4.804) ────────────────────────────────────────────
+grupo('Los montos sugeridos son DE la moneda que se cobra');
+check('COP sugiere montos de pesos y un mínimo que no sea un error de interfaz',
+    donationPresets('COP').amounts.every(a => a >= 5000) && donationPresets('COP').min === 5000);
+check('USD conserva los montos de siempre', eq(donationPresets('USD').amounts, [10, 25, 50, 100]) && donationPresets('USD').min === 1);
+check('una moneda desconocida cae a USD, no a un objeto vacío', eq(donationPresets('EUR'), donationPresets('USD')));
+check('insensible a mayúsculas', eq(donationPresets('cop'), donationPresets('COP')));
+
 grupo('Slug');
 check('se deriva sin tildes ni espacios', slugify('Campaña Terremoto — Valle del Cauca') === 'campana-terremoto-valle-del-cauca');
 check('nunca queda vacío', slugify('¡¡¡') === 'campana');
@@ -242,6 +251,8 @@ if (mirror) {
     check('mismo criterio de URL de CTA', ['https://x.co', '/ruta', '//evil.com', 'javascript:x', '', 'ftp://x'].every(u => acceptableCtaUrl(u) === mirror.acceptableCtaUrl(u)));
     check('mismo hexOrEmpty', ['#14669B', 'red', '#123', ' #ABCDEF '].every(v => hexOrEmpty(v) === mirror.hexOrEmpty(v)));
     check('mismo slugify', ['Campaña Ñuñoa', '¡¡¡', 'Terremoto — Valle'].every(s => slugify(s) === mirror.slugify(s)));
+    check('mismos montos por moneda — el modal ofrece lo que el servidor cobra',
+        ['COP', 'USD', 'EUR', 'cop'].every(c => eq(donationPresets(c), mirror.donationPresets(c))));
 }
 
 // ─── Comprobaciones de archivo ─────────────────────────────────────────────
@@ -275,6 +286,46 @@ check('las cinco tablas figuran en la documentación del guardián de db:push',
 const routes = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
 check('la gestión exige operador de plataforma y la lectura pública no lleva sesión',
     /superAdminOnly, listCampaigns/.test(routes) && /router\.get\('\/active', getActiveCampaign\)/.test(routes));
+
+// ─── Fase 2: la página pública y el cobro ──────────────────────────────────
+grupo('Fase 2 — la página pública toma la campaña');
+const pagina = readFileSync('src/pages/ManerasDeContribuir.tsx', 'utf8');
+check('sin campaña, la página genérica se pinta (el fallback existe como rama)',
+    pagina.includes("campaignState.kind === 'campaign'") && pagina.includes('<PaymentBlocksCarousel') && pagina.includes('<FoundationImpactSection'));
+check('un fallo consultando la campaña degrada a la página genérica',
+    /catch[\s\S]{0,500}kind: 'none'/.test(pagina));
+check('la vista previa lleva su franja que dice que NADA está publicado',
+    pagina.includes('campaignPreview') && /Vista previa de la campaña/.test(pagina));
+check('en vista previa NO se manda campaignId al cobro (un borrador no atribuye)',
+    /campaignId=\{campaignState\.preview \? null : camp\.id\}/.test(pagina));
+check('el modal compartido reemplazó al inline en las DOS ramas',
+    (pagina.match(/<DonationModal/g) || []).length === 2 && !pagina.includes('Haz tu Donación'));
+
+const modal = readFileSync('src/components/DonationModal.tsx', 'utf8');
+// Se busca el RÓTULO viejo («monto (USD)» escrito fijo), no la mención: el
+// comentario que explica de dónde se viene tiene que poder nombrarlo.
+check('el modal rotula la moneda REAL y saca los montos de donationPresets',
+    modal.includes('donationPresets(') && modal.includes('Selecciona el monto ({cur})') && !modal.includes('monto (USD)'));
+check('el modal manda campaignId al checkout cuando existe',
+    /campaignId: campaignId \|\| undefined/.test(modal));
+
+const landing = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+check('un CTA de centros NO se pinta hasta que la sección exista (F3)',
+    landing.includes("IMPLEMENTED_SECTIONS.includes('centers')") && !/IMPLEMENTED_SECTIONS = \[[^\]]*'centers'/.test(landing));
+check('los enlaces configurados pasan por ctaTarget, nunca la comprobación a mano',
+    landing.includes('ctaTarget(cta.url)') && !/\^https\?:/.test(landing));
+check('los iconos salen del registro de paymentBlocks, no de un catálogo nuevo',
+    landing.includes("getBlockIcon") && landing.includes("from '../../lib/paymentBlocks'"));
+check('el tema viaja en hexadecimal con style en línea (v4.719)',
+    landing.includes('hexOrEmpty(') && landing.includes('style={style}'));
+
+const financial = readFileSync('server/controllers/financialController.js', 'utf8');
+check('el checkout valida la campaña y DEGRADA si no vale — nunca bloquea el aporte',
+    financial.includes('resolveCampaignRef') && /se dona sin atribución/.test(financial));
+check('la atribución viaja en la metadata de Stripe (campaignId + campaignSlug)',
+    financial.includes("campaignId: campaign?.id || ''") && financial.includes("campaignSlug: campaign?.slug || ''"));
+check('la campaña se valida con el MISMO criterio del spec (isServable + targetsSite)',
+    financial.includes('isServable(campaign, new Date())') && financial.includes('targetsSite(campaign.targeting'));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

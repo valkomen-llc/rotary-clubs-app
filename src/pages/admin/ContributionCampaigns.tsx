@@ -256,6 +256,24 @@ const ContributionCampaigns: React.FC = () => {
         }
     };
 
+    // «Ver página sin obligar a publicar»: token firmado de una hora que abre
+    // la página pública en modo vista previa, con el borrador tal como está
+    // GUARDADO — por eso avisa si hay cambios sin guardar.
+    const openPreview = async () => {
+        if (!c) return;
+        if (dirty) { toast.error('Guardá los cambios: la vista previa muestra lo guardado'); return; }
+        try {
+            const r = await fetch(`${API}/contribution-campaigns/${c.id}/preview-token`, {
+                method: 'POST', headers: authHeaders(),
+            });
+            const d = await r.json();
+            if (!r.ok || !d?.token) throw new Error(d?.error);
+            window.open(`/maneras-de-contribuir?campaignPreview=${encodeURIComponent(c.id)}&t=${encodeURIComponent(d.token)}`, '_blank', 'noopener');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo abrir la vista previa');
+        }
+    };
+
     const removeDraft = async () => {
         if (!c) return;
         if (!window.confirm('¿Eliminar este borrador? Sólo se puede porque nunca se publicó.')) return;
@@ -451,6 +469,10 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={openPreview}
+                            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
+                            <Eye className="w-4 h-4" /> Ver página
+                        </button>
                         <button onClick={() => setShowHistory(v => !v)}
                             className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
                             <History className="w-4 h-4" /> Historial
@@ -494,7 +516,7 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                     <p className="text-xs text-gray-400 mt-3">
                         «Programar» respeta las fechas de inicio y fin; «Publicar ahora» también las respeta si están puestas.
-                        La página pública de los sitios alcanzados cambia recién en la Fase 2 del módulo — hoy publicar deja la campaña lista y visible para la API.
+                        Al publicar, la página «Maneras de Contribuir» de los sitios alcanzados pasa a mostrar la campaña; al despublicar, vuelven a su página de siempre.
                     </p>
                     {publishErrors.length > 0 && (
                         <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
@@ -912,8 +934,8 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 <div className="bg-sky-50/60 rounded-3xl p-6 border border-sky-100 text-sm text-gray-600">
-                    <p className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Eye className="w-4 h-4" /> Qué falta del módulo</p>
-                    <p>Los <b>centros de acopio</b> llegan en la Fase 3 con su propio editor estructurado, y la <b>página pública</b> toma la campaña en la Fase 2. Todo lo que configures acá queda guardado y listo.</p>
+                    <p className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Eye className="w-4 h-4" /> Qué pinta ya la página pública</p>
+                    <p>Con la campaña publicada, los sitios alcanzados muestran el <b>hero</b>, la <b>tarjeta de aporte</b> (conectada a la pasarela de siempre, en la moneda del club) y <b>¿cómo puedes ayudar?</b>. Los <b>elementos requeridos y centros de acopio</b> llegan en la Fase 3; los <b>indicadores, bloques informativos y cierre</b>, en la Fase 4 — ya se pueden configurar y quedan guardados. Un botón que apunte a los centros no se pinta hasta que esa sección exista.</p>
                 </div>
             </div>
         </AdminLayout>

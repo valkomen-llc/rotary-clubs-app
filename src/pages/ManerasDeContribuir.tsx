@@ -1,84 +1,133 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
-import { Heart, X, Check, Loader2, ShieldCheck } from 'lucide-react';
+import { Heart, Eye } from 'lucide-react';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import FoundationImpactSection from '../sections/FoundationImpactSection';
 import PaymentBlocksCarousel from '../components/PaymentBlocksCarousel';
 import { resolvePaymentBlocks } from '../lib/paymentBlocks';
+import DonationModal from '../components/DonationModal';
+import CampaignLanding, { type CampaignData } from '../components/campaign/CampaignLanding';
+
+// ════════════════════════════════════════════════════════════════════
+// Maneras de Contribuir — v4.804
+//
+// La página tiene DOS modos y el fallback es el rollout:
+// - CON campaña activa (Campañas de Contribución, targeting del Administrador
+//   Central): se pinta la landing de campaña.
+// - SIN campaña — que es el estado de casi todos los sitios casi siempre —:
+//   la página genérica de siempre, idéntica a como era antes del módulo.
+//
+// La consulta de la campaña DEGRADA: cualquier fallo pinta la página
+// genérica. Y el modal de donación es ahora el componente compartido
+// DonationModal, que rotula la MONEDA REAL del club (hasta v4.803 decía
+// «USD» mientras el servidor cobraba COP en clubes colombianos).
+//
+// La vista previa del operador llega por ?campaignPreview=<id>&t=<token>
+// (token HMAC de una hora): renderiza el BORRADOR con una franja que lo dice,
+// sin publicar nada.
+// ════════════════════════════════════════════════════════════════════
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+type CampaignState =
+    | { kind: 'loading' }
+    | { kind: 'none' }
+    | { kind: 'campaign'; campaign: CampaignData; preview: boolean };
 
 const ManerasDeContribuir = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('contribucion', club.id);
     const siteImages = useSiteImages();
+    const [searchParams] = useSearchParams();
 
-    // Bloques de pago configurables (Donación / Aporte / Membresía).
-    const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
-    // Color de fondo de la sección de aportes (configurable; default azul oscuro).
-    // Nota: se lee de `sections` directo (getC se define más abajo → evitar TDZ).
-    const blocksBg = sections['style']?.blocksBg || '#212C3F';
+    const [campaignState, setCampaignState] = useState<CampaignState>({ kind: 'loading' });
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [amount, setAmount] = useState('50');
-    const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
-    const [donorEmail, setDonorEmail] = useState('');
-    const [donorName, setDonorName] = useState('');
-    const [donorMessage, setDonorMessage] = useState('');
-    const [isAnonymous, setIsAnonymous] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    const previewId = searchParams.get('campaignPreview');
+    const previewToken = searchParams.get('t');
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const url = previewId && previewToken
+                    ? `${API_BASE}/contribution-campaigns/${encodeURIComponent(previewId)}/preview?t=${encodeURIComponent(previewToken)}`
+                    : `${API_BASE}/contribution-campaigns/active?clubId=${encodeURIComponent(club.id || '')}`;
+                const res = await fetch(url);
+                const data = res.ok ? await res.json() : null;
+                if (cancelled) return;
+                if (data?.campaign) {
+                    setCampaignState({ kind: 'campaign', campaign: data.campaign, preview: !!data.preview });
+                } else {
+                    setCampaignState({ kind: 'none' });
+                }
+            } catch {
+                // Un fallo consultando la campaña no puede dejar la página en
+                // blanco: se pinta la genérica, que es el estado seguro.
+                if (!cancelled) setCampaignState({ kind: 'none' });
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [club.id, previewId, previewToken]);
+
+    // ── Página genérica (el fallback: idéntica a la de siempre) ──
+    const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
+    const blocksBg = sections['style']?.blocksBg || '#212C3F';
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
-    }
-
-    const amounts = ['10', '25', '50', '100'];
-
-    const handleDonate = async () => {
-        setErrorMsg(null);
-        const numericAmount = parseFloat(amount);
-        if (!numericAmount || numericAmount < 1) {
-            setErrorMsg('Ingresa un monto válido (mínimo $1 USD).');
-            return;
-        }
-        if (!donorEmail || !/^\S+@\S+\.\S+$/.test(donorEmail)) {
-            setErrorMsg('Tu email es obligatorio para enviarte el recibo.');
-            return;
-        }
-
-        setSubmitting(true);
-        try {
-            const res = await fetch(`${API_BASE}/financial/donate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clubId: club.id,
-                    amount: numericAmount,
-                    currency: 'USD',
-                    frequency: 'one-time',
-                    donorEmail,
-                    donorName: isAnonymous ? '' : donorName,
-                    message: donorMessage,
-                    isAnonymous,
-                    returnUrl: window.location.origin,
-                })
-            });
-            const data = await res.json();
-            if (!res.ok || !data?.url) {
-                throw new Error(data?.error || 'No pudimos iniciar el pago. Intenta de nuevo.');
-            }
-            window.location.href = data.url;
-        } catch (err) {
-            console.error('[Donate] Error:', err);
-            const message = err instanceof Error ? err.message : 'Error inesperado iniciando el pago.';
-            setErrorMsg(message);
-            setSubmitting(false);
-        }
     };
 
+    // ── Modo campaña ──
+    if (campaignState.kind === 'campaign') {
+        const camp = campaignState.campaign;
+        const card = camp.content?.donateCard || {};
+        return (
+            <div className="min-h-screen bg-white">
+                <Navbar />
+                {campaignState.preview && (
+                    <div className="bg-amber-500 text-white text-center text-sm font-bold py-2 px-4 flex items-center justify-center gap-2">
+                        <Eye className="w-4 h-4" /> Vista previa de la campaña — así se verá publicada. Nada de esto está publicado todavía.
+                    </div>
+                )}
+                <CampaignLanding campaign={camp} onDonate={() => setIsModalOpen(true)} />
+                <DonationModal
+                    open={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    clubId={club.id}
+                    clubName={club.name}
+                    currency={(club as any)?.currency}
+                    campaignId={campaignState.preview ? null : camp.id}
+                    title={card.title || undefined}
+                    subtitle={card.description || undefined}
+                    accentColor={camp.content?.theme?.cta || camp.content?.theme?.primary || undefined}
+                />
+                <Footer />
+            </div>
+        );
+    }
+
+    // ── Mientras se resuelve: el esqueleto mínimo, sin adelantar un modo ──
+    if (campaignState.kind === 'loading') {
+        return (
+            <div className="min-h-screen bg-white">
+                <Navbar />
+                <section className="py-32 bg-rotary-concrete">
+                    <div className="max-w-4xl mx-auto px-4">
+                        <div className="h-12 bg-gray-200/60 rounded-xl max-w-lg mx-auto animate-pulse" />
+                        <div className="h-4 bg-gray-200/60 rounded-lg max-w-2xl mx-auto mt-6 animate-pulse" />
+                    </div>
+                </section>
+                <Footer />
+            </div>
+        );
+    }
+
+    // ── Página genérica ──
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -115,7 +164,7 @@ const ManerasDeContribuir = () => {
                             {getC('card', 'description', `Tu contribución fortalece el impacto del club ${club.name} y sostiene iniciativas de servicio que transforman vidas.`)}
                         </p>
                         <button
-                            onClick={() => { setErrorMsg(null); setIsModalOpen(true); }}
+                            onClick={() => setIsModalOpen(true)}
                             className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
                         >
                             <Heart className="w-5 h-5 fill-current" />
@@ -134,154 +183,13 @@ const ManerasDeContribuir = () => {
                 </section>
             )}
 
-            {/* Donation Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative my-8">
-                        <button
-                            onClick={() => !submitting && setIsModalOpen(false)}
-                            disabled={submitting}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10 disabled:opacity-50"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
-
-                        <div className="p-8">
-                            <div className="text-center mb-6">
-                                <div className="w-16 h-16 bg-[#9D2235]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Heart className="w-8 h-8 text-[#9D2235]" />
-                                </div>
-                                <h2 className="text-2xl font-bold text-gray-900">Haz tu Donación</h2>
-                                <p className="text-gray-500 mt-2">Apoya nuestras causas en el club {club.name}</p>
-                            </div>
-
-                            <div className="space-y-5">
-                                <div className="flex p-1 bg-gray-100 rounded-lg">
-                                    <button
-                                        onClick={() => setFrequency('one-time')}
-                                        className={`flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${frequency === 'one-time' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                    >
-                                        Donación Única
-                                    </button>
-                                    <button
-                                        disabled
-                                        title="Disponible próximamente"
-                                        className="flex-1 py-2 px-4 rounded-md text-sm font-semibold text-gray-400 cursor-not-allowed flex items-center justify-center gap-1.5"
-                                    >
-                                        Donación Mensual
-                                        <span className="text-[9px] uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">Pronto</span>
-                                    </button>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto (USD)</label>
-                                    <div className="grid grid-cols-4 gap-3 mb-3">
-                                        {amounts.map((amt) => (
-                                            <button
-                                                key={amt}
-                                                onClick={() => setAmount(amt)}
-                                                className={`py-3 rounded-lg font-bold transition-all border-2 ${amount === amt ? 'border-[#9D2235] bg-[#9D2235]/5 text-[#9D2235]' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                                            >
-                                                ${amt}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            placeholder="Otro monto"
-                                            value={amounts.includes(amount) ? '' : amount}
-                                            onChange={(e) => setAmount(e.target.value)}
-                                            className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all font-semibold"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3 pt-1">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tu email (para el recibo)</label>
-                                        <input
-                                            type="email"
-                                            placeholder="tu@correo.com"
-                                            value={donorEmail}
-                                            onChange={(e) => setDonorEmail(e.target.value)}
-                                            required
-                                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm"
-                                        />
-                                    </div>
-
-                                    {!isAnonymous && (
-                                        <div>
-                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Nombre (opcional)</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Tu nombre"
-                                                value={donorName}
-                                                onChange={(e) => setDonorName(e.target.value)}
-                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm"
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Mensaje (opcional)</label>
-                                        <textarea
-                                            placeholder="¿Quieres dejar un mensaje al club?"
-                                            value={donorMessage}
-                                            onChange={(e) => setDonorMessage(e.target.value)}
-                                            rows={2}
-                                            maxLength={500}
-                                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm resize-none"
-                                        />
-                                    </div>
-
-                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={isAnonymous}
-                                            onChange={(e) => setIsAnonymous(e.target.checked)}
-                                            className="w-4 h-4 accent-[#9D2235]"
-                                        />
-                                        Quiero donar como anónimo
-                                    </label>
-                                </div>
-
-                                {errorMsg && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-                                        {errorMsg}
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleDonate}
-                                    disabled={submitting}
-                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] disabled:bg-gray-400 disabled:cursor-wait text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2"
-                                >
-                                    {submitting ? (
-                                        <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            Conectando con Stripe…
-                                        </>
-                                    ) : (
-                                        <>
-                                            Donar Ahora
-                                            <Check className="w-5 h-5" />
-                                        </>
-                                    )}
-                                </button>
-
-                                <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-                                    <ShieldCheck className="w-3.5 h-3.5" />
-                                    Pago seguro procesado por Stripe
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DonationModal
+                open={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                clubId={club.id}
+                clubName={club.name}
+                currency={(club as any)?.currency}
+            />
 
             {/* Foundation Impact Metrics Section */}
             <FoundationImpactSection />
