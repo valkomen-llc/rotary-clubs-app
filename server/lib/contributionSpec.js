@@ -425,6 +425,77 @@ export function latestStatDate(stats) {
     return latest ? latest.toISOString() : null;
 }
 
+// ─── Centros de acopio (F3) ────────────────────────────────────────────────
+//
+// ESTRUCTURADOS, nunca un textarea: la ciudad agrupa, el subgrupo ordena
+// dentro de Cali («Norte»/«Centro»/«Sur»), y cada campo tiene su lugar — es
+// lo que permite acordeones por ciudad, teléfonos con tel: y actualizar una
+// dirección sin reescribir un bloque de texto.
+//
+// `normalizeCenters` da forma a lo que llega del editor y DESCARTA lo
+// invalidable (sin ciudad o sin dirección no hay centro que publicar) pero lo
+// REPORTA en `skipped`: un filtro que descarta en silencio es el error que la
+// regla de crmSegments prohíbe.
+export function normalizeCenters(raw) {
+    const out = [];
+    const skipped = [];
+    const list = Array.isArray(raw) ? raw : [];
+    for (let i = 0; i < list.length && out.length < 200; i++) {
+        const c = list[i] || {};
+        const city = str(c.city, 80).trim();
+        const address = str(c.address, 200).trim();
+        if (!city || !address) {
+            skipped.push({ index: i, reason: !city ? 'sin ciudad' : 'sin dirección' });
+            continue;
+        }
+        out.push({
+            id: str(c.id, 60) || `center-${i}`,
+            city,
+            groupLabel: str(c.groupLabel, 60).trim(),
+            name: str(c.name, 120).trim(),
+            address,
+            complement: str(c.complement, 200).trim(),
+            schedule: str(c.schedule, 120).trim(),
+            contactName: str(c.contactName, 120).trim(),
+            phone: str(c.phone, 40).trim(),
+            notes: str(c.notes, 300).trim(),
+            active: c.active !== false,
+            sortOrder: Number.isFinite(Number(c.sortOrder)) ? Math.trunc(Number(c.sortOrder)) : i,
+        });
+    }
+    return { centers: out, skipped };
+}
+
+/**
+ * La agrupación que pinta la página: por CIUDAD y, dentro, por subgrupo. El
+ * orden es el de `sortOrder` y es ESTABLE: la ciudad aparece en el orden de
+ * su primer centro, el subgrupo en el del suyo — si dependiera del orden de
+ * la base, la lista cambiaría de forma entre visitas.
+ * Sólo agrupa los ACTIVOS: un centro desactivado no existe para el público.
+ */
+export function groupCenters(centers) {
+    const sorted = (Array.isArray(centers) ? centers : [])
+        .filter(c => c && c.active !== false && c.city && c.address)
+        .slice()
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+    const cities = [];
+    const cityIdx = new Map();
+    for (const c of sorted) {
+        if (!cityIdx.has(c.city)) {
+            cityIdx.set(c.city, cities.length);
+            cities.push({ city: c.city, groups: [], _groupIdx: new Map() });
+        }
+        const entry = cities[cityIdx.get(c.city)];
+        const label = c.groupLabel || '';
+        if (!entry._groupIdx.has(label)) {
+            entry._groupIdx.set(label, entry.groups.length);
+            entry.groups.push({ label, centers: [] });
+        }
+        entry.groups[entry._groupIdx.get(label)].centers.push(c);
+    }
+    return cities.map(({ city, groups }) => ({ city, groups }));
+}
+
 // ─── Montos sugeridos del formulario de aporte ─────────────────────────────
 //
 // EL DEFECTO QUE ESTO CORRIGE (v4.804): el modal rotulaba «(USD)» y ofrecía
@@ -461,4 +532,5 @@ export default {
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     DONATION_PRESETS, donationPresets,
+    normalizeCenters, groupCenters,
 };

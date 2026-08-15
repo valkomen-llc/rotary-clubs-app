@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.804.0 | 2026-08-15 (Campañas de Contribución — Fase 2: la página pública toma la campaña)
-// Cache bust: 2026-08-15b
+// UI V4.805.0 | 2026-08-15 (Campañas de Contribución — Fase 3: requeridos, centros de acopio y aliados)
+// Cache bust: 2026-08-15c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.805.0',
+        title: 'Centros de acopio administrables 📍',
+        description: 'Fase 3 de Campañas de Contribución: la landing de campaña se completa con las tres secciones que faltaban para la campaña del terremoto. ELEMENTOS QUE SE REQUIEREN: la lista de suministros prioritarios con su icono y descripción, y el botón hacia los centros. CENTROS DE ACOPIO: dejan de ser un texto pegado — cada centro es una FILA estructurada (ciudad, sector, nombre del punto, dirección, complemento, horario, quién recibe, teléfono, notas) con su propio editor en el Administrador Central. La página los agrupa por ciudad y por sector (Cali: Norte / Centro / Sur), los teléfonos van con enlace de marcado directo y las direcciones no pasan por el traductor — una dirección es un dato, no lenguaje. Un centro sin ciudad o sin dirección NO se guarda y se dice cuál y por qué; uno desactivado desaparece de la página al minuto, sin desplegar nada. ALIADOS: los logos (Rotary, Colrotarios, ABACO y los que se sumen) se administran como lista, con su enlace opcional. Y el detalle que sostiene todo: un botón «VER CENTROS DE ACOPIO» sólo se pinta si la campaña tiene centros publicados — nunca un botón que no lleva a ninguna parte. Los centros que cada club pueda agregar localmente llegan en la Fase 4 junto con los indicadores en página, y el editor central nunca los toca: el guardado masivo del operador sólo reescribe las filas centrales.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'centros-de-acopio', 'emergencia'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Editor de centros de acopio en el Administrador Central: filas estructuradas por ciudad y sector, con horario, contacto y teléfono.' },
+            { type: 'added', text: 'La página agrupa los centros por ciudad y sector, con teléfonos de marcado directo y direcciones sin traducir.' },
+            { type: 'added', text: 'Sección «Elementos que se requieren» con iconos, y franja de aliados con logos administrables.' },
+            { type: 'added', text: 'El botón hacia los centros sólo existe si hay centros publicados; la nota «se habilitarán más puntos…» y la alianza ABACO son configurables.' },
+            { type: 'fixed', text: 'Un centro sin ciudad o sin dirección se descarta AVISANDO cuál — nunca en silencio.' },
+        ]
+    },
     {
         version: '4.804.0',
         title: 'La página de aportes toma la campaña 📣',

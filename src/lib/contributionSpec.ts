@@ -155,6 +155,73 @@ export function donationPresets(currency: string | undefined): { amounts: number
     return DONATION_PRESETS[c] || DONATION_PRESETS.USD;
 }
 
+// ─── Centros de acopio (F3) — espejo del criterio del servidor ─────────────
+export interface ContributionCenter {
+    id: string; city: string; groupLabel: string; name: string; address: string;
+    complement: string; schedule: string; contactName: string; phone: string;
+    notes: string; active: boolean; sortOrder: number;
+}
+
+const cstr = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
+
+/** Mismo saneo que el servidor: sin ciudad o sin dirección se descarta Y se
+ *  reporta — el editor lo usa para avisar en vivo qué no se va a guardar. */
+export function normalizeCenters(raw: unknown): { centers: ContributionCenter[]; skipped: { index: number; reason: string }[] } {
+    const out: ContributionCenter[] = [];
+    const skipped: { index: number; reason: string }[] = [];
+    const list = Array.isArray(raw) ? raw : [];
+    for (let i = 0; i < list.length && out.length < 200; i++) {
+        const c = list[i] || {};
+        const city = cstr(c.city, 80).trim();
+        const address = cstr(c.address, 200).trim();
+        if (!city || !address) {
+            skipped.push({ index: i, reason: !city ? 'sin ciudad' : 'sin dirección' });
+            continue;
+        }
+        out.push({
+            id: cstr(c.id, 60) || `center-${i}`,
+            city,
+            groupLabel: cstr(c.groupLabel, 60).trim(),
+            name: cstr(c.name, 120).trim(),
+            address,
+            complement: cstr(c.complement, 200).trim(),
+            schedule: cstr(c.schedule, 120).trim(),
+            contactName: cstr(c.contactName, 120).trim(),
+            phone: cstr(c.phone, 40).trim(),
+            notes: cstr(c.notes, 300).trim(),
+            active: c.active !== false,
+            sortOrder: Number.isFinite(Number(c.sortOrder)) ? Math.trunc(Number(c.sortOrder)) : i,
+        });
+    }
+    return { centers: out, skipped };
+}
+
+export interface CenterCityGroup { city: string; groups: { label: string; centers: ContributionCenter[] }[]; }
+
+/** La agrupación que pinta la página — misma aritmética que el servidor. */
+export function groupCenters(centers: ContributionCenter[] | undefined): CenterCityGroup[] {
+    const sorted = (Array.isArray(centers) ? centers : [])
+        .filter(c => c && c.active !== false && c.city && c.address)
+        .slice()
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+    const cities: (CenterCityGroup & { _groupIdx: Map<string, number> })[] = [];
+    const cityIdx = new Map<string, number>();
+    for (const c of sorted) {
+        if (!cityIdx.has(c.city)) {
+            cityIdx.set(c.city, cities.length);
+            cities.push({ city: c.city, groups: [], _groupIdx: new Map() });
+        }
+        const entry = cities[cityIdx.get(c.city) as number];
+        const label = c.groupLabel || '';
+        if (!entry._groupIdx.has(label)) {
+            entry._groupIdx.set(label, entry.groups.length);
+            entry.groups.push({ label, centers: [] });
+        }
+        entry.groups[entry._groupIdx.get(label) as number].centers.push(c);
+    }
+    return cities.map(({ city, groups }) => ({ city, groups }));
+}
+
 export function slugify(name: string): string {
     return String(name || '')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')

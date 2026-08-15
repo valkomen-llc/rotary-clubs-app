@@ -11,6 +11,7 @@ import {
     listCampaigns, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
     getActiveCampaign, getPreviewCampaign,
+    listCenters, saveCenters,
 } from '../controllers/contributionCampaignController.js';
 
 const router = express.Router();
@@ -28,6 +29,11 @@ router.get('/:id', authMiddleware, superAdminOnly, getCampaign);
 router.put('/:id', authMiddleware, superAdminOnly, updateCampaign);
 router.post('/:id/status', authMiddleware, superAdminOnly, transitionCampaign);
 router.post('/:id/preview-token', authMiddleware, superAdminOnly, issuePreviewToken);
+// F3 — centros de acopio CENTRALES (los locales de cada club llegan en F4
+// por su propia ruta con requireSiteAdmin: mezclar los dos editores en una
+// haría fácil que el batch central pisara filas ajenas).
+router.get('/:id/centers', authMiddleware, superAdminOnly, listCenters);
+router.put('/:id/centers', authMiddleware, superAdminOnly, saveCenters);
 router.delete('/:id', authMiddleware, superAdminOnly, deleteCampaign);
 
 export default router;
