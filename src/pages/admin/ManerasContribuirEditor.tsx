@@ -1,11 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
+import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
-import { Save, Heart, Layout, ExternalLink, Image as ImageIcon, HandCoins, ShieldCheck } from 'lucide-react';
+import { Save, Heart, Layout, ExternalLink, Image as ImageIcon, HandCoins, ShieldCheck, Megaphone, Plus, Upload, X } from 'lucide-react';
+import { uploadMediaFiles, IMAGE_ACCEPT } from '../../lib/mediaUpload';
+import { STATUS_LABELS, type CampaignStatus, type ContributionCenter } from '../../lib/contributionSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+
+// Lo que la campaña central le deja tocar a un sitio (OVERRIDE_WHITELIST del
+// servidor): contacto, nota local y QR. La pantalla sólo refleja esa
+// frontera — quien la impone es el endpoint con sanitizeOverride.
+interface SiteOverride {
+    contact?: { name?: string; phone?: string; email?: string };
+    localNote?: string;
+    qrImage?: string;
+}
+
+interface SiteCampaignInfo {
+    id: string; name: string; status: string; effectiveStatus: string;
+    startAt: string | null; endAt: string | null;
+}
 
 // Editor de textos de la página pública "Maneras de Contribuir".
 // Escribe en ContentSection (page='contribucion') las secciones 'header' y 'card',
@@ -21,6 +38,99 @@ const ManerasContribuirEditor: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
+
+    // ── Campaña de Contribución activa para ESTE sitio (F4) ──
+    const [siteCampaign, setSiteCampaign] = useState<SiteCampaignInfo | null>(null);
+    const [override, setOverride] = useState<SiteOverride>({});
+    const [overrideDirty, setOverrideDirty] = useState(false);
+    const [savingOverride, setSavingOverride] = useState(false);
+    const [ownCenters, setOwnCenters] = useState<Partial<ContributionCenter>[]>([]);
+    const [ownCentersDirty, setOwnCentersDirty] = useState(false);
+    const [savingOwnCenters, setSavingOwnCenters] = useState(false);
+    const [qrPickerOpen, setQrPickerOpen] = useState(false);
+    const [uploadingQr, setUploadingQr] = useState(false);
+    const qrFileRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        // Sin campaña que alcance a este sitio, la tarjeta no existe: la
+        // consulta degrada a null y el editor queda como siempre.
+        (async () => {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const r = await fetch(`${API}/contribution-campaigns/site/current`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const d = r.ok ? await r.json() : null;
+                if (d?.campaign) {
+                    setSiteCampaign(d.campaign);
+                    setOverride(d.override || {});
+                    setOwnCenters(Array.isArray(d.centers) ? d.centers : []);
+                }
+            } catch { /* sin tarjeta; el resto del editor no depende de esto */ }
+        })();
+    }, []);
+
+    const saveOverride = async () => {
+        setSavingOverride(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${API}/contribution-campaigns/site/override`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ content: override }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error);
+            setOverride(d.override || {});
+            setOverrideDirty(false);
+            toast.success('Información local guardada');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo guardar');
+        } finally {
+            setSavingOverride(false);
+        }
+    };
+
+    const saveOwnCenters = async () => {
+        setSavingOwnCenters(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${API}/contribution-campaigns/site/centers`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ centers: ownCenters }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error);
+            setOwnCenters(Array.isArray(d.centers) ? d.centers : []);
+            setOwnCentersDirty(false);
+            if (Array.isArray(d.skipped) && d.skipped.length > 0) {
+                toast.warning(`Centros guardados; ${d.skipped.length} descartado(s) sin ciudad o dirección`);
+            } else {
+                toast.success('Centros del club guardados');
+            }
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudieron guardar los centros');
+        } finally {
+            setSavingOwnCenters(false);
+        }
+    };
+
+    const onQrFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        setUploadingQr(true);
+        try {
+            const { uploaded, failed } = await uploadMediaFiles([file]);
+            if (failed.length > 0) throw new Error(`${failed[0].name}: ${failed[0].reason}`);
+            if (uploaded[0]?.url) { setOverride({ ...override, qrImage: uploaded[0].url }); setOverrideDirty(true); }
+        } catch (err: any) {
+            toast.error(err?.message || 'No se pudo subir el QR');
+        } finally {
+            setUploadingQr(false);
+        }
+    };
 
     // Valores por defecto (coinciden con los fallbacks de ManerasDeContribuir.tsx).
     const defaults = {
@@ -101,6 +211,12 @@ const ManerasContribuirEditor: React.FC = () => {
 
     return (
         <AdminLayout>
+            <input ref={qrFileRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={onQrFile} />
+            <MediaPicker isOpen={qrPickerOpen} onClose={() => setQrPickerOpen(false)} maxSelection={1}
+                onSelect={(items) => {
+                    if (items[0]?.url) { setOverride(prev => ({ ...prev, qrImage: items[0].url })); setOverrideDirty(true); }
+                    setQrPickerOpen(false);
+                }} />
             <div className="max-w-3xl space-y-6">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -128,6 +244,113 @@ const ManerasContribuirEditor: React.FC = () => {
                 {dirty && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-center gap-2 font-medium">
                         <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Tienes cambios sin guardar.
+                    </div>
+                )}
+
+                {/* ── Campaña de Contribución activa para este sitio (F4) ── */}
+                {siteCampaign && (
+                    <div className="bg-white rounded-3xl p-8 border-2 border-rose-100 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                <Megaphone className="w-5 h-5 text-rose-500" /> Campaña: {siteCampaign.name}
+                            </h3>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-600">
+                                {STATUS_LABELS[siteCampaign.effectiveStatus as CampaignStatus] || siteCampaign.effectiveStatus}
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mb-6">
+                            Mientras esta campaña esté activa, tu página «Maneras de Contribuir» muestra su contenido (lo define el Administrador Central).
+                            Lo que TU sitio puede agregar es esto: un contacto local, una nota, un QR propio y tus centros de acopio — se suman a la campaña, no la reemplazan.
+                        </p>
+
+                        {/* Contacto + nota + QR */}
+                        <div className="space-y-4">
+                            <div className="grid sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className={lbl}>Contacto (nombre)</label>
+                                    <input className={field} value={override.contact?.name || ''}
+                                        onChange={e => { setOverride({ ...override, contact: { ...override.contact, name: e.target.value } }); setOverrideDirty(true); }} />
+                                </div>
+                                <div>
+                                    <label className={lbl}>Teléfono</label>
+                                    <input className={field} value={override.contact?.phone || ''}
+                                        onChange={e => { setOverride({ ...override, contact: { ...override.contact, phone: e.target.value } }); setOverrideDirty(true); }} />
+                                </div>
+                                <div>
+                                    <label className={lbl}>Correo</label>
+                                    <input className={field} type="email" value={override.contact?.email || ''}
+                                        onChange={e => { setOverride({ ...override, contact: { ...override.contact, email: e.target.value } }); setOverrideDirty(true); }} />
+                                </div>
+                            </div>
+                            <div>
+                                <label className={lbl}>Nota local (opcional)</label>
+                                <textarea rows={2} className={`${field} resize-none`} placeholder="Ej: El club recibe donaciones en su sede los sábados."
+                                    value={override.localNote || ''}
+                                    onChange={e => { setOverride({ ...override, localNote: e.target.value }); setOverrideDirty(true); }} />
+                            </div>
+                            <div>
+                                <label className={lbl}>Código QR local (opcional)</label>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                    <input className={`${field} mt-0 flex-1`} placeholder="URL de la imagen del QR" value={override.qrImage || ''}
+                                        onChange={e => { setOverride({ ...override, qrImage: e.target.value }); setOverrideDirty(true); }} />
+                                    <button type="button" onClick={() => qrFileRef.current?.click()} disabled={uploadingQr}
+                                        className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 disabled:opacity-50">
+                                        <Upload className="w-4 h-4" /> Subir
+                                    </button>
+                                    <button type="button" onClick={() => setQrPickerOpen(true)}
+                                        className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">
+                                        <ImageIcon className="w-4 h-4" /> Biblioteca
+                                    </button>
+                                </div>
+                                {override.qrImage && <img src={override.qrImage} alt="QR local" className="mt-3 w-24 h-24 object-contain border border-gray-100 rounded-xl p-1" />}
+                            </div>
+                            <button onClick={saveOverride} disabled={savingOverride || !overrideDirty}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${overrideDirty ? 'bg-rotary-blue text-white hover:bg-sky-800 shadow-lg' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                                <Save className="w-4 h-4" /> {savingOverride ? 'Guardando…' : 'Guardar información local'}
+                            </button>
+                        </div>
+
+                        {/* Centros propios del club */}
+                        <div className="mt-8 pt-6 border-t border-gray-100">
+                            <div className="flex items-center justify-between gap-3 mb-4">
+                                <p className="text-sm font-bold text-gray-700">Centros de acopio de tu club</p>
+                                <button onClick={saveOwnCenters} disabled={savingOwnCenters || !ownCentersDirty}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${ownCentersDirty ? 'bg-rotary-blue text-white hover:bg-sky-800 shadow-lg' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                                    <Save className="w-4 h-4" /> {savingOwnCenters ? 'Guardando…' : 'Guardar centros'}
+                                </button>
+                            </div>
+                            <div className="space-y-3">
+                                {ownCenters.map((ct, i) => (
+                                    <div key={ct.id || i} className="border border-gray-100 rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer">
+                                                <input type="checkbox" checked={ct.active !== false} className="w-4 h-4 accent-rotary-blue"
+                                                    onChange={e => { setOwnCenters(ownCenters.map((x, j) => j === i ? { ...x, active: e.target.checked } : x)); setOwnCentersDirty(true); }} />
+                                                Activo
+                                            </label>
+                                            <button type="button" aria-label="Quitar centro"
+                                                onClick={() => { setOwnCenters(ownCenters.filter((_, j) => j !== i)); setOwnCentersDirty(true); }}
+                                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                                        </div>
+                                        <div className="grid sm:grid-cols-2 gap-3">
+                                            <input className={field} placeholder="Ciudad *" value={ct.city || ''}
+                                                onChange={e => { setOwnCenters(ownCenters.map((x, j) => j === i ? { ...x, city: e.target.value } : x)); setOwnCentersDirty(true); }} />
+                                            <input className={field} placeholder="Dirección *" value={ct.address || ''}
+                                                onChange={e => { setOwnCenters(ownCenters.map((x, j) => j === i ? { ...x, address: e.target.value } : x)); setOwnCentersDirty(true); }} />
+                                            <input className={field} placeholder="Horario (opcional)" value={ct.schedule || ''}
+                                                onChange={e => { setOwnCenters(ownCenters.map((x, j) => j === i ? { ...x, schedule: e.target.value } : x)); setOwnCentersDirty(true); }} />
+                                            <input className={field} placeholder="Teléfono (opcional)" value={ct.phone || ''}
+                                                onChange={e => { setOwnCenters(ownCenters.map((x, j) => j === i ? { ...x, phone: e.target.value } : x)); setOwnCentersDirty(true); }} />
+                                        </div>
+                                    </div>
+                                ))}
+                                <button type="button"
+                                    onClick={() => { setOwnCenters([...ownCenters, { id: `center-${Date.now()}`, city: '', address: '', schedule: '', phone: '', active: true }]); setOwnCentersDirty(true); }}
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
+                                    <Plus className="w-4 h-4" /> Agregar centro del club
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
