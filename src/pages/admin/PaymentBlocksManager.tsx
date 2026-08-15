@@ -213,7 +213,9 @@ const PaymentBlocksManager: React.FC = () => {
                                     {/* Ícono — el MISMO selector que usan las Campañas de
                                         Contribución: escrito dos veces, la copia se queda
                                         sin los iconos que se agreguen a la otra. */}
-                                    <IconPicker value={block.icon} onChange={key => update(idx, { icon: key })} />
+                                    <IconPicker value={block.icon}
+                                        suggestFrom={{ title: block.title, description: block.description }}
+                                        onChange={key => update(idx, { icon: key })} />
 
                                     {/* Color */}
                                     <div>
