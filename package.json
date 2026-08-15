@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.806.0",
-  "cache_bust": "2026-08-15d (Campañas de Contribución — Fase 4: panorama con fuentes, bloques informativos, cierre y la vía local de cada club.)",
+  "version": "4.807.0",
+  "cache_bust": "2026-08-15e (Campañas de Contribución — Fase 5: métricas por campaña, panel y tarjeta social. Módulo completo.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

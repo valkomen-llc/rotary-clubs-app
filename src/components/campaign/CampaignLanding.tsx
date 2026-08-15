@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +31,30 @@ import { hexOrEmpty, groupCenters, type ContributionCenter } from '../../lib/con
 // ════════════════════════════════════════════════════════════════════
 
 interface Cta { label: string; url: string; action: 'donate' | 'centers' | 'link' | 'share'; }
+
+// ── Métricas (F5) ───────────────────────────────────────────────────────────
+//
+// Se reporta con `sendBeacon`: no espera respuesta y sobrevive a que el
+// visitante navegue —justo lo que pasa al pulsar «aportar», que redirige a
+// Stripe—. Sin cookies, sin identificar a nadie: lo que se cuenta es cuántas
+// veces pasó algo. Un fallo se ignora: contar es secundario y no puede
+// romper una página que pide ayuda en una emergencia.
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+export const trackCampaign = (campaignId: string, clubId: string, type: string, preview: boolean) => {
+    // En vista previa NO se cuenta: el operador mirando su borrador no es
+    // tráfico de campaña, y contarlo ensuciaría la única medida que hay.
+    if (preview || !campaignId || !clubId) return;
+    try {
+        const body = JSON.stringify({ clubId, type });
+        const url = `${API_BASE}/contribution-campaigns/${encodeURIComponent(campaignId)}/track`;
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+        } else {
+            fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+        }
+    } catch { /* contar nunca rompe la página */ }
+};
 
 export interface CampaignData {
     id: string;
@@ -78,7 +102,8 @@ const CampaignCta: React.FC<{
     solid: boolean;
     accent: string;
     hasCenters: boolean;
-}> = ({ cta, campaignName, onDonate, solid, accent, hasCenters }) => {
+    onTrack: (type: string) => void;
+}> = ({ cta, campaignName, onDonate, solid, accent, hasCenters, onTrack }) => {
     if (!cta?.label) return null;
 
     const cls = solid
@@ -95,7 +120,7 @@ const CampaignCta: React.FC<{
     }
     if (cta.action === 'share') {
         return (
-            <button onClick={() => shareCampaign(campaignName)} className={cls} style={style}>
+            <button onClick={() => { onTrack('share_click'); shareCampaign(campaignName); }} className={cls} style={style}>
                 <Share2 className="w-5 h-5" /> {cta.label}
             </button>
         );
@@ -105,7 +130,7 @@ const CampaignCta: React.FC<{
         // página: sin centros publicados, el ancla no lleva a ninguna parte.
         if (!IMPLEMENTED_SECTIONS.includes('centers') || !hasCenters) return null;
         return (
-            <a href="#centros-de-acopio" className={cls} style={style}>{cta.label}</a>
+            <a href="#centros-de-acopio" onClick={() => onTrack('cta_centers_click')} className={cls} style={style}>{cta.label}</a>
         );
     }
     // Enlace configurado: el criterio de apertura es de ctaTarget, nunca a mano.
@@ -116,7 +141,19 @@ const CampaignCta: React.FC<{
         : <Link to={t.to} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></Link>;
 };
 
-const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }> = ({ campaign, onDonate }) => {
+const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; clubId: string; preview?: boolean }> = ({ campaign, onDonate, clubId, preview = false }) => {
+    // Una vista por carga, no una por render: sin el guardia, cualquier
+    // repintado (abrir el modal, cambiar de idioma) contaría otra visita.
+    const viewSent = useRef(false);
+    useEffect(() => {
+        if (viewSent.current) return;
+        viewSent.current = true;
+        trackCampaign(campaign.id, clubId, 'view', preview);
+    }, [campaign.id, clubId, preview]);
+
+    const track = (type: string) => trackCampaign(campaign.id, clubId, type, preview);
+    const handleDonate = () => { track('cta_donate_click'); onDonate(); };
+
     const content = campaign.content || {};
     const hero = content.hero || {};
     const card = content.donateCard || {};
@@ -163,8 +200,8 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                             <p className="text-lg font-bold mb-8">{hero.highlight}</p>
                         )}
                         <div className="flex flex-col sm:flex-row gap-3">
-                            <CampaignCta cta={hero.ctaPrimary} campaignName={campaign.name} onDonate={onDonate} solid accent={accent} hasCenters={hasCenters} />
-                            <CampaignCta cta={hero.ctaSecondary} campaignName={campaign.name} onDonate={onDonate} solid={false} accent={accent} hasCenters={hasCenters} />
+                            <CampaignCta cta={hero.ctaPrimary} campaignName={campaign.name} onDonate={handleDonate} solid accent={accent} hasCenters={hasCenters} onTrack={track} />
+                            <CampaignCta cta={hero.ctaSecondary} campaignName={campaign.name} onDonate={handleDonate} solid={false} accent={accent} hasCenters={hasCenters} onTrack={track} />
                         </div>
                     </div>
 
@@ -184,7 +221,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                                     <p className="text-gray-600 text-[15px] leading-relaxed mb-8">{card.description}</p>
                                 )}
                                 <button
-                                    onClick={onDonate}
+                                    onClick={handleDonate}
                                     className="w-full text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-[13px] hover:brightness-90 shadow-lg"
                                     style={{ backgroundColor: accent }}
                                 >
@@ -214,7 +251,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                                             <p className="text-gray-500 text-sm leading-relaxed mb-5 flex-1">{w.description}</p>
                                         )}
                                         <div className="mt-auto">
-                                            <CampaignWayCta cta={w.cta} campaignName={campaign.name} onDonate={onDonate} accent={accent} hasCenters={hasCenters} />
+                                            <CampaignWayCta cta={w.cta} campaignName={campaign.name} onDonate={handleDonate} accent={accent} hasCenters={hasCenters} onTrack={track} />
                                         </div>
                                     </div>
                                 );
@@ -247,7 +284,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                         </div>
                         {hasCenters && (
                             <div className="text-center mt-10">
-                                <a href="#centros-de-acopio"
+                                <a href="#centros-de-acopio" onClick={() => track('cta_centers_click')}
                                     className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-[14px] text-white shadow-lg hover:brightness-90 transition-all uppercase tracking-wider"
                                     style={{ backgroundColor: accent }}>
                                     <MapPin className="w-5 h-5" /> Ver centros de acopio
@@ -410,8 +447,8 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                             <p className="italic text-white/70 mb-10">«{content.finalCta.quote}»</p>
                         )}
                         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <CampaignCta cta={content.finalCta.ctaPrimary} campaignName={campaign.name} onDonate={onDonate} solid accent={accent} hasCenters={hasCenters} />
-                            <CampaignCta cta={content.finalCta.ctaSecondary} campaignName={campaign.name} onDonate={onDonate} solid={false} accent={accent} hasCenters={hasCenters} />
+                            <CampaignCta cta={content.finalCta.ctaPrimary} campaignName={campaign.name} onDonate={handleDonate} solid accent={accent} hasCenters={hasCenters} onTrack={track} />
+                            <CampaignCta cta={content.finalCta.ctaSecondary} campaignName={campaign.name} onDonate={handleDonate} solid={false} accent={accent} hasCenters={hasCenters} onTrack={track} />
                         </div>
                     </div>
                 </section>
@@ -442,16 +479,16 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
 };
 
 // La versión compacta del CTA para las tarjetas de «cómo ayudar».
-const CampaignWayCta: React.FC<{ cta: Cta | undefined; campaignName: string; onDonate: () => void; accent: string; hasCenters: boolean }> =
-    ({ cta, campaignName, onDonate, accent, hasCenters }) => {
+const CampaignWayCta: React.FC<{ cta: Cta | undefined; campaignName: string; onDonate: () => void; accent: string; hasCenters: boolean; onTrack: (type: string) => void }> =
+    ({ cta, campaignName, onDonate, accent, hasCenters, onTrack }) => {
         if (!cta?.label) return null;
         const cls = 'inline-flex items-center gap-1.5 text-sm font-bold hover:underline';
         const style = { color: accent };
         if (cta.action === 'donate') return <button onClick={onDonate} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></button>;
-        if (cta.action === 'share') return <button onClick={() => shareCampaign(campaignName)} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></button>;
+        if (cta.action === 'share') return <button onClick={() => { onTrack('share_click'); shareCampaign(campaignName); }} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></button>;
         if (cta.action === 'centers') {
             if (!IMPLEMENTED_SECTIONS.includes('centers') || !hasCenters) return null;
-            return <a href="#centros-de-acopio" className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></a>;
+            return <a href="#centros-de-acopio" onClick={() => onTrack('cta_centers_click')} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></a>;
         }
         if (!cta.url) return null;
         const t = ctaTarget(cta.url);

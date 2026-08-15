@@ -428,6 +428,60 @@ check('el batch del club sólo borra y actualiza filas de SU club',
 check('las escrituras del club también dejan historial e invalidan la caché',
     ctrl4.includes("'override_saved'") && ctrl4.includes("'site_centers_updated'"));
 
+// ─── Fase 5: métricas, panel y OG ──────────────────────────────────────────
+grupo('Fase 5 — métricas por campaña, panel y tarjeta social');
+const { METRIC_TYPES } = await import('../server/controllers/contributionCampaignController.js');
+check('el catálogo de tipos de métrica es CERRADO y cubre el embudo',
+    eq(METRIC_TYPES, ['view', 'cta_donate_click', 'cta_centers_click', 'share_click', 'checkout_started', 'donation_completed']));
+
+const ctrl5 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+check('las métricas son contadores DIARIOS agregados (UPSERT con incremento), no una fila por visita',
+    /ON CONFLICT \("campaignId", "clubId", date, type\)[\s\S]{0,160}count \+ 1/.test(ctrl5));
+check('un tipo inventado no se guarda',
+    /!METRIC_TYPES\.includes\(type\)\) return false/.test(ctrl5));
+check('el endpoint público NO acepta los eventos que valen dinero — los escribe el servidor',
+    /type === 'donation_completed' \|\| type === 'checkout_started'/.test(ctrl5));
+check('trackear nunca devuelve error al visitante',
+    /trackCampaignEvent[\s\S]{0,700}catch[\s\S]{0,120}res\.json\(\{ ok: false \}\)/.test(ctrl5));
+check('el monto NO viene del navegador: sólo del webhook',
+    !/req\.body\?\.amount/.test(ctrl5));
+check('campaignSeoFor degrada a null ante cualquier fallo (corre en el catch-all)',
+    /campaignSeoFor[\s\S]{0,900}catch \{\s*return null;/.test(ctrl5));
+
+const financial5 = readFileSync('server/controllers/financialController.js', 'utf8');
+check('checkout_started lo registra el servidor al crear la sesión, y su fallo no rompe el aporte',
+    /bumpMetric\(\{ campaignId: campaign\.id, clubId, type: 'checkout_started' \}\)/.test(financial5)
+    && /métrica checkout_started no registrada/.test(financial5));
+
+const webhook5 = readFileSync('server/controllers/paymentController.js', 'utf8');
+check('donation_completed se cuenta desde el WEBHOOK, con el monto real cobrado',
+    /session\.metadata\?\.campaignId[\s\S]{0,400}type: 'donation_completed'[\s\S]{0,120}amount: totalAmount/.test(webhook5));
+check('el modelo Donation NO se toca para la atribución (la métrica vive aparte)',
+    /El modelo Donation NO se toca/.test(webhook5));
+
+const seo5 = readFileSync('server/lib/seoServe.js', 'utf8');
+check('el OG de campaña se resuelve en el SERVIDOR para /maneras-de-contribuir',
+    /pathname === '\/maneras-de-contribuir'[\s\S]{0,300}campaignSeoFor\(club\.id\)/.test(seo5));
+check('lo escrito a mano en SeoPageMeta sigue mandando sobre la campaña',
+    /if \(!overrides\.title && campaignSeo\.title\)/.test(seo5));
+
+const landing5 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+check('la página reporta con sendBeacon (sobrevive a la redirección a Stripe)',
+    landing5.includes('navigator.sendBeacon'));
+check('en VISTA PREVIA no se cuenta nada',
+    /if \(preview \|\| !campaignId \|\| !clubId\) return;/.test(landing5));
+check('una vista por carga, no una por render',
+    landing5.includes('viewSent.current'));
+check('los cuatro gestos del visitante se reportan',
+    landing5.includes("'view'") && landing5.includes("'cta_donate_click'")
+    && landing5.includes("'cta_centers_click'") && landing5.includes("'share_click'"));
+
+const panel5 = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+check('el panel dice que son cifras de ATRIBUCIÓN, no de causalidad',
+    /ATRIBUCIÓN, no de causalidad/.test(panel5));
+check('sin actividad, el panel lo dice en vez de mostrar ceros como logro',
+    /Todavía no hay actividad registrada/.test(panel5));
+
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);

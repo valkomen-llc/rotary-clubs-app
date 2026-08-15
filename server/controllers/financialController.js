@@ -172,6 +172,18 @@ export const createDonationCheckout = async (req, res) => {
             }
         });
 
+        // v4.807 — el inicio de checkout lo registra el SERVIDOR: es el único
+        // que sabe que la sesión de Stripe se creó de verdad. Contar no puede
+        // romper un aporte, así que el fallo se traga.
+        if (campaign) {
+            try {
+                const { bumpMetric } = await import('./contributionCampaignController.js');
+                await bumpMetric({ campaignId: campaign.id, clubId, type: 'checkout_started' });
+            } catch (e) {
+                console.warn('[FINANCIAL] métrica checkout_started no registrada:', e?.message);
+            }
+        }
+
         return res.json({ url: session.url, sessionId: session.id });
     } catch (error) {
         console.error('[FINANCIAL] Error creating donation checkout:', error);

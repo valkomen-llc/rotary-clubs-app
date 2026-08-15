@@ -2391,15 +2391,15 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
-## Campañas de Contribución — v4.806 (Fases 1-4 de 5)
+## Campañas de Contribución — v4.807 (COMPLETO, F1-F5)
 
-«Maneras de Contribuir» se convierte en una landing de campañas configurable
-desde el Administrador Central y desplegable a los sitios por targeting. F1
-entregó el modelo, el criterio puro y el editor central; F2, la página
-pública (hero, tarjeta de aporte, cómo ayudar) con fallback exacto; F3, los
-elementos requeridos, los centros de acopio estructurados y los aliados; F4,
-el panorama con fuentes, los bloques informativos, el cierre y la vía local
-de cada club. Las NUEVE secciones del spec están implementadas.
+«Maneras de Contribuir» es una landing de campañas configurable desde el
+Administrador Central y desplegable a los sitios por targeting. F1 entregó
+el modelo, el criterio puro y el editor central; F2, la página pública con
+fallback exacto; F3, los elementos requeridos, los centros de acopio y los
+aliados; F4, el panorama con fuentes, los bloques informativos, el cierre y
+la vía local de cada club; F5, las métricas, su panel y la tarjeta social.
+Las NUEVE secciones del spec están implementadas.
 
 | Archivo | Qué es |
 |---|---|
@@ -2412,7 +2412,7 @@ de cada club. Las NUEVE secciones del spec están implementadas.
 | `src/components/campaign/CampaignLanding.tsx` | La landing pública de campaña (F2) |
 | `src/components/DonationModal.tsx` | El modal de donación COMPARTIDO, con la moneda real del club |
 
-Pruebas: `npm run test:contribution` (132 casos). **Sin base, credenciales ni
+Pruebas: `npm run test:contribution` (150 casos). **Sin base, credenciales ni
 red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 
 **Reglas durables:**
@@ -2552,9 +2552,44 @@ red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
   exponerlo a la vez — un campo guardado que nadie lee es la clase de silencio
   que este archivo documenta.
 
-**Fase pendiente:** F5 — métricas (`ContributionCampaignMetric` desde la
-metadata de Stripe) + panel + OG por campaña vía seoServe + CTA
-nacional/exterior si la verificación de moneda lo respalda.
+### Métricas y tarjeta social (v4.807, Fase 5)
+
+- **Contadores DIARIOS agregados**, no una fila por visita: UPSERT con
+  incremento sobre `(campaignId, clubId, date, type)`. Sin cookies, sin PII —
+  se cuenta cuántas veces pasó algo, nunca quién.
+- **`METRIC_TYPES` es un catálogo CERRADO.** Sin esa puerta, el endpoint
+  público sería un contador arbitrario que cualquiera llena con lo que
+  quiera, y el panel mostraría filas que nadie sabe leer.
+- **Los dos eventos que valen dinero los escribe el SERVIDOR**:
+  `checkout_started` al crear la sesión de Stripe y `donation_completed` en
+  el webhook, con el monto REAL cobrado. El endpoint público los rechaza
+  explícitamente — desde el navegador no se pueden inflar. Y el monto nunca
+  viene del cliente.
+- **Contar no puede romper nada**: `trackCampaignEvent` devuelve `ok:false`
+  ante cualquier fallo, y las llamadas desde `financialController` y el
+  webhook van en `try` propio — un pago acreditado no se toca por una
+  métrica.
+- **La página reporta con `sendBeacon`**, que sobrevive a la redirección a
+  Stripe (un `fetch` normal se cancela al navegar). Una vista por CARGA, no
+  por render (`viewSent`), y **en vista previa no se cuenta nada**: el
+  operador mirando su borrador no es tráfico de campaña.
+- **El panel rotula ATRIBUCIÓN, no causalidad** (regla del CRM): dice cuántos
+  de los que vieron la campaña aportaron después, no que la campaña sea la
+  causa. Y sin actividad lo dice, en vez de presentar ceros como dato.
+- **El OG de campaña se resuelve en el SERVIDOR** (`campaignSeoFor` desde
+  `seoServe`), porque los rastreadores de WhatsApp y las redes no ejecutan
+  JavaScript (v4.702). **Lo escrito a mano en `SeoPageMeta` sigue mandando**
+  sobre la campaña — misma regla que `putAuto` con las traducciones.
+  `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
+  catch-all de toda página pública.
+
+**Pendiente conocido:** el CTA diferenciado «Donar desde Colombia / desde el
+exterior» NO se implementó, a propósito: la pasarela cobra en UNA sola moneda
+por club (`resolveClubCurrency`) y sólo acepta tarjeta — sin PSE ni
+multi-moneda por donante. Ofrecer dos caminos que terminan en el mismo cobro
+sería prometer una capacidad que no existe (criterio 16 del pedido: no
+inventar soporte internacional). Si algún día la pasarela lo soporta, el
+lugar es `donationPresets` + una segunda entrada de CTA en el hero.
 
 ## La agenda del Distrito: traer eventos del ecosistema — v4.747
 

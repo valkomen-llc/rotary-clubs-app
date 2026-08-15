@@ -713,6 +713,25 @@ async function handleSuccessfulDonationCheckout(session) {
 
         console.log(`[Stripe Webhook] ✅ Donación registrada: ${totalAmount} ${currency} → club ${clubId} (net ${netAmount.toFixed(2)})`);
 
+        // v4.807 — Atribución de Campañas de Contribución. La metadata la puso
+        // createDonationCheckout tras validar la campaña; acá sólo se cuenta.
+        // El modelo Donation NO se toca: la métrica vive en su propia tabla.
+        // Un fallo contando no puede afectar un pago ya acreditado.
+        if (session.metadata?.campaignId) {
+            try {
+                const { bumpMetric } = await import('./contributionCampaignController.js');
+                await bumpMetric({
+                    campaignId: session.metadata.campaignId,
+                    clubId,
+                    type: 'donation_completed',
+                    amount: totalAmount,
+                    currency,
+                });
+            } catch (metricErr) {
+                console.warn('[Stripe Webhook] métrica de campaña no registrada:', metricErr?.message);
+            }
+        }
+
         // v4.411 — Recibo transaccional por correo. Centralizado vía
         // EmailService.sendPlatformEmail (Resend → noreply@clubplatform.org).
         // Si falla, log y seguimos: el pago ya está acreditado.

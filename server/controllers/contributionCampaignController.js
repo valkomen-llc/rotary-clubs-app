@@ -27,7 +27,127 @@ import {
     normalizeCenters,
 } from '../lib/contributionSpec.js';
 
-console.log('[CONTRIBUTION v4.806] Controller cargado — campañas de contribución (Fase 4: indicadores en página y sobrescritura local)');
+console.log('[CONTRIBUTION v4.807] Controller cargado — campañas de contribución (Fase 5: métricas, panel y OG por campaña)');
+
+// ─── Métricas (F5) ─────────────────────────────────────────────────────────
+//
+// Contadores DIARIOS agregados, no una fila por visita: un UPSERT con
+// incremento sobre (campaignId, clubId, date, type). Sin PII, sin cookies,
+// sin identificar a nadie — lo que se cuenta es cuántas veces pasó algo.
+//
+// El catálogo es CERRADO: un tipo inventado no se guarda. Sin esa puerta, el
+// endpoint público sería un contador arbitrario que cualquiera puede llenar
+// con lo que quiera, y el panel mostraría filas que nadie sabe leer.
+export const METRIC_TYPES = [
+    'view',                 // la landing se pintó
+    'cta_donate_click',     // se abrió el formulario de aporte
+    'cta_centers_click',    // se fue a los centros de acopio
+    'share_click',          // se compartió la campaña
+    'checkout_started',     // se creó la sesión de Stripe (lo registra el servidor)
+    'donation_completed',   // el webhook confirmó el cobro (con monto)
+];
+
+export const bumpMetric = async ({ campaignId, clubId, type, amount = 0, currency = null }) => {
+    if (!campaignId || !clubId || !METRIC_TYPES.includes(type)) return false;
+    await ensureContributionSchema();
+    await db.query(
+        `INSERT INTO "ContributionCampaignMetric"
+            ("campaignId", "clubId", date, type, count, "amountSum", currency)
+         VALUES ($1, $2, CURRENT_DATE, $3, 1, $4, $5)
+         ON CONFLICT ("campaignId", "clubId", date, type)
+         DO UPDATE SET count = "ContributionCampaignMetric".count + 1,
+                       "amountSum" = "ContributionCampaignMetric"."amountSum" + $4,
+                       currency = COALESCE("ContributionCampaignMetric".currency, $5)`,
+        [campaignId, clubId, type, Number(amount) || 0, currency]
+    );
+    return true;
+};
+
+// POST /api/contribution-campaigns/:id/track  { clubId, type }  (público)
+// Lo llama la página con sendBeacon. Nunca falla hacia el visitante: contar
+// es secundario y no puede romper una página que pide ayuda en una
+// emergencia. El monto NO se acepta acá — lo pone el webhook, que es el
+// único que sabe cuánto se cobró de verdad.
+export const trackCampaignEvent = async (req, res) => {
+    try {
+        const type = String(req.body?.type || '');
+        const clubId = String(req.body?.clubId || '');
+        if (!METRIC_TYPES.includes(type) || type === 'donation_completed' || type === 'checkout_started') {
+            // Los dos que valen dinero los escribe el servidor, no el navegador.
+            return res.json({ ok: false });
+        }
+        await bumpMetric({ campaignId: req.params.id, clubId, type });
+        res.json({ ok: true });
+    } catch (e) {
+        console.warn('[CONTRIBUTION] trackCampaignEvent (se ignora):', e?.message);
+        res.json({ ok: false });
+    }
+};
+
+// GET /api/contribution-campaigns/:id/metrics  (operador)
+export const getCampaignMetrics = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows: totals } = await db.query(
+            `SELECT type, SUM(count)::int AS count, SUM("amountSum") AS "amountSum",
+                    MAX(currency) AS currency
+             FROM "ContributionCampaignMetric" WHERE "campaignId" = $1
+             GROUP BY type`,
+            [req.params.id]
+        );
+        const { rows: daily } = await db.query(
+            `SELECT date, type, SUM(count)::int AS count, SUM("amountSum") AS "amountSum"
+             FROM "ContributionCampaignMetric"
+             WHERE "campaignId" = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'
+             GROUP BY date, type ORDER BY date ASC`,
+            [req.params.id]
+        );
+        const { rows: bySite } = await db.query(
+            `SELECT m."clubId", c.name AS "clubName", m.type, SUM(m.count)::int AS count,
+                    SUM(m."amountSum") AS "amountSum"
+             FROM "ContributionCampaignMetric" m
+             LEFT JOIN "Club" c ON c.id = m."clubId"
+             WHERE m."campaignId" = $1
+             GROUP BY m."clubId", c.name, m.type`,
+            [req.params.id]
+        );
+        res.json({ totals, daily, bySite, types: METRIC_TYPES });
+    } catch (e) {
+        console.error('[CONTRIBUTION] getCampaignMetrics:', e);
+        res.status(500).json({ error: 'No se pudieron cargar las métricas' });
+    }
+};
+
+/**
+ * Los metadatos SEO de la campaña activa de un sitio, para que el documento
+ * público los sirva desde el SERVIDOR (seoServe): los rastreadores de
+ * WhatsApp y las redes NO ejecutan JavaScript, así que una tarjeta compuesta
+ * en el navegador no la ve nadie (regla v4.702).
+ * Devuelve null ante cualquier fallo: esto corre en el catch-all.
+ */
+export const campaignSeoFor = async (clubId) => {
+    try {
+        if (!clubId) return null;
+        await ensureContributionSchema();
+        const site = await siteOf(clubId);
+        if (!site) return null;
+        const winner = pickCampaignForSite(await servableCampaigns(), site, new Date());
+        if (!winner) return null;
+        const content = normalizeContent(winner.content);
+        const seo = content.seo || {};
+        const title = seo.title || content.hero?.title || winner.name;
+        const description = seo.description || content.hero?.subtitle || content.hero?.text || '';
+        const image = seo.ogImage || content.hero?.image || '';
+        if (!title && !description && !image) return null;
+        return {
+            title: title || undefined,
+            description: description ? String(description).slice(0, 300) : undefined,
+            image: image || undefined,
+        };
+    } catch {
+        return null;
+    }
+};
 
 // ─── Historial ─────────────────────────────────────────────────────────────
 const recordHistory = async (campaignId, action, actor, detail = {}) => {

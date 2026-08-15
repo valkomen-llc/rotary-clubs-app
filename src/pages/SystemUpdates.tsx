@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.806.0 | 2026-08-15 (Campañas de Contribución — Fase 4: panorama con fuentes y la vía local del club)
-// Cache bust: 2026-08-15d
+// UI V4.807.0 | 2026-08-15 (Campañas de Contribución — Fase 5: métricas, panel y tarjeta social. Módulo completo)
+// Cache bust: 2026-08-15e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.807.0',
+        title: 'Campañas de Contribución: resultados a la vista — módulo completo 📈',
+        description: 'Fase 5 y última: la reingeniería de «Maneras de Contribuir» queda terminada. RESULTADOS: cada campaña tiene ahora su tarjeta de métricas en el Administrador Central — vistas de la página, cuántos abrieron el formulario de aporte, cuántos iniciaron el pago, cuántos lo completaron (con el MONTO REAL que cobró Stripe), cuántos fueron a los centros de acopio y cuántos compartieron. Son contadores propios, agregados por día, SIN cookies ni datos personales: se cuenta cuántas veces pasó algo, nunca quién. Los dos eventos que valen dinero los escribe el SERVIDOR —el inicio de pago al crear la sesión de Stripe y la donación al confirmarla el webhook—, así que no se pueden inflar desde el navegador. Y el panel lo dice con todas las letras: son cifras de ATRIBUCIÓN, no de causalidad — dicen cuántos de los que vieron la campaña aportaron después, no que la campaña sea la causa. TARJETA SOCIAL: al compartir el enlace por WhatsApp o redes, la vista previa ya muestra el título, el texto y la imagen de la campaña activa, resuelta en el servidor (los rastreadores no ejecutan JavaScript); lo que un administrador haya escrito a mano en SEO sigue mandando. La vista previa del operador no cuenta como tráfico. Con esto el sistema cierra: una campaña se configura una vez en el Administrador Central, se publica a los sitios que se elija, cada club le suma su contacto y sus centros, y los resultados se ven en un solo lugar.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'metricas', 'seo'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Tarjeta de resultados por campaña: vistas, clics, pagos iniciados y aportes completados con su monto real.' },
+            { type: 'added', text: 'Los eventos que valen dinero los registra el servidor (sesión de Stripe y webhook), no el navegador.' },
+            { type: 'added', text: 'Tarjeta social por campaña al compartir el enlace, resuelta en el servidor para que WhatsApp y las redes la vean.' },
+            { type: 'added', text: 'Contadores diarios agregados, sin cookies ni datos personales; la vista previa del operador no cuenta.' },
+            { type: 'changed', text: 'El panel rotula las cifras como atribución, no como causalidad — y sin actividad lo dice en vez de mostrar ceros.' },
+        ]
+    },
     {
         version: '4.806.0',
         title: 'El panorama con sus fuentes y la voz local de cada club 📊',
