@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.810.0 | 2026-08-15 (El icono de cada caja se elige viendo el icono)
-// Cache bust: 2026-08-15h
+// UI V4.811.0 | 2026-08-15 (Varita magica: la IA sugiere el icono de la caja)
+// Cache bust: 2026-08-15i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.811.0',
+        title: 'Una varita mágica que propone el ícono ✨',
+        description: 'Con 41 íconos en la rejilla, encontrar el que corresponde es más trabajo del que parece. Ahora, junto al rótulo «Ícono», hay un botón «Sugerir con IA»: se pulsa y el sistema lee el título y la descripción de esa caja y deja seleccionado el ícono que le corresponde. Escribir «Botiquín de primeros auxilios» y pulsar la varita deja puesto el botiquín; «Alimentos no perecederos de canasta básica», la canasta; «Centro de acopio», la bodega. Funciona en las dos secciones de la campaña y también en el editor de Bloques de Pago, porque el selector es el mismo componente en los tres sitios. La sugerencia se resuelve PRIMERO con un diccionario propio de términos de ayuda humanitaria —instantáneo, sin costo y siempre el mismo resultado para el mismo texto— y sólo cuando ninguna palabra alcanza se le pregunta al modelo de IA configurado en la plataforma. Lo que el modelo conteste se comprueba contra el catálogo real: si propone un ícono que no existe, se descarta y se avisa, en vez de dejar la caja sin nada. Y es una comodidad, no un requisito: si no hay modelo configurado o no responde, se dice el motivo y el ícono se sigue eligiendo a mano como hasta ahora. La varita queda apagada mientras la caja no tenga texto — sin nada que leer no habría nada que sugerir.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'ia', 'iconos'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Botón «Sugerir con IA» en el selector de íconos: propone el ícono a partir del título y la descripción de la caja.' },
+            { type: 'added', text: 'Diccionario propio de términos de ayuda humanitaria: la mayoría de los casos se resuelve sin gastar una llamada al modelo.' },
+            { type: 'added', text: 'Disponible en «¿Cómo puedes ayudar?», «Elementos que se requieren» y Bloques de Pago.' },
+            { type: 'improved', text: 'Lo que propone el modelo se valida contra el catálogo real de íconos; una respuesta que no exista se descarta.' },
+            { type: 'changed', text: 'Sin modelo configurado la varita lo dice y el ícono se elige a mano — nunca impide guardar la caja.' },
+        ]
+    },
     {
         version: '4.810.0',
         title: 'Los íconos se eligen viéndolos 🎨',

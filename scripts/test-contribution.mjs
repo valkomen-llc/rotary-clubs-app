@@ -558,6 +558,96 @@ check('el freno se declara como FRENO, no como garantía (vive en memoria por in
 check('el mapa del freno se poda: una instancia larga no acumula una entrada por visitante',
     /trackHits\.size > 5000/.test(ctrl8));
 
+// ─── v4.811: la varita mágica del selector de íconos ───────────────────────
+grupo('Sugerencia de ícono con IA');
+const {
+    ICON_HINTS, SUGGESTABLE_ICONS, suggestIconDeterministic, buildIconPrompt, parseIconAnswer,
+} = await import('../server/lib/iconSuggest.js');
+
+// Lo primero: un ícono que se pueda sugerir y no exista en la rejilla se
+// elegiría y no se podría dibujar. La lista de la izquierda tiene que ser
+// subconjunto del registro que pinta la página pública.
+const pbTs = readFileSync('src/lib/paymentBlocks.ts', 'utf8');
+const clavesRejilla = new Set(
+    (pbTs.match(/export const BLOCK_ICONS[\s\S]*?\n\};/)?.[0] || '')
+        .split('\n').map(l => l.match(/^\s{4}(\w+)\s*:/)?.[1]).filter(Boolean)
+);
+const huerfanos = SUGGESTABLE_ICONS.filter(k => !clavesRejilla.has(k));
+check('todo ícono sugerible existe en BLOCK_ICONS (si no, se sugiere algo que no se puede pintar)',
+    clavesRejilla.size > 10 && huerfanos.length === 0, huerfanos.join(', '));
+
+check('la sugerencia determinista resuelve los textos reales de la campaña',
+    suggestIconDeterministic('Alimentos no perecederos de canasta básica')?.icon === 'basket'
+    && suggestIconDeterministic('Agua potable')?.icon === 'water'
+    && suggestIconDeterministic('Botiquín de primeros auxilios')?.icon === 'firstaid'
+    && suggestIconDeterministic('Colchonetas y cobijas')?.icon === 'bedding'
+    && suggestIconDeterministic('Centro de acopio')?.icon === 'warehouse');
+
+// La regla de la coincidencia MÁS LARGA, que es la del catálogo de intenciones
+// del CRM: sin ella decidiría el orden del objeto.
+check('gana la coincidencia MÁS LARGA, no la primera',
+    suggestIconDeterministic('Canasta básica familiar')?.matched === 'canasta basica'
+    && suggestIconDeterministic('Botiquín de primeros auxilios')?.matched === 'primeros auxilios');
+
+// El caso que se escapó al escribir la tabla: las palabras genéricas de envase
+// («artículo», «elemento») aparecen en casi todo título y, por ser largas, le
+// ganaban a la específica — la caja de higiene salía con ícono de suministros.
+check('una palabra genérica de envase NO le gana a la específica',
+    suggestIconDeterministic('Artículos de higiene personal')?.icon === 'hygiene'
+    && suggestIconDeterministic('Elementos de aseo y limpieza')?.icon === 'cleaning');
+
+check('sin texto no se inventa una sugerencia',
+    suggestIconDeterministic('') === null && suggestIconDeterministic('   ') === null
+    && suggestIconDeterministic('zzz qwerty') === null);
+
+check('las tildes no cambian el resultado',
+    suggestIconDeterministic('BOTIQUÍN')?.icon === 'firstaid'
+    && suggestIconDeterministic('botiquin')?.icon === 'firstaid');
+
+// El catálogo es CERRADO: lo que conteste el modelo se valida contra él.
+check('una clave inventada por el modelo se DESCARTA',
+    parseIconAnswer('unicornio', SUGGESTABLE_ICONS) === null
+    && parseIconAnswer('', SUGGESTABLE_ICONS) === null
+    && parseIconAnswer('ninguno', SUGGESTABLE_ICONS) === null);
+check('una clave válida se acepta aunque venga con adornos',
+    parseIconAnswer('firstaid', SUGGESTABLE_ICONS) === 'firstaid'
+    && parseIconAnswer('  FirstAid.  ', SUGGESTABLE_ICONS) === 'firstaid'
+    && parseIconAnswer('water — agua potable', SUGGESTABLE_ICONS) === 'water');
+
+const prompt = buildIconPrompt();
+check('el prompt se arma con el catálogo REAL y pide una sola clave',
+    prompt.includes('firstaid') && prompt.includes('ninguno')
+    && SUGGESTABLE_ICONS.every(k => prompt.includes(`- ${k}:`)));
+check('el prompt NO depende de una segunda tabla de rótulos que se pueda quedar atrás',
+    !/ICON_LABELS/.test(readFileSync('server/lib/iconSuggest.js', 'utf8')));
+
+const aiRoutes = readFileSync('server/routes/ai.js', 'utf8');
+check('el endpoint de la varita exige sesión, como el resto de la familia /suggest-*',
+    /router\.post\('\/suggest-icon', authMiddleware/.test(aiRoutes));
+check('primero las PALABRAS CLAVE y sólo después el modelo',
+    /suggestIconDeterministic\(texto\)[\s\S]{0,200}if \(exacto\) return res\.json/.test(aiRoutes)
+    && aiRoutes.indexOf("suggestIconDeterministic(texto)") < aiRoutes.indexOf('routeToModel(defaultSlug, buildIconPrompt()'));
+check('lo que contesta el modelo pasa por el catálogo cerrado antes de salir',
+    /parseIconAnswer\(raw, SUGGESTABLE_ICONS\)/.test(aiRoutes));
+check('sin modelo configurado DEGRADA con su motivo, no falla',
+    /reason: 'sin_modelo'/.test(aiRoutes) && /reason: 'modelo_no_disponible'/.test(aiRoutes));
+
+const pickerSrc = readFileSync('src/components/admin/IconPicker.tsx', 'utf8');
+check('la varita vive en el componente COMPARTIDO, no cableada en cada pantalla',
+    /suggestFrom/.test(pickerSrc) && /ai\/suggest-icon/.test(pickerSrc));
+check('sin texto en la caja la varita está deshabilitada',
+    /disabled=\{!puedeSugerir \|\| suggesting\}/.test(pickerSrc));
+check('un fallo de la varita no impide elegir el ícono a mano',
+    /catch \{[\s\S]{0,160}toast\.warning/.test(pickerSrc));
+
+for (const pantalla of ['src/pages/admin/ContributionCampaigns.tsx', 'src/pages/admin/PaymentBlocksManager.tsx']) {
+    const src = readFileSync(pantalla, 'utf8');
+    const usos = (src.match(/<IconPicker/g) || []).length;
+    const conVarita = (src.match(/suggestFrom=\{\{/g) || []).length;
+    check(`${pantalla.split('/').pop()}: todos los selectores ofrecen la varita`,
+        usos > 0 && usos === conVarita, `${conVarita}/${usos}`);
+}
+
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);

@@ -921,6 +921,47 @@ router.post('/suggest-cta', authMiddleware, async (req, res) => {
     }
 });
 
+// ════════════════════════════════════════════════════════════════════
+// Varita mágica del selector de íconos — v4.811
+//
+// VA DE LO EXACTO A LO INSEGURO, igual que la detección de intención del CRM:
+// primero las palabras clave —determinista, instantáneo, gratis y
+// reproducible— y sólo si ninguna resuelve, el modelo. Al revés se pagaría
+// una llamada por pulsación para resolver lo que una palabra clave resuelve,
+// y la sugerencia dejaría de ser explicable («¿por qué me puso ese ícono?»).
+//
+// EL CATÁLOGO ES CERRADO: lo que conteste el modelo pasa por
+// `parseIconAnswer`. Una clave inventada no existe en la rejilla y dejaría la
+// caja sin ícono, así que se descarta y no se sugiere nada.
+//
+// DEGRADA, nunca falla: sin modelo configurado la varita sigue sirviendo con
+// las palabras clave, y si el modelo se cae se devuelve `icon: null` con su
+// motivo. Es una comodidad del editor — que no ande no puede impedir guardar.
+// ════════════════════════════════════════════════════════════════════
+router.post('/suggest-icon', authMiddleware, async (req, res) => {
+    const { suggestIconDeterministic, buildIconPrompt, parseIconAnswer, SUGGESTABLE_ICONS } =
+        await import('../lib/iconSuggest.js');
+
+    const texto = [req.body?.title, req.body?.description].filter(Boolean).join('. ').trim();
+    if (!texto) return res.status(400).json({ error: 'Escribí primero el texto de la caja.' });
+
+    const exacto = suggestIconDeterministic(texto);
+    if (exacto) return res.json({ icon: exacto.icon, method: 'keyword', matched: exacto.matched });
+
+    try {
+        const defaultSlug = await getDefaultModel();
+        if (!defaultSlug) {
+            return res.json({ icon: null, method: 'none', reason: 'sin_modelo' });
+        }
+        const raw = await routeToModel(defaultSlug, buildIconPrompt(), texto);
+        const icon = parseIconAnswer(raw, SUGGESTABLE_ICONS);
+        return res.json({ icon, method: icon ? 'model' : 'none', reason: icon ? undefined : 'sin_coincidencia' });
+    } catch (error) {
+        console.error('Suggest icon error:', error.message);
+        return res.json({ icon: null, method: 'none', reason: 'modelo_no_disponible' });
+    }
+});
+
 // PUBLIC chatbot endpoint — no auth required
 router.post('/chat', async (req, res) => {
     const { message, clubId } = req.body;

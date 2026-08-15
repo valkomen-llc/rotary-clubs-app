@@ -810,6 +810,7 @@ const ContributionCampaigns: React.FC = () => {
                                 <input className={field} placeholder="Título" value={w.title}
                                     onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
                                 <IconPicker value={w.icon}
+                                    suggestFrom={{ title: w.title, description: w.description }}
                                     onChange={key => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, icon: key } : x) })} />
                                 <textarea rows={2} className={`${field} resize-none`} placeholder="Descripción" value={w.description}
                                     onChange={e => patchContent({ waysToHelp: ways.map((x, j) => j === i ? { ...x, description: e.target.value } : x) })} />
@@ -844,6 +845,7 @@ const ContributionCampaigns: React.FC = () => {
                                 <input className={field} placeholder="Título (ej: Alimentos no perecederos)" value={it.title}
                                     onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
                                 <IconPicker value={it.icon}
+                                    suggestFrom={{ title: it.title, description: it.description }}
                                     onChange={key => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, icon: key } : x) })} />
                                 <input className={field} placeholder="Descripción (opcional)" value={it.description}
                                     onChange={e => patchContent({ requiredItems: reqItems.map((x, j) => j === i ? { ...x, description: e.target.value } : x) })} />

@@ -2615,6 +2615,51 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
   catch-all de toda página pública.
 
+### El ícono se elige viéndolo, y una varita lo propone (v4.810-v4.811)
+
+| Archivo | Qué es |
+|---|---|
+| `src/components/admin/IconPicker.tsx` | La rejilla COMPARTIDA + la varita |
+| `src/lib/paymentBlocks.ts` | `BLOCK_ICONS` (41), `BLOCK_ICON_LABELS`, `getBlockIconLabel` |
+| `server/lib/iconSuggest.js` | El CRITERIO de la varita. **Puro** en su parte determinista |
+| `server/routes/ai.js` | `POST /ai/suggest-icon`, junto al resto de `/suggest-*` |
+
+- **El selector es UN componente, no una copia por pantalla.** Lo usan las dos
+  secciones de la campaña y el editor de Bloques de Pago, que ya tenía esta
+  misma rejilla escrita inline: duplicada, la segunda se queda sin los íconos
+  que se agreguen a la primera. La VARITA vive ahí por lo mismo — cableada en
+  cada pantalla, la tercera se queda sin ella.
+- **El catálogo se amplió de 14 a 41 porque los originales eran todos de sabor
+  «donación»** —corazón, trofeo, estrella, regalo— y no había NINGUNO para
+  alimentos, higiene ni botiquín: una campaña de emergencia terminaba usando el
+  regalo para todo. Al agregar un ícono, agregar también su rótulo en español:
+  es lo que leen el `title` y el lector de pantalla, y la clave interna
+  (`firstaid`) no le dice nada a quien configura.
+- **La varita VA DE LO EXACTO A LO INSEGURO**, igual que la detección de
+  intención del CRM: primero `ICON_HINTS` —determinista, instantáneo, gratis y
+  reproducible— y sólo si ninguna palabra resuelve, el modelo. Al revés se
+  pagaría una llamada por pulsación para resolver lo que una palabra clave
+  resuelve, y la sugerencia dejaría de ser explicable.
+- **NADA de palabras genéricas de envase en `ICON_HINTS`** («artículo»,
+  «elemento», «caja», «paquete»). Aparecen en casi todo título y, por ser
+  largas, le ganan a la palabra específica bajo la regla de la coincidencia más
+  larga: «Artículos de higiene personal» salía con el ícono de suministros. Al
+  agregar términos, probarlos contra los títulos REALES de una campaña.
+- **El catálogo es CERRADO y lo valida el código** (`parseIconAnswer`). Un
+  ícono inventado por el modelo no existe en la rejilla y dejaría la caja sin
+  nada. Misma regla que las intenciones del CRM y que `validateMeta` en el SEO:
+  el modelo PROPONE, el código DECIDE.
+- **El prompt se arma desde `ICON_HINTS`, no desde una segunda tabla de
+  rótulos.** No hay una lista que se pueda quedar atrás al agregar un ícono, y
+  las palabras clave describen mejor que un rótulo de una palabra.
+- **La varita DEGRADA y lo DICE.** Sin modelo configurado, con el modelo caído
+  o sin coincidencia, se avisa el motivo concreto y el ícono se sigue eligiendo
+  a mano. Es una comodidad del editor: que no ande no puede impedir guardar la
+  caja. Y queda apagada mientras la caja no tenga texto — sin nada que leer no
+  hay nada que sugerir.
+- La prueba comprueba que **todo ícono sugerible exista en `BLOCK_ICONS`**: uno
+  que viva sólo en `ICON_HINTS` se sugeriría y no se podría dibujar.
+
 **Pendiente conocido:** el CTA diferenciado «Donar desde Colombia / desde el
 exterior» NO se implementó, a propósito: la pasarela cobra en UNA sola moneda
 por club (`resolveClubCurrency`) y sólo acepta tarjeta — sin PSE ni

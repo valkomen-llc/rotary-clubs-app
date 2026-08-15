@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.810.0",
-  "cache_bust": "2026-08-15h (El icono de cada caja se elige viendo el icono, con catalogo de ayuda humanitaria.)",
+  "version": "4.811.0",
+  "cache_bust": "2026-08-15i (Varita magica: la IA sugiere el icono a partir del texto de la caja.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
