@@ -2391,13 +2391,13 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
-## Campañas de Contribución — v4.803 (Fase 1 de 5)
+## Campañas de Contribución — v4.804 (Fases 1-2 de 5)
 
 «Maneras de Contribuir» se convierte en una landing de campañas configurable
-desde el Administrador Central y desplegable a los sitios por targeting. La
-Fase 1 entrega el modelo, el criterio puro y el editor central; la página
-pública toma la campaña en la Fase 2 — hasta entonces NADA cambia en ningún
-sitio.
+desde el Administrador Central y desplegable a los sitios por targeting. F1
+entregó el modelo, el criterio puro y el editor central; F2, la página
+pública: con campaña activa se pinta la landing (hero, tarjeta de aporte,
+cómo ayudar), sin campaña la página genérica queda EXACTAMENTE igual.
 
 | Archivo | Qué es |
 |---|---|
@@ -2407,8 +2407,10 @@ sitio.
 | `server/controllers/contributionCampaignController.js` | CRUD, estados con historial, caché de lectura pública, token de vista previa |
 | `server/routes/contribution-campaigns.js` | Gestión (operador) + lectura pública |
 | `src/pages/admin/ContributionCampaigns.tsx` | La pantalla del Administrador Central |
+| `src/components/campaign/CampaignLanding.tsx` | La landing pública de campaña (F2) |
+| `src/components/DonationModal.tsx` | El modal de donación COMPARTIDO, con la moneda real del club |
 
-Pruebas: `npm run test:contribution` (84 casos). **Sin base, credenciales ni
+Pruebas: `npm run test:contribution` (103 casos). **Sin base, credenciales ni
 red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 
 **Reglas durables:**
@@ -2463,12 +2465,48 @@ red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 - **Las cinco tablas viven fuera de Prisma** y están en la lista del guardián
   de `db:push` — al agregar una tabla al módulo, sumarla allí y acá.
 
-**Fases pendientes:** F2 — la página pública toma la campaña (componentes,
-fallback, modal parametrizado con moneda real y `campaignId`, OG por campaña
-vía seoServe). F3 — centros de acopio estructurados + aliados en la página.
-F4 — indicadores en la página + overrides locales con su pantalla. F5 —
-métricas (`ContributionCampaignMetric`) + panel + CTA nacional/exterior si la
-verificación de moneda lo respalda.
+### La página pública (v4.804, Fase 2)
+
+- **El modal de donación es UNO** (`DonationModal.tsx`), compartido por la
+  página genérica y la landing de campaña. El inline de
+  `ManerasDeContribuir.tsx` se extrajo; dos modales se separan en silencio.
+- **El modal rotula la MONEDA REAL del club y sugiere montos de esa moneda**
+  (`donationPresets(currency)`, espejado en los dos specs). Era el hallazgo 2
+  del diagnóstico: decía «(USD)» con $10–$100 mientras el servidor cobraba en
+  la moneda del club — «$50» en un club COP eran 50 pesos, bajo el mínimo de
+  Stripe. Los montos sugeridos son DE la moneda que se cobra, y el mínimo
+  también (COP: 5.000). Al agregar una moneda, agregarla a `DONATION_PRESETS`
+  en LOS DOS espejos.
+- **La rama de campaña degrada SIEMPRE a la genérica**: cualquier fallo
+  consultando `/active` pinta la página de siempre. Mientras se resuelve, un
+  esqueleto neutro — no se adelanta un modo que puede no ser.
+- **Un CTA de acción `centers` NO se pinta hasta que exista la sección**
+  (`IMPLEMENTED_SECTIONS` en `CampaignLanding.tsx`): nunca un botón que no
+  lleva a ninguna parte (v4.650). Cuando F3 entregue los centros, agregar
+  `centers` a esa lista es lo que enciende esos botones.
+- **Los enlaces configurados pasan por `ctaTarget`** (v4.657), los iconos
+  salen de `BLOCK_ICONS` de paymentBlocks (no un segundo catálogo), y el tema
+  viaja en hexadecimal con `style` en línea (v4.719).
+- **La vista previa es un enlace firmado** (`?campaignPreview=<id>&t=<token>`,
+  HMAC de una hora): muestra el borrador GUARDADO con su franja de aviso, no
+  publica nada, y **no manda `campaignId` al cobro** — un borrador no
+  atribuye donaciones.
+- **La atribución de campaña viaja en la metadata de Stripe**
+  (`campaignId`/`campaignSlug`, vía `resolveCampaignRef` en
+  `financialController.js`) y **DEGRADA, nunca bloquea**: si la campaña
+  venció mientras el formulario estaba abierto o no alcanza al club, se dona
+  igual y sólo se pierde la atribución. El modelo `Donation` no se toca; los
+  contadores llegan en F5 leyendo esa metadata.
+- **Verificado en navegador real** (Chromium sobre el `dist/`, API
+  interceptada): las dos ramas, el modal en COP y el CTA de centros ausente.
+
+**Fases pendientes:** F3 — elementos requeridos + centros de acopio
+estructurados + aliados en la página (y encender `centers` en
+`IMPLEMENTED_SECTIONS`). F4 — indicadores + bloques informativos + cierre en
+la página + overrides locales con su pantalla. F5 — métricas
+(`ContributionCampaignMetric` desde la metadata de Stripe) + panel + OG por
+campaña vía seoServe + CTA nacional/exterior si la verificación de moneda lo
+respalda.
 
 ## La agenda del Distrito: traer eventos del ecosistema — v4.747
 

@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.803.0 | 2026-08-15 (Campañas de Contribución — Fase 1: modelo, criterio puro y editor central)
-// Cache bust: 2026-08-15a
+// UI V4.804.0 | 2026-08-15 (Campañas de Contribución — Fase 2: la página pública toma la campaña)
+// Cache bust: 2026-08-15b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.804.0',
+        title: 'La página de aportes toma la campaña 📣',
+        description: 'Fase 2 de Campañas de Contribución: al PUBLICAR una campaña desde el Administrador Central, la página «Maneras de Contribuir» de los sitios alcanzados pasa a mostrar la landing de campaña — hero con etiqueta de emergencia y sus dos botones, tarjeta de aporte conectada a la pasarela de siempre, y «¿cómo puedes ayudar?» con sus opciones configurables. Al despublicar, cada sitio vuelve a su página genérica EXACTA: sin campaña activa nada cambia, y un fallo consultando la campaña también degrada a la página de siempre. El botón «Ver página» del editor abre la vista previa del borrador con un enlace firmado de una hora, con su franja que dice que nada está publicado. Y una corrección que vale por sí sola: EL MODAL DE DONACIÓN AHORA ROTULA LA MONEDA REAL DEL CLUB — hasta hoy decía «(USD)» con montos de $10–$100 mientras el servidor cobraba en la moneda del club (Colombia → COP): un «$50» intentaba cobrar 50 pesos. Los montos sugeridos ahora son de la moneda que de verdad se cobra ($20.000–$200.000 en COP) y el mínimo también. El aporte nacido de una campaña viaja con su atribución en la metadata de Stripe (si la campaña venció mientras el formulario estaba abierto, se dona igual y sólo se pierde la atribución — nunca se bloquea un aporte legítimo). Verificado en navegador real: las dos ramas de la página, el modal en COP y que un botón hacia los centros de acopio no se pinta hasta que esa sección llegue en la Fase 3.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'donaciones', 'pagina-publica'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Landing de campaña en «Maneras de Contribuir»: hero, tarjeta de aporte y cómo ayudar, todo desde la configuración central.' },
+            { type: 'added', text: 'Vista previa real desde el editor: enlace firmado de una hora que muestra el borrador sin publicar nada.' },
+            { type: 'fixed', text: 'El modal de donación rotula la moneda real del club y sugiere montos de esa moneda — se acabó el «(USD)» cobrando pesos.' },
+            { type: 'added', text: 'El aporte de campaña viaja con su atribución en Stripe; una campaña vencida degrada a donación normal, nunca bloquea.' },
+            { type: 'changed', text: 'Sin campaña activa la página queda idéntica a la de siempre — verificado en navegador con las dos ramas.' },
+        ]
+    },
     {
         version: '4.803.0',
         title: 'Campañas de Contribución: el editor central 🤝',
