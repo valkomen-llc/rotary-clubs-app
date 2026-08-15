@@ -27,7 +27,7 @@ import {
     normalizeCenters,
 } from '../lib/contributionSpec.js';
 
-console.log('[CONTRIBUTION v4.805] Controller cargado — campañas de contribución (Fase 3: centros de acopio estructurados)');
+console.log('[CONTRIBUTION v4.806] Controller cargado — campañas de contribución (Fase 4: indicadores en página y sobrescritura local)');
 
 // ─── Historial ─────────────────────────────────────────────────────────────
 const recordHistory = async (campaignId, action, actor, detail = {}) => {
@@ -503,7 +503,152 @@ export const getPreviewCampaign = async (req, res) => {
     }
 };
 
-// La sobrescritura local (Fase 4) usará sanitizeOverride: se exporta desde el
-// spec y el endpoint llegará con su pantalla. Dejar acá un endpoint sin
-// consumidor sería una puerta abierta sin nadie mirándola.
+// ─── La vía del CLUB (F4): sobrescritura local y centros propios ───────────
+//
+// El aislamiento vive en el WHERE: el clubId sale SIEMPRE de req.user.clubId
+// (el token), nunca del body — un administrador de sitio no puede ni nombrar
+// otro sitio en estas rutas. Y la frontera de QUÉ puede tocar es
+// sanitizeOverride: lo que no está en OVERRIDE_WHITELIST no se puede expresar.
+
+// La campaña que le corresponde a un sitio para PREPARAR datos: la activa o
+// la programada que lo alcanza. Se admite la programada a propósito — el club
+// carga su contacto y sus centros ANTES de que la campaña salga al aire.
+const campaignForSiteAdmin = async (clubId) => {
+    const site = await siteOf(clubId);
+    if (!site) return null;
+    const { rows } = await db.query(
+        `SELECT * FROM "ContributionCampaign" WHERE status IN ('scheduled', 'active')`
+    );
+    const candidates = rows.map(rowToCampaign)
+        .filter(c => {
+            // El estado efectivo puede ser finished (fecha vencida): esa ya no es
+            // preparable. scheduled y active sí.
+            const eff = effectiveStatus(c, new Date());
+            return (eff === 'active' || eff === 'scheduled');
+        })
+        .filter(c => {
+            try { return pickCampaignForSite([{ ...c, status: 'active', startAt: null, endAt: null }], site, new Date())?.id === c.id; }
+            catch { return false; }
+        });
+    if (candidates.length === 0) return null;
+    return candidates.sort((a, b) =>
+        (Number(b.priority) || 0) - (Number(a.priority) || 0)
+        || new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+        || String(a.id).localeCompare(String(b.id))
+    )[0];
+};
+
+// GET /api/contribution-campaigns/site/current  (admin del sitio)
+export const getSiteCampaign = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const clubId = req.user.clubId;
+        const campaign = await campaignForSiteAdmin(clubId);
+        if (!campaign) return res.json({ campaign: null });
+
+        const { rows: ov } = await db.query(
+            `SELECT content FROM "ContributionCampaignOverride" WHERE "campaignId" = $1 AND "clubId" = $2`,
+            [campaign.id, clubId]
+        );
+        const { rows: own } = await db.query(
+            `SELECT * FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" = $2
+             ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+            [campaign.id, clubId]
+        );
+        res.json({
+            campaign: {
+                id: campaign.id,
+                name: campaign.name,
+                status: campaign.status,
+                effectiveStatus: effectiveStatus(campaign, new Date()),
+                startAt: campaign.startAt,
+                endAt: campaign.endAt,
+            },
+            override: ov[0] ? sanitizeOverride(ov[0].content) : {},
+            centers: own,
+        });
+    } catch (e) {
+        console.error('[CONTRIBUTION] getSiteCampaign:', e);
+        res.status(500).json({ error: 'No se pudo consultar la campaña del sitio' });
+    }
+};
+
+// PUT /api/contribution-campaigns/site/override  { content }
+export const saveSiteOverride = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const clubId = req.user.clubId;
+        const campaign = await campaignForSiteAdmin(clubId);
+        if (!campaign) return res.status(404).json({ error: 'No hay una campaña activa o programada para este sitio' });
+
+        const content = sanitizeOverride(req.body?.content);
+        const actor = actorOf(req);
+        await db.query(
+            `INSERT INTO "ContributionCampaignOverride" ("campaignId", "clubId", content, "updatedBy", "updatedAt")
+             VALUES ($1, $2, $3, $4, NOW())
+             ON CONFLICT ("campaignId", "clubId")
+             DO UPDATE SET content = $3, "updatedBy" = $4, "updatedAt" = NOW()`,
+            [campaign.id, clubId, JSON.stringify(content), actor]
+        );
+        await recordHistory(campaign.id, 'override_saved', actor, { clubId });
+        invalidateCache();
+        res.json({ override: content });
+    } catch (e) {
+        console.error('[CONTRIBUTION] saveSiteOverride:', e);
+        res.status(500).json({ error: 'No se pudo guardar la información local' });
+    }
+};
+
+// PUT /api/contribution-campaigns/site/centers  { centers }
+// El espejo del batch central, acotado a las filas DEL CLUB: borra y
+// reescribe sólo "clubId" = el del token. Las centrales no se pueden tocar.
+export const saveSiteCenters = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const clubId = req.user.clubId;
+        const campaign = await campaignForSiteAdmin(clubId);
+        if (!campaign) return res.status(404).json({ error: 'No hay una campaña activa o programada para este sitio' });
+
+        const { centers, skipped } = normalizeCenters(req.body?.centers);
+        const keptIds = centers.map(c => c.id);
+        await db.query(
+            `DELETE FROM "ContributionCenter"
+             WHERE "campaignId" = $1 AND "clubId" = $2 AND NOT (id = ANY($3::text[]))`,
+            [campaign.id, clubId, keptIds]
+        );
+        for (let i = 0; i < centers.length; i++) {
+            const c = centers[i];
+            await db.query(
+                `INSERT INTO "ContributionCenter"
+                    (id, "campaignId", city, "groupLabel", name, address, complement, schedule,
+                     "contactName", phone, notes, active, "sortOrder", "clubId", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+                 ON CONFLICT (id) DO UPDATE SET
+                    city = $3, "groupLabel" = $4, name = $5, address = $6, complement = $7,
+                    schedule = $8, "contactName" = $9, phone = $10, notes = $11,
+                    active = $12, "sortOrder" = $13, "updatedAt" = NOW()
+                 WHERE "ContributionCenter"."clubId" = $14`,
+                [
+                    c.id.startsWith('center-') ? `${clubId.slice(0, 8)}-${Date.now()}-${i}` : c.id,
+                    campaign.id, c.city, c.groupLabel || null, c.name || null, c.address,
+                    c.complement || null, c.schedule || null, c.contactName || null,
+                    c.phone || null, c.notes || null, c.active, i, clubId,
+                ]
+            );
+        }
+        await recordHistory(campaign.id, 'site_centers_updated', actorOf(req), { clubId, count: centers.length, skipped: skipped.length });
+        invalidateCache();
+
+        const { rows } = await db.query(
+            `SELECT * FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" = $2
+             ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+            [campaign.id, clubId]
+        );
+        res.json({ centers: rows, skipped });
+    } catch (e) {
+        console.error('[CONTRIBUTION] saveSiteCenters:', e);
+        res.status(500).json({ error: 'No se pudieron guardar los centros del sitio' });
+    }
+};
+
 export { sanitizeOverride };

@@ -47,8 +47,8 @@ export interface CampaignData {
 // Qué secciones ya sabe pintar el navegador. `centers` entró en F3: un CTA de
 // esa acción se pinta sólo si además ESTA campaña tiene centros publicados —
 // la sección existe en el código, pero sin centros no existe en la página y
-// el ancla no llevaría a ninguna parte.
-export const IMPLEMENTED_SECTIONS = ['hero', 'donateCard', 'waysToHelp', 'requiredItems', 'centers', 'partners'];
+// el ancla no llevaría a ninguna parte. F4 completó las nueve.
+export const IMPLEMENTED_SECTIONS = ['hero', 'donateCard', 'waysToHelp', 'requiredItems', 'centers', 'stats', 'infoBlocks', 'finalCta', 'partners'];
 
 const shareCampaign = async (name: string) => {
     const url = window.location.href;
@@ -314,6 +314,105 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                         {content.centersAlliance && (
                             <p className="text-center text-sm font-bold text-gray-600 mt-10">{content.centersAlliance}</p>
                         )}
+                    </div>
+                </section>
+            )}
+
+            {/* ── Panorama de la emergencia ── */}
+            {campaign.stats.length > 0 && (
+                <section id="panorama" className="py-20 md:py-24 bg-white">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-12">
+                            Panorama de la emergencia
+                        </h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                            {campaign.stats.map(s => (
+                                <div key={s.id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-6 text-center">
+                                    {/* La cifra es un DATO: no se traduce ni se reescribe. */}
+                                    <p className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: accent }} data-no-translate>{s.value}</p>
+                                    <p className="text-sm font-bold text-gray-700 mt-1">{s.label}</p>
+                                    {/* La fuente es lo que hace publicable la cifra: siempre visible. */}
+                                    <p className="text-[11px] text-gray-400 mt-2" data-no-translate>{s.source}</p>
+                                </div>
+                            ))}
+                        </div>
+                        {campaign.statsUpdatedAt && (
+                            <p className="text-center text-xs text-gray-400 mt-8">
+                                Última actualización: <span data-no-translate>{new Date(campaign.statsUpdatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                            </p>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* ── Bloques informativos ── */}
+            {(content.infoBlocks || []).filter((b: any) => b.active !== false && b.title).length > 0 && (
+                <section className="py-20 md:py-24 bg-rotary-concrete">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {(content.infoBlocks || []).filter((b: any) => b.active !== false && b.title).map((b: any) => (
+                                <div key={b.id} className="bg-white rounded-md shadow-lg overflow-hidden flex flex-col">
+                                    <div className="p-6 min-h-[110px] flex items-center justify-center text-center" style={{ backgroundColor: accent }}>
+                                        <h3 className="text-white text-lg font-semibold leading-snug">{b.title}</h3>
+                                    </div>
+                                    <div className="p-8 flex-grow">
+                                        <p className="text-gray-700 text-[15px] leading-relaxed">{b.text}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            )}
+
+            {/* ── Información del club (sobrescritura local, F4) ── */}
+            {(campaign.local?.contact?.name || campaign.local?.contact?.phone || campaign.local?.contact?.email || campaign.local?.localNote || campaign.local?.qrImage) && (
+                <section className="py-16 bg-white border-t border-gray-100">
+                    <div className="max-w-[700px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                        <h2 className="text-xl font-black text-gray-900 mb-4">Información de contacto local</h2>
+                        {campaign.local.localNote && (
+                            <p className="text-gray-600 leading-relaxed mb-5">{campaign.local.localNote}</p>
+                        )}
+                        <div className="flex flex-col items-center gap-2 text-sm">
+                            {campaign.local.contact?.name && (
+                                <p className="font-bold text-gray-800 flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /> <span data-no-translate>{campaign.local.contact.name}</span></p>
+                            )}
+                            {campaign.local.contact?.phone && (
+                                <a href={`tel:${campaign.local.contact.phone.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline flex items-center gap-2" style={{ color: accent }} data-no-translate>
+                                    <Phone className="w-4 h-4" /> {campaign.local.contact.phone}
+                                </a>
+                            )}
+                            {campaign.local.contact?.email && (
+                                <a href={`mailto:${campaign.local.contact.email}`} className="font-bold hover:underline" style={{ color: accent }} data-no-translate>
+                                    {campaign.local.contact.email}
+                                </a>
+                            )}
+                        </div>
+                        {campaign.local.qrImage && (
+                            <img src={campaign.local.qrImage} alt="Código QR de aporte local" className="w-40 h-40 object-contain mx-auto mt-6 border border-gray-100 rounded-xl p-2" />
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* ── Cierre final ── */}
+            {(content.finalCta?.title || content.finalCta?.text) && (
+                <section className="relative py-24 md:py-28 overflow-hidden" style={{ backgroundColor: '#1C2B3A' }}>
+                    <div className="absolute inset-0 opacity-20" style={{ background: `radial-gradient(circle at 30% 50%, ${accent}, transparent 60%)` }} />
+                    <div className="relative max-w-[850px] mx-auto px-4 sm:px-6 lg:px-8 text-center text-white">
+                        {content.finalCta.title && (
+                            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.1] mb-6">{content.finalCta.title}</h2>
+                        )}
+                        {content.finalCta.text && (
+                            <p className="text-white/80 text-lg leading-relaxed max-w-2xl mx-auto mb-6">{content.finalCta.text}</p>
+                        )}
+                        {content.finalCta.quote && (
+                            <p className="italic text-white/70 mb-10">«{content.finalCta.quote}»</p>
+                        )}
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                            <CampaignCta cta={content.finalCta.ctaPrimary} campaignName={campaign.name} onDonate={onDonate} solid accent={accent} hasCenters={hasCenters} />
+                            <CampaignCta cta={content.finalCta.ctaSecondary} campaignName={campaign.name} onDonate={onDonate} solid={false} accent={accent} hasCenters={hasCenters} />
+                        </div>
                     </div>
                 </section>
             )}

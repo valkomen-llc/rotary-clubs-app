@@ -2391,13 +2391,15 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
-## Campañas de Contribución — v4.805 (Fases 1-3 de 5)
+## Campañas de Contribución — v4.806 (Fases 1-4 de 5)
 
 «Maneras de Contribuir» se convierte en una landing de campañas configurable
 desde el Administrador Central y desplegable a los sitios por targeting. F1
 entregó el modelo, el criterio puro y el editor central; F2, la página
 pública (hero, tarjeta de aporte, cómo ayudar) con fallback exacto; F3, los
-elementos requeridos, los centros de acopio estructurados y los aliados.
+elementos requeridos, los centros de acopio estructurados y los aliados; F4,
+el panorama con fuentes, los bloques informativos, el cierre y la vía local
+de cada club. Las NUEVE secciones del spec están implementadas.
 
 | Archivo | Qué es |
 |---|---|
@@ -2410,7 +2412,7 @@ elementos requeridos, los centros de acopio estructurados y los aliados.
 | `src/components/campaign/CampaignLanding.tsx` | La landing pública de campaña (F2) |
 | `src/components/DonationModal.tsx` | El modal de donación COMPARTIDO, con la moneda real del club |
 
-Pruebas: `npm run test:contribution` (122 casos). **Sin base, credenciales ni
+Pruebas: `npm run test:contribution` (132 casos). **Sin base, credenciales ni
 red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 
 **Reglas durables:**
@@ -2526,12 +2528,33 @@ red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 - **La nota («se habilitarán más puntos…») y la alianza (ABACO) son campos
   del contenido** (`centersNote`, `centersAlliance`), no texto del código.
 
-**Fases pendientes:** F4 — indicadores + bloques informativos + cierre en la
-página + overrides locales (contacto, nota, QR y centros propios del club)
-con su pantalla y su ruta `requireSiteAdmin`. F5 — métricas
-(`ContributionCampaignMetric` desde la metadata de Stripe) + panel + OG por
-campaña vía seoServe + CTA nacional/exterior si la verificación de moneda lo
-respalda.
+### El panorama y la vía local (v4.806, Fase 4)
+
+- **La fuente de cada cifra SE VE, no sólo se valida.** El panorama pinta el
+  valor, la etiqueta y la fuente debajo, más «Última actualización» con
+  `statsUpdatedAt`. Cifras y fuentes llevan `data-no-translate`: son datos.
+- **La vía del club vive en `/site/*`** (`requireSiteAdmin`, declarada ANTES
+  de `/:id` para que «site» no se lea como id). El `clubId` sale SIEMPRE de
+  `req.user.clubId` — el body no puede ni nombrar otro sitio.
+- **La tarjeta del club está en `ManerasContribuirEditor`**, no en una
+  pantalla nueva: la decisión se toma donde ya se trabaja esta página (regla
+  de los «Botones de la ficha»). Aparece SOLO si hay campaña activa o
+  programada que alcance al sitio — se admite la programada a propósito, para
+  que el club prepare su contacto y sus centros ANTES del aire.
+- **Los dos batches de centros no pueden pisarse**: el central borra/reescribe
+  `clubId IS NULL`; el del club, sólo `clubId = <token>`, y su UPSERT lleva
+  `WHERE clubId = $suyo` — mandar el id de una fila central no la toca.
+- **El override llega a la página en `local`** (contacto con `tel:`/`mailto:`,
+  nota, QR con alt) y toda escritura local deja historial (`override_saved`,
+  `site_centers_updated`) e invalida la caché.
+- **`sectionOrder` sigue sin consumirse**: el orden de las secciones es el
+  declarado en el código. Si algún día se implementa, el editor tiene que
+  exponerlo a la vez — un campo guardado que nadie lee es la clase de silencio
+  que este archivo documenta.
+
+**Fase pendiente:** F5 — métricas (`ContributionCampaignMetric` desde la
+metadata de Stripe) + panel + OG por campaña vía seoServe + CTA
+nacional/exterior si la verificación de moneda lo respalda.
 
 ## La agenda del Distrito: traer eventos del ecosistema — v4.747
 

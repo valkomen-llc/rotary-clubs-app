@@ -396,6 +396,38 @@ const rutas3 = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
 check('el editor de centros es del operador (superAdminOnly)',
     /superAdminOnly, listCenters/.test(rutas3) && /superAdminOnly, saveCenters/.test(rutas3));
 
+// ─── Fase 4: indicadores en página y sobrescritura local ───────────────────
+grupo('Fase 4 — indicadores, informativos, cierre y la vía del club');
+const landing4 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+check('cada indicador pinta su FUENTE, y la fecha de actualización se dice',
+    /\{s\.source\}/.test(landing4) && landing4.includes('Última actualización:'));
+check('las cifras y las fuentes son DATOS: no se traducen',
+    /data-no-translate>\{s\.value\}/.test(landing4));
+check('el cierre final usa el MISMO CampaignCta (con hasCenters), no botones propios',
+    /finalCta\.ctaPrimary[\s\S]{0,80}hasCenters=\{hasCenters\}/.test(landing4));
+check('el bloque local pinta contacto con tel:/mailto: y el QR con alt',
+    landing4.includes('tel:${campaign.local.contact.phone') && landing4.includes('mailto:${campaign.local.contact.email')
+    && landing4.includes('alt="Código QR de aporte local"'));
+check('las nueve secciones del spec están implementadas',
+    SECTION_IDS.every(s => new RegExp(`IMPLEMENTED_SECTIONS = \\[[^\\]]*'${s}'`).test(landing4)));
+
+const rutas4 = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
+check('la vía del club exige requireSiteAdmin y va ANTES de /:id',
+    /requireSiteAdmin, getSiteCampaign/.test(rutas4) && /requireSiteAdmin, saveSiteOverride/.test(rutas4)
+    && rutas4.indexOf("'/site/current'") < rutas4.indexOf("'/:id/preview'"));
+
+const ctrl4 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+check('el clubId de la vía del club sale del TOKEN, nunca del body',
+    (ctrl4.match(/const clubId = req\.user\.clubId;/g) || []).length >= 3
+    && !/req\.body[^\n]*clubId/.test(ctrl4.split('La vía del CLUB')[1] || ''));
+check('el override se sanea con la whitelist EN el servidor',
+    /sanitizeOverride\(req\.body\?\.content\)/.test(ctrl4));
+check('el batch del club sólo borra y actualiza filas de SU club',
+    /"clubId" = \$2 AND NOT \(id = ANY/.test(ctrl4)
+    && /WHERE "ContributionCenter"."clubId" = \$14/.test(ctrl4));
+check('las escrituras del club también dejan historial e invalidan la caché',
+    ctrl4.includes("'override_saved'") && ctrl4.includes("'site_centers_updated'"));
+
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);

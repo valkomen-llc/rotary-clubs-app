@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.805.0 | 2026-08-15 (Campañas de Contribución — Fase 3: requeridos, centros de acopio y aliados)
-// Cache bust: 2026-08-15c
+// UI V4.806.0 | 2026-08-15 (Campañas de Contribución — Fase 4: panorama con fuentes y la vía local del club)
+// Cache bust: 2026-08-15d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.806.0',
+        title: 'El panorama con sus fuentes y la voz local de cada club 📊',
+        description: 'Fase 4 de Campañas de Contribución — la landing queda COMPLETA con sus nueve secciones. PANORAMA DE LA EMERGENCIA: los indicadores configurados se pintan en la página, y cada cifra sale CON SU FUENTE debajo («UNGRD, corte 14/08/2026») más la línea «Última actualización» — la regla de no publicar cifras sin respaldo ahora se ve, no sólo se valida. Las cifras y las fuentes son datos: no pasan por el traductor. BLOQUES INFORMATIVOS y CIERRE FINAL: las tarjetas de contexto («¿Por qué tu ayuda es importante?»…) y el llamado de alto impacto con su frase y sus dos botones, todo configurable. Y LA VÍA LOCAL DE CADA CLUB: mientras una campaña central esté activa en su sitio, el administrador del club ve en su pantalla de Maneras de Contribuir una tarjeta con lo que SU sitio puede aportar — persona de contacto (con marcado y correo directos), una nota local, un código QR propio y sus centros de acopio, que se SUMAN a los centrales sin poder tocarlos. La frontera es estructural: el servidor sólo acepta esas claves (whitelist), el club se identifica por su token —nunca por lo que mande el navegador— y el guardado del operador central jamás pisa las filas locales, ni al revés. Todo cambio local queda en el historial de la campaña.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'indicadores', 'clubes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Panorama de la emergencia en la página: cada cifra con su fuente visible y la fecha de última actualización.' },
+            { type: 'added', text: 'Bloques informativos y cierre final configurables, con los dos botones del cierre.' },
+            { type: 'added', text: 'Tarjeta de campaña para el administrador del sitio: contacto local, nota, QR propio y centros del club.' },
+            { type: 'added', text: 'Los centros del club se suman a los centrales; ninguno de los dos editores puede pisar las filas del otro.' },
+            { type: 'changed', text: 'La whitelist local (contacto, nota, QR) la impone el servidor; el club se identifica por su sesión, nunca por el navegador.' },
+        ]
+    },
     {
         version: '4.805.0',
         title: 'Centros de acopio administrables 📍',

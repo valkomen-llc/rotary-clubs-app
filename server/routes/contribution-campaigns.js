@@ -6,12 +6,13 @@
 // activa de UN sitio y la vista previa con token firmado.
 
 import express from 'express';
-import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { authMiddleware, roleMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import {
     listCampaigns, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
     getActiveCampaign, getPreviewCampaign,
     listCenters, saveCenters,
+    getSiteCampaign, saveSiteOverride, saveSiteCenters,
 } from '../controllers/contributionCampaignController.js';
 
 const router = express.Router();
@@ -20,6 +21,14 @@ const superAdminOnly = roleMiddleware(['administrator']);
 // Públicas — sin sesión. `active` corre en cada visita de la página de
 // aportes (Fase 2) y degrada a { campaign: null } ante cualquier fallo.
 router.get('/active', getActiveCampaign);
+
+// F4 — la vía del ADMINISTRADOR DEL SITIO: lo que su club puede tocar
+// (whitelist de sanitizeOverride) y sus centros propios. El clubId sale del
+// token, nunca del body. Van ANTES de /:id para que «site» no se lea como id.
+router.get('/site/current', authMiddleware, requireSiteAdmin, getSiteCampaign);
+router.put('/site/override', authMiddleware, requireSiteAdmin, saveSiteOverride);
+router.put('/site/centers', authMiddleware, requireSiteAdmin, saveSiteCenters);
+
 router.get('/:id/preview', getPreviewCampaign);
 
 // Gestión — operador de la plataforma.
