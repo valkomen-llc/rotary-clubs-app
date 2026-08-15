@@ -9,7 +9,8 @@ import {
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
     STATUS_LABELS, canTransition, effectiveStatus, TARGETING_LABELS,
-    validateStats, type CampaignStatus, type TargetingMode,
+    validateStats, normalizeCenters, type CampaignStatus, type TargetingMode,
+    type ContributionCenter,
 } from '../../lib/contributionSpec';
 import { uploadMediaFiles, IMAGE_ACCEPT } from '../../lib/mediaUpload';
 
@@ -133,6 +134,13 @@ const ContributionCampaigns: React.FC = () => {
     const [history, setHistory] = useState<{ action: string; actor: string | null; createdAt: string }[]>([]);
     const [showHistory, setShowHistory] = useState(false);
 
+    // Centros de acopio (F3): tabla propia, guardado aparte del documento de
+    // la campaña — el editor trabaja sobre la lista entera, como los bloques
+    // de pago. Sólo edita los CENTRALES; los locales de cada club son de F4.
+    const [centers, setCenters] = useState<Partial<ContributionCenter>[]>([]);
+    const [centersDirty, setCentersDirty] = useState(false);
+    const [savingCenters, setSavingCenters] = useState(false);
+
     // Imágenes: UN MediaPicker por pantalla, con pickerField diciendo a dónde
     // va lo elegido (regla v4.700). La subida comparte el mismo destino.
     const [pickerField, setPickerField] = useState<string | null>(null);
@@ -172,8 +180,39 @@ const ContributionCampaigns: React.FC = () => {
             setPublishErrors(Array.isArray(d.publishErrors) ? d.publishErrors : []);
             setHistory(Array.isArray(d.history) ? d.history : []);
             setDirty(false);
+            // Los centros viven en su tabla: se cargan aparte y un fallo acá
+            // no impide editar el resto de la campaña.
+            setCenters([]); setCentersDirty(false);
+            try {
+                const rc = await fetch(`${API}/contribution-campaigns/${id}/centers`, { headers: authHeaders() });
+                const dc = rc.ok ? await rc.json() : null;
+                if (Array.isArray(dc?.centers)) setCenters(dc.centers);
+            } catch { /* la card avisa vacía; guardar sigue funcionando */ }
         } catch {
             toast.error('No se pudo abrir la campaña');
+        }
+    };
+
+    const saveCenters = async () => {
+        if (!c) return;
+        setSavingCenters(true);
+        try {
+            const r = await fetch(`${API}/contribution-campaigns/${c.id}/centers`, {
+                method: 'PUT', headers: authHeaders(), body: JSON.stringify({ centers }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error);
+            setCenters(Array.isArray(d.centers) ? d.centers : []);
+            setCentersDirty(false);
+            if (Array.isArray(d.skipped) && d.skipped.length > 0) {
+                toast.warning(`Centros guardados; ${d.skipped.length} descartado(s) por datos incompletos`);
+            } else {
+                toast.success('Centros de acopio guardados');
+            }
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudieron guardar los centros');
+        } finally {
+            setSavingCenters(false);
         }
     };
 
@@ -331,6 +370,8 @@ const ContributionCampaigns: React.FC = () => {
 
     // Avisos en vivo de los indicadores (mismo criterio que el servidor).
     const statWarnings = useMemo(() => validateStats(c?.stats), [c?.stats]);
+    // Aviso en vivo de los centros: qué filas NO se van a guardar y por qué.
+    const centerSkipped = useMemo(() => normalizeCenters(centers).skipped, [centers]);
 
     const content = c?.content || {};
     const hero = content.hero || {};
@@ -770,6 +811,86 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                 </Card>
 
+                {/* Centros de acopio (F3) */}
+                <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                        <h3 className="text-lg font-bold text-gray-800">Centros de acopio</h3>
+                        <button onClick={saveCenters} disabled={savingCenters || !centersDirty}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${centersDirty ? 'bg-rotary-blue text-white hover:bg-sky-800 shadow-lg' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                            <Save className="w-4 h-4" /> {savingCenters ? 'Guardando…' : 'Guardar centros'}
+                        </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-5">
+                        Estructurados por ciudad y sector — se guardan con su propio botón, aparte del resto de la campaña.
+                        Ciudad y dirección son obligatorias: una fila sin ellas no se publica y se avisa. El orden de la lista es el orden en la página.
+                    </p>
+                    <div className="space-y-3">
+                        {centers.map((ct, i) => (
+                            <div key={ct.id || i} className="border border-gray-100 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer">
+                                        <input type="checkbox" checked={ct.active !== false} className="w-4 h-4 accent-rotary-blue"
+                                            onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, active: e.target.checked } : x)); setCentersDirty(true); }} />
+                                        Activo
+                                    </label>
+                                    <RowTools
+                                        onUp={() => { setCenters(moveIn(centers, i, -1)); setCentersDirty(true); }}
+                                        onDown={() => { setCenters(moveIn(centers, i, 1)); setCentersDirty(true); }}
+                                        onRemove={() => { setCenters(centers.filter((_, j) => j !== i)); setCentersDirty(true); }} />
+                                </div>
+                                <div className="grid md:grid-cols-3 gap-3">
+                                    <input className={field} placeholder="Ciudad *" value={ct.city || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, city: e.target.value } : x)); setCentersDirty(true); }} />
+                                    <input className={field} placeholder="Sector (ej: Norte, Centro, Sur)" value={ct.groupLabel || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, groupLabel: e.target.value } : x)); setCentersDirty(true); }} />
+                                    <input className={field} placeholder="Nombre del punto (opcional)" value={ct.name || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, name: e.target.value } : x)); setCentersDirty(true); }} />
+                                </div>
+                                <div className="grid md:grid-cols-2 gap-3">
+                                    <input className={field} placeholder="Dirección *" value={ct.address || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, address: e.target.value } : x)); setCentersDirty(true); }} />
+                                    <input className={field} placeholder="Complemento (torre, apto, referencia)" value={ct.complement || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, complement: e.target.value } : x)); setCentersDirty(true); }} />
+                                </div>
+                                <div className="grid md:grid-cols-3 gap-3">
+                                    <input className={field} placeholder="Horario (ej: 9 am a 3 pm)" value={ct.schedule || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, schedule: e.target.value } : x)); setCentersDirty(true); }} />
+                                    <input className={field} placeholder="Recibe (persona de contacto)" value={ct.contactName || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, contactName: e.target.value } : x)); setCentersDirty(true); }} />
+                                    <input className={field} placeholder="Teléfono" value={ct.phone || ''}
+                                        onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, phone: e.target.value } : x)); setCentersDirty(true); }} />
+                                </div>
+                                <input className={field} placeholder="Notas (opcional)" value={ct.notes || ''}
+                                    onChange={e => { setCenters(centers.map((x, j) => j === i ? { ...x, notes: e.target.value } : x)); setCentersDirty(true); }} />
+                            </div>
+                        ))}
+                        <button type="button"
+                            onClick={() => { setCenters([...centers, { id: `center-${Date.now()}`, city: '', groupLabel: '', name: '', address: '', complement: '', schedule: '', contactName: '', phone: '', notes: '', active: true }]); setCentersDirty(true); }}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
+                            <Plus className="w-4 h-4" /> Agregar centro
+                        </button>
+                        {centerSkipped.length > 0 && (
+                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-700">
+                                {centerSkipped.length} centro(s) no se guardarán: {centerSkipped.map(s => `fila ${s.index + 1} ${s.reason}`).join(', ')}.
+                            </div>
+                        )}
+                        <div className="grid md:grid-cols-2 gap-4 pt-2 border-t border-gray-50">
+                            <div>
+                                <label className={lbl}>Nota bajo el título (se guarda con la campaña)</label>
+                                <input className={field} placeholder="Se habilitarán más puntos en otras ciudades de acuerdo con las necesidades."
+                                    value={content.centersNote || ''}
+                                    onChange={e => patchContent({ centersNote: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className={lbl}>Alianza (al pie de los centros)</label>
+                                <input className={field} placeholder="En alianza con el Banco de Alimentos — ABACO"
+                                    value={content.centersAlliance || ''}
+                                    onChange={e => patchContent({ centersAlliance: e.target.value })} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Indicadores */}
                 <Card title="Panorama de la emergencia" hint="Cada cifra necesita su fuente y su fecha: un indicador sin fuente no se publica — lo bloquea el servidor, no esta pantalla.">
                     <div className="space-y-3">
@@ -935,7 +1056,7 @@ const ContributionCampaigns: React.FC = () => {
 
                 <div className="bg-sky-50/60 rounded-3xl p-6 border border-sky-100 text-sm text-gray-600">
                     <p className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Eye className="w-4 h-4" /> Qué pinta ya la página pública</p>
-                    <p>Con la campaña publicada, los sitios alcanzados muestran el <b>hero</b>, la <b>tarjeta de aporte</b> (conectada a la pasarela de siempre, en la moneda del club) y <b>¿cómo puedes ayudar?</b>. Los <b>elementos requeridos y centros de acopio</b> llegan en la Fase 3; los <b>indicadores, bloques informativos y cierre</b>, en la Fase 4 — ya se pueden configurar y quedan guardados. Un botón que apunte a los centros no se pinta hasta que esa sección exista.</p>
+                    <p>Con la campaña publicada, los sitios alcanzados muestran el <b>hero</b>, la <b>tarjeta de aporte</b> (pasarela de siempre, en la moneda del club), <b>¿cómo puedes ayudar?</b>, los <b>elementos requeridos</b>, los <b>centros de acopio</b> por ciudad y los <b>aliados</b>. Los <b>indicadores, bloques informativos y cierre</b> llegan en la Fase 4 — ya se pueden configurar y quedan guardados. Un botón que apunte a los centros sólo se pinta si hay centros publicados.</p>
                 </div>
             </div>
         </AdminLayout>

@@ -24,9 +24,10 @@ import {
     CAMPAIGN_STATUSES, canTransition, effectiveStatus,
     normalizeTargeting, pickCampaignForSite, normalizeContent, normalizeStats,
     validateForPublish, sanitizeOverride, resolveForSite, slugify,
+    normalizeCenters,
 } from '../lib/contributionSpec.js';
 
-console.log('[CONTRIBUTION v4.803] Controller cargado — campañas de contribución (Fase 1: modelo + editor central)');
+console.log('[CONTRIBUTION v4.805] Controller cargado — campañas de contribución (Fase 3: centros de acopio estructurados)');
 
 // ─── Historial ─────────────────────────────────────────────────────────────
 const recordHistory = async (campaignId, action, actor, detail = {}) => {
@@ -325,6 +326,97 @@ export const issuePreviewToken = async (req, res) => {
     }
 };
 
+// ─── Centros de acopio (F3) ────────────────────────────────────────────────
+//
+// Los centros CENTRALES viven con clubId NULL; los que un sitio agregue
+// localmente (F4) llevan su clubId y NO se tocan desde acá: el batch del
+// operador borra y reescribe SOLO las filas centrales. Sin ese filtro, un
+// guardado central se llevaría por delante los centros propios de los clubes.
+
+// GET /api/contribution-campaigns/:id/centers  (operador — incluye inactivos)
+export const listCenters = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows } = await db.query(
+            `SELECT * FROM "ContributionCenter"
+             WHERE "campaignId" = $1 AND "clubId" IS NULL
+             ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+            [req.params.id]
+        );
+        res.json({ centers: rows });
+    } catch (e) {
+        console.error('[CONTRIBUTION] listCenters:', e);
+        res.status(500).json({ error: 'No se pudieron cargar los centros' });
+    }
+};
+
+// PUT /api/contribution-campaigns/:id/centers  { centers: [...] }
+// Reemplaza el juego COMPLETO de centros centrales (el editor trabaja sobre
+// la lista entera, como los bloques de pago). Lo invalidable se descarta y se
+// REPORTA — nunca en silencio.
+export const saveCenters = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const { rows: camp } = await db.query(`SELECT id FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+        if (!camp[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+        const { centers, skipped } = normalizeCenters(req.body?.centers);
+        const keptIds = centers.map(c => c.id);
+
+        // Sólo las filas CENTRALES: las locales de los clubes no son de este editor.
+        await db.query(
+            `DELETE FROM "ContributionCenter"
+             WHERE "campaignId" = $1 AND "clubId" IS NULL AND NOT (id = ANY($2::text[]))`,
+            [req.params.id, keptIds]
+        );
+        for (let i = 0; i < centers.length; i++) {
+            const c = centers[i];
+            await db.query(
+                `INSERT INTO "ContributionCenter"
+                    (id, "campaignId", city, "groupLabel", name, address, complement, schedule,
+                     "contactName", phone, notes, active, "sortOrder", "clubId", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NOW())
+                 ON CONFLICT (id) DO UPDATE SET
+                    city = $3, "groupLabel" = $4, name = $5, address = $6, complement = $7,
+                    schedule = $8, "contactName" = $9, phone = $10, notes = $11,
+                    active = $12, "sortOrder" = $13, "updatedAt" = NOW()`,
+                [
+                    c.id.startsWith('center-') ? `${req.params.id.slice(0, 8)}-${Date.now()}-${i}` : c.id,
+                    req.params.id, c.city, c.groupLabel || null, c.name || null, c.address,
+                    c.complement || null, c.schedule || null, c.contactName || null,
+                    c.phone || null, c.notes || null, c.active, i,
+                ]
+            );
+        }
+        await recordHistory(req.params.id, 'centers_updated', actorOf(req), { count: centers.length, skipped: skipped.length });
+        invalidateCache();
+
+        const { rows } = await db.query(
+            `SELECT * FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" IS NULL
+             ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+            [req.params.id]
+        );
+        res.json({ centers: rows, skipped });
+    } catch (e) {
+        console.error('[CONTRIBUTION] saveCenters:', e);
+        res.status(500).json({ error: 'No se pudieron guardar los centros' });
+    }
+};
+
+// Los centros que ve UN sitio: los centrales + los suyos (F4). Activos.
+const publicCentersFor = async (campaignId, clubId) => {
+    const { rows } = await db.query(
+        `SELECT id, city, "groupLabel", name, address, complement, schedule,
+                "contactName", phone, notes, active, "sortOrder", "clubId"
+         FROM "ContributionCenter"
+         WHERE "campaignId" = $1 AND active = true
+           AND ("clubId" IS NULL OR "clubId" = $2)
+         ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+        [campaignId, clubId || null]
+    );
+    return rows;
+};
+
 // ─── Lectura pública ───────────────────────────────────────────────────────
 
 // Los sitios que la campaña alcanza se resuelven contra la MISMA forma de
@@ -373,7 +465,11 @@ export const getActiveCampaign = async (req, res) => {
                 `SELECT content FROM "ContributionCampaignOverride" WHERE "campaignId" = $1 AND "clubId" = $2`,
                 [winner.id, clubId]
             );
-            payload = { campaign: resolveForSite(winner, ov[0] ? { content: ov[0].content } : null, now) };
+            const campaign = resolveForSite(winner, ov[0] ? { content: ov[0].content } : null, now);
+            // F3 — los centros viajan PLANOS y activos; la agrupación por
+            // ciudad la hace el navegador con el espejo de groupCenters.
+            campaign.centers = await publicCentersFor(winner.id, clubId);
+            payload = { campaign };
         }
         activeCache.set(clubId, { at: Date.now(), payload });
         res.json(payload);
@@ -399,6 +495,7 @@ export const getPreviewCampaign = async (req, res) => {
         // resolveForSite exige estado activo; la vista previa lo simula sin
         // escribirlo: el borrador sigue siendo borrador.
         const preview = resolveForSite({ ...campaign, status: 'active', startAt: null, endAt: null }, null, new Date());
+        preview.centers = await publicCentersFor(campaign.id, null);
         res.json({ campaign: preview, preview: true, savedStatus: campaign.status });
     } catch (e) {
         console.error('[CONTRIBUTION] getPreviewCampaign:', e);

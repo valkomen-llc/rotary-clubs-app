@@ -2391,13 +2391,13 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
-## Campañas de Contribución — v4.804 (Fases 1-2 de 5)
+## Campañas de Contribución — v4.805 (Fases 1-3 de 5)
 
 «Maneras de Contribuir» se convierte en una landing de campañas configurable
 desde el Administrador Central y desplegable a los sitios por targeting. F1
 entregó el modelo, el criterio puro y el editor central; F2, la página
-pública: con campaña activa se pinta la landing (hero, tarjeta de aporte,
-cómo ayudar), sin campaña la página genérica queda EXACTAMENTE igual.
+pública (hero, tarjeta de aporte, cómo ayudar) con fallback exacto; F3, los
+elementos requeridos, los centros de acopio estructurados y los aliados.
 
 | Archivo | Qué es |
 |---|---|
@@ -2410,7 +2410,7 @@ cómo ayudar), sin campaña la página genérica queda EXACTAMENTE igual.
 | `src/components/campaign/CampaignLanding.tsx` | La landing pública de campaña (F2) |
 | `src/components/DonationModal.tsx` | El modal de donación COMPARTIDO, con la moneda real del club |
 
-Pruebas: `npm run test:contribution` (103 casos). **Sin base, credenciales ni
+Pruebas: `npm run test:contribution` (122 casos). **Sin base, credenciales ni
 red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
 
 **Reglas durables:**
@@ -2498,12 +2498,37 @@ red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
   igual y sólo se pierde la atribución. El modelo `Donation` no se toca; los
   contadores llegan en F5 leyendo esa metadata.
 - **Verificado en navegador real** (Chromium sobre el `dist/`, API
-  interceptada): las dos ramas, el modal en COP y el CTA de centros ausente.
+  interceptada): las dos ramas, el modal en COP y los CTA condicionados.
 
-**Fases pendientes:** F3 — elementos requeridos + centros de acopio
-estructurados + aliados en la página (y encender `centers` en
-`IMPLEMENTED_SECTIONS`). F4 — indicadores + bloques informativos + cierre en
-la página + overrides locales con su pantalla. F5 — métricas
+### Centros de acopio (v4.805, Fase 3)
+
+- **Cada centro es una FILA estructurada**, nunca un textarea: ciudad,
+  sector, nombre, dirección, complemento, horario, contacto, teléfono, notas,
+  activo y orden. Es lo que permite agrupar por ciudad, marcar teléfonos con
+  `tel:` y corregir una dirección sin reescribir un bloque.
+- **`normalizeCenters` descarta lo invalidable Y LO REPORTA** (`skipped`):
+  sin ciudad o sin dirección no hay centro publicable, y el editor avisa en
+  vivo con el mismo criterio del espejo. Nunca un descarte silencioso.
+- **El batch del operador sólo toca filas CENTRALES** (`clubId IS NULL`).
+  Los centros locales de un club (F4) llevan su `clubId` y el DELETE del
+  guardado central los excluye — sin ese filtro, un guardado del operador se
+  llevaría por delante los centros propios de los clubes.
+- **Los centros viajan PLANOS en el payload público** y la agrupación por
+  ciudad/sector la hace el navegador con el espejo de `groupCenters` —
+  probado por paridad. El orden es estable (por `sortOrder`, ciudad en el
+  orden de su primer centro): no depende del orden de la base.
+- **Un CTA de acción `centers` exige ADEMÁS centros publicados**
+  (`hasCenters`): la sección existe en el código desde F3, pero sin centros
+  no existe en la página y el ancla no llevaría a ninguna parte.
+- **Las direcciones, teléfonos y nombres de contacto llevan
+  `data-no-translate`**: son DATOS, no lenguaje (regla v4.662). Los títulos
+  de sección sí se traducen solos con el resto de la página.
+- **La nota («se habilitarán más puntos…») y la alianza (ABACO) son campos
+  del contenido** (`centersNote`, `centersAlliance`), no texto del código.
+
+**Fases pendientes:** F4 — indicadores + bloques informativos + cierre en la
+página + overrides locales (contacto, nota, QR y centros propios del club)
+con su pantalla y su ruta `requireSiteAdmin`. F5 — métricas
 (`ContributionCampaignMetric` desde la metadata de Stripe) + panel + OG por
 campaña vía seoServe + CTA nacional/exterior si la verificación de moneda lo
 respalda.

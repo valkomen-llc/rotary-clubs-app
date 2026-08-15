@@ -28,7 +28,7 @@ import {
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
-    donationPresets,
+    donationPresets, normalizeCenters, groupCenters,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -211,6 +211,41 @@ check('USD conserva los montos de siempre', eq(donationPresets('USD').amounts, [
 check('una moneda desconocida cae a USD, no a un objeto vacío', eq(donationPresets('EUR'), donationPresets('USD')));
 check('insensible a mayúsculas', eq(donationPresets('cop'), donationPresets('COP')));
 
+// ─── Centros de acopio (F3) ────────────────────────────────────────────────
+grupo('Los centros son datos estructurados, nunca un textarea');
+const centrosCrudos = [
+    { id: 'c1', city: 'Bogotá', address: 'Calle 149 #43-43', sortOrder: 0 },
+    { id: 'c2', city: 'Cali', groupLabel: 'Norte', address: 'Cll 39N #3Norte-59', sortOrder: 2 },
+    { id: 'c3', city: 'Cali', groupLabel: 'Sur', address: 'Cra. 89 #10-80', sortOrder: 3 },
+    { id: 'c4', city: '', address: 'Sin ciudad' },
+    { id: 'c5', city: 'Chía', address: '' },
+    { id: 'c6', city: 'Cali', groupLabel: 'Norte', address: 'Carrera 1D #54-61', sortOrder: 4 },
+    { id: 'c7', city: 'Buenaventura', address: 'Cra 5 #1-44', active: false, sortOrder: 1 },
+];
+const { centers: centrosOk, skipped: centrosMal } = normalizeCenters(centrosCrudos);
+check('sin ciudad o sin dirección se DESCARTA y se REPORTA — nunca en silencio',
+    centrosOk.length === 5 && centrosMal.length === 2
+    && centrosMal[0].reason === 'sin ciudad' && centrosMal[1].reason === 'sin dirección');
+check('los campos se sanean con su tope y su trim',
+    normalizeCenters([{ city: '  Bogotá ', address: ' x '.padEnd(300, 'x') }]).centers[0].city === 'Bogotá');
+
+grupo('La agrupación por ciudad es estable y sólo publica lo activo');
+const agrupado = groupCenters(centrosOk);
+check('la ciudad aparece en el orden de su primer centro (por sortOrder)',
+    eq(agrupado.map(g => g.city), ['Bogotá', 'Cali']));
+check('un centro desactivado NO existe para el público', !agrupado.some(g => g.city === 'Buenaventura'));
+check('dentro de Cali, los sectores agrupan (Norte con sus dos, Sur con el suyo)', (() => {
+    const cali = agrupado.find(g => g.city === 'Cali');
+    return cali && eq(cali.groups.map(g => g.label), ['Norte', 'Sur'])
+        && cali.groups[0].centers.length === 2 && cali.groups[1].centers.length === 1;
+})());
+check('el orden no depende del orden de llegada', (() => {
+    const alReves = groupCenters([...centrosOk].reverse());
+    return eq(JSON.stringify(alReves), JSON.stringify(agrupado));
+})());
+check('sin centros activos, la lista queda vacía (y la sección no se pinta)',
+    groupCenters([{ id: 'x', city: 'Bogotá', address: 'Calle 1', active: false }]).length === 0);
+
 grupo('Slug');
 check('se deriva sin tildes ni espacios', slugify('Campaña Terremoto — Valle del Cauca') === 'campana-terremoto-valle-del-cauca');
 check('nunca queda vacío', slugify('¡¡¡') === 'campana');
@@ -253,6 +288,10 @@ if (mirror) {
     check('mismo slugify', ['Campaña Ñuñoa', '¡¡¡', 'Terremoto — Valle'].every(s => slugify(s) === mirror.slugify(s)));
     check('mismos montos por moneda — el modal ofrece lo que el servidor cobra',
         ['COP', 'USD', 'EUR', 'cop'].every(c => eq(donationPresets(c), mirror.donationPresets(c))));
+    check('mismo saneo de centros (descartes y motivos incluidos)',
+        eq(normalizeCenters(centrosCrudos), mirror.normalizeCenters(centrosCrudos)));
+    check('misma agrupación por ciudad — lo que pinta el navegador es lo que decidió el servidor',
+        eq(groupCenters(centrosOk), mirror.groupCenters(centrosOk)));
 }
 
 // ─── Comprobaciones de archivo ─────────────────────────────────────────────
@@ -310,8 +349,10 @@ check('el modal manda campaignId al checkout cuando existe',
     /campaignId: campaignId \|\| undefined/.test(modal));
 
 const landing = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
-check('un CTA de centros NO se pinta hasta que la sección exista (F3)',
-    landing.includes("IMPLEMENTED_SECTIONS.includes('centers')") && !/IMPLEMENTED_SECTIONS = \[[^\]]*'centers'/.test(landing));
+// (Desde F3 la sección existe; lo que sigue vigente es que el botón se
+// condicione — la comprobación de hasCenters vive en el grupo de la F3.)
+check('un CTA de centros sigue condicionado a IMPLEMENTED_SECTIONS',
+    landing.includes("IMPLEMENTED_SECTIONS.includes('centers')"));
 check('los enlaces configurados pasan por ctaTarget, nunca la comprobación a mano',
     landing.includes('ctaTarget(cta.url)') && !/\^https\?:/.test(landing));
 check('los iconos salen del registro de paymentBlocks, no de un catálogo nuevo',
@@ -326,6 +367,34 @@ check('la atribución viaja en la metadata de Stripe (campaignId + campaignSlug)
     financial.includes("campaignId: campaign?.id || ''") && financial.includes("campaignSlug: campaign?.slug || ''"));
 check('la campaña se valida con el MISMO criterio del spec (isServable + targetsSite)',
     financial.includes('isServable(campaign, new Date())') && financial.includes('targetsSite(campaign.targeting'));
+
+// ─── Fase 3: centros de acopio en la página ────────────────────────────────
+grupo('Fase 3 — centros, requeridos y aliados');
+const ctrl3 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+check('el batch central borra y reescribe SOLO filas centrales (clubId IS NULL)',
+    /DELETE FROM "ContributionCenter"[\s\S]{0,120}"clubId" IS NULL/.test(ctrl3));
+check('guardar centros escribe historial e invalida la caché',
+    /centers_updated/.test(ctrl3));
+check('el payload público adjunta los centros activos (centrales + del sitio)',
+    ctrl3.includes('publicCentersFor(winner.id, clubId)') && ctrl3.includes('publicCentersFor(campaign.id, null)'));
+check('lo descartado al guardar se REPORTA (skipped), nunca en silencio',
+    /res\.json\(\{ centers: rows, skipped \}\)/.test(ctrl3));
+
+const landing3 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+check('centers está encendido en IMPLEMENTED_SECTIONS (F3 entregó la sección)',
+    /IMPLEMENTED_SECTIONS = \[[^\]]*'centers'/.test(landing3));
+check('un CTA de centros exige ADEMÁS centros publicados (hasCenters)',
+    (landing3.match(/!hasCenters\) return null/g) || []).length >= 2);
+check('la agrupación de la página usa el espejo de groupCenters, no una copia',
+    landing3.includes('groupCenters(campaign.centers)'));
+check('los teléfonos van con tel: y las direcciones no se traducen (data-no-translate)',
+    landing3.includes('tel:${c.phone') && /data-no-translate>\{c\.address\}/.test(landing3));
+check('la sección de centros tiene su ancla (#centros-de-acopio)',
+    landing3.includes('id="centros-de-acopio"'));
+
+const rutas3 = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
+check('el editor de centros es del operador (superAdminOnly)',
+    /superAdminOnly, listCenters/.test(rutas3) && /superAdminOnly, saveCenters/.test(rutas3));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

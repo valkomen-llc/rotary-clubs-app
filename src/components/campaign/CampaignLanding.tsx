@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Share2, ArrowRight } from 'lucide-react';
+import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, type ContributionCenter } from '../../lib/contributionSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -41,11 +41,14 @@ export interface CampaignData {
     stats: { id: string; label: string; value: string; source: string; updatedAt: string }[];
     statsUpdatedAt: string | null;
     local: any;
+    centers?: ContributionCenter[];
 }
 
-// Qué secciones ya sabe pintar el navegador. Cuando F3 entregue los centros,
-// `centers` entra acá y los CTA de esa acción empiezan a pintarse solos.
-export const IMPLEMENTED_SECTIONS = ['hero', 'donateCard', 'waysToHelp'];
+// Qué secciones ya sabe pintar el navegador. `centers` entró en F3: un CTA de
+// esa acción se pinta sólo si además ESTA campaña tiene centros publicados —
+// la sección existe en el código, pero sin centros no existe en la página y
+// el ancla no llevaría a ninguna parte.
+export const IMPLEMENTED_SECTIONS = ['hero', 'donateCard', 'waysToHelp', 'requiredItems', 'centers', 'partners'];
 
 const shareCampaign = async (name: string) => {
     const url = window.location.href;
@@ -74,7 +77,8 @@ const CampaignCta: React.FC<{
     onDonate: () => void;
     solid: boolean;
     accent: string;
-}> = ({ cta, campaignName, onDonate, solid, accent }) => {
+    hasCenters: boolean;
+}> = ({ cta, campaignName, onDonate, solid, accent, hasCenters }) => {
     if (!cta?.label) return null;
 
     const cls = solid
@@ -97,8 +101,9 @@ const CampaignCta: React.FC<{
         );
     }
     if (cta.action === 'centers') {
-        // La sección de centros llega en F3; hasta entonces el botón no existe.
-        if (!IMPLEMENTED_SECTIONS.includes('centers')) return null;
+        // El botón sólo existe si la sección de centros va a estar en ESTA
+        // página: sin centros publicados, el ancla no lleva a ninguna parte.
+        if (!IMPLEMENTED_SECTIONS.includes('centers') || !hasCenters) return null;
         return (
             <a href="#centros-de-acopio" className={cls} style={style}>{cta.label}</a>
         );
@@ -116,6 +121,11 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
     const hero = content.hero || {};
     const card = content.donateCard || {};
     const ways = (content.waysToHelp || []).filter((w: any) => w.active !== false && w.title);
+    const requiredItems = (content.requiredItems || []).filter((it: any) => it.active !== false && it.title);
+    const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
+    // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
+    const centerGroups = groupCenters(campaign.centers);
+    const hasCenters = centerGroups.length > 0;
     // El acento del tema, con el carmesí del botón APORTAR de siempre como
     // respaldo — el mismo color que la página genérica usa desde v4.409.
     const accent = hexOrEmpty(content.theme?.cta) || hexOrEmpty(content.theme?.primary) || '#9D2235';
@@ -153,8 +163,8 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                             <p className="text-lg font-bold mb-8">{hero.highlight}</p>
                         )}
                         <div className="flex flex-col sm:flex-row gap-3">
-                            <CampaignCta cta={hero.ctaPrimary} campaignName={campaign.name} onDonate={onDonate} solid accent={accent} />
-                            <CampaignCta cta={hero.ctaSecondary} campaignName={campaign.name} onDonate={onDonate} solid={false} accent={accent} />
+                            <CampaignCta cta={hero.ctaPrimary} campaignName={campaign.name} onDonate={onDonate} solid accent={accent} hasCenters={hasCenters} />
+                            <CampaignCta cta={hero.ctaSecondary} campaignName={campaign.name} onDonate={onDonate} solid={false} accent={accent} hasCenters={hasCenters} />
                         </div>
                     </div>
 
@@ -204,10 +214,125 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
                                             <p className="text-gray-500 text-sm leading-relaxed mb-5 flex-1">{w.description}</p>
                                         )}
                                         <div className="mt-auto">
-                                            <CampaignWayCta cta={w.cta} campaignName={campaign.name} onDonate={onDonate} accent={accent} />
+                                            <CampaignWayCta cta={w.cta} campaignName={campaign.name} onDonate={onDonate} accent={accent} hasCenters={hasCenters} />
                                         </div>
                                     </div>
                                 );
+                            })}
+                        </div>
+                    </div>
+                </section>
+            )}
+
+            {/* ── Elementos que se requieren ── */}
+            {requiredItems.length > 0 && (
+                <section id="elementos-requeridos" className="py-20 md:py-24 bg-white">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-12">
+                            Elementos que se requieren
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {requiredItems.map((it: any) => {
+                                const Icon = getBlockIcon(it.icon);
+                                return (
+                                    <div key={it.id} className="rounded-2xl border border-gray-100 p-6 text-center bg-gray-50/60">
+                                        <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4" style={{ backgroundColor: `${accent}14` }}>
+                                            <Icon className="w-7 h-7" style={{ color: accent }} />
+                                        </div>
+                                        <h3 className="font-bold text-gray-900 leading-snug">{it.title}</h3>
+                                        {it.description && <p className="text-sm text-gray-500 mt-2 leading-relaxed">{it.description}</p>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {hasCenters && (
+                            <div className="text-center mt-10">
+                                <a href="#centros-de-acopio"
+                                    className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-[14px] text-white shadow-lg hover:brightness-90 transition-all uppercase tracking-wider"
+                                    style={{ backgroundColor: accent }}>
+                                    <MapPin className="w-5 h-5" /> Ver centros de acopio
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* ── Centros de acopio ── */}
+            {hasCenters && (
+                <section id="centros-de-acopio" className="py-20 md:py-24 bg-rotary-concrete scroll-mt-24">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-3">
+                            Centros de acopio
+                        </h2>
+                        {content.centersNote && (
+                            <p className="text-center text-gray-500 max-w-2xl mx-auto mb-12">{content.centersNote}</p>
+                        )}
+                        {!content.centersNote && <div className="mb-12" />}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {centerGroups.map(cityGroup => (
+                                <div key={cityGroup.city} className="bg-white rounded-3xl border border-gray-100 p-7">
+                                    <h3 className="flex items-center gap-2 text-xl font-black text-gray-900 mb-5">
+                                        <MapPin className="w-5 h-5" style={{ color: accent }} />
+                                        {cityGroup.city}
+                                    </h3>
+                                    <div className="space-y-5">
+                                        {cityGroup.groups.map(g => (
+                                            <div key={g.label || 'principal'}>
+                                                {g.label && (
+                                                    <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: accent }}>{g.label}</p>
+                                                )}
+                                                <ul className="space-y-3">
+                                                    {g.centers.map(c => (
+                                                        <li key={c.id} className="text-sm leading-relaxed border-l-2 pl-3" style={{ borderColor: `${accent}33` }}>
+                                                            {c.name && <p className="font-bold text-gray-900">{c.name}</p>}
+                                                            {/* La dirección es un DATO, no lenguaje: no se traduce. */}
+                                                            <p className="text-gray-700" data-no-translate>{c.address}</p>
+                                                            {c.complement && <p className="text-gray-500" data-no-translate>{c.complement}</p>}
+                                                            {c.schedule && (
+                                                                <p className="text-gray-500 flex items-center gap-1.5 mt-1"><Clock className="w-3.5 h-3.5" /> {c.schedule}</p>
+                                                            )}
+                                                            {c.contactName && (
+                                                                <p className="text-gray-500 flex items-center gap-1.5 mt-1"><User className="w-3.5 h-3.5" /> <span data-no-translate>{c.contactName}</span></p>
+                                                            )}
+                                                            {c.phone && (
+                                                                <p className="flex items-center gap-1.5 mt-1">
+                                                                    <Phone className="w-3.5 h-3.5 text-gray-400" />
+                                                                    <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline" style={{ color: accent }} data-no-translate>{c.phone}</a>
+                                                                </p>
+                                                            )}
+                                                            {c.notes && <p className="text-gray-400 text-xs mt-1">{c.notes}</p>}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {content.centersAlliance && (
+                            <p className="text-center text-sm font-bold text-gray-600 mt-10">{content.centersAlliance}</p>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* ── Aliados ── */}
+            {partners.length > 0 && (
+                <section className="py-14 bg-white border-t border-gray-100">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-8">
+                            {partners.map((p: any) => {
+                                const img = (
+                                    <img src={p.logo} alt={p.name || 'Aliado'} data-no-translate
+                                        className="h-12 md:h-14 w-auto object-contain grayscale hover:grayscale-0 opacity-70 hover:opacity-100 transition-all" />
+                                );
+                                if (!p.url) return <span key={p.id}>{img}</span>;
+                                const t = ctaTarget(p.url);
+                                return t.external
+                                    ? <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" aria-label={p.name || 'Aliado'}>{img}</a>
+                                    : <Link key={p.id} to={t.to} aria-label={p.name || 'Aliado'}>{img}</Link>;
                             })}
                         </div>
                     </div>
@@ -218,15 +343,15 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void }
 };
 
 // La versión compacta del CTA para las tarjetas de «cómo ayudar».
-const CampaignWayCta: React.FC<{ cta: Cta | undefined; campaignName: string; onDonate: () => void; accent: string }> =
-    ({ cta, campaignName, onDonate, accent }) => {
+const CampaignWayCta: React.FC<{ cta: Cta | undefined; campaignName: string; onDonate: () => void; accent: string; hasCenters: boolean }> =
+    ({ cta, campaignName, onDonate, accent, hasCenters }) => {
         if (!cta?.label) return null;
         const cls = 'inline-flex items-center gap-1.5 text-sm font-bold hover:underline';
         const style = { color: accent };
         if (cta.action === 'donate') return <button onClick={onDonate} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></button>;
         if (cta.action === 'share') return <button onClick={() => shareCampaign(campaignName)} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></button>;
         if (cta.action === 'centers') {
-            if (!IMPLEMENTED_SECTIONS.includes('centers')) return null;
+            if (!IMPLEMENTED_SECTIONS.includes('centers') || !hasCenters) return null;
             return <a href="#centros-de-acopio" className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></a>;
         }
         if (!cta.url) return null;
