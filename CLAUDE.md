@@ -2457,12 +2457,44 @@ red**; el espejo se compara por SALIDAS con esbuild y se salta solo si falta.
   motivos CONCRETOS (422 con la lista). Una campaña que estuvo al aire no se
   borra: se archiva — sólo se elimina un borrador que nunca se publicó.
 - **El único camino de cobro es `/financial/donate`** (modal → Stripe
-  Checkout → webhook). El camino del carrito (`PaymentBlockCard` → `/orders`)
-  **no cobra** — crea la orden y muestra éxito sin pasar por Stripe (defecto
-  preexistente, documentado en el diagnóstico) — y la campaña no debe
-  apoyarse en él. Ojo además con la moneda: el modal rotula «USD» pero
-  `createDonationCheckout` cobra en la moneda del club (Colombia → COP);
-  verificar `club_currency` del sitio receptor ANTES de publicar una campaña.
+  Checkout → webhook). Desde v4.808 lo usan TAMBIÉN las tarjetas de la página
+  de Aportes — ver la sección siguiente. Ojo con la moneda: el cobro sale en
+  la del club (Colombia → COP), así que hay que verificar `club_currency` del
+  sitio receptor ANTES de publicar una campaña.
+
+## Un solo camino de cobro para los aportes — v4.808
+
+Las tarjetas de `PaymentBlockCard` agregaban el aporte al CARRITO, y ese
+camino **no cobraba**: `Checkout.tsx` creaba la orden con `POST /orders` y
+navegaba a «éxito» **sin pasar jamás por Stripe** —el selector «Stripe /
+PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
+
+- **El pago único abre el MODAL de donación**, el mismo de la página de
+  Aportes y de las campañas. La tarjeta queda como PRESENTACIÓN (título,
+  descripción, beneficios, montos sugeridos) y el formulario vive en el
+  modal: dos formularios de aporte se separan en silencio, y éste es además
+  el formato que el equipo pidió conservar.
+- **La MEMBRESÍA no se tocó**: `/financial/subscribe` (`mode:'subscription'`)
+  siempre funcionó y sigue igual.
+- **El carrito sigue vivo para la TIENDA.** Su checkout **tampoco cobra**, y
+  eso queda pendiente: es el mismo defecto, pero sobre productos físicos con
+  envío, y arreglarlo es otra pieza de trabajo.
+- **Consecuencia aceptada**: ya no se suman varios aportes para pagarlos
+  juntos. En la práctica nadie lo hacía —no cobraba—, y una transacción por
+  aporte es lo que permite atribuirlo a su causa y emitirle su recibo.
+- **El rótulo del destino NO se toma del navegador** (`resolveBlockPurpose`):
+  el cliente manda `blockId` y el servidor resuelve título y campaña desde el
+  `Setting payment_blocks` del club — el mismo patrón con que
+  `createSubscriptionCheckout` resuelve el monto. Un texto libre del cliente
+  terminaría impreso en la pantalla de Stripe y en el recibo, que son
+  documentos de una institución.
+- **El recibo NOMBRA a qué se aportó** (`purpose` en la metadata → asunto y
+  cuerpo), escapado igual que el título del proyecto. El orden del rótulo va
+  de lo más específico a lo más general: proyecto → campaña → bloque → club.
+- **El freno del contador público es un FRENO, no una garantía**: mapa en
+  memoria por instancia, se reinicia con ella. Alcanza para que un bucle no
+  ensucie el panel; uno real exige almacén compartido, que la plataforma no
+  tiene. Se dice así en el código a propósito.
 - **La lectura pública va cacheada** (TTL 60 s) y TODA escritura la invalida.
 - **Las cinco tablas viven fuera de Prisma** y están en la lista del guardián
   de `db:push` — al agregar una tabla al módulo, sumarla allí y acá.

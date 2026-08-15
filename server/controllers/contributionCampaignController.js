@@ -63,6 +63,40 @@ export const bumpMetric = async ({ campaignId, clubId, type, amount = 0, currenc
     return true;
 };
 
+// Freno de abuso del contador público (v4.808).
+//
+// La plataforma no tiene rate limiting en ningún endpoint, y éste es el único
+// que un visitante anónimo puede llamar en bucle. No hay dinero en juego —los
+// dos eventos que valen los escribe el servidor—, pero sí está en juego la
+// ÚNICA medida que tiene el operador: unas vistas infladas hacen que el panel
+// mienta.
+//
+// Es un mapa en memoria, así que en Vercel vive por instancia y se reinicia
+// con ella: es un FRENO, no una garantía, y conviene decirlo en vez de
+// presentarlo como protección. Para lo que existe —que un bucle desde una
+// pestaña no ensucie el panel— alcanza. Un freno real exige almacén
+// compartido (Redis), que hoy la plataforma no tiene.
+const TRACK_WINDOW_MS = 60 * 1000;
+const TRACK_MAX_PER_WINDOW = 20;
+const trackHits = new Map();
+
+const trackAllowed = (key, now = Date.now()) => {
+    const hit = trackHits.get(key);
+    if (!hit || now - hit.since > TRACK_WINDOW_MS) {
+        trackHits.set(key, { since: now, count: 1 });
+        // El mapa se poda con la misma llamada que lo llena: sin esto, una
+        // instancia de larga vida acumularía una entrada por visitante.
+        if (trackHits.size > 5000) {
+            for (const [k, v] of trackHits) {
+                if (now - v.since > TRACK_WINDOW_MS) trackHits.delete(k);
+            }
+        }
+        return true;
+    }
+    hit.count += 1;
+    return hit.count <= TRACK_MAX_PER_WINDOW;
+};
+
 // POST /api/contribution-campaigns/:id/track  { clubId, type }  (público)
 // Lo llama la página con sendBeacon. Nunca falla hacia el visitante: contar
 // es secundario y no puede romper una página que pide ayuda en una
@@ -76,6 +110,9 @@ export const trackCampaignEvent = async (req, res) => {
             // Los dos que valen dinero los escribe el servidor, no el navegador.
             return res.json({ ok: false });
         }
+        const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+            || req.socket?.remoteAddress || 'sin-ip';
+        if (!trackAllowed(`${ip}:${req.params.id}`)) return res.json({ ok: false });
         await bumpMetric({ campaignId: req.params.id, clubId, type });
         res.json({ ok: true });
     } catch (e) {

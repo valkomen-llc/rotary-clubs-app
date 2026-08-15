@@ -762,10 +762,16 @@ async function handleSuccessfulDonationCheckout(session) {
                     currency,
                     sessionId: session.id,
                     paymentIntentId: session.payment_intent,
-                    message: message || null
+                    message: message || null,
+                    // v4.808 — a QUÉ aportó: la campaña o el bloque de
+                    // aportes. Lo resolvió el servidor al crear la sesión.
+                    purpose: session.metadata?.purpose || null
                 });
 
-                const subjectTopic = project ? `proyecto "${project.title}"` : (club?.name || 'Rotary');
+                const purposeTopic = session.metadata?.purpose || null;
+                const subjectTopic = project
+                    ? `proyecto "${project.title}"`
+                    : (purposeTopic || club?.name || 'Rotary');
                 // v4.418 — Logging detallado para diagnosticar por qué el recibo no llega.
                 // El método devuelve { success, messageId?, error? } incluso cuando "falla"
                 // graceful (sin throw). Necesitamos ver explícitamente el resultado.
@@ -797,7 +803,7 @@ async function handleSuccessfulDonationCheckout(session) {
 // con fallback a paleta Rotary. La referencia visible es donation.id (uuid
 // corto) para el donante; los IDs internos de Stripe quedan en el pie por
 // trazabilidad operacional.
-function buildDonationReceiptHtml({ club, project, donation, donorName, amount, currency, sessionId, paymentIntentId, message }) {
+function buildDonationReceiptHtml({ club, project, donation, donorName, amount, currency, sessionId, paymentIntentId, message, purpose }) {
     const primary = club?.colors?.primary || '#0B223F';
     const accent = club?.colors?.secondary || '#9D2235';
     const clubName = club?.name || 'Rotary';
@@ -810,6 +816,9 @@ function buildDonationReceiptHtml({ club, project, donation, donorName, amount, 
     const ref = donation.id.slice(-8).toUpperCase();
     const safeMessage = message ? String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
     const safeProjectTitle = project?.title ? String(project.title).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
+    // v4.808 — el destino del aporte (campaña o bloque). Se escapa igual que
+    // el título del proyecto: termina dentro del HTML del correo.
+    const safePurpose = purpose ? String(purpose).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
 
     return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px 0;">
@@ -824,7 +833,9 @@ function buildDonationReceiptHtml({ club, project, donation, donorName, amount, 
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
                 ${project
                     ? `Confirmamos tu aporte al proyecto <strong>"${safeProjectTitle}"</strong> de <strong>${clubName}</strong>. Tu contribución acerca esta iniciativa de impacto a su meta.`
-                    : `Confirmamos que tu aporte a <strong>${clubName}</strong> fue procesado exitosamente. Tu apoyo sostiene las iniciativas de servicio que transforman vidas.`}
+                    : safePurpose
+                        ? `Confirmamos tu aporte a <strong>${safePurpose}</strong>, de <strong>${clubName}</strong>. Tu contribución se destina a esa causa.`
+                        : `Confirmamos que tu aporte a <strong>${clubName}</strong> fue procesado exitosamente. Tu apoyo sostiene las iniciativas de servicio que transforman vidas.`}
             </p>
 
             ${project ? `

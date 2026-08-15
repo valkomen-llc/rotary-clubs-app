@@ -14,6 +14,36 @@ import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
 
 console.log('[FINANCIAL v4.804] Controller cargado — donaciones Stripe Checkout + atribución de Campañas de Contribución');
 
+// v4.808 — El DESTINO del aporte cuando nace de un bloque de la página de
+// Aportes («Aporte Voluntario», «End Polio Now»…).
+//
+// El rótulo NO se toma del navegador: se resuelve desde la config guardada
+// del club, igual que `createSubscriptionCheckout` hace con el monto. Un
+// texto libre del cliente terminaría impreso en la pantalla de Stripe y en
+// el recibo, que son documentos de una institución.
+const resolveBlockPurpose = async (blockId, clubId) => {
+    if (!blockId) return null;
+    try {
+        const row = await db.query(
+            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1',
+            ['payment_blocks', clubId]
+        );
+        let blocks = [];
+        try { blocks = row.rows[0]?.value ? JSON.parse(row.rows[0].value) : []; } catch { blocks = []; }
+        if (!Array.isArray(blocks) || blocks.length === 0) blocks = DEFAULT_PAYMENT_BLOCKS;
+        const block = blocks.find(b => b && b.id === blockId)
+            || DEFAULT_PAYMENT_BLOCKS.find(b => b.id === blockId);
+        if (!block) return null;
+        return {
+            id: block.id,
+            label: String(block.campaign || block.title || '').slice(0, 120),
+        };
+    } catch (e) {
+        console.warn('[FINANCIAL] Bloque no resuelto (se dona sin rótulo):', e?.message);
+        return null;
+    }
+};
+
 // v4.804 — Si el aporte nace de una campaña, se valida y se ata a la metadata
 // de Stripe. DEGRADA a donación normal si la campaña no vale (venció mientras
 // el formulario estaba abierto, o no alcanza a este club): una campaña
@@ -82,6 +112,7 @@ export const createDonationCheckout = async (req, res) => {
             isAnonymous = false,
             projectId = null, // v4.416 — donación asociada a proyecto (opcional)
             campaignId = null, // v4.804 — aporte nacido de una Campaña de Contribución (opcional)
+            blockId = null,    // v4.808 — aporte nacido de un bloque de la página de Aportes
             returnUrl
         } = req.body || {};
 
@@ -130,10 +161,20 @@ export const createDonationCheckout = async (req, res) => {
 
         // v4.804 — atribución de campaña (o null si no vale; nunca bloquea).
         const campaign = await resolveCampaignRef(campaignId, clubId);
+        // v4.808 — destino del aporte cuando viene de un bloque de Aportes.
+        const block = await resolveBlockPurpose(blockId, clubId);
 
+        // Qué dice la pantalla de Stripe y el recibo. El orden es de lo MÁS
+        // específico a lo más general: un proyecto concreto, una campaña, un
+        // bloque de aportes, y por último el club.
         const productName = project
             ? `Aporte al proyecto: ${project.title}`
-            : (campaign ? `Aporte — ${campaign.name}` : `Donación a ${club.name}`);
+            : campaign ? `Aporte — ${campaign.name}`
+                : block?.label ? `Aporte — ${block.label}`
+                    : `Donación a ${club.name}`;
+        // El rótulo del destino, para el recibo. Null cuando el aporte es al
+        // club a secas: ahí el recibo ya dice el nombre del club.
+        const purpose = campaign?.name || block?.label || null;
 
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
@@ -168,7 +209,13 @@ export const createDonationCheckout = async (req, res) => {
                 // en Payment.rawPayload vía webhook: el modelo Donation no se
                 // toca. Los contadores del panel llegan en la Fase 5.
                 campaignId: campaign?.id || '',
-                campaignSlug: campaign?.slug || ''
+                campaignSlug: campaign?.slug || '',
+                // v4.808 — el destino viaja al webhook para que el RECIBO lo
+                // nombre. Quien aportó a una emergencia tiene que ver a qué
+                // aportó: es lo primero que se mira y lo que sostiene la
+                // rendición de cuentas.
+                purpose: purpose ? String(purpose).slice(0, 120) : '',
+                blockId: block?.id || ''
             }
         });
 
