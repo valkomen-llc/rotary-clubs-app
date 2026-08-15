@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.807.0 | 2026-08-15 (Campañas de Contribución — Fase 5: métricas, panel y tarjeta social. Módulo completo)
-// Cache bust: 2026-08-15e
+// UI V4.808.0 | 2026-08-15 (Un solo camino de cobro para los aportes + el recibo nombra el destino)
+// Cache bust: 2026-08-15f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.808.0',
+        title: 'Todo aporte cobra de verdad, y el recibo dice a qué 🧾',
+        description: 'Corrección de un defecto que costaba dinero real. Las tarjetas de la página de Aportes («Aporte Voluntario», «Erradicación a la Polio»…) agregaban el aporte a un CARRITO, y ese camino NO COBRABA: se creaba la orden y se mostraba una pantalla de «éxito» sin pasar jamás por Stripe. Quien aportaba desde ahí creía haber aportado y no había aportado nada. Ahora esas tarjetas abren EL MISMO MODAL de donación que ya usaban la tarjeta principal de Maneras de Contribuir y las campañas —el único flujo que cobra de verdad—, conservando el formato de donaciones que el equipo pidió mantener: la tarjeta queda como presentación (título, descripción, beneficios, montos sugeridos) y el formulario vive en el modal, con la moneda real del club. Cada tarjeta conserva lo suyo: sus montos, si pide mensaje, si permite aportar como anónimo. LAS MEMBRESÍAS NO SE TOCAN: tienen su propio cobro recurrente y ése siempre funcionó. Y EL RECIBO AHORA NOMBRA EL DESTINO: quien aporte a la campaña del terremoto recibirá «Recibo de tu aporte a Emergencia terremoto» en vez del genérico con el nombre del club — el rótulo lo resuelve el SERVIDOR desde la configuración guardada, nunca se toma del navegador, porque termina impreso en la pantalla de pago y en un documento de una institución. Se agregó además un freno por dirección IP al contador de visitas de campaña, para que nadie infle las únicas métricas que hay. CONSECUENCIA A TENER EN CUENTA: ya no se pueden sumar varios aportes y pagarlos juntos; cada aporte es su propia transacción, que es lo que permite atribuirlo a su causa y emitirle su recibo. El carrito sigue existiendo para la tienda de productos.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'donaciones', 'stripe', 'recibos'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Las tarjetas de Aportes ya no mandan al carrito: abren el modal de donación, que sí cobra vía Stripe.' },
+            { type: 'added', text: 'El recibo por correo nombra a qué se aportó (la campaña o el bloque), en el asunto y en el cuerpo.' },
+            { type: 'changed', text: 'El rótulo del destino lo resuelve el servidor desde la configuración del club, nunca el navegador.' },
+            { type: 'added', text: 'Freno por IP en el contador de visitas de campaña.' },
+            { type: 'changed', text: 'Cada aporte es una transacción propia; el carrito queda para la tienda de productos.' },
+        ]
+    },
     {
         version: '4.807.0',
         title: 'Campañas de Contribución: resultados a la vista — módulo completo 📈',

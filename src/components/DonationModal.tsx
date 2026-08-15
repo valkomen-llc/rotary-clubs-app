@@ -31,17 +31,33 @@ export interface DonationModalProps {
     clubName: string;
     currency?: string;          // la del club (by-domain); USD si no llega
     campaignId?: string | null; // atribución de campaña, opcional
+    blockId?: string | null;    // bloque de Aportes del que nació (v4.808)
     title?: string;             // «Haz tu Donación» por defecto
     subtitle?: string;
     accentColor?: string;       // hex del tema de la campaña; el carmesí de siempre por defecto
+    // Un bloque de Aportes puede traer sus propios montos sugeridos y decidir
+    // qué campos ofrece. Sin nada de esto, el modal se comporta como siempre.
+    presetAmounts?: number[];
+    showMessage?: boolean;
+    showAnonymous?: boolean;
 }
 
 const DonationModal: React.FC<DonationModalProps> = ({
     open, onClose, clubId, clubName, currency = 'USD',
-    campaignId = null, title, subtitle, accentColor,
+    campaignId = null, blockId = null, title, subtitle, accentColor,
+    presetAmounts, showMessage = true, showAnonymous = true,
 }) => {
     const cur = String(currency || 'USD').toUpperCase();
-    const presets = donationPresets(cur);
+    const base = donationPresets(cur);
+    // Los montos del bloque MANDAN sobre los de la moneda: el club los eligió
+    // para esa causa. El mínimo sigue siendo el de la moneda — es el piso de
+    // Stripe, no una preferencia.
+    const presets = {
+        amounts: Array.isArray(presetAmounts) && presetAmounts.length > 0
+            ? presetAmounts.filter(n => Number(n) > 0)
+            : base.amounts,
+        min: base.min,
+    };
     const accent = /^#[0-9a-fA-F]{6}$/.test(accentColor || '') ? (accentColor as string) : '#9D2235';
 
     const [amount, setAmount] = useState<string>(String(presets.amounts[2] ?? presets.amounts[0] ?? ''));
@@ -92,6 +108,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                     message: donorMessage,
                     isAnonymous,
                     campaignId: campaignId || undefined,
+                    blockId: blockId || undefined,
                     returnUrl: window.location.origin,
                 }),
             });
@@ -175,7 +192,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                 />
                             </div>
 
-                            {!isAnonymous && (
+                            {showAnonymous && !isAnonymous && (
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Nombre (opcional)</label>
                                     <input
@@ -188,6 +205,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                 </div>
                             )}
 
+                            {showMessage && (
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Mensaje (opcional)</label>
                                 <textarea
@@ -199,7 +217,9 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                     className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg outline-none transition-all text-sm resize-none focus:border-gray-400"
                                 />
                             </div>
+                            )}
 
+                            {showAnonymous && (
                             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
                                 <input
                                     type="checkbox"
@@ -210,6 +230,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                 />
                                 Quiero donar como anónimo
                             </label>
+                            )}
                         </div>
 
                         {errorMsg && (

@@ -442,7 +442,7 @@ check('un tipo inventado no se guarda',
 check('el endpoint público NO acepta los eventos que valen dinero — los escribe el servidor',
     /type === 'donation_completed' \|\| type === 'checkout_started'/.test(ctrl5));
 check('trackear nunca devuelve error al visitante',
-    /trackCampaignEvent[\s\S]{0,700}catch[\s\S]{0,120}res\.json\(\{ ok: false \}\)/.test(ctrl5));
+    /trackCampaignEvent[\s\S]{0,1200}catch[\s\S]{0,120}res\.json\(\{ ok: false \}\)/.test(ctrl5));
 check('el monto NO viene del navegador: sólo del webhook',
     !/req\.body\?\.amount/.test(ctrl5));
 check('campaignSeoFor degrada a null ante cualquier fallo (corre en el catch-all)',
@@ -481,6 +481,42 @@ check('el panel dice que son cifras de ATRIBUCIÓN, no de causalidad',
     /ATRIBUCIÓN, no de causalidad/.test(panel5));
 check('sin actividad, el panel lo dice en vez de mostrar ceros como logro',
     /Todavía no hay actividad registrada/.test(panel5));
+
+// ─── v4.808: un solo camino de cobro ───────────────────────────────────────
+grupo('Un solo camino de cobro para los aportes');
+const tarjeta = readFileSync('src/components/PaymentBlockCard.tsx', 'utf8');
+check('la tarjeta de aporte YA NO manda al carrito — ése era el camino que no cobraba',
+    !tarjeta.includes('addToCart') && !tarjeta.includes("from '../contexts/CartContext'"));
+check('el pago único abre el MISMO modal de donación de la página de Aportes',
+    tarjeta.includes("import DonationModal from './DonationModal'") && /<DonationModal/.test(tarjeta));
+check('el bloque manda su id, sus montos y qué campos ofrece',
+    /blockId=\{block\.id\}/.test(tarjeta) && /presetAmounts=\{block\.presetAmounts\}/.test(tarjeta)
+    && /showMessage=\{block\.showMessage\}/.test(tarjeta) && /showAnonymous=\{block\.showAnonymous\}/.test(tarjeta));
+check('la MEMBRESÍA conserva su flujo de suscripción, que siempre funcionó',
+    tarjeta.includes('/financial/subscribe'));
+
+const fin8 = readFileSync('server/controllers/financialController.js', 'utf8');
+check('el rótulo del aporte NO se toma del navegador: se resuelve de la config del club',
+    /resolveBlockPurpose[\s\S]{0,600}FROM "Setting" WHERE key = \$1/.test(fin8)
+    && !/req\.body[^\n]*purpose/.test(fin8));
+check('el destino viaja a la metadata de Stripe para que el recibo lo nombre',
+    /purpose: purpose \? String\(purpose\)\.slice\(0, 120\) : ''/.test(fin8));
+check('el nombre del producto va de lo más específico a lo más general',
+    /Aporte al proyecto[\s\S]{0,220}Aporte — \$\{campaign\.name\}[\s\S]{0,120}Aporte — \$\{block\.label\}/.test(fin8));
+
+const pay8 = readFileSync('server/controllers/paymentController.js', 'utf8');
+check('el recibo NOMBRA a qué se aportó, en el asunto y en el cuerpo',
+    /purposeTopic \|\| club\?\.name/.test(pay8) && /Confirmamos tu aporte a <strong>\$\{safePurpose\}<\/strong>/.test(pay8));
+check('el rótulo se escapa antes de entrar al HTML del correo',
+    /const safePurpose = purpose \? String\(purpose\)\.replace/.test(pay8));
+
+const ctrl8 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+check('el contador público tiene freno por IP',
+    /trackAllowed\(`\$\{ip\}:\$\{req\.params\.id\}`\)/.test(ctrl8));
+check('el freno se declara como FRENO, no como garantía (vive en memoria por instancia)',
+    /es un FRENO, no una garantía/.test(ctrl8));
+check('el mapa del freno se poda: una instancia larga no acumula una entrada por visitante',
+    /trackHits\.size > 5000/.test(ctrl8));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
