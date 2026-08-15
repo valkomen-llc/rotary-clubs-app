@@ -487,6 +487,41 @@ check('sin actividad, el panel lo dice en vez de mostrar ceros como logro',
 check('la pantalla NO impone su propio ancho — lo pone AdminLayout',
     !/<div className="max-w-\w+ space-y-6">/.test(panel5));
 
+// ─── v4.810: el icono se ELIGE, no se escribe ──────────────────────────────
+grupo('El icono de cada caja se elige viendo el icono');
+const picker = readFileSync('src/components/admin/IconPicker.tsx', 'utf8');
+const bloques = readFileSync('src/lib/paymentBlocks.ts', 'utf8');
+check('no queda ningún campo de TEXTO para el icono',
+    !/placeholder="Icono/.test(panel5));
+check('las dos secciones usan el selector visual',
+    (panel5.match(/<IconPicker/g) || []).length === 2);
+check('el selector es COMPARTIDO: el editor de Bloques de Pago usa el mismo',
+    readFileSync('src/pages/admin/PaymentBlocksManager.tsx', 'utf8').includes('<IconPicker'));
+check('y ya no queda la rejilla escrita inline que se quedaría atrás',
+    !/BLOCK_ICON_KEYS\.map/.test(readFileSync('src/pages/admin/PaymentBlocksManager.tsx', 'utf8')));
+check('el selector lee el MISMO registro que pinta la página pública',
+    picker.includes("from '../../lib/paymentBlocks'") && picker.includes('BLOCK_ICONS'));
+check('el botón se rotula con el NOMBRE legible, no con la clave interna',
+    /title=\{getBlockIconLabel\(key\)\}/.test(picker) && /aria-label=\{getBlockIconLabel\(key\)\}/.test(picker));
+
+const { BLOCK_ICON_KEYS: keys, BLOCK_ICON_LABELS: labels } = await (async () => {
+    try {
+        const { build } = await import('esbuild');
+        const o = await build({ entryPoints: ['src/lib/paymentBlocks.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral', external: ['lucide-react'] });
+        return await import(`data:text/javascript,${encodeURIComponent(o.outputFiles[0].text)}`);
+    } catch { return { BLOCK_ICON_KEYS: null, BLOCK_ICON_LABELS: null }; }
+})();
+if (keys) {
+    check('TODO icono del catálogo tiene su nombre legible', keys.every(k => labels[k]));
+    check('el catálogo cubre la ayuda humanitaria (alimentos, higiene, botiquín, abrigo)',
+        ['food', 'basket', 'water', 'hygiene', 'firstaid', 'bedding', 'clothing', 'shelter'].every(k => keys.includes(k)));
+    check('los catorce originales siguen ahí — un bloque guardado no pierde su icono',
+        ['globe', 'heart', 'users', 'handheart', 'handshake', 'hearthandshake', 'gift',
+            'award', 'trophy', 'star', 'sparkles', 'dollar', 'shield', 'landmark'].every(k => keys.includes(k)));
+} else {
+    console.log('  ⚠ catálogo de iconos: se omite (falta esbuild)');
+}
+
 // ─── v4.808: un solo camino de cobro ───────────────────────────────────────
 grupo('Un solo camino de cobro para los aportes');
 const tarjeta = readFileSync('src/components/PaymentBlockCard.tsx', 'utf8');

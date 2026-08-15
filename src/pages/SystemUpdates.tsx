@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.809.0 | 2026-08-15 (Campañas de Contribución a ancho completo)
-// Cache bust: 2026-08-15g
+// UI V4.810.0 | 2026-08-15 (El icono de cada caja se elige viendo el icono)
+// Cache bust: 2026-08-15h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.810.0',
+        title: 'Los íconos se eligen viéndolos 🎨',
+        description: 'En «¿Cómo puedes ayudar?» y «Elementos que se requieren» el ícono de cada caja se escribía a mano como texto —había que teclear «heart» o «gift» de memoria—, así que en la pantalla se veía la palabra suelta en vez del ícono. Ahora hay una rejilla donde se elige viendo: se pulsa el ícono, queda resaltado y debajo se lee su nombre. ADEMÁS SE AMPLIÓ EL CATÁLOGO de 14 a 41 íconos. Los originales eran todos de sabor «donación» —corazón, trofeo, estrella, regalo— y no había NINGUNO para alimentos, higiene o botiquín, por eso una campaña de emergencia terminaba usando el regalo para todo. Se sumaron los de ayuda humanitaria: alimentos, canasta básica, agua, higiene, aseo, niñez y pañales, botiquín, salud, medicamentos, atención médica, colchonetas y cobijas, ropa, vivienda, albergue, emergencia, rescate, transporte, suministros, centro de acopio, educación, libros, difusión, compartir, ubicación, contacto, herramientas y energía. Cada uno con su nombre en español, tanto al pasar el cursor como para el lector de pantalla. El selector es un componente COMPARTIDO: el editor de Bloques de Pago tenía esta misma rejilla escrita aparte y ahora usa la misma, así que los íconos nuevos aparecen en los dos sitios y no se separan con el tiempo. Los catorce íconos originales siguen ahí — ningún bloque ya configurado pierde el suyo.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz', 'iconos'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Selector visual de íconos en «¿Cómo puedes ayudar?» y «Elementos que se requieren»: se elige viendo, no escribiendo.' },
+            { type: 'added', text: 'Catálogo ampliado de 14 a 41 íconos, con los de ayuda humanitaria que faltaban (alimentos, higiene, botiquín, abrigo…).' },
+            { type: 'added', text: 'Cada ícono con su nombre en español, también para el lector de pantalla.' },
+            { type: 'changed', text: 'El selector es compartido con el editor de Bloques de Pago: una sola rejilla, no dos que se separan.' },
+        ]
+    },
     {
         version: '4.809.0',
         title: 'Campañas de Contribución a ancho completo 🖥️',

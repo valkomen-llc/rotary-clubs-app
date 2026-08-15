@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import IconPicker from '../../components/admin/IconPicker';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import {
@@ -7,8 +8,9 @@ import {
     Sparkles, X, Loader2,
 } from 'lucide-react';
 import {
-    PaymentBlock, PaymentBlockKind, KIND_LABELS,
-    BLOCK_ICONS, BLOCK_ICON_KEYS, getBlockIcon,
+    KIND_LABELS,
+    type PaymentBlock, type PaymentBlockKind,
+    getBlockIcon,
     BLOCK_THEMES, BLOCK_THEME_KEYS, getBlockTheme,
     DEFAULT_PAYMENT_BLOCKS, resolvePaymentBlocks, normalizeBlock,
     RECURRING_INTERVAL_ORDER, RECURRING_INTERVAL_LABELS,
@@ -208,21 +210,10 @@ const PaymentBlocksManager: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* Ícono */}
-                                    <div>
-                                        <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Ícono</label>
-                                        <div className="flex flex-wrap gap-2 mt-1.5">
-                                            {BLOCK_ICON_KEYS.map(key => {
-                                                const IcoO = BLOCK_ICONS[key];
-                                                return (
-                                                    <button key={key} onClick={() => update(idx, { icon: key })} title={key}
-                                                        className={`w-9 h-9 rounded-lg flex items-center justify-center border-2 transition-all ${block.icon === key ? 'border-rotary-blue bg-rotary-blue/5 text-rotary-blue' : 'border-gray-100 text-gray-400 hover:border-gray-200'}`}>
-                                                        <IcoO className="w-4 h-4" />
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                                    {/* Ícono — el MISMO selector que usan las Campañas de
+                                        Contribución: escrito dos veces, la copia se queda
+                                        sin los iconos que se agreguen a la otra. */}
+                                    <IconPicker value={block.icon} onChange={key => update(idx, { icon: key })} />
 
                                     {/* Color */}
                                     <div>
