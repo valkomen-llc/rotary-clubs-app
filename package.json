@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.808.0",
-  "cache_bust": "2026-08-15f (Un solo camino de cobro: los aportes de la pagina de Aportes pasan por el modal de donacion, que si cobra; el recibo nombra el destino.)",
+  "version": "4.809.0",
+  "cache_bust": "2026-08-15g (Campanas de Contribucion a ancho completo, como los demas modulos del panel.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

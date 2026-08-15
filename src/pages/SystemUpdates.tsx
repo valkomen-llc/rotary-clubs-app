@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.808.0 | 2026-08-15 (Un solo camino de cobro para los aportes + el recibo nombra el destino)
-// Cache bust: 2026-08-15f
+// UI V4.809.0 | 2026-08-15 (Campañas de Contribución a ancho completo)
+// Cache bust: 2026-08-15g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.809.0',
+        title: 'Campañas de Contribución a ancho completo 🖥️',
+        description: 'La pantalla de Campañas de Contribución se veía encajonada contra el borde izquierdo, con media ventana vacía a la derecha. El motivo: imponía su propio ancho por encima del que ya define el panel, así que el contenido quedaba al doble de estrecho que en el resto de los módulos. Ahora el ancho lo pone el panel, igual que en Proyectos, Biblioteca Multimedia y Analíticas, y con el espacio recuperado los seis contadores de resultados se despliegan en una sola fila en vez de apilarse de a tres. Se agregó una comprobación automática para que la pantalla no vuelva a imponer su ancho.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'El listado y el editor de campañas ocupan el ancho completo del panel, como los demás módulos.' },
+            { type: 'improved', text: 'Los seis contadores de resultados se ven en una fila con el espacio recuperado.' },
+        ]
+    },
     {
         version: '4.808.0',
         title: 'Todo aporte cobra de verdad, y el recibo dice a qué 🧾',

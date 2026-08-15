@@ -405,7 +405,7 @@ const ContributionCampaigns: React.FC = () => {
     if (!c) {
         return (
             <AdminLayout>
-                <div className="max-w-5xl space-y-6">
+                <div className="space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center">
@@ -498,7 +498,7 @@ const ContributionCampaigns: React.FC = () => {
             <input ref={fileInputRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={onFileChosen} />
             <MediaPicker isOpen={pickerField !== null} onClose={() => setPickerField(null)} onSelect={onPicked} maxSelection={1} />
 
-            <div className="max-w-4xl space-y-6">
+            <div className="space-y-6">
                 {/* Cabecera */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
@@ -606,7 +606,7 @@ const ContributionCampaigns: React.FC = () => {
                     {!metrics || metrics.length === 0 ? (
                         <p className="text-sm text-gray-400 italic">Todavía no hay actividad registrada para esta campaña.</p>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             {([
                                 ['view', 'Vistas de la página'],
                                 ['cta_donate_click', 'Abrieron el aporte'],
