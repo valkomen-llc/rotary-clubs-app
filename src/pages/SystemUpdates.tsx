@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.830.0 | 2026-08-16 (Los videos pasan solos y se detienen al mirarlos)
+// UI V4.831.0 | 2026-08-16 (La tira de videos se desplaza en vez de repintarse)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.831.0',
+        title: 'Los videos se deslizan de uno a otro 🎞️',
+        description: 'El cambio de un video al siguiente era un corte seco: desaparecía uno y aparecía el otro. Ahora los videos viven en una tira que SE DESPLAZA, con el mismo tipo de movimiento que el carrusel de fotos: el que entra llega desde el costado creciendo y el que sale se va achicándose, en nueve décimas de segundo. La rotación automática REBOTA en los extremos —1, 2, 3, 2, 1…— en vez de dar la vuelta: con una tira, saltar del último al primero sería un desplazamiento largo que se lee como un tirón, y así cada paso es siempre de un solo video. En el primero y en el último, la flecha que no lleva a ninguna parte se desactiva.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'La tira se desliza de un video a otro en vez de repintarse de golpe.' },
+            { type: 'changed', text: 'La rotación rebota en los extremos: cada paso es de un solo video.' },
+            { type: 'added', text: 'En el primero y el último, la flecha que no lleva a nada se desactiva.' },
+        ]
+    },
     {
         version: '4.830.0',
         title: 'Los videos pasan solos, y se quedan quietos al mirarlos ⏯️',

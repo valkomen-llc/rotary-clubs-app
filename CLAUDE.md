@@ -2590,6 +2590,34 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
+### La tira de videos se DESPLAZA (v4.831)
+
+- **Hasta v4.830 se repintaba el trío entero** y el cambio era un corte seco:
+  desaparecía un video y aparecía otro. Ahora las diapositivas viven en una
+  tira que se traslada con `translateX` y una transición de 900 ms.
+- **Todas las diapositivas miden LO MISMO y el vecino se achica con `scale`**,
+  que no ocupa espacio: así el paso entre centros es constante y centrar es
+  una resta. Con anchos distintos habría que recalcular por diapositiva.
+- **El centrado se MIDE sobre el desplazamiento actual**, no se deduce de la
+  maquetación: `offsetLeft` depende de cuál sea el ancestro posicionado y de
+  los márgenes negativos, y suponerlo mal deja el video corrido —medido: el
+  centro caía en 443 en vez de 640—. La cuenta es `actual + (centro de la
+  ventana − centro de la diapositiva)`, que no depende de nada de eso; y el
+  CENTRO no lo altera el `scale`, así que da igual en qué punto de la
+  transición se mida.
+- **La duración va en el ESTILO, no en una clase arbitraria de Tailwind.**
+  `duration-[900ms]` junto a un `ease-[cubic-bezier(...)]` con comas **no
+  llegó al CSS compilado** —medido: 0,15 s en vez de 0,9— y una clase que no
+  se genera falla en silencio: es la lección de v4.719 otra vez.
+- **La rotación REBOTA en los extremos** (…1, 2, 3, 2, 1…) en vez de dar la
+  vuelta. Con una tira lineal, saltar del último al primero es un
+  desplazamiento largo que se lee como un tirón; rebotando, cada paso es
+  siempre de UNA diapositiva.
+- **En los extremos, la flecha que no lleva a nada se DESACTIVA** (v4.650). Es
+  la consecuencia de que la tira sea lineal: en el primero no hay anterior.
+- **Sólo la diapositiva activa monta el REPRODUCTOR**; las demás siguen siendo
+  previsualizaciones, así que nunca hay más de una incrustación por visita.
+
 ### Los videos, en carrusel con vecinos (v4.829)
 
 - **El video que manda va grande y centrado; los vecinos asoman cortados por
