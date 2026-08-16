@@ -2575,6 +2575,40 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
+### Los videos, en carrusel con vecinos (v4.829)
+
+- **El video que manda va grande y centrado; los vecinos asoman cortados por
+  el borde**, atenuados y con la misma máscara de transparencia que la tira de
+  «Rotarios en acción». **El recorte es EL EFECTO**, no un descuido: los
+  vecinos miden más de lo que cabe y el `overflow-hidden` los parte. Así se ve
+  que hay más videos sin tener que leer el contador.
+- **`flex-shrink-0` en el vecino es lo que lo hace cortarse en vez de
+  encogerse.** Sin él, el flex lo reduce entero y se ve completo y diminuto,
+  que es justo lo contrario del efecto. Lo mismo en el reproductor: es lo que
+  impide que los vecinos lo achiquen a él.
+- **El difuminado va sólo en el BORDE (6 %).** Con la zona de fundido ancha de
+  la galería (11 %) se come justo la parte del vecino que se quiere dejar ver:
+  medido, el asomo pasaba de 214 px a 134 px sobre un vecino de 420.
+- **El carrusel llega al BORDE del contenedor** (`-mx-4 sm:-mx-6 lg:-mx-8`), no
+  hasta donde termina el texto: es lo que le da sitio al vecino para asomar de
+  verdad en vez de quedar en una astilla contra el relleno lateral.
+- **Un vecino es una PREVISUALIZACIÓN, nunca un `<iframe>`.** Cargar dos
+  incrustaciones de YouTube más por visita para mostrar algo que está a medias
+  no se paga. Se usa el póster o `videoThumb`; un archivo propio se monta mudo
+  y sin controles, que es lo justo para ver su primer fotograma.
+- **Con DOS videos sólo asoma uno.** Pintar el mismo a los dos lados haría
+  creer que hay tres. Con uno no hay vecinos y el reproductor queda centrado
+  como antes de v4.829.
+- **Las flechas van SOBRE LOS VECINOS.** Es la regla de v4.818 —no tapar el
+  reproductor ni su barra de controles— resuelta con el espacio que ahora
+  ocupan los vecinos, en vez de con un desplazamiento negativo fuera del
+  marco. Por debajo de `lg` no hay vecinos —no hay ancho para que asomen sin
+  comerse el video— y quedan las compactas de la fila de abajo.
+- **Los vecinos quedan fuera del teclado y del lector de pantalla**
+  (`aria-hidden`, `tabIndex={-1}`): el video es el que está sonando, no los dos
+  que asoman. Para navegar están las flechas y los puntos, que sí tienen
+  nombre.
+
 ### Dónde va el panorama, y por qué (v4.828)
 
 - **Las cifras van ANTES de pedir**, justo debajo del hero. Contestan «¿qué

@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.828.2 | 2026-08-16 (Las cifras del panorama vuelven al color de la campana)
+// UI V4.829.0 | 2026-08-16 (Los videos de elementos requeridos, en carrusel con vecinos)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.829.0',
+        title: 'Los videos, en carrusel con los vecinos a la vista 🎬',
+        description: 'Los videos de «Elementos que se requieren» dejan de mostrarse de a uno centrado y pasan a un carrusel donde el video que se está viendo va grande en el medio y los otros dos asoman a los lados, más pequeños, atenuados y cortados por el borde con el mismo difuminado de la tira de «Rotarios en acción». El recorte es el efecto: se ve que hay más videos sin necesidad de leer el contador. Pulsar un vecino lo trae al centro, y las flechas ahora caben sobre ellos en vez de sobre el reproductor. Los vecinos son una previsualización, no un reproductor: nunca se montan dos incrustaciones de YouTube más por visita para enseñar algo que está a medias. Con dos videos sólo asoma uno —pintar el mismo a los dos lados haría creer que hay tres— y con uno solo el reproductor queda centrado como antes. En pantallas angostas no hay vecinos, porque no hay ancho para que asomen sin comerse el video: ahí quedan las flechas y los puntos de abajo.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Carrusel de videos: el central grande y los vecinos asomando a los lados.' },
+            { type: 'added', text: 'Los vecinos se difuminan contra el borde y se pulsan para traerlos al centro.' },
+            { type: 'improved', text: 'Las flechas van sobre los vecinos, nunca sobre el reproductor.' },
+            { type: 'improved', text: 'Un vecino es una previsualización: no carga otra incrustación de video.' },
+        ]
+    },
     {
         version: '4.828.2',
         title: 'El panorama sube: las cifras van antes de pedir 📊',

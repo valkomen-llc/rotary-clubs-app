@@ -258,7 +258,7 @@ export function sectionVideos(list: any, single: any): SectionVideo[] {
  * consultar su API, así que ahí se devuelve '' y la tarjeta se pinta con su
  * carátula genérica. Un archivo propio muestra su primer fotograma solo.
  */
-function videoThumb(video: CampaignVideo | null): string {
+export function videoThumb(video: CampaignVideo | null): string {
     if (!video || video.kind !== 'youtube') return '';
     const id = /\/embed\/([\w-]+)/.exec(video.src)?.[1];
     return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '';

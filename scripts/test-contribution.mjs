@@ -845,29 +845,39 @@ check('la página usa el criterio compartido para los videos, no una comprobaci�
 check('con más de un video hay flechas atrás y siguiente',
     /aria-label="Video anterior"/.test(landingSrc) && /aria-label="Video siguiente"/.test(landingSrc)
     && /videos\.length > 1 &&/.test(landingSrc));
-// v4.818: a los lados del video, a media altura y POR FUERA. El
-// desplazamiento NEGATIVO es lo que las saca del marco — con `left-3` estarían
-// dentro, tapando el reproductor y su barra de controles.
-check('las flechas van a los lados, a media altura y FUERA del marco', (() => {
+// La regla de v4.818 —no tapar el reproductor ni su barra de controles— sigue
+// en pie; lo que cambió es CÓMO se cumple. Hasta v4.828 las flechas salían del
+// marco con un desplazamiento negativo; desde v4.829 caben dentro del
+// contenedor porque el espacio de los lados lo ocupan los vecinos atenuados.
+check('las flechas van a media altura y NO sobre el reproductor', (() => {
     const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
-    return /absolute -left-16 top-1\/2 -translate-y-1\/2/.test(sec)
-        && /absolute -right-16 top-1\/2 -translate-y-1\/2/.test(sec)
-        && !/absolute (left|right)-3/.test(sec) && !/bg-black\/45/.test(sec);
+    return /absolute left-4 xl:left-10 top-1\/2 -translate-y-1\/2/.test(sec)
+        && /absolute right-4 xl:right-10 top-1\/2 -translate-y-1\/2/.test(sec)
+        // Los vecinos son lo que libera ese espacio: sin ellos, una flecha
+        // ahí estaría encima del video.
+        && /VideoVecino/.test(sec);
 })());
 // El posicionamiento cuelga del CONTENEDOR, no del marco del video: colgarlo
 // del marco las metería dentro otra vez.
 // `top-1/2` tiene que caer en el medio del VIDEO, no del bloque entero —que
 // incluye el pie y los puntos y dejaba las flechas 36 px por debajo.
-check('las flechas cuelgan de un envoltorio que mide lo que el video', (() => {
+check('las flechas cuelgan del envoltorio de la FILA, no del bloque entero', (() => {
     const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
-    return /Este envoltorio existe SÓLO para posicionar/.test(sec)
-        && sec.indexOf('<div className="relative">') < sec.indexOf('aspectRatio');
+    // El `relative` va antes del `overflow-hidden` de la fila y ANTES del pie
+    // y los puntos: si envolviera el bloque entero, `top-1/2` caería por
+    // debajo del centro del video (el defecto medido en v4.818).
+    return sec.indexOf('<div className="relative">') < sec.indexOf('overflow-hidden -mx-4')
+        && sec.indexOf('overflow-hidden -mx-4') < sec.indexOf('videoActual.title &&');
 })());
 // Sin margen lateral no hay dónde ponerlas sin volver a invadir el video: en
 // pantallas angostas quedan las de la fila de abajo.
+// Por debajo de `lg` no hay ancho para que un vecino asome sin comerse el
+// reproductor, así que ahí no hay vecinos NI flechas laterales: quedan las
+// compactas de la fila de abajo, o no habría forma de pasar de video.
 check('en pantallas angostas quedan las flechas compactas de abajo',
-    /hidden xl:flex absolute -left-16/.test(landingSrc)
-    && /xl:hidden w-10 h-10[\s\S]{0,260}ChevronLeft/.test(landingSrc));
+    /hidden lg:flex absolute left-4/.test(landingSrc)
+    && /lg:hidden w-10 h-10[\s\S]{0,260}ChevronLeft/.test(landingSrc)
+    && /hidden lg:block flex-shrink-0/.test(landingSrc));
 // Un video que se cambia solo mientras alguien lo mira es un defecto, no una
 // animación: acá NO hay intervalo, al revés que el hero.
 check('los videos NO rotan solos', (() => {
@@ -903,7 +913,7 @@ check('el video va DESPUÉS de las cajas de elementos', (() => {
 // reproductor del navegador, y al revés tampoco funciona.
 check('un archivo propio va en <video> y un embed en <iframe>',
     /videoActual\.video\.kind === 'file' \?/.test(landingSrc)
-    && /<video[\s\S]{0,400}controls/.test(landingSrc) && /<iframe[\s\S]{0,700}allowFullScreen/.test(landingSrc));
+    && /<video[\s\S]{0,700}controls/.test(landingSrc) && /<iframe[\s\S]{0,900}allowFullScreen/.test(landingSrc));
 
 // v4.819: los centros llevan el fondo de la banda «Somos gente de acción».
 check('la sección de centros usa el MISMO fondo de la portada, no una copia', (() => {
@@ -1523,6 +1533,37 @@ check('la cifra usa figuras proporcionales, no tabulares', (() => {
         .replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
     return !/tabular-nums/.test(banda);
 })());
+
+grupo('v4.829 — el carrusel de videos con vecinos');
+const landing829 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+// Con DOS videos, pintar el mismo a los dos lados haría creer que hay tres.
+check('con dos videos sólo asoma UNO; con uno, ninguno',
+    /izq: n > 2 \? videos\[\(i - 1 \+ n\) % n\] : null/.test(landing829)
+    && /if \(n < 2\) return \{ izq: null, der: null \}/.test(landing829));
+// Un vecino es una PREVISUALIZACIÓN: montar dos incrustaciones más por visita
+// para enseñar algo que está a medias no se paga.
+check('el vecino nunca monta un iframe', (() => {
+    const i = landing829.indexOf('const VideoVecino');
+    const comp = landing829.slice(i, landing829.indexOf('export default', i) > 0 ? i + 2200 : i + 2200);
+    return !/<iframe/.test(comp) && /videoThumb\(entry\.video\)/.test(comp);
+})());
+// `flex-shrink-0` en el vecino es lo que hace que se CORTE en vez de encogerse
+// entero: sin él, el flex lo reduce y se ve completo y diminuto.
+check('el vecino se corta, no se encoge', /hidden lg:block flex-shrink-0 w-\[34vw\]/.test(landing829));
+check('el reproductor no lo encogen los vecinos',
+    /flex-shrink-0 w-\[86vw\] lg:w-\[56vw\] xl:w-\[640px\]/.test(landing829));
+// El mismo difuminado que la tira de «Rotarios en acción», pero acotado al
+// borde: una zona de fundido ancha se come el asomo del vecino.
+check('el borde se difumina sólo en el extremo',
+    /maskImage: 'linear-gradient\(to right, transparent, black 6%, black 94%, transparent\)'/.test(landing829));
+// Regla de v4.818: las flechas no tapan el reproductor ni su barra de
+// controles. Ahora caben sobre los vecinos, que están atenuados.
+check('las flechas van sobre los vecinos, no sobre el reproductor',
+    /hidden lg:flex absolute left-4 xl:left-10 top-1\/2/.test(landing829)
+    && /hidden lg:flex absolute right-4 xl:right-10 top-1\/2/.test(landing829));
+// Para un lector de pantalla el video es el que suena, no los que asoman.
+check('los vecinos quedan fuera del recorrido del teclado y del lector',
+    /aria-hidden\s*\n?\s*tabIndex=\{-1\}/.test(landing829));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
