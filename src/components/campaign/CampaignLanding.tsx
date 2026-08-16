@@ -359,9 +359,26 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             <p className="text-center text-gray-500 max-w-2xl mx-auto mb-12">{content.centersNote}</p>
                         )}
                         {!content.centersNote && <div className="mb-12" />}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* MAMPOSTERÍA, no rejilla. Con `grid`, todas las
+                            tarjetas de una fila se estiran hasta la más alta:
+                            una ciudad con un solo punto quedaba tan alta como
+                            Cali con ocho, con media tarjeta en blanco. Con
+                            columnas cada tarjeta mide lo que mide su contenido
+                            y la siguiente empieza justo debajo.
+
+                            Consecuencia aceptada: se lee hacia abajo por
+                            columna y no de izquierda a derecha — que es como
+                            se lee un directorio de ciudades, y es el precio de
+                            no tener huecos.
+
+                            `break-inside-avoid` es lo que impide que una
+                            ciudad se parta entre dos columnas; sin él, la
+                            mitad de las direcciones de Bogotá saltarían al
+                            otro lado. El margen inferior lo pone la tarjeta:
+                            `gap` en columnas separa columnas, no filas. */}
+                        <div className="columns-1 md:columns-2 gap-6">
                             {centerGroups.map(cityGroup => (
-                                <div key={cityGroup.city} className="bg-white rounded-3xl border border-gray-100 p-7">
+                                <div key={cityGroup.city} className="break-inside-avoid mb-6 bg-white rounded-3xl border border-gray-100 p-7">
                                     <h3 className="flex items-center gap-2 text-xl font-black text-gray-900 mb-5">
                                         <MapPin className="w-5 h-5" style={{ color: accent }} />
                                         {cityGroup.city}

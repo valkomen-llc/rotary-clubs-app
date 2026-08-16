@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.813.0 | 2026-08-15 (El hero de la campana lleva el acercamiento de la portada)
-// Cache bust: 2026-08-15k
+// UI V4.814.0 | 2026-08-15 (Las tarjetas de centros de acopio sin espacios en blanco)
+// Cache bust: 2026-08-15l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.814.0',
+        title: 'Los centros de acopio, sin espacios en blanco 📍',
+        description: 'Las tarjetas de ciudad se acomodaban en una cuadrícula, y en una cuadrícula todas las tarjetas de una misma fila se estiran hasta la altura de la más alta: al lado de Cali, con ocho direcciones, la tarjeta de Cota —con una sola— quedaba igual de alta y con más de media tarjeta en blanco. Ahora las tarjetas se acomodan como una pared de ladrillos: cada una mide exactamente lo que mide su contenido y la siguiente empieza justo debajo. Medido sobre los centros reales de la campaña, no queda ni un espacio vacío dentro de ninguna tarjeta, y las dos columnas quedan parejas. Una ciudad con muchas direcciones nunca se parte entre columnas. El único cambio para quien lee es que las ciudades se recorren hacia abajo por columna en vez de en zigzag, que es como se lee cualquier directorio.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'Las tarjetas de ciudad ya no se estiran a la altura de la más alta de su fila.' },
+            { type: 'improved', text: 'Cada tarjeta mide lo que mide su contenido; las dos columnas quedan equilibradas.' },
+            { type: 'improved', text: 'Una ciudad con muchas direcciones no se parte entre columnas.' },
+        ]
+    },
     {
         version: '4.813.0',
         title: 'El hero de la campaña se mueve como el de la portada 🎞️',

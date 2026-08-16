@@ -2518,6 +2518,14 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   (`IMPLEMENTED_SECTIONS` en `CampaignLanding.tsx`): nunca un botón que no
   lleva a ninguna parte (v4.650). Cuando F3 entregue los centros, agregar
   `centers` a esa lista es lo que enciende esos botones.
+- **Las tarjetas de ciudad van en MAMPOSTERÍA, no en rejilla** (v4.814). Con
+  `grid`, todas las de una fila se estiran hasta la más alta: al lado de Cali
+  (8 direcciones), Cota (1) quedaba igual de alta con media tarjeta en blanco
+  —medido: 676 px de los que sobraban ~547—. Con `columns` cada tarjeta mide
+  su contenido (sobrante máximo: 2 px de redondeo). `break-inside-avoid` es lo
+  que impide que una ciudad se parta entre columnas, y el margen inferior lo
+  pone la tarjeta porque `gap` en columnas separa COLUMNAS, no filas.
+  Consecuencia aceptada: se lee hacia abajo por columna, como un directorio.
 - **Los enlaces configurados pasan por `ctaTarget`** (v4.657), los iconos
   salen de `BLOCK_ICONS` de paymentBlocks (no un segundo catálogo), y el tema
   viaja en hexadecimal con `style` en línea (v4.719).

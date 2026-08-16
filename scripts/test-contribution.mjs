@@ -705,6 +705,16 @@ check('las imágenes se cruzan por opacidad, montadas todas — no se desmontan 
 check('los puntos se anuncian al lector de pantalla',
     /aria-label=\{`Ver imagen \$\{i \+ 1\} de \$\{slides\.length\}`\}/.test(landingSrc));
 
+// v4.814: los centros van en mampostería, no en rejilla.
+check('las tarjetas de ciudad NO van en una rejilla que las estire a la más alta', (() => {
+    // Se ancla en el `id` de la sección, no en la primera mención: el enlace
+    // del CTA nombra el ancla mucho antes y la porción abarcaría medio archivo.
+    const bloque = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('centersAlliance'));
+    return /columns-1 md:columns-2/.test(bloque) && !/grid-cols-2/.test(bloque);
+})());
+// Sin esto una ciudad con muchas direcciones se parte entre dos columnas.
+check('una ciudad no se parte entre columnas', /break-inside-avoid mb-6 bg-white/.test(landingSrc));
+
 // v4.813: el acercamiento lento, compartido con los otros heroes.
 check('el acercamiento va en la imagen que MANDA, no en las que no se ven',
     /i === slide \? 'animate-hero-zoom' : ''/.test(landingSrc));
