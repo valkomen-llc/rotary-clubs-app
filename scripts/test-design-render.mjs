@@ -29,7 +29,7 @@
 //   npm run test:design:render
 // ════════════════════════════════════════════════════════════════════
 
-import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -49,10 +49,11 @@ try {
 const CHROME = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome']
     .find(p => existsSync(p));
 
-const { compileTemplate } = await import('../server/lib/designSpec.js');
+const { compileTemplate, formatOf } = await import('../server/lib/designSpec.js');
 const { templateById, availableTemplates } = await import('../server/lib/designTemplates.js');
 const { ASSIGNABLE_FIELDS } = await import('../server/lib/designPublish.js');
 const { VARIANT_PLANS } = await import('../server/lib/designCompose.js');
+const { CAMPAIGN_TEMPLATES } = await import('../server/lib/campaignTemplates.js');
 
 const OUT = mkdtempSync(join(tmpdir(), 'design-render-'));
 // Tolerancias. El piso no puede ser 0: el antialias de las letras en DOM y en
@@ -91,7 +92,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import DesignCanvas from './src/components/admin/design-studio/DesignCanvas';
 import * as DR from './src/lib/designRender';
+import * as DF from './src/lib/designFonts';
 window.DR = DR;
+window.DF = DF;
 window.mount = (doc) => {
   const root = createRoot(document.getElementById('root'));
   const state = { doc, sel: [] };
@@ -114,16 +117,40 @@ const bundle = await build({
 const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {});
 const errores = [];
 
+// ── LAS TIPOGRAFÍAS SE SIRVEN DE VERDAD ─────────────────────────────
+//
+// `designFonts.ts` pide `/fonts/*.woff2` en cuanto algo va a componer. Sin
+// servirlas, el navegador de la prueba responde ERR_CONNECTION_REFUSED y —lo
+// que importa— la paridad se comprobaría con las letras de RESPALDO, que es
+// justo el caso que no se publica. Se sirven desde `public/fonts/`, que es de
+// donde salen en producción.
+const servirFuentes = async (page) => {
+    // Y con un ORIGEN de verdad. Sobre `about:blank` —que es lo que deja
+    // `setContent`— una dirección relativa como `/fonts/x.woff2` no tiene base
+    // contra la que resolverse, así que la petición no llega a salir y la
+    // prueba pasaría sin haber cargado ninguna tipografía. Es la misma lección
+    // que el `fetch('/api/…')` de v4.720.
+    await page.route('http://localhost/', r => r.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><body style="margin:0;background:#fff"><div id="root"></div></body>',
+    }));
+    await page.route('**/fonts/*.woff2', r => {
+        const nombre = new URL(r.request().url()).pathname.split('/').pop();
+        try { r.fulfill({ contentType: 'font/woff2', body: readFileSync(join('public/fonts', nombre)) }); }
+        catch { r.fulfill({ status: 404 }); }
+    });
+};
+
 // Comparación en escala de grises, sin dependencias de imagen: el PNG se lee
 // del propio navegador como datos crudos del canvas.
-const compare = async (page, domPngB64, canvasPngB64) => page.evaluate(async ([a, b]) => {
+const compare = async (page, domPngB64, canvasPngB64, W = 1080, H = 1080) => page.evaluate(async ([a, b, W, H]) => {
     const load = (src) => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
     const [ia, ib] = await Promise.all([load(a), load(b)]);
     const grab = (img) => {
-        const c = document.createElement('canvas'); c.width = c.height = 1080;
-        const x = c.getContext('2d'); x.drawImage(img, 0, 0, 1080, 1080);
-        const d = x.getImageData(0, 0, 1080, 1080).data;
-        const g = new Uint8Array(1080 * 1080);
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
+        const d = x.getImageData(0, 0, W, H).data;
+        const g = new Uint8Array(W * H);
         for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) | 0;
         return g;
     };
@@ -134,12 +161,114 @@ const compare = async (page, domPngB64, canvasPngB64) => page.evaluate(async ([a
     let best = 0, bestScore = Infinity;
     for (let dy = -4; dy <= 4; dy++) {
         let s = 0;
-        for (let y = Math.max(0, -dy); y < 1080 - Math.max(0, dy); y += 2)
-            for (let x = 0; x < 1080; x += 2) s += Math.abs(A[y * 1080 + x] - B[(y + dy) * 1080 + x]);
+        for (let y = Math.max(0, -dy); y < H - Math.max(0, dy); y += 2)
+            for (let x = 0; x < W; x += 2) s += Math.abs(A[y * W + x] - B[(y + dy) * W + x]);
         if (s < bestScore) { bestScore = s; best = dy; }
     }
     return { mean: sum / A.length, pct: (100 * big) / A.length, shift: best };
-}, [domPngB64, canvasPngB64]);
+}, [domPngB64, canvasPngB64, W, H]);
+
+// ════════════════════════════════════════════════════════════════════
+// LA TIPOGRAFÍA EMPAQUETADA — v4.837
+//
+// Es la comprobación que hace honesto el cambio, y no se puede hacer sin un
+// navegador: hasta v4.836 el módulo sólo admitía familias del SISTEMA, con el
+// argumento —correcto— de que una fuente web que no llegue deja el archivo con
+// otra letra que la vista previa. Lo que se comprueba acá es que el argumento
+// quedó resuelto:
+//
+//   1. la fuente llega de verdad y NO se está usando el respaldo;
+//   2. con la fuente puesta, la vista previa y la exportación siguen siendo el
+//      mismo dibujo — eso se comprueba enseguida, sobre las diez composiciones
+//      de campaña REALES, que son las que la usan.
+//
+// El punto 1 hace falta porque el 2 pasaría igual con las dos mitades cayendo
+// al respaldo: la paridad se conservaría y el parecido con la referencia no.
+{
+    console.log('\nLa tipografía empaquetada');
+    const page = await browser.newPage({ viewport: { width: 1120, height: 1120 }, deviceScaleFactor: 1 });
+    await servirFuentes(page);
+    page.on('pageerror', e => errores.push(`fuentes: ${e.message}`));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+
+    const estado = await page.evaluate(async () => {
+        const st = await window.DF.ensureDesignFonts();
+        const c = document.createElement('canvas').getContext('2d');
+        const ancho = (familia) => { c.font = `700 60px ${familia}`; return c.measureText('CONTRIBUIR').width; };
+        return {
+            st,
+            oswald: document.fonts.check('700 60px Oswald'),
+            openSans: document.fonts.check('700 60px "Open Sans"'),
+            // Si Oswald no estuviera, la cadena caería a Arial Narrow/Impact y
+            // el ancho sería el de ésas. Condensada tiene que medir MENOS que
+            // Arial con el mismo cuerpo: es la prueba de que se está usando.
+            condensada: ancho('Oswald, Arial'),
+            arial: ancho('Arial'),
+        };
+    });
+    check('las tipografías se cargan y quedan listas', estado.st === 'ready', estado.st);
+    check('Oswald está disponible en el documento', estado.oswald);
+    check('Open Sans está disponible en el documento', estado.openSans);
+    // `document.fonts.check` devuelve `true` también cuando la familia NO
+    // existe —el respaldo «está disponible»—, así que sola no demuestra nada.
+    // Medir el ancho sí: una condensada tiene que ocupar menos que Arial.
+    check(`Oswald se USA de verdad: mide menos que Arial (${Math.round(estado.condensada)} < ${Math.round(estado.arial)})`,
+        estado.condensada < estado.arial * 0.92, `${Math.round(estado.condensada)} vs ${Math.round(estado.arial)}`);
+
+    await page.close();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LAS DIEZ COMPOSICIONES DE CAMPAÑA — v4.837
+//
+// Son las que estrenan las tipografías empaquetadas, la máscara curva de la
+// fotografía y el pie institucional, y hasta v4.836 NINGUNA pasaba por esta
+// prueba: la paridad sólo se comprobaba sobre `designTemplates.js`. Un preset
+// con su propio catálogo de plantillas y sin comprobar que la vista previa sea
+// el archivo es exactamente el hueco que este módulo existe para no tener.
+{
+    console.log('\nLas composiciones de campaña');
+    const page = await browser.newPage({ viewport: { width: 1400, height: 1400 }, deviceScaleFactor: 1 });
+    await servirFuentes(page);
+    page.on('pageerror', e => errores.push(`campana: ${e.message}`));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.evaluate(() => window.DF.ensureDesignFonts());
+
+    const VARS = {
+        titulo: 'Colombia te necesita', subtitulo: 'Emergencia invernal en el Chocó',
+        contexto: 'Las lluvias de las últimas semanas dejaron municipios enteros incomunicados y miles de familias sin techo.',
+        cierre: 'Cada aporte llega directo a las familias afectadas.',
+        cta: 'Dona ahora', url: 'rotary4281.org/contribuir', corte: '15 de agosto de 2026',
+        insignia: 'Emergencia · Chocó', logo: logoSvg, imagen: png1x1('#3d5a3f'),
+        cifra1: '289', cifra1_label: 'personas fallecidas', cifra1_fuente: 'UNGRD · 15/08/2026',
+        cifra2: '81.536', cifra2_label: 'viviendas afectadas', cifra2_fuente: 'UNGRD · 15/08/2026',
+        cifra3: '14.705', cifra3_label: 'familias damnificadas', cifra3_fuente: 'UNGRD · 15/08/2026',
+        cifra4: '32', cifra4_label: 'municipios en alerta', cifra4_fuente: 'UNGRD · 15/08/2026',
+        elemento1: 'Agua potable', elemento2: 'Kits de aseo', elemento3: 'Frazadas', elemento4: 'Alimentos',
+        ciudad1: 'Cali', ciudad1_puntos: '8 puntos', ciudad2: 'Bogotá', ciudad2_puntos: '5 puntos',
+        centro1: 'Club Rotario Cali', centro1_dir: 'Av. 6N #23-50',
+        centro2: 'Sede ABACO', centro2_dir: 'Cra 15 #88-64',
+        aliado1: logoSvg, aliado2: logoSvg,
+        familia1: logoSvg, familia2: logoSvg, familia3: logoSvg,
+    };
+    for (const tpl of CAMPAIGN_TEMPLATES) {
+        const c = compileTemplate({ template: tpl, variables: VARS, branding: { primary: '#0B2B5C', accent: '#C8102E', ink: '#FFFFFF' } });
+        const doc = { format: c.format, background: c.background, nodes: c.nodes };
+        await page.evaluate(d => window.mount(d), doc);
+        await page.waitForTimeout(350);
+        const dom = await page.locator('#root > div > div').first().screenshot();
+        const cv = await page.evaluate(async d => (await window.DR.renderDocumentToCanvas(d, { scale: 1 })).toDataURL('image/png'), doc);
+        writeFileSync(join(OUT, `${tpl.id}-dom.png`), dom);
+        writeFileSync(join(OUT, `${tpl.id}-canvas.png`), Buffer.from(cv.split(',')[1], 'base64'));
+        const fmt = formatOf(tpl.format);
+        const r = await compare(page, `data:image/png;base64,${dom.toString('base64')}`, cv, fmt.width, fmt.height);
+        check(`«${tpl.id}»: la vista previa es el archivo (${r.pct.toFixed(2)} %)`, r.pct <= MAX_DIFF_PCT, `${r.pct.toFixed(2)} %`);
+        check(`«${tpl.id}»: sin corrimiento vertical`, r.shift === 0, `${r.shift} px`);
+    }
+    await page.close();
+}
 
 for (const tpl of availableTemplates()) {
     console.log(`\n${tpl.name}`);
@@ -155,8 +284,9 @@ for (const tpl of availableTemplates()) {
     const doc = { format: compiled.format, background: compiled.background, nodes: compiled.nodes };
 
     const page = await browser.newPage({ viewport: { width: 1120, height: 1120 }, deviceScaleFactor: 1 });
+    await servirFuentes(page);
     page.on('pageerror', e => errores.push(`${tpl.id}: ${e.message}`));
-    await page.setContent('<!doctype html><body style="margin:0;background:#fff"><div id="root"></div></body>');
+    await page.goto('http://localhost/');
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.evaluate(d => window.mount(d), doc);
     await page.waitForTimeout(800);
@@ -264,6 +394,7 @@ window.go = () => createRoot(document.getElementById('root'))
     };
 
     const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+    await servirFuentes(page);
     const fallos = [];
     page.on('pageerror', e => fallos.push(e.message));
     page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
@@ -721,6 +852,7 @@ window.go = () => createRoot(document.getElementById('root'))
     // Esto sólo se ve montando la pantalla: desde el servidor no se distingue
     // «no devolvió nada» de «nadie mostró lo que devolvió».
     const p2 = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+    await servirFuentes(p2);
     const fallos2 = [];
     p2.on('pageerror', e => fallos2.push(e.message));
     await p2.route('**/api/**', r => r.fulfill({ json: {} }));
@@ -819,6 +951,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     });
 
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    await servirFuentes(page);
     const fallos = [];
     page.on('pageerror', e => fallos.push(e.message));
     page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
@@ -1100,6 +1233,7 @@ window.go = () => createRoot(document.getElementById('root')).render(
     });
 
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    await servirFuentes(page);
     const fallos = [];
     page.on('pageerror', e => fallos.push(e.message));
     page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });

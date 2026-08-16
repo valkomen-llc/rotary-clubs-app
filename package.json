@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.836.0",
-  "cache_bust": "2026-08-16o (Infografías de campaña: centros, QR, carrusel y publicación.)",
+  "version": "4.837.0",
+  "cache_bust": "2026-08-16p (Director Creativo F1: tipografía real, curva de foto y pie institucional.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

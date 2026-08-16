@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.836.0 | 2026-08-16 (Infografías de campaña: centros, QR, carrusel y publicación)
-// Cache bust: 2026-08-15t
+// UI V4.837.0 | 2026-08-16 (Director Creativo F1: tipografía real, curva de foto y pie institucional)
+// Cache bust: 2026-08-16p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.837.0',
+        title: 'Las piezas de campaña dejan de verse genéricas 🎨',
+        description: 'Las infografías se componían con la tipografía por omisión del sistema, así que un titular y una etiqueta se distinguían sólo por el tamaño: correcto y anónimo. Ahora la plataforma trae sus propias tipografías institucionales —Open Sans, la de marca de Rotary International, y una condensada para los titulares y las cifras—, la fotografía se recorta con una curva en vez de una línea recta, y todas las piezas cierran con la banda azul de la familia Rotary. Los escudos de esa banda son los archivos que el sitio ya tiene cargados: ninguno se dibuja, porque el emblema es marca registrada y se reproduce desde el Brand Center. Un sitio que sólo tenga cargado el de Rotary muestra ése y nada más. Y se corrigió un defecto que venía desde el estreno del módulo: el botón de llamado a la acción NUNCA se dibujaba —salía como texto flotando— porque la pastilla dependía de una condición que sólo sabían resolver las imágenes.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'infografias', 'diseno'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Tipografías institucionales propias, cargadas antes de componer y de exportar.' },
+            { type: 'added', text: 'La fotografía se recorta con una curva orgánica, sin tocar la imagen.' },
+            { type: 'added', text: 'Pie institucional con los escudos de la familia Rotary del propio sitio.' },
+            { type: 'fixed', text: 'El botón de llamado a la acción ahora se dibuja: antes salía como texto suelto.' },
+            { type: 'fixed', text: 'La vista previa y el archivo descargado vuelven a coincidir al píxel con cualquier tipografía.' },
+        ]
+    },
     {
         version: '4.836.0',
         title: 'Carrusel de campaña y publicación directa a redes 🎠',

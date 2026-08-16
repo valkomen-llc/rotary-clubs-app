@@ -10,6 +10,7 @@ import MediaPicker from './MediaPicker';
 import { exportDocument, exportToFile, renderDocumentToCanvas, canvasToBlob } from '../../../lib/designRender';
 import { qrToDataUri } from '../../../lib/qrcode';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
+import { ensureDesignFonts, fontState, onFontState, type FontState } from '../../../lib/designFonts';
 import {
     capacityOf, validateBeforeGenerate,
     DEFAULT_OBJECTIVE, DEFAULT_AUDIENCE, DEFAULT_LANGUAGE, DEFAULT_FORMAT_ID,
@@ -111,6 +112,17 @@ const card = 'bg-white p-6 rounded-2xl shadow-sm border border-gray-100';
 const CampaignPostPanel: React.FC = () => {
     // TODOS los hooks arriba, antes de cualquier `return`: es la regla de
     // `check:hooks` y el defecto que dejó una portada en blanco (v4.689).
+    // El estado de las tipografías empaquetadas. Se lee para DECIRLO: si la
+    // descarga falla, la pieza se compone igual con las letras del sistema —la
+    // vista previa y el archivo siguen coincidiendo— pero deja de parecerse a
+    // la papelería del Distrito, y eso no se puede callar. Ver `designFonts.ts`.
+    const [tipografias, setTipografias] = useState<FontState>(() => fontState());
+    useEffect(() => {
+        const baja = onFontState(setTipografias);
+        void ensureDesignFonts();
+        return baja;
+    }, []);
+
     const [opciones, setOpciones] = useState<Opciones | null>(null);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -717,6 +729,17 @@ const CampaignPostPanel: React.FC = () => {
                             </span>
                         )}
                     </div>
+                    {tipografias === 'failed' && (
+                        <div className="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                            <span>
+                                No se pudieron cargar las tipografías institucionales. La pieza se
+                                compone con las del sistema —lo que ves es lo que se descarga—, pero
+                                no va a verse igual que la papelería del Distrito. Recargá la página
+                                para reintentarlo.
+                            </span>
+                        </div>
+                    )}
                     <div ref={cajaPreview}>
                         {docActivo ? (
                             <div className="rounded-xl overflow-hidden border border-gray-100 mx-auto"

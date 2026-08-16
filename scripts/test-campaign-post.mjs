@@ -30,7 +30,7 @@ import {
 } from '../server/lib/campaignPostSpec.js';
 import { CAMPAIGN_TEMPLATES, templateFor } from '../server/lib/campaignTemplates.js';
 import { centerDetail, activePartners, planCarousel, CAROUSEL_SLIDES, CAROUSEL_MAX } from '../server/lib/campaignPostSpec.js';
-import { compileTemplate, formatOf, FORMATS, normalizeNode } from '../server/lib/designSpec.js';
+import { compileTemplate, formatOf, FORMATS, normalizeNode, visibleNodes, MASK_SHAPES, WEB_FONTS } from '../server/lib/designSpec.js';
 import { normalizeContent } from '../server/lib/contributionSpec.js';
 import { TYPE_LABELS, AREA_LABELS } from '../server/lib/publicationContext.js';
 
@@ -286,8 +286,14 @@ for (const layout of LAYOUT_IDS) {
 }
 check('cada plantilla declara el formato que dice su entrada',
     CAMPAIGN_TEMPLATES.every(t => FORMAT_IDS.includes(t.format)));
+// Se miran los DATOS, no el archivo entero: la comprobación es que ninguna
+// plantilla DIBUJE una rueda, y un comentario que explique por qué no se puede
+// dibujar tiene que poder nombrarla. Es la misma lección que las clases de
+// `test:cta` —buscar la clase, no la mención—.
+const sinComentarios = readFileSync('server/lib/campaignTemplates.js', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 check('ninguna plantilla dibuja una rueda de Rotary: el emblema es marca registrada',
-    !/rueda|wheel|engranaje/i.test(readFileSync('server/lib/campaignTemplates.js', 'utf8')));
+    !/rueda|wheel|engranaje/i.test(sinComentarios));
 
 grupo('Compilar: las cifras se DIBUJAN, no se escriben');
 const doc = compileTemplate({
@@ -441,6 +447,81 @@ check('el carrusel se descarga en UN archivo', (() => {
     const panel = readFileSync('src/components/admin/content-studio/CampaignPostPanel.tsx', 'utf8');
     return /jszip/.test(panel) && /descargarZip/.test(panel);
 })());
+
+grupo('v4.837 — la voz visual de las piezas de referencia');
+// Las tres cosas que este cambio introduce en el CATÁLOGO. Lo que no se puede
+// comprobar acá —que la tipografía llegue de verdad y que la vista previa
+// siga siendo el archivo— lo comprueba `test:design:render` en un navegador.
+{
+    const fuente = readFileSync('server/lib/campaignTemplates.js', 'utf8');
+    const conFoto = CAMPAIGN_TEMPLATES.filter(t => t.nodes.some(n => n.id === 'foto'));
+    const conBanda = CAMPAIGN_TEMPLATES.filter(t => t.nodes.some(n => n.id === 'pie_banda'));
+
+    check('las diez composiciones llevan el pie institucional', conBanda.length === 10);
+    check('el pie usa la curva declarada en designSpec, no un trazo suelto',
+        conBanda.every(t => t.nodes.find(n => n.id === 'pie_banda').shape === 'dome'));
+    check('el pie se desborda por los costados: el filete no marca el borde',
+        conBanda.every(t => { const b = t.nodes.find(n => n.id === 'pie_banda'); return b.x < 0 && b.x + b.w > 1; }));
+
+    // Los escudos son ARCHIVOS del sitio. Cada uno con `dropIfEmpty`: un sitio
+    // con dos cargados muestra dos, no dos y dos huecos.
+    const familia = CAMPAIGN_TEMPLATES.flatMap(t => t.nodes.filter(n => /^familia\d$/.test(n.id)));
+    check('la familia Rotary son cuatro nodos de IMAGEN por composición', familia.length === 40 && familia.every(n => n.type === 'image'));
+    check('ningún escudo deja hueco si el sitio no lo tiene cargado', familia.every(n => n.dropIfEmpty === true));
+    check('los escudos salen de una variable, nunca de una URL escrita en el código',
+        familia.every(n => /^\{\{familia\d\}\}$/.test(n.src)));
+
+    // La fotografía se recorta con una curva; el velo tiene que llevar la MISMA
+    // forma o queda un escalón donde se buscaba una curva.
+    const enmascaradas = conFoto.filter(t => t.nodes.find(n => n.id === 'foto').mask);
+    check('las composiciones con banda de fotografía la recortan en curva', enmascaradas.length === 4);
+    check('y su velo sigue el MISMO recorte que la fotografía',
+        enmascaradas.every(t => {
+            const f = t.nodes.find(n => n.id === 'foto'), v = t.nodes.find(n => n.id === 'velo');
+            return v && v.shape === f.mask;
+        }));
+    check('la máscara es una forma del catálogo cerrado',
+        enmascaradas.every(t => MASK_SHAPES.includes(t.nodes.find(n => n.id === 'foto').mask)));
+
+    // La voz tipográfica: dos familias y un reparto. Sin esto, un titular y una
+    // etiqueta se distinguen sólo por el tamaño, que es lo que se reportó.
+    const textos = CAMPAIGN_TEMPLATES.flatMap(t => t.nodes.filter(n => n.type === 'text'));
+    check('ningún texto de una pieza de campaña se queda en la familia por omisión',
+        textos.every(n => n.fontFamily === 'condensed' || n.fontFamily === 'brand'), 
+        textos.filter(n => !['condensed', 'brand'].includes(n.fontFamily)).map(n => n.id).join(','));
+    check('el título y las cifras van en la condensada',
+        CAMPAIGN_TEMPLATES.every(t => {
+            const ti = t.nodes.find(n => n.id === 'titulo');
+            const c1 = t.nodes.find(n => n.id === 'cifra1');
+            return (!ti || ti.fontFamily === 'condensed') && (!c1 || c1.fontFamily === 'condensed');
+        }));
+    check('las dos familias son las EMPAQUETADAS, no una tercera lista',
+        WEB_FONTS.map(f => f.id).sort().join(',') === 'brand,condensed');
+    check('la pastilla del botón es una pastilla: el radio es del lado menor del nodo',
+        CAMPAIGN_TEMPLATES.every(t => { const p = t.nodes.find(n => n.id === 'pastilla'); return !p || p.radius === 0.5; }));
+    check('la banda del pie NO se pinta con el color de la campaña: es el azul de Rotary',
+        conBanda.every(t => { const b = t.nodes.find(n => n.id === 'pie_banda'); return !b.brand && typeof b.fill === 'string'; }));
+}
+
+grupo('v4.837 — la pastilla del llamado a la acción SE DIBUJA');
+// El defecto de fondo que traía el preset desde v4.833: `requiresVar` sólo lo
+// satisfacían los nodos de IMAGEN, así que una pastilla que dependía de una
+// variable de TEXTO se caía siempre y el llamado salía como texto flotando en
+// TODA pieza generada. No daba ningún error; se veía como una pieza sosa.
+{
+    const tpl = templateFor('emergencia_cta', 'post_1_1');
+    const conCta = compileTemplate({ template: tpl, variables: { ...vars, cta: 'Dona ahora' }, branding: { primary: '#0B2B5C', accent: '#C8102E' } });
+    const sinCta = compileTemplate({ template: tpl, variables: { ...vars, cta: '' }, branding: { primary: '#0B2B5C', accent: '#C8102E' } });
+    const vistos = (doc) => visibleNodes(doc.nodes).map(n => n.id);
+    check('con llamado a la acción, la pastilla se dibuja', vistos(conCta).includes('pastilla'));
+    check('y el texto del botón también', vistos(conCta).includes('cta'));
+    check('sin llamado a la acción, la pastilla NO deja un rectángulo vacío', !vistos(sinCta).includes('pastilla'));
+    check('un texto MEZCLADO no responde por su variable: no se puede saber',
+        !visibleNodes([
+            { id: 'a', type: 'text', srcText: 'Cifras al {{corte}}', text: 'Cifras al ', hidden: false },
+            { id: 'b', type: 'shape', requiresVar: 'corte', hidden: false },
+        ]).some(n => n.id === 'b'));
+}
 
 grupo('El preset no se escribe dos veces');
 const postGen = readFileSync('src/components/admin/content-studio/PostGenerator.tsx', 'utf8');

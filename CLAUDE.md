@@ -2669,6 +2669,131 @@ interceptada (26 comprobaciones).
   smoke de navegador. Al agregar un ajuste que viaja en una petición, mirar que
   esté en las dependencias del manejador que la arma.
 
+### Director Creativo — Fase 1: la voz visual (v4.837)
+
+Las piezas salían correctas y GENÉRICAS. El diagnóstico de las tres referencias
+del Distrito («COLOMBIA TE NECESITA») ubicó la distancia en cuatro cosas
+concretas, y ninguna necesitaba una capa de IA nueva: la tipografía, el borde de
+la fotografía, el pie institucional y el salto tipográfico.
+
+| Archivo | Qué es |
+|---|---|
+| `public/fonts/*.woff2` | Open Sans y Oswald, subconjuntos `latin` y `latin-ext`. SIL OFL 1.1, con sus licencias al lado |
+| `src/lib/designFonts.ts` | El cargador: `FontFace`, `document.fonts.ready`, estado y aviso |
+| `designSpec.FONTS` / `WEB_FONTS` | El CRITERIO: qué familias hay y cuáles dependen de una descarga |
+| `designSpec.MASK_SHAPES` + `sweep`/`sweepLeft`/`dome` | Las formas de las referencias, en el ÚNICO sitio donde vive la geometría |
+| `campaignTemplates.brandBar` | El pie curvo con los escudos de la familia Rotary |
+
+**Reglas durables:**
+
+- **La cautela de v4.836 contra las fuentes web era correcta y se RESUELVE, no
+  se ignora.** Decía: «si la fuente no llegó, el archivo sale con otra y la
+  vista previa deja de ser el archivo». El peligro ocurre si la fuente llega
+  para UNA de las dos mitades. No es el caso: la vista previa (DOM) y la
+  exportación (canvas) viven en el mismo documento y comparten `document.fonts`,
+  así que esperando `document.fonts.ready` **antes de medir** las dos ven lo
+  mismo, y si la descarga falla caen JUNTAS al respaldo. La paridad se conserva
+  siempre; lo que se degrada es el parecido con la referencia, **y eso se dice
+  en la pantalla**.
+- **La espera va en `renderDocumentToCanvas`, no en cada pantalla.** Por ahí
+  pasan todos los caminos que rasterizan —exportar, subir a la Biblioteca, la
+  miniatura, el carrusel—. Puesta en las pantallas, la siguiente se olvida. Y
+  `DesignCanvas` REPINTA cuando llegan: `layoutFor` mide con `measureText`, así
+  que el primer render calculó los saltos de línea con la letra de respaldo.
+- **NADA de `<link>` a Google Fonts.** Un recurso de terceros bloqueando el
+  pintado es la causa medida de los 13,2 s de v4.659. Van empaquetadas, se
+  registran desde JavaScript y **sólo cuando algo va a componer**: no hay
+  `@font-face` global, así que la página pública no las descarga.
+- **La cadena de una familia empaquetada TERMINA en tipografías del sistema.**
+  Sin respaldo, un fallo dejaría el texto en la letra por omisión del navegador,
+  que puede ser una serif — y una pieza institucional en Times es peor que en
+  Arial. Y `sans` se queda PRIMERA en `FONTS`: `fontStack` cae a `FONTS[0]`.
+- **Al agregar una familia, agregar su licencia a `public/fonts/`.** La OFL lo
+  exige y no es una formalidad: sin ella la redistribución no está amparada.
+- **LA LÍNEA BASE SE LE PREGUNTA AL DOM** (`cssBaseline` en `designRender.ts`).
+  Es la corrección de fondo que destapó este cambio. Se DEDUCÍA con
+  `fontBoundingBoxAscent/Descent` más el modelo de medio interlineado de CSS, y
+  con Arial coincidía; con las tipografías empaquetadas dejó de coincidir
+  —Chromium devuelve esas métricas ya redondeadas a entero y la maquetación de
+  línea usa la fraccionaria—, y el archivo salía 1 px por debajo de la vista
+  previa en la mitad de las composiciones. Un elemento `inline-block` de alto
+  CERO se apoya EN la línea base por definición: su borde superior ES la que CSS
+  va a usar, sin suponer qué tabla de la fuente se consultó. Deducir una métrica
+  que el navegador ya sabe era el error. **Mejoró también lo que ya estaba**: la
+  paridad de `designTemplates` bajó de 1,41 % a 0,61 %.
+- **La fotografía se recorta con `mask`; la IMAGEN no se toca.** Los píxeles
+  viajan intactos y sólo cambia por dónde se la recorta — ni filtros, ni escalas
+  forzadas, ni corrección de color. El catálogo es CERRADO (`MASK_SHAPES`) y el
+  orden está declarado: `mask` manda sobre `circle` y sobre `radius`. Son tres
+  formas de decir lo mismo y sin un orden fijo el recorte dependería de en qué
+  rama caiga cada renderizador.
+- **El VELO lleva la MISMA forma que la fotografía.** Con la foto en curva y el
+  velo rectangular queda un escalón justo donde se buscaba una curva.
+- **LOS ESCUDOS DE LA FAMILIA ROTARY SON ARCHIVOS REALES, SIEMPRE.** Salen de lo
+  que el sitio ya tiene cargado y ninguno se dibuja: el emblema es marca
+  registrada, con proporciones, colores y zona de resguardo propias, y se
+  reproduce desde el Brand Center. Es la misma regla por la que
+  `designElements.js` no tiene ninguna rueda.
+- **Los cuatro NO viven en el mismo sitio.** `footerLogo` y `endPolioLogo` son
+  COLUMNAS de `Club`; Rotaract e Interact viven en `Setting`. Leer un solo lado
+  deja media franja vacía sin que nada avise.
+- **Llegan PACKED y cada uno lleva `dropIfEmpty`.** Un sitio con dos escudos
+  cargados muestra dos, no dos y dos huecos, y no se rellena con texto.
+- **La franja va ALINEADA A LA IZQUIERDA, no centrada.** Centrarla exigiría
+  saber cuántos escudos hay al declarar la plantilla, y la plantilla es un dato
+  que no conoce el sitio: con dos de cuatro, una fila «centrada para cuatro»
+  queda visiblemente corrida. Mismo criterio que la franja de aliados.
+- **La banda del pie es el AZUL OFICIAL DE ROTARY, no el de la campaña**, y
+  lleva un filete dorado. La franja identifica a la INSTITUCIÓN, no a la pieza;
+  y pintada con `brand: 'primary'` desaparecía sobre un fondo del mismo color,
+  que es lo que pasaba en las composiciones sin fotografía. El filete no es
+  adorno: garantiza la separación pase lo que pase con el color de la campaña.
+  La banda se DESBORDA por los costados (`x: -0.03, w: 1.06`) o el trazo deja
+  una marca vertical contra el borde de la pieza — mismo recurso que `pie_oro`.
+- **`requiresVar` lo satisfacían SÓLO las imágenes, y por eso el botón de
+  llamado a la acción NUNCA se dibujó** (`answersFor`). Se inventó para la placa
+  blanca detrás del logotipo —una dependencia de imagen— y las Infografías de
+  Campaña lo usaron para una variable de TEXTO: la pastilla se caía siempre y el
+  llamado salió como texto flotando en toda pieza generada, en las diez
+  plantillas y en las dos versiones publicadas. No dio ningún error: se veía
+  como una pieza sosa. **Al reutilizar un mecanismo para un caso que no era el
+  suyo, comprobar que lo cubra.**
+- **Un texto MEZCLADO no responde por su variable.** «Cifras al {{corte}}» sin
+  valor sigue teniendo contenido («Cifras al») y daría la variable por
+  satisfecha, que es el error contrario y peor. Sólo responde el nodo que ES la
+  variable entera. Ante la duda, no responde nadie.
+- **El radio de una pastilla es fracción del LADO MENOR DEL NODO, no del
+  lienzo.** Estaba escrito `pillH / 2` y daba 2 px: un rectángulo recto. No se
+  notó nunca porque la pastilla no se dibujaba.
+- **La banda institucional se lleva el último 9,5 % del lienzo y el contenido
+  tuvo que COMPRIMIRSE.** La fecha de corte bajó a la columna derecha, debajo de
+  la dirección: es la línea más pequeña del pie y la única que no se lee de
+  lejos. Los números de las dos composiciones más apretadas están MEDIDOS contra
+  la prueba de geometría, no puestos a ojo — encontró siete solapamientos.
+- **La prueba de paridad cubre ahora las DIEZ composiciones de campaña**
+  (`test:design:render`). Hasta v4.836 sólo cubría `designTemplates.js`: un
+  preset con su propio catálogo de plantillas y sin comprobar que la vista
+  previa sea el archivo es exactamente el hueco que ese módulo existe para no
+  tener. Al agregar un catálogo de plantillas, sumarlo a esa prueba.
+- **`document.fonts.check` NO demuestra que la fuente esté**: devuelve `true`
+  también cuando la familia no existe, porque el respaldo «está disponible». Lo
+  que sí demuestra es MEDIR: una condensada ocupa menos que Arial al mismo
+  cuerpo (medido: 308 contra 377).
+- **El arnés del navegador necesita un ORIGEN real** para las fuentes, igual que
+  para `fetch`. Sobre `about:blank` —que es lo que deja `setContent`— una
+  dirección relativa no tiene base contra la que resolverse, así que la petición
+  no llega a salir y la prueba pasaría sin haber cargado ninguna tipografía. Es
+  la lección de v4.720 otra vez, por la otra puerta.
+- **Un espejo que no se corrige deja de servir.** `post_4_5` se activó en el
+  servidor en v4.833 y NO en `src/lib/designSpec.ts`: el espejo venía diciendo
+  que el formato no existe mientras el servidor generaba piezas en él, y
+  `test:design` lo marcaba desde entonces.
+
+**Pendiente de las fases siguientes:** el Design DNA extraído de las
+referencias, los Creative Profiles versionados y los cuatro indicadores de
+calidad. La Fase 1 no introduce ninguna capa de IA nueva a propósito: era el
+80 % del parecido y no lo necesitaba.
+
 **Pendientes conocidos:** el objetivo «internacional» quedó resuelto como
 AUDIENCIA y no como composición propia —cambia el encuadre del texto, no la
 maquetación—; una composición «meta de recaudo» exigiría un campo de meta

@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Infografías de Campaña — la orquestación
-// v4.833.0
+// v4.837.0
 //
 // Une la campaña de contribución, el criterio (`campaignPostSpec.js`), las
 // composiciones (`campaignTemplates.js`) y el redactor. Devuelve un DOCUMENTO
@@ -305,6 +305,7 @@ const buildPiece = async ({ campaign, content, objective, formatId, layoutId, st
     const variables = buildVariables({
         campaign, copy, stats, items: shownItems, centers, partners,
         imageUrl, logoUrl: await logoFor(campaign, req, lang),
+        familyUrls: await familyFor(campaign, req),
         qrUrl: acceptableQr(qrDataUri),
     });
 
@@ -493,8 +494,11 @@ const siteUrlFor = async (campaign, req) => {
  * que tiene idioma. Sin versión internacional se usa el de siempre — nunca se
  * deja un hueco.
  */
+const clubOfPiece = (campaign, req) =>
+    (isOperator(req) ? (campaign.recipientClubId || req.user?.clubId) : req.user?.clubId) || null;
+
 const logoFor = async (campaign, req, language = DEFAULT_LANGUAGE) => {
-    const clubId = isOperator(req) ? (campaign.recipientClubId || req.user?.clubId) : req.user?.clubId;
+    const clubId = clubOfPiece(campaign, req);
     if (!clubId) return '';
     try {
         const club = await prisma.club.findUnique({ where: { id: clubId }, select: { logo: true } });
@@ -507,6 +511,51 @@ const logoFor = async (campaign, req, language = DEFAULT_LANGUAGE) => {
         }
         return club?.logo || '';
     } catch { return ''; }
+};
+
+/**
+ * Los escudos de la FAMILIA ROTARY del pie institucional.
+ *
+ * Son ARCHIVOS REALES que el sitio ya tiene cargados en su configuración
+ * —los mismos que pinta el pie de la página pública—, nunca dibujos. El emblema
+ * es marca registrada, con proporciones, colores y zona de resguardo propias, y
+ * se reproduce desde el Brand Center: un engranaje «parecido» es justo lo que el
+ * Distrito no puede publicar. Es la misma regla por la que `designElements.js`
+ * no tiene ninguna rueda.
+ *
+ * Se devuelven PACKED, sin huecos en el medio: los nodos de la franja se
+ * consumen en orden y el que no recibe valor no se dibuja (`dropIfEmpty`). Un
+ * sitio que sólo tenga cargado el de Rotary muestra ése y nada más — no se
+ * rellena el hueco con nada ni se sustituye por texto.
+ *
+ * Un fallo de lectura devuelve la lista vacía: la pieza sale sin franja, que es
+ * peor que con ella y mucho mejor que no salir.
+ */
+// ⚠️ Los cuatro NO viven en el mismo sitio, y por eso se leen de los dos:
+// `footerLogo` y `endPolioLogo` son COLUMNAS de `Club`; los de Rotaract e
+// Interact viven en `Setting`, como `logo_intl` y por el mismo motivo
+// (v4.699). Leer sólo uno de los dos lados deja media franja vacía sin que
+// nada avise.
+const CLAVES_FAMILIA = ['rotaract_logo', 'interact_logo'];
+
+const familyFor = async (campaign, req) => {
+    const clubId = clubOfPiece(campaign, req);
+    if (!clubId) return [];
+    try {
+        const [club, ajustes] = await Promise.all([
+            prisma.club.findUnique({ where: { id: clubId }, select: { footerLogo: true, endPolioLogo: true } }),
+            db.query(`SELECT key, value FROM "Setting" WHERE "clubId" = $1 AND key = ANY($2::text[])`,
+                [clubId, CLAVES_FAMILIA]),
+        ]);
+        const porClave = new Map((ajustes?.rows || []).map(r => [r.key, String(r.value || '').trim()]));
+        // El ORDEN es el de la papelería: Rotary primero, después los programas.
+        return [
+            club?.footerLogo,
+            porClave.get('rotaract_logo'),
+            porClave.get('interact_logo'),
+            club?.endPolioLogo,
+        ].map(u => String(u || '').trim()).filter(Boolean);
+    } catch { return []; }
 };
 
 export default { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel };
