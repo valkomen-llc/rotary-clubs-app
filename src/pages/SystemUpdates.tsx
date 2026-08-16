@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.817.0 | 2026-08-15 (Flechas fuera del video y boton configurable)
-// Cache bust: 2026-08-15o
+// UI V4.818.0 | 2026-08-15 (Las flechas del video, a los lados y a media altura)
+// Cache bust: 2026-08-15p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.818.0',
+        title: 'Las flechas del video, a los lados ↔️',
+        description: 'Las flechas para pasar los videos pasan de la fila de abajo a los costados del video, a media altura — donde uno las busca con el cursor— y por fuera del recuadro, así que siguen sin tapar nada del reproductor. Medido en el navegador: quedan a 16 px del borde por cada lado y centradas al píxel con el video. Debajo se conservan los puntos y el contador, y en pantallas angostas —donde no hay margen lateral donde ponerlas sin volver a invadir el video— aparecen ahí las flechas compactas, para que en un móvil se pueda seguir pasando de video.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'improved',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'Las flechas van a los costados del video, a media altura y fuera del recuadro.' },
+            { type: 'improved', text: 'En pantallas angostas se conservan las flechas debajo, junto a los puntos.' },
+        ]
+    },
     {
         version: '4.817.0',
         title: 'Los controles del video, fuera del video 🎛️',

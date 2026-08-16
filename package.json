@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.817.0",
-  "cache_bust": "2026-08-15o (Flechas fuera del video y boton configurable en elementos requeridos.)",
+  "version": "4.818.0",
+  "cache_bust": "2026-08-15p (Las flechas del video, a los lados y a media altura.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
