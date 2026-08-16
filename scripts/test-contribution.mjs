@@ -29,6 +29,7 @@ import {
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
+    heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -250,6 +251,29 @@ grupo('Slug');
 check('se deriva sin tildes ni espacios', slugify('Campaña Terremoto — Valle del Cauca') === 'campana-terremoto-valle-del-cauca');
 check('nunca queda vacío', slugify('¡¡¡') === 'campana');
 
+// ─── v4.812: el hero se turna entre varias imágenes ────────────────────────
+grupo('Las imágenes del hero');
+check('con varias, se devuelven todas y en orden',
+    eq(heroSlides({ images: [{ url: 'a.jpg', alt: 'A' }, { url: 'b.jpg', alt: 'B' }] }),
+        [{ url: 'a.jpg', alt: 'A' }, { url: 'b.jpg', alt: 'B' }]));
+// La regla ADITIVA del sitio: una campaña guardada antes de v4.812 tiene una
+// sola `image` y se tiene que seguir viendo igual, no quedarse sin hero.
+check('una campaña vieja con una sola `image` sigue teniendo su hero',
+    eq(heroSlides({ image: 'sola.jpg', imageAlt: 'Sola' }), [{ url: 'sola.jpg', alt: 'Sola' }]));
+check('cuando hay lista, la lista manda sobre la `image` vieja',
+    eq(heroSlides({ image: 'vieja.jpg', images: [{ url: 'nueva.jpg' }] }), [{ url: 'nueva.jpg', alt: '' }]));
+check('sin ninguna, el hero cae a su fondo liso (lista vacía, no un hueco roto)',
+    eq(heroSlides({}), []) && eq(heroSlides({ images: [] }), []) && eq(heroSlides(undefined), []));
+check('una entrada sin URL se descarta: no se pinta un `img` sin src',
+    eq(heroSlides({ images: [{ url: '', alt: 'x' }, { alt: 'y' }, { url: 'ok.jpg' }] }), [{ url: 'ok.jpg', alt: '' }]));
+check('lo que no es una lista no revienta', eq(heroSlides({ images: 'no' }), []));
+check('el tope se respeta',
+    heroSlides({ images: Array.from({ length: 20 }, (_, i) => ({ url: `${i}.jpg` })) }).length === HERO_MAX_SLIDES);
+check('normalizeContent guarda las imágenes del hero y CONSERVA la `image` de siempre', (() => {
+    const n = normalizeContent({ hero: { image: 'vieja.jpg', images: [{ url: 'a.jpg', alt: 'A' }, { url: '' }] } });
+    return n.hero.image === 'vieja.jpg' && eq(n.hero.images, [{ url: 'a.jpg', alt: 'A' }]);
+})());
+
 // ─── El espejo del navegador ───────────────────────────────────────────────
 let mirror = null;
 try {
@@ -292,6 +316,18 @@ if (mirror) {
         eq(normalizeCenters(centrosCrudos), mirror.normalizeCenters(centrosCrudos)));
     check('misma agrupación por ciudad — lo que pinta el navegador es lo que decidió el servidor',
         eq(groupCenters(centrosOk), mirror.groupCenters(centrosOk)));
+    check('mismas imágenes del hero: el editor y la página resuelven igual', (() => {
+        const casos = [
+            { image: 'a.jpg', imageAlt: 'A' },
+            { images: [{ url: 'a.jpg', alt: 'A' }, { url: 'b.jpg' }] },
+            { image: 'vieja.jpg', images: [{ url: 'nueva.jpg' }] },
+            { images: [{ url: '' }, { alt: 'sin url' }] },
+            {}, { images: 'no es lista' },
+        ];
+        return casos.every(h => eq(heroSlides(h), mirror.heroSlides(h)));
+    })());
+    check('mismo tope y mismo intervalo del carrusel',
+        HERO_MAX_SLIDES === mirror.HERO_MAX_SLIDES && HERO_SLIDE_MS === mirror.HERO_SLIDE_MS);
 }
 
 // ─── Comprobaciones de archivo ─────────────────────────────────────────────
@@ -647,6 +683,38 @@ for (const pantalla of ['src/pages/admin/ContributionCampaigns.tsx', 'src/pages/
     check(`${pantalla.split('/').pop()}: todos los selectores ofrecen la varita`,
         usos > 0 && usos === conVarita, `${conVarita}/${usos}`);
 }
+
+grupo('El carrusel del hero, en la pantalla');
+const landingSrc = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+check('la página usa el criterio compartido, no decide por su cuenta cuál imagen va',
+    /heroSlides\(hero\)/.test(landingSrc) && !/hero\.image \?/.test(landingSrc));
+check('el intervalo sale del spec, no de un número suelto en la pantalla',
+    /HERO_SLIDE_MS/.test(landingSrc) && !/setInterval\([^,]+,\s*\d{3,}\)/.test(landingSrc));
+// Con una sola imagen un intervalo que siempre vuelve al mismo índice es
+// trabajo invisible, y unos puntos que no llevan a ninguna parte.
+check('con una sola imagen no hay intervalo ni puntos',
+    /if \(slideCount < 2\)/.test(landingSrc) && /slides\.length > 1 &&/.test(landingSrc));
+// Se mira DENTRO del componente: el archivo tiene otros `return (` antes
+// (CampaignCta), y compararlos daría un falso negativo.
+check('los hooks del carrusel van ARRIBA, antes de cualquier return (regla de check:hooks)', (() => {
+    const cuerpo = landingSrc.slice(landingSrc.indexOf('const CampaignLanding:'));
+    return cuerpo.indexOf('const [slide, setSlide] = useState(0)') < cuerpo.indexOf('return (');
+})());
+check('las imágenes se cruzan por opacidad, montadas todas — no se desmontan y recargan',
+    /transition-opacity duration-1000/.test(landingSrc) && /i === slide \? 'opacity-100 z-10' : 'opacity-0 z-0'/.test(landingSrc));
+check('los puntos se anuncian al lector de pantalla',
+    /aria-label=\{`Ver imagen \$\{i \+ 1\} de \$\{slides\.length\}`\}/.test(landingSrc));
+
+const adminSrc = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+check('el editor ofrece las DOS vías para agregar imágenes (v4.700)',
+    /startUpload\('heroAdd'\)/.test(adminSrc) && /setPickerField\('heroAdd'\)/.test(adminSrc));
+check('se pueden elegir VARIAS de la Biblioteca de una vez',
+    /maxSelection=\{pickerField === 'heroAdd' \? HERO_MAX_SLIDES : 1\}/.test(adminSrc)
+    && /<input ref=\{fileInputRef\} type="file" multiple/.test(adminSrc));
+check('el editor no inventa su propio tope: usa el del spec',
+    /HERO_MAX_SLIDES/.test(adminSrc) && !/slice\(0,\s*8\)/.test(adminSrc));
+check('una campaña con una sola imagen se ve en el editor como su primera fila',
+    /hero\.images\?\.length \? hero\.images : heroSlides\(hero\)/.test(adminSrc));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

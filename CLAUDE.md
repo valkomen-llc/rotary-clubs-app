@@ -2615,6 +2615,41 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
   catch-all de toda página pública.
 
+### El hero de la campaña se turna entre varias imágenes (v4.812)
+
+- **`heroSlides` es el ÚNICO punto que decide cuál imagen va**, y está en los
+  dos espejos con paridad probada. Con la decisión escrita en el editor y otra
+  vez en la página, una campaña se vería distinta según quién la resuelva —
+  mismo criterio que `animationSourceOf` en el Creador de Reels.
+- **`image`/`imageAlt` NO se retiran**: regla aditiva (como `sessions` en
+  v4.711 y `groups` en v4.708). Una campaña guardada antes tiene una sola
+  imagen y se sigue viendo igual; `heroSlides` la devuelve como su única
+  diapositiva y el editor la muestra como su primera fila, así que en cuanto
+  se toque queda escrita en `images`. Publicar una campaña vieja no puede
+  dejarla sin hero.
+- **Con una sola imagen no hay intervalo ni puntos.** Un `setInterval` que
+  siempre vuelve al mismo índice es trabajo invisible, y unos puntos que no
+  llevan a ninguna parte son un control que no controla (v4.650).
+- **Las imágenes están TODAS montadas y se cruzan por opacidad**, igual que
+  `HeroSection.tsx`. Montarlas y desmontarlas haría que cada cambio volviera a
+  pedir la imagen y se viera el hueco mientras carga.
+- **El `z-0` del contenedor de imágenes no es decorativo**: lo convierte en su
+  propio contexto de apilamiento, así el `z-10`/`z-20` de las diapositivas y
+  el velo se quedan DENTRO y no tapan el texto del hero, que va después y sin
+  z-index. Sin él, el velo se come el título y los botones.
+- **Los dos hooks del carrusel van ARRIBA del componente**, antes de cualquier
+  `return` — `check:hooks`, y el defecto que dejó en blanco la portada de un
+  sitio de Evento (v4.689).
+- **El tope y el intervalo salen del spec** (`HERO_MAX_SLIDES`,
+  `HERO_SLIDE_MS`), no de números sueltos en la pantalla: el editor y la
+  página tienen que acotar y esperar lo mismo.
+- **Las DOS vías para agregar, siempre** (v4.700), y ADEMÁS varias de una vez:
+  elegir cinco de la Biblioteca de a una es cinco veces el mismo gesto. El
+  `MediaPicker` sube su `maxSelection` sólo para el hero.
+- **Comprobado en un navegador que de verdad se turnan.** Que roten solas es
+  lo que se pidió y no se ve en una prueba de criterio: el smoke espera los
+  5,6 s y comprueba que el punto activo se movió sin que nadie lo tocara.
+
 ### El ícono se elige viéndolo, y una varita lo propone (v4.810-v4.811)
 
 | Archivo | Qué es |
