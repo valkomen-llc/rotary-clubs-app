@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.832.0",
-  "cache_bust": "2026-08-16l (Siempre tres videos a la vista y la rotación no se para.)",
+  "version": "4.833.0",
+  "cache_bust": "2026-08-16m (Infografías de campaña en el Generador de Publicaciones.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -47,7 +47,8 @@
     "test:ecosystem:ui": "node scripts/test-ecosystem-ui.mjs",
     "test:design": "node scripts/test-design.mjs",
     "test:design:render": "node scripts/test-design-render.mjs",
-    "check:syntax": "node scripts/check-syntax.mjs"
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "test:campaign-post": "node scripts/test-campaign-post.mjs"
   },
   "engines": {
     "node": "22.x"

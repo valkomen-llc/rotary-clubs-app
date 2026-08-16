@@ -464,6 +464,22 @@ export function normalizeContent(raw = {}) {
                 alt: str(it?.alt, 200),
             })).filter(it => it.url),
         },
+        // ── El HECHO: dónde y cuándo ────────────────────────────────
+        //
+        // Campos propios desde v4.833, y el motivo es concreto: hasta entonces
+        // la ubicación vivía dentro del título o de la insignia («EMERGENCIA ·
+        // TERREMOTO COLOMBIA») y la fecha no existía en ninguna parte
+        // —`startsAt` es la vigencia de la CAMPAÑA, no cuándo ocurrió el
+        // hecho—. El generador de piezas los necesita para poder nombrarlos, y
+        // deducirlos del texto sería adivinar una ciudad o una fecha en una
+        // publicación institucional: exactamente lo que la regla de veracidad
+        // prohíbe. Sin dato, el brief DICE que no se sabe, y el modelo no lo
+        // menciona.
+        //
+        // ADITIVOS: una campaña guardada antes no los trae y se sigue
+        // publicando igual — la página no cambia por esto.
+        location: str(c.location, 160),             // «San José del Palmar, Chocó — Colombia»
+        eventDate: str(c.eventDate, 60),            // «14 de agosto de 2026»
         centersNote: str(c.centersNote, 300),       // «Se habilitarán más puntos…»
         centersAlliance: str(c.centersAlliance, 200), // «En alianza con … ABACO»
         infoBlocks: arr(c.infoBlocks).slice(0, 6).map((b, i) => ({
