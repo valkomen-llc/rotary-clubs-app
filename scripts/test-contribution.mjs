@@ -876,21 +876,23 @@ check('las flechas cuelgan del envoltorio de la FILA, no del bloque entero', (()
 // compactas de la fila de abajo, o no habría forma de pasar de video.
 check('en pantallas angostas quedan las flechas compactas de abajo',
     /hidden lg:flex absolute left-4/.test(landingSrc)
-    && /lg:hidden w-10 h-10[\s\S]{0,260}ChevronLeft/.test(landingSrc)
-    && /hidden lg:block flex-shrink-0/.test(landingSrc));
+    && /lg:hidden disabled:opacity-30[\s\S]{0,300}ChevronLeft/.test(landingSrc));
 // v4.830 invierte la regla de v4.816. Lo que la hacía necesaria eran los dos
 // frenos que ahora existen: se detiene con el cursor encima y se detiene DEL
 // TODO al pulsar el reproductor. Sin esos dos frenos, quitar el intervalo.
 check('los videos rotan solos, y se frenan con el cursor y con el play',
-    /const t = setInterval\(\(\) => setVideoIdx\(i => \(i \+ 1\) % videoCount\), VIDEO_ROTA_MS\)/.test(landingSrc)
+    /setInterval\(\(\) => setVideoIdx\(i => \{[\s\S]{0,400}\}\), VIDEO_ROTA_MS\)/.test(landingSrc)
     && /if \(videoCount < 2 \|\| videoQuieto \|\| videoTomado\) return;/.test(landingSrc)
     && /onMouseEnter=\{\(\) => setVideoQuieto\(true\)\}/.test(landingSrc)
     && /onMouseLeave=\{\(\) => setVideoQuieto\(false\)\}/.test(landingSrc)
     && /onPlay=\{\(\) => setVideoTomado\(true\)\}/.test(landingSrc));
 // Montar los demás descargaría varios videos de una vez, y sin remontar el
 // anterior seguiría sonando al cambiar.
-check('se dibuja SÓLO el video que manda, y se remonta al cambiar',
-    /key=\{videoActual\.url\}/.test(landingSrc));
+// Desde v4.831 la tira pinta todas las diapositivas, pero el REPRODUCTOR lo
+// monta sólo la activa: las demás son previsualizaciones, así que nunca hay
+// más de una incrustación por visita. `key` fuerza el remontaje al cambiar.
+check('se monta SÓLO el reproductor del video que manda, y se remonta al cambiar',
+    /key=\{v\.url\}/.test(landingSrc) && /\{activo \? \(/.test(landingSrc));
 check('un índice que quedó fuera de rango no rompe la sección',
     /videos\[Math\.min\(videoIdx, videos\.length - 1\)\] \|\| null/.test(landingSrc));
 
@@ -915,8 +917,8 @@ check('el video va DESPUÉS de las cajas de elementos', (() => {
 // Un archivo propio no se puede meter en un iframe: se reproduce con el
 // reproductor del navegador, y al revés tampoco funciona.
 check('un archivo propio va en <video> y un embed en <iframe>',
-    /videoActual\.video\.kind === 'file' \?/.test(landingSrc)
-    && /<video[\s\S]{0,700}controls/.test(landingSrc) && /<iframe[\s\S]{0,900}allowFullScreen/.test(landingSrc));
+    /v\.video\.kind === 'file' \?/.test(landingSrc)
+    && /<video[\s\S]{0,900}controls/.test(landingSrc) && /<iframe[\s\S]{0,900}allowFullScreen/.test(landingSrc));
 
 // v4.819: los centros llevan el fondo de la banda «Somos gente de acción».
 check('la sección de centros usa el MISMO fondo de la portada, no una copia', (() => {
@@ -1540,9 +1542,11 @@ check('la cifra usa figuras proporcionales, no tabulares', (() => {
 grupo('v4.829 — el carrusel de videos con vecinos');
 const landing829 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
 // Con DOS videos, pintar el mismo a los dos lados haría creer que hay tres.
-check('con dos videos sólo asoma UNO; con uno, ninguno',
-    /izq: n > 2 \? videos\[\(i - 1 \+ n\) % n\] : null/.test(landing829)
-    && /if \(n < 2\) return \{ izq: null, der: null \}/.test(landing829));
+// Con la tira lineal ya no hace falta elegir vecinos: están TODOS, y en los
+// extremos simplemente no hay nada de ese lado.
+check('la tira pinta todas las diapositivas y centra la activa',
+    /videos\.map\(\(v, i\) => \{/.test(landing829)
+    && /const activo = i === Math\.min\(videoIdx, videos\.length - 1\);/.test(landing829));
 // Un vecino es una PREVISUALIZACIÓN: montar dos incrustaciones más por visita
 // para enseñar algo que está a medias no se paga.
 check('el vecino nunca monta un iframe', (() => {
@@ -1552,9 +1556,13 @@ check('el vecino nunca monta un iframe', (() => {
 })());
 // `flex-shrink-0` en el vecino es lo que hace que se CORTE en vez de encogerse
 // entero: sin él, el flex lo reduce y se ve completo y diminuto.
-check('el vecino se corta, no se encoge', /hidden lg:block flex-shrink-0 w-\[34vw\]/.test(landing829));
-check('el reproductor no lo encogen los vecinos',
-    /flex-shrink-0 w-\[86vw\] lg:w-\[56vw\] xl:w-\[640px\]/.test(landing829));
+// Desde v4.831 el vecino ocupa TODA su diapositiva y quien la achica es el
+// `scale` de la diapositiva: con anchos distintos, el paso entre centros
+// dejaría de ser constante y la traslación no sería una resta.
+check('el vecino ocupa su diapositiva; el achicado es de la diapositiva',
+    /className="block w-full rounded-2xl overflow-hidden bg-gray-900 relative/.test(landing829)
+    && /flex-shrink-0 w-\[86vw\] lg:w-\[56vw\] xl:w-\[640px\]/.test(landing829));
+
 // El mismo difuminado que la tira de «Rotarios en acción», pero acotado al
 // borde: una zona de fundido ancha se come el asomo del vecino.
 check('el borde se difumina sólo en el extremo',
@@ -1584,11 +1592,48 @@ check('con un embebido se detecta que PULSARON el reproductor, sin cargar la API
 // el freno por cursor funcione con un embebido. Medido en el navegador: sin
 // ella, sobre el vecino se detenía y sobre el reproductor seguía rotando.
 check('hay banda del carrusel por encima y por debajo del reproductor',
-    /flex items-center justify-center gap-3 xl:gap-4 py-6/.test(landing830));
+    /relative flex items-center py-6 w-max/.test(landing830));
 // `videoCount` se calcula ANTES del efecto que lo consume: un `const` de más
 // abajo daría un error de zona muerta al evaluar las dependencias.
 check('el conteo de videos se declara antes del efecto que lo usa',
     landing830.indexOf('const videoCount =') < landing830.indexOf('if (videoCount < 2'));
+
+grupo('v4.831 — la transición de un video a otro');
+const landing831 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+// Hasta v4.830 se repintaba el trío entero y el cambio era un corte seco.
+check('la tira se traslada con una transición, no se repinta de golpe',
+    /transform: `translateX\(\$\{desplazamientoVideos\}px\)`/.test(landing831)
+    && /transition: `transform \$\{VIDEO_DESLIZA_MS\}ms cubic-bezier/.test(landing831));
+// Una clase arbitraria con `cubic-bezier` de comas NO llegó al CSS compilado
+// —medido: 0,15 s en vez de 0,9— y una clase que no se genera falla en
+// silencio (la lección de v4.719).
+check('la duración va en el ESTILO, no en una clase arbitraria de Tailwind',
+    /const VIDEO_DESLIZA_MS = 900;/.test(landing831)
+    && !/className="[^"]*duration-\[900ms\]/.test(landing831));
+// El centrado se corrige sobre el desplazamiento ACTUAL: calcularlo desde la
+// maquetación depende de cuál sea el ancestro posicionado y de los márgenes
+// negativos, y suponerlo mal dejaba el video corrido (medido: 443 en vez de
+// 640).
+check('el centrado se mide, no se deduce de la maquetación',
+    /const actual = new DOMMatrixReadOnly\(getComputedStyle\(el\)\.transform\)\.m41;/.test(landing831)
+    && /actual \+ \(w\.left \+ w\.width \/ 2\) - \(r\.left \+ r\.width \/ 2\)/.test(landing831));
+// Todas las diapositivas miden lo MISMO y el vecino se achica con `scale`,
+// que no ocupa espacio: así el paso entre centros es constante.
+check('el vecino se achica con scale, no con otro ancho',
+    /transform: `scale\(\$\{activo \? 1 : 0\.66\}\)`/.test(landing831));
+// Con una tira lineal, saltar del último al primero es un desplazamiento
+// largo que se lee como un tirón.
+check('la rotación REBOTA en los extremos en vez de dar la vuelta',
+    /if \(i \+ sentidoVideo\.current >= videoCount\) sentidoVideo\.current = -1;/.test(landing831)
+    && !/setVideoIdx\(i => \(i \+ 1\) % videos\.length\)/.test(landing831));
+// Nunca un botón que no lleva a ninguna parte (v4.650).
+check('en los extremos la flecha que no lleva a nada se desactiva',
+    /disabled=\{videoIdx <= 0\}/.test(landing831)
+    && /disabled=\{videoIdx >= videos\.length - 1\}/.test(landing831));
+// El reproductor de verdad lo monta SÓLO la diapositiva activa: las demás son
+// previsualizaciones, así que nunca hay más de una incrustación por visita.
+check('sólo la diapositiva activa monta el reproductor',
+    /\{activo \? \(/.test(landing831) && /<VideoVecino entry=\{v\} onClick=/.test(landing831));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

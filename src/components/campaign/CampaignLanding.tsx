@@ -39,6 +39,10 @@ interface Cta { label: string; url: string; action: 'donate' | 'centers' | 'link
  *  video y decidir si lo mira. Al ajustarlo, acá y en ningún otro sitio. */
 const VIDEO_ROTA_MS = 7000;
 
+/** Cuánto dura el desplazamiento de un video al siguiente. Lo bastante para
+ *  que se VEA el movimiento —que es lo que se pidió— sin hacer esperar. */
+const VIDEO_DESLIZA_MS = 900;
+
 // ── Métricas (F5) ───────────────────────────────────────────────────────────
 //
 // Se reporta con `sendBeacon`: no espera respuesta y sobrevive a que el
@@ -159,7 +163,7 @@ const CampaignCta: React.FC<{
 // `aria-hidden`: para un lector de pantalla el video es el que está sonando,
 // no los dos que asoman. Para navegar están las flechas y los puntos, que sí
 // tienen nombre.
-const VideoVecino: React.FC<{ entry: any; lado: 'izq' | 'der'; onClick: () => void }> = ({ entry, lado, onClick }) => {
+const VideoVecino: React.FC<{ entry: any; onClick: () => void }> = ({ entry, onClick }) => {
     const preview = entry.poster || videoThumb(entry.video);
     return (
         <button
@@ -171,7 +175,10 @@ const VideoVecino: React.FC<{ entry: any; lado: 'izq' | 'der'; onClick: () => vo
             // lo que hace que el vecino se corte contra el borde. Sin él, el
             // flex lo encogería entero y se vería completo y diminuto, que es
             // justo lo contrario del efecto.
-            className={`hidden lg:block flex-shrink-0 w-[34vw] xl:w-[420px] max-w-[420px] rounded-2xl overflow-hidden bg-gray-900 relative opacity-55 hover:opacity-80 transition-opacity duration-300 ${lado === 'izq' ? 'origin-right' : 'origin-left'}`}
+            // Ocupa TODA su diapositiva: el achicado lo hace el `scale` de la
+            // diapositiva, que no ocupa espacio y por eso deja el paso entre
+            // centros constante.
+            className="block w-full rounded-2xl overflow-hidden bg-gray-900 relative transition-opacity duration-300"
             style={{ aspectRatio: '16 / 9' }}
         >
             {preview ? (
@@ -222,6 +229,11 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     const [videoIdx, setVideoIdx] = useState(0);
     const [videoQuieto, setVideoQuieto] = useState(false);   // cursor encima
     const [videoTomado, setVideoTomado] = useState(false);   // le dieron play
+    const tiraVideos = useRef<HTMLDivElement>(null);
+    // Cuánto hay que desplazar la tira para centrar el video que manda. Se
+    // guarda en estado porque depende de una MEDIDA del DOM (el paso entre
+    // dos diapositivas), que no existe en el primer render.
+    const [desplazamientoVideos, setDesplazamientoVideos] = useState(0);
     // Cuántos videos hay. Se calcula ACÁ, antes del efecto que lo consume: un
     // `const` declarado más abajo daría un error de zona muerta al evaluar el
     // array de dependencias (el defecto de `uploadImage` en Plantillas IA).
@@ -233,11 +245,49 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // los dos frenos que ahora existen: la rotación se detiene con el cursor
     // encima y se detiene DEL TODO en cuanto alguien le da play. Sin esos dos
     // frenos, volver a quitar el intervalo.
+    // La rotación REBOTA (…1, 2, 3, 2, 1…) en vez de dar la vuelta. Con una
+    // tira lineal, saltar del último al primero es un desplazamiento largo
+    // que se ve como un tirón; rebotando, cada paso es siempre de UNA
+    // diapositiva y la transición se lee igual de suave en los dos sentidos.
+    const sentidoVideo = useRef(1);
     useEffect(() => {
         if (videoCount < 2 || videoQuieto || videoTomado) return;
-        const t = setInterval(() => setVideoIdx(i => (i + 1) % videoCount), VIDEO_ROTA_MS);
+        const t = setInterval(() => setVideoIdx(i => {
+            if (i + sentidoVideo.current >= videoCount) sentidoVideo.current = -1;
+            else if (i + sentidoVideo.current < 0) sentidoVideo.current = 1;
+            return i + sentidoVideo.current;
+        }), VIDEO_ROTA_MS);
         return () => clearInterval(t);
     }, [videoCount, videoQuieto, videoTomado]);
+
+    // Centrar la diapositiva activa. El paso se MIDE sobre dos diapositivas
+    // —igual que en la tira de «Rotarios en acción»— porque el ancho cambia
+    // con el tamaño de la pantalla y los márgenes negativos lo acortan: darlo
+    // por sabido dejaría el video corrido en cuanto alguien ajuste la ventana.
+    useEffect(() => {
+        const el = tiraVideos.current;
+        if (!el) return;
+        // Se corrige sobre el desplazamiento ACTUAL en vez de calcularlo desde
+        // la maquetación: `offsetLeft` depende de cuál sea el ancestro
+        // posicionado y de los márgenes negativos, y suponerlo mal deja el
+        // video corrido —medido: el centro caía en 443 en vez de 640—. Con
+        // los rectángulos reales la cuenta es «cuánto le falta para estar
+        // centrado», que no depende de nada de eso. El CENTRO no lo altera el
+        // `scale`, así que da igual en qué punto de la transición se mida.
+        const medir = () => {
+            const d = el.querySelectorAll<HTMLElement>('[data-slide-video]');
+            const wrap = el.parentElement;
+            if (!d.length || !wrap) return;
+            const i = Math.min(videoIdx, d.length - 1);
+            const r = d[i].getBoundingClientRect();
+            const w = wrap.getBoundingClientRect();
+            const actual = new DOMMatrixReadOnly(getComputedStyle(el).transform).m41;
+            setDesplazamientoVideos(actual + (w.left + w.width / 2) - (r.left + r.width / 2));
+        };
+        medir();
+        window.addEventListener('resize', medir);
+        return () => window.removeEventListener('resize', medir);
+    }, [videoIdx, videoCount]);
 
     // Un video EMBEBIDO (YouTube, Vimeo) se reproduce dentro de un `<iframe>`
     // y desde acá no hay forma de saber que empezó: haría falta la API de
@@ -274,16 +324,6 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // Si se quitan videos desde el panel, el índice guardado puede quedar
     // fuera de rango: se acota al leer en vez de con otro efecto.
     const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
-    // Con DOS videos no se pinta el mismo a los dos lados: se vería repetido y
-    // haría creer que hay tres. Con uno no hay vecinos y el reproductor queda
-    // solo, centrado, como antes de v4.829.
-    const vecinos = (() => {
-        const n = videos.length;
-        if (n < 2) return { izq: null, der: null };
-        const i = Math.min(videoIdx, n - 1);
-        const der = videos[(i + 1) % n];
-        return { izq: n > 2 ? videos[(i - 1 + n) % n] : null, der };
-    })();
     // El botón que cierra la sección de elementos. Vacío = el heredado.
     const itemsCta = content.requiredItemsCta;
     // La galería, con el mismo criterio compartido. Quién la pinta es
@@ -545,6 +585,20 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     onMouseEnter={() => setVideoQuieto(true)}
                                     onMouseLeave={() => setVideoQuieto(false)}
                                 >
+                                    {/* La TIRA con todos los videos. Se traslada
+                                        con `translateX` y una transición, así
+                                        pasar de uno a otro se VE: hasta v4.830 se
+                                        repintaba el trío entero y el cambio era
+                                        un corte seco.
+
+                                        El paso se MIDE sobre dos diapositivas
+                                        (`pasoVideo`), no se supone: el ancho
+                                        cambia con el tamaño de la pantalla. Misma
+                                        técnica que la tira de «Rotarios en
+                                        acción». Mientras no se haya medido, la
+                                        tira se centra con `translateX(-50%)` sobre
+                                        el bloque, que es la posición correcta del
+                                        primer video. */}
                                     <div
                                         // Márgenes negativos: el carrusel llega
                                         // hasta el BORDE del contenedor y no
@@ -564,67 +618,97 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         }}
                                     >
                                         {/* `py-6`: una banda del carrusel POR ENCIMA Y POR DEBAJO del
-                                                reproductor. No es respiro decorativo — es lo
-                                                que hace que el freno por cursor funcione con un
-                                                video EMBEBIDO: los eventos del ratón sobre un
-                                                `<iframe>` van a SU documento y el nuestro no los
-                                                ve nunca, así que sin esa banda el puntero que
-                                                baja en vertical entra directo al reproductor y
-                                                la rotación sigue. Medido: sobre el vecino se
-                                                detenía y sobre el reproductor no. */}
-                                        <div className="flex items-center justify-center gap-3 xl:gap-4 py-6">
-                                            {vecinos.izq && (
-                                                <VideoVecino entry={vecinos.izq} lado="izq"
-                                                    onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)} />
-                                            )}
-
-                                            {/* El reproductor de verdad. `flex-shrink-0`
-                                                es lo que impide que los vecinos lo
-                                                encojan: el que se recorta es el vecino. */}
-                                            <div className="flex-shrink-0 w-[86vw] lg:w-[56vw] xl:w-[640px] max-w-[640px]">
-                                                <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
-                                                    {videoActual.video.kind === 'file' ? (
-                                                        // Un archivo propio se reproduce con el
-                                                        // reproductor del navegador: no hace
-                                                        // falta librería ninguna.
-                                                        //
-                                                        // Se dibuja SÓLO el que manda —al revés
-                                                        // que las imágenes del hero, que están
-                                                        // todas montadas—: montar los demás
-                                                        // descargaría varios videos de una vez,
-                                                        // y `key` fuerza el remontaje para que
-                                                        // el anterior deje de sonar al cambiar.
-                                                        <video
-                                                            key={videoActual.url}
-                                                            src={videoActual.video.src}
-                                                            poster={videoActual.poster || undefined}
-                                                            controls
-                                                            playsInline
-                                                            preload="metadata"
-                                                            // Darle play DETIENE la rotación para
-                                                            // siempre: quien eligió un video se
-                                                            // queda en él, que es lo pedido.
-                                                            onPlay={() => setVideoTomado(true)}
-                                                            className="absolute inset-0 w-full h-full"
-                                                        />
-                                                    ) : (
-                                                        <iframe
-                                                            key={videoActual.url}
-                                                            src={videoActual.video.src}
-                                                            title={videoActual.title || 'Video de la campaña'}
-                                                            className="absolute inset-0 w-full h-full"
-                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                            referrerPolicy="strict-origin-when-cross-origin"
-                                                            allowFullScreen
-                                                        />
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {vecinos.der && (
-                                                <VideoVecino entry={vecinos.der} lado="der"
-                                                    onClick={() => setVideoIdx(i => (i + 1) % videos.length)} />
-                                            )}
+                                            reproductor. No es respiro decorativo — es lo
+                                            que hace que el freno por cursor funcione con un
+                                            video EMBEBIDO: los eventos del ratón sobre un
+                                            `<iframe>` van a SU documento y el nuestro no los
+                                            ve nunca, así que sin esa banda el puntero que
+                                            baja en vertical entra directo al reproductor y
+                                            la rotación sigue. Medido: sobre el vecino se
+                                            detenía y sobre el reproductor no. */}
+                                        <div
+                                            ref={tiraVideos}
+                                            // `relative`: convierte la tira en el
+                                            // ancestro posicionado de las diapositivas, así
+                                            // `offsetLeft` se mide contra ELLA. Sin eso se
+                                            // mide contra el envoltorio de las flechas y el
+                                            // video queda corrido — medido en el navegador.
+                                            className="relative flex items-center py-6 w-max"
+                                            // La transición va en el ESTILO y no en una clase
+                                            // arbitraria de Tailwind: `duration-[900ms]` con un
+                                            // `cubic-bezier` de comas no llegó al CSS compilado
+                                            // —medido: 0,15 s en vez de 0,9— y una clase que no
+                                            // se genera falla en silencio (la lección de v4.719).
+                                            style={{
+                                                transform: `translateX(${desplazamientoVideos}px)`,
+                                                transition: `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
+                                            }}
+                                        >
+                                            {videos.map((v, i) => {
+                                                const activo = i === Math.min(videoIdx, videos.length - 1);
+                                                return (
+                                                    <div
+                                                        key={v.url}
+                                                        data-slide-video
+                                                        // Todas las diapositivas miden lo MISMO y el
+                                                        // vecino se achica con `scale`, que no ocupa
+                                                        // espacio: así el paso entre centros es
+                                                        // constante y la traslación es una resta.
+                                                        // Con anchos distintos habría que recalcular
+                                                        // el desplazamiento por diapositiva.
+                                                        className={`flex-shrink-0 w-[86vw] lg:w-[56vw] xl:w-[640px] max-w-[640px] -mx-[7vw] xl:-mx-[52px] ${activo ? 'z-10' : ''}`}
+                                                        style={{
+                                                            // El vecino se achica y se atenúa en el
+                                                            // MISMO tiempo que la tira se desplaza:
+                                                            // si no, crecería antes de llegar y el
+                                                            // cambio volvería a leerse como un salto.
+                                                            transform: `scale(${activo ? 1 : 0.66})`,
+                                                            opacity: activo ? 1 : 0.55,
+                                                            transition: `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity ${VIDEO_DESLIZA_MS}ms ease-out`,
+                                                        }}
+                                                    >
+                                                        {activo ? (
+                                                            <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
+                                                                {v.video.kind === 'file' ? (
+                                                                    // Un archivo propio se reproduce con el
+                                                                    // reproductor del navegador: no hace
+                                                                    // falta librería ninguna.
+                                                                    //
+                                                                    // El reproductor de verdad lo monta SÓLO
+                                                                    // la diapositiva activa: las demás son
+                                                                    // previsualizaciones, así que nunca hay
+                                                                    // más de una incrustación por visita.
+                                                                    <video
+                                                                        key={v.url}
+                                                                        src={v.video.src}
+                                                                        poster={v.poster || undefined}
+                                                                        controls
+                                                                        playsInline
+                                                                        preload="metadata"
+                                                                        // Darle play DETIENE la rotación para
+                                                                        // siempre: quien eligió un video se
+                                                                        // queda en él, que es lo pedido.
+                                                                        onPlay={() => setVideoTomado(true)}
+                                                                        className="absolute inset-0 w-full h-full"
+                                                                    />
+                                                                ) : (
+                                                                    <iframe
+                                                                        key={v.url}
+                                                                        src={v.video.src}
+                                                                        title={v.title || 'Video de la campaña'}
+                                                                        className="absolute inset-0 w-full h-full"
+                                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                                        referrerPolicy="strict-origin-when-cross-origin"
+                                                                        allowFullScreen
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <VideoVecino entry={v} onClick={() => setVideoIdx(i)} />
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
@@ -636,14 +720,19 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         vecinos y quedan las de la fila de abajo. */}
                                     {videos.length > 1 && (
                                         <>
-                                            <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                            <button type="button" onClick={() => setVideoIdx(i => Math.max(0, i - 1))}
                                                 aria-label="Video anterior"
-                                                className="hidden lg:flex absolute left-4 xl:left-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-colors z-10">
+                                                // La tira es LINEAL: en el primero no hay
+                                                // anterior. Se desactiva en vez de dejar un
+                                                // botón que no lleva a ninguna parte (v4.650).
+                                                disabled={videoIdx <= 0}
+                                                className="hidden lg:flex absolute left-4 xl:left-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-all z-10 disabled:opacity-0 disabled:pointer-events-none">
                                                 <ChevronLeft className="w-6 h-6" />
                                             </button>
-                                            <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                            <button type="button" onClick={() => setVideoIdx(i => Math.min(videos.length - 1, i + 1))}
                                                 aria-label="Video siguiente"
-                                                className="hidden lg:flex absolute right-4 xl:right-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-colors z-10">
+                                                disabled={videoIdx >= videos.length - 1}
+                                                className="hidden lg:flex absolute right-4 xl:right-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-all z-10 disabled:opacity-0 disabled:pointer-events-none">
                                                 <ChevronRight className="w-6 h-6" />
                                             </button>
                                         </>
@@ -661,9 +750,10 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     pasar de video salvo apuntando a un punto. */}
                                 {videos.length > 1 && (
                                     <div className="flex items-center justify-center gap-4 mt-5">
-                                        <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                        <button type="button" onClick={() => setVideoIdx(i => Math.max(0, i - 1))}
                                             aria-label="Video anterior (compacto)"
-                                            className="lg:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            disabled={videoIdx <= 0}
+                                            className="lg:hidden disabled:opacity-30 disabled:pointer-events-none w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <div className="flex items-center gap-2">
@@ -675,9 +765,10 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                     style={i === videoIdx ? { backgroundColor: accent } : undefined} />
                                             ))}
                                         </div>
-                                        <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                        <button type="button" onClick={() => setVideoIdx(i => Math.min(videos.length - 1, i + 1))}
                                             aria-label="Video siguiente (compacto)"
-                                            className="lg:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            disabled={videoIdx >= videos.length - 1}
+                                            className="lg:hidden disabled:opacity-30 disabled:pointer-events-none w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                         <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>
