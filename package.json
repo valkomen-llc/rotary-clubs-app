@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.813.0",
-  "cache_bust": "2026-08-15k (El hero de la campana lleva el mismo acercamiento lento del hero de la portada.)",
+  "version": "4.814.0",
+  "cache_bust": "2026-08-15l (Las tarjetas de centros de acopio ya no dejan espacios en blanco.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
