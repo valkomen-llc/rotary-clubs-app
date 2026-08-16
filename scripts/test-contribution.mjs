@@ -26,7 +26,7 @@ import {
     CAMPAIGN_STATUSES, STATUS_LABELS, canTransition, effectiveStatus, isServable,
     normalizeTargeting, targetsSite, pickCampaignForSite,
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
-    normalizeStats, validateStats, validateForPublish, latestStatDate,
+    normalizeStats, validateStats, validateForPublish, latestStatDate, commonStatSource,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
@@ -923,15 +923,18 @@ check('sobre el fondo oscuro los textos de la sección van en claro', (() => {
 })());
 
 // v4.821: la galería, entre los centros de acopio y el panorama.
-check('la galería va DESPUÉS de los centros y ANTES del panorama',
-    landingSrc.indexOf('id="centros-de-acopio"') < landingSrc.indexOf('id="rotarios-en-accion"')
-    && landingSrc.indexOf('id="rotarios-en-accion"') < landingSrc.indexOf('id="panorama"'));
+// v4.828: el panorama subió a justo debajo del hero, así que la galería ya no
+// va «antes del panorama». Lo que se conserva es su lugar tras los centros:
+// «qué se necesita» y «dónde llevarlo» son un par que no se corta.
+check('la galería va DESPUÉS de los centros de acopio',
+    landingSrc.indexOf('id="centros-de-acopio"') < landingSrc.indexOf('id="rotarios-en-accion"'));
 check('la página usa el criterio compartido de la galería',
     /galleryItems\(content\.gallery\?\.items\)/.test(landingSrc));
 // v4.822: la tira ocupa el ancho de la pantalla, así que va FUERA del
 // contenedor centrado — dentro quedaría del ancho del texto.
 check('la tira va a lo ancho, fuera del contenedor centrado', (() => {
-    const sec = landingSrc.slice(landingSrc.indexOf('id="rotarios-en-accion"'), landingSrc.indexOf('id="panorama"'));
+    const i = landingSrc.indexOf('id="rotarios-en-accion"');
+    const sec = landingSrc.slice(i, landingSrc.indexOf('</section>', i));
     return sec.indexOf('max-w-[1100px]') < sec.indexOf('<CampaignGallery')
         && !/max-w-4xl[\s\S]{0,200}<CampaignGallery/.test(sec);
 })());
@@ -1358,6 +1361,12 @@ if (feedMirror) {
         { enabled: true, sources: [{ name: 'UNGRD', url: 'ftp://x', kind: 'oficial' }] },
         { enabled: true, autoPublish: true, sources: [{ name: 'M', url: 'https://x.co/a', kind: 'secundaria' }] },
     ].every(f => eq(validateFeed(f), feedMirror.validateFeed(f))));
+    check('commonStatSource da lo mismo en los dos espejos', [
+        [{ label: 'a', value: '1', source: 'U', active: true }, { label: 'b', value: '2', source: 'U', active: true }],
+        [{ label: 'a', value: '1', source: 'U', active: true }, { label: 'b', value: '2', source: 'V', active: true }],
+        [{ label: 'a', value: '1', source: '', active: true }],
+        [],
+    ].every(x => commonStatSource(x) === mirror.commonStatSource(x)));
     check('parseFigure lee igual las cifras colombianas',
         ['14.705', '289', 'más de 102.000', '12,5', 'varios', ''].every(
             v => eq(parseFigure(v), feedMirror.parseFigure(v))));
@@ -1473,6 +1482,53 @@ check('sin fuentes, el aviso dice QUÉ falta y no «nada nuevo»',
     /d\.skipped === 'sin_fuentes'/.test(admin827));
 check('la sección explica en tres pasos qué hace',
     /aparece acá abajo como/.test(admin827) && /<b>1\.<\/b>/.test(admin827));
+
+grupo('v4.828 — dónde va el panorama y cómo se lee');
+const mismos = [
+    { label: 'Fallecidas', value: '289', source: 'UNGRD, corte 15/08/2026', active: true },
+    { label: 'Heridas', value: '3.937', source: 'UNGRD, corte 15/08/2026', active: true },
+];
+check('con una sola fuente para todas, se dice UNA vez',
+    commonStatSource(mismos) === 'UNGRD, corte 15/08/2026');
+// La regla del módulo (la fuente de CADA cifra se ve) no se afloja: en cuanto
+// difieran, cada tarjeta vuelve a llevar la suya.
+check('en cuanto difieran, cada cifra lleva la suya',
+    commonStatSource([mismos[0], { ...mismos[1], source: 'El Tiempo' }]) === '');
+check('un indicador activo SIN fuente tampoco deja fuente común',
+    commonStatSource([...mismos, { label: 'x', value: '1', source: '', active: true }]) === '');
+check('un indicador apagado no cuenta',
+    commonStatSource([...mismos, { label: 'x', value: '1', source: 'Otra', active: false }]) === 'UNGRD, corte 15/08/2026');
+check('sin indicadores con fuente, no hay fuente común', commonStatSource([]) === '');
+
+const landing828 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+// El panorama contesta «¿qué tan grave es esto?», que es la pregunta ANTERIOR
+// a «¿cómo ayudo?»: va justo debajo del hero.
+check('el panorama va ANTES de «cómo ayudar» en el archivo',
+    landing828.indexOf('id="panorama"') < landing828.indexOf('id="como-ayudar"')
+    && landing828.indexOf('id="como-ayudar"') < landing828.indexOf('id="centros-de-acopio"'));
+// El rojo es de lo que ACTÚA; la tinta, de lo que informa (v4.820). Un color
+// de estado usado como decoración es además un antipatrón del criterio de
+// visualización: no codifica nada y aplana la jerarquía.
+check('las cifras NO llevan el acento: van en tinta', (() => {
+    const i = landing828.indexOf('id="panorama"');
+    const banda = landing828.slice(i, landing828.indexOf('</section>', i));
+    return !/style=\{\{ color: accent \}\}/.test(banda) && /text-gray-900/.test(banda);
+})());
+// Con dos o tres indicadores, una rejilla de cuatro columnas los deja pegados
+// a la izquierda.
+check('la banda se centra sea cual sea la cantidad de indicadores',
+    /flex flex-wrap justify-center[\s\S]{0,400}campaign\.stats\.map/.test(landing828));
+// `tabular-nums` da a cada dígito el ancho de un 0 y a este tamaño se ve
+// suelto: se reserva para columnas de números.
+check('la cifra usa figuras proporcionales, no tabulares', (() => {
+    const i = landing828.indexOf('id="panorama"');
+    // Se descartan los COMENTARIOS antes de mirar: el comentario que explica
+    // por qué no se usan figuras tabulares tiene que poder nombrarlas. Mismo
+    // criterio que la comprobación de `border-rotary-blue`.
+    const banda = landing828.slice(i, landing828.indexOf('</section>', i) + 12)
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    return !/tabular-nums/.test(banda);
+})());
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

@@ -2575,6 +2575,36 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
+### Dónde va el panorama, y por qué (v4.828)
+
+- **Las cifras van ANTES de pedir**, justo debajo del hero. Contestan «¿qué
+  tan grave es esto?», que es la pregunta ANTERIOR a «¿cómo ayudo?». Hasta
+  v4.827 iban sextas —después de cómo ayudar, los elementos, los centros y la
+  galería—, o sea que llegaban cuando el lector ya había decidido. El arco de
+  una página de emergencia es: qué pasó → qué tan grave → cómo ayudo → dónde →
+  quiénes ya lo hacen.
+- **Pero como BANDA, no como sección** con su título grande y su respiro de 24.
+  Dos motivos: puesta como sección entera ahí arriba compite con el hero y
+  empuja los botones por debajo del pliegue; y un muro de cifras nada más
+  abrir ADORMECE en vez de movilizar. Como contexto informa sin frenar.
+- **Las cifras NO llevan el acento.** Es la regla v4.820 del sitio —el rojo es
+  de lo que ACTÚA, la tinta y el azul de lo que INFORMA— y además un color de
+  estado usado como decoración es un antipatrón declarado: el rojo no
+  codificaba nada (no distingue una cifra de otra ni marca gravedad relativa),
+  aplanaba la jerarquía —289 personas pesaba igual que 81.536 viviendas— y en
+  una pieza institucional del Distrito se lee sensacionalista.
+- **Figuras PROPORCIONALES, no tabulares.** `tabular-nums` da a cada dígito el
+  ancho de un `0` y a tamaño de titular se ve suelto; se reserva para columnas
+  de números que tienen que alinearse.
+- **La fuente compartida se dice UNA vez** (`commonStatSource`, en los dos
+  espejos). La regla del módulo —la fuente de CADA cifra se ve— no se afloja:
+  en cuanto difieran, cada tarjeta vuelve a llevar la suya, y un indicador
+  activo SIN fuente tampoco deja fuente común. Repetir cuatro veces el mismo
+  «UNGRD, corte 15/08/2026 6:30 p. m.» es ruido que compite con las cifras.
+- **La banda se centra sea cual sea la cantidad de indicadores** (flujo
+  centrado, no una rejilla de cuatro columnas): con dos o tres, una rejilla
+  fija los deja pegados a la izquierda.
+
 ### La galería «Rotarios en acción» (v4.821-v4.823)
 
 - **Va DESPUÉS de los centros y ANTES del panorama**, y el sitio importa:
