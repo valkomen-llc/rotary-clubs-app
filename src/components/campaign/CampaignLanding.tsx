@@ -615,7 +615,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                         emergente y teclado, y meterlo acá dejaría este archivo
                         con dos responsabilidades. */}
                     <div className="mt-12">
-                        <CampaignGallery items={gallery} accent={accent} />
+                        <CampaignGallery items={gallery} />
                     </div>
                 </section>
             )}

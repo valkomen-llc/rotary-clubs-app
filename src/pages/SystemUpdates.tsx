@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.823.0 | 2026-08-16 (La tira avanza sola, con barra propia y tarjetas cuadradas)
+// UI V4.824.0 | 2026-08-16 (La galeria pasa mas rapido y sin barra de desplazamiento)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.824.0',
+        title: 'La galería, más rápida y sin barra ⏩',
+        description: 'Las piezas de «Rotarios en acción» pasan ahora cada 1,8 segundos en vez de cada 3,5, y desaparece la barra de desplazamiento que iba debajo de la tira. Una barra bajo algo que ya se mueve solo es un control que casi nadie llega a usar y que además partía la sección en dos justo donde tenía que sentirse continua. La tira se sigue recorriendo a mano con el trackpad o arrastrándola, y sigue deteniéndose al pasar el cursor por una tarjeta.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'galeria', 'interfaz'],
+        type: 'improved',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'Las piezas pasan cada 1,8 segundos (antes, cada 3,5).' },
+            { type: 'removed', text: 'Se quita la barra de desplazamiento de debajo de la tira.' },
+        ]
+    },
     {
         version: '4.823.0',
         title: 'La galería pasa sola y se puede recorrer 🖼️',

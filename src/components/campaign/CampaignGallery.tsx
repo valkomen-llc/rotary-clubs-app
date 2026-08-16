@@ -6,8 +6,7 @@ import type { GalleryItem } from '../../lib/contributionSpec';
 // La galería «Rotarios en acción» — v4.823
 //
 // Una TIRA a lo ancho con varias piezas a la vez que AVANZA SOLA de a una
-// tarjeta, y que además se puede recorrer a mano —con el ratón, el trackpad o
-// la barra de abajo—.
+// tarjeta, y que además se puede recorrer a mano con el ratón o el trackpad.
 //
 // Decisiones que conviene no deshacer:
 //
@@ -43,8 +42,8 @@ import type { GalleryItem } from '../../lib/contributionSpec';
 //    tamaño propio —un `<iframe>` no lo declara— y ahí 16:9 es lo correcto.
 // ════════════════════════════════════════════════════════════════════
 
-/** Cada cuánto avanza una tarjeta. Lo bastante para mirar la que pasa. */
-const MS_POR_PIEZA = 3500;
+/** Cada cuánto avanza una tarjeta. */
+const MS_POR_PIEZA = 1800;
 
 const Tarjeta: React.FC<{ item: GalleryItem; onOpen: () => void; aria?: boolean }> = ({ item, onOpen, aria = true }) => (
     <button
@@ -92,13 +91,10 @@ const Tarjeta: React.FC<{ item: GalleryItem; onOpen: () => void; aria?: boolean 
     </button>
 );
 
-const CampaignGallery: React.FC<{ items: GalleryItem[]; accent: string }> = ({ items, accent }) => {
+const CampaignGallery: React.FC<{ items: GalleryItem[] }> = ({ items }) => {
     const tira = useRef<HTMLDivElement>(null);
-    const barra = useRef<HTMLDivElement>(null);
     const [abierta, setAbierta] = useState<number | null>(null);
-    const [quieta, setQuieta] = useState(false);          // cursor encima o arrastrando
-    const [avance, setAvance] = useState(0);              // 0..1, para la barra
-    const [visible, setVisible] = useState(0);            // proporción a la vista
+    const [quieta, setQuieta] = useState(false);          // cursor encima
     const [copias, setCopias] = useState(2);              // cuántas vueltas se pintan
 
     // Cuánto mide una tarjeta con su separación: es el paso del avance y no se
@@ -116,16 +112,6 @@ const CampaignGallery: React.FC<{ items: GalleryItem[]; accent: string }> = ({ i
 
     /** Lo que mide UNA vuelta: el punto en el que la tira vuelve a empezar. */
     const vuelta = useCallback(() => paso() * items.length, [paso, items.length]);
-
-    // La posición, para la barra de abajo. La lista se repite, así que lo que
-    // importa es la posición DENTRO de una vuelta.
-    const medir = useCallback(() => {
-        const el = tira.current;
-        if (!el) return;
-        const v = vuelta();
-        setAvance(v > 0 ? (el.scrollLeft % v) / v : 0);
-        setVisible(v > 0 ? Math.min(1, el.clientWidth / v) : 1);
-    }, [vuelta]);
 
     // Cuántas copias hacen falta para que el salto de una vuelta quepa dentro
     // del recorrido posible: `scrollWidth - clientWidth >= vuelta`. Se mide,
@@ -163,31 +149,6 @@ const CampaignGallery: React.FC<{ items: GalleryItem[]; accent: string }> = ({ i
         return () => clearInterval(t);
     }, [items.length, quieta, abierta, paso, vuelta]);
 
-    useEffect(() => { medir(); }, [medir, items.length]);
-
-    // Arrastrar la barra de abajo mueve la tira. Se escucha en la ventana para
-    // que el arrastre siga funcionando aunque el cursor se salga de la barra.
-    const arrastrar = (e: React.PointerEvent) => {
-        const caja = barra.current;
-        const el = tira.current;
-        if (!caja || !el) return;
-        setQuieta(true);
-        const mover = (x: number) => {
-            const r = caja.getBoundingClientRect();
-            const p = Math.min(1, Math.max(0, (x - r.left) / r.width));
-            el.scrollTo({ left: p * vuelta(), behavior: 'instant' as ScrollBehavior });
-        };
-        mover(e.clientX);
-        const onMove = (ev: PointerEvent) => mover(ev.clientX);
-        const onUp = () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-            setQuieta(false);
-        };
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-    };
-
     // Escape cierra y las flechas recorren. En una ventana que tapa la página,
     // Escape es lo primero que se intenta.
     useEffect(() => {
@@ -208,13 +169,14 @@ const CampaignGallery: React.FC<{ items: GalleryItem[]; accent: string }> = ({ i
         <>
             <div
                 ref={tira}
-                onScroll={medir}
                 onMouseEnter={() => setQuieta(true)}
                 onMouseLeave={() => setQuieta(false)}
                 // `py-6`: la tarjeta crece al pasar el cursor y sin relleno se
                 // recortaría contra el borde — un contenedor con desplazamiento
                 // horizontal no puede dejar asomar nada por arriba.
-                // `no-scrollbar`: la barra propia de abajo es la que se usa.
+                // `no-scrollbar`: la tira se recorre sola o con el trackpad; una
+                // barra debajo de una tira que ya se mueve sola es un control
+                // que casi nadie usa y que parte la sección en dos.
                 className="w-full overflow-x-auto overflow-y-hidden py-6 no-scrollbar"
                 style={{
                     maskImage: 'linear-gradient(to right, transparent, black 3%, black 97%, transparent)',
@@ -234,32 +196,6 @@ const CampaignGallery: React.FC<{ items: GalleryItem[]; accent: string }> = ({ i
                     )}
                 </div>
             </div>
-
-            {/* La barra de desplazamiento, propia: la del navegador es distinta
-                en cada sistema y en varios ni se ve hasta que uno la usa. */}
-            {items.length > 1 && (
-                <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8 mt-2">
-                    <div
-                        ref={barra}
-                        onPointerDown={arrastrar}
-                        role="scrollbar"
-                        aria-controls="galeria-tira"
-                        aria-orientation="horizontal"
-                        aria-valuenow={Math.round(avance * 100)}
-                        aria-label="Recorrer la galería"
-                        className="relative h-1.5 rounded-full bg-gray-200 cursor-pointer touch-none"
-                    >
-                        <div
-                            className="absolute top-0 h-full rounded-full transition-[left] duration-200 ease-out"
-                            style={{
-                                width: `${Math.max(8, Math.min(100, visible * 100))}%`,
-                                left: `${Math.min(100 - Math.max(8, visible * 100), avance * 100)}%`,
-                                backgroundColor: accent,
-                            }}
-                        />
-                    </div>
-                </div>
-            )}
 
             {pieza && (
                 <div

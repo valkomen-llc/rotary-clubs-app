@@ -2614,10 +2614,14 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   TARJETA entera, no la imagen dentro del marco; por eso la tira lleva relleno
   vertical (`py-6`): sin él, el crecimiento se recorta contra el borde de un
   contenedor con desplazamiento.
-- **La barra de abajo es PROPIA** (`role="scrollbar"`, `.no-scrollbar` en la
-  tira). La del navegador es distinta en cada sistema y en varios ni se ve
-  hasta que uno la usa, y acá se pidió verla. Arrastrarla escucha en la
-  VENTANA, no en la barra: si no, el arrastre se corta al salirse el cursor.
+- **SIN barra de desplazamiento** (v4.824, pedido del cliente). Ni la propia
+  —que v4.823 había estrenado— ni la del navegador (`.no-scrollbar` en la
+  tira). Una barra debajo de algo que ya se mueve solo es un control que casi
+  nadie llega a usar y parte en dos justo la sección que tiene que sentirse
+  continua. La tira se sigue recorriendo con el trackpad o arrastrándola, que
+  es lo que da el desplazamiento nativo.
+- **La cadencia es UN número** (`MS_POR_PIEZA`, 1,8 s desde v4.824; 3,5 s en
+  v4.823). Al ajustarla, ahí y en ningún otro sitio.
 - **Un video NO se reproduce dentro de la tira.** En una tira en movimiento no
   se puede ver —y si el cursor sale, se lo lleva sonando fuera de la
   pantalla—. En la tira es una TARJETA con carátula y botón de reproducir; al
