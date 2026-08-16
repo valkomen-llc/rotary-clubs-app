@@ -26,7 +26,7 @@ import {
     CAMPAIGN_STATUSES, STATUS_LABELS, canTransition, effectiveStatus, isServable,
     normalizeTargeting, targetsSite, pickCampaignForSite,
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
-    normalizeStats, validateStats, validateForPublish, latestStatDate, commonStatSource,
+    normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
@@ -1361,12 +1361,6 @@ if (feedMirror) {
         { enabled: true, sources: [{ name: 'UNGRD', url: 'ftp://x', kind: 'oficial' }] },
         { enabled: true, autoPublish: true, sources: [{ name: 'M', url: 'https://x.co/a', kind: 'secundaria' }] },
     ].every(f => eq(validateFeed(f), feedMirror.validateFeed(f))));
-    check('commonStatSource da lo mismo en los dos espejos', [
-        [{ label: 'a', value: '1', source: 'U', active: true }, { label: 'b', value: '2', source: 'U', active: true }],
-        [{ label: 'a', value: '1', source: 'U', active: true }, { label: 'b', value: '2', source: 'V', active: true }],
-        [{ label: 'a', value: '1', source: '', active: true }],
-        [],
-    ].every(x => commonStatSource(x) === mirror.commonStatSource(x)));
     check('parseFigure lee igual las cifras colombianas',
         ['14.705', '289', 'más de 102.000', '12,5', 'varios', ''].every(
             v => eq(parseFigure(v), feedMirror.parseFigure(v))));
@@ -1484,35 +1478,27 @@ check('la sección explica en tres pasos qué hace',
     /aparece acá abajo como/.test(admin827) && /<b>1\.<\/b>/.test(admin827));
 
 grupo('v4.828 — dónde va el panorama y cómo se lee');
-const mismos = [
-    { label: 'Fallecidas', value: '289', source: 'UNGRD, corte 15/08/2026', active: true },
-    { label: 'Heridas', value: '3.937', source: 'UNGRD, corte 15/08/2026', active: true },
-];
-check('con una sola fuente para todas, se dice UNA vez',
-    commonStatSource(mismos) === 'UNGRD, corte 15/08/2026');
-// La regla del módulo (la fuente de CADA cifra se ve) no se afloja: en cuanto
-// difieran, cada tarjeta vuelve a llevar la suya.
-check('en cuanto difieran, cada cifra lleva la suya',
-    commonStatSource([mismos[0], { ...mismos[1], source: 'El Tiempo' }]) === '');
-check('un indicador activo SIN fuente tampoco deja fuente común',
-    commonStatSource([...mismos, { label: 'x', value: '1', source: '', active: true }]) === '');
-check('un indicador apagado no cuenta',
-    commonStatSource([...mismos, { label: 'x', value: '1', source: 'Otra', active: false }]) === 'UNGRD, corte 15/08/2026');
-check('sin indicadores con fuente, no hay fuente común', commonStatSource([]) === '');
-
 const landing828 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
 // El panorama contesta «¿qué tan grave es esto?», que es la pregunta ANTERIOR
 // a «¿cómo ayudo?»: va justo debajo del hero.
 check('el panorama va ANTES de «cómo ayudar» en el archivo',
     landing828.indexOf('id="panorama"') < landing828.indexOf('id="como-ayudar"')
     && landing828.indexOf('id="como-ayudar"') < landing828.indexOf('id="centros-de-acopio"'));
-// El rojo es de lo que ACTÚA; la tinta, de lo que informa (v4.820). Un color
-// de estado usado como decoración es además un antipatrón del criterio de
-// visualización: no codifica nada y aplana la jerarquía.
-check('las cifras NO llevan el acento: van en tinta', (() => {
+// v4.828.2 — DECISIÓN EXPRESA DEL CLIENTE, tomada con el argumento en contra
+// delante: v4.828 pasó las cifras a tinta porque el rojo no codifica nada y
+// porque la regla v4.820 lo reserva para lo que ACTÚA. El cliente lo pidió dos
+// veces con la pieza a la vista: acá el rojo es identidad de la emergencia. La
+// prueba fija esa decisión para que no se revierta por criterio propio.
+check('las cifras llevan el acento de la campaña (decisión del cliente)', (() => {
     const i = landing828.indexOf('id="panorama"');
-    const banda = landing828.slice(i, landing828.indexOf('</section>', i));
-    return !/style=\{\{ color: accent \}\}/.test(banda) && /text-gray-900/.test(banda);
+    const banda = landing828.slice(i, landing828.indexOf('</section>', i) + 12);
+    return /style=\{\{ color: accent \}\}/.test(banda);
+})());
+// La fuente es lo que hace publicable la cifra: va bajo CADA una.
+check('cada cifra muestra su propia fuente', (() => {
+    const i = landing828.indexOf('id="panorama"');
+    const banda = landing828.slice(i, landing828.indexOf('</section>', i) + 12);
+    return /s\.source && <p className="text-\[11px\] text-gray-400/.test(banda);
 })());
 // Con dos o tres indicadores, una rejilla de cuatro columnas los deja pegados
 // a la izquierda.

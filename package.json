@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.828.1",
-  "cache_bust": "2026-08-16g (Las cifras del panorama vuelven a su tarjeta.)",
+  "version": "4.828.2",
+  "cache_bust": "2026-08-16h (Las cifras del panorama vuelven al color de la campana.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

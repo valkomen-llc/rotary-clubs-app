@@ -4,7 +4,7 @@ import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, Che
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, commonStatSource, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 import { SITE_ACTION_BG } from '../../lib/siteChrome';
 import CampaignGallery from './CampaignGallery';
 
@@ -200,9 +200,6 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // La galería, con el mismo criterio compartido. Quién la pinta es
     // `CampaignGallery`: acá sólo se decide si hay algo que pintar.
     const gallery = galleryItems(content.gallery?.items);
-    // Una sola fuente para las cuatro cifras se dice una vez, en la cabecera
-    // de la banda; si difieren, cada tarjeta lleva la suya.
-    const fuenteComun = commonStatSource(campaign.stats);
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -329,14 +326,14 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                 de movilizar —es la insensibilización ante las cifras grandes—.
                 Como banda de contexto informa sin frenar.
 
-                El acento NO se usa acá: es la regla v4.820 del sitio —el rojo
-                es de lo que ACTÚA, el azul y la tinta de lo que INFORMA—.
-                Cuatro cifras en rojo de alarma no codifican nada (no
-                distinguen una de otra ni marcan gravedad relativa), aplanan la
-                jerarquía —289 personas pesaba igual que 81.536 viviendas— y en
-                una pieza institucional del Distrito se leen sensacionalistas.
-                Un color de estado usado como decoración es además un
-                antipatrón declarado del criterio de visualización de datos.  */}
+                LAS CIFRAS VAN EN EL ACENTO DE LA CAMPAÑA, y es una decisión
+                EXPRESA del cliente (v4.828.2), tomada con el argumento en
+                contra delante: v4.828 las pasó a tinta porque el rojo no
+                codifica nada —no distingue una cifra de otra ni marca gravedad
+                relativa— y porque la regla v4.820 del sitio reserva el rojo
+                para lo que ACTÚA. El cliente lo pidió dos veces con la pieza a
+                la vista: en esta campaña el rojo es identidad de la emergencia,
+                no señal de estado. No revertirlo por criterio propio.  */}
             {campaign.stats.length > 0 && (
                 <section id="panorama" className="py-12 md:py-14 bg-white border-b border-gray-100 scroll-mt-24">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -344,14 +341,6 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-[0.15em]">
                                 Panorama de la emergencia
                             </h2>
-                            {/* La fuente de cada cifra tiene que VERSE (regla del
-                                módulo). Cuando las cuatro comparten la misma, se
-                                dice UNA vez: repetirla bajo cada tarjeta es ruido
-                                que compite con las cifras. Si difieren, cada
-                                tarjeta lleva la suya. */}
-                            {fuenteComun && (
-                                <span className="text-xs text-gray-400" data-no-translate>· {fuenteComun}</span>
-                            )}
                         </div>
                         {/* Flujo centrado y no una rejilla de cuatro columnas: con
                             dos o tres indicadores, una rejilla fija los deja
@@ -367,11 +356,10 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         Cifras proporcionales, no tabulares: `tabular-nums`
                                         da a cada dígito el ancho de un 0 y a este tamaño
                                         se ve suelto. Tabulares sólo en columnas. */}
-                                    <p className="text-[32px] md:text-[38px] leading-none font-semibold text-gray-900 tracking-tight" data-no-translate>{s.value}</p>
-                                    <p className="text-[13px] md:text-sm font-bold text-gray-700 mt-2 leading-snug">{s.label}</p>
-                                    {!fuenteComun && s.source && (
-                                        <p className="text-[11px] text-gray-400 mt-1.5" data-no-translate>{s.source}</p>
-                                    )}
+                                    <p className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: accent }} data-no-translate>{s.value}</p>
+                                    <p className="text-sm font-bold text-gray-700 mt-1">{s.label}</p>
+                                    {/* La fuente es lo que hace publicable la cifra: siempre visible. */}
+                                    {s.source && <p className="text-[11px] text-gray-400 mt-2" data-no-translate>{s.source}</p>}
                                 </div>
                             ))}
                         </div>

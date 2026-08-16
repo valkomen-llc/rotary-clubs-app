@@ -548,25 +548,6 @@ export function validateStats(stats) {
     return errors;
 }
 
-// ─── La fuente compartida de los indicadores ────────────────────────────
-//
-// La regla del módulo es que la fuente de CADA cifra se vea. Cuando las
-// cuatro comparten exactamente la misma —el caso normal: un solo balance
-// oficial— repetirla debajo de cada tarjeta es ruido que compite con las
-// cifras. Se dice UNA vez en la cabecera de la banda.
-//
-// Devuelve '' en cuanto difieran, y entonces cada tarjeta lleva la suya: la
-// regla no se afloja, se dice donde informa.
-export function commonStatSource(stats) {
-    const activos = normalizeStats(stats).filter(s => s.active && s.source);
-    if (!activos.length) return '';
-    const primera = activos[0].source;
-    // Si alguno NO tiene fuente, no hay fuente común: ese indicador tiene que
-    // poder mostrar (o no mostrar) la suya sin que la cabecera hable por él.
-    if (normalizeStats(stats).some(s => s.active && s.source !== primera)) return '';
-    return primera;
-}
-
 // ─── Validación de publicación ─────────────────────────────────────────────
 //
 // Qué le falta a una campaña para poder salir de borrador. Devuelve motivos
@@ -762,7 +743,7 @@ export default {
     CAMPAIGN_STATUSES, STATUS_LABELS, canTransition, effectiveStatus, isServable,
     TARGETING_MODES, normalizeTargeting, targetsSite, pickCampaignForSite,
     SECTION_IDS, normalizeContent, hexOrEmpty, acceptableCtaUrl,
-    normalizeStats, validateStats, validateForPublish, latestStatDate, commonStatSource,
+    normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     DONATION_PRESETS, donationPresets,
     normalizeCenters, groupCenters,
