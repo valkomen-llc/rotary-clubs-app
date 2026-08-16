@@ -247,9 +247,23 @@ export function sectionVideos(list: any, single: any): SectionVideo[] {
 }
 
 // ─── Galería «Rotarios en acción» (v4.821) — espejo del servidor ──────────
+/**
+ * La miniatura de una pieza de video, cuando se puede saber sin llamar a
+ * nadie. YouTube publica una dirección fija por id; Vimeo no la tiene sin
+ * consultar su API, así que ahí se devuelve '' y la tarjeta se pinta con su
+ * carátula genérica. Un archivo propio muestra su primer fotograma solo.
+ */
+function videoThumb(video: CampaignVideo | null): string {
+    if (!video || video.kind !== 'youtube') return '';
+    const id = /\/embed\/([\w-]+)/.exec(video.src)?.[1];
+    return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '';
+}
+
 export interface GalleryItem {
     url: string; kind: 'image' | 'video'; src: string;
     player: 'youtube' | 'vimeo' | 'file' | null;
+    /** Miniatura para la tira. Vacía cuando no se puede saber sin red. */
+    thumb: string;
     caption: string; credit: string; alt: string;
 }
 
@@ -275,6 +289,7 @@ export function galleryItems(list: any): GalleryItem[] {
                 kind: (video ? 'video' : 'image') as 'image' | 'video',
                 src: video ? video.src : url,
                 player: video ? video.kind : null,
+                thumb: video ? videoThumb(video) : url,
                 caption: String(it?.caption ?? ''),
                 credit: String(it?.credit ?? ''),
                 alt: String(it?.alt ?? ''),

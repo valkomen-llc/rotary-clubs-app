@@ -351,6 +351,13 @@ check('el tipo se deduce de la dirección, no se guarda', (() => {
 })());
 check('un video embebido se resuelve a su reproductor sin cookies',
     galleryItems([{ url: 'https://www.youtube.com/watch?v=abc123' }])[0].src === 'https://www.youtube-nocookie.com/embed/abc123');
+// La tira necesita una miniatura por tarjeta. La de YouTube se deriva del
+// propio id, sin llamar a nadie; Vimeo no la publica sin su API.
+check('la miniatura de un video de YouTube se deriva de su id', (() => {
+    const l = galleryItems([{ url: 'https://youtu.be/abc123' }, { url: 'https://vimeo.com/123456789' }, { url: 'https://x/a.jpg' }]);
+    return l[0].thumb === 'https://i.ytimg.com/vi/abc123/hqdefault.jpg'
+        && l[1].thumb === '' && l[2].thumb === 'https://x/a.jpg';
+})());
 check('el pie, el crédito y el texto alternativo viajan con la pieza', (() => {
     const l = galleryItems([{ url: 'https://x/a.jpg', caption: 'Entrega', credit: 'RC Cali', alt: 'Voluntarios' }]);
     return l[0].caption === 'Entrega' && l[0].credit === 'RC Cali' && l[0].alt === 'Voluntarios';
@@ -919,20 +926,47 @@ check('la galería va DESPUÉS de los centros y ANTES del panorama',
     landingSrc.indexOf('id="centros-de-acopio"') < landingSrc.indexOf('id="rotarios-en-accion"')
     && landingSrc.indexOf('id="rotarios-en-accion"') < landingSrc.indexOf('id="panorama"'));
 check('la página usa el criterio compartido de la galería',
-    /galleryItems\(campaign\.content\?\.gallery\?\.items\)/.test(landingSrc));
-// LA decisión de diseño: el hero puede rotar tranquilo porque son imágenes;
-// acá hay videos y uno que se cambia solo mientras se mira es el defecto de
-// v4.816. Sobre un video el paso automático ESPERA.
-check('la galería pasa sola SÓLO sobre una foto',
-    /if \(galCount < 2 \|\| galKind !== 'image'\) return;/.test(landingSrc)
-    && /GALLERY_SLIDE_MS/.test(landingSrc));
-check('el tipo de la pieza entra en las dependencias como dato PRIMITIVO',
-    /\}, \[galIdx, galCount, galKind\]\);/.test(landingSrc));
-check('la sección se condiciona por la PIEZA, no por el largo (el índice puede quedar fuera de rango)',
-    /\{piezaActual && \(/.test(landingSrc)
-    && /gallery\[Math\.min\(galIdx, gallery\.length - 1\)\] \|\| null/.test(landingSrc));
+    /galleryItems\(content\.gallery\?\.items\)/.test(landingSrc));
+// v4.822: la tira ocupa el ancho de la pantalla, así que va FUERA del
+// contenedor centrado — dentro quedaría del ancho del texto.
+check('la tira va a lo ancho, fuera del contenedor centrado', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="rotarios-en-accion"'), landingSrc.indexOf('id="panorama"'));
+    return sec.indexOf('max-w-[1100px]') < sec.indexOf('<CampaignGallery')
+        && !/max-w-4xl[\s\S]{0,200}<CampaignGallery/.test(sec);
+})());
+
+const galSrc = readFileSync('src/components/campaign/CampaignGallery.tsx', 'utf8');
+check('la tira se desplaza sola con la animación del TEMA, no con un `<style>` propio',
+    /animate-gallery-marquee/.test(galSrc) && !/@keyframes/.test(galSrc));
+// Sin esto, la tarjeta crece mientras se escapa hacia el costado: no se puede
+// mirar ni pulsar. Es lo que hace utilizable el agrandado.
+check('la tira SE DETIENE al pasar el cursor',
+    /hover:\[animation-play-state:paused\]/.test(galSrc));
+check('la tarjeta se agranda al pasar el cursor, y crece la imagen DENTRO del marco',
+    /group-hover:scale-110/.test(galSrc) && /overflow-hidden/.test(galSrc));
+// La lista se duplica para que el desplazamiento no tenga costura; la copia
+// va oculta al lector de pantalla — las piezas son las que hay, no el doble.
+check('la lista se duplica y la copia va con aria-hidden',
+    /key=\{`a-\$\{i\}`\}/.test(galSrc) && /key=\{`b-\$\{i\}`\} item=\{it\}[\s\S]{0,60}aria=\{false\}/.test(galSrc)
+    && /aria-hidden=\{!aria\}/.test(galSrc));
+check('el desplazamiento es de la MITAD: por eso la vuelta al inicio no se ve',
+    /translateX\(-50%\)/.test(readFileSync('tailwind.config.js', 'utf8')));
+// Con duración fija, más piezas desfilarían más rápido.
+check('la velocidad es proporcional a la cantidad de piezas',
+    /items\.length \* SEGUNDOS_POR_PIEZA/.test(galSrc) && /animationDuration: duracion/.test(galSrc));
+// En una tira en movimiento no se puede ver un video: en la tira es una
+// tarjeta con carátula, y se reproduce en la ventana en grande.
+check('un video NO se reproduce dentro de la tira: se abre en grande',
+    !/<video[\s\S]{0,400}controls[\s\S]{0,200}group-hover/.test(galSrc)
+    && /role="dialog"/.test(galSrc) && /autoPlay/.test(galSrc));
+check('la ventana se cierra con Escape y se recorre con las flechas del teclado',
+    /e\.key === 'Escape'/.test(galSrc) && /e\.key === 'ArrowRight'/.test(galSrc));
+check('el clic del fondo cierra y el de dentro NO',
+    /onClick=\{e => e\.stopPropagation\(\)\}/.test(galSrc));
+check('quien pidió menos animación recibe la tira quieta y desplazable a mano',
+    /motion-reduce:animate-none/.test(galSrc) && /motion-reduce:overflow-x-auto/.test(galSrc));
 check('el crédito de quien mandó la pieza es un DATO: no se traduce',
-    /data-no-translate>\{piezaActual\.credit\}/.test(landingSrc));
+    (galSrc.match(/data-no-translate/g) || []).length >= 2);
 
 // v4.820: dentro de las tarjetas manda el azul del sitio, no el acento rojo.
 check('el detalle de las tarjetas va en el azul del sitio, no en el acento de la campaña', (() => {

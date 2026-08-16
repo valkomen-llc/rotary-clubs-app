@@ -2582,18 +2582,38 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   galería en medio corta a quien acaba de leer qué donar y busca dónde. Ahí es
   el giro de «lo que pedimos» a «lo que ya se está haciendo», con las caras
   justo antes de las cifras — se refuerzan entre sí.
-- **Pasa sola SÓLO sobre una foto.** El hero puede rotar tranquilo porque son
-  imágenes; acá hay videos mezclados, y uno que se cambia solo mientras
-  alguien lo mira es el defecto que se evitó en v4.816. Sobre un video el paso
-  automático ESPERA y se sigue con las flechas.
+- **Es una TIRA a lo ancho que se desplaza sola** (v4.822,
+  `CampaignGallery.tsx`), no una pieza a la vez. Va FUERA del contenedor
+  centrado: dentro quedaría del ancho del texto.
+- **La tira SE DETIENE al pasar el cursor**, y eso no es un adorno: es lo que
+  hace utilizable el agrandado y el clic. Una tarjeta que crece mientras se
+  escapa hacia el costado no se puede mirar ni pulsar.
+- **Un video NO se reproduce dentro de la tira.** En una tira en movimiento no
+  se puede ver —y si el cursor sale, se lo lleva sonando fuera de la
+  pantalla—. En la tira es una TARJETA con carátula y botón de reproducir; al
+  pulsarla se abre en grande y ahí sí se reproduce. Sin esa ventana, mezclar
+  videos en una tira móvil sería prometer algo que no funciona. Es la misma
+  raíz que la regla de v4.816.
+- **La lista se DUPLICA** para que el ciclo no tenga costura, y la copia va con
+  `aria-hidden`: para un lector de pantalla las piezas son las que hay, no el
+  doble. El desplazamiento es de la MITAD (`translateX(-50%)`), que es lo que
+  deja la segunda copia exactamente donde estaba la primera.
+- **La velocidad es proporcional a la cantidad de piezas.** Con una duración
+  fija, más piezas desfilarían más rápido. La curva vive en el tema
+  (`gallery-marquee`) y la duración la pone el componente.
+- **Chromium recalcula `:hover` con los EVENTOS del ratón**, no cuando el
+  elemento se desliza bajo un puntero quieto. Al probarlo con un navegador hay
+  que mover el ratón —`hover()` de Playwright además espera que el elemento
+  esté QUIETO, y la tira sólo se detiene cuando el cursor ya está encima: un
+  candado—. Se usa `mouse.move` en varios pasos y se remata con 1 px.
 - **El tipo de cada pieza se DERIVA de la dirección** (`galleryItems`), no se
   guarda: guardarlo aparte daría dos verdades sobre lo mismo y se
   contradirían en cuanto alguien cambie la URL de una fila — el error que ya
   se evitó con `publicKeyOf` en Plantillas IA. Reutiliza
   `resolveCampaignVideo`: lo que ése reconoce es video, lo demás es imagen.
-- **El tipo entra en las dependencias del efecto como dato PRIMITIVO.** Con el
-  objeto, el efecto se rearmaría en cada render y el temporizador no llegaría
-  a cumplirse nunca.
+- **La miniatura de un video de YouTube se DERIVA de su id**, sin llamar a
+  nadie. Vimeo no la publica sin su API, así que esa tarjeta se pinta con su
+  carátula genérica en vez de con un hueco (v4.650).
 - **El CRÉDITO de quien mandó la pieza es un dato, no lenguaje**: lleva
   `data-no-translate` (v4.662). Y acreditar al club que aportó la foto no es
   un adorno en una institución.
