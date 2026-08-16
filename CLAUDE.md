@@ -2604,6 +2604,10 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
 - **La banda se centra sea cual sea la cantidad de indicadores** (flujo
   centrado, no una rejilla de cuatro columnas): con dos o tres, una rejilla
   fija los deja pegados a la izquierda.
+- **Cada cifra conserva su TARJETA, y por eso la banda va en BLANCO**
+  (v4.828.1). El relleno de la tarjeta es `gray-50`: sobre una banda gris
+  desaparecerían. Compactar una sección no es quitarle el tratamiento — se
+  reduce el respiro y el título, no las piezas.
 
 ### La galería «Rotarios en acción» (v4.821-v4.823)
 
