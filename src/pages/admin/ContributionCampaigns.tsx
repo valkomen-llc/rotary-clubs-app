@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
     Megaphone, Plus, Save, ArrowLeft, Eye, Trash2, Clock, History,
     AlertTriangle, Image as ImageIcon, Upload, ChevronUp, ChevronDown, X,
-    BarChart3, RefreshCw, Check, Link2,
+    BarChart3, RefreshCw, Check, Link2, ChevronsUpDown, ChevronsDownUp,
 } from 'lucide-react';
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
@@ -77,14 +77,65 @@ const fromLocalInput = (v: string): string | null => {
 const field = 'mt-1.5 w-full px-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-rotary-blue/30 focus:bg-white outline-none transition-all font-medium text-sm';
 const lbl = 'text-xs font-bold text-gray-400 uppercase tracking-wider';
 
-const Card: React.FC<{ title: string; hint?: string; children: React.ReactNode }> = ({ title, hint, children }) => (
-    <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-800 mb-1">{title}</h3>
-        {hint && <p className="text-xs text-gray-400 mb-5">{hint}</p>}
-        {!hint && <div className="mb-5" />}
-        {children}
+// El contenedor de cada sección, PLEGABLE (v4.826).
+//
+// Nace CERRADO y ésa es la decisión: con catorce secciones abiertas a la vez,
+// llegar a la que se quiere tocar eran varias pantallas de desplazamiento.
+// Cerradas, el editor entero es un índice de una pantalla y se abre sólo lo
+// que se va a editar. La preferencia se recuerda entre visitas.
+//
+// El contenido se DESMONTA al cerrar, no se esconde con CSS: todo el estado
+// del formulario vive en `c`, no en el DOM, así que no se pierde nada — y un
+// campo escondido con `hidden` lo siguen encontrando el buscador del
+// navegador y el lector de pantalla.
+//
+// `warn` es lo que impide que plegar esconda un problema: una sección cerrada
+// con avisos los DICE en su cabecera. Es la regla de v4.790 — el diagnóstico
+// va donde se mira primero.
+//
+// Sin hooks a propósito: el estado abierto/cerrado vive en el padre, que es
+// lo que permite «Expandir todo» y lo que evita un hook dentro de un `.map`.
+const Card: React.FC<{
+    id: string; title: string; hint?: string;
+    open: boolean; onToggle: (id: string) => void;
+    icon?: React.ReactNode; action?: React.ReactNode; warn?: number;
+    children: React.ReactNode;
+}> = ({ id, title, hint, open, onToggle, icon, action, warn = 0, children }) => (
+    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-3 px-6 md:px-8">
+            <button type="button" onClick={() => onToggle(id)}
+                aria-expanded={open} aria-controls={`card-${id}`}
+                className="flex-1 flex items-center gap-3 py-5 md:py-6 text-left group">
+                <ChevronDown className={`w-5 h-5 flex-shrink-0 text-gray-400 group-hover:text-rotary-blue transition-transform ${open ? '' : '-rotate-90'}`} />
+                {icon}
+                <span className="flex-1 min-w-0">
+                    <span className="block text-lg font-bold text-gray-800 group-hover:text-rotary-blue transition-colors">{title}</span>
+                    {/* La ayuda sólo con la sección abierta: cerrada, el
+                        título tiene que caber en una línea para que la lista
+                        se pueda recorrer de un vistazo. */}
+                    {hint && open && <span className="block text-xs text-gray-400 mt-1">{hint}</span>}
+                </span>
+                {warn > 0 && (
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700"
+                        title={`${warn} aviso(s) en esta sección`}>
+                        {warn} aviso{warn > 1 ? 's' : ''}
+                    </span>
+                )}
+            </button>
+            {action}
+        </div>
+        {open && <div id={`card-${id}`} className="px-6 md:px-8 pb-6 md:pb-8">{children}</div>}
     </div>
 );
+
+// Los ids de las secciones plegables. En UN solo sitio porque los consume
+// «Expandir todo»: con la lista escrita dos veces, una sección nueva se
+// quedaría fuera del botón sin que nada avisara.
+const CARD_IDS = [
+    'identidad', 'alcance', 'hero', 'aporte', 'ayudar', 'requeridos',
+    'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
+    'aliados', 'seo', 'resultados', 'historial',
+];
 
 const STATUS_CHIP: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-600',
@@ -143,6 +194,26 @@ const ContributionCampaigns: React.FC = () => {
     const [newName, setNewName] = useState('');
     const [newType, setNewType] = useState(DEFAULT_CAMPAIGN_TYPE);
     const [creating, setCreating] = useState(false);
+
+    // Qué secciones están abiertas. Vive acá y no en cada Card: es lo que
+    // permite «Expandir todo» y lo que evita un hook dentro de un `.map`.
+    // Se recuerda entre visitas — quien trabaja sobre una sección vuelve a
+    // ella, y volver a plegarlo todo en cada carga sería trabajo repetido.
+    const [openCards, setOpenCards] = useState<Record<string, boolean>>(() => {
+        try { return JSON.parse(localStorage.getItem('contrib_cards_open') || '{}'); } catch { return {}; }
+    });
+    const isOpen = (id: string) => openCards[id] === true;
+    const toggleCard = (id: string) => setOpenCards(prev => {
+        const next = { ...prev, [id]: !prev[id] };
+        try { localStorage.setItem('contrib_cards_open', JSON.stringify(next)); } catch { /* modo privado */ }
+        return next;
+    });
+    const todasAbiertas = CARD_IDS.every(id => openCards[id] === true);
+    const setAllCards = (open: boolean) => setOpenCards(() => {
+        const next = open ? Object.fromEntries(CARD_IDS.map(id => [id, true])) : {};
+        try { localStorage.setItem('contrib_cards_open', JSON.stringify(next)); } catch { /* modo privado */ }
+        return next;
+    });
 
     // Editor
     const [c, setC] = useState<CampaignRow | null>(null);
@@ -689,6 +760,15 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                        {/* Con todas las secciones plegadas el editor entra en
+                            una pantalla; abrirlas todas es para buscar algo de
+                            un vistazo con el buscador del navegador. */}
+                        <button onClick={() => setAllCards(!todasAbiertas)}
+                            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
+                            {todasAbiertas
+                                ? <><ChevronsDownUp className="w-4 h-4" /> Contraer todo</>
+                                : <><ChevronsUpDown className="w-4 h-4" /> Expandir todo</>}
+                        </button>
                         <button onClick={openPreview}
                             className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
                             <Eye className="w-4 h-4" /> Ver página
@@ -749,7 +829,7 @@ const ContributionCampaigns: React.FC = () => {
                 </div>
 
                 {showHistory && (
-                    <Card title="Historial" hint="Quién hizo qué y cuándo. Cada cambio de estado queda registrado.">
+                    <Card id="historial" open={isOpen('historial')} onToggle={toggleCard} title="Historial" hint="Quién hizo qué y cuándo. Cada cambio de estado queda registrado.">
                         {history.length === 0 ? <p className="text-sm text-gray-400 italic">Sin movimientos todavía.</p> : (
                             <ul className="space-y-2">
                                 {history.map((h, i) => (
@@ -764,15 +844,13 @@ const ContributionCampaigns: React.FC = () => {
                     </Card>
                 )}
 
-                {/* Métricas (F5) */}
-                <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
-                    <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
-                        <BarChart3 className="w-5 h-5 text-rotary-blue" /> Resultados de la campaña
-                    </h3>
-                    <p className="text-xs text-gray-400 mb-5">
-                        Contadores propios, sin cookies ni datos personales. El monto es lo que Stripe cobró de verdad.
-                        Son cifras de ATRIBUCIÓN, no de causalidad: dicen cuántos de los que vieron esta campaña aportaron después, no que la campaña sea la causa.
-                    </p>
+                {/* Métricas (F5) — plegable como el resto (v4.826): escrita a
+                    mano quedaba fuera de «Expandir todo» y se comportaría
+                    distinto que sus vecinas. */}
+                <Card id="resultados" open={isOpen('resultados')} onToggle={toggleCard}
+                    title="Resultados de la campaña"
+                    icon={<BarChart3 className="w-5 h-5 flex-shrink-0 text-rotary-blue" />}
+                    hint="Contadores propios, sin cookies ni datos personales. El monto es lo que Stripe cobró de verdad. Son cifras de ATRIBUCIÓN, no de causalidad: dicen cuántos de los que vieron esta campaña aportaron después, no que la campaña sea la causa.">
                     {!metrics || metrics.length === 0 ? (
                         <p className="text-sm text-gray-400 italic">Todavía no hay actividad registrada para esta campaña.</p>
                     ) : (
@@ -802,10 +880,10 @@ const ContributionCampaigns: React.FC = () => {
                             })}
                         </div>
                     )}
-                </div>
+                </Card>
 
                 {/* Identidad */}
-                <Card title="Identidad y vigencia">
+                <Card id="identidad" open={isOpen('identidad')} onToggle={toggleCard} title="Identidad y vigencia">
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
                             <label className={lbl}>Nombre</label>
@@ -841,7 +919,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Alcance */}
-                <Card title="Alcance (targeting)" hint="En qué sitios se muestra la campaña. Los sitios no alcanzados siguen con su página de siempre.">
+                <Card id="alcance" open={isOpen('alcance')} onToggle={toggleCard} title="Alcance (targeting)" hint="En qué sitios se muestra la campaña. Los sitios no alcanzados siguen con su página de siempre.">
                     <div className="space-y-4">
                         <div className="flex gap-2 flex-wrap">
                             {(['all', 'districts', 'clubs'] as TargetingMode[]).map(m => (
@@ -895,7 +973,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Hero */}
-                <Card title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
+                <Card id="hero" open={isOpen('hero')} onToggle={toggleCard} title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
                     <div className="space-y-4">
                         <div><label className={lbl}>Título</label>
                             <input className={field} placeholder="COLOMBIA NOS NECESITA" value={hero.title || ''}
@@ -981,7 +1059,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Tarjeta de aporte */}
-                <Card title="Tarjeta de aporte" hint="La tarjeta que abre el formulario de pago. Usa la pasarela de siempre: nada nuevo que configurar.">
+                <Card id="aporte" open={isOpen('aporte')} onToggle={toggleCard} title="Tarjeta de aporte" hint="La tarjeta que abre el formulario de pago. Usa la pasarela de siempre: nada nuevo que configurar.">
                     <div className="space-y-4">
                         <div><label className={lbl}>Título</label>
                             <input className={field} placeholder="Aporte para la emergencia" value={donateCard.title || ''}
@@ -1001,7 +1079,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Cómo ayudar */}
-                <Card title="¿Cómo puedes ayudar?" hint="Hasta ocho opciones con su icono, texto y botón.">
+                <Card id="ayudar" open={isOpen('ayudar')} onToggle={toggleCard} title="¿Cómo puedes ayudar?" hint="Hasta ocho opciones con su icono, texto y botón.">
                     <div className="space-y-3">
                         {ways.map((w, i) => (
                             <div key={w.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1036,7 +1114,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Elementos requeridos */}
-                <Card title="Elementos que se requieren" hint="La lista de suministros prioritarios.">
+                <Card id="requeridos" open={isOpen('requeridos')} onToggle={toggleCard} title="Elementos que se requieren" hint="La lista de suministros prioritarios.">
                     <div className="space-y-3">
                         {reqItems.map((it, i) => (
                             <div key={it.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1166,7 +1244,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Galería «Rotarios en acción» (v4.821) */}
-                <Card title="Rotarios en acción" hint="Fotos y videos que mandan los clubes. Se pintan en un carrusel entre los centros de acopio y el panorama.">
+                <Card id="galeria" open={isOpen('galeria')} onToggle={toggleCard} title="Rotarios en acción" hint="Fotos y videos que mandan los clubes. Se pintan en un carrusel entre los centros de acopio y el panorama.">
                     <div className="space-y-3">
                         <div className="grid sm:grid-cols-2 gap-3">
                             <div><label className={lbl}>Título de la sección</label>
@@ -1251,19 +1329,20 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                 </Card>
 
-                {/* Centros de acopio (F3) */}
-                <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                        <h3 className="text-lg font-bold text-gray-800">Centros de acopio</h3>
+                {/* Centros de acopio (F3). El botón de guardar va en la
+                    CABECERA, fuera del pliegue: si el guardado quedara dentro,
+                    plegar la sección con cambios sin guardar los escondería
+                    junto con su única forma de guardarlos. */}
+                <Card id="centros" open={isOpen('centros')} onToggle={toggleCard}
+                    title="Centros de acopio"
+                    warn={centerSkipped.length}
+                    action={(
                         <button onClick={saveCenters} disabled={savingCenters || !centersDirty}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${centersDirty ? 'bg-rotary-blue text-white hover:bg-sky-800 shadow-lg' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                            className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${centersDirty ? 'bg-rotary-blue text-white hover:bg-sky-800 shadow-lg' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                             <Save className="w-4 h-4" /> {savingCenters ? 'Guardando…' : 'Guardar centros'}
                         </button>
-                    </div>
-                    <p className="text-xs text-gray-400 mb-5">
-                        Estructurados por ciudad y sector — se guardan con su propio botón, aparte del resto de la campaña.
-                        Ciudad y dirección son obligatorias: una fila sin ellas no se publica y se avisa. El orden de la lista es el orden en la página.
-                    </p>
+                    )}
+                    hint="Estructurados por ciudad y sector — se guardan con su propio botón, aparte del resto de la campaña. Ciudad y dirección son obligatorias: una fila sin ellas no se publica y se avisa. El orden de la lista es el orden en la página.">
                     <div className="space-y-3">
                         {centers.map((ct, i) => (
                             <div key={ct.id || i} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1329,10 +1408,10 @@ const ContributionCampaigns: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </div>
+                </Card>
 
                 {/* Indicadores */}
-                <Card title="Panorama de la emergencia" hint="Cada cifra necesita su fuente y su fecha: un indicador sin fuente no se publica — lo bloquea el servidor, no esta pantalla.">
+                <Card id="panorama" open={isOpen('panorama')} onToggle={toggleCard} warn={statWarnings.length} title="Panorama de la emergencia" hint="Cada cifra necesita su fuente y su fecha: un indicador sin fuente no se publica — lo bloquea el servidor, no esta pantalla.">
                     <div className="space-y-3">
                         {stats.map((s, i) => (
                             <div key={s.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1392,7 +1471,7 @@ const ContributionCampaigns: React.FC = () => {
                     medios daban 284, 287, 288 y 294 fallecidos mientras la
                     UNGRD publicaba 289, y las personas afectadas BAJARON de
                     145.601 a 115.461. Ver `emergencyFeed.js`. */}
-                <Card title="Lectura automatizada del panorama"
+                <Card id="lectura" open={isOpen('lectura')} onToggle={toggleCard} warn={feedWarnings.length} title="Lectura automatizada del panorama"
                     hint="Las fuentes se consultan cada 15 minutos y dejan propuestas. Sólo una fuente OFICIAL puede publicar sola, y sólo si se enciende abajo.">
                     <div className="space-y-4">
                         <label className="flex items-start gap-3 cursor-pointer">
@@ -1547,7 +1626,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Bloques informativos */}
-                <Card title="Bloques informativos" hint="Las tarjetas de contexto: por qué ayudar, cómo estamos actuando, cómo contribuir.">
+                <Card id="bloques" open={isOpen('bloques')} onToggle={toggleCard} title="Bloques informativos" hint="Las tarjetas de contexto: por qué ayudar, cómo estamos actuando, cómo contribuir.">
                     <div className="space-y-3">
                         {infoBlocks.map((b, i) => (
                             <div key={b.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1577,7 +1656,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Cierre final */}
-                <Card title="Cierre final" hint="El llamado de alto impacto al pie de la campaña.">
+                <Card id="cierre" open={isOpen('cierre')} onToggle={toggleCard} title="Cierre final" hint="El llamado de alto impacto al pie de la campaña.">
                     <div className="space-y-4">
                         <div><label className={lbl}>Título</label>
                             <input className={field} placeholder="HOY, MÁS QUE NUNCA, UNIDOS PODEMOS LLEVAR ESPERANZA" value={finalCta.title || ''}
@@ -1596,7 +1675,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Aliados */}
-                <Card title="Aliados y logos" hint="Rotary, Colrotarios, ABACO y los que se sumen. Nada va escrito en el código.">
+                <Card id="aliados" open={isOpen('aliados')} onToggle={toggleCard} title="Aliados y logos" hint="Rotary, Colrotarios, ABACO y los que se sumen. Nada va escrito en el código.">
                     <div className="space-y-3">
                         {partners.map((p, i) => (
                             <div key={p.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
@@ -1640,7 +1719,7 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* SEO */}
-                <Card title="SEO y tarjeta social" hint="Cómo se ve la campaña al compartirla por WhatsApp o redes. Se aplica en la Fase 2, cuando la página pública tome la campaña.">
+                <Card id="seo" open={isOpen('seo')} onToggle={toggleCard} title="SEO y tarjeta social" hint="Cómo se ve la campaña al compartirla por WhatsApp o redes. Se aplica en la Fase 2, cuando la página pública tome la campaña.">
                     <div className="space-y-4">
                         <div><label className={lbl}>Meta título</label>
                             <input className={field} value={seo.title || ''}

@@ -1368,6 +1368,41 @@ if (feedMirror) {
             u => isFetchableUrl(u) === feedMirror.isFetchableUrl(u)));
 }
 
+grupo('v4.826 — el editor se pliega');
+const admin826 = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+// El contenido se DESMONTA al cerrar: escondido con `hidden` lo siguen
+// encontrando el buscador del navegador y el lector de pantalla.
+check('el contenido se desmonta al cerrar, no se esconde con CSS',
+    /\{open && <div id=\{`card-\$\{id\}`\}/.test(admin826));
+// El estado vive en el padre: es lo que permite «Expandir todo» y lo que
+// evita un hook dentro de un `.map` (v4.689).
+check('`Card` no tiene hooks: el estado abierto/cerrado vive en el padre',
+    !/const Card[\s\S]{0,900}useState/.test(admin826));
+// Con la lista escrita dos veces, una sección nueva se queda fuera del botón.
+check('CARD_IDS está en UN solo sitio y lo consume «Expandir todo»',
+    (admin826.match(/CARD_IDS/g) || []).length === 3
+    && /CARD_IDS\.map\(id => \[id, true\]\)/.test(admin826));
+// Toda sección declarada tiene que existir como Card, o el botón abriría un id
+// que no pinta nada.
+check('cada id declarado tiene su Card y cada Card su id', (() => {
+    const ids = JSON.parse('[' + admin826.match(/const CARD_IDS = \[([\s\S]*?)\];/)[1]
+        .replace(/'/g, '"').replace(/,\s*\]/, ']').replace(/,\s*$/, '') + ']');
+    const usados = [...admin826.matchAll(/<Card id="([^"]+)"/g)].map(m => m[1]);
+    return ids.length === 16 && usados.length === 16
+        && usados.every(u => ids.includes(u)) && ids.every(i => usados.includes(i));
+})());
+// Dentro del pliegue, cerrar la sección escondería la única forma de guardar.
+check('el botón de guardar centros va en la CABECERA, fuera del pliegue',
+    /action=\{\([\s\S]{0,600}Guardar centros/.test(admin826));
+// Plegar no puede esconder un problema (v4.790).
+check('las secciones con avisos los declaran en su cabecera',
+    /warn=\{statWarnings\.length\}/.test(admin826)
+    && /warn=\{feedWarnings\.length\}/.test(admin826)
+    && /warn=\{centerSkipped\.length\}/.test(admin826));
+// En modo privado localStorage lanza, y eso no puede tumbar el editor.
+check('la preferencia se guarda envuelta en try',
+    /try \{ localStorage\.setItem\('contrib_cards_open'/.test(admin826));
+
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);
