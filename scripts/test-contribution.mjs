@@ -857,6 +857,23 @@ check('un archivo propio va en <video> y un embed en <iframe>',
     /videoActual\.video\.kind === 'file' \?/.test(landingSrc)
     && /<video[\s\S]{0,400}controls/.test(landingSrc) && /<iframe[\s\S]{0,700}allowFullScreen/.test(landingSrc));
 
+// v4.819: los centros llevan el fondo de la banda «Somos gente de acción».
+check('la sección de centros usa el MISMO fondo de la portada, no una copia', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('centersAlliance'));
+    return /style=\{SITE_ACTION_BG\}/.test(sec) && !/0c3c7c/.test(landingSrc);
+})());
+const chrome = readFileSync('src/lib/siteChrome.ts', 'utf8');
+const action = readFileSync('src/sections/ActionSection.tsx', 'utf8');
+check('el fondo vive en siteChrome y lo consumen las DOS secciones',
+    /SITE_ACTION_BG = \{[\s\S]{0,240}geo-darkblue\.png/.test(chrome)
+    && /SITE_ACTION_BG/.test(action) && !/0c3c7c/.test(action));
+// Sobre el azul, el texto en gris oscuro sería ilegible.
+check('sobre el fondo oscuro los textos de la sección van en claro', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('Panorama') > 0 ? landingSrc.indexOf('id="panorama"') : landingSrc.length);
+    return /Centros de acopio[\s\S]{0,60}<\/h2>/.test(sec) && /font-light text-white tracking-tight/.test(sec)
+        && /text-center text-white\/80 max-w-2xl/.test(sec) && !/text-gray-500 max-w-2xl/.test(sec);
+})());
+
 // v4.814: los centros van en mampostería, no en rejilla.
 check('las tarjetas de ciudad NO van en una rejilla que las estire a la más alta', (() => {
     // Se ancla en el `id` de la sección, no en la primera mención: el enlace

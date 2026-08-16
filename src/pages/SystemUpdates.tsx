@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.818.0 | 2026-08-15 (Las flechas del video, a los lados y a media altura)
-// Cache bust: 2026-08-15p
+// UI V4.819.0 | 2026-08-15 (Centros de acopio con el fondo de la banda de la portada)
+// Cache bust: 2026-08-15q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.819.0',
+        title: 'Los centros de acopio, sobre el azul del sitio 🎨',
+        description: 'La sección de centros de acopio pasa del gris claro al azul con textura geométrica de la banda «Somos gente de acción» de la portada — el mismo fondo, no uno parecido: se comprobó en el navegador que las dos secciones den exactamente el mismo color, la misma textura y el mismo tamaño de repetición. Las tarjetas blancas de cada ciudad resaltan sobre el azul y el título y la línea de la alianza pasan a blanco para que se lean. Ese fondo pasa a estar escrito en UN solo lugar y lo leen las dos secciones: antes vivía suelto dentro de la portada, y el día que alguien ajustara el azul, la otra se quedaba atrás.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'La sección de centros de acopio usa el fondo azul con textura de la banda de la portada.' },
+            { type: 'changed', text: 'El título y la línea de la alianza pasan a blanco para leerse sobre el azul.' },
+            { type: 'improved', text: 'El fondo vive en un solo lugar y lo comparten las dos secciones.' },
+        ]
+    },
     {
         version: '4.818.0',
         title: 'Las flechas del video, a los lados ↔️',

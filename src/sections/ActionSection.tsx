@@ -6,6 +6,7 @@ import { hasEditableHome, hasCustomTheme } from '../lib/entityTypes';
 import { resolveCtaUrl, ctaTarget } from '../lib/ctaLinks';
 import { resolveCtaEmoji } from '../lib/ctaIcons';
 import { renderRichText, hasBoldMarkup } from '../lib/richText';
+import { SITE_ACTION_BG } from '../lib/siteChrome';
 
 
 // El color de fondo personalizable + textura overlay aplica SOLO a sitios de tipo
@@ -15,7 +16,10 @@ const ActionSection = () => {
   // Tema visual (fondo/textura/botón): solo eventos. Contenido (textos/botón): eventos + ferias.
   const isEventSite = hasCustomTheme((club as any)?.type);
   const canEditContent = hasEditableHome((club as any)?.type);
-  const bgColor = club?.colors?.actionBg || '#0c3c7c';
+  // El valor por defecto es el MISMO azul de la banda estándar: escrito a
+  // mano acá, un sitio de Evento sin color elegido acabaría en otro azul el
+  // día que se ajuste el de siteChrome.
+  const bgColor = club?.colors?.actionBg || SITE_ACTION_BG.backgroundColor;
   const cta = useCtaButton();
 
   // Contenido configurable (Evento/Convención y Feria de Proyectos). Si no hay valor, texto por defecto.
@@ -52,7 +56,9 @@ const ActionSection = () => {
       className="relative overflow-hidden py-16 md:py-20"
       style={isEventSite
         ? { backgroundColor: bgColor }
-        : { backgroundColor: '#0c3c7c', backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px' }}
+        // El fondo sale de siteChrome: lo comparte con la sección de centros
+        // de acopio de una campaña, y escrito dos veces se separan en silencio.
+        : SITE_ACTION_BG}
     >
       {/* Textura geométrica sobrepuesta al color (overlay 0.85) — solo Evento/Convención. */}
       {isEventSite && (

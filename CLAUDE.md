@@ -2575,6 +2575,15 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
+- **La sección de centros lleva el fondo de la banda «Somos gente de acción»**
+  (v4.819, `SITE_ACTION_BG` en `siteChrome.ts`). Vive ahí y no escrito en cada
+  pantalla porque lo consumen DOS secciones públicas —`ActionSection.tsx` y
+  ésta—: una copia que se queda atrás no da error, pinta otro azul y nadie se
+  entera hasta que alguien mira las dos bandas juntas (lección de
+  `rotary-topbar`, v4.745). No va como clase de Tailwind porque son tres
+  propiedades juntas —color, imagen y tamaño de repetición—, no un color
+  suelto. Sobre ese azul el título y la alianza van en blanco; el gris oscuro
+  de antes sería ilegible.
 - **Las tarjetas de ciudad van en MAMPOSTERÍA, no en rejilla** (v4.814). Con
   `grid`, todas las de una fila se estiran hasta la más alta: al lado de Cali
   (8 direcciones), Cota (1) quedaba igual de alta con media tarjeta en blanco

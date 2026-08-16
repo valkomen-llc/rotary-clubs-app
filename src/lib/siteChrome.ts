@@ -27,3 +27,27 @@ export const SITE_FOOTER_BG = '#212C3F';
  * digan lo mismo.
  */
 export const SITE_TOPBAR_BG = '#28354b';
+
+/**
+ * El azul con textura geométrica de la banda «Somos gente de acción» de la
+ * portada, que es la segunda sección de todo sitio estándar.
+ *
+ * Vive acá porque lo consumen DOS secciones públicas —`ActionSection.tsx` y
+ * la de centros de acopio de una campaña— y una copia que se queda atrás no
+ * da error: pinta otro azul y nadie se entera hasta que alguien mira las dos
+ * bandas juntas. Es la misma lección de `rotary-topbar` (v4.745).
+ *
+ * NO va como clase de Tailwind porque son tres propiedades juntas —color,
+ * imagen y su tamaño de repetición—, no un color suelto.
+ *
+ * Un sitio Evento/Convención NO lo usa: tiene su `colors.actionBg`
+ * configurable y su textura por encima, y pisarlo sería desobedecer al
+ * operador que ya eligió.
+ */
+export const SITE_ACTION_BG = {
+    backgroundColor: '#0c3c7c',
+    backgroundImage: "url('/geo-darkblue.png')",
+    backgroundPosition: '50% 0',
+    backgroundRepeat: 'repeat',
+    backgroundSize: '71px 85px',
+} as const;

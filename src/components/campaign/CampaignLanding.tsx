@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
 import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { SITE_ACTION_BG } from '../../lib/siteChrome';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -497,13 +498,16 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
 
             {/* ── Centros de acopio ── */}
             {hasCenters && (
-                <section id="centros-de-acopio" className="py-20 md:py-24 bg-rotary-concrete scroll-mt-24">
+                // El MISMO fondo de la banda «Somos gente de acción» de la
+                // portada, que sale de `siteChrome`: escrito acá a mano, el
+                // día que se ajuste el azul una de las dos se queda atrás.
+                <section id="centros-de-acopio" className="py-20 md:py-24 scroll-mt-24" style={SITE_ACTION_BG}>
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-3">
+                        <h2 className="text-3xl md:text-4xl font-light text-white tracking-tight text-center mb-3">
                             Centros de acopio
                         </h2>
                         {content.centersNote && (
-                            <p className="text-center text-gray-500 max-w-2xl mx-auto mb-12">{content.centersNote}</p>
+                            <p className="text-center text-white/80 max-w-2xl mx-auto mb-12">{content.centersNote}</p>
                         )}
                         {!content.centersNote && <div className="mb-12" />}
                         {/* MAMPOSTERÍA, no rejilla. Con `grid`, todas las
@@ -566,7 +570,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             ))}
                         </div>
                         {content.centersAlliance && (
-                            <p className="text-center text-sm font-bold text-gray-600 mt-10">{content.centersAlliance}</p>
+                            <p className="text-center text-sm font-bold text-white mt-10">{content.centersAlliance}</p>
                         )}
                     </div>
                 </section>
