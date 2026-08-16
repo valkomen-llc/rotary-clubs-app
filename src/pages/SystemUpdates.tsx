@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.826.0 | 2026-08-16 (Los contenedores del editor de campanas se pliegan)
+// UI V4.827.0 | 2026-08-16 (La fuente se elige de una lista y la frecuencia se configura)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.827.0',
+        title: 'La lectura del panorama, explicada y configurable 🔧',
+        description: 'La «Lectura automatizada del panorama» se reportó como que no funcionaba. No estaba rota: no tenía ninguna fuente configurada, y la pantalla no decía cuál poner ni dejaba elegir cada cuánto consultar. Ahora la fuente se ELIGE de una lista —UNGRD como página, UNGRD como infografía, un medio, o un endpoint JSON— y la plantilla deja puestas la autoridad y el formato, que es la parte que no se puede deducir mirando una página; sólo hay que pegar la dirección. La FRECUENCIA también se elige: desde cada 15 minutos hasta una vez al día, con «cada hora» por defecto. La sección explica en tres pasos qué hace, dice cuándo fue la última consulta, y cuando no hay ninguna fuente lo dice con la salida en vez de responder «nada nuevo» —que era lo que hacía creer que se había consultado algo—. Cada fila de fuente explica además qué implica lo que se eligió: una fuente oficial puede fijar la cifra, una secundaria sólo avisa, y en formato imagen hay que pegar la dirección de la infografía y no la de la página que la contiene.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'emergencia', 'usabilidad'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La fuente se elige de una lista de plantillas, con su autoridad y su formato ya puestos.' },
+            { type: 'added', text: 'La frecuencia de consulta se configura: de cada 15 minutos a una vez al día.' },
+            { type: 'added', text: 'La sección explica en tres pasos qué hace y muestra la última consulta.' },
+            { type: 'fixed', text: 'Sin fuentes configuradas, «Leer ahora» dice qué falta en vez de «nada nuevo».' },
+            { type: 'improved', text: 'Cada fuente explica qué implica su autoridad y su formato.' },
+        ]
+    },
     {
         version: '4.826.0',
         title: 'El editor de campañas, plegado 🗂️',

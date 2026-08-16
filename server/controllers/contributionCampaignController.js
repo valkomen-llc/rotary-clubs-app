@@ -27,7 +27,7 @@ import {
     normalizeCenters,
 } from '../lib/contributionSpec.js';
 import {
-    normalizeFeed, validateFeed, applyReading, formatCutoff,
+    normalizeFeed, validateFeed, applyReading, formatCutoff, shouldRunNow,
     publishedValueOf, publishedCutoffOf, metricLabel,
 } from '../lib/emergencyFeed.js';
 import { readCampaign } from '../lib/emergencyIngest.js';
@@ -251,6 +251,7 @@ const rowToCampaign = (r) => ({
     stats: r.stats || [],
     targeting: r.targeting || {},
     feed: r.feed || {},
+    feedRunAt: r.feedRunAt || null,
     recipientClubId: r.recipientClubId,
     createdBy: r.createdBy,
     updatedBy: r.updatedBy,
@@ -890,14 +891,23 @@ const saveReading = async (campaignId, r, { state = 'pendiente', autoPublished =
  * y en los dos casos un portal caído tiene que dejar un motivo escrito y no
  * tumbar la vuelta entera.
  */
-export const runCampaignFeed = async (campaignId, { actor = null, timeBudgetMs = 60_000 } = {}) => {
+export const runCampaignFeed = async (campaignId, { actor = null, timeBudgetMs = 60_000, force = false } = {}) => {
     await ensureContributionSchema();
     const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [campaignId]);
     if (!rows[0]) return { ok: false, error: 'Campaña no encontrada' };
 
     const campaign = rowToCampaign(rows[0]);
-    const feed = normalizeFeed(campaign.feed);
-    if (!feed.enabled) return { ok: true, skipped: 'apagada', propuestas: 0, aplicadas: 0, fuentes: [] };
+    // `force` es «Leer ahora»: el usuario pidió mirar y hacerle esperar al
+    // intervalo sería desobedecerlo. El cron no fuerza.
+    const turno = shouldRunNow({ feed: campaign.feed, lastRunAt: campaign.feedRunAt, force });
+    if (!turno.run) {
+        return { ok: true, skipped: turno.reason, minutesLeft: turno.minutesLeft || 0, propuestas: 0, aplicadas: 0, fuentes: [] };
+    }
+
+    // Se sella ANTES de leer: si la invocación muere a mitad, la vuelta
+    // siguiente no reintenta en el acto y gasta modelo dos veces por lo
+    // mismo. Mismo criterio que los reclamos del Creador de Reels.
+    await db.query(`UPDATE "ContributionCampaign" SET "feedRunAt" = NOW() WHERE id = $1`, [campaignId]);
 
     const { results } = await readCampaign({ campaign, timeBudgetMs });
 
@@ -964,7 +974,7 @@ export const listReadings = async (req, res) => {
 // POST /api/contribution-campaigns/:id/readings/run — «Leer ahora»
 export const runReadings = async (req, res) => {
     try {
-        const out = await runCampaignFeed(req.params.id, { actor: actorOf(req) });
+        const out = await runCampaignFeed(req.params.id, { actor: actorOf(req), force: true });
         if (!out.ok) return res.status(404).json(out);
         res.json(out);
     } catch (e) {
@@ -1035,7 +1045,7 @@ export const decideReading = async (req, res) => {
 export const sweepCampaignFeeds = async ({ timeBudgetMs = 200_000 } = {}) => {
     await ensureContributionSchema();
     const { rows } = await db.query(
-        `SELECT id, name FROM "ContributionCampaign"
+        `SELECT id, name, feed, "feedRunAt" FROM "ContributionCampaign"
           WHERE status IN ('active', 'scheduled')
             AND COALESCE(feed->>'enabled', 'false') = 'true'
           ORDER BY priority DESC, "updatedAt" DESC LIMIT 20`
@@ -1043,6 +1053,11 @@ export const sweepCampaignFeeds = async ({ timeBudgetMs = 200_000 } = {}) => {
     const arranque = Date.now();
     const out = [];
     for (const c of rows) {
+        // El intervalo lo decide cada campaña. El filtro va acá y no en el
+        // SQL porque el criterio es PURO y está probado: en la consulta
+        // quedaría fuera de las pruebas.
+        const turno = shouldRunNow({ feed: c.feed, lastRunAt: c.feedRunAt });
+        if (!turno.run) { out.push({ id: c.id, name: c.name, skipped: turno.reason }); continue; }
         if (Date.now() - arranque > timeBudgetMs) {
             out.push({ id: c.id, name: c.name, skipped: 'sin_presupuesto' });
             continue;
