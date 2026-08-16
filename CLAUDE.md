@@ -2496,7 +2496,7 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   ensucie el panel; uno real exige almacén compartido, que la plataforma no
   tiene. Se dice así en el código a propósito.
 - **La lectura pública va cacheada** (TTL 60 s) y TODA escritura la invalida.
-- **Las cinco tablas viven fuera de Prisma** y están en la lista del guardián
+- **Las seis tablas viven fuera de Prisma** y están en la lista del guardián
   de `db:push` — al agregar una tabla al módulo, sumarla allí y acá.
 
 ### La página pública (v4.804, Fase 2)
@@ -2784,6 +2784,104 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   sobre la campaña — misma regla que `putAuto` con las traducciones.
   `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
   catch-all de toda página pública.
+
+### La lectura automatizada del panorama (v4.825)
+
+El «Panorama de la emergencia» se alimenta solo desde fuentes configuradas
+—la UNGRD, un portal oficial, un medio—: el cron las consulta cada 15 minutos,
+un modelo EXTRAE las cifras y el código las juzga. Lo que sale son PROPUESTAS.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/emergencyFeed.js` | El CRITERIO. **Puro**: catálogo de métricas, autoridad de la fuente, lectura de una cifra, juicio de una lectura |
+| `src/lib/emergencyFeed.ts` | Espejo en el navegador: avisos en vivo del editor |
+| `server/lib/emergencyIngest.js` | La orquestación: descarga, extracción y degradación |
+| `ContributionCampaignReading` | Toda lectura, se aplique o no |
+
+- **NO se publica «lo último que aparezca en Internet», y el motivo está
+  MEDIDO.** Sobre el propio sismo de San José del Palmar, con cortes de pocas
+  horas de diferencia: Infobae 284 fallecidos, ABC Economía 287, la UNGRD en X
+  288 (14/08 4:30 p. m.), El Contraste 294 (15/08 6:30 a. m.) y la UNGRD 289
+  (15/08 6:30 p. m.); las personas afectadas **bajan** de 145.601 a 115.461.
+  Publicar lo último pondría una cifra distinta cada pocas horas, a veces
+  hacia atrás y a veces contradiciendo a la propia UNGRD, firmada por Rotary.
+  Eso no es un fallo técnico: es desinformación institucional. Al conectar una
+  fuente nueva, medir primero qué dice frente a las otras.
+- **UNA fuente canónica fija la cifra; las demás AVISAN.** `oficial` es la
+  única con `canPublish`. La distinción no es de prestigio: un medio que cita
+  a la UNGRD introduce un eslabón más, y la tabla de arriba muestra que ese
+  eslabón se equivoca.
+- **Un retroceso NO se rechaza: se MARCA.** Consolidar un balance quita
+  duplicados, así que una cifra puede bajar con toda legitimidad —la UNGRD
+  misma pasó de 294 a 289—. Lo que no puede es bajar EN SILENCIO y sola.
+  Rechazarlo dejaría la página clavada en la cifra más alta que alguien haya
+  publicado nunca, que es el error opuesto y peor. `rises` marca las métricas
+  donde bajar es raro; en desaparecidos, personas y familias afectadas el
+  descenso es normal y no genera aviso.
+- **El modelo EXTRAE, el código DECIDE** (`parseExtraction`). Se descarta —y
+  se dice— lo que no está en el catálogo cerrado, lo repetido, lo que no es un
+  entero legible y lo que viene con calificador: «más de 102.000» es una cota,
+  no un dato, y publicarla afirmaría algo que la fuente no afirmó. Misma regla
+  que `templateComposer.js`, `seoAI.js` y `validateEmergencyCopy`.
+- **El separador de miles es el PUNTO** («14.705» son catorce mil setecientos
+  cinco) y sólo se aceptan grupos de tres dígitos. Cualquier otra forma se
+  rechaza en vez de adivinarse: estas cifras son enteros y un decimal es señal
+  de que se leyó mal.
+- **Sin fecha de corte no hay lectura**, y un corte que no sea MÁS NUEVO que
+  el publicado se rechaza. Es lo que impide que una nota vieja recirculando
+  haga retroceder la página sola. Un corte futuro es una fecha mal leída; se
+  toleran 12 h porque la función corre en UTC y los cortes son de Colombia.
+- **La automatización sólo toca lo que se declara suyo** (`metricKey` en el
+  indicador, campo ADITIVO). Un indicador sin métrica es de escritura MANUAL y
+  no se pisa jamás — regla de `putAuto` con las traducciones, y acá pesa más,
+  porque lo que se pisaría es una cifra que alguien corrigió a sabiendas.
+- **Las cifras vienen en una IMAGEN.** La UNGRD publica el balance como
+  infografía, así que no hay texto que raspar: va por visión, con el mismo
+  `generateCopy({ imageUrl })` del control de fidelidad de Reels. El texto de
+  una nota sirve para la fecha de corte y como respaldo.
+- **Se guardan también las lecturas DESCARTADAS.** La pregunta que este módulo
+  tiene que poder contestar es «¿por qué la página dice 289 si el medio dice
+  294?», y sin las que no se aplicaron no tiene dónde mirarse — el mismo vacío
+  que el CRM tenía antes de `CrmWebhookEvent` (v4.702).
+- **La deduplicación vive en el índice único sobre `key`**, no en el código
+  que inserta, y es `DO NOTHING`, no `DO UPDATE`: el cron mira la misma página
+  cada cuarto de hora y una lectura ya decidida no puede volver a la bandeja
+  porque alguien recargó la página de origen.
+- **Cero propuestas es el resultado NORMAL** y se dice así. Un aviso de error
+  ahí mandaría a buscar una avería inexistente.
+- **La dirección se revalida DESPUÉS de los redireccionamientos.** `fetch` los
+  sigue solo, y una redirección a `localhost` o a una IP privada convertiría
+  este cron en un lector de la red interna de la función. `isFetchableUrl`
+  exige `https` y rechaza host local e IP — mismo criterio que el mapa de la
+  sede (v4.717) y las redirecciones (v4.781), y acá además con el SSRF de por
+  medio.
+- **Leer una fuente NUNCA lanza**: devuelve el motivo escrito. Es un barrido
+  sobre sitios de terceros y el fallo de uno no puede llevarse a los demás ni
+  dejar la campaña sin explicación dos semanas después.
+- **La auto-publicación nace APAGADA**, y el interruptor dice la CONSECUENCIA
+  —«la cifra sale publicada sin que nadie la revise»—, no sólo su nombre.
+  Encenderla sin ninguna fuente oficial activa se avisa: sería un interruptor
+  que no hace nada (v4.650).
+- **Los indicadores se acumulan en MEMORIA y se escriben UNA vez** por pasada.
+  Con un UPDATE por lectura, dos métricas del mismo balance harían dos vueltas
+  y la segunda leería los stats de antes de la primera.
+- **El cron va cada 15 minutos, no cada minuto**: cada vuelta gasta una
+  llamada al modelo por fuente y un balance oficial no cambia doce veces por
+  hora. Protegido con `CRON_SECRET`, con presupuesto de tiempo, y sólo sobre
+  campañas `active`/`scheduled` — una archivada gastaría modelo por una página
+  que nadie ve.
+- Pruebas: las de `npm run test:contribution` (367 casos, **sin base,
+  credenciales ni red**), con los números REALES del sismo, no unos inventados
+  para que la prueba pase.
+
+**Pendiente conocido:** las fuentes se configuran a mano porque **no se pudo
+inspeccionar la forma de los endpoints** —`gestiondelriesgo.gov.co` y
+`datos.gov.co` estaban fuera de alcance desde el entorno de desarrollo—. El
+lector es tolerante a propósito: si algún día se confirma un endpoint
+estructurado (Socrata en datos.gov.co, o la API de listas del SharePoint de la
+UNGRD), un formato `json` con ruta declarada ahorraría la llamada al modelo y
+haría la lectura determinista. No afirmar que hay una integración oficial: hay
+un lector configurable.
 
 ### El hero de la campaña se turna entre varias imágenes (v4.812)
 
@@ -4236,7 +4334,7 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 39 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 40 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
@@ -4244,9 +4342,10 @@ Las 39 tablas que la aplicación crea sola y que estas barreras protegen:
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,
 `SeoAudit`, `SeoIssue`, `SeoKeyword`, `SeoMetric`),
 las once `ProjectFair*`
-y las cinco de Campañas de Contribución (`ContributionCampaign`,
+y las seis de Campañas de Contribución (`ContributionCampaign`,
 `ContributionCenter`, `ContributionCampaignOverride`,
-`ContributionCampaignHistory`, `ContributionCampaignMetric`).
+`ContributionCampaignHistory`, `ContributionCampaignMetric`,
+`ContributionCampaignReading`).
 (Más las seis del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory` y

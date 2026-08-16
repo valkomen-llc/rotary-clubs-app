@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.824.0 | 2026-08-16 (La galeria pasa mas rapido y sin barra de desplazamiento)
+// UI V4.825.0 | 2026-08-16 (Lectura automatizada del panorama de la emergencia)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.825.0',
+        title: 'El panorama se actualiza solo 📡',
+        description: 'El «Panorama de la emergencia» ya no se escribe a mano. Se configuran las fuentes —la UNGRD, un portal oficial, un medio— y cada 15 minutos la plataforma las consulta, lee las cifras (también de una infografía, que es como la UNGRD publica su balance) y deja PROPUESTAS en el panel: cifra nueva, cifra publicada, diferencia, fecha de corte, el fragmento donde se leyó y el enlace. Un clic la aplica. Se puede además encender la publicación automática, y entonces la cifra de la fuente oficial sale sola. Por qué no se publica sin más «lo último que aparezca en Internet»: para el mismo sismo, con cortes de horas de diferencia, los medios daban 284, 287, 288 y 294 fallecidos mientras la UNGRD publicaba 289, y las personas afectadas BAJARON de 145.601 a 115.461. Así que manda UNA fuente oficial, y una cifra que retrocede, que salta demasiado o que viene con un «más de» se retiene para que alguien la mire, con el motivo escrito. Un indicador que no declare qué métrica es queda MANUAL y la lectura automática no lo toca nunca.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'emergencia', 'automatizacion'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Fuentes configurables por campaña, con su autoridad (oficial o secundaria) y su formato (texto, infografía o JSON).' },
+            { type: 'added', text: 'Consulta automática cada 15 minutos y botón «Leer ahora».' },
+            { type: 'added', text: 'Bandeja de propuestas con antes/después, corte, cita y enlace a la fuente.' },
+            { type: 'added', text: 'Publicación automática opcional, sólo desde la fuente oficial y con guardas.' },
+            { type: 'added', text: 'Un indicador sin métrica declarada es manual: la lectura automática nunca lo pisa.' },
+            { type: 'improved', text: 'Cada lectura queda registrada, se aplique o no: es lo que explica por qué la página dice una cifra y un medio dice otra.' },
+        ]
+    },
     {
         version: '4.824.0',
         title: 'La galería, más rápida y sin barra ⏩',

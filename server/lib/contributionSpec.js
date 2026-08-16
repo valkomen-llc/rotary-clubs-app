@@ -518,6 +518,12 @@ export function hexOrEmpty(v) {
 export function normalizeStats(raw) {
     return arr(raw).slice(0, 24).map((s, i) => ({
         id: str(s?.id, 40) || `stat-${i}`,
+        // Qué métrica del catálogo de `emergencyFeed.js` es. Lo escribe la
+        // lectura automática y es lo que decide a quién puede tocar: un
+        // indicador SIN `metricKey` es manual y no se pisa jamás (regla de
+        // `putAuto` con las traducciones). ADITIVO: una campaña anterior a
+        // v4.825 no lo trae y se sigue publicando igual.
+        metricKey: str(s?.metricKey, 40),
         label: str(s?.label, 120),
         value: str(s?.value, 60),
         source: str(s?.source, 200),

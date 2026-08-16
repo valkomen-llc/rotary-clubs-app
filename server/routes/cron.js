@@ -450,6 +450,38 @@ router.get('/reels-tick', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/emergency-feed ───────────────────────────────────
+//
+// Lee las fuentes del «Panorama de la emergencia» de cada campaña de
+// contribución que lo tenga encendido, y deja PROPUESTAS.
+//
+// Cada 15 minutos y no cada minuto: cada vuelta gasta una llamada al modelo
+// por fuente, y un balance oficial no cambia doce veces por hora. Es además
+// `MIN_POLL_MINUTES` en `emergencyFeed.js` — al cambiar uno, mirar el otro.
+//
+// Que casi todas las vueltas no encuentren nada nuevo es lo ESPERADO: la
+// deduplicación por `key` hace que una página que no cambió no deje ninguna
+// propuesta. Por eso sólo se registra en consola cuando hubo algo.
+router.get('/emergency-feed', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON emergency-feed] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepCampaignFeeds } = await import('../controllers/contributionCampaignController.js');
+        const summary = await sweepCampaignFeeds({ timeBudgetMs: 200000 });
+        const nuevas = summary.detalle.reduce((n, c) => n + (c.propuestas || 0) + (c.aplicadas || 0), 0);
+        if (nuevas > 0) {
+            console.log(`[CRON emergency-feed] campañas=${summary.campanas} propuestas+aplicadas=${nuevas}`);
+        }
+        res.json({ ok: true, ...summary });
+    } catch (e) {
+        console.error('[CRON emergency-feed] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Motor de automatización del WhatsApp CRM ────────────────────────────────
 // Tres etapas en el mismo tick, en este orden y no en otro:
 //

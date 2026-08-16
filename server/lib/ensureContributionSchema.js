@@ -30,10 +30,14 @@ export async function ensureContributionSchema() {
                 to_regclass('public."ContributionCenter"') IS NOT NULL AS centro,
                 to_regclass('public."ContributionCampaignOverride"') IS NOT NULL AS override,
                 to_regclass('public."ContributionCampaignHistory"') IS NOT NULL AS historial,
-                to_regclass('public."ContributionCampaignMetric"') IS NOT NULL AS metrica`
+                to_regclass('public."ContributionCampaignMetric"') IS NOT NULL AS metrica,
+                to_regclass('public."ContributionCampaignReading"') IS NOT NULL AS lectura,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feed') AS col_feed`
     );
     if (rows[0]?.campania && rows[0]?.centro && rows[0]?.override
-        && rows[0]?.historial && rows[0]?.metrica) { _ready = true; return; }
+        && rows[0]?.historial && rows[0]?.metrica
+        && rows[0]?.lectura && rows[0]?.col_feed) { _ready = true; return; }
 
     // ── La campaña ────────────────────────────────────────────────────
     //
@@ -153,6 +157,51 @@ export async function ensureContributionSchema() {
             PRIMARY KEY ("campaignId", "clubId", date, type)
         );
     `);
+
+    // ── Lectura automatizada del panorama (v4.825) ────────────────────
+    //
+    // La configuración de las fuentes vive en la propia campaña —es parte de
+    // cómo está armada—, así que es una columna JSONB más. AMPLIAR, nunca
+    // recrear: `ContributionCampaign` tiene datos en producción.
+    await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS feed JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+
+    // Cada lectura de una fuente queda registrada, se aplique o no.
+    //
+    // POR QUÉ SE GUARDAN TAMBIÉN LAS DESCARTADAS: la pregunta que este
+    // módulo tiene que poder contestar es «¿por qué la página dice 289 si el
+    // medio dice 294?». Sin las lecturas que NO se aplicaron, esa pregunta
+    // no tiene dónde mirarse — es el mismo vacío que el CRM tenía antes de
+    // `CrmWebhookEvent` (v4.702).
+    //
+    // `key` es la deduplicación (`readingKey`): el cron mira la misma página
+    // cada cuarto de hora y una página que no cambió no puede dejar una
+    // propuesta nueva cada vez.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "ContributionCampaignReading" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "campaignId" TEXT NOT NULL,
+            key TEXT NOT NULL,
+            "sourceId" TEXT NOT NULL,
+            "sourceName" TEXT,
+            url TEXT,
+            metric TEXT NOT NULL,
+            label TEXT,
+            "valueBefore" BIGINT,
+            "valueAfter" BIGINT NOT NULL,
+            cutoff TIMESTAMPTZ,
+            quote TEXT,
+            warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+            -- pendiente | aplicada | descartada | rechazada
+            state TEXT NOT NULL DEFAULT 'pendiente',
+            "autoPublished" BOOLEAN NOT NULL DEFAULT false,
+            "decidedBy" TEXT,
+            "decidedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "ContributionCampaignReading_key_key" ON "ContributionCampaignReading" (key);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ContributionCampaignReading_campaign_idx" ON "ContributionCampaignReading" ("campaignId", state, "createdAt" DESC);`);
 
     _ready = true;
 }

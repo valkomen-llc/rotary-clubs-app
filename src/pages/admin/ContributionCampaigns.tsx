@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
     Megaphone, Plus, Save, ArrowLeft, Eye, Trash2, Clock, History,
     AlertTriangle, Image as ImageIcon, Upload, ChevronUp, ChevronDown, X,
-    BarChart3,
+    BarChart3, RefreshCw, Check, Link2,
 } from 'lucide-react';
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
@@ -15,6 +15,11 @@ import {
     MAX_GALLERY_ITEMS,
     type CampaignStatus, type TargetingMode, type ContributionCenter,
 } from '../../lib/contributionSpec';
+import {
+    FEED_METRICS, METRIC_KEYS, SOURCE_KINDS, SOURCE_FORMATS,
+    normalizeFeed, validateFeed, formatFigure,
+    DEFAULT_MAX_JUMP_PCT, MAX_SOURCES, type FeedSource,
+} from '../../lib/emergencyFeed';
 import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../lib/mediaUpload';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -25,14 +30,24 @@ interface WayItem { id: string; icon: string; title: string; description: string
 interface ReqItem { id: string; icon: string; title: string; description: string; active: boolean; }
 interface InfoBlock { id: string; title: string; text: string; active: boolean; }
 interface Partner { id: string; name: string; logo: string; url: string; active: boolean; }
-interface Stat { id: string; label: string; value: string; source: string; updatedAt: string; active: boolean; }
+interface Stat { id: string; label: string; value: string; source: string; updatedAt: string; active: boolean; metricKey?: string; }
 
 interface CampaignRow {
     id: string; slug: string; name: string; campaignType: string;
     status: string; effectiveStatus?: string;
     startAt: string | null; endAt: string | null; priority: number;
-    content: any; stats: Stat[]; targeting: any;
+    content: any; stats: Stat[]; targeting: any; feed?: any;
     recipientClubId: string | null; publishedAt: string | null; updatedAt: string;
+}
+
+/** Una propuesta de la lectura automatizada (v4.825). */
+interface Reading {
+    id: string; sourceId: string; sourceName: string | null; url: string | null;
+    metric: string; label: string;
+    before: number | null; after: number;
+    cutoff: string | null; cutoffLabel: string; quote: string | null;
+    warnings: string[]; state: string; autoPublished: boolean;
+    decidedBy: string | null; createdAt: string;
 }
 
 interface ClubOption { id: string; name: string; type?: string; district?: string; }
@@ -140,6 +155,12 @@ const ContributionCampaigns: React.FC = () => {
     // Centros de acopio (F3): tabla propia, guardado aparte del documento de
     // la campaña — el editor trabaja sobre la lista entera, como los bloques
     // de pago. Sólo edita los CENTRALES; los locales de cada club son de F4.
+    // Lectura automatizada del panorama (v4.825). Las propuestas viven en su
+    // propia tabla y se cargan aparte: un fallo acá no puede impedir editar
+    // el resto de la campaña.
+    const [readings, setReadings] = useState<Reading[]>([]);
+    const [reading, setReading] = useState(false);
+
     const [centers, setCenters] = useState<Partial<ContributionCenter>[]>([]);
     const [centersDirty, setCentersDirty] = useState(false);
     const [savingCenters, setSavingCenters] = useState(false);
@@ -190,7 +211,12 @@ const ContributionCampaigns: React.FC = () => {
             setDirty(false);
             // Los centros viven en su tabla: se cargan aparte y un fallo acá
             // no impide editar el resto de la campaña.
-            setCenters([]); setCentersDirty(false); setMetrics(null);
+            setCenters([]); setCentersDirty(false); setMetrics(null); setReadings([]);
+            try {
+                const rr = await fetch(`${API}/contribution-campaigns/${id}/readings?state=pendiente`, { headers: authHeaders() });
+                const dr = rr.ok ? await rr.json() : null;
+                if (Array.isArray(dr?.readings)) setReadings(dr.readings);
+            } catch { /* la bandeja aparece vacía; lo demás sigue */ }
             try {
                 const rc = await fetch(`${API}/contribution-campaigns/${id}/centers`, { headers: authHeaders() });
                 const dc = rc.ok ? await rc.json() : null;
@@ -269,7 +295,7 @@ const ContributionCampaigns: React.FC = () => {
                     name: c.name, campaignType: c.campaignType,
                     startAt: c.startAt, endAt: c.endAt, priority: c.priority,
                     content: c.content, stats: c.stats, targeting: c.targeting,
-                    recipientClubId: c.recipientClubId,
+                    feed: c.feed, recipientClubId: c.recipientClubId,
                 }),
             });
             const d = await r.json();
@@ -448,6 +474,59 @@ const ContributionCampaigns: React.FC = () => {
 
     // Avisos en vivo de los indicadores (mismo criterio que el servidor).
     const statWarnings = useMemo(() => validateStats(c?.stats), [c?.stats]);
+    // Lectura automatizada: el MISMO criterio y los MISMOS mensajes que el
+    // servidor, para que el editor no pueda avisar una cosa y el guardado
+    // rechazar otra.
+    const feed = useMemo(() => normalizeFeed(c?.feed), [c?.feed]);
+    const feedWarnings = useMemo(() => validateFeed(c?.feed), [c?.feed]);
+    const patchFeed = (updates: Partial<ReturnType<typeof normalizeFeed>>) =>
+        patch({ feed: { ...feed, ...updates } });
+    const patchSources = (sources: FeedSource[]) => patchFeed({ sources });
+
+    /** «Leer ahora»: la misma pasada que hace el cron, a pedido. */
+    const runFeed = async () => {
+        if (!c) return;
+        if (dirty) { toast.error('Guardá los cambios antes de leer las fuentes'); return; }
+        setReading(true);
+        try {
+            const r = await fetch(`${API}/contribution-campaigns/${c.id}/readings/run`, {
+                method: 'POST', headers: authHeaders(),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error);
+            const rr = await fetch(`${API}/contribution-campaigns/${c.id}/readings?state=pendiente`, { headers: authHeaders() });
+            const dr = rr.ok ? await rr.json() : null;
+            if (Array.isArray(dr?.readings)) setReadings(dr.readings);
+            // Cero propuestas es el resultado NORMAL —la página no cambió— y
+            // se dice así: un aviso de error haría buscar una avería
+            // inexistente.
+            const errores = (d.fuentes || []).filter((f: any) => f.error);
+            if (errores.length) toast.error(`${errores[0].name || 'Una fuente'}: ${errores[0].error}`);
+            else if (d.propuestas || d.aplicadas) toast.success(`${d.propuestas} propuesta(s), ${d.aplicadas} aplicada(s) sola(s)`);
+            else toast.success('Se consultaron las fuentes: nada nuevo desde la última lectura');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo consultar las fuentes');
+        } finally { setReading(false); }
+    };
+
+    const decideReading = async (id: string, decision: 'aplicar' | 'descartar') => {
+        if (!c) return;
+        try {
+            const r = await fetch(`${API}/contribution-campaigns/${c.id}/readings/${id}`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify({ decision }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error);
+            setReadings(prev => prev.filter(x => x.id !== id));
+            // Aplicar reescribe los indicadores en el SERVIDOR: se toma lo que
+            // devuelve, no se recalcula acá. Con dos verdades sobre los mismos
+            // stats, la de la pantalla se pisa al siguiente guardado.
+            if (d.campaign) setC(prev => (prev ? { ...prev, ...d.campaign } : prev));
+            toast.success(decision === 'aplicar' ? 'Cifra aplicada al panorama' : 'Propuesta descartada');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo aplicar la decisión');
+        }
+    };
     // Aviso en vivo de los centros: qué filas NO se van a guardar y por qué.
     const centerSkipped = useMemo(() => normalizeCenters(centers).skipped, [centers]);
 
@@ -1269,6 +1348,18 @@ const ContributionCampaigns: React.FC = () => {
                                         onRemove={() => patch({ stats: stats.filter((_, j) => j !== i) })} />
                                 </div>
                                 <div className="grid md:grid-cols-2 gap-3">
+                                    {/* Qué métrica del catálogo es. Es lo que
+                                        autoriza a la lectura automática a
+                                        tocar este indicador: sin métrica es
+                                        MANUAL y no se pisa nunca. */}
+                                    <label className="md:col-span-2 block">
+                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Actualización automática</span>
+                                        <select className={field} value={s.metricKey || ''}
+                                            onChange={e => patch({ stats: stats.map((x, j) => j === i ? { ...x, metricKey: e.target.value } : x) })}>
+                                            <option value="">Manual — la lectura automática no lo toca</option>
+                                            {METRIC_KEYS.map(k => <option key={k} value={k}>{FEED_METRICS[k].label}</option>)}
+                                        </select>
+                                    </label>
                                     <input className={field} placeholder="Etiqueta (ej: Fallecidos)" value={s.label}
                                         onChange={e => patch({ stats: stats.map((x, j) => j === i ? { ...x, label: e.target.value } : x) })} />
                                     <input className={field} placeholder="Valor (ej: 54)" value={s.value}
@@ -1291,6 +1382,166 @@ const ContributionCampaigns: React.FC = () => {
                                     {statWarnings.map((w, i) => <li key={i}>{w}</li>)}
                                 </ul>
                             </div>
+                        )}
+                    </div>
+                </Card>
+
+                {/* ── Lectura automatizada (v4.825) ─────────────────────────
+                    Por qué NO se publica «lo último que aparezca en Internet»:
+                    para el mismo sismo, con cortes de horas de diferencia, los
+                    medios daban 284, 287, 288 y 294 fallecidos mientras la
+                    UNGRD publicaba 289, y las personas afectadas BAJARON de
+                    145.601 a 115.461. Ver `emergencyFeed.js`. */}
+                <Card title="Lectura automatizada del panorama"
+                    hint="Las fuentes se consultan cada 15 minutos y dejan propuestas. Sólo una fuente OFICIAL puede publicar sola, y sólo si se enciende abajo.">
+                    <div className="space-y-4">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox" checked={feed.enabled} className="w-4 h-4 mt-1 accent-rotary-blue"
+                                onChange={e => patchFeed({ enabled: e.target.checked })} />
+                            <span>
+                                <span className="block text-sm font-bold text-gray-800">Consultar las fuentes automáticamente</span>
+                                <span className="block text-xs text-gray-500">Se leen cada 15 minutos y las cifras nuevas aparecen acá como propuestas.</span>
+                            </span>
+                        </label>
+
+                        {feed.enabled && (
+                            <>
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" checked={feed.autoPublish} className="w-4 h-4 mt-1 accent-rotary-blue"
+                                        onChange={e => patchFeed({ autoPublish: e.target.checked })} />
+                                    <span>
+                                        <span className="block text-sm font-bold text-gray-800">Publicar sola la cifra de la fuente oficial</span>
+                                        {/* La consecuencia, no sólo el nombre del interruptor: esto pone
+                                            un número en la página de muchos sitios sin que nadie lo mire. */}
+                                        <span className="block text-xs text-gray-500">
+                                            La cifra sale publicada sin que nadie la revise. Se retiene igual si retrocede,
+                                            si salta más del {feed.maxJumpPct} % o si la fuente no es oficial.
+                                        </span>
+                                    </span>
+                                </label>
+
+                                <label className="block max-w-xs">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Salto máximo que se publica solo (%)</span>
+                                    <input type="number" min={1} max={500} className={field} value={feed.maxJumpPct}
+                                        onChange={e => patchFeed({ maxJumpPct: Number(e.target.value) || DEFAULT_MAX_JUMP_PCT })} />
+                                </label>
+
+                                <div className="space-y-3">
+                                    {feed.sources.map((src, i) => (
+                                        <div key={src.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 cursor-pointer">
+                                                    <input type="checkbox" checked={src.active} className="w-4 h-4 accent-rotary-blue"
+                                                        onChange={e => patchSources(feed.sources.map((x, j) => j === i ? { ...x, active: e.target.checked } : x))} />
+                                                    Activa
+                                                </label>
+                                                <RowTools
+                                                    onUp={() => patchSources(moveIn(feed.sources, i, -1) as FeedSource[])}
+                                                    onDown={() => patchSources(moveIn(feed.sources, i, 1) as FeedSource[])}
+                                                    onRemove={() => patchSources(feed.sources.filter((_, j) => j !== i))} />
+                                            </div>
+                                            <div className="grid md:grid-cols-2 gap-3">
+                                                <input className={field} placeholder="Nombre (ej: UNGRD)" value={src.name}
+                                                    onChange={e => patchSources(feed.sources.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                                                <input className={field} placeholder="https://…" value={src.url}
+                                                    onChange={e => patchSources(feed.sources.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} />
+                                                <label className="block">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Autoridad</span>
+                                                    <select className={field} value={src.kind}
+                                                        onChange={e => patchSources(feed.sources.map((x, j) => j === i ? { ...x, kind: e.target.value } : x))}>
+                                                        {Object.entries(SOURCE_KINDS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                                    </select>
+                                                </label>
+                                                <label className="block">
+                                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Formato</span>
+                                                    <select className={field} value={src.format}
+                                                        onChange={e => patchSources(feed.sources.map((x, j) => j === i ? { ...x, format: e.target.value } : x))}>
+                                                        {Object.entries(SOURCE_FORMATS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {feed.sources.length < MAX_SOURCES && (
+                                        <button type="button"
+                                            onClick={() => patchSources([...feed.sources, { id: `src-${Date.now()}`, name: '', url: '', kind: 'secundaria', format: 'texto', active: true }])}
+                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
+                                            <Plus className="w-4 h-4" /> Agregar fuente
+                                        </button>
+                                    )}
+                                </div>
+
+                                {feedWarnings.length > 0 && (
+                                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                                        <ul className="text-sm text-amber-700 space-y-1 list-disc pl-5">
+                                            {feedWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                <button type="button" onClick={runFeed} disabled={reading}
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-rotary-blue hover:bg-rotary-navy disabled:opacity-50 transition">
+                                    <RefreshCw className={`w-4 h-4 ${reading ? 'animate-spin' : ''}`} />
+                                    {reading ? 'Consultando las fuentes…' : 'Leer ahora'}
+                                </button>
+                            </>
+                        )}
+
+                        {/* La bandeja. Se muestra AUNQUE la lectura esté
+                            apagada: apagarla no puede esconder propuestas que
+                            quedaron sin decidir. */}
+                        {readings.length > 0 && (
+                            <div className="space-y-3 pt-2">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                    {readings.length} propuesta(s) sin decidir
+                                </p>
+                                {readings.map(r => (
+                                    <div key={r.id} className="border border-gray-100 rounded-2xl p-4 space-y-3">
+                                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                            <span className="text-sm font-bold text-gray-800">{r.label}</span>
+                                            <span className="text-lg font-light text-gray-900" data-no-translate>
+                                                {r.before !== null && <span className="text-gray-400">{formatFigure(r.before)} → </span>}
+                                                {formatFigure(r.after)}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                            <span data-no-translate>{r.sourceName || r.sourceId}</span>
+                                            {r.cutoffLabel && <> · corte <span data-no-translate>{r.cutoffLabel}</span></>}
+                                            {r.url && (
+                                                <> · <a href={r.url} target="_blank" rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-rotary-blue hover:underline">
+                                                    <Link2 className="w-3 h-3" /> ver la fuente
+                                                </a></>
+                                            )}
+                                        </p>
+                                        {/* El fragmento donde se leyó: es lo que permite
+                                            verificar sin abrir la página. */}
+                                        {r.quote && <p className="text-xs text-gray-400 italic" data-no-translate>«{r.quote}»</p>}
+                                        {r.warnings.length > 0 && (
+                                            <ul className="text-xs text-amber-700 space-y-1 list-disc pl-5">
+                                                {r.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                                            </ul>
+                                        )}
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => decideReading(r.id, 'aplicar')}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-rotary-blue hover:bg-rotary-navy transition">
+                                                <Check className="w-4 h-4" /> Aplicar al panorama
+                                            </button>
+                                            <button type="button" onClick={() => decideReading(r.id, 'descartar')}
+                                                className="px-4 py-2 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition">
+                                                Descartar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {feed.enabled && readings.length === 0 && (
+                            <p className="text-xs text-gray-500">
+                                No hay propuestas sin decidir. Que casi todas las lecturas no encuentren nada es lo esperado:
+                                una página que no cambió no deja propuesta.
+                            </p>
                         )}
                     </div>
                 </Card>
