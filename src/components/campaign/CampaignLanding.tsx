@@ -531,18 +531,30 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             {centerGroups.map(cityGroup => (
                                 <div key={cityGroup.city} className="break-inside-avoid mb-6 bg-white rounded-3xl border border-gray-100 p-7">
                                     <h3 className="flex items-center gap-2 text-xl font-black text-gray-900 mb-5">
-                                        <MapPin className="w-5 h-5" style={{ color: accent }} />
+                                        {/* Dentro de las tarjetas manda el AZUL del
+                                            sitio, no el acento de la campaña: el rojo
+                                            es para lo que ACTÚA —los botones de aporte,
+                                            la etiqueta de emergencia— y el azul para lo
+                                            que INFORMA. Sobre la banda azul, un
+                                            directorio salpicado de rojo compite con el
+                                            botón que sí hay que pulsar. */}
+                                        <MapPin className="w-5 h-5 text-rotary-blue" />
                                         {cityGroup.city}
                                     </h3>
                                     <div className="space-y-5">
                                         {cityGroup.groups.map(g => (
                                             <div key={g.label || 'principal'}>
                                                 {g.label && (
-                                                    <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: accent }}>{g.label}</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider mb-2 text-rotary-blue">{g.label}</p>
                                                 )}
+                                                {/* El filete usa `border-sky-200` y no el azul del
+                                                    sitio con opacidad: `rotary-blue` es una clase
+                                                    escrita a mano en index.css y NO genera
+                                                    modificadores de opacidad — la regla no
+                                                    existiría, en silencio (v4.719). */}
                                                 <ul className="space-y-3">
                                                     {g.centers.map(c => (
-                                                        <li key={c.id} className="text-sm leading-relaxed border-l-2 pl-3" style={{ borderColor: `${accent}33` }}>
+                                                        <li key={c.id} className="text-sm leading-relaxed border-l-2 border-sky-200 pl-3">
                                                             {c.name && <p className="font-bold text-gray-900">{c.name}</p>}
                                                             {/* La dirección es un DATO, no lenguaje: no se traduce. */}
                                                             <p className="text-gray-700" data-no-translate>{c.address}</p>
@@ -556,7 +568,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                             {c.phone && (
                                                                 <p className="flex items-center gap-1.5 mt-1">
                                                                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                                                                    <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline" style={{ color: accent }} data-no-translate>{c.phone}</a>
+                                                                    <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline text-rotary-blue" data-no-translate>{c.phone}</a>
                                                                 </p>
                                                             )}
                                                             {c.notes && <p className="text-gray-400 text-xs mt-1">{c.notes}</p>}

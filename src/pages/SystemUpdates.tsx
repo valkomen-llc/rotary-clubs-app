@@ -34,9 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.819.0 | 2026-08-15 (Centros de acopio con el fondo de la banda de la portada)
-// Cache bust: 2026-08-15q
+// UI V4.820.0 | 2026-08-15 (El detalle de los centros de acopio, en azul)
+// Cache bust: 2026-08-15r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.820.0',
+        title: 'El detalle de los centros, en el azul del sitio 🔵',
+        description: 'Dentro de las tarjetas de cada ciudad, los alfileres de ubicación, los nombres de sector («Norte», «Centro», «Barrio El Ricaurte»), el filete de cada dirección y los teléfonos pasan del rojo al azul del sitio — el mismo del botón «Únete a un club». El criterio es por FUNCIÓN, no por gusto: el rojo se reserva para lo que hay que PULSAR —los botones de aporte y la etiqueta de emergencia— y el azul para lo que sólo INFORMA. Sobre la banda azul, un directorio salpicado de rojo competía con el único botón que de verdad hay que pulsar. El rojo de la campaña sigue mandando en los botones, así que si se configura otro color de campaña, los botones lo siguen tomando.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'changed',
+        impact: 'Bajo',
+        changes: [
+            { type: 'changed', text: 'Alfileres, sectores, filetes y teléfonos de los centros pasan al azul del sitio.' },
+            { type: 'changed', text: 'El rojo queda para lo que se pulsa: botones de aporte y etiqueta de emergencia.' },
+        ]
+    },
     {
         version: '4.819.0',
         title: 'Los centros de acopio, sobre el azul del sitio 🎨',
