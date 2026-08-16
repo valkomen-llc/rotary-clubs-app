@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, videoThumb, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 import { SITE_ACTION_BG } from '../../lib/siteChrome';
 import CampaignGallery from './CampaignGallery';
 
@@ -143,6 +143,49 @@ const CampaignCta: React.FC<{
         : <Link to={t.to} className={cls} style={style}>{cta.label} <ArrowRight className="w-4 h-4" /></Link>;
 };
 
+// El video vecino del carrusel de «Elementos que se requieren» (v4.829).
+//
+// Es una PREVISUALIZACIÓN, no un reproductor: nunca un `<iframe>` de YouTube
+// —cargar dos incrustaciones más por visita para mostrar algo que está a
+// medias no se paga— y un archivo propio se monta mudo, sin controles y con
+// `preload="metadata"`, que es lo justo para que se vea su primer fotograma.
+// Pulsarlo trae ese video al centro; ahí sí se reproduce.
+//
+// `aria-hidden`: para un lector de pantalla el video es el que está sonando,
+// no los dos que asoman. Para navegar están las flechas y los puntos, que sí
+// tienen nombre.
+const VideoVecino: React.FC<{ entry: any; lado: 'izq' | 'der'; onClick: () => void }> = ({ entry, lado, onClick }) => {
+    const preview = entry.poster || videoThumb(entry.video);
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-hidden
+            tabIndex={-1}
+            // `flex-shrink-0` y un ancho mayor que el hueco disponible: eso es
+            // lo que hace que el vecino se corte contra el borde. Sin él, el
+            // flex lo encogería entero y se vería completo y diminuto, que es
+            // justo lo contrario del efecto.
+            className={`hidden lg:block flex-shrink-0 w-[34vw] xl:w-[420px] max-w-[420px] rounded-2xl overflow-hidden bg-gray-900 relative opacity-55 hover:opacity-80 transition-opacity duration-300 ${lado === 'izq' ? 'origin-right' : 'origin-left'}`}
+            style={{ aspectRatio: '16 / 9' }}
+        >
+            {preview ? (
+                <img src={preview} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+            ) : entry.video.kind === 'file' ? (
+                <video src={entry.video.src} muted playsInline preload="metadata"
+                    className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900" />
+            )}
+            <span className="absolute inset-0 flex items-center justify-center">
+                <span className="w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center">
+                    <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                </span>
+            </span>
+        </button>
+    );
+};
+
 const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; clubId: string; preview?: boolean }> = ({ campaign, onDonate, clubId, preview = false }) => {
     // Una vista por carga, no una por render: sin el guardia, cualquier
     // repintado (abrir el modal, cambiar de idioma) contaría otra visita.
@@ -195,6 +238,16 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // Si se quitan videos desde el panel, el índice guardado puede quedar
     // fuera de rango: se acota al leer en vez de con otro efecto.
     const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
+    // Con DOS videos no se pinta el mismo a los dos lados: se vería repetido y
+    // haría creer que hay tres. Con uno no hay vecinos y el reproductor queda
+    // solo, centrado, como antes de v4.829.
+    const vecinos = (() => {
+        const n = videos.length;
+        if (n < 2) return { izq: null, der: null };
+        const i = Math.min(videoIdx, n - 1);
+        const der = videos[(i + 1) % n];
+        return { izq: n > 2 ? videos[(i - 1 + n) % n] : null, der };
+    })();
     // El botón que cierra la sección de elementos. Vacío = el heredado.
     const itemsCta = content.requiredItemsCta;
     // La galería, con el mismo criterio compartido. Quién la pinta es
@@ -430,75 +483,114 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             se cambia solo mientras alguien lo está viendo es
                             un defecto, no una animación. */}
                         {videoActual && (
-                            <div className="mt-14 max-w-3xl mx-auto">
-                                {/* Este envoltorio existe SÓLO para posicionar
-                                    las flechas: mide exactamente lo que mide el
-                                    video, así `top-1/2` cae en el medio del
-                                    video y no en el medio del bloque —que
-                                    incluye el pie y los puntos y dejaba las
-                                    flechas 36 px por debajo del centro—.
-                                    Y no lleva `overflow-hidden`: el del marco
-                                    recortaría cualquier cosa colocada afuera. */}
+                            <div className="mt-14">
+                                {/* CARRUSEL «coverflow» (v4.829): el video que
+                                    manda va grande y centrado, y los vecinos
+                                    asoman a los lados, más pequeños y cortados
+                                    por el borde del contenedor.
+
+                                    El recorte es EL EFECTO, no un descuido: los
+                                    vecinos miden más de lo que cabe y el
+                                    `overflow-hidden` los parte, con la misma
+                                    máscara de transparencia que la tira de
+                                    «Rotarios en acción». Así se ve que hay más
+                                    videos sin necesidad de leer el contador.
+
+                                    Sólo desde `lg`: por debajo no hay ancho
+                                    para que un vecino asome sin comerse el
+                                    reproductor, y ahí queda el video solo con
+                                    las flechas de la fila de abajo. */}
                                 <div className="relative">
-                                <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
-                                    {videoActual.video.kind === 'file' ? (
-                                        // Un archivo propio se reproduce con el
-                                        // reproductor del navegador: no hace
-                                        // falta librería ninguna.
-                                        //
-                                        // Se dibuja SÓLO el que manda —al revés
-                                        // que las imágenes del hero, que están
-                                        // todas montadas—: montar los demás
-                                        // descargaría varios videos de una vez,
-                                        // y `key` fuerza el remontaje para que
-                                        // el anterior deje de sonar al cambiar.
-                                        <video
-                                            key={videoActual.url}
-                                            src={videoActual.video.src}
-                                            poster={videoActual.poster || undefined}
-                                            controls
-                                            playsInline
-                                            preload="metadata"
-                                            className="absolute inset-0 w-full h-full"
-                                        />
-                                    ) : (
-                                        <iframe
-                                            key={videoActual.url}
-                                            src={videoActual.video.src}
-                                            title={videoActual.title || 'Video de la campaña'}
-                                            className="absolute inset-0 w-full h-full"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            referrerPolicy="strict-origin-when-cross-origin"
-                                            allowFullScreen
-                                        />
+                                    <div
+                                        // Márgenes negativos: el carrusel llega
+                                        // hasta el BORDE del contenedor y no
+                                        // hasta donde termina el texto. Es lo
+                                        // que le da sitio al vecino para asomar
+                                        // de verdad en vez de quedar en una
+                                        // astilla contra el relleno lateral.
+                                        className="overflow-hidden -mx-4 sm:-mx-6 lg:-mx-8"
+                                        style={{
+                                            // El difuminado va sólo en el BORDE
+                                            // (6 %): con una zona de fundido
+                                            // ancha se come justo la parte del
+                                            // vecino que se quiere dejar ver, y
+                                            // el asomo queda en una astilla.
+                                            maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
+                                            WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
+                                        }}
+                                    >
+                                        <div className="flex items-center justify-center gap-3 xl:gap-4 py-1">
+                                            {vecinos.izq && (
+                                                <VideoVecino entry={vecinos.izq} lado="izq"
+                                                    onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)} />
+                                            )}
+
+                                            {/* El reproductor de verdad. `flex-shrink-0`
+                                                es lo que impide que los vecinos lo
+                                                encojan: el que se recorta es el vecino. */}
+                                            <div className="flex-shrink-0 w-[86vw] lg:w-[56vw] xl:w-[640px] max-w-[640px]">
+                                                <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
+                                                    {videoActual.video.kind === 'file' ? (
+                                                        // Un archivo propio se reproduce con el
+                                                        // reproductor del navegador: no hace
+                                                        // falta librería ninguna.
+                                                        //
+                                                        // Se dibuja SÓLO el que manda —al revés
+                                                        // que las imágenes del hero, que están
+                                                        // todas montadas—: montar los demás
+                                                        // descargaría varios videos de una vez,
+                                                        // y `key` fuerza el remontaje para que
+                                                        // el anterior deje de sonar al cambiar.
+                                                        <video
+                                                            key={videoActual.url}
+                                                            src={videoActual.video.src}
+                                                            poster={videoActual.poster || undefined}
+                                                            controls
+                                                            playsInline
+                                                            preload="metadata"
+                                                            className="absolute inset-0 w-full h-full"
+                                                        />
+                                                    ) : (
+                                                        <iframe
+                                                            key={videoActual.url}
+                                                            src={videoActual.video.src}
+                                                            title={videoActual.title || 'Video de la campaña'}
+                                                            className="absolute inset-0 w-full h-full"
+                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                            referrerPolicy="strict-origin-when-cross-origin"
+                                                            allowFullScreen
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {vecinos.der && (
+                                                <VideoVecino entry={vecinos.der} lado="der"
+                                                    onClick={() => setVideoIdx(i => (i + 1) % videos.length)} />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Las flechas van SOBRE LOS VECINOS, no sobre
+                                        el reproductor: es la misma regla de v4.818
+                                        —no tapar el video ni su barra de controles—
+                                        resuelta con el espacio que ahora ocupan
+                                        los vecinos. Por debajo de `lg` no hay
+                                        vecinos y quedan las de la fila de abajo. */}
+                                    {videos.length > 1 && (
+                                        <>
+                                            <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                                aria-label="Video anterior"
+                                                className="hidden lg:flex absolute left-4 xl:left-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-colors z-10">
+                                                <ChevronLeft className="w-6 h-6" />
+                                            </button>
+                                            <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                                aria-label="Video siguiente"
+                                                className="hidden lg:flex absolute right-4 xl:right-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-colors z-10">
+                                                <ChevronRight className="w-6 h-6" />
+                                            </button>
+                                        </>
                                     )}
-
-                                </div>
-
-                                {/* Las flechas A LOS LADOS del video, a media
-                                    altura y POR FUERA: `-left-16`/`-right-16`
-                                    las saca del marco, así no tapan nada del
-                                    reproductor —ni su barra de controles, que
-                                    es lo que estorbaban cuando iban encima—.
-
-                                    Se esconden por debajo de `xl` porque ahí
-                                    ya no hay margen lateral donde ponerlas sin
-                                    volver a invadir el video; en esos tamaños
-                                    quedan las de la fila de abajo. */}
-                                {videos.length > 1 && (
-                                    <>
-                                        <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
-                                            aria-label="Video anterior"
-                                            className="hidden xl:flex absolute -left-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
-                                            <ChevronLeft className="w-6 h-6" />
-                                        </button>
-                                        <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
-                                            aria-label="Video siguiente"
-                                            className="hidden xl:flex absolute -right-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
-                                            <ChevronRight className="w-6 h-6" />
-                                        </button>
-                                    </>
-                                )}
                                 </div>
 
                                 {videoActual.title && (
@@ -514,7 +606,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     <div className="flex items-center justify-center gap-4 mt-5">
                                         <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
                                             aria-label="Video anterior (compacto)"
-                                            className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            className="lg:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <div className="flex items-center gap-2">
@@ -528,7 +620,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         </div>
                                         <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
                                             aria-label="Video siguiente (compacto)"
-                                            className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            className="lg:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                         <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>
