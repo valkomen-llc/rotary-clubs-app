@@ -874,6 +874,26 @@ check('sobre el fondo oscuro los textos de la sección van en claro', (() => {
         && /text-center text-white\/80 max-w-2xl/.test(sec) && !/text-gray-500 max-w-2xl/.test(sec);
 })());
 
+// v4.820: dentro de las tarjetas manda el azul del sitio, no el acento rojo.
+check('el detalle de las tarjetas va en el azul del sitio, no en el acento de la campaña', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('id="panorama"'));
+    return /MapPin className="w-5 h-5 text-rotary-blue"/.test(sec)
+        && /tracking-wider mb-2 text-rotary-blue/.test(sec)
+        && /border-l-2 border-sky-200 pl-3/.test(sec)
+        && !/color: accent/.test(sec) && !/\$\{accent\}33/.test(sec);
+})());
+// El rojo se queda donde hay que PULSAR: el botón de la sección y los de aporte.
+check('el acento de la campaña sigue mandando en los botones',
+    /style=\{\{ backgroundColor: accent \}\}/.test(landingSrc));
+// `rotary-blue` es una clase a mano de index.css: no genera modificadores de
+// opacidad, así que un `border-rotary-blue/20` no existiría, en silencio
+// (v4.719). Se buscan sólo los USOS: un comentario tiene que poder nombrar la
+// clase que se descartó sin hacer fallar la prueba.
+check('no se usa un modificador de opacidad sobre rotary-blue', (() => {
+    const sinComentarios = landingSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    return !/(bg|text|border)-rotary-blue\//.test(sinComentarios);
+})());
+
 // v4.814: los centros van en mampostería, no en rejilla.
 check('las tarjetas de ciudad NO van en una rejilla que las estire a la más alta', (() => {
     // Se ancla en el `id` de la sección, no en la primera mención: el enlace

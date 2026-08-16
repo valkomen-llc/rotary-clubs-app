@@ -2584,6 +2584,15 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   propiedades juntas —color, imagen y tamaño de repetición—, no un color
   suelto. Sobre ese azul el título y la alianza van en blanco; el gris oscuro
   de antes sería ilegible.
+- **El rojo es de lo que ACTÚA; el azul, de lo que INFORMA** (v4.820). Dentro
+  de las tarjetas de ciudad —alfileres, sectores, filetes, teléfonos— manda el
+  azul del sitio (`text-rotary-blue`), no el acento de la campaña: sobre la
+  banda azul, un directorio salpicado de rojo compite con el único botón que
+  de verdad hay que pulsar. El acento sigue gobernando los BOTONES, así que
+  una campaña con otro color de tema los sigue tiñendo. Ojo con el filete:
+  `border-sky-200` y **no** `border-rotary-blue/20` — `rotary-blue` es una
+  clase escrita a mano en `index.css` y no genera modificadores de opacidad,
+  la regla no existiría en silencio (v4.719).
 - **Las tarjetas de ciudad van en MAMPOSTERÍA, no en rejilla** (v4.814). Con
   `grid`, todas las de una fila se estiran hasta la más alta: al lado de Cali
   (8 direcciones), Cota (1) quedaba igual de alta con media tarjeta en blanco
