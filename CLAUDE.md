@@ -2518,6 +2518,33 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   (`IMPLEMENTED_SECTIONS` en `CampaignLanding.tsx`): nunca un botón que no
   lleva a ninguna parte (v4.650). Cuando F3 entregue los centros, agregar
   `centers` a esa lista es lo que enciende esos botones.
+- **Los títulos de sección van en PESO NORMAL** (v4.815, `font-light`), como
+  `NewsSection` y la página genérica de aportes. Salieron en `font-black` y al
+  lado del resto del sitio se veían de otra plataforma. Los rótulos DENTRO del
+  contenido —el nombre de una ciudad, el título de una caja— conservan su
+  peso: son etiquetas, no títulos de sección.
+- **El video de una sección lo resuelve `resolveCampaignVideo`** (v4.815), en
+  los dos espejos. Se admiten YouTube, Vimeo y un archivo propio, y **nada
+  más**: un `<iframe>` se dibuja en una página pública, así que aceptar
+  cualquier dirección convertiría un campo del panel en un hueco por donde
+  meter cualquier cosa — la misma regla que el mapa de la sede (v4.717) y las
+  redirecciones (v4.781). Se exige `https:`, se acepta el `<iframe>` pegado
+  entero —pedirle a quien configura que recorte el atributo es pedirle que
+  edite HTML— y YouTube se sirve por `-nocookie`.
+- **Lo que no se reconoce NO se pinta, y el editor lo DICE.** `null` en vez de
+  un recuadro roto (v4.650); y como el aviso del editor usa el MISMO criterio
+  que la página, no puede contradecir lo que se va a ver. La URL se guarda
+  **tal cual** —validarla al guardar dejaría al editor sin poder mostrar qué
+  escribió quien se equivocó—.
+- **Un archivo propio va en `<video controls>`, no en un `<iframe>`**, y al
+  revés tampoco funciona. Por eso el criterio devuelve `kind` y no sólo la
+  dirección.
+- **El `MediaPicker` acepta `mediaType`** y sigue en `image` por omisión: las
+  nueve pantallas que ya lo usaban piden imágenes y estaba fijado en el
+  código. Sin esto, el botón «Biblioteca» del campo de video ofrecería fotos,
+  que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
+  con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
+  no llega a tiempo dentro del gesto que dispara el clic.
 - **Las tarjetas de ciudad van en MAMPOSTERÍA, no en rejilla** (v4.814). Con
   `grid`, todas las de una fila se estiran hasta la más alta: al lado de Cali
   (8 direcciones), Cota (1) quedaba igual de alta con media tarjeta en blanco

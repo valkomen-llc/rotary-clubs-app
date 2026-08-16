@@ -248,6 +248,59 @@ export function acceptableCtaUrl(url) {
     return false;
 }
 
+/**
+ * El video de una sección: qué es y cómo se pinta.
+ *
+ * Se admiten TRES formas y ninguna más:
+ *   - YouTube  → `<iframe>` a youtube-nocookie
+ *   - Vimeo    → `<iframe>` al reproductor
+ *   - archivo  → `<video controls>` (mp4/webm/ogg), típicamente subido a la
+ *                Biblioteca Multimedia
+ *
+ * El cierre de anfitriones NO es un capricho: un `<iframe>` se dibuja en una
+ * página pública, así que aceptar cualquier dirección convertiría un campo de
+ * texto del panel en un hueco por donde meter cualquier cosa en el sitio. Es
+ * exactamente la regla del mapa de la sede (v4.717) y la de las
+ * redirecciones (v4.781). Se exige `https:` por lo mismo.
+ *
+ * Devuelve `null` cuando no se reconoce: sin nada que dibujar es mejor no
+ * pintar nada que dejar un recuadro roto (v4.650).
+ */
+export function resolveCampaignVideo(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return null;
+
+    // Del `<iframe …>` completo se toma el `src`: pedirle a quien configura
+    // que recorte el atributo a mano es pedirle que edite HTML (v4.717).
+    const fromIframe = /<iframe[^>]*\ssrc=["']([^"']+)["']/i.exec(value);
+    const candidate = (fromIframe ? fromIframe[1] : value).trim();
+
+    let url;
+    try { url = new URL(candidate); } catch { return null; }
+    if (url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+        const id = url.searchParams.get('v')
+            || (/^\/(embed|shorts|live|v)\/([\w-]{6,})/.exec(url.pathname)?.[2] || '');
+        // `-nocookie` no es cosmético: evita las cookies de seguimiento de
+        // YouTube en una página institucional.
+        return id ? { kind: 'youtube', src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+    }
+    if (host === 'youtu.be') {
+        const id = url.pathname.slice(1).split('/')[0];
+        return id ? { kind: 'youtube', src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+        const id = /(\d{6,})/.exec(url.pathname)?.[1] || '';
+        return id ? { kind: 'vimeo', src: `https://player.vimeo.com/video/${id}` } : null;
+    }
+    if (/\.(mp4|webm|ogg|ogv|mov)$/i.test(url.pathname)) {
+        return { kind: 'file', src: url.toString() };
+    }
+    return null;
+}
+
 export function normalizeContent(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -290,6 +343,16 @@ export function normalizeContent(raw = {}) {
             description: str(it?.description, 300),
             active: it?.active !== false,
         })),
+        // El video que va DEBAJO de los elementos requeridos. Se guarda la URL
+        // tal cual la pegó el administrador —de ahí sale el `<iframe>` o el
+        // `<video>` con `resolveCampaignVideo`—; validarla acá y guardar sólo
+        // lo normalizado dejaría al editor sin poder mostrarle qué escribió
+        // cuando se equivoca. La página decide qué pinta.
+        requiredItemsVideo: {
+            url: str(c.requiredItemsVideo?.url, 600),
+            title: str(c.requiredItemsVideo?.title, 200),
+            poster: str(c.requiredItemsVideo?.poster, 600),
+        },
         centersNote: str(c.centersNote, 300),       // «Se habilitarán más puntos…»
         centersAlliance: str(c.centersAlliance, 200), // «En alianza con … ABACO»
         infoBlocks: arr(c.infoBlocks).slice(0, 6).map((b, i) => ({

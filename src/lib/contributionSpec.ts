@@ -180,6 +180,46 @@ export function heroSlides(hero: any): HeroSlide[] {
     return single ? [{ url: single, alt: String(hero?.imageAlt ?? '') }] : [];
 }
 
+// ─── Video de sección (v4.815) — espejo del criterio del servidor ─────────
+export interface CampaignVideo { kind: 'youtube' | 'vimeo' | 'file'; src: string }
+
+/**
+ * Qué video es y cómo se pinta. El cierre de anfitriones no es un capricho:
+ * un `<iframe>` se dibuja en una página pública, así que aceptar cualquier
+ * dirección convertiría un campo del panel en un hueco por donde meter
+ * cualquier cosa. Misma regla que el mapa de la sede (v4.717).
+ * `null` = no se reconoce y no se pinta nada (nunca un recuadro roto).
+ */
+export function resolveCampaignVideo(raw: unknown): CampaignVideo | null {
+    const value = String(raw ?? '').trim();
+    if (!value) return null;
+    const fromIframe = /<iframe[^>]*\ssrc=["']([^"']+)["']/i.exec(value);
+    const candidate = (fromIframe ? fromIframe[1] : value).trim();
+
+    let url: URL;
+    try { url = new URL(candidate); } catch { return null; }
+    if (url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+        const id = url.searchParams.get('v')
+            || (/^\/(embed|shorts|live|v)\/([\w-]{6,})/.exec(url.pathname)?.[2] || '');
+        return id ? { kind: 'youtube', src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+    }
+    if (host === 'youtu.be') {
+        const id = url.pathname.slice(1).split('/')[0];
+        return id ? { kind: 'youtube', src: `https://www.youtube-nocookie.com/embed/${id}` } : null;
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+        const id = /(\d{6,})/.exec(url.pathname)?.[1] || '';
+        return id ? { kind: 'vimeo', src: `https://player.vimeo.com/video/${id}` } : null;
+    }
+    if (/\.(mp4|webm|ogg|ogv|mov)$/i.test(url.pathname)) {
+        return { kind: 'file', src: url.toString() };
+    }
+    return null;
+}
+
 // ─── Centros de acopio (F3) — espejo del criterio del servidor ─────────────
 export interface ContributionCenter {
     id: string; city: string; groupLabel: string; name: string; address: string;

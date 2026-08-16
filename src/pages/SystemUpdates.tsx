@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.814.0 | 2026-08-15 (Las tarjetas de centros de acopio sin espacios en blanco)
-// Cache bust: 2026-08-15l
+// UI V4.815.0 | 2026-08-15 (Titulos en peso normal y video en elementos requeridos)
+// Cache bust: 2026-08-15m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.815.0',
+        title: 'Un video en «Elementos que se requieren» 🎥',
+        description: 'Debajo de las cajas de elementos se puede poner un video. Se pega el enlace de YouTube o de Vimeo —vale el enlace normal, el corto, el de un Short o el bloque <iframe> completo— y se acomoda solo, o se sube un archivo de video propio a la Biblioteca Multimedia y se reproduce con los controles del navegador. Debajo se puede escribir un pie. Si el enlace no se reconoce, el editor lo dice EN EL MOMENTO y explica qué se admite, en vez de dejar la página con un recuadro roto: sólo se aceptan YouTube, Vimeo o un archivo servido por https, porque un video ajeno se incrusta dentro de una página pública del sitio. Además, los títulos de las secciones de una campaña —«Elementos que se requieren», «Centros de acopio», «Panorama»— pasan a peso normal, como el resto del sitio, en vez de la negrilla con la que salieron.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz', 'video'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Video opcional debajo de los elementos requeridos: YouTube, Vimeo o un archivo propio, con pie de foto.' },
+            { type: 'added', text: 'El editor avisa en el momento si el enlace no se va a poder mostrar, y por qué.' },
+            { type: 'changed', text: 'Los títulos de las secciones de campaña van en peso normal, como el resto del sitio.' },
+            { type: 'improved', text: 'El selector de la Biblioteca Multimedia ya puede ofrecer videos, no sólo imágenes.' },
+        ]
+    },
     {
         version: '4.814.0',
         title: 'Los centros de acopio, sin espacios en blanco 📍',

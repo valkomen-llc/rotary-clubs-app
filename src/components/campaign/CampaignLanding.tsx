@@ -4,7 +4,7 @@ import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User } from 'lucide-re
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, resolveCampaignVideo, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -178,6 +178,9 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     const card = content.donateCard || {};
     const ways = (content.waysToHelp || []).filter((w: any) => w.active !== false && w.title);
     const requiredItems = (content.requiredItems || []).filter((it: any) => it.active !== false && it.title);
+    // Qué video es —y si se puede pintar— lo decide el criterio compartido,
+    // no esta pantalla: es lo mismo que mira el editor para avisar en vivo.
+    const itemsVideo = resolveCampaignVideo(content.requiredItemsVideo?.url);
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -318,7 +321,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
             {requiredItems.length > 0 && (
                 <section id="elementos-requeridos" className="py-20 md:py-24 bg-white">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-12">
                             Elementos que se requieren
                         </h2>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -335,6 +338,43 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                 );
                             })}
                         </div>
+
+                        {/* El video va DEBAJO de las cajas. Se pinta sólo si la
+                            dirección se reconoce (`resolveCampaignVideo`): una
+                            URL que no es de YouTube, Vimeo ni un archivo de
+                            video no deja un recuadro roto, no deja nada. */}
+                        {itemsVideo && (
+                            <div className="mt-14 max-w-3xl mx-auto">
+                                <div className="relative w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg" style={{ aspectRatio: '16 / 9' }}>
+                                    {itemsVideo.kind === 'file' ? (
+                                        // Un archivo propio se reproduce con el
+                                        // reproductor del navegador: no hace
+                                        // falta librería ninguna.
+                                        <video
+                                            src={itemsVideo.src}
+                                            poster={content.requiredItemsVideo?.poster || undefined}
+                                            controls
+                                            playsInline
+                                            preload="metadata"
+                                            className="absolute inset-0 w-full h-full"
+                                        />
+                                    ) : (
+                                        <iframe
+                                            src={itemsVideo.src}
+                                            title={content.requiredItemsVideo?.title || 'Video de la campaña'}
+                                            className="absolute inset-0 w-full h-full"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            referrerPolicy="strict-origin-when-cross-origin"
+                                            allowFullScreen
+                                        />
+                                    )}
+                                </div>
+                                {content.requiredItemsVideo?.title && (
+                                    <p className="text-center text-sm text-gray-500 mt-4">{content.requiredItemsVideo.title}</p>
+                                )}
+                            </div>
+                        )}
+
                         {hasCenters && (
                             <div className="text-center mt-10">
                                 <a href="#centros-de-acopio" onClick={() => track('cta_centers_click')}
@@ -352,7 +392,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
             {hasCenters && (
                 <section id="centros-de-acopio" className="py-20 md:py-24 bg-rotary-concrete scroll-mt-24">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-3">
+                        <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-3">
                             Centros de acopio
                         </h2>
                         {content.centersNote && (
@@ -429,7 +469,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
             {campaign.stats.length > 0 && (
                 <section id="panorama" className="py-20 md:py-24 bg-white">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-12">
                             Panorama de la emergencia
                         </h2>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
@@ -476,7 +516,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
             {(campaign.local?.contact?.name || campaign.local?.contact?.phone || campaign.local?.contact?.email || campaign.local?.localNote || campaign.local?.qrImage) && (
                 <section className="py-16 bg-white border-t border-gray-100">
                     <div className="max-w-[700px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                        <h2 className="text-xl font-black text-gray-900 mb-4">Información de contacto local</h2>
+                        <h2 className="text-xl font-light text-gray-900 mb-4">Información de contacto local</h2>
                         {campaign.local.localNote && (
                             <p className="text-gray-600 leading-relaxed mb-5">{campaign.local.localNote}</p>
                         )}
@@ -508,7 +548,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                     <div className="absolute inset-0 opacity-20" style={{ background: `radial-gradient(circle at 30% 50%, ${accent}, transparent 60%)` }} />
                     <div className="relative max-w-[850px] mx-auto px-4 sm:px-6 lg:px-8 text-center text-white">
                         {content.finalCta.title && (
-                            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.1] mb-6">{content.finalCta.title}</h2>
+                            <h2 className="text-3xl md:text-5xl font-light tracking-tight leading-[1.1] mb-6">{content.finalCta.title}</h2>
                         )}
                         {content.finalCta.text && (
                             <p className="text-white/80 text-lg leading-relaxed max-w-2xl mx-auto mb-6">{content.finalCta.text}</p>

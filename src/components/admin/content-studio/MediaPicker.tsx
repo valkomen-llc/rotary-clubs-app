@@ -67,6 +67,14 @@ interface MediaPickerProps {
     onSelect: (items: MediaItem[]) => void;
     maxSelection?: number;
     initialSelection?: string[];
+    /**
+     * Qué se ofrece. Por omisión imágenes, que es lo que pedían las nueve
+     * pantallas que ya lo usaban — este selector nació para eso y estaba
+     * fijado en el código. Se abre a `video` porque la campaña de
+     * contribución deja poner un video propio: sin esto, el botón
+     * «Biblioteca» de ese campo mostraría fotos, que es peor que no tenerlo.
+     */
+    mediaType?: 'image' | 'video' | 'document';
 }
 
 // Cada categoría se mapea a un valor de Club.category (excepto district,
@@ -105,7 +113,8 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     onClose,
     onSelect,
     maxSelection = 5,
-    initialSelection = []
+    initialSelection = [],
+    mediaType = 'image'
 }) => {
     // v4.407: detectamos si el usuario es super admin de la plataforma. Si NO
     // lo es (= admin de club/distrito/asociación viendo su propio sitio), los
@@ -151,7 +160,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         cargandoMas.current = offset > 0;
         try {
             const token = localStorage.getItem('rotary_token');
-            const params = new URLSearchParams({ type: 'image' });
+            const params = new URLSearchParams({ type: mediaType });
             if (selectedCategory !== 'all') params.set('sourceType', selectedCategory);
             if (selectedSourceId) params.set('sourceId', selectedSourceId);
             if (currentFolder) params.set('folderId', currentFolder);
@@ -172,7 +181,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
             setLoading(false);
             cargandoMas.current = false;
         }
-    }, [API, selectedCategory, selectedSourceId, currentFolder, searchQuery]);
+    }, [API, mediaType, selectedCategory, selectedSourceId, currentFolder, searchQuery]);
 
     // El árbol de carpetas del sitio. Si falla, el selector funciona igual: se
     // ven todas las imágenes sin el atajo de las carpetas.
