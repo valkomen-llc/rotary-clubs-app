@@ -970,9 +970,15 @@ check('la tira lleva relleno vertical para que el crecimiento no se recorte',
     /overflow-x-auto overflow-y-hidden py-6/.test(galSrc));
 check('las tarjetas son CUADRADAS: las fotos vienen en proporciones dispares',
     /aspect-square/.test(galSrc));
-check('hay barra de desplazamiento propia y se puede arrastrar',
-    /role="scrollbar"/.test(galSrc) && /onPointerDown=\{arrastrar\}/.test(galSrc)
-    && /window\.addEventListener\('pointermove', onMove\)/.test(galSrc));
+// v4.824: SIN barra de desplazamiento. Una barra debajo de una tira que ya se
+// mueve sola es un control que casi nadie usa y que parte la sección en dos; y
+// la del navegador tampoco se muestra (`no-scrollbar`).
+check('la tira NO lleva barra de desplazamiento',
+    !/role="scrollbar"/.test(galSrc) && /no-scrollbar/.test(galSrc));
+// Se pidió que pasen más rápido. Es el único número que gobierna la cadencia.
+check('la cadencia es un solo número y va a 1,8 s por pieza',
+    /const MS_POR_PIEZA = 1800;/.test(galSrc)
+    && (galSrc.match(/MS_POR_PIEZA/g) || []).length === 2);
 // Con un marco 16:9 fijo, una foto vertical queda entre dos franjas negras.
 check('en grande, la FOTO define la caja — sin franjas a los lados',
     /max-w-\[92vw\] max-h-\[82vh\] w-auto h-auto object-contain/.test(galSrc));
