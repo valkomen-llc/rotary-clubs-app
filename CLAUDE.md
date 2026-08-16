@@ -2785,6 +2785,43 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
   catch-all de toda página pública.
 
+### El editor de campañas se pliega (v4.826)
+
+Cada sección de la configuración es un `Card` plegable
+(`ContributionCampaigns.tsx`), y nacen CERRADAS.
+
+- **Cerradas por defecto, y el motivo es el reportado**: con dieciséis
+  secciones abiertas a la vez, llegar a la que se quiere tocar eran varias
+  pantallas de desplazamiento. Cerradas, el editor entero es un índice de una
+  pantalla. Abrir una no cierra las otras: son independientes.
+- **El contenido se DESMONTA al cerrar, no se esconde con CSS.** Todo el
+  estado del formulario vive en `c`, no en el DOM, así que no se pierde nada
+  —y un campo escondido con `hidden` lo siguen encontrando el buscador del
+  navegador y el lector de pantalla—. Es la misma regla que los bloques de la
+  página de Proyectos (v4.750). Lo comprueba el smoke contando nodos.
+- **Plegar no puede ESCONDER un problema** (`warn`): una sección cerrada con
+  avisos los dice en su cabecera. Es la regla de v4.790 — el diagnóstico va
+  donde se mira primero. Hoy lo usan el panorama (`statWarnings`), la lectura
+  automatizada (`feedWarnings`) y los centros (`centerSkipped`).
+- **El estado abierto/cerrado vive en el PADRE, no en cada `Card`.** Es lo que
+  permite «Expandir todo» y lo que evita un hook dentro de un `.map` —el
+  defecto que dejó en blanco una portada en v4.689—. `Card` no tiene hooks.
+- **`CARD_IDS` está en UN solo sitio** porque lo consume «Expandir todo»: con
+  la lista escrita dos veces, una sección nueva se quedaría fuera del botón
+  sin que nada avisara. Al agregar una sección, agregarla ahí.
+- **Un botón de guardar propio va en la CABECERA, fuera del pliegue**
+  (`action` en `Card`, hoy «Guardar centros»). Dentro, plegar la sección con
+  cambios sin guardar escondería junto con ellos su única forma de guardarlos.
+- **La ayuda (`hint`) sólo se pinta con la sección abierta**: cerrada, el
+  título tiene que caber en una línea para que la lista se recorra de un
+  vistazo.
+- **Las dos secciones escritas a mano pasaron a `Card`** (Resultados y Centros
+  de acopio). Dejarlas fuera las habría dejado fuera de «Expandir todo» y
+  comportándose distinto que sus vecinas.
+- La preferencia se guarda en `localStorage` (`contrib_cards_open`), envuelta
+  en `try`: en modo privado no se puede escribir y eso no puede tumbar el
+  editor.
+
 ### La lectura automatizada del panorama (v4.825)
 
 El «Panorama de la emergencia» se alimenta solo desde fuentes configuradas

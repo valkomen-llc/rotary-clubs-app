@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.825.0 | 2026-08-16 (Lectura automatizada del panorama de la emergencia)
+// UI V4.826.0 | 2026-08-16 (Los contenedores del editor de campanas se pliegan)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.826.0',
+        title: 'El editor de campañas, plegado 🗂️',
+        description: 'Cada contenedor de la configuración de una campaña se abre y se cierra pulsando su título. Nacen CERRADOS: con dieciséis secciones abiertas a la vez, llegar a la que se quería tocar eran varias pantallas de desplazamiento; cerradas, el editor entero es un índice y se abre sólo lo que se va a editar. En la barra de arriba hay «Expandir todo» para cuando conviene ver la campaña completa. La preferencia se recuerda entre visitas, así que quien está trabajando sobre una sección la encuentra abierta al volver. Plegar no esconde problemas: una sección cerrada que tenga avisos los dice en su propia cabecera. Y el botón «Guardar centros» queda en la cabecera de su sección, fuera del pliegue, para que cerrarla con cambios sin guardar no esconda la única forma de guardarlos.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz', 'usabilidad'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Cada sección del editor se pliega y se despliega pulsando su título.' },
+            { type: 'changed', text: 'Nacen cerradas: el editor entero cabe como índice en una pantalla.' },
+            { type: 'added', text: '«Expandir todo» / «Contraer todo» en la barra superior.' },
+            { type: 'added', text: 'Una sección cerrada con avisos los muestra en su cabecera.' },
+            { type: 'improved', text: 'La preferencia de qué secciones quedan abiertas se recuerda entre visitas.' },
+        ]
+    },
     {
         version: '4.825.0',
         title: 'El panorama se actualiza solo 📡',
