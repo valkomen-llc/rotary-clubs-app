@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.820.0 | 2026-08-15 (El detalle de los centros de acopio, en azul)
-// Cache bust: 2026-08-15r
+// UI V4.821.0 | 2026-08-15 (Galeria Rotarios en accion)
+// Cache bust: 2026-08-15s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.821.0',
+        title: 'Galería «Rotarios en acción» 📸',
+        description: 'Una sección nueva en la campaña donde se publican las fotos y los videos que mandan los clubes, en un carrusel grande. Va DESPUÉS de los centros de acopio y ANTES del panorama de cifras, a propósito: «qué se necesita» y «dónde llevarlo» son un par que no conviene cortar, y ahí es el giro natural de «lo que pedimos» a «lo que ya se está haciendo» — con las caras justo antes de los números, que se refuerzan entre sí. Las fotos pasan solas cada 6 segundos; sobre un video el carrusel ESPERA, porque un video que se cambia mientras alguien lo está viendo es una molestia, no una animación. Cada pieza lleva su pie y el CRÉDITO del club que la envió, y las fotos su texto alternativo. En el editor se suben o se eligen de la Biblioteca Multimedia varias de una vez —fotos y videos conviven en la misma lista y el sistema reconoce solo cuál es cuál—, se reordenan con las flechas y se puede pegar un enlace de YouTube o Vimeo. Hasta 24 piezas. Sin piezas cargadas, la sección no aparece.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'galeria', 'interfaz'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Sección «Rotarios en acción»: carrusel de hasta 24 fotos y videos, entre los centros de acopio y el panorama.' },
+            { type: 'added', text: 'Las fotos pasan solas cada 6 segundos; sobre un video el carrusel espera.' },
+            { type: 'added', text: 'Pie y crédito del club por pieza, y texto alternativo en las fotos.' },
+            { type: 'added', text: 'Carga múltiple desde el equipo o la Biblioteca; fotos y videos en la misma lista.' },
+            { type: 'improved', text: 'El selector de la Biblioteca puede ofrecer fotos y videos a la vez.' },
+        ]
+    },
     {
         version: '4.820.0',
         title: 'El detalle de los centros, en el azul del sitio 🔵',

@@ -246,6 +246,43 @@ export function sectionVideos(list: any, single: any): SectionVideo[] {
         .filter((v): v is SectionVideo => v.video !== null);
 }
 
+// ─── Galería «Rotarios en acción» (v4.821) — espejo del servidor ──────────
+export interface GalleryItem {
+    url: string; kind: 'image' | 'video'; src: string;
+    player: 'youtube' | 'vimeo' | 'file' | null;
+    caption: string; credit: string; alt: string;
+}
+
+/** Tope de piezas de la galería. Es un muestrario, no un archivo histórico. */
+export const MAX_GALLERY_ITEMS = 24;
+
+/** Cada cuánto pasa SOLA la galería. Más lento que el hero: acá se mira. */
+export const GALLERY_SLIDE_MS = 6000;
+
+/**
+ * Las piezas de la galería, resueltas y en orden. El TIPO se DERIVA de la
+ * dirección, no se guarda: guardarlo aparte daría dos verdades sobre lo mismo
+ * y se contradirían en cuanto alguien cambie la URL de una fila.
+ */
+export function galleryItems(list: any): GalleryItem[] {
+    return (Array.isArray(list) ? list : [])
+        .slice(0, MAX_GALLERY_ITEMS)
+        .map((it: any) => {
+            const url = String(it?.url ?? '').trim();
+            const video = resolveCampaignVideo(url);
+            return {
+                url,
+                kind: (video ? 'video' : 'image') as 'image' | 'video',
+                src: video ? video.src : url,
+                player: video ? video.kind : null,
+                caption: String(it?.caption ?? ''),
+                credit: String(it?.credit ?? ''),
+                alt: String(it?.alt ?? ''),
+            };
+        })
+        .filter(it => it.url);
+}
+
 // ─── Centros de acopio (F3) — espejo del criterio del servidor ─────────────
 export interface ContributionCenter {
     id: string; city: string; groupLabel: string; name: string; address: string;

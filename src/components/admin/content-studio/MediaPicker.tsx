@@ -73,8 +73,12 @@ interface MediaPickerProps {
      * fijado en el código. Se abre a `video` porque la campaña de
      * contribución deja poner un video propio: sin esto, el botón
      * «Biblioteca» de ese campo mostraría fotos, que es peor que no tenerlo.
+     *
+     * `all` NO manda el filtro al servidor, que es distinto de mandarlo
+     * vacío: la galería «Rotarios en acción» mezcla fotos y videos en una
+     * sola lista y tiene que poder elegir de las dos.
      */
-    mediaType?: 'image' | 'video' | 'document';
+    mediaType?: 'image' | 'video' | 'document' | 'all';
 }
 
 // Cada categoría se mapea a un valor de Club.category (excepto district,
@@ -160,7 +164,8 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         cargandoMas.current = offset > 0;
         try {
             const token = localStorage.getItem('rotary_token');
-            const params = new URLSearchParams({ type: mediaType });
+            const params = new URLSearchParams();
+            if (mediaType !== 'all') params.set('type', mediaType);
             if (selectedCategory !== 'all') params.set('sourceType', selectedCategory);
             if (selectedSourceId) params.set('sourceId', selectedSourceId);
             if (currentFolder) params.set('folderId', currentFolder);
