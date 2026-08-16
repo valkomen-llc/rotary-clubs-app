@@ -34,14 +34,27 @@ import CampaignGallery from './CampaignGallery';
 
 interface Cta { label: string; url: string; action: 'donate' | 'centers' | 'link' | 'share'; }
 
-/** Cada cuánto pasa solo al video siguiente (v4.830). Bastante más lento que
- *  la tira de fotos: acá hay que darle tiempo a alguien para reconocer el
- *  video y decidir si lo mira. Al ajustarlo, acá y en ningún otro sitio. */
-const VIDEO_ROTA_MS = 7000;
+/** Cada cuánto pasa solo al video siguiente (v4.830). Más lento que la tira
+ *  de fotos —hay que darle tiempo a alguien para reconocer el video— pero no
+ *  tanto como para que parezca detenido: los 7 s de v4.830 se reportaron como
+ *  «muy lento». Al ajustarlo, acá y en ningún otro sitio. */
+const VIDEO_ROTA_MS = 4200;
 
 /** Cuánto dura el desplazamiento de un video al siguiente. Lo bastante para
  *  que se VEA el movimiento —que es lo que se pidió— sin hacer esperar. */
-const VIDEO_DESLIZA_MS = 900;
+const VIDEO_DESLIZA_MS = 520;
+
+/** Copias de la lista que se pintan cuando la tira es CÍCLICA. Tres es el
+ *  mínimo que garantiza vecino a los DOS lados en cualquier posición: se vive
+ *  siempre en la copia del medio, así que a izquierda y a derecha hay una
+ *  copia entera de sobra. Con dos copias, el primero de la copia del medio se
+ *  queda sin nada a la izquierda — que es justo el hueco reportado. */
+const VIDEO_COPIAS = 3;
+
+/** Desde cuántos videos la tira da la vuelta. Con DOS, la vuelta pondría el
+ *  MISMO video a izquierda y derecha y parecería que hay tres (regla v4.829):
+ *  ahí se conserva la tira lineal que rebota. */
+const VIDEO_CICLICO_MIN = 3;
 
 // ── Métricas (F5) ───────────────────────────────────────────────────────────
 //
@@ -224,47 +237,59 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         return () => clearInterval(t);
     }, [slideCount]);
 
-    // El video que se está viendo. Va ACÁ ARRIBA con el resto de los hooks,
-    // antes de cualquier `return` (check:hooks).
-    const [videoIdx, setVideoIdx] = useState(0);
+    // Cuántos videos hay. Se calcula ACÁ, antes de los hooks que lo consumen:
+    // un `const` declarado más abajo daría un error de zona muerta al evaluar
+    // el array de dependencias (el defecto de `uploadImage` en Plantillas IA).
+    const videoCount = sectionVideos(campaign.content?.requiredItemsVideos, campaign.content?.requiredItemsVideo).length;
+    const videoCiclico = videoCount >= VIDEO_CICLICO_MIN;
+
+    // La posición es un índice ABSOLUTO dentro de la tira repetida, no el
+    // número del video. Es lo que permite avanzar SIEMPRE hacia el mismo lado
+    // —cada paso es una diapositiva, nunca un salto largo— y aun así volver
+    // al principio: al salir de la copia del medio se rebasa una copia entera
+    // sin animación, y como todas las diapositivas son iguales el resultado
+    // en pantalla es idéntico. Se arranca en la copia del medio.
+    const [videoPos, setVideoPos] = useState(() => (videoCount >= VIDEO_CICLICO_MIN ? videoCount : 0));
+    const [videoSalta, setVideoSalta] = useState(false);     // rebase, sin animación
     const [videoQuieto, setVideoQuieto] = useState(false);   // cursor encima
-    const [videoTomado, setVideoTomado] = useState(false);   // le dieron play
+    const [videoTomado, setVideoTomado] = useState(false);   // se está viendo
     const tiraVideos = useRef<HTMLDivElement>(null);
     // Cuánto hay que desplazar la tira para centrar el video que manda. Se
     // guarda en estado porque depende de una MEDIDA del DOM (el paso entre
     // dos diapositivas), que no existe en el primer render.
     const [desplazamientoVideos, setDesplazamientoVideos] = useState(0);
-    // Cuántos videos hay. Se calcula ACÁ, antes del efecto que lo consume: un
-    // `const` declarado más abajo daría un error de zona muerta al evaluar el
-    // array de dependencias (el defecto de `uploadImage` en Plantillas IA).
-    const videoCount = sectionVideos(campaign.content?.requiredItemsVideos, campaign.content?.requiredItemsVideo).length;
 
     // Los videos SÍ rotan solos desde v4.830, y eso invierte la regla de
     // v4.816 —que era «un video que se cambia mientras alguien lo mira es un
-    // defecto, no una animación»—. Lo que la hacía necesaria eran justamente
-    // los dos frenos que ahora existen: la rotación se detiene con el cursor
-    // encima y se detiene DEL TODO en cuanto alguien le da play. Sin esos dos
-    // frenos, volver a quitar el intervalo.
-    // La rotación REBOTA (…1, 2, 3, 2, 1…) en vez de dar la vuelta. Con una
-    // tira lineal, saltar del último al primero es un desplazamiento largo
-    // que se ve como un tirón; rebotando, cada paso es siempre de UNA
-    // diapositiva y la transición se lee igual de suave en los dos sentidos.
+    // defecto, no una animación»—. Lo que la hacía necesaria eran los dos
+    // frenos que ahora existen: se detiene con el cursor encima y se detiene
+    // MIENTRAS se está viendo. Sin esos dos frenos, volver a quitar el
+    // intervalo.
+    //
+    // Los dos frenos son REVERSIBLES a propósito (v4.832): hasta v4.831 darle
+    // play detenía la rotación PARA SIEMPRE, así que la tira quedaba clavada
+    // en un video y no volvía a moverse — se reportó como «llega un momento
+    // donde se para y ya no se cambia más».
     const sentidoVideo = useRef(1);
     useEffect(() => {
         if (videoCount < 2 || videoQuieto || videoTomado) return;
-        const t = setInterval(() => setVideoIdx(i => {
-            if (i + sentidoVideo.current >= videoCount) sentidoVideo.current = -1;
-            else if (i + sentidoVideo.current < 0) sentidoVideo.current = 1;
-            return i + sentidoVideo.current;
+        const t = setInterval(() => setVideoPos(p => {
+            // Cíclica: siempre hacia adelante. Con dos videos la tira es
+            // lineal y REBOTA (…1, 2, 1…): dar la vuelta pondría el mismo
+            // video a los dos lados y parecería que hay tres.
+            if (videoCiclico) return p + 1;
+            if (p + sentidoVideo.current >= videoCount) sentidoVideo.current = -1;
+            else if (p + sentidoVideo.current < 0) sentidoVideo.current = 1;
+            return p + sentidoVideo.current;
         }), VIDEO_ROTA_MS);
         return () => clearInterval(t);
-    }, [videoCount, videoQuieto, videoTomado]);
+    }, [videoCount, videoCiclico, videoQuieto, videoTomado]);
 
-    // Centrar la diapositiva activa. El paso se MIDE sobre dos diapositivas
-    // —igual que en la tira de «Rotarios en acción»— porque el ancho cambia
-    // con el tamaño de la pantalla y los márgenes negativos lo acortan: darlo
-    // por sabido dejaría el video corrido en cuanto alguien ajuste la ventana.
-    useEffect(() => {
+    // Centrar la diapositiva activa. Va en un efecto de DISPOSICIÓN, no en uno
+    // normal: el rebase cambia a la vez qué diapositiva manda y cuánto se
+    // desplaza la tira, y un efecto normal corre DESPUÉS de pintar — se vería
+    // un fotograma con el video nuevo en el sitio del viejo.
+    React.useLayoutEffect(() => {
         const el = tiraVideos.current;
         if (!el) return;
         // Se corrige sobre el desplazamiento ACTUAL en vez de calcularlo desde
@@ -273,12 +298,15 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         // video corrido —medido: el centro caía en 443 en vez de 640—. Con
         // los rectángulos reales la cuenta es «cuánto le falta para estar
         // centrado», que no depende de nada de eso. El CENTRO no lo altera el
-        // `scale`, así que da igual en qué punto de la transición se mida.
+        // `scale`, así que da igual en qué punto de la transición se mida —y
+        // es además lo que hace que el rebase salga exacto sin cuentas
+        // aparte: la diapositiva equivalente de la copia del medio está a una
+        // copia entera de distancia y la medida lo compensa sola.
         const medir = () => {
             const d = el.querySelectorAll<HTMLElement>('[data-slide-video]');
             const wrap = el.parentElement;
             if (!d.length || !wrap) return;
-            const i = Math.min(videoIdx, d.length - 1);
+            const i = Math.min(Math.max(videoPos, 0), d.length - 1);
             const r = d[i].getBoundingClientRect();
             const w = wrap.getBoundingClientRect();
             const actual = new DOMMatrixReadOnly(getComputedStyle(el).transform).m41;
@@ -287,21 +315,35 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         medir();
         window.addEventListener('resize', medir);
         return () => window.removeEventListener('resize', medir);
-    }, [videoIdx, videoCount]);
+    }, [videoPos, videoCount]);
+
+    // El rebase dura UN render: se apaga en el fotograma siguiente para que la
+    // transición vuelva sin que el desplazamiento haya cambiado. Con
+    // `setTimeout(0)` podría apagarse antes de pintar y el salto se animaría.
+    useEffect(() => {
+        if (!videoSalta) return;
+        const r = requestAnimationFrame(() => setVideoSalta(false));
+        return () => cancelAnimationFrame(r);
+    }, [videoSalta]);
 
     // Un video EMBEBIDO (YouTube, Vimeo) se reproduce dentro de un `<iframe>`
     // y desde acá no hay forma de saber que empezó: haría falta la API de
     // cada proveedor, que es una librería más por visita. Lo que sí se puede
-    // observar es que el visitante PULSÓ dentro del reproductor — cuando eso
-    // pasa, el foco se va al iframe y la ventana pierde el foco. Es una
-    // heurística, no una señal de reproducción, y se usa sólo para DETENER la
-    // rotación: equivocarse deja el carrusel quieto, que es el lado seguro.
+    // observar es dónde está el FOCO: al pulsar dentro del reproductor se va
+    // al iframe y nuestra ventana lo pierde; cuando el visitante vuelve a
+    // pulsar en la página, el foco sale de ahí y la rotación se reanuda. Es
+    // una heurística, no una señal de reproducción — y por eso el video se
+    // desmonta al salir del centro en vez de seguir sonando fuera de cuadro.
     useEffect(() => {
-        const alPerderFoco = () => {
-            if (document.activeElement?.tagName === 'IFRAME') setVideoTomado(true);
-        };
+        const enIframe = () => document.activeElement?.tagName === 'IFRAME';
+        const alPerderFoco = () => { if (enIframe()) setVideoTomado(true); };
+        const alVolver = () => { if (!enIframe()) setVideoTomado(false); };
         window.addEventListener('blur', alPerderFoco);
-        return () => window.removeEventListener('blur', alPerderFoco);
+        window.addEventListener('focus', alVolver);
+        return () => {
+            window.removeEventListener('blur', alPerderFoco);
+            window.removeEventListener('focus', alVolver);
+        };
     }, []);
 
 
@@ -321,9 +363,20 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // Qué videos hay —y si se pueden pintar— lo decide el criterio compartido,
     // no esta pantalla: es lo mismo que mira el editor para avisar en vivo.
     const videos = sectionVideos(content.requiredItemsVideos, content.requiredItemsVideo);
-    // Si se quitan videos desde el panel, el índice guardado puede quedar
-    // fuera de rango: se acota al leer en vez de con otro efecto.
-    const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
+    // Qué video manda. `videoPos` es un índice absoluto en la tira repetida,
+    // así que el número del video sale del resto — y el resto vale también
+    // para la tira lineal, donde la posición nunca sale del rango. Si se
+    // quitan videos desde el panel, esto acota solo, sin otro efecto.
+    const idxVideo = videos.length ? ((videoPos % videos.length) + videos.length) % videos.length : 0;
+    const videoActual = videos[idxVideo] || null;
+    // Las diapositivas que se pintan. Repetir la lista es lo que hace que
+    // SIEMPRE haya un vecino a cada lado: se vive en la copia del medio.
+    const slidesVideo = videoCiclico ? Array.from({ length: VIDEO_COPIAS }, () => videos).flat() : videos;
+    // A qué diapositiva hay que saltar cuando la posición se sale de la copia
+    // del medio. Devuelve 0 cuando no hay nada que rebasar.
+    const rebaseVideo = !videoCiclico ? 0
+        : videoPos >= 2 * videos.length ? -videos.length
+        : videoPos < videos.length ? videos.length : 0;
     // El botón que cierra la sección de elementos. Vacío = el heredado.
     const itemsCta = content.requiredItemsCta;
     // La galería, con el mismo criterio compartido. Quién la pinta es
@@ -591,14 +644,18 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         repintaba el trío entero y el cambio era
                                         un corte seco.
 
-                                        El paso se MIDE sobre dos diapositivas
-                                        (`pasoVideo`), no se supone: el ancho
-                                        cambia con el tamaño de la pantalla. Misma
+                                        Desde v4.832 la lista se pinta REPETIDA
+                                        (`VIDEO_COPIAS`) y se vive en la copia del
+                                        medio: es lo que hace que haya vecino a los
+                                        DOS lados en cualquier posición y que la
+                                        rotación no tenga que rebotar ni pararse.
+
+                                        El desplazamiento se MIDE contra los
+                                        rectángulos reales, no se supone: el ancho
+                                        cambia con el tamaño de la pantalla y los
+                                        márgenes negativos lo acortan. Misma
                                         técnica que la tira de «Rotarios en
-                                        acción». Mientras no se haya medido, la
-                                        tira se centra con `translateX(-50%)` sobre
-                                        el bloque, que es la posición correcta del
-                                        primer video. */}
+                                        acción». */}
                                     <div
                                         // Márgenes negativos: el carrusel llega
                                         // hasta el BORDE del contenedor y no
@@ -641,14 +698,27 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                             // se genera falla en silencio (la lección de v4.719).
                                             style={{
                                                 transform: `translateX(${desplazamientoVideos}px)`,
-                                                transition: `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
+                                                // En el rebase no hay transición: es el mismo
+                                                // punto de la tira visto desde otra copia, así
+                                                // que animarlo sería recorrer una copia entera
+                                                // a la vista.
+                                                transition: videoSalta ? 'none' : `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
+                                            }}
+                                            // El rebase se hace al TERMINAR el desplazamiento, no
+                                            // al empezarlo: a mitad de camino cambiaría la
+                                            // diapositiva que manda debajo del movimiento.
+                                            onTransitionEnd={e => {
+                                                if (e.target !== e.currentTarget || e.propertyName !== 'transform') return;
+                                                if (!rebaseVideo) return;
+                                                setVideoSalta(true);
+                                                setVideoPos(p => p + rebaseVideo);
                                             }}
                                         >
-                                            {videos.map((v, i) => {
-                                                const activo = i === Math.min(videoIdx, videos.length - 1);
+                                            {slidesVideo.map((v, i) => {
+                                                const activo = i === Math.min(Math.max(videoPos, 0), slidesVideo.length - 1);
                                                 return (
                                                     <div
-                                                        key={v.url}
+                                                        key={`${i}-${v.url}`}
                                                         data-slide-video
                                                         // Todas las diapositivas miden lo MISMO y el
                                                         // vecino se achica con `scale`, que no ocupa
@@ -664,7 +734,11 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                             // cambio volvería a leerse como un salto.
                                                             transform: `scale(${activo ? 1 : 0.66})`,
                                                             opacity: activo ? 1 : 0.55,
-                                                            transition: `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity ${VIDEO_DESLIZA_MS}ms ease-out`,
+                                                            // En el rebase, sin transición. Si no, la
+                                                            // diapositiva equivalente de la otra copia
+                                                            // crecería de 0,66 a 1 en el centro y se
+                                                            // vería un latido donde no pasó nada.
+                                                            transition: videoSalta ? 'none' : `transform ${VIDEO_DESLIZA_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity ${VIDEO_DESLIZA_MS}ms ease-out`,
                                                         }}
                                                     >
                                                         {activo ? (
@@ -685,10 +759,15 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                                         controls
                                                                         playsInline
                                                                         preload="metadata"
-                                                                        // Darle play DETIENE la rotación para
-                                                                        // siempre: quien eligió un video se
-                                                                        // queda en él, que es lo pedido.
+                                                                        // Mientras se REPRODUCE, la rotación se
+                                                                        // detiene: quien eligió un video se queda
+                                                                        // en él. Al pausar o terminar vuelve a
+                                                                        // rotar — con un archivo propio eso no es
+                                                                        // una heurística, es el estado real del
+                                                                        // reproductor.
                                                                         onPlay={() => setVideoTomado(true)}
+                                                                        onPause={() => setVideoTomado(false)}
+                                                                        onEnded={() => setVideoTomado(false)}
                                                                         className="absolute inset-0 w-full h-full"
                                                                     />
                                                                 ) : (
@@ -704,7 +783,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            <VideoVecino entry={v} onClick={() => setVideoIdx(i)} />
+                                                            <VideoVecino entry={v} onClick={() => setVideoPos(i)} />
                                                         )}
                                                     </div>
                                                 );
@@ -720,18 +799,19 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         vecinos y quedan las de la fila de abajo. */}
                                     {videos.length > 1 && (
                                         <>
-                                            <button type="button" onClick={() => setVideoIdx(i => Math.max(0, i - 1))}
+                                            <button type="button" onClick={() => setVideoPos(p => p - 1)}
                                                 aria-label="Video anterior"
-                                                // La tira es LINEAL: en el primero no hay
-                                                // anterior. Se desactiva en vez de dejar un
-                                                // botón que no lleva a ninguna parte (v4.650).
-                                                disabled={videoIdx <= 0}
+                                                // Con la tira cíclica no hay extremos: siempre
+                                                // hay anterior y siguiente. La tira LINEAL —dos
+                                                // videos— sí los tiene, y ahí la flecha que no
+                                                // lleva a ninguna parte se desactiva (v4.650).
+                                                disabled={!videoCiclico && videoPos <= 0}
                                                 className="hidden lg:flex absolute left-4 xl:left-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-all z-10 disabled:opacity-0 disabled:pointer-events-none">
                                                 <ChevronLeft className="w-6 h-6" />
                                             </button>
-                                            <button type="button" onClick={() => setVideoIdx(i => Math.min(videos.length - 1, i + 1))}
+                                            <button type="button" onClick={() => setVideoPos(p => p + 1)}
                                                 aria-label="Video siguiente"
-                                                disabled={videoIdx >= videos.length - 1}
+                                                disabled={!videoCiclico && videoPos >= videos.length - 1}
                                                 className="hidden lg:flex absolute right-4 xl:right-10 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white/95 backdrop-blur text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-md items-center justify-center transition-all z-10 disabled:opacity-0 disabled:pointer-events-none">
                                                 <ChevronRight className="w-6 h-6" />
                                             </button>
@@ -750,29 +830,33 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     pasar de video salvo apuntando a un punto. */}
                                 {videos.length > 1 && (
                                     <div className="flex items-center justify-center gap-4 mt-5">
-                                        <button type="button" onClick={() => setVideoIdx(i => Math.max(0, i - 1))}
+                                        <button type="button" onClick={() => setVideoPos(p => p - 1)}
                                             aria-label="Video anterior (compacto)"
-                                            disabled={videoIdx <= 0}
+                                            disabled={!videoCiclico && videoPos <= 0}
                                             className="lg:hidden disabled:opacity-30 disabled:pointer-events-none w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <div className="flex items-center gap-2">
+                                            {/* El punto se marca con el NÚMERO de video, no con la
+                                                posición: en la tira cíclica hay varias diapositivas
+                                                del mismo video y sólo hay un punto por video. Al
+                                                pulsarlo se va a la copia del medio. */}
                                             {videos.map((_, i) => (
-                                                <button key={i} type="button" onClick={() => setVideoIdx(i)}
+                                                <button key={i} type="button" onClick={() => setVideoPos(videoCiclico ? videos.length + i : i)}
                                                     aria-label={`Ver video ${i + 1} de ${videos.length}`}
-                                                    aria-current={i === videoIdx}
-                                                    className={`h-2.5 rounded-full transition-all duration-300 ${i === videoIdx ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
-                                                    style={i === videoIdx ? { backgroundColor: accent } : undefined} />
+                                                    aria-current={i === idxVideo}
+                                                    className={`h-2.5 rounded-full transition-all duration-300 ${i === idxVideo ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
+                                                    style={i === idxVideo ? { backgroundColor: accent } : undefined} />
                                             ))}
                                         </div>
-                                        <button type="button" onClick={() => setVideoIdx(i => Math.min(videos.length - 1, i + 1))}
+                                        <button type="button" onClick={() => setVideoPos(p => p + 1)}
                                             aria-label="Video siguiente (compacto)"
-                                            disabled={videoIdx >= videos.length - 1}
+                                            disabled={!videoCiclico && videoPos >= videos.length - 1}
                                             className="lg:hidden disabled:opacity-30 disabled:pointer-events-none w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                         <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>
-                                            {videoIdx + 1}/{videos.length}
+                                            {idxVideo + 1}/{videos.length}
                                         </span>
                                     </div>
                                 )}

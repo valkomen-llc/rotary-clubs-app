@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.831.0",
-  "cache_bust": "2026-08-16k (La tira de videos se desplaza en vez de repintarse.)",
+  "version": "4.832.0",
+  "cache_bust": "2026-08-16l (Siempre tres videos a la vista y la rotación no se para.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
