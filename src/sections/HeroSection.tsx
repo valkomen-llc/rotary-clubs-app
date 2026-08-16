@@ -22,7 +22,6 @@ const HeroSection = () => {
   const useEventHero = hasCustomTheme((club as any)?.type) && !!eventHero && eventHero.length > 0;
 
   // Build slides from siteImages or defaults
-  const hasCustomHero = siteImages.hero && siteImages.hero.length > 0 && !siteImages.hero[0].url.includes('unsplash.com');
   const slides = (siteImages.hero && siteImages.hero.length > 0)
     ? siteImages.hero.map((img, i) => ({ id: i + 1, image: img.url, alt: img.alt }))
     : (siteImages._loading ? [] : defaultSlides);
@@ -57,15 +56,9 @@ const HeroSection = () => {
 
   return (
     <>
-      <style>{`
-        @keyframes zoomIn {
-          0% { transform: scale(1); }
-          100% { transform: scale(1.08); }
-        }
-        .hero-slide-image {
-          animation: zoomIn 5s ease-out forwards;
-        }
-      `}</style>
+      {/* El acercamiento vive en el TEMA (`animate-hero-zoom`), no en un
+          `<style>` acá: lo usa también el hero de la landing de campaña, y
+          escrito dos veces una de las dos se queda atrás al ajustarlo. */}
       <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden bg-rotary-dark">
         <div className="absolute inset-0">
           {slides.map((slide, index) => (
@@ -78,7 +71,7 @@ const HeroSection = () => {
               <img 
                 src={slide.image} 
                 alt={slide.alt} 
-                className={`w-full h-full object-cover object-top ${index === currentSlide ? 'hero-slide-image' : ''}`}
+                className={`w-full h-full object-cover object-top ${index === currentSlide ? 'animate-hero-zoom' : ''}`}
               />
             </div>
           ))}

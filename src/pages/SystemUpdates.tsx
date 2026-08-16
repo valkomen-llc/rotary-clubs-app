@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.812.0 | 2026-08-15 (El hero de la campana se turna entre varias imagenes)
-// Cache bust: 2026-08-15j
+// UI V4.813.0 | 2026-08-15 (El hero de la campana lleva el acercamiento de la portada)
+// Cache bust: 2026-08-15k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.813.0',
+        title: 'El hero de la campaña se mueve como el de la portada 🎞️',
+        description: 'Las imágenes del hero de una campaña ya se turnaban, pero les faltaba el acercamiento lento —ese movimiento suave de la cámara que tiene el hero de la página de inicio—: al lado del de la portada se veían quietas. Ahora es exactamente el mismo efecto, con la misma duración, así que el acercamiento termina justo cuando la imagen cambia. Y se aprovechó para dejar ese efecto escrito en UN solo lugar: lo tenían copiado a mano el hero de la portada, el del Programa de Intercambio y ahora el de la campaña — tres copias idénticas que, el día que alguien ajustara una, dejaban las otras dos distintas. Ahora las tres leen la misma definición del tema, comprobado además contra los estilos ya compilados, que es la única forma de saber que un estilo llegó de verdad a la página.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'improved',
+        impact: 'Bajo',
+        changes: [
+            { type: 'added', text: 'El hero de la campaña lleva el mismo acercamiento lento del hero de la portada.' },
+            { type: 'changed', text: 'El efecto vive en un solo lugar y lo comparten los tres heroes con carrusel — antes estaba copiado tres veces.' },
+            { type: 'improved', text: 'Comprobado en un navegador real: la imagen crece de a poco mientras dura su turno.' },
+        ]
+    },
     {
         version: '4.812.0',
         title: 'El hero de la campaña ahora es un carrusel 🖼️',

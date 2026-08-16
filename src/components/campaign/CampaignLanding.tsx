@@ -203,7 +203,15 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                         {slides.map((s, i) => (
                             <div key={`${s.url}-${i}`}
                                 className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${i === slide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
-                                <img src={s.url} alt={s.alt || ''} className="w-full h-full object-cover" />
+                                {/* El acercamiento lento es el MISMO del hero
+                                    de la portada: sale del tema, no de un
+                                    `<style>` propio (ver tailwind.config.js).
+                                    Va sólo en la que manda — animar las que
+                                    no se ven es trabajo invisible, y así el
+                                    acercamiento se reinicia cuando le vuelve
+                                    a tocar. */}
+                                <img src={s.url} alt={s.alt || ''}
+                                    className={`w-full h-full object-cover ${i === slide ? 'animate-hero-zoom' : ''}`} />
                             </div>
                         ))}
                         <div className="absolute inset-0 z-20 bg-gradient-to-r from-black/70 via-black/50 to-black/20" />
