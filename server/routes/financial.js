@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
     createDonationCheckout,
+    getDonationCurrency,
     createSubscriptionCheckout,
     getDonationSessionStatus,
     listClubDonations,
@@ -25,6 +26,9 @@ const router = express.Router();
 
 // PÚBLICO — cualquier visitante puede iniciar una donación
 router.post('/donate', createDonationCheckout);
+// v4.834 — en qué moneda se le cobra a quien pregunta. Público y sin caché:
+// la respuesta depende del país del visitante.
+router.get('/currency', getDonationCurrency);
 router.get('/donate/session/:id', getDonationSessionStatus);
 
 // PÚBLICO — suscripción a membresía recurrente (Fase 2)

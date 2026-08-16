@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { Heart, X, Check, Loader2, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Heart, X, Check, Loader2, ShieldCheck, Globe } from 'lucide-react';
 import { donationPresets } from '../lib/contributionSpec';
+import { blockAmountsApply, type CurrencyDecision } from '../lib/donationCurrency';
+import { useLang } from '../contexts/LanguageContext';
 
 // ════════════════════════════════════════════════════════════════════
 // El modal de donación — v4.804
@@ -11,11 +13,18 @@ import { donationPresets } from '../lib/contributionSpec';
 // → Stripe Checkout → webhook). El camino del carrito no cobra — ver
 // CLAUDE.md, Campañas de Contribución.
 //
-// LA MONEDA ES LA DEL CLUB, y el modal la dice. Hasta v4.803 el rótulo decía
-// «(USD)» con montos $10–$100 mientras el servidor cobraba en la moneda del
-// club (Colombia → COP): «$50» eran 50 pesos. Los montos sugeridos y el
-// mínimo salen de donationPresets(currency) — el MISMO criterio en el
-// servidor y en este espejo.
+// LA MONEDA LA DECIDE EL SERVIDOR, y el modal la dice. Hasta v4.803 el rótulo
+// decía «(USD)» con montos $10–$100 mientras se cobraba en la moneda del club
+// (Colombia → COP): «$50» eran 50 pesos. Los montos sugeridos y el mínimo
+// salen de donationPresets(currency) — el MISMO criterio en las dos puntas.
+//
+// Desde v4.834 la moneda ya no es siempre la del sitio: un visitante que lee
+// la página en un idioma internacional, o que llega desde otro país, paga en
+// dólares. Eso NO se decide acá —el país sale del encabezado del borde y sólo
+// el servidor lo ve—, así que el modal lo PREGUNTA al abrirse
+// (`/financial/currency`). Mientras la respuesta no llega no se puede pintar
+// un monto: ofrecer «50.000» a alguien a quien se le van a cobrar dólares es
+// el defecto más caro que este cambio puede introducir.
 //
 // `campaignId` viaja al checkout cuando el aporte nace de una campaña: es lo
 // que permite atribuir la donación (metadata de Stripe) sin tocar el modelo
@@ -47,26 +56,67 @@ const DonationModal: React.FC<DonationModalProps> = ({
     campaignId = null, blockId = null, title, subtitle, accentColor,
     presetAmounts, showMessage = true, showAnonymous = true,
 }) => {
-    const cur = String(currency || 'USD').toUpperCase();
-    const base = donationPresets(cur);
-    // Los montos del bloque MANDAN sobre los de la moneda: el club los eligió
-    // para esa causa. El mínimo sigue siendo el de la moneda — es el piso de
-    // Stripe, no una preferencia.
-    const presets = {
-        amounts: Array.isArray(presetAmounts) && presetAmounts.length > 0
-            ? presetAmounts.filter(n => Number(n) > 0)
-            : base.amounts,
-        min: base.min,
-    };
-    const accent = /^#[0-9a-fA-F]{6}$/.test(accentColor || '') ? (accentColor as string) : '#9D2235';
-
-    const [amount, setAmount] = useState<string>(String(presets.amounts[2] ?? presets.amounts[0] ?? ''));
+    // TODOS los hooks van ARRIBA, antes del `return null` de más abajo: es la
+    // regla de `check:hooks` — un hook escrito debajo de un return temprano no
+    // corre en el primer render y sí en el segundo, y React aborta el árbol.
+    const { lang } = useLang();
+    const [decision, setDecision] = useState<CurrencyDecision | null>(null);
+    const [amount, setAmount] = useState<string>('');
     const [donorEmail, setDonorEmail] = useState('');
     const [donorName, setDonorName] = useState('');
     const [donorMessage, setDonorMessage] = useState('');
     const [isAnonymous, setIsAnonymous] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    // La moneda se PREGUNTA: depende del país del visitante, que sólo el
+    // servidor ve. Se consulta al abrir y al cambiar de idioma —cambiar el
+    // selector a inglés cambia la moneda, y el modal tiene que enterarse sin
+    // recargar—. Ante cualquier fallo se cae a la del sitio, que es lo que
+    // hacía antes de v4.834: no poder aportar sería peor que aportar en la
+    // moneda de siempre.
+    useEffect(() => {
+        if (!open || !clubId) return;
+        let vivo = true;
+        const siteCur = String(currency || 'USD').toUpperCase();
+        (async () => {
+            try {
+                const r = await fetch(`${API_BASE}/financial/currency?clubId=${encodeURIComponent(clubId)}&lang=${encodeURIComponent(lang || '')}`);
+                const d = await r.json();
+                if (!vivo) return;
+                if (!r.ok || !d?.currency) throw new Error('sin moneda');
+                setDecision(d);
+            } catch {
+                if (vivo) setDecision({ currency: siteCur, siteCurrency: siteCur, international: false, reason: 'disabled' });
+            }
+        })();
+        return () => { vivo = false; };
+    }, [open, clubId, lang, currency]);
+
+    const cur = (decision?.currency || String(currency || 'USD')).toUpperCase();
+    const base = donationPresets(cur);
+    // Los montos del bloque mandan sobre los de la moneda... PERO SÓLO EN SU
+    // MONEDA. El club los eligió en la del sitio: ofrecer «50.000» a alguien a
+    // quien se le van a cobrar dólares invitaría a un aporte de US$ 50.000. No
+    // se convierten —no hay tasa configurada y inventarla está prohibido—: se
+    // reemplazan por los propios de la moneda.
+    const usarDelBloque = Array.isArray(presetAmounts) && presetAmounts.length > 0
+        && blockAmountsApply(decision?.siteCurrency || currency, cur);
+    const presets = {
+        amounts: usarDelBloque ? presetAmounts!.filter(n => Number(n) > 0) : base.amounts,
+        min: base.min,
+    };
+    const accent = /^#[0-9a-fA-F]{6}$/.test(accentColor || '') ? (accentColor as string) : '#9D2235';
+
+    // El monto sugerido sigue a la moneda: si llega la decisión y el visitante
+    // no escribió nada, se repone con el de la moneda que de verdad se cobra.
+    const sugerido = String(presets.amounts[2] ?? presets.amounts[0] ?? '');
+    useEffect(() => {
+        if (!open) return;
+        setAmount(prev => (prev === '' || presets.amounts.every(a => String(a) !== prev) ? sugerido : prev));
+        // `sugerido` cambia con la moneda; el resto de los montos vienen de ahí.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, sugerido]);
 
     if (!open) return null;
 
@@ -109,6 +159,10 @@ const DonationModal: React.FC<DonationModalProps> = ({
                     isAnonymous,
                     campaignId: campaignId || undefined,
                     blockId: blockId || undefined,
+                    // El idioma ACTIVO: es lo que el servidor necesita para
+                    // resolver la MISMA moneda que se acaba de mostrar. El país
+                    // no se manda — lo lee del encabezado del borde.
+                    lang: lang || '',
                     returnUrl: window.location.origin,
                 }),
             });
@@ -149,6 +203,21 @@ const DonationModal: React.FC<DonationModalProps> = ({
                     </div>
 
                     <div className="space-y-5">
+                        {/* Por qué se cobra en dólares. Sin esta línea, un
+                            rotario colombiano de viaje —o cualquiera con el
+                            sitio en inglés— ve «USD» donde esperaba pesos y no
+                            tiene forma de saber si es un error. El motivo va en
+                            la moneda del visitante, no en jerga interna. */}
+                        {decision?.international && (
+                            <p className="flex items-start gap-2 text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                                <Globe className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                <span>
+                                    {decision.reason === 'foreign_country'
+                                        ? 'Tu aporte se procesa en dólares porque estás fuera del país del sitio.'
+                                        : 'Tu aporte se procesa en dólares porque estás viendo el sitio en un idioma internacional.'}
+                                </span>
+                            </p>
+                        )}
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto ({cur})</label>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
