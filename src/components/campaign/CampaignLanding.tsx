@@ -4,7 +4,7 @@ import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, Che
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, commonStatSource, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 import { SITE_ACTION_BG } from '../../lib/siteChrome';
 import CampaignGallery from './CampaignGallery';
 
@@ -200,6 +200,9 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // La galería, con el mismo criterio compartido. Quién la pinta es
     // `CampaignGallery`: acá sólo se decide si hay algo que pintar.
     const gallery = galleryItems(content.gallery?.items);
+    // Una sola fuente para las cuatro cifras se dice una vez, en la cabecera
+    // de la banda; si difieren, cada tarjeta lleva la suya.
+    const fuenteComun = commonStatSource(campaign.stats);
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -308,6 +311,75 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                     )}
                 </div>
             </section>
+
+            {/* ── Panorama de la emergencia ──────────────────────────────
+                VA JUSTO DEBAJO DEL HERO, y el sitio es la decisión (v4.828).
+                Estas cifras contestan «¿qué tan grave es esto?», que es la
+                pregunta ANTERIOR a «¿cómo ayudo?». Hasta v4.827 iban sextas
+                —después de cómo ayudar, los elementos, los centros y la
+                galería—, o sea que llegaban cuando el lector ya había decidido
+                si donaba o llevaba mercado. El arco de una página de
+                emergencia es: qué pasó → qué tan grave → cómo ayudo → dónde →
+                quiénes ya lo hacen.
+
+                Y va como BANDA, no como sección con su propio título grande y
+                su respiro de 24. Por dos motivos: puesta como sección completa
+                acá arriba compite con el hero y empuja los botones por debajo
+                del pliegue; y un muro de cifras nada más abrir ADORMECE en vez
+                de movilizar —es la insensibilización ante las cifras grandes—.
+                Como banda de contexto informa sin frenar.
+
+                El acento NO se usa acá: es la regla v4.820 del sitio —el rojo
+                es de lo que ACTÚA, el azul y la tinta de lo que INFORMA—.
+                Cuatro cifras en rojo de alarma no codifican nada (no
+                distinguen una de otra ni marcan gravedad relativa), aplanan la
+                jerarquía —289 personas pesaba igual que 81.536 viviendas— y en
+                una pieza institucional del Distrito se leen sensacionalistas.
+                Un color de estado usado como decoración es además un
+                antipatrón declarado del criterio de visualización de datos.  */}
+            {campaign.stats.length > 0 && (
+                <section id="panorama" className="py-12 md:py-14 bg-gray-50/60 border-b border-gray-100 scroll-mt-24">
+                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 mb-8">
+                            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-[0.15em]">
+                                Panorama de la emergencia
+                            </h2>
+                            {/* La fuente de cada cifra tiene que VERSE (regla del
+                                módulo). Cuando las cuatro comparten la misma, se
+                                dice UNA vez: repetirla bajo cada tarjeta es ruido
+                                que compite con las cifras. Si difieren, cada
+                                tarjeta lleva la suya. */}
+                            {fuenteComun && (
+                                <span className="text-xs text-gray-400" data-no-translate>· {fuenteComun}</span>
+                            )}
+                        </div>
+                        {/* Flujo centrado y no una rejilla de cuatro columnas: con
+                            dos o tres indicadores, una rejilla fija los deja
+                            pegados a la izquierda y la banda se ve descuadrada.
+                            Así se centran sea cual sea la cantidad. */}
+                        <div className="flex flex-wrap justify-center gap-x-8 md:gap-x-12 gap-y-8">
+                            {campaign.stats.map(s => (
+                                <div key={s.id} className="text-center basis-[130px] grow max-w-[240px]">
+                                    {/* La cifra es un DATO: no se traduce ni se reescribe.
+                                        Cifras proporcionales, no tabulares: `tabular-nums`
+                                        da a cada dígito el ancho de un 0 y a este tamaño
+                                        se ve suelto. Tabulares sólo en columnas. */}
+                                    <p className="text-[34px] md:text-[42px] leading-none font-semibold text-gray-900 tracking-tight" data-no-translate>{s.value}</p>
+                                    <p className="text-[13px] md:text-sm font-bold text-gray-600 mt-2 leading-snug">{s.label}</p>
+                                    {!fuenteComun && s.source && (
+                                        <p className="text-[11px] text-gray-400 mt-1.5" data-no-translate>{s.source}</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        {campaign.statsUpdatedAt && (
+                            <p className="text-center text-xs text-gray-400 mt-8">
+                                Última actualización: <span data-no-translate>{new Date(campaign.statsUpdatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                            </p>
+                        )}
+                    </div>
+                </section>
+            )}
 
             {/* ── ¿Cómo puedes ayudar? ── */}
             {ways.length > 0 && (
@@ -620,34 +692,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                 </section>
             )}
 
-            {/* ── Panorama de la emergencia ── */}
-            {campaign.stats.length > 0 && (
-                <section id="panorama" className="py-20 md:py-24 bg-white">
-                    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-12">
-                            Panorama de la emergencia
-                        </h2>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-                            {campaign.stats.map(s => (
-                                <div key={s.id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-6 text-center">
-                                    {/* La cifra es un DATO: no se traduce ni se reescribe. */}
-                                    <p className="text-3xl md:text-4xl font-black tracking-tight" style={{ color: accent }} data-no-translate>{s.value}</p>
-                                    <p className="text-sm font-bold text-gray-700 mt-1">{s.label}</p>
-                                    {/* La fuente es lo que hace publicable la cifra: siempre visible. */}
-                                    <p className="text-[11px] text-gray-400 mt-2" data-no-translate>{s.source}</p>
-                                </div>
-                            ))}
-                        </div>
-                        {campaign.statsUpdatedAt && (
-                            <p className="text-center text-xs text-gray-400 mt-8">
-                                Última actualización: <span data-no-translate>{new Date(campaign.statsUpdatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                            </p>
-                        )}
-                    </div>
-                </section>
-            )}
-
-            {/* ── Bloques informativos ── */}
+                        {/* ── Bloques informativos ── */}
             {(content.infoBlocks || []).filter((b: any) => b.active !== false && b.title).length > 0 && (
                 <section className="py-20 md:py-24 bg-rotary-concrete">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">

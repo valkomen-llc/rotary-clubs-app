@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.827.0 | 2026-08-16 (La fuente se elige de una lista y la frecuencia se configura)
+// UI V4.828.0 | 2026-08-16 (El panorama sube a banda de contexto bajo el hero)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.828.0',
+        title: 'El panorama sube: las cifras van antes de pedir 📊',
+        description: 'El «Panorama de la emergencia» iba sexto en la página —después de cómo ayudar, los elementos, los centros de acopio y la galería—, o sea que llegaba cuando el lector ya había decidido si donaba o llevaba mercado. Las cifras contestan «¿qué tan grave es esto?», que es la pregunta ANTERIOR a «¿cómo ayudo?»: ahora van justo debajo del hero. Y van como BANDA compacta, no como sección con su propio título grande: puesta como sección entera ahí arriba competiría con el hero y empujaría los botones por debajo del pliegue, y un muro de cifras nada más abrir adormece en vez de movilizar. Las cifras dejan el rojo y pasan a tinta oscura: es la regla del sitio —el rojo es de lo que ACTÚA, la tinta de lo que informa—, y cuatro cifras en rojo de alarma no distinguían nada, aplanaban la jerarquía y en una pieza institucional se leían sensacionalistas. Cuando las cifras comparten la misma fuente, se dice una vez en la cabecera en vez de repetirse bajo cada una; si difieren, cada una lleva la suya.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'emergencia', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'El panorama pasa de sexto a justo debajo del hero.' },
+            { type: 'changed', text: 'Va como banda compacta, no como sección de página entera.' },
+            { type: 'changed', text: 'Las cifras van en tinta, no en el color de alarma.' },
+            { type: 'improved', text: 'La fuente compartida se dice una vez y no bajo cada cifra.' },
+            { type: 'fixed', text: 'Con dos o tres indicadores la banda se centra en vez de quedar a la izquierda.' },
+        ]
+    },
     {
         version: '4.827.0',
         title: 'La lectura del panorama, explicada y configurable 🔧',

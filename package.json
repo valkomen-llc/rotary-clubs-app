@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.827.0",
-  "cache_bust": "2026-08-16e (La fuente se elige de una lista y la frecuencia se configura.)",
+  "version": "4.828.0",
+  "cache_bust": "2026-08-16f (El panorama sube a banda de contexto bajo el hero.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
