@@ -4,8 +4,9 @@ import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, Che
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, HERO_SLIDE_MS, GALLERY_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 import { SITE_ACTION_BG } from '../../lib/siteChrome';
+import CampaignGallery from './CampaignGallery';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -174,24 +175,6 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // defecto, no una animación.
     const [videoIdx, setVideoIdx] = useState(0);
 
-    // ── La galería pasa SOLA, pero sólo sobre una FOTO ──
-    //
-    // Es la corrección al planteamiento: el hero puede rotar tranquilo porque
-    // son imágenes, pero acá hay videos mezclados, y uno que se cambia solo
-    // mientras alguien lo está viendo es el defecto que se evitó en v4.816.
-    // Sobre un video el paso automático ESPERA; se sigue con las flechas.
-    const [galIdx, setGalIdx] = useState(0);
-    const galleryAll = galleryItems(campaign.content?.gallery?.items);
-    const galCount = galleryAll.length;
-    // El tipo de la pieza actual como dato PRIMITIVO: metiendo el objeto en
-    // las dependencias, el efecto se rearmaría en cada render y el temporizador
-    // no llegaría a cumplirse nunca.
-    const galKind = galleryAll[Math.min(galIdx, Math.max(galCount - 1, 0))]?.kind || null;
-    useEffect(() => {
-        if (galCount < 2 || galKind !== 'image') return;
-        const t = setTimeout(() => setGalIdx(i => (i + 1) % galCount), GALLERY_SLIDE_MS);
-        return () => clearTimeout(t);
-    }, [galIdx, galCount, galKind]);
 
     const track = (type: string) => trackCampaign(campaign.id, clubId, type, preview);
     const handleDonate = () => { track('cta_donate_click'); onDonate(); };
@@ -214,10 +197,9 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
     // El botón que cierra la sección de elementos. Vacío = el heredado.
     const itemsCta = content.requiredItemsCta;
-    // La galería, con el mismo criterio compartido. El índice se acota AL LEER:
-    // quitar piezas desde el panel deja el guardado fuera de rango.
-    const gallery = galleryAll;
-    const piezaActual = gallery[Math.min(galIdx, gallery.length - 1)] || null;
+    // La galería, con el mismo criterio compartido. Quién la pinta es
+    // `CampaignGallery`: acá sólo se decide si hay algo que pintar.
+    const gallery = galleryItems(content.gallery?.items);
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -618,92 +600,22 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                 leer qué donar y busca dónde. Acá es el giro natural de «lo que
                 pedimos» a «lo que ya se está haciendo», y las caras quedan
                 justo antes de las cifras, que se refuerzan entre sí. */}
-            {piezaActual && (
-                <section id="rotarios-en-accion" className="py-20 md:py-24 bg-white scroll-mt-24">
+            {gallery.length > 0 && (
+                <section id="rotarios-en-accion" className="py-20 md:py-24 bg-white scroll-mt-24 overflow-hidden">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
                         <h2 className="text-3xl md:text-4xl font-light text-gray-900 tracking-tight text-center mb-3">
                             {content.gallery?.title || 'Rotarios en acción'}
                         </h2>
                         {content.gallery?.subtitle && (
-                            <p className="text-center text-gray-500 max-w-2xl mx-auto mb-12">{content.gallery.subtitle}</p>
+                            <p className="text-center text-gray-500 max-w-2xl mx-auto">{content.gallery.subtitle}</p>
                         )}
-                        {!content.gallery?.subtitle && <div className="mb-12" />}
-
-                        <div className="max-w-4xl mx-auto">
-                            <div className="relative">
-                                <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
-                                    {piezaActual.kind === 'image' ? (
-                                        <img src={piezaActual.src} alt={piezaActual.alt || piezaActual.caption || ''}
-                                            className="absolute inset-0 w-full h-full object-cover" />
-                                    ) : piezaActual.player === 'file' ? (
-                                        // Igual que el carrusel de videos: sólo se
-                                        // monta el que manda, y `key` fuerza el
-                                        // remontaje para que el anterior calle.
-                                        <video key={piezaActual.url} src={piezaActual.src} controls playsInline
-                                            preload="metadata" className="absolute inset-0 w-full h-full" />
-                                    ) : (
-                                        <iframe key={piezaActual.url} src={piezaActual.src}
-                                            title={piezaActual.caption || 'Video de la campaña'}
-                                            className="absolute inset-0 w-full h-full"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
-                                    )}
-                                </div>
-
-                                {gallery.length > 1 && (
-                                    <>
-                                        <button type="button" onClick={() => setGalIdx(i => (i - 1 + gallery.length) % gallery.length)}
-                                            aria-label="Pieza anterior"
-                                            className="hidden xl:flex absolute -left-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
-                                            <ChevronLeft className="w-6 h-6" />
-                                        </button>
-                                        <button type="button" onClick={() => setGalIdx(i => (i + 1) % gallery.length)}
-                                            aria-label="Pieza siguiente"
-                                            className="hidden xl:flex absolute -right-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
-                                            <ChevronRight className="w-6 h-6" />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-
-                            {(piezaActual.caption || piezaActual.credit) && (
-                                <p className="text-center text-sm text-gray-500 mt-4">
-                                    {piezaActual.caption}
-                                    {piezaActual.credit && (
-                                        // Quién mandó la foto es un DATO, no lenguaje:
-                                        // no se traduce (v4.662).
-                                        <span className="block text-xs text-gray-400 mt-1" data-no-translate>{piezaActual.credit}</span>
-                                    )}
-                                </p>
-                            )}
-
-                            {gallery.length > 1 && (
-                                <div className="flex items-center justify-center gap-4 mt-5">
-                                    <button type="button" onClick={() => setGalIdx(i => (i - 1 + gallery.length) % gallery.length)}
-                                        aria-label="Pieza anterior (compacto)"
-                                        className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
-                                        <ChevronLeft className="w-5 h-5" />
-                                    </button>
-                                    <div className="flex items-center gap-2">
-                                        {gallery.map((_, i) => (
-                                            <button key={i} type="button" onClick={() => setGalIdx(i)}
-                                                aria-label={`Ver pieza ${i + 1} de ${gallery.length}`}
-                                                aria-current={i === galIdx}
-                                                className={`h-2.5 rounded-full transition-all duration-300 ${i === galIdx ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
-                                                style={i === galIdx ? { backgroundColor: accent } : undefined} />
-                                        ))}
-                                    </div>
-                                    <button type="button" onClick={() => setGalIdx(i => (i + 1) % gallery.length)}
-                                        aria-label="Pieza siguiente (compacto)"
-                                        className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
-                                        <ChevronRight className="w-5 h-5" />
-                                    </button>
-                                    <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>
-                                        {galIdx + 1}/{gallery.length}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
+                    </div>
+                    {/* La tira va FUERA del contenedor centrado: ocupa el ancho
+                        de la pantalla. Su propio componente porque trae ventana
+                        emergente y teclado, y meterlo acá dejaría este archivo
+                        con dos responsabilidades. */}
+                    <div className="mt-12">
+                        <CampaignGallery items={gallery} accent={accent} />
                     </div>
                 </section>
             )}

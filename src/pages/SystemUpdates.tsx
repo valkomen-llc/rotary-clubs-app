@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.821.0 | 2026-08-15 (Galeria Rotarios en accion)
-// Cache bust: 2026-08-15s
+// UI V4.822.0 | 2026-08-15 (La galeria es una tira a lo ancho que se desplaza sola)
+// Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.822.0',
+        title: 'La galería, a lo ancho y en movimiento 🎞️',
+        description: '«Rotarios en acción» deja de mostrar una foto a la vez y pasa a ser una tira que ocupa el ancho de la pantalla, con varias piezas visibles y desplazándose sola de forma continua. Al pasar el cursor por una tarjeta, la tira SE DETIENE y esa foto se amplía — lo primero es lo que hace utilizable lo segundo: una tarjeta que crece mientras se escapa por el costado no se puede mirar ni pulsar. Los extremos se desvanecen para que las piezas no aparezcan cortadas de golpe. Un video dentro de la tira NO se reproduce ahí —en una tira en movimiento no se puede ver, y si el cursor sale se lo lleva sonando fuera de la pantalla—: se ve como una tarjeta con su carátula y su botón de reproducir, y al pulsarla se abre en grande, donde sí se reproduce, con flechas para recorrer todas las piezas y cierre con la tecla Escape. Quien tenga activado «reducir movimiento» en su sistema recibe la tira quieta y desplazable a mano, no una tira que no se puede recorrer.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'galeria', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'La galería es una tira a lo ancho con varias piezas a la vez, desplazándose sola.' },
+            { type: 'added', text: 'Al pasar el cursor la tira se detiene y la foto se amplía.' },
+            { type: 'added', text: 'Al pulsar una pieza se abre en grande; ahí se reproducen los videos, con flechas y cierre con Escape.' },
+            { type: 'improved', text: 'Respeta la preferencia del sistema de reducir el movimiento.' },
+        ]
+    },
     {
         version: '4.821.0',
         title: 'Galería «Rotarios en acción» 📸',

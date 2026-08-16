@@ -304,6 +304,18 @@ export function resolveCampaignVideo(raw) {
 /** Tope de videos por sección. El mismo que el hero: más no se recorre. */
 export const MAX_SECTION_VIDEOS = 8;
 
+/**
+ * La miniatura de una pieza de video, cuando se puede saber sin llamar a
+ * nadie. YouTube publica una dirección fija por id; Vimeo no la tiene sin
+ * consultar su API, así que ahí se devuelve '' y la tarjeta se pinta con su
+ * carátula genérica. Un archivo propio muestra su primer fotograma solo.
+ */
+function videoThumb(video) {
+    if (!video || video.kind !== 'youtube') return '';
+    const id = /\/embed\/([\w-]+)/.exec(video.src)?.[1];
+    return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '';
+}
+
 /** Tope de piezas de la galería. Es un muestrario, no un archivo histórico. */
 export const MAX_GALLERY_ITEMS = 24;
 
@@ -335,6 +347,7 @@ export function galleryItems(list) {
                 // El video propio se reproduce con `<video>` y el embebido en
                 // `<iframe>`: la pantalla necesita saber cuál de los dos.
                 player: video ? video.kind : null,
+                thumb: video ? videoThumb(video) : url,
                 caption: String(it?.caption ?? ''),
                 credit: String(it?.credit ?? ''),
                 alt: String(it?.alt ?? ''),
