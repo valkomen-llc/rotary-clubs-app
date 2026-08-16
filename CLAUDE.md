@@ -2587,20 +2587,24 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   Dos motivos: puesta como sección entera ahí arriba compite con el hero y
   empuja los botones por debajo del pliegue; y un muro de cifras nada más
   abrir ADORMECE en vez de movilizar. Como contexto informa sin frenar.
-- **Las cifras NO llevan el acento.** Es la regla v4.820 del sitio —el rojo es
-  de lo que ACTÚA, la tinta y el azul de lo que INFORMA— y además un color de
-  estado usado como decoración es un antipatrón declarado: el rojo no
-  codificaba nada (no distingue una cifra de otra ni marca gravedad relativa),
-  aplanaba la jerarquía —289 personas pesaba igual que 81.536 viviendas— y en
-  una pieza institucional del Distrito se lee sensacionalista.
+- **Las cifras SÍ llevan el acento de la campaña, por decisión EXPRESA del
+  cliente** (v4.828.2), y conviene saber que se tomó con el argumento en
+  contra delante. v4.828 las había pasado a tinta por dos motivos: la regla
+  v4.820 del sitio reserva el rojo para lo que ACTÚA, y un color de estado
+  usado como decoración es un antipatrón —el rojo no codifica nada (no
+  distingue una cifra de otra ni marca gravedad relativa) y aplana la
+  jerarquía: 289 personas pesaba igual que 81.536 viviendas—. El cliente lo
+  pidió DOS veces con la pieza a la vista: en una campaña de emergencia el
+  rojo es identidad del hecho, no señal de estado. **No revertirlo por
+  criterio propio**; una prueba fija la decisión.
 - **Figuras PROPORCIONALES, no tabulares.** `tabular-nums` da a cada dígito el
   ancho de un `0` y a tamaño de titular se ve suelto; se reserva para columnas
   de números que tienen que alinearse.
-- **La fuente compartida se dice UNA vez** (`commonStatSource`, en los dos
-  espejos). La regla del módulo —la fuente de CADA cifra se ve— no se afloja:
-  en cuanto difieran, cada tarjeta vuelve a llevar la suya, y un indicador
-  activo SIN fuente tampoco deja fuente común. Repetir cuatro veces el mismo
-  «UNGRD, corte 15/08/2026 6:30 p. m.» es ruido que compite con las cifras.
+- **La fuente va bajo CADA cifra.** v4.828 la unificó en la cabecera cuando
+  todas compartían la misma —era menos ruido— y el cliente pidió conservar el
+  tratamiento original. `commonStatSource` se retiró de los dos espejos al
+  quedarse sin consumidor: un criterio que nadie lee es la clase de silencio
+  que este archivo documenta.
 - **La banda se centra sea cual sea la cantidad de indicadores** (flujo
   centrado, no una rejilla de cuatro columnas): con dos o tres, una rejilla
   fija los deja pegados a la izquierda.

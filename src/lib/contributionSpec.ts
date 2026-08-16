@@ -109,22 +109,6 @@ export interface CampaignStat {
     metricKey?: string;
 }
 
-/** La fuente compartida de los indicadores, o '' si difieren.
- *
- *  La regla del módulo es que la fuente de CADA cifra se vea. Cuando todas
- *  comparten la misma —el caso normal: un solo balance oficial— repetirla
- *  bajo cada tarjeta es ruido que compite con las cifras: se dice UNA vez en
- *  la cabecera. En cuanto difieran, cada tarjeta lleva la suya. */
-export function commonStatSource(stats: Partial<CampaignStat>[] | undefined): string {
-    const list = Array.isArray(stats) ? stats : [];
-    const activos = list.filter(s => s?.active !== false);
-    const conFuente = activos.filter(s => String(s?.source || '').trim());
-    if (!conFuente.length) return '';
-    const primera = String(conFuente[0].source || '').trim();
-    if (activos.some(s => String(s?.source || '').trim() !== primera)) return '';
-    return primera;
-}
-
 /** Aviso en vivo del editor — el mismo criterio Y los mismos mensajes que el
  *  servidor, incluido el id de respaldo `stat-N` para un indicador sin
  *  etiqueta. Si los mensajes divergen, el editor avisa una cosa y publicar
