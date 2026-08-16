@@ -382,6 +382,11 @@ export function normalizeContent(raw = {}) {
             title: str(c.requiredItemsVideo?.title, 200),
             poster: str(c.requiredItemsVideo?.poster, 600),
         },
+        // El botón que cierra la sección. Hasta v4.816 era «Ver centros de
+        // acopio» escrito en el código; ahora se configura. Sin `label` la
+        // página conserva ese botón heredado — regla aditiva: una campaña
+        // guardada antes no puede quedarse sin él.
+        requiredItemsCta: normalizeCta(c.requiredItemsCta),
         // Varios videos que se recorren con las flechas. `requiredItemsVideo`
         // (singular) se CONSERVA por la regla aditiva del sitio —una campaña
         // guardada con un solo video se sigue viendo igual— y `sectionVideos`

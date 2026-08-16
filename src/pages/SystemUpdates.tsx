@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.816.0 | 2026-08-15 (Varios videos con flechas atras y siguiente)
-// Cache bust: 2026-08-15n
+// UI V4.817.0 | 2026-08-15 (Flechas fuera del video y boton configurable)
+// Cache bust: 2026-08-15o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.817.0',
+        title: 'Los controles del video, fuera del video 🎛️',
+        description: 'Las flechas para pasar los videos estaban ENCIMA del video y tapaban el reproductor —en un video propio, justo donde el navegador pone su barra de controles—. Ahora van debajo, en una fila limpia con las flechas a los lados, los puntos en el medio y el contador «1/3» al final: nada se superpone al video. Y el botón que cierra esa sección —el que decía «Ver centros de acopio»— ya se configura desde el panel: se le cambia el texto y se elige a dónde lleva, igual que los demás botones de la campaña. Puede abrir el formulario de aporte, ir a los centros de acopio, compartir la campaña o llevar a un enlace propio. Si se deja vacío, se conserva el «Ver centros de acopio» de siempre, que aparece cuando la campaña tiene centros publicados.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'Las flechas de los videos ya no tapan el reproductor: van debajo, junto a los puntos y el contador.' },
+            { type: 'added', text: 'El botón del final de «Elementos que se requieren» es configurable: texto y destino.' },
+            { type: 'added', text: 'Ese botón puede abrir el formulario de aporte, ir a los centros, compartir o llevar a un enlace.' },
+            { type: 'changed', text: 'Sin configurar se conserva el botón «Ver centros de acopio» de siempre.' },
+        ]
+    },
     {
         version: '4.816.0',
         title: 'Varios videos, con flechas para pasarlos ▶️',

@@ -192,6 +192,8 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     // Si se quitan videos desde el panel, el índice guardado puede quedar
     // fuera de rango: se acota al leer en vez de con otro efecto.
     const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
+    // El botón que cierra la sección de elementos. Vacío = el heredado.
+    const itemsCta = content.requiredItemsCta;
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -393,48 +395,60 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         />
                                     )}
 
-                                    {/* Las flechas sólo con más de un video: una
-                                        flecha que vuelve al mismo sitio es un
-                                        control que no controla (v4.650).
-                                        Van FUERA del área de los controles del
-                                        reproductor —arriba y a los costados—
-                                        para no taparle el botón de reproducir. */}
-                                    {videos.length > 1 && (
-                                        <>
-                                            <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
-                                                aria-label="Video anterior"
-                                                className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm">
-                                                <ChevronLeft className="w-6 h-6" />
-                                            </button>
-                                            <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
-                                                aria-label="Video siguiente"
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm">
-                                                <ChevronRight className="w-6 h-6" />
-                                            </button>
-                                            <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/45 text-white text-xs font-bold backdrop-blur-sm" data-no-translate>
-                                                {videoIdx + 1}/{videos.length}
-                                            </span>
-                                        </>
-                                    )}
                                 </div>
                                 {videoActual.title && (
                                     <p className="text-center text-sm text-gray-500 mt-4">{videoActual.title}</p>
                                 )}
+
+                                {/* Los controles van DEBAJO, fuera del video.
+                                    Encima tapaban el reproductor —y en un
+                                    archivo propio, la barra de controles del
+                                    navegador—: sobre un video no hay sitio
+                                    libre que sea seguro en todos los tamaños.
+                                    Sólo con más de uno: una flecha que vuelve
+                                    al mismo sitio no controla nada (v4.650). */}
                                 {videos.length > 1 && (
-                                    <div className="flex justify-center gap-2 mt-4">
-                                        {videos.map((_, i) => (
-                                            <button key={i} type="button" onClick={() => setVideoIdx(i)}
-                                                aria-label={`Ver video ${i + 1} de ${videos.length}`}
-                                                aria-current={i === videoIdx}
-                                                className={`h-2.5 rounded-full transition-all duration-300 ${i === videoIdx ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
-                                                style={i === videoIdx ? { backgroundColor: accent } : undefined} />
-                                        ))}
+                                    <div className="flex items-center justify-center gap-4 mt-5">
+                                        <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                            aria-label="Video anterior"
+                                            className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            <ChevronLeft className="w-5 h-5" />
+                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            {videos.map((_, i) => (
+                                                <button key={i} type="button" onClick={() => setVideoIdx(i)}
+                                                    aria-label={`Ver video ${i + 1} de ${videos.length}`}
+                                                    aria-current={i === videoIdx}
+                                                    className={`h-2.5 rounded-full transition-all duration-300 ${i === videoIdx ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
+                                                    style={i === videoIdx ? { backgroundColor: accent } : undefined} />
+                                            ))}
+                                        </div>
+                                        <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                            aria-label="Video siguiente"
+                                            className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            <ChevronRight className="w-5 h-5" />
+                                        </button>
+                                        <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>
+                                            {videoIdx + 1}/{videos.length}
+                                        </span>
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        {hasCenters && (
+                        {/* El botón que cierra la sección. Configurado, pasa
+                            por `CampaignCta` como el resto: el criterio de a
+                            dónde lleva y cómo se abre es UNO solo.
+
+                            Sin configurar se conserva el «Ver centros de
+                            acopio» de siempre — regla aditiva: una campaña
+                            guardada antes no puede quedarse sin su botón. */}
+                        {itemsCta?.label ? (
+                            <div className="text-center mt-10">
+                                <CampaignCta cta={itemsCta} campaignName={campaign.name} onDonate={handleDonate}
+                                    solid accent={accent} hasCenters={hasCenters} onTrack={track} />
+                            </div>
+                        ) : hasCenters && (
                             <div className="text-center mt-10">
                                 <a href="#centros-de-acopio" onClick={() => track('cta_centers_click')}
                                     className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-[14px] text-white shadow-lg hover:brightness-90 transition-all uppercase tracking-wider"
