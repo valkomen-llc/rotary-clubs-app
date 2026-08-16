@@ -2575,6 +2575,34 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
+### La galería «Rotarios en acción» (v4.821)
+
+- **Va DESPUÉS de los centros y ANTES del panorama**, y el sitio importa:
+  «qué se necesita» y «dónde llevarlo» son un PAR funcional y meter una
+  galería en medio corta a quien acaba de leer qué donar y busca dónde. Ahí es
+  el giro de «lo que pedimos» a «lo que ya se está haciendo», con las caras
+  justo antes de las cifras — se refuerzan entre sí.
+- **Pasa sola SÓLO sobre una foto.** El hero puede rotar tranquilo porque son
+  imágenes; acá hay videos mezclados, y uno que se cambia solo mientras
+  alguien lo mira es el defecto que se evitó en v4.816. Sobre un video el paso
+  automático ESPERA y se sigue con las flechas.
+- **El tipo de cada pieza se DERIVA de la dirección** (`galleryItems`), no se
+  guarda: guardarlo aparte daría dos verdades sobre lo mismo y se
+  contradirían en cuanto alguien cambie la URL de una fila — el error que ya
+  se evitó con `publicKeyOf` en Plantillas IA. Reutiliza
+  `resolveCampaignVideo`: lo que ése reconoce es video, lo demás es imagen.
+- **El tipo entra en las dependencias del efecto como dato PRIMITIVO.** Con el
+  objeto, el efecto se rearmaría en cada render y el temporizador no llegaría
+  a cumplirse nunca.
+- **El CRÉDITO de quien mandó la pieza es un dato, no lenguaje**: lleva
+  `data-no-translate` (v4.662). Y acreditar al club que aportó la foto no es
+  un adorno en una institución.
+- **La Biblioteca se abre SIN filtro** para esta sección (`mediaType: 'all'`,
+  que NO manda el parámetro): acá conviven fotos y videos y hay que poder
+  elegir de los dos. El default sigue siendo `image`.
+- Sin piezas cargadas la sección no se pinta — regla del Bloque Destacado
+  (v4.746): la página la comparten todos los sitios.
+
 - **La sección de centros lleva el fondo de la banda «Somos gente de acción»**
   (v4.819, `SITE_ACTION_BG` en `siteChrome.ts`). Vive ahí y no escrito en cada
   pantalla porque lo consumen DOS secciones públicas —`ActionSection.tsx` y

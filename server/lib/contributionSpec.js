@@ -304,6 +304,45 @@ export function resolveCampaignVideo(raw) {
 /** Tope de videos por sección. El mismo que el hero: más no se recorre. */
 export const MAX_SECTION_VIDEOS = 8;
 
+/** Tope de piezas de la galería. Es un muestrario, no un archivo histórico. */
+export const MAX_GALLERY_ITEMS = 24;
+
+/** Cada cuánto pasa SOLA la galería. Más lento que el hero: acá se mira. */
+export const GALLERY_SLIDE_MS = 6000;
+
+/**
+ * Las piezas de la galería, resueltas y en orden.
+ *
+ * El TIPO se DERIVA, no se guarda: si la dirección la reconoce
+ * `resolveCampaignVideo` es un video; si no, se trata como imagen. Guardar el
+ * tipo aparte daría dos verdades sobre lo mismo y se contradirían en cuanto
+ * alguien cambie la URL de una fila — el error que ya se evitó con `publicKeyOf`
+ * en Plantillas IA.
+ *
+ * Una fila sin dirección se descarta acá: la flecha «siguiente» no puede
+ * llevar a un recuadro vacío, igual que en `sectionVideos`.
+ */
+export function galleryItems(list) {
+    return arr(list)
+        .slice(0, MAX_GALLERY_ITEMS)
+        .map(it => {
+            const url = String(it?.url ?? '').trim();
+            const video = resolveCampaignVideo(url);
+            return {
+                url,
+                kind: video ? 'video' : 'image',
+                src: video ? video.src : url,
+                // El video propio se reproduce con `<video>` y el embebido en
+                // `<iframe>`: la pantalla necesita saber cuál de los dos.
+                player: video ? video.kind : null,
+                caption: String(it?.caption ?? ''),
+                credit: String(it?.credit ?? ''),
+                alt: String(it?.alt ?? ''),
+            };
+        })
+        .filter(it => it.url);
+}
+
 /**
  * Los videos de una sección, ya resueltos y en orden.
  *
@@ -396,6 +435,22 @@ export function normalizeContent(raw = {}) {
             title: str(v?.title, 200),
             poster: str(v?.poster, 600),
         })).filter(v => v.url),
+        // La galería «Rotarios en acción»: fotos y videos que mandan los
+        // clubes. El título y el subtítulo son configurables porque la página
+        // la comparten todos los sitios y acá no va ningún texto escrito en el
+        // código (regla del Bloque Destacado, v4.746).
+        gallery: {
+            title: str(c.gallery?.title, 160),
+            subtitle: str(c.gallery?.subtitle, 300),
+            items: arr(c.gallery?.items).slice(0, MAX_GALLERY_ITEMS).map(it => ({
+                url: str(it?.url, 600),
+                caption: str(it?.caption, 200),
+                // Quién mandó la pieza. En una institución, acreditar al club
+                // que aportó la foto no es un adorno.
+                credit: str(it?.credit, 160),
+                alt: str(it?.alt, 200),
+            })).filter(it => it.url),
+        },
         centersNote: str(c.centersNote, 300),       // «Se habilitarán más puntos…»
         centersAlliance: str(c.centersAlliance, 200), // «En alianza con … ABACO»
         infoBlocks: arr(c.infoBlocks).slice(0, 6).map((b, i) => ({

@@ -12,6 +12,7 @@ import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
     STATUS_LABELS, canTransition, effectiveStatus, TARGETING_LABELS,
     validateStats, normalizeCenters, heroSlides, HERO_MAX_SLIDES, resolveCampaignVideo, MAX_SECTION_VIDEOS,
+    MAX_GALLERY_ITEMS,
     type CampaignStatus, type TargetingMode, type ContributionCenter,
 } from '../../lib/contributionSpec';
 import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../lib/mediaUpload';
@@ -152,6 +153,7 @@ const ContributionCampaigns: React.FC = () => {
     const uploadFieldRef = useRef<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null);
+    const mixedInputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
 
     const now = new Date();
@@ -349,6 +351,15 @@ const ContributionCampaigns: React.FC = () => {
         patchContent({ hero: { ...c.content?.hero, images: next } });
     };
 
+    // Varias piezas de galería de golpe. Fotos y videos conviven en la misma
+    // lista: el tipo lo deriva la página de la propia dirección.
+    const addGalleryItems = (urls: string[]) => {
+        if (!c || !urls.length) return;
+        const prev = (c.content?.gallery?.items || []) as any[];
+        const next = [...prev, ...urls.map(url => ({ url, caption: '', credit: '', alt: '' }))].slice(0, MAX_GALLERY_ITEMS);
+        patchContent({ gallery: { ...c.content?.gallery, items: next } });
+    };
+
     // Varios videos de golpe, igual que las imágenes del hero.
     const addItemsVideos = (urls: string[]) => {
         if (!c || !urls.length) return;
@@ -360,7 +371,13 @@ const ContributionCampaigns: React.FC = () => {
 
     const setImage = (target: string, url: string) => {
         if (!c) return;
-        if (target === 'itemsVideoAdd') addItemsVideos([url]);
+        if (target === 'galleryAdd') addGalleryItems([url]);
+        else if (target.startsWith('gallery:')) {
+            const idx = Number(target.split(':')[1]);
+            const items = [...((c.content?.gallery?.items || []) as any[])];
+            if (items[idx]) { items[idx] = { ...items[idx], url }; patchContent({ gallery: { ...c.content?.gallery, items } }); }
+        }
+        else if (target === 'itemsVideoAdd') addItemsVideos([url]);
         else if (target.startsWith('itemsVideo:')) {
             const idx = Number(target.split(':')[1]);
             const vids = [...((c.content?.requiredItemsVideos?.length ? c.content.requiredItemsVideos
@@ -386,6 +403,7 @@ const ContributionCampaigns: React.FC = () => {
         // un solo hueco, así que manda la primera.
         if (pickerField === 'heroAdd') addHeroImages(items.map(i => i.url).filter(Boolean));
         else if (pickerField === 'itemsVideoAdd') addItemsVideos(items.map(i => i.url).filter(Boolean));
+        else if (pickerField === 'galleryAdd') addGalleryItems(items.map(i => i.url).filter(Boolean));
         else if (pickerField && items[0]?.url) setImage(pickerField, items[0].url);
         setPickerField(null);
     };
@@ -394,7 +412,10 @@ const ContributionCampaigns: React.FC = () => {
         uploadFieldRef.current = target;
         // Cada destino abre el diálogo con SU tipo de archivo: ofrecerle fotos
         // a quien va a subir un video es ofrecerle lo que no sirve.
-        (target.startsWith('itemsVideo') ? videoInputRef : fileInputRef).current?.click();
+        // La galería admite las dos cosas, así que su diálogo no filtra.
+        (target === 'galleryAdd' ? mixedInputRef
+            : target.startsWith('itemsVideo') ? videoInputRef
+                : fileInputRef).current?.click();
     };
 
     const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,7 +425,7 @@ const ContributionCampaigns: React.FC = () => {
         const target = uploadFieldRef.current;
         if (!files.length || !target) return;
         // Sólo el hero admite varias; el resto de las casillas tiene un hueco.
-        const lote = (target === 'heroAdd' || target === 'itemsVideoAdd') ? files : files.slice(0, 1);
+        const lote = (target === 'heroAdd' || target === 'itemsVideoAdd' || target === 'galleryAdd') ? files : files.slice(0, 1);
         setUploading(true);
         try {
             const { uploaded, failed } = await uploadMediaFiles(lote);
@@ -415,6 +436,7 @@ const ContributionCampaigns: React.FC = () => {
             if (!urls.length) return;
             if (target === 'heroAdd') addHeroImages(urls);
             else if (target === 'itemsVideoAdd') addItemsVideos(urls);
+            else if (target === 'galleryAdd') addGalleryItems(urls);
             else setImage(target, urls[0]);
             toast.success(urls.length > 1 ? `${urls.length} imágenes subidas` : 'Imagen subida');
         } catch (err: any) {
@@ -446,6 +468,9 @@ const ContributionCampaigns: React.FC = () => {
         content.requiredItemsVideos?.length ? content.requiredItemsVideos
             : (itemsVideo.url ? [itemsVideo] : []);
     const patchItemsVideos = (requiredItemsVideos: any[]) => patchContent({ requiredItemsVideos });
+    const gallery = content.gallery || {};
+    const galleryList: any[] = gallery.items || [];
+    const patchGallery = (items: any[]) => patchContent({ gallery: { ...gallery, items } });
     const donateCard = content.donateCard || {};
     const finalCta = content.finalCta || {};
     const seo = content.seo || {};
@@ -559,9 +584,10 @@ const ContributionCampaigns: React.FC = () => {
         <AdminLayout>
             <input ref={fileInputRef} type="file" multiple accept={IMAGE_ACCEPT} className="hidden" onChange={onFileChosen} />
             <input ref={videoInputRef} type="file" multiple accept={VIDEO_ACCEPT} className="hidden" onChange={onFileChosen} />
+            <input ref={mixedInputRef} type="file" multiple accept={`${IMAGE_ACCEPT},${VIDEO_ACCEPT}`} className="hidden" onChange={onFileChosen} />
             <MediaPicker isOpen={pickerField !== null} onClose={() => setPickerField(null)} onSelect={onPicked}
-                mediaType={pickerField?.startsWith('itemsVideo') ? 'video' : 'image'}
-                maxSelection={pickerField === 'heroAdd' ? HERO_MAX_SLIDES : pickerField === 'itemsVideoAdd' ? MAX_SECTION_VIDEOS : 1} />
+                mediaType={pickerField?.startsWith('itemsVideo') ? 'video' : pickerField?.startsWith('gallery') ? 'all' : 'image'}
+                maxSelection={pickerField === 'heroAdd' ? HERO_MAX_SLIDES : pickerField === 'itemsVideoAdd' ? MAX_SECTION_VIDEOS : pickerField === 'galleryAdd' ? MAX_GALLERY_ITEMS : 1} />
 
             <div className="space-y-6">
                 {/* Cabecera */}
@@ -1057,6 +1083,92 @@ const ContributionCampaigns: React.FC = () => {
                                 </p>
                             )}
                         </div>
+                    </div>
+                </Card>
+
+                {/* Galería «Rotarios en acción» (v4.821) */}
+                <Card title="Rotarios en acción" hint="Fotos y videos que mandan los clubes. Se pintan en un carrusel entre los centros de acopio y el panorama.">
+                    <div className="space-y-3">
+                        <div className="grid sm:grid-cols-2 gap-3">
+                            <div><label className={lbl}>Título de la sección</label>
+                                <input className={field} placeholder="Rotarios en acción" value={gallery.title || ''}
+                                    onChange={e => patchContent({ gallery: { ...gallery, title: e.target.value } })} /></div>
+                            <div><label className={lbl}>Subtítulo (opcional)</label>
+                                <input className={field} placeholder="Lo que están haciendo los clubes con tu aporte" value={gallery.subtitle || ''}
+                                    onChange={e => patchContent({ gallery: { ...gallery, subtitle: e.target.value } })} /></div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                            <label className={lbl}>Piezas</label>
+                            <span className="text-[11px] text-gray-400">{galleryList.length}/{MAX_GALLERY_ITEMS}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 -mt-2">
+                            Las fotos pasan solas cada 6 segundos; sobre un video el carrusel espera — un video que se cambia mientras alguien lo está viendo es una molestia.
+                        </p>
+
+                        {galleryList.length > 0 && (
+                            <div className="space-y-2">
+                                {galleryList.map((it: any, i: number) => {
+                                    // El MISMO criterio que la página: acá se ve
+                                    // qué va a ser cada fila antes de publicar.
+                                    const esVideo = !!resolveCampaignVideo(it.url);
+                                    return (
+                                        <div key={i} className="flex items-start gap-2 border border-gray-100 rounded-2xl p-2.5">
+                                            {esVideo ? (
+                                                <div className="w-20 h-14 rounded-lg bg-gray-900 text-white flex items-center justify-center flex-shrink-0 text-[10px] font-bold uppercase tracking-wider">Video</div>
+                                            ) : (
+                                                <img src={it.url} alt={it.alt || ''} className="w-20 h-14 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
+                                            )}
+                                            <div className="flex-1 min-w-0 space-y-1.5">
+                                                <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="URL de la foto, o enlace de YouTube/Vimeo/.mp4"
+                                                    value={it.url || ''}
+                                                    onChange={e => patchGallery(galleryList.map((x: any, j: number) => j === i ? { ...x, url: e.target.value } : x))} />
+                                                <div className="grid sm:grid-cols-2 gap-1.5">
+                                                    <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="Pie (opcional)" value={it.caption || ''}
+                                                        onChange={e => patchGallery(galleryList.map((x: any, j: number) => j === i ? { ...x, caption: e.target.value } : x))} />
+                                                    <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="Crédito: qué club la mandó" value={it.credit || ''}
+                                                        onChange={e => patchGallery(galleryList.map((x: any, j: number) => j === i ? { ...x, credit: e.target.value } : x))} />
+                                                </div>
+                                                {!esVideo && (
+                                                    <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="Texto alternativo (accesibilidad)" value={it.alt || ''}
+                                                        onChange={e => patchGallery(galleryList.map((x: any, j: number) => j === i ? { ...x, alt: e.target.value } : x))} />
+                                                )}
+                                            </div>
+                                            <div className="flex-shrink-0 flex flex-col gap-1">
+                                                <RowTools
+                                                    onUp={() => patchGallery(moveIn(galleryList, i, -1))}
+                                                    onDown={() => patchGallery(moveIn(galleryList, i, 1))}
+                                                    onRemove={() => patchGallery(galleryList.filter((_: any, j: number) => j !== i))} />
+                                                <button type="button" onClick={() => setPickerField(`gallery:${i}`)}
+                                                    title="Reemplazar desde la Biblioteca"
+                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                                                    <ImageIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Las DOS vías, siempre (v4.700). La Biblioteca se abre
+                            SIN filtrar por tipo: acá conviven fotos y videos. */}
+                        {galleryList.length < MAX_GALLERY_ITEMS && (
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => startUpload('galleryAdd')} disabled={uploading}
+                                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 disabled:opacity-50">
+                                    <Upload className="w-4 h-4" /> Subir fotos o videos
+                                </button>
+                                <button type="button" onClick={() => setPickerField('galleryAdd')}
+                                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">
+                                    <ImageIcon className="w-4 h-4" /> Elegir de la Biblioteca
+                                </button>
+                                <button type="button" onClick={() => patchGallery([...galleryList, { url: '', caption: '', credit: '', alt: '' }])}
+                                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10">
+                                    <Plus className="w-4 h-4" /> Pegar un enlace
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </Card>
 

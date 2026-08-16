@@ -30,7 +30,7 @@ import {
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
-    sectionVideos, MAX_SECTION_VIDEOS,
+    sectionVideos, MAX_SECTION_VIDEOS, galleryItems, MAX_GALLERY_ITEMS, GALLERY_SLIDE_MS,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -339,6 +339,37 @@ check('normalizeContent guarda la URL TAL CUAL, para que el editor pueda mostrar
     return n.requiredItemsVideo.url === 'no sirve' && n.requiredItemsVideo.title === 'Pie';
 })());
 
+// ─── v4.821: la galería «Rotarios en acción» ───────────────────────────────
+grupo('La galería de fotos y videos');
+// El tipo se DERIVA de la dirección: guardarlo aparte daría dos verdades y se
+// contradirían en cuanto alguien cambie la URL de una fila.
+check('el tipo se deduce de la dirección, no se guarda', (() => {
+    const l = galleryItems([{ url: 'https://x.org/foto.jpg' }, { url: 'https://youtu.be/abc123' }, { url: 'https://x.org/clip.mp4' }]);
+    return l[0].kind === 'image' && l[0].player === null
+        && l[1].kind === 'video' && l[1].player === 'youtube'
+        && l[2].kind === 'video' && l[2].player === 'file';
+})());
+check('un video embebido se resuelve a su reproductor sin cookies',
+    galleryItems([{ url: 'https://www.youtube.com/watch?v=abc123' }])[0].src === 'https://www.youtube-nocookie.com/embed/abc123');
+check('el pie, el crédito y el texto alternativo viajan con la pieza', (() => {
+    const l = galleryItems([{ url: 'https://x/a.jpg', caption: 'Entrega', credit: 'RC Cali', alt: 'Voluntarios' }]);
+    return l[0].caption === 'Entrega' && l[0].credit === 'RC Cali' && l[0].alt === 'Voluntarios';
+})());
+// La flecha «siguiente» no puede llevar a un recuadro vacío.
+check('una fila sin dirección se descarta',
+    galleryItems([{ url: '' }, { caption: 'sin url' }, { url: 'https://x/a.jpg' }]).length === 1);
+check('sin piezas, lista vacía y la sección no se pinta',
+    eq(galleryItems([]), []) && eq(galleryItems(undefined), []) && eq(galleryItems('no'), []));
+check('el tope se respeta',
+    galleryItems(Array.from({ length: 50 }, () => ({ url: 'https://x/a.jpg' }))).length === MAX_GALLERY_ITEMS);
+check('normalizeContent guarda la galería con su título y descarta lo vacío', (() => {
+    const n = normalizeContent({ gallery: { title: 'Rotarios en acción', items: [{ url: 'https://x/a.jpg', credit: 'RC Cali' }, { url: '' }] } });
+    return n.gallery.title === 'Rotarios en acción' && n.gallery.items.length === 1
+        && n.gallery.items[0].credit === 'RC Cali';
+})());
+check('una campaña sin galería no revienta y no pinta nada',
+    eq(normalizeContent({}).gallery.items, []) && normalizeContent({}).gallery.title === '');
+
 // ─── El espejo del navegador ───────────────────────────────────────────────
 let mirror = null;
 try {
@@ -393,6 +424,15 @@ if (mirror) {
     })());
     check('mismo tope y mismo intervalo del carrusel',
         HERO_MAX_SLIDES === mirror.HERO_MAX_SLIDES && HERO_SLIDE_MS === mirror.HERO_SLIDE_MS);
+    check('misma galería: el editor y la página resuelven igual', (() => {
+        const casos = [
+            [{ url: 'https://x/a.jpg', caption: 'A' }, { url: 'https://youtu.be/abc123' }, { url: '' }],
+            [], undefined, 'no es lista',
+        ];
+        return casos.every(l => eq(galleryItems(l), mirror.galleryItems(l)))
+            && MAX_GALLERY_ITEMS === mirror.MAX_GALLERY_ITEMS
+            && GALLERY_SLIDE_MS === mirror.GALLERY_SLIDE_MS;
+    })());
     check('misma lista de videos: el editor y la página resuelven igual', (() => {
         const casos = [
             [[{ url: 'https://youtu.be/abc123', title: 'A' }, { url: 'no sirve' }], null],
@@ -869,14 +909,34 @@ check('el fondo vive en siteChrome y lo consumen las DOS secciones',
     && /SITE_ACTION_BG/.test(action) && !/0c3c7c/.test(action));
 // Sobre el azul, el texto en gris oscuro sería ilegible.
 check('sobre el fondo oscuro los textos de la sección van en claro', (() => {
-    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('Panorama') > 0 ? landingSrc.indexOf('id="panorama"') : landingSrc.length);
+    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('id="rotarios-en-accion"'));
     return /Centros de acopio[\s\S]{0,60}<\/h2>/.test(sec) && /font-light text-white tracking-tight/.test(sec)
         && /text-center text-white\/80 max-w-2xl/.test(sec) && !/text-gray-500 max-w-2xl/.test(sec);
 })());
 
+// v4.821: la galería, entre los centros de acopio y el panorama.
+check('la galería va DESPUÉS de los centros y ANTES del panorama',
+    landingSrc.indexOf('id="centros-de-acopio"') < landingSrc.indexOf('id="rotarios-en-accion"')
+    && landingSrc.indexOf('id="rotarios-en-accion"') < landingSrc.indexOf('id="panorama"'));
+check('la página usa el criterio compartido de la galería',
+    /galleryItems\(campaign\.content\?\.gallery\?\.items\)/.test(landingSrc));
+// LA decisión de diseño: el hero puede rotar tranquilo porque son imágenes;
+// acá hay videos y uno que se cambia solo mientras se mira es el defecto de
+// v4.816. Sobre un video el paso automático ESPERA.
+check('la galería pasa sola SÓLO sobre una foto',
+    /if \(galCount < 2 \|\| galKind !== 'image'\) return;/.test(landingSrc)
+    && /GALLERY_SLIDE_MS/.test(landingSrc));
+check('el tipo de la pieza entra en las dependencias como dato PRIMITIVO',
+    /\}, \[galIdx, galCount, galKind\]\);/.test(landingSrc));
+check('la sección se condiciona por la PIEZA, no por el largo (el índice puede quedar fuera de rango)',
+    /\{piezaActual && \(/.test(landingSrc)
+    && /gallery\[Math\.min\(galIdx, gallery\.length - 1\)\] \|\| null/.test(landingSrc));
+check('el crédito de quien mandó la pieza es un DATO: no se traduce',
+    /data-no-translate>\{piezaActual\.credit\}/.test(landingSrc));
+
 // v4.820: dentro de las tarjetas manda el azul del sitio, no el acento rojo.
 check('el detalle de las tarjetas va en el azul del sitio, no en el acento de la campaña', (() => {
-    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('id="panorama"'));
+    const sec = landingSrc.slice(landingSrc.indexOf('id="centros-de-acopio"'), landingSrc.indexOf('id="rotarios-en-accion"'));
     return /MapPin className="w-5 h-5 text-rotary-blue"/.test(sec)
         && /tracking-wider mb-2 text-rotary-blue/.test(sec)
         && /border-l-2 border-sky-200 pl-3/.test(sec)
@@ -935,7 +995,7 @@ const adminSrc = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8
 check('el editor ofrece las DOS vías para agregar imágenes (v4.700)',
     /startUpload\('heroAdd'\)/.test(adminSrc) && /setPickerField\('heroAdd'\)/.test(adminSrc));
 check('se pueden elegir VARIAS de la Biblioteca de una vez',
-    /maxSelection=\{pickerField === 'heroAdd' \? HERO_MAX_SLIDES : pickerField === 'itemsVideoAdd' \? MAX_SECTION_VIDEOS : 1\}/.test(adminSrc)
+    /maxSelection=\{pickerField === 'heroAdd' \? HERO_MAX_SLIDES : pickerField === 'itemsVideoAdd' \? MAX_SECTION_VIDEOS : pickerField === 'galleryAdd' \? MAX_GALLERY_ITEMS : 1\}/.test(adminSrc)
     && /<input ref=\{fileInputRef\} type="file" multiple/.test(adminSrc));
 check('el editor no inventa su propio tope: usa el del spec',
     /HERO_MAX_SLIDES/.test(adminSrc) && !/slice\(0,\s*8\)/.test(adminSrc));
@@ -950,6 +1010,15 @@ check('una campaña con UN video lo ve en el editor como su primera fila',
     /content\.requiredItemsVideos\?\.length \? content\.requiredItemsVideos/.test(adminSrc));
 check('el editor no inventa su propio tope de videos: usa el del spec',
     /MAX_SECTION_VIDEOS/.test(adminSrc));
+const pickerGal = readFileSync('src/components/admin/content-studio/MediaPicker.tsx', 'utf8');
+check('la Biblioteca se abre SIN filtro para la galería: ahí conviven fotos y videos',
+    /mediaType !== 'all'/.test(pickerGal)
+    && /pickerField\?\.startsWith\('gallery'\) \? 'all'/.test(adminSrc));
+check('la galería ofrece las DOS vías y además pegar un enlace',
+    /startUpload\('galleryAdd'\)/.test(adminSrc) && /setPickerField\('galleryAdd'\)/.test(adminSrc));
+check('su diálogo de archivo acepta fotos Y videos',
+    /accept=\{`\$\{IMAGE_ACCEPT\},\$\{VIDEO_ACCEPT\}`\}/.test(adminSrc));
+
 check('el botón del final se edita con el MISMO CtaEditor que el resto',
     /<CtaEditor label="Botón al final de la sección"[\s\S]{0,200}requiredItemsCta/.test(adminSrc));
 check('el editor DICE qué pasa si se deja vacío',
@@ -957,11 +1026,12 @@ check('el editor DICE qué pasa si se deja vacío',
 // Un diálogo que ofrece fotos a quien va a subir un video ofrece lo que no
 // sirve; el `accept` del input se lee al abrirlo, así que hace falta el suyo.
 check('el diálogo de archivo y la Biblioteca se abren en modo VIDEO para ese campo',
-    /VIDEO_ACCEPT/.test(adminSrc) && /target\.startsWith\('itemsVideo'\) \? videoInputRef : fileInputRef/.test(adminSrc)
-    && /mediaType=\{pickerField\?\.startsWith\('itemsVideo'\) \? 'video' : 'image'\}/.test(adminSrc));
+    /VIDEO_ACCEPT/.test(adminSrc) && /target\.startsWith\('itemsVideo'\) \? videoInputRef/.test(adminSrc)
+    && /pickerField\?\.startsWith\('itemsVideo'\) \? 'video'/.test(adminSrc));
 const pickerFile = readFileSync('src/components/admin/content-studio/MediaPicker.tsx', 'utf8');
 check('el selector conserva las imágenes por omisión: nueve pantallas ya lo usaban así',
-    /mediaType = 'image'/.test(pickerFile) && /new URLSearchParams\(\{ type: mediaType \}\)/.test(pickerFile));
+    /mediaType = 'image'/.test(pickerFile)
+    && /if \(mediaType !== 'all'\) params\.set\('type', mediaType\);/.test(pickerFile));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
