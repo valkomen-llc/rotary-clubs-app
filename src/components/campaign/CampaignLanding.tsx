@@ -338,7 +338,7 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                 Un color de estado usado como decoración es además un
                 antipatrón declarado del criterio de visualización de datos.  */}
             {campaign.stats.length > 0 && (
-                <section id="panorama" className="py-12 md:py-14 bg-gray-50/60 border-b border-gray-100 scroll-mt-24">
+                <section id="panorama" className="py-12 md:py-14 bg-white border-b border-gray-100 scroll-mt-24">
                     <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1 mb-8">
                             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-[0.15em]">
@@ -357,15 +357,18 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             dos o tres indicadores, una rejilla fija los deja
                             pegados a la izquierda y la banda se ve descuadrada.
                             Así se centran sea cual sea la cantidad. */}
-                        <div className="flex flex-wrap justify-center gap-x-8 md:gap-x-12 gap-y-8">
+                        <div className="flex flex-wrap justify-center gap-4 md:gap-5">
                             {campaign.stats.map(s => (
-                                <div key={s.id} className="text-center basis-[130px] grow max-w-[240px]">
+                                // La tarjeta va sobre fondo BLANCO: el relleno de la
+                                // caja es `gray-50`, así que una banda gris las haría
+                                // desaparecer.
+                                <div key={s.id} className="text-center rounded-2xl border border-gray-100 bg-gray-50/60 p-5 md:p-6 basis-[200px] grow max-w-[280px]">
                                     {/* La cifra es un DATO: no se traduce ni se reescribe.
                                         Cifras proporcionales, no tabulares: `tabular-nums`
                                         da a cada dígito el ancho de un 0 y a este tamaño
                                         se ve suelto. Tabulares sólo en columnas. */}
-                                    <p className="text-[34px] md:text-[42px] leading-none font-semibold text-gray-900 tracking-tight" data-no-translate>{s.value}</p>
-                                    <p className="text-[13px] md:text-sm font-bold text-gray-600 mt-2 leading-snug">{s.label}</p>
+                                    <p className="text-[32px] md:text-[38px] leading-none font-semibold text-gray-900 tracking-tight" data-no-translate>{s.value}</p>
+                                    <p className="text-[13px] md:text-sm font-bold text-gray-700 mt-2 leading-snug">{s.label}</p>
                                     {!fuenteComun && s.source && (
                                         <p className="text-[11px] text-gray-400 mt-1.5" data-no-translate>{s.source}</p>
                                     )}

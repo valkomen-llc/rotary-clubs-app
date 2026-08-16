@@ -1518,6 +1518,14 @@ check('las cifras NO llevan el acento: van en tinta', (() => {
 // a la izquierda.
 check('la banda se centra sea cual sea la cantidad de indicadores',
     /flex flex-wrap justify-center[\s\S]{0,400}campaign\.stats\.map/.test(landing828));
+// Cada cifra va en su TARJETA (v4.828.1). Y la banda va en BLANCO: el relleno
+// de la tarjeta es `gray-50`, así que sobre una banda gris desaparecerían.
+check('cada cifra va en su tarjeta, sobre banda blanca', (() => {
+    const i = landing828.indexOf('id="panorama"');
+    const banda = landing828.slice(i, landing828.indexOf('</section>', i) + 12);
+    return /rounded-2xl border border-gray-100 bg-gray-50\/60/.test(banda)
+        && /id="panorama" className="[^"]*bg-white/.test(landing828);
+})());
 // `tabular-nums` da a cada dígito el ancho de un 0 y a este tamaño se ve
 // suelto: se reserva para columnas de números.
 check('la cifra usa figuras proporcionales, no tabulares', (() => {
