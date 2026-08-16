@@ -878,10 +878,11 @@ check('en pantallas angostas quedan las flechas compactas de abajo',
     /hidden lg:flex absolute left-4/.test(landingSrc)
     && /lg:hidden disabled:opacity-30[\s\S]{0,300}ChevronLeft/.test(landingSrc));
 // v4.830 invierte la regla de v4.816. Lo que la hacía necesaria eran los dos
-// frenos que ahora existen: se detiene con el cursor encima y se detiene DEL
-// TODO al pulsar el reproductor. Sin esos dos frenos, quitar el intervalo.
+// frenos que ahora existen: se detiene con el cursor encima y se detiene
+// MIENTRAS se está viendo. Sin esos dos frenos, quitar el intervalo. Los dos
+// son reversibles desde v4.832 — ver su grupo.
 check('los videos rotan solos, y se frenan con el cursor y con el play',
-    /setInterval\(\(\) => setVideoIdx\(i => \{[\s\S]{0,400}\}\), VIDEO_ROTA_MS\)/.test(landingSrc)
+    /setInterval\(\(\) => setVideoPos\(p => \{[\s\S]{0,600}\}\), VIDEO_ROTA_MS\)/.test(landingSrc)
     && /if \(videoCount < 2 \|\| videoQuieto \|\| videoTomado\) return;/.test(landingSrc)
     && /onMouseEnter=\{\(\) => setVideoQuieto\(true\)\}/.test(landingSrc)
     && /onMouseLeave=\{\(\) => setVideoQuieto\(false\)\}/.test(landingSrc)
@@ -893,8 +894,11 @@ check('los videos rotan solos, y se frenan con el cursor y con el play',
 // más de una incrustación por visita. `key` fuerza el remontaje al cambiar.
 check('se monta SÓLO el reproductor del video que manda, y se remonta al cambiar',
     /key=\{v\.url\}/.test(landingSrc) && /\{activo \? \(/.test(landingSrc));
+// Desde v4.832 la posición es un índice ABSOLUTO en la tira repetida y el
+// número del video sale del resto — que acota solo, sin otro efecto.
 check('un índice que quedó fuera de rango no rompe la sección',
-    /videos\[Math\.min\(videoIdx, videos\.length - 1\)\] \|\| null/.test(landingSrc));
+    /const videoActual = videos\[idxVideo\] \|\| null;/.test(landingSrc)
+    && /\(\(videoPos % videos\.length\) \+ videos\.length\) % videos\.length/.test(landingSrc));
 
 // v4.817: el botón que cierra la sección de elementos.
 check('el botón configurado pasa por CampaignCta, no por una copia a mano',
@@ -1545,8 +1549,8 @@ const landing829 = readFileSync('src/components/campaign/CampaignLanding.tsx', '
 // Con la tira lineal ya no hace falta elegir vecinos: están TODOS, y en los
 // extremos simplemente no hay nada de ese lado.
 check('la tira pinta todas las diapositivas y centra la activa',
-    /videos\.map\(\(v, i\) => \{/.test(landing829)
-    && /const activo = i === Math\.min\(videoIdx, videos\.length - 1\);/.test(landing829));
+    /slidesVideo\.map\(\(v, i\) => \{/.test(landing829)
+    && /const activo = i === Math\.min\(Math\.max\(videoPos, 0\), slidesVideo\.length - 1\);/.test(landing829));
 // Un vecino es una PREVISUALIZACIÓN: montar dos incrustaciones más por visita
 // para enseñar algo que está a medias no se paga.
 check('el vecino nunca monta un iframe', (() => {
@@ -1578,9 +1582,14 @@ check('los vecinos quedan fuera del recorrido del teclado y del lector',
 
 grupo('v4.830 — los videos rotan solos, con dos frenos');
 const landing830 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
-// La cadencia en UN solo número, como `MS_POR_PIEZA` en la galería.
-check('la cadencia es un solo número y es más lenta que la tira de fotos',
-    /const VIDEO_ROTA_MS = 7000;/.test(landing830)
+// La cadencia en UN solo número, como `MS_POR_PIEZA` en la galería. Más
+// lenta que la tira de fotos —un video necesita unos segundos para
+// reconocerse— y no tanto como para parecer detenida: los 7 s de v4.830 se
+// reportaron como «muy lento».
+check('la cadencia es un solo número, entre la tira de fotos y los 7 s de v4.830',
+    /const VIDEO_ROTA_MS = (\d+);/.test(landing830)
+    && Number(landing830.match(/const VIDEO_ROTA_MS = (\d+);/)[1]) > 1800
+    && Number(landing830.match(/const VIDEO_ROTA_MS = (\d+);/)[1]) < 7000
     && (landing830.match(/VIDEO_ROTA_MS/g) || []).length === 2);
 // Un video embebido se reproduce dentro de un iframe: desde el documento
 // padre no hay forma de saber que empezó sin cargar la API del proveedor.
@@ -1603,13 +1612,19 @@ const landing831 = readFileSync('src/components/campaign/CampaignLanding.tsx', '
 // Hasta v4.830 se repintaba el trío entero y el cambio era un corte seco.
 check('la tira se traslada con una transición, no se repinta de golpe',
     /transform: `translateX\(\$\{desplazamientoVideos\}px\)`/.test(landing831)
-    && /transition: `transform \$\{VIDEO_DESLIZA_MS\}ms cubic-bezier/.test(landing831));
+    && /transform \$\{VIDEO_DESLIZA_MS\}ms cubic-bezier/.test(landing831));
 // Una clase arbitraria con `cubic-bezier` de comas NO llegó al CSS compilado
 // —medido: 0,15 s en vez de 0,9— y una clase que no se genera falla en
 // silencio (la lección de v4.719).
 check('la duración va en el ESTILO, no en una clase arbitraria de Tailwind',
-    /const VIDEO_DESLIZA_MS = 900;/.test(landing831)
-    && !/className="[^"]*duration-\[900ms\]/.test(landing831));
+    /const VIDEO_DESLIZA_MS = \d+;/.test(landing831)
+    && !/className="[^"]*duration-\[\d+ms\]/.test(landing831));
+// El desplazamiento tiene que ser más CORTO que el intervalo, y con margen:
+// si se acercaran, la tira estaría moviéndose casi todo el tiempo y no se
+// llegaría a mirar ningún video quieto.
+check('el desplazamiento es bastante más corto que el intervalo',
+    Number(landing831.match(/const VIDEO_DESLIZA_MS = (\d+);/)[1]) * 4
+    < Number(landing831.match(/const VIDEO_ROTA_MS = (\d+);/)[1]));
 // El centrado se corrige sobre el desplazamiento ACTUAL: calcularlo desde la
 // maquetación depende de cuál sea el ancestro posicionado y de los márgenes
 // negativos, y suponerlo mal dejaba el video corrido (medido: 443 en vez de
@@ -1621,19 +1636,64 @@ check('el centrado se mide, no se deduce de la maquetación',
 // que no ocupa espacio: así el paso entre centros es constante.
 check('el vecino se achica con scale, no con otro ancho',
     /transform: `scale\(\$\{activo \? 1 : 0\.66\}\)`/.test(landing831));
-// Con una tira lineal, saltar del último al primero es un desplazamiento
-// largo que se lee como un tirón.
-check('la rotación REBOTA en los extremos en vez de dar la vuelta',
-    /if \(i \+ sentidoVideo\.current >= videoCount\) sentidoVideo\.current = -1;/.test(landing831)
-    && !/setVideoIdx\(i => \(i \+ 1\) % videos\.length\)/.test(landing831));
-// Nunca un botón que no lleva a ninguna parte (v4.650).
-check('en los extremos la flecha que no lleva a nada se desactiva',
-    /disabled=\{videoIdx <= 0\}/.test(landing831)
-    && /disabled=\{videoIdx >= videos\.length - 1\}/.test(landing831));
 // El reproductor de verdad lo monta SÓLO la diapositiva activa: las demás son
 // previsualizaciones, así que nunca hay más de una incrustación por visita.
 check('sólo la diapositiva activa monta el reproductor',
     /\{activo \? \(/.test(landing831) && /<VideoVecino entry=\{v\} onClick=/.test(landing831));
+
+grupo('v4.832 — siempre tres videos, y la rotación no se para');
+const landing832 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+// Tres copias es el MÍNIMO que garantiza vecino a los dos lados en cualquier
+// posición: se vive en la del medio, así que sobra una entera a cada lado.
+// Con dos, el primero de la copia del medio se queda sin nada a la izquierda
+// —que es el hueco reportado—.
+check('la lista se repite tres veces y se vive en la copia del medio',
+    /const VIDEO_COPIAS = 3;/.test(landing832)
+    && /Array\.from\(\{ length: VIDEO_COPIAS \}, \(\) => videos\)\.flat\(\)/.test(landing832)
+    && /useState\(\(\) => \(videoCount >= VIDEO_CICLICO_MIN \? videoCount : 0\)\)/.test(landing832));
+// Con DOS videos la vuelta pondría el MISMO a izquierda y derecha y parecería
+// que hay tres: ahí se conserva la tira lineal que rebota (regla v4.829).
+check('con dos videos la tira sigue siendo lineal y rebota',
+    /const VIDEO_CICLICO_MIN = 3;/.test(landing832)
+    && /const videoCiclico = videoCount >= VIDEO_CICLICO_MIN;/.test(landing832)
+    && /if \(videoCiclico\) return p \+ 1;/.test(landing832)
+    && /sentidoVideo\.current = -1;/.test(landing832));
+// El rebase es lo que hace infinita la vuelta sin saltos largos: se hace al
+// TERMINAR el desplazamiento y SIN transición, porque es el mismo punto de la
+// tira visto desde otra copia.
+check('el rebase va al terminar la transición y sin animarse',
+    /onTransitionEnd=\{e => \{/.test(landing832)
+    && /e\.propertyName !== 'transform'/.test(landing832)
+    && /transition: videoSalta \? 'none' :/.test(landing832)
+    && (landing832.match(/transition: videoSalta \? 'none' :/g) || []).length === 2);
+// El centrado va en un efecto de DISPOSICIÓN: el rebase cambia a la vez qué
+// diapositiva manda y cuánto se desplaza la tira, y un efecto normal corre
+// después de pintar — se vería un fotograma con el video en el sitio del
+// anterior.
+check('el centrado se aplica antes de pintar (useLayoutEffect)',
+    /React\.useLayoutEffect\(\(\) => \{/.test(landing832));
+// El freno tiene que ser REVERSIBLE: hasta v4.831 darle play detenía la
+// rotación PARA SIEMPRE y la tira quedaba clavada en un video.
+check('con un archivo propio, pausar o terminar reanuda la rotación',
+    /onPlay=\{\(\) => setVideoTomado\(true\)\}/.test(landing832)
+    && /onPause=\{\(\) => setVideoTomado\(false\)\}/.test(landing832)
+    && /onEnded=\{\(\) => setVideoTomado\(false\)\}/.test(landing832));
+// Con un embebido no hay estado de reproducción observable: lo que se ve es
+// que el foco volvió a nuestra página.
+check('con un embebido, que el foco vuelva reanuda la rotación',
+    /const alVolver = \(\) => \{ if \(!enIframe\(\)\) setVideoTomado\(false\); \};/.test(landing832)
+    && /window\.addEventListener\('focus', alVolver\)/.test(landing832));
+// Con la tira cíclica no hay extremos, así que ninguna flecha se desactiva.
+// La lineal SÍ los tiene y ahí se conserva la regla de v4.650.
+check('sólo la tira lineal desactiva sus flechas',
+    /disabled=\{!videoCiclico && videoPos <= 0\}/.test(landing832)
+    && /disabled=\{!videoCiclico && videoPos >= videos\.length - 1\}/.test(landing832));
+// Hay una diapositiva por copia y un punto por VIDEO: el punto se marca con
+// el número del video, no con la posición dentro de la tira.
+check('el punto se marca con el número del video, no con la posición',
+    /const idxVideo = videos\.length \? \(\(videoPos % videos\.length\) \+ videos\.length\) % videos\.length : 0;/.test(landing832)
+    && /aria-current=\{i === idxVideo\}/.test(landing832)
+    && /\{idxVideo \+ 1\}\/\{videos\.length\}/.test(landing832));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

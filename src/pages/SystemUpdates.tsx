@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.831.0 | 2026-08-16 (La tira de videos se desplaza en vez de repintarse)
+// UI V4.832.0 | 2026-08-16 (Siempre tres videos a la vista y la rotación no se para)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.832.0',
+        title: 'Siempre tres videos, y la rotación ya no se para 🔁',
+        description: 'Tres correcciones sobre el carrusel de videos. Va MÁS RÁPIDO: el desplazamiento pasó de nueve décimas a poco más de medio segundo y el cambio automático, de 7 a 4,2 segundos. SIEMPRE se ven los tres —uno grande en el centro y dos asomando a los lados—, también en el primero y en el último: la lista se pinta repetida y el carrusel vive en la copia del medio, así que a izquierda y a derecha siempre hay video; al llegar al final vuelve al principio sin que se note el salto. Y la rotación YA NO SE DETIENE PARA SIEMPRE: antes, darle play a un video la paraba y no volvía a moverse nunca; ahora se detiene mientras se está mirando —con el cursor encima o con el video reproduciéndose— y se reanuda sola al pausarlo, al terminar o al volver a la página.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'La rotación ya no se detiene para siempre al darle play a un video.' },
+            { type: 'changed', text: 'Siempre asoman los dos videos vecinos, también en el primero y en el último.' },
+            { type: 'changed', text: 'El desplazamiento y el cambio automático son más rápidos.' },
+        ]
+    },
     {
         version: '4.831.0',
         title: 'Los videos se deslizan de uno a otro 🎞️',

@@ -2612,11 +2612,67 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
 - **La rotación REBOTA en los extremos** (…1, 2, 3, 2, 1…) en vez de dar la
   vuelta. Con una tira lineal, saltar del último al primero es un
   desplazamiento largo que se lee como un tirón; rebotando, cada paso es
-  siempre de UNA diapositiva.
+  siempre de UNA diapositiva. **Superado en v4.832** para tres videos o más:
+  con la tira cíclica el paso sigue siendo de UNA diapositiva y además no hay
+  extremos. Sigue vigente con dos.
 - **En los extremos, la flecha que no lleva a nada se DESACTIVA** (v4.650). Es
   la consecuencia de que la tira sea lineal: en el primero no hay anterior.
+  Con la tira cíclica no hay extremos y ninguna se desactiva.
 - **Sólo la diapositiva activa monta el REPRODUCTOR**; las demás siguen siendo
   previsualizaciones, así que nunca hay más de una incrustación por visita.
+
+### La tira de videos DA LA VUELTA y no se para (v4.832)
+
+Tres cosas del mismo reporte: «aumentar la velocidad porque está muy lento»,
+«siempre deben aparecer los tres videos» y «llega un momento donde se para y ya
+no se cambia más de manera automática».
+
+- **La lista se pinta REPETIDA y se vive en la copia del medio**
+  (`VIDEO_COPIAS = 3`). Es lo que hace que haya vecino a los DOS lados en
+  cualquier posición: con la tira lineal de v4.831, en el primero y en el
+  último faltaba uno —el hueco reportado—. **Tres copias es el mínimo**: con
+  dos, el primero de la copia del medio se queda otra vez sin nada a la
+  izquierda.
+- **El rebase es lo que la hace infinita sin saltos largos.** Al salir de la
+  copia del medio se retrocede una copia entera SIN transición: es el mismo
+  punto de la tira visto desde otra copia, así que en pantalla no cambia nada
+  —medido: 0 px de desvío en las dos direcciones—. Animarlo sería recorrer una
+  copia a la vista, que es justo el tirón que la tira cíclica evita.
+- **El centrado va en un efecto de DISPOSICIÓN** (`useLayoutEffect`). El rebase
+  cambia a la vez qué diapositiva manda y cuánto se desplaza la tira; con un
+  efecto normal —que corre DESPUÉS de pintar— se vería un fotograma con el
+  video nuevo en el sitio del viejo. Y las transiciones se apagan durante el
+  rebase: si no, la diapositiva equivalente de la otra copia crecería de 0,66 a
+  1 en el centro y se vería un latido donde no pasó nada.
+- **El rebase se hace al TERMINAR el desplazamiento** (`onTransitionEnd`
+  filtrando `propertyName === 'transform'` y el propio elemento), no al
+  empezarlo: a mitad de camino cambiaría la diapositiva que manda debajo del
+  movimiento.
+- **Con DOS videos la tira sigue siendo LINEAL** (`VIDEO_CICLICO_MIN = 3`). Dar
+  la vuelta pondría el MISMO video a izquierda y derecha y parecería que hay
+  tres — es la regla de v4.829, y no se afloja por unificar el código.
+- **Los dos frenos de la rotación son REVERSIBLES**, y ésta es la corrección de
+  fondo. Hasta v4.831 darle play detenía la rotación PARA SIEMPRE: la tira
+  quedaba clavada en un video y no volvía a moverse nunca. Con un archivo
+  propio la señal de que se dejó de mirar es exacta —`pause` / `ended`—; con un
+  embebido no hay estado de reproducción observable sin cargar la librería del
+  proveedor, así que se usa la simétrica de la que ya detectaba el play: que el
+  foco VOLVIÓ a nuestra página. **Al agregar un freno, escribir a la vez cómo
+  se suelta**: un freno sin salida no se lee como un freno, se lee como que la
+  función dejó de funcionar.
+- **Al reanudar, el video embebido se DESMONTA** —sólo la diapositiva activa
+  monta el reproductor—, así que no se queda sonando fuera de cuadro. Es lo que
+  hace aceptable que el freno del embebido sea una heurística.
+- **La cadencia y el desplazamiento son dos números y se ajustan juntos**
+  (`VIDEO_ROTA_MS` 4200, `VIDEO_DESLIZA_MS` 520). El desplazamiento tiene que
+  ser bastante más corto que el intervalo, o la tira estaría en movimiento casi
+  todo el tiempo y no se llegaría a mirar ningún video quieto; lo comprueba una
+  prueba.
+- **El punto se marca con el NÚMERO del video, no con la posición.** En la tira
+  cíclica hay varias diapositivas del mismo video y un solo punto por video;
+  pulsarlo lleva a la copia del medio. El número sale del resto
+  (`videoPos % videos.length`), que además acota solo si se quitan videos desde
+  el panel — sin otro efecto.
 
 ### Los videos, en carrusel con vecinos (v4.829)
 
