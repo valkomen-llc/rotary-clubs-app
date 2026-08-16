@@ -5,6 +5,7 @@
 // Payment + Donation. El balance del club queda disponible automáticamente
 // vía /api/payouts/balance porque Payment.isPlatformCollection = true.
 import Stripe from 'stripe';
+import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -77,6 +78,40 @@ const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
+// ── En qué moneda se le cobra a ESTE visitante (v4.834) ───────────────
+//
+// El criterio es puro y vive aparte; acá sólo se leen los datos que necesita.
+// El interruptor es de la INSTALACIÓN y no del sitio porque la pasarela es una
+// sola para toda la plataforma (`STRIPE_SECRET_KEY`): si la cuenta no pudiera
+// presentar dólares, el problema sería de todos los sitios a la vez.
+const INTL_CURRENCY_ENABLED = String(process.env.DONATION_INTL_CURRENCY || 'USD').toLowerCase() !== 'off';
+
+/** El país del visitante, según el borde. NUNCA del cuerpo de la petición: el
+ *  cliente elige su idioma —eso es suyo— pero no dónde está. */
+const visitorCountry = (req) => {
+    const h = req.headers || {};
+    const raw = String(
+        h['x-vercel-ip-country'] || h['cf-ipcountry'] || h['x-country-code'] || h['x-geo-country'] || ''
+    ).trim().toUpperCase();
+    // 'XX' es lo que devuelve Vercel cuando no puede geolocalizar.
+    return /^[A-Z]{2}$/.test(raw) && raw !== 'XX' ? raw : '';
+};
+
+/** La moneda del aporte, resuelta con los datos del sitio y del visitante. */
+const resolveDonationCurrencyFor = async (clubId, req, lang) => {
+    const clubCurrency = await resolveClubCurrency(clubId);
+    let clubCountry = '';
+    try {
+        const c = await db.query('SELECT country FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
+        clubCountry = c.rows[0]?.country || '';
+    } catch { /* sin país se deduce de la moneda */ }
+    return resolveDonationCurrency({
+        clubCurrency, clubCountry,
+        lang: String(lang || ''), country: visitorCountry(req),
+        enabled: INTL_CURRENCY_ENABLED,
+    });
+};
+
 // Moneda del club: setting club_currency, o por país (Colombia → COP), o USD.
 const resolveClubCurrency = async (clubId) => {
     try {
@@ -113,6 +148,10 @@ export const createDonationCheckout = async (req, res) => {
             projectId = null, // v4.416 — donación asociada a proyecto (opcional)
             campaignId = null, // v4.804 — aporte nacido de una Campaña de Contribución (opcional)
             blockId = null,    // v4.808 — aporte nacido de un bloque de la página de Aportes
+            // v4.834 — el idioma ACTIVO del sitio. Es del visitante (lo eligió
+            // en el selector), así que sí viene del cliente; el PAÍS no, ése
+            // sale del encabezado del borde.
+            lang = '',
             returnUrl
         } = req.body || {};
 
@@ -156,8 +195,12 @@ export const createDonationCheckout = async (req, res) => {
         const stripe = getStripe();
         const amountInCents = Math.round(numericAmount * 100);
         const origin = resolveOrigin(req, returnUrl);
-        // Moneda autoritativa del club (ignora lo que mande el cliente).
-        const normalizedCurrency = (await resolveClubCurrency(clubId)).toLowerCase();
+        // La moneda la decide el SERVIDOR y sigue ignorando la del cuerpo: lo
+        // que cambió en v4.834 es que ya no es siempre la del sitio — un
+        // visitante internacional paga en dólares. El criterio es el mismo que
+        // consultó la pantalla, así que la cifra que vio es la que se le cobra.
+        const decision = await resolveDonationCurrencyFor(clubId, req, lang);
+        const normalizedCurrency = decision.currency.toLowerCase();
 
         // v4.804 — atribución de campaña (o null si no vale; nunca bloquea).
         const campaign = await resolveCampaignRef(campaignId, clubId);
@@ -215,7 +258,13 @@ export const createDonationCheckout = async (req, res) => {
                 // aportó: es lo primero que se mira y lo que sostiene la
                 // rendición de cuentas.
                 purpose: purpose ? String(purpose).slice(0, 120) : '',
-                blockId: block?.id || ''
+                blockId: block?.id || '',
+                // v4.834 — por qué se cobró en esta moneda. Sin este rastro,
+                // «¿por qué este aporte entró en dólares?» no se puede
+                // contestar dos semanas después.
+                currency: decision.currency,
+                siteCurrency: decision.siteCurrency,
+                currencyReason: decision.reason
             }
         });
 
@@ -252,6 +301,37 @@ const INTERVAL_LABELS = { month: 'Mensual', quarter: 'Trimestral', semiannual: '
 // Body: { clubId, blockId, interval, returnUrl }
 // El monto NO se toma del cliente: se resuelve desde la config guardada del club
 // (setting payment_blocks) para evitar manipulación de precios.
+// GET /api/financial/currency?clubId=&lang=   (público)
+//
+// En qué moneda se le va a cobrar a QUIEN PREGUNTA, con sus montos sugeridos.
+// El modal lo consulta antes de pintar nada: sin esto tendría que adivinar la
+// moneda y podría ofrecer «50.000» a alguien a quien se le van a cobrar
+// dólares — que es el defecto más caro que este cambio puede introducir.
+//
+// El país lo pone el SERVIDOR desde el encabezado del borde, no el cliente.
+// Degrada a la moneda del sitio ante cualquier fallo: esto corre en cada
+// apertura del modal y no puede dejar a nadie sin poder aportar.
+export const getDonationCurrency = async (req, res) => {
+    const clubId = String(req.query.clubId || '').trim();
+    if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+    try {
+        const decision = await resolveDonationCurrencyFor(clubId, req, req.query.lang);
+        // Sin caché: la respuesta depende del país de quien pregunta, y una
+        // caché intermedia le serviría a un visitante la moneda de otro.
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            currency: decision.currency,
+            siteCurrency: decision.siteCurrency,
+            international: decision.international,
+            reason: decision.reason,
+        });
+    } catch (e) {
+        console.warn('[FINANCIAL] moneda no resuelta (degrada a la del sitio):', e?.message);
+        res.set('Cache-Control', 'no-store');
+        res.json({ currency: 'USD', siteCurrency: 'USD', international: false, reason: 'club_is_international' });
+    }
+};
+
 export const createSubscriptionCheckout = async (req, res) => {
     try {
         const { clubId, blockId, interval, currency = 'USD', returnUrl } = req.body || {};
@@ -289,6 +369,13 @@ export const createSubscriptionCheckout = async (req, res) => {
         const stripe = getStripe();
         const amountInCents = Math.round(amount * 100);
         const origin = resolveOrigin(req, returnUrl);
+        // La MEMBRESÍA se queda en la moneda del sitio, a diferencia del
+        // aporte (v4.834). No es un olvido: su importe es un PRECIO que el club
+        // fijó —«$50.000 al año»— y cobrarlo en otra moneda exige convertirlo.
+        // No hay tasa de cambio configurada en la plataforma e inventar una
+        // está prohibido; cobrar «50.000 dólares» sería catastrófico. Cuando
+        // haga falta, la vía es un importe por moneda en el bloque, no una
+        // conversión al vuelo.
         const normalizedCurrency = (await resolveClubCurrency(clubId)).toLowerCase();
 
         const meta = {

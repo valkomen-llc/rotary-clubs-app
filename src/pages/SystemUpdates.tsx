@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.833.0 | 2026-08-16 (Infografías de campaña en el Generador de Publicaciones)
+// UI V4.834.0 | 2026-08-16 (Los aportes internacionales se cobran en dólares)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.834.0',
+        title: 'Los aportes internacionales se cobran en dólares 🌎',
+        description: 'Hasta ahora TODO aporte se cobraba en la moneda del sitio: un rotario de otro país que leía la página en inglés veía «$» y recibía un cargo en pesos colombianos. Ahora la moneda se decide por quién está aportando. Se cobra en pesos cuando se cumplen las dos cosas —el sitio se está leyendo en español Y la visita llega desde Colombia—; en cualquier otro caso, en dólares: en inglés o en cualquier idioma internacional, y también en español desde fuera del país. El modal lo dice con todas las letras y explica por qué. Importante: los montos sugeridos NO se convierten, se reemplazan por los propios de cada moneda —los «$50.000» que configuró el club son pesos y ofrecerlos en dólares invitaría a un aporte de US$ 50.000—. Las membresías recurrentes siguen cobrándose en la moneda del sitio: su importe es un precio fijado por el club y cambiarlo de moneda exige convertirlo.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'pagos', 'internacional', 'moneda'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un visitante internacional ya no recibe un cargo en pesos colombianos.' },
+            { type: 'added', text: 'Español desde Colombia paga en pesos; el resto, en dólares.' },
+            { type: 'added', text: 'El modal explica por qué se cobra en dólares.' },
+            { type: 'changed', text: 'Los montos sugeridos son los de la moneda que de verdad se cobra.' },
+        ]
+    },
     {
         version: '4.833.0',
         title: 'Infografías de campaña, con los datos ya cargados 📊',
