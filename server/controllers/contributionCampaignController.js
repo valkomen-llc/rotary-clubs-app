@@ -50,6 +50,11 @@ export const METRIC_TYPES = [
     'share_click',          // se compartió la campaña
     'checkout_started',     // se creó la sesión de Stripe (lo registra el servidor)
     'donation_completed',   // el webhook confirmó el cobro (con monto)
+    // v4.836 — se compuso una pieza para redes desde el Generador de
+    // Publicaciones. Lo escribe el SERVIDOR al componer, no el navegador: es el
+    // único que sabe que la pieza se generó de verdad. No es tráfico de la
+    // landing, así que se cuenta aparte y el panel lo rotula distinto.
+    'asset_generated',
 ];
 
 export const bumpMetric = async ({ campaignId, clubId, type, amount = 0, currency = null }) => {

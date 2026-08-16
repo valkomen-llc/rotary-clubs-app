@@ -36,8 +36,8 @@ import {
     LANGUAGES, DEFAULT_LANGUAGE, languageCatalog,
     FORMAT_IDS, DEFAULT_FORMAT_ID, isCampaignFormat,
     layoutCatalog, capacityOf, pickLayout,
-    publishableStats, chooseStats, activeItems, centerSummary,
-    validateBeforeGenerate, buildCampaignBrief, buildVariables, campaignUrl,
+    publishableStats, chooseStats, activeItems, centerSummary, centerDetail, activePartners,
+    validateBeforeGenerate, buildCampaignBrief, buildVariables, campaignUrl, planCarousel,
 } from '../lib/campaignPostSpec.js';
 import { templateFor } from '../lib/campaignTemplates.js';
 import { compileTemplate, PALETTE, formatOf } from '../lib/designSpec.js';
@@ -51,6 +51,26 @@ const fail = (res, e, code = 500, msg = null) => {
 };
 
 const isOperator = (req) => req.user?.role === 'administrator';
+const str = (v, max) => String(v ?? '').trim().slice(0, max);
+
+/**
+ * El código QR que manda el navegador.
+ *
+ * Se genera allá porque `src/lib/qrcode.ts` ya existe y produce un SVG en el
+ * acto, sin dependencias; portarlo al servidor sería una segunda copia del
+ * mismo algoritmo —y las copias se separan en silencio—.
+ *
+ * Pero llega del cliente y termina como `src` de un nodo de imagen, así que se
+ * comprueba que sea una imagen embebida y nada más: sin esto, el campo
+ * aceptaría cualquier dirección. Es la misma cautela que `isAcceptableImage`
+ * en el portal de Plantillas IA y que `normalizeMapUrl` en la sede de un
+ * evento.
+ */
+const acceptableQr = (raw) => {
+    const v = str(raw, 24000);
+    if (!v) return '';
+    return /^data:image\/(svg\+xml|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : '';
+};
 
 // ─── Alcance ───────────────────────────────────────────────────────────
 
@@ -111,6 +131,11 @@ export const getCampaignPostOptions = async (req, res) => {
                 format: DEFAULT_FORMAT_ID,
             },
             scope: isOperator(req) ? 'platform' : 'site',
+            // La dirección se resuelve UNA vez para todas: sale del dominio del
+            // sitio, no del navegador. Componerla allá daría una dirección
+            // distinta según desde dónde se abrió el panel — y es la que se
+            // dibuja en el QR.
+            siteUrl: await siteUrlFor({ recipientClubId: null }, req).catch(() => ''),
             campaigns: campaigns.map(c => {
                 const content = normalizeContent(c.content);
                 const { stats, skipped } = publishableStats(c.stats);
@@ -132,6 +157,7 @@ export const getCampaignPostOptions = async (req, res) => {
                     stats: stats.map(s => ({ id: s.id, label: s.label, value: s.value, source: s.source, updatedAt: s.updatedAt })),
                     statsSkipped: skipped,
                     items: activeItems(content).map(it => ({ title: it.title, description: it.description })),
+                    partners: content.partners.filter(p => p.active !== false && p.logo).length,
                     images: [
                         ...(content.hero.image ? [{ url: content.hero.image, alt: content.hero.imageAlt || '' }] : []),
                         ...content.hero.images,
@@ -240,6 +266,123 @@ const generatePieceCopy = async ({ brief, factCtx, provider }) => {
     return { copy: parsed, provider: null, model: null, issues };
 };
 
+/**
+ * Arma UNA pieza: elige la composición, junta los datos y compila el
+ * documento. Lo comparte la generación suelta y el carrusel — escribirlo dos
+ * veces dejaría que una diapositiva se compusiera distinto de la pieza
+ * equivalente generada a mano.
+ *
+ * NO genera el copy: lo recibe. Es lo que permite que un carrusel de cinco
+ * diapositivas cueste UNA llamada al modelo en vez de cinco, y que las cinco
+ * hablen con la misma voz.
+ */
+const buildPiece = async ({ campaign, content, objective, formatId, layoutId, statIds, imageUrl, copy, qrDataUri, lang, req, centerRows, cityCount }) => {
+    const { stats: publishable } = publishableStats(campaign.stats);
+    const items = activeItems(content);
+    const chosenLayout = pickLayout({ objective, requested: layoutId, formatId, stats: publishable, items, cities: cityCount });
+
+    const stats = chooseStats(publishable, statIds, capacityOf(chosenLayout.id, formatId, 'maxStats'));
+    const shownItems = items.slice(0, capacityOf(chosenLayout.id, formatId, 'maxItems'));
+
+    const centersCap = capacityOf(chosenLayout.id, formatId, 'maxCities');
+    const detailCap = capacityOf(chosenLayout.id, formatId, 'maxCenters');
+    let centers = null;
+    if (centersCap > 0 || detailCap > 0) {
+        const porCiudad = centerSummary(centerRows, centersCap);
+        const conDireccion = detailCap > 0 ? centerDetail(centerRows, detailCap) : { centers: [], total: porCiudad.total, hidden: porCiudad.hidden };
+        centers = {
+            ...porCiudad,
+            centers: conDireccion.centers,
+            total: detailCap > 0 ? conDireccion.total : porCiudad.total,
+            hidden: detailCap > 0 ? conDireccion.hidden : porCiudad.hidden,
+        };
+    }
+    const partners = activePartners(content, capacityOf(chosenLayout.id, formatId, 'maxPartners'));
+
+    const template = templateFor(chosenLayout.id, formatId);
+    if (!template) throw new Error(`No hay composición «${chosenLayout.id}» para el formato ${formatId}.`);
+
+    const variables = buildVariables({
+        campaign, copy, stats, items: shownItems, centers, partners,
+        imageUrl, logoUrl: await logoFor(campaign, req, lang),
+        qrUrl: acceptableQr(qrDataUri),
+    });
+
+    const branding = {
+        primary: hexOrEmpty(content.theme.primary) || PALETTE.navy,
+        accent: hexOrEmpty(content.theme.cta) || hexOrEmpty(content.theme.accent) || PALETTE.gold,
+        ink: PALETTE.ink,
+    };
+
+    return {
+        document: compileTemplate({ template, variables, branding }),
+        variables, stats, items: shownItems, centers, partners,
+        layout: { id: chosenLayout.id, notes: chosenLayout.notes },
+        templateId: template.id,
+    };
+};
+
+// ─── POST /api/content-studio/campaign-post/carousel ───────────────────
+//
+// Varias piezas de una vez, cada una con su objetivo. El COPY se genera UNA
+// sola vez y se reparte: cinco llamadas al modelo darían cinco voces distintas
+// para la misma campaña, además de costar cinco veces más.
+export const composeCampaignCarousel = async (req, res) => {
+    try {
+        const {
+            campaignId, audience = DEFAULT_AUDIENCE, language = DEFAULT_LANGUAGE,
+            formatId = DEFAULT_FORMAT_ID, imageUrl = '', copyProvider = null, qrDataUri = '',
+        } = req.body || {};
+
+        const campaign = await campaignInScope(req, String(campaignId || ''));
+        if (!campaign) return res.status(404).json({ error: 'La campaña no existe o no alcanza a este sitio.' });
+
+        const content = normalizeContent(campaign.content);
+        const aud = AUDIENCES[audience] ? audience : DEFAULT_AUDIENCE;
+        const lang = LANGUAGES[language] ? language : DEFAULT_LANGUAGE;
+        const fmt = isCampaignFormat(formatId) ? formatId : DEFAULT_FORMAT_ID;
+
+        const centerRows = await publicCentersFor(campaign.id, isOperator(req) ? null : req.user?.clubId).catch(() => []);
+        const cityCount = centerSummary(centerRows, 99).cities.length;
+
+        const plan = planCarousel({ campaign, formatId: fmt, centerCount: cityCount });
+        if (!plan.slides.length) {
+            return res.status(422).json({
+                error: 'La campaña no tiene datos para ninguna diapositiva.',
+                errors: plan.skipped.map(s => `${s.label}: ${s.reason}`),
+            });
+        }
+
+        const { stats: publishable } = publishableStats(campaign.stats);
+        const brief = buildCampaignBrief({
+            campaign, objective: 'sensibilizacion', audience: aud, language: lang,
+            stats: publishable, items: activeItems(content),
+        });
+        const factCtx = factContextOf({ content, stats: publishable, items: activeItems(content), url: '' });
+        const out = await generatePieceCopy({ brief, factCtx, provider: copyProvider });
+
+        const slides = [];
+        for (const s of plan.slides) {
+            const piece = await buildPiece({
+                campaign, content, objective: s.objective, formatId: fmt, layoutId: null,
+                statIds: null, imageUrl, copy: out.copy, qrDataUri, lang, req, centerRows, cityCount,
+            });
+            slides.push({ objective: s.objective, label: s.label, ...piece });
+        }
+
+        res.json({
+            slides,
+            copy: out.copy,
+            copyIssues: out.issues,
+            format: fmt,
+            // Las que NO entraron, con su motivo. Un carrusel más corto sin
+            // explicación hace pensar que el módulo falló.
+            skipped: plan.skipped,
+            warnings: slides.flatMap(s => s.layout.notes),
+        });
+    } catch (e) { fail(res, e, 400); }
+};
+
 // ─── POST /api/content-studio/campaign-post/compose ────────────────────
 
 export const composeCampaignPost = async (req, res) => {
@@ -248,6 +391,7 @@ export const composeCampaignPost = async (req, res) => {
             campaignId, objective = DEFAULT_OBJECTIVE, audience = DEFAULT_AUDIENCE,
             language = DEFAULT_LANGUAGE, formatId = DEFAULT_FORMAT_ID, layoutId = null,
             statIds = null, imageUrl = '', copyProvider = null, copy: copyOverride = null,
+            qrDataUri = '',
         } = req.body || {};
 
         const campaign = await campaignInScope(req, String(campaignId || ''));
@@ -259,28 +403,21 @@ export const composeCampaignPost = async (req, res) => {
         const lang = LANGUAGES[language] ? language : DEFAULT_LANGUAGE;
         const fmt = isCampaignFormat(formatId) ? formatId : DEFAULT_FORMAT_ID;
 
-        const { stats: publishable } = publishableStats(campaign.stats);
-        const items = activeItems(content);
-        const chosenLayout = pickLayout({ objective: obj, requested: layoutId, formatId: fmt, stats: publishable, items });
-
-        const stats = chooseStats(publishable, statIds, capacityOf(chosenLayout.id, fmt, 'maxStats'));
-        const shownItems = items.slice(0, capacityOf(chosenLayout.id, fmt, 'maxItems'));
-
-        const centersCap = capacityOf(chosenLayout.id, fmt, 'maxCities');
-        let centers = null;
-        if (centersCap > 0) {
-            const rows = await publicCentersFor(campaign.id, isOperator(req) ? null : req.user?.clubId);
-            centers = centerSummary(rows, centersCap);
-        }
+        // Cuántas ciudades hay: `pickLayout` lo necesita para no elegir la
+        // composición de centros en una campaña que no tiene ninguno.
+        const centerRows = await publicCentersFor(campaign.id, isOperator(req) ? null : req.user?.clubId).catch(() => []);
+        const cityCount = centerSummary(centerRows, 99).cities.length;
 
         // La comprobación va ANTES de gastar una llamada al modelo: producir la
         // pieza y descubrir después que le falta el título es pagar por nada.
+        const { stats: publishable } = publishableStats(campaign.stats);
+        const chosen = chooseStats(publishable, statIds, 99);
         const check = validateBeforeGenerate({
-            campaign, objective: obj, formatId: fmt, layoutId: chosenLayout.id, imageUrl, stats,
+            campaign, objective: obj, formatId: fmt, layoutId, imageUrl, stats: chosen,
+            centerCount: cityCount,
         });
         if (!check.ok) return res.status(422).json({ error: 'La campaña no tiene lo que esta pieza necesita.', errors: check.errors, warnings: check.warnings });
 
-        const site = isOperator(req) ? null : await siteOf(req.user?.clubId).catch(() => null);
         const url = campaignUrl(campaign, await siteUrlFor(campaign, req));
 
         // Regenerar SÓLO el diseño no vuelve a pedir el copy: es lo que permite
@@ -289,49 +426,45 @@ export const composeCampaignPost = async (req, res) => {
         let copyIssues = [];
         let copyMeta = null;
         if (!copy) {
-            const brief = buildCampaignBrief({ campaign, objective: obj, audience: aud, language: lang, stats, items: shownItems, centers });
-            const factCtx = factContextOf({ content, stats, items: shownItems, url });
+            const brief = buildCampaignBrief({
+                campaign, objective: obj, audience: aud, language: lang,
+                stats: publishable, items: activeItems(content),
+            });
+            const factCtx = factContextOf({ content, stats: publishable, items: activeItems(content), url });
             const out = await generatePieceCopy({ brief, factCtx, provider: copyProvider });
             copy = out.copy;
             copyIssues = out.issues;
             copyMeta = { provider: out.provider, model: out.model };
         }
 
-        const template = templateFor(chosenLayout.id, fmt);
-        if (!template) return res.status(400).json({ error: `No hay composición «${chosenLayout.id}» para el formato ${fmt}.` });
-
-        const variables = buildVariables({
-            campaign, copy, stats, items: shownItems, centers,
-            imageUrl, logoUrl: await logoFor(campaign, req, lang), qrUrl: '',
+        // El armado es el MISMO que usa cada diapositiva del carrusel: dos
+        // caminos distintos se separarían y la pieza suelta saldría diferente
+        // de su equivalente dentro de un carrusel.
+        const piece = await buildPiece({
+            campaign, content, objective: obj, formatId: fmt, layoutId,
+            statIds, imageUrl, copy, qrDataUri, lang, req, centerRows, cityCount,
         });
-        if (!variables.url) variables.url = url.replace(/^https?:\/\//, '');
+        if (!piece.variables.url) piece.variables.url = url.replace(/^https?:\/\//, '');
 
-        // El branding de la PIEZA sale del tema de la campaña. `applyBranding`
-        // es el mismo mecanismo que usan las plantillas de club: los nodos
-        // declaran `brand: 'primary' | 'accent'` y acá se resuelve el color.
-        const branding = {
-            primary: hexOrEmpty(content.theme.primary) || PALETTE.navy,
-            accent: hexOrEmpty(content.theme.cta) || hexOrEmpty(content.theme.accent) || PALETTE.gold,
-            ink: PALETTE.ink,
-        };
-
-        const document = compileTemplate({ template, variables, branding });
+        // Contar no puede romper una generación: el fallo se traga, igual que
+        // en el cobro. El sitio es el del usuario; el operador sin sitio no
+        // cuenta contra ninguno.
+        const metricClub = isOperator(req) ? (campaign.recipientClubId || req.user?.clubId) : req.user?.clubId;
+        if (metricClub) {
+            try {
+                const { bumpMetric } = await import('./contributionCampaignController.js');
+                await bumpMetric({ campaignId: campaign.id, clubId: metricClub, type: 'asset_generated' });
+            } catch (e) { console.warn('[CAMPAIGN-POST] métrica no registrada:', e?.message); }
+        }
 
         res.json({
-            document,
-            variables,
+            ...piece,
             copy,
-            layout: { id: chosenLayout.id, notes: chosenLayout.notes },
-            templateId: template.id,
             format: fmt,
-            stats,
-            items: shownItems,
-            centers,
             url,
-            warnings: [...check.warnings, ...chosenLayout.notes],
+            warnings: [...check.warnings, ...piece.layout.notes],
             copyIssues,
             copyMeta,
-            site: site?.id || null,
         });
     } catch (e) { fail(res, e, 400); }
 };
@@ -376,4 +509,4 @@ const logoFor = async (campaign, req, language = DEFAULT_LANGUAGE) => {
     } catch { return ''; }
 };
 
-export default { getCampaignPostOptions, composeCampaignPost };
+export default { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel };

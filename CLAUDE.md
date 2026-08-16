@@ -2604,11 +2604,78 @@ interceptada (26 comprobaciones).
   no obliga a rehacer las seis composiciones: hoy el hueco simplemente no se
   dibuja y el resto no se mueve.
 
-**Pendientes conocidos (Fases 2 y 3):** el QR desde la URL real, los objetivos
-de centros de acopio / impacto / internacional con sus layouts, la franja de
-aliados, el carrusel de varias piezas, publicar o programar en las cuentas
-conectadas y las métricas de asset ligadas a la campaña. La arquitectura los
-admite sin tocar el compilador ni el modelo de datos.
+### Fase 2 — centros, impacto y QR (v4.835)
+
+- **La densidad de los centros la decide el FORMATO, no el gusto.** En 1:1 se
+  resume por CIUDAD con su cantidad de puntos; en 4:5 entran las DIRECCIONES,
+  que es lo que hace falta para ir a dejar algo. Ocho direcciones legibles no
+  caben en un cuadrado, y achicar el texto para que quepan produce una pieza que
+  no se puede leer en un teléfono — que es donde se mira.
+- **El total de puntos se DICE aunque la pieza muestre menos.** Recortar la
+  lista en silencio hace creer que ésos son todos, y quien vive en otra ciudad
+  no busca. El número sale de la vista que la pieza va a dibujar: decir «3 más»
+  contando ciudades cuando se muestran direcciones sería un número que no cuadra.
+- **Un aliado sin logotipo no se nombra en texto.** La franja es de escudos y
+  mezclarlos con nombres sueltos se lee como un error de maquetación, no como
+  una lista.
+- **El objetivo de centros EXIGE centros, pero sólo si se sabe cuántos hay.**
+  Los centros no viajan en la campaña —viven en su propia tabla— así que
+  `validateBeforeGenerate` sólo los juzga cuando se le suministra el dato:
+  decidir por omisión que «no hay» bloquearía una campaña que sí los tiene.
+- **El QR lleva la dirección REAL de la campaña; nunca es un adorno.** Se dibuja
+  en el NAVEGADOR con `src/lib/qrcode.ts` —que ya existe y no tiene
+  dependencias— porque portar el algoritmo al servidor sería una segunda copia,
+  y las copias se separan en silencio. Pero llega del cliente y termina como
+  `src` de un nodo de imagen, así que el servidor comprueba que sea una imagen
+  embebida y nada más (`acceptableQr`): misma cautela que `normalizeMapUrl` con
+  el mapa de una sede.
+- **La dirección la da el SERVIDOR** (`siteUrl` en las opciones). Componerla en
+  el navegador daría una distinta según desde dónde se abrió el panel, y el QR
+  llevaría a otra parte. Un dominio escrito en el código sería peor todavía: la
+  pantalla la comparten todos los sitios.
+- **Sin dominio configurado el interruptor del QR no se enciende**, y dice por
+  qué. Encenderlo y no ver nada es peor que verlo apagado con su motivo.
+
+### Fase 3 — carrusel y publicación (v4.836)
+
+- **El copy del carrusel se genera UNA sola vez y se reparte.** Cinco llamadas
+  al modelo darían cinco voces distintas para la misma campaña, además de costar
+  cinco veces más.
+- **El orden de las diapositivas es el ARCO de la landing** (v4.828): contexto →
+  magnitud → qué se necesita → dónde llevarlo → cómo aportar. Repetirlo no es
+  casualidad: quien ve el carrusel y quien entra a la página tienen que
+  encontrarse lo mismo en el mismo orden.
+- **Una diapositiva sin datos se SALTEA y se dice por qué.** Una vacía en medio
+  de un carrusel es peor que una menos, y sin el motivo nadie sabe qué cargarle
+  a la campaña para recuperarla.
+- **La pieza suelta y la diapositiva se arman con el MISMO código**
+  (`buildPiece`). Dos caminos se separarían y la pieza generada a mano saldría
+  distinta de su equivalente dentro de un carrusel. Lo comprueba una prueba
+  contando las llamadas.
+- **El carrusel se descarga en UN archivo.** Bajar las piezas una por una hace
+  que el navegador bloquee todas menos la primera.
+- **Publicar sube la pieza a la Biblioteca ANTES**, y no es un rodeo:
+  `/social/publish` recibe una dirección, no un archivo, y la fila de `Media` es
+  además el registro de lo que salió. Es el camino que el Generador de
+  Publicaciones usa desde siempre — no se inventa un segundo.
+- **Si no hay cuentas conectadas, el botón no se pinta** (v4.650).
+- **`asset_generated` lo escribe el SERVIDOR** al componer, como los eventos que
+  valen dinero: es el único que sabe que la pieza se generó de verdad. Entra al
+  catálogo CERRADO de `METRIC_TYPES` — sin esa puerta el contador aceptaría
+  cualquier cosa.
+- **Una dependencia que falta en un `useCallback` no la ve el typecheck.**
+  `conQr` no estaba en las de `componer` y el interruptor del QR no llegaba
+  nunca a la petición: el código era válido y estaba bien tipado. Lo encontró el
+  smoke de navegador. Al agregar un ajuste que viaja en una petición, mirar que
+  esté en las dependencias del manejador que la arma.
+
+**Pendientes conocidos:** el objetivo «internacional» quedó resuelto como
+AUDIENCIA y no como composición propia —cambia el encuadre del texto, no la
+maquetación—; una composición «meta de recaudo» exigiría un campo de meta
+económica en la campaña, que hoy no existe: mientras tanto la meta se declara
+como un indicador más, con su fuente. Y la **programación** de una publicación
+(`scheduledFor`) no está cableada: el endpoint la acepta, la pantalla todavía no
+la ofrece.
 
 ## Campañas de Contribución — v4.807 (COMPLETO, F1-F5)
 

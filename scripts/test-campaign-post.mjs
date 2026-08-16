@@ -29,6 +29,7 @@ import {
     validateBeforeGenerate, buildCampaignBrief, buildVariables, latestCut, campaignUrl,
 } from '../server/lib/campaignPostSpec.js';
 import { CAMPAIGN_TEMPLATES, templateFor } from '../server/lib/campaignTemplates.js';
+import { centerDetail, activePartners, planCarousel, CAROUSEL_SLIDES, CAROUSEL_MAX } from '../server/lib/campaignPostSpec.js';
 import { compileTemplate, formatOf, FORMATS, normalizeNode } from '../server/lib/designSpec.js';
 import { normalizeContent } from '../server/lib/contributionSpec.js';
 import { TYPE_LABELS, AREA_LABELS } from '../server/lib/publicationContext.js';
@@ -98,9 +99,10 @@ const CENTROS = [
 // ═══════════════════════════════════════════════════════════════════════
 
 grupo('Catálogos');
-check('los cuatro objetivos de la Fase 1 están declarados',
-    OBJECTIVE_IDS.length === 4
-    && ['sensibilizacion', 'recaudacion', 'ayuda_humanitaria', 'panorama'].every(id => OBJECTIVES[id]));
+check('los seis objetivos del pedido están declarados',
+    OBJECTIVE_IDS.length === 6
+    && ['sensibilizacion', 'recaudacion', 'ayuda_humanitaria', 'panorama', 'centros', 'impacto']
+        .every(id => OBJECTIVES[id]));
 check('cada objetivo declara qué EXIGE para tener sentido',
     OBJECTIVE_IDS.every(id => Array.isArray(OBJECTIVES[id].needs)));
 check('el objetivo por defecto no exige nada, así que siempre se puede generar',
@@ -273,8 +275,10 @@ check('sin slug lleva a la página genérica',
     campaignUrl({ slug: '' }, 'https://rotary4281.org/') === 'https://rotary4281.org/maneras-de-contribuir');
 
 grupo('El catálogo de composiciones');
-check('hay tres composiciones en los DOS formatos: seis entradas',
-    CAMPAIGN_TEMPLATES.length === 6);
+// Cinco composiciones × dos formatos. NO es una plantilla estirada: lo que
+// cambia entre formatos es CUÁNTO entra y dónde respira.
+check('las cinco composiciones existen en los DOS formatos: diez entradas',
+    CAMPAIGN_TEMPLATES.length === 10 && LAYOUT_IDS.length === 5);
 for (const layout of LAYOUT_IDS) {
     for (const f of FORMAT_IDS) {
         check(`«${layout}» existe en ${f}`, !!templateFor(layout, f));
@@ -326,6 +330,117 @@ for (const t of CAMPAIGN_TEMPLATES) {
     const fuera = nodos.filter(n => n.y + n.h > 1.0001 || n.x + n.w > 1.0001 || n.x < -1e-6 || n.y < -1e-6);
     check(`«${t.id}» no deja ningún texto fuera del lienzo${fuera.length ? ` (${fuera.map(n => n.id).join(', ')})` : ''}`, fuera.length === 0);
 }
+
+grupo('v4.835 — centros de acopio y aliados');
+// La densidad que pidió el cliente: por CIUDAD en un cuadrado, con DIRECCIÓN
+// en vertical. Ocho direcciones legibles no entran en 1:1, y achicar el texto
+// para que quepan produce una pieza que no se puede leer en un teléfono.
+check('el 1:1 resume por ciudad y NO muestra direcciones',
+    capacityOf('centros_acopio', 'post_1_1', 'maxCities') > 0
+    && capacityOf('centros_acopio', 'post_1_1', 'maxCenters') === 0);
+check('el 4:5 sí muestra direcciones', capacityOf('centros_acopio', 'post_4_5', 'maxCenters') === 6);
+const detalle = centerDetail(CENTROS, 3);
+check('el detalle trae ciudad y dirección de cada punto',
+    detalle.centers.length === 3 && detalle.centers[0].address === 'Calle 1 #2-3' && detalle.centers[0].city === 'Cali');
+check('y dice cuántos quedaron fuera: una lista recortada en silencio miente',
+    detalle.total === 4 && detalle.hidden === 1);
+check('el centro sin dirección no entra', centerDetail(CENTROS, 99).total === 4);
+// Un aliado sin logotipo no se nombra: la franja es de escudos y mezclarlos
+// con nombres sueltos se lee como un error de maquetación.
+const ALIADOS = { partners: [
+    { name: 'ABACO', logo: 'https://x/abaco.png', active: true },
+    { name: 'Sin logo', logo: '', active: true },
+    { name: 'Retirado', logo: 'https://x/r.png', active: false },
+    { name: 'Cruz Roja', logo: 'https://x/cr.png', active: true },
+] };
+check('sólo los aliados activos CON logotipo', activePartners(ALIADOS, 9).length === 2);
+check('y acotados a lo que la composición muestra', activePartners(ALIADOS, 1).length === 1);
+check('el objetivo de centros EXIGE centros publicados',
+    !validateBeforeGenerate({ campaign: CAMPANA, objective: 'centros', formatId: 'post_1_1', centerCount: 0 }).ok
+    && validateBeforeGenerate({ campaign: CAMPANA, objective: 'centros', formatId: 'post_1_1', centerCount: 3 }).ok);
+// Sin el dato no se puede juzgar: decidir por omisión que «no hay» bloquearía
+// una campaña que sí los tiene.
+check('sin saber cuántos centros hay, NO se bloquea',
+    validateBeforeGenerate({ campaign: CAMPANA, objective: 'centros', formatId: 'post_1_1' }).ok);
+check('pedir la composición de centros sin centros cae a otra y lo anota', (() => {
+    const r = pickLayout({ objective: 'centros', stats: pub.stats, items: [], cities: 0 });
+    return r.id === 'emergencia_cta' && r.notes.length === 1;
+})());
+check('el objetivo de impacto usa la composición de resultados',
+    pickLayout({ objective: 'impacto', stats: pub.stats, items: [], cities: 2 }).id === 'resultados');
+
+grupo('v4.835 — el código QR');
+// El QR lleva la dirección REAL de la campaña; nunca es un adorno.
+check('el nodo del QR existe en las diez composiciones y no deja hueco si falta',
+    CAMPAIGN_TEMPLATES.every(t => t.nodes.some(n => n.id === 'qr' && n.dropIfEmpty && n.src === '{{qr}}')));
+// Llega del cliente y termina como `src` de un nodo: se comprueba que sea una
+// imagen embebida y nada más. Misma cautela que `normalizeMapUrl` en la sede.
+check('el servidor sólo acepta una imagen embebida como QR', (() => {
+    const src = readFileSync('server/controllers/campaignPostController.js', 'utf8');
+    return /const acceptableQr/.test(src)
+        && /data:image\\\/\(svg\\\+xml\|png\);base64/.test(src)
+        && /qrUrl: acceptableQr\(/.test(src);
+})());
+check('la dirección del QR la da el SERVIDOR, no se compone en el navegador', (() => {
+    const panel = readFileSync('src/components/admin/content-studio/CampaignPostPanel.tsx', 'utf8');
+    return /opciones\?\.siteUrl/.test(panel) && !/rotary4281\.org/.test(panel);
+})());
+
+grupo('v4.836 — el carrusel');
+// Es el mismo arco que la landing (v4.828): contexto → magnitud → cómo ayudo →
+// dónde → cómo aporto. Quien ve el carrusel y quien entra a la página tienen
+// que encontrarse lo mismo en el mismo orden.
+check('las diapositivas siguen el orden en que se lee una emergencia',
+    CAROUSEL_SLIDES.join(',') === 'sensibilizacion,panorama,ayuda_humanitaria,centros,recaudacion');
+check('todas las diapositivas son objetivos que existen',
+    CAROUSEL_SLIDES.every(o => OBJECTIVES[o]));
+const plan = planCarousel({ campaign: CAMPANA, formatId: 'post_1_1', centerCount: 2 });
+check('una campaña completa llena todas las diapositivas que caben',
+    plan.slides.length === Math.min(CAROUSEL_MAX, CAROUSEL_SLIDES.length));
+// Una diapositiva sin datos se SALTA y se dice por qué: una vacía en medio de
+// un carrusel es peor que una menos, y sin el motivo nadie sabe qué cargar.
+const planSinCentros = planCarousel({ campaign: CAMPANA, formatId: 'post_1_1', centerCount: 0 });
+check('la diapositiva sin datos se saltea y se DICE por qué',
+    planSinCentros.slides.length === plan.slides.length - 1
+    && planSinCentros.skipped.some(s => s.objective === 'centros' && /centros de acopio/.test(s.reason)));
+const planPobre = planCarousel({
+    campaign: { ...CAMPANA, stats: [], content: { ...CAMPANA.content, requiredItems: [] } },
+    formatId: 'post_1_1', centerCount: 0,
+});
+check('una campaña con lo mínimo igual arma las diapositivas que puede',
+    planPobre.slides.length >= 1 && planPobre.skipped.length >= 2);
+check('el carrusel genera el copy UNA sola vez y lo reparte', (() => {
+    const src = readFileSync('server/controllers/campaignPostController.js', 'utf8');
+    const i = src.indexOf('export const composeCampaignCarousel');
+    const j = src.indexOf('\nexport const ', i + 10);
+    const bloque = src.slice(i, j > 0 ? j : src.length);
+    return (bloque.match(/generatePieceCopy\(/g) || []).length === 1
+        && /copy: out\.copy/.test(bloque);
+})());
+// Dos caminos de armado se separarían: la pieza suelta saldría distinta de su
+// equivalente dentro de un carrusel.
+check('la pieza suelta y la diapositiva se arman con el MISMO código', (() => {
+    const src = readFileSync('server/controllers/campaignPostController.js', 'utf8');
+    return (src.match(/await buildPiece\(/g) || []).length === 2
+        && (src.match(/const buildPiece = async/g) || []).length === 1;
+})());
+check('generar una pieza queda registrado como métrica de la campaña', (() => {
+    const src = readFileSync('server/controllers/campaignPostController.js', 'utf8');
+    const ctrl = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+    return /type: 'asset_generated'/.test(src) && /'asset_generated'/.test(ctrl);
+})());
+check('las piezas se suben a la Biblioteca ANTES de publicarse', (() => {
+    const panel = readFileSync('src/components/admin/content-studio/CampaignPostPanel.tsx', 'utf8');
+    const i = panel.indexOf('const publicar = async');
+    const bloque = panel.slice(i, i + 2200);
+    return bloque.indexOf('uploadMediaFiles') < bloque.indexOf('/social/publish')
+        && /accountIds: cuentasSel/.test(bloque);
+})());
+// Bajarlas una por una hace que el navegador bloquee todas menos la primera.
+check('el carrusel se descarga en UN archivo', (() => {
+    const panel = readFileSync('src/components/admin/content-studio/CampaignPostPanel.tsx', 'utf8');
+    return /jszip/.test(panel) && /descargarZip/.test(panel);
+})());
 
 grupo('El preset no se escribe dos veces');
 const postGen = readFileSync('src/components/admin/content-studio/PostGenerator.tsx', 'utf8');

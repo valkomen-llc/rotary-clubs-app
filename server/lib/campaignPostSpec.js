@@ -90,6 +90,24 @@ export const OBJECTIVES = {
         tone: 'factual, sobrio, sin adjetivar la tragedia',
         focus: 'la magnitud de lo ocurrido según las fuentes registradas',
     },
+    centros: {
+        id: 'centros',
+        label: 'Centros de acopio',
+        help: 'Dónde llevar lo que se dona.',
+        needs: ['centers'],
+        layout: 'centros_acopio',
+        tone: 'práctico y hospitalario',
+        focus: 'que acercarse a dejar una donación es fácil y está organizado',
+    },
+    impacto: {
+        id: 'impacto',
+        label: 'Impacto de la campaña',
+        help: 'Lo que ya se logró, con sus aliados.',
+        needs: ['stats'],
+        layout: 'resultados',
+        tone: 'agradecido y sobrio, sin autoelogio',
+        focus: 'lo que la respuesta colectiva ya consiguió, y que sigue haciendo falta',
+    },
 };
 
 export const DEFAULT_OBJECTIVE = 'sensibilizacion';
@@ -189,6 +207,31 @@ export const LAYOUTS = {
         maxCities: 0,
         wantsImage: false,
     },
+    // v4.835. La densidad de esta composición es la que pidió el cliente: en
+    // 1:1 se RESUME por ciudad y en 4:5 caben las direcciones. Meter ocho
+    // direcciones en un cuadrado achicando el texto produce una pieza que no
+    // se puede leer en un teléfono, que es donde se mira.
+    centros_acopio: {
+        id: 'centros_acopio',
+        label: 'Centros de acopio',
+        summary: 'Dónde llevar la donación: por ciudad en 1:1, con dirección en 4:5.',
+        maxStats: 0,
+        maxItems: 0,
+        maxCities: { post_1_1: 5, post_4_5: 3 },
+        // En 4:5 cada ciudad muestra además sus direcciones.
+        maxCenters: { post_1_1: 0, post_4_5: 6 },
+        wantsImage: false,
+    },
+    resultados: {
+        id: 'resultados',
+        label: 'Impacto de la campaña',
+        summary: 'Lo logrado, con la frase institucional y los aliados.',
+        maxStats: { post_1_1: 3, post_4_5: 4 },
+        maxItems: 0,
+        maxCities: 0,
+        maxPartners: { post_1_1: 4, post_4_5: 5 },
+        wantsImage: true,
+    },
 };
 
 export const LAYOUT_IDS = Object.keys(LAYOUTS);
@@ -215,7 +258,7 @@ export const capacityOf = (layoutId, formatId, key = 'maxStats') => {
  * «elementos requeridos» sin elementos—, se dice en `notes` y se cae al que sí
  * puede, en vez de entregar una pieza con un hueco.
  */
-export const pickLayout = ({ objective, requested = null, formatId = DEFAULT_FORMAT_ID, stats = [], items = [] } = {}) => {
+export const pickLayout = ({ objective, requested = null, formatId = DEFAULT_FORMAT_ID, stats = [], items = [], cities = 0 } = {}) => {
     const notes = [];
     const obj = OBJECTIVES[objective] || OBJECTIVES[DEFAULT_OBJECTIVE];
     let id = LAYOUTS[requested] ? requested : obj.layout;
@@ -226,6 +269,14 @@ export const pickLayout = ({ objective, requested = null, formatId = DEFAULT_FOR
     }
     if (id === 'impacto_estadistico' && !stats.length) {
         notes.push('No hay indicadores publicables: se usa la composición de emergencia.');
+        id = 'emergencia_cta';
+    }
+    if (id === 'resultados' && !stats.length) {
+        notes.push('No hay indicadores publicables: se usa la composición de emergencia.');
+        id = 'emergencia_cta';
+    }
+    if (id === 'centros_acopio' && !cities) {
+        notes.push('La campaña no tiene centros publicados: se usa la composición de emergencia.');
         id = 'emergencia_cta';
     }
     return { id, layout: LAYOUTS[id], notes, capacity: capacityOf(id, formatId) };
@@ -293,13 +344,49 @@ export function centerSummary(centers, capacity) {
     };
 }
 
+/**
+ * Los centros CON su dirección, para el formato que tiene sitio.
+ *
+ * El resumen por ciudad (`centerSummary`) es lo que cabe en un cuadrado; en
+ * vertical entran las direcciones, que es lo que de verdad hace falta para ir
+ * a dejar algo. Se acota a `capacity` y se dice cuántos quedaron fuera: una
+ * lista recortada en silencio hace creer que ésos son todos los puntos.
+ */
+export function centerDetail(centers, capacity) {
+    const cities = groupCenters(normalizeCenters(centers).centers);
+    const flat = [];
+    for (const c of cities) {
+        for (const g of c.groups || []) {
+            for (const center of g.centers || []) {
+                flat.push({
+                    city: c.city,
+                    name: center.name || '',
+                    address: center.address,
+                    schedule: center.schedule || '',
+                });
+            }
+        }
+    }
+    const shown = flat.slice(0, Math.max(0, capacity));
+    return { centers: shown, total: flat.length, hidden: Math.max(0, flat.length - shown.length) };
+}
+
+/** Los aliados con logotipo, que es lo único que la pieza puede dibujar. Un
+ *  aliado sin logo no se nombra en texto: la franja es de escudos y una
+ *  mezcla de escudos y nombres sueltos se lee como un error. */
+export function activePartners(content, capacity) {
+    return arr(content?.partners)
+        .filter(p => p?.active !== false && p?.logo)
+        .slice(0, Math.max(0, capacity));
+}
+
 // ─── Validación ANTES de generar ───────────────────────────────────────
 //
 // Lo que pide el encargo: comprobar campaña, datos, cifras con fuente, imagen,
 // CTA, URL y formato ANTES de producir. Se separa en `errors` —no se puede
 // generar— y `warnings` —se puede, y hay que decirlo—, porque tratarlos igual
 // convierte cualquier aviso en un bloqueo y el usuario deja de leerlos.
-export function validateBeforeGenerate({ campaign, objective, formatId, layoutId, imageUrl, stats } = {}) {
+export function validateBeforeGenerate({ campaign, objective, formatId, layoutId, imageUrl, stats, centerCount = null } = {}) {
     const errors = [];
     const warnings = [];
 
@@ -327,6 +414,13 @@ export function validateBeforeGenerate({ campaign, objective, formatId, layoutId
         if (need === 'donationCta' && !content.hero.ctaPrimary?.label && !content.donateCard?.buttonText) {
             warnings.push('La campaña no declara un botón de aporte: la pieza va a usar el llamado genérico.');
         }
+        // v4.835. Los centros NO viajan en la campaña: viven en su propia
+        // tabla y los cuenta quien llama. Sin ese dato no se puede juzgar acá
+        // —y decidir por omisión que «no hay» bloquearía una campaña que sí
+        // los tiene—, así que sólo se comprueba cuando se suministra.
+        if (need === 'centers' && Number.isFinite(centerCount) && centerCount <= 0) {
+            errors.push('Este objetivo muestra los centros de acopio y la campaña no tiene ninguno publicado.');
+        }
     }
 
     for (const s of skipped) {
@@ -340,6 +434,41 @@ export function validateBeforeGenerate({ campaign, objective, formatId, layoutId
     }
 
     return { ok: errors.length === 0, errors, warnings };
+}
+
+// ─── El carrusel ───────────────────────────────────────────────────────
+//
+// Una campaña de emergencia tiene más información de la que entra en una
+// pieza. El carrusel la reparte en varias, cada una con su objetivo, y las
+// deja en el ORDEN en que se leen: qué pasó, qué tan grave es, qué se necesita,
+// dónde llevarlo y cómo aportar.
+//
+// Es el mismo arco que la landing (v4.828): contexto → magnitud → cómo ayudo →
+// dónde. Repetirlo acá no es casualidad — quien ve el carrusel y quien entra a
+// la página tienen que encontrarse lo mismo en el mismo orden.
+export const CAROUSEL_SLIDES = ['sensibilizacion', 'panorama', 'ayuda_humanitaria', 'centros', 'recaudacion'];
+
+/** El tope de diapositivas. Instagram admite diez; cinco es lo que una campaña
+ *  puede llenar con datos REALES sin repetirse, que es el límite que importa. */
+export const CAROUSEL_MAX = 5;
+
+/**
+ * Qué diapositivas puede llenar ESTA campaña, en orden.
+ *
+ * Una que no tiene datos se SALTA y se dice por qué: entregar una diapositiva
+ * vacía en medio de un carrusel es peor que entregar una menos, y sin el
+ * motivo el usuario no sabe qué cargarle a su campaña para recuperarla.
+ */
+export function planCarousel({ campaign, formatId = DEFAULT_FORMAT_ID, centerCount = null } = {}) {
+    const slides = [];
+    const skipped = [];
+    for (const objective of CAROUSEL_SLIDES) {
+        const check = validateBeforeGenerate({ campaign, objective, formatId, centerCount });
+        if (check.ok) slides.push({ objective, label: OBJECTIVES[objective].label });
+        else skipped.push({ objective, label: OBJECTIVES[objective].label, reason: check.errors[0] || 'no hay datos' });
+        if (slides.length >= CAROUSEL_MAX) break;
+    }
+    return { slides, skipped };
 }
 
 // ─── El brief para el modelo ───────────────────────────────────────────
@@ -399,7 +528,7 @@ export function buildCampaignBrief({ campaign, objective, audience, language, st
 //
 // La frontera entre la campaña y el grafo de escena. Todo lo que la pieza
 // dibuja sale de acá; la plantilla sólo dice DÓNDE va cada cosa.
-export function buildVariables({ campaign, copy = {}, stats = [], items = [], centers = null, imageUrl = '', logoUrl = '', qrUrl = '' } = {}) {
+export function buildVariables({ campaign, copy = {}, stats = [], items = [], centers = null, partners = [], imageUrl = '', logoUrl = '', qrUrl = '' } = {}) {
     const content = normalizeContent(campaign?.content);
     const v = {
         titulo: str(copy.headline, 90) || str(content.hero.title, 90),
@@ -429,6 +558,20 @@ export function buildVariables({ campaign, copy = {}, stats = [], items = [], ce
         v[`ciudad${i + 1}`] = str(c.city, 40);
         v[`ciudad${i + 1}_puntos`] = c.count ? `${c.count} punto${c.count === 1 ? '' : 's'}` : '';
     });
+    (centers?.centers || []).forEach((c, i) => {
+        v[`centro${i + 1}`] = str(c.name || c.city, 60);
+        v[`centro${i + 1}_dir`] = [str(c.address, 90), str(c.city, 40)].filter(Boolean).join(' · ');
+        v[`centro${i + 1}_horario`] = str(c.schedule, 60);
+    });
+    // Cuántos puntos hay en total. Va SIEMPRE que haya centros, aunque la
+    // pieza muestre menos: recortar en silencio haría creer que ésos son
+    // todos, y quien vive en otra ciudad se quedaría sin buscar.
+    if (centers?.total) {
+        v.centros_total = centers.hidden
+            ? `y ${centers.hidden} punto${centers.hidden === 1 ? '' : 's'} más en la página`
+            : `${centers.total} punto${centers.total === 1 ? '' : 's'} de acopio`;
+    }
+    (partners || []).forEach((p, i) => { v[`aliado${i + 1}`] = str(p.logo, 600); });
     // La fecha de corte de lo que se muestra. Es un dato de la pieza, no del
     // copy: quien la vea tiene que poder saber a cuándo corresponden las cifras
     // sin ir a buscarlo.
@@ -467,6 +610,7 @@ export default {
     LANGUAGES, DEFAULT_LANGUAGE, LANGUAGE_IDS, languageCatalog,
     FORMAT_IDS, DEFAULT_FORMAT_ID, isCampaignFormat,
     LAYOUTS, LAYOUT_IDS, layoutCatalog, capacityOf, pickLayout,
-    publishableStats, chooseStats, activeItems, centerSummary,
+    publishableStats, chooseStats, activeItems, centerSummary, centerDetail, activePartners,
+    CAROUSEL_SLIDES, CAROUSEL_MAX, planCarousel,
     validateBeforeGenerate, buildCampaignBrief, buildVariables, latestCut, campaignUrl,
 };
