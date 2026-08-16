@@ -11,8 +11,8 @@ import {
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
     STATUS_LABELS, canTransition, effectiveStatus, TARGETING_LABELS,
-    validateStats, normalizeCenters, type CampaignStatus, type TargetingMode,
-    type ContributionCenter,
+    validateStats, normalizeCenters, heroSlides, HERO_MAX_SLIDES,
+    type CampaignStatus, type TargetingMode, type ContributionCenter,
 } from '../../lib/contributionSpec';
 import { uploadMediaFiles, IMAGE_ACCEPT } from '../../lib/mediaUpload';
 
@@ -339,9 +339,23 @@ const ContributionCampaigns: React.FC = () => {
     };
 
     // ── Imágenes: destino compartido de la Biblioteca y la subida ──
+    // Varias imágenes de golpe: es lo que hace útil el carrusel del hero —
+    // elegir cinco de la Biblioteca de a una es cinco veces el mismo gesto.
+    const addHeroImages = (urls: string[]) => {
+        if (!c || !urls.length) return;
+        const prev = (c.content?.hero?.images || []) as { url: string; alt?: string }[];
+        const next = [...prev, ...urls.map(url => ({ url, alt: '' }))].slice(0, HERO_MAX_SLIDES);
+        patchContent({ hero: { ...c.content?.hero, images: next } });
+    };
+
     const setImage = (target: string, url: string) => {
         if (!c) return;
-        if (target === 'hero') patchContent({ hero: { ...c.content?.hero, image: url } });
+        if (target === 'heroAdd') addHeroImages([url]);
+        else if (target.startsWith('hero:')) {
+            const idx = Number(target.split(':')[1]);
+            const imgs = [...((c.content?.hero?.images || []) as any[])];
+            if (imgs[idx]) { imgs[idx] = { ...imgs[idx], url }; patchContent({ hero: { ...c.content?.hero, images: imgs } }); }
+        }
         else if (target === 'og') patchContent({ seo: { ...c.content?.seo, ogImage: url } });
         else if (target.startsWith('partner:')) {
             const idx = Number(target.split(':')[1]);
@@ -351,7 +365,10 @@ const ContributionCampaigns: React.FC = () => {
     };
 
     const onPicked = (items: { url: string }[]) => {
-        if (pickerField && items[0]?.url) setImage(pickerField, items[0].url);
+        // Con el hero, TODO lo elegido entra; en el resto de las casillas hay
+        // un solo hueco, así que manda la primera.
+        if (pickerField === 'heroAdd') addHeroImages(items.map(i => i.url).filter(Boolean));
+        else if (pickerField && items[0]?.url) setImage(pickerField, items[0].url);
         setPickerField(null);
     };
 
@@ -361,16 +378,24 @@ const ContributionCampaigns: React.FC = () => {
     };
 
     const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+        const files = Array.from(e.target.files || []);
         // Limpiar el input: volver a elegir el MISMO archivo debe disparar change.
         e.target.value = '';
         const target = uploadFieldRef.current;
-        if (!file || !target) return;
+        if (!files.length || !target) return;
+        // Sólo el hero admite varias; el resto de las casillas tiene un hueco.
+        const lote = target === 'heroAdd' ? files : files.slice(0, 1);
         setUploading(true);
         try {
-            const { uploaded, failed } = await uploadMediaFiles([file]);
-            if (failed.length > 0) throw new Error(`${failed[0].name}: ${failed[0].reason}`);
-            if (uploaded[0]?.url) { setImage(target, uploaded[0].url); toast.success('Imagen subida'); }
+            const { uploaded, failed } = await uploadMediaFiles(lote);
+            // Un fallo no cancela la tanda y se dice CON EL NOMBRE del archivo
+            // (v4.700): «falló una de tres» obliga a adivinar cuál reintentar.
+            if (failed.length) toast.error(`${failed[0].name}: ${failed[0].reason}`);
+            const urls = uploaded.map(u => u.url).filter(Boolean);
+            if (!urls.length) return;
+            if (target === 'heroAdd') addHeroImages(urls);
+            else setImage(target, urls[0]);
+            toast.success(urls.length > 1 ? `${urls.length} imágenes subidas` : 'Imagen subida');
         } catch (err: any) {
             toast.error(err?.message || 'No se pudo subir la imagen');
         } finally {
@@ -385,6 +410,12 @@ const ContributionCampaigns: React.FC = () => {
 
     const content = c?.content || {};
     const hero = content.hero || {};
+    // La lista que EDITA la pantalla. Sale de `heroSlides`, así que una
+    // campaña guardada con una sola `image` aparece acá como su primera fila
+    // en vez de verse vacía — y en cuanto se toque queda escrita en `images`.
+    const heroImgs: { url: string; alt?: string }[] = hero.images?.length ? hero.images : heroSlides(hero);
+    const patchHeroImages = (images: { url: string; alt?: string }[]) =>
+        patchContent({ hero: { ...hero, images } });
     const donateCard = content.donateCard || {};
     const finalCta = content.finalCta || {};
     const seo = content.seo || {};
@@ -496,8 +527,9 @@ const ContributionCampaigns: React.FC = () => {
 
     return (
         <AdminLayout>
-            <input ref={fileInputRef} type="file" accept={IMAGE_ACCEPT} className="hidden" onChange={onFileChosen} />
-            <MediaPicker isOpen={pickerField !== null} onClose={() => setPickerField(null)} onSelect={onPicked} maxSelection={1} />
+            <input ref={fileInputRef} type="file" multiple accept={IMAGE_ACCEPT} className="hidden" onChange={onFileChosen} />
+            <MediaPicker isOpen={pickerField !== null} onClose={() => setPickerField(null)} onSelect={onPicked}
+                maxSelection={pickerField === 'heroAdd' ? HERO_MAX_SLIDES : 1} />
 
             <div className="space-y-6">
                 {/* Cabecera */}
@@ -745,25 +777,65 @@ const ContributionCampaigns: React.FC = () => {
                                 <input className={field} placeholder="EMERGENCIA · TERREMOTO COLOMBIA" value={hero.badge || ''}
                                     onChange={e => patchContent({ hero: { ...hero, badge: e.target.value } })} /></div>
                         </div>
+                        {/* ── Imágenes del hero ──
+                            Varias, y se van turnando cada 5 s como en la
+                            portada del sitio. La `image` de una sola —de las
+                            campañas guardadas antes— se sigue respetando: la
+                            resuelve `heroSlides`, no esta pantalla. */}
                         <div>
-                            <label className={lbl}>Imagen del hero</label>
-                            <div className="flex items-center gap-2 mt-1.5">
-                                <input className={`${field} mt-0 flex-1`} placeholder="URL de la imagen" value={hero.image || ''}
-                                    onChange={e => patchContent({ hero: { ...hero, image: e.target.value } })} />
-                                <button type="button" onClick={() => startUpload('hero')} disabled={uploading}
-                                    className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 disabled:opacity-50">
-                                    <Upload className="w-4 h-4" /> Subir
-                                </button>
-                                <button type="button" onClick={() => setPickerField('hero')}
-                                    className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">
-                                    <ImageIcon className="w-4 h-4" /> Biblioteca
-                                </button>
+                            <div className="flex items-center justify-between gap-2">
+                                <label className={lbl}>Imágenes del hero</label>
+                                <span className="text-[11px] text-gray-400">{heroImgs.length}/{HERO_MAX_SLIDES}</span>
                             </div>
-                            {hero.image && <img src={hero.image} alt={hero.imageAlt || 'Imagen del hero'} className="mt-3 h-32 rounded-xl object-cover border border-gray-100" />}
+                            <p className="text-[11px] text-gray-400 mt-1">
+                                {heroImgs.length > 1
+                                    ? 'Se van turnando cada 5 segundos, igual que el hero de la portada.'
+                                    : 'Agregá dos o más para que se vayan turnando, igual que el hero de la portada.'}
+                            </p>
+
+                            {heroImgs.length > 0 && (
+                                <div className="space-y-2 mt-2.5">
+                                    {heroImgs.map((im: any, i: number) => (
+                                        <div key={i} className="flex items-center gap-2 border border-gray-100 rounded-2xl p-2.5">
+                                            <img src={im.url} alt={im.alt || ''} className="w-20 h-14 rounded-lg object-cover border border-gray-100 flex-shrink-0" />
+                                            <div className="flex-1 min-w-0 space-y-1.5">
+                                                <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="URL de la imagen" value={im.url || ''}
+                                                    onChange={e => patchHeroImages(heroImgs.map((x: any, j: number) => j === i ? { ...x, url: e.target.value } : x))} />
+                                                <input className={`${field} mt-0 py-2 text-[13px]`} placeholder="Texto alternativo (accesibilidad)" value={im.alt || ''}
+                                                    onChange={e => patchHeroImages(heroImgs.map((x: any, j: number) => j === i ? { ...x, alt: e.target.value } : x))} />
+                                            </div>
+                                            <div className="flex-shrink-0 flex flex-col gap-1">
+                                                <RowTools
+                                                    onUp={() => patchHeroImages(moveIn(heroImgs, i, -1))}
+                                                    onDown={() => patchHeroImages(moveIn(heroImgs, i, 1))}
+                                                    onRemove={() => patchHeroImages(heroImgs.filter((_: any, j: number) => j !== i))} />
+                                                <button type="button" onClick={() => setPickerField(`hero:${i}`)}
+                                                    title="Reemplazar desde la Biblioteca"
+                                                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50">
+                                                    <ImageIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Las DOS vías, siempre (v4.700): subir o elegir de
+                                la Biblioteca. Con una sola, reutilizar una foto
+                                ya cargada obligaría a descargarla y resubirla. */}
+                            {heroImgs.length < HERO_MAX_SLIDES && (
+                                <div className="flex items-center gap-2 mt-2.5">
+                                    <button type="button" onClick={() => startUpload('heroAdd')} disabled={uploading}
+                                        className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 disabled:opacity-50">
+                                        <Upload className="w-4 h-4" /> Subir imágenes
+                                    </button>
+                                    <button type="button" onClick={() => setPickerField('heroAdd')}
+                                        className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">
+                                        <ImageIcon className="w-4 h-4" /> Elegir de la Biblioteca
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <div><label className={lbl}>Texto alternativo de la imagen (accesibilidad)</label>
-                            <input className={field} value={hero.imageAlt || ''}
-                                onChange={e => patchContent({ hero: { ...hero, imageAlt: e.target.value } })} /></div>
                         <CtaEditor label="CTA primario" value={hero.ctaPrimary || { ...emptyCta(), action: 'donate' }}
                             onChange={v => patchContent({ hero: { ...hero, ctaPrimary: v } })} />
                         <CtaEditor label="CTA secundario" value={hero.ctaSecondary || { ...emptyCta(), action: 'centers' }}

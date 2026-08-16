@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.811.0 | 2026-08-15 (Varita magica: la IA sugiere el icono de la caja)
-// Cache bust: 2026-08-15i
+// UI V4.812.0 | 2026-08-15 (El hero de la campana se turna entre varias imagenes)
+// Cache bust: 2026-08-15j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.812.0',
+        title: 'El hero de la campaña ahora es un carrusel 🖼️',
+        description: 'La portada de una campaña tenía UNA sola imagen fija. Ahora se pueden cargar hasta ocho y se van turnando cada 5 segundos con un cruce suave, exactamente como el hero de la página de inicio del sitio, con los puntos abajo para saltar a la que se quiera. En el editor las imágenes son una lista: se agregan varias de una vez —subiéndolas o eligiéndolas de la Biblioteca Multimedia, las dos vías de siempre—, se reordenan con las flechas, se reemplaza cualquiera sin tocar las demás y cada una lleva su propio texto alternativo para el lector de pantalla. Con una sola imagen no aparecen los puntos ni hay rotación: se ve igual que antes. Y una campaña ya guardada con su imagen única NO pierde nada — aparece como la primera de la lista, lista para sumarle las que falten.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'interfaz'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Hasta ocho imágenes en el hero de la campaña, turnándose cada 5 segundos como en la portada.' },
+            { type: 'added', text: 'Puntos de navegación para saltar a una imagen, anunciados al lector de pantalla.' },
+            { type: 'added', text: 'Carga múltiple: varias imágenes de una vez, subiendo o desde la Biblioteca Multimedia.' },
+            { type: 'added', text: 'Reordenar, reemplazar y quitar cada imagen, con su propio texto alternativo.' },
+            { type: 'changed', text: 'Las campañas ya configuradas conservan su imagen: pasa a ser la primera de la lista.' },
+        ]
+    },
     {
         version: '4.811.0',
         title: 'Una varita mágica que propone el ícono ✨',

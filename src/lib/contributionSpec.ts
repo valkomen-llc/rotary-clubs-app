@@ -155,6 +155,31 @@ export function donationPresets(currency: string | undefined): { amounts: number
     return DONATION_PRESETS[c] || DONATION_PRESETS.USD;
 }
 
+// ─── Imágenes del hero (v4.812) — espejo del criterio del servidor ────────
+export interface HeroSlide { url: string; alt: string }
+
+/** Tope de imágenes del hero. El de la portada muestra cinco por omisión. */
+export const HERO_MAX_SLIDES = 8;
+
+/** Cada cuántos milisegundos se cambia de imagen. El mismo de la portada. */
+export const HERO_SLIDE_MS = 5000;
+
+/**
+ * Las imágenes que le tocan al hero, en orden. Es el ÚNICO punto donde se
+ * decide si manda `images` o la `image` de siempre: con la decisión escrita
+ * en el editor y otra vez en la página, una campaña se vería distinta según
+ * quién la resuelva.
+ */
+export function heroSlides(hero: any): HeroSlide[] {
+    const list = (Array.isArray(hero?.images) ? hero.images : [])
+        .map((im: any) => ({ url: String(im?.url ?? '').trim(), alt: String(im?.alt ?? '') }))
+        .filter((im: HeroSlide) => im.url)
+        .slice(0, HERO_MAX_SLIDES);
+    if (list.length) return list;
+    const single = String(hero?.image ?? '').trim();
+    return single ? [{ url: single, alt: String(hero?.imageAlt ?? '') }] : [];
+}
+
 // ─── Centros de acopio (F3) — espejo del criterio del servidor ─────────────
 export interface ContributionCenter {
     id: string; city: string; groupLabel: string; name: string; address: string;

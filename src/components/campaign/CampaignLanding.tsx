@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -151,11 +151,30 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         trackCampaign(campaign.id, clubId, 'view', preview);
     }, [campaign.id, clubId, preview]);
 
+    // ── Las imágenes del hero se turnan, igual que en la portada ──
+    //
+    // Los dos hooks van ACÁ ARRIBA, antes de cualquier `return`: es la regla
+    // de `check:hooks` y el defecto que dejó en blanco la portada de un sitio
+    // de Evento (v4.689). `slides` se calcula más abajo con el resto del
+    // contenido, así que el efecto lee su largo desde el estado del render.
+    const [slide, setSlide] = useState(0);
+    const slideCount = heroSlides(campaign.content?.hero).length;
+    useEffect(() => {
+        // Con una sola imagen no hay nada que turnar: un intervalo que
+        // siempre vuelve al mismo índice es trabajo que no se ve.
+        if (slideCount < 2) { setSlide(0); return; }
+        const t = setInterval(() => setSlide(p => (p + 1) % slideCount), HERO_SLIDE_MS);
+        return () => clearInterval(t);
+    }, [slideCount]);
+
     const track = (type: string) => trackCampaign(campaign.id, clubId, type, preview);
     const handleDonate = () => { track('cta_donate_click'); onDonate(); };
 
     const content = campaign.content || {};
     const hero = content.hero || {};
+    // El ÚNICO punto que decide si mandan las varias imágenes o la de
+    // siempre: es criterio compartido con el servidor (espejo probado).
+    const slides = heroSlides(hero);
     const card = content.donateCard || {};
     const ways = (content.waysToHelp || []).filter((w: any) => w.active !== false && w.title);
     const requiredItems = (content.requiredItems || []).filter((it: any) => it.active !== false && it.title);
@@ -171,13 +190,39 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         <>
             {/* ── Hero ── */}
             <section className="relative w-full min-h-[560px] md:min-h-[640px] overflow-hidden flex items-center">
-                {hero.image ? (
-                    <div className="absolute inset-0">
-                        <img src={hero.image} alt={hero.imageAlt || ''} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/20" />
+                {slides.length > 0 ? (
+                    // El `z-0` no es decorativo: convierte este contenedor en
+                    // su propio contexto de apilamiento, así el z-10/z-20 de
+                    // las imágenes y el velo se quedan DENTRO y no tapan el
+                    // texto del hero, que va después y sin z-index.
+                    <div className="absolute inset-0 z-0">
+                        {/* Todas las imágenes están montadas y se cruzan por
+                            opacidad, como en la portada: montar y desmontar
+                            haría que cada cambio pidiera la imagen otra vez y
+                            se viera el hueco mientras carga. */}
+                        {slides.map((s, i) => (
+                            <div key={`${s.url}-${i}`}
+                                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${i === slide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
+                                <img src={s.url} alt={s.alt || ''} className="w-full h-full object-cover" />
+                            </div>
+                        ))}
+                        <div className="absolute inset-0 z-20 bg-gradient-to-r from-black/70 via-black/50 to-black/20" />
                     </div>
                 ) : (
                     <div className="absolute inset-0 bg-rotary-topbar" />
+                )}
+
+                {/* Los puntos sólo con más de una imagen: con una sola serían
+                    un control que no controla nada. */}
+                {slides.length > 1 && (
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">
+                        {slides.map((_, i) => (
+                            <button key={i} type="button" onClick={() => setSlide(i)}
+                                aria-label={`Ver imagen ${i + 1} de ${slides.length}`}
+                                aria-current={i === slide}
+                                className={`h-3 rounded-full transition-all duration-300 ${i === slide ? 'w-8 bg-white' : 'w-3 bg-white/50 hover:bg-white/70'}`} />
+                        ))}
+                    </div>
                 )}
 
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20 grid lg:grid-cols-2 gap-10 items-center">

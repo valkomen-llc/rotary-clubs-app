@@ -204,6 +204,33 @@ const str = (v, max = 4000) => (typeof v === 'string' ? v.slice(0, max) : '');
 const bool = v => v === true;
 const arr = v => (Array.isArray(v) ? v : []);
 
+/** Tope de imágenes del hero. El de la portada muestra cinco por omisión. */
+export const HERO_MAX_SLIDES = 8;
+
+/** Cada cuántos milisegundos se cambia de imagen. El mismo de la portada. */
+export const HERO_SLIDE_MS = 5000;
+
+/**
+ * Las imágenes que le tocan al hero, en orden.
+ *
+ * Es el ÚNICO punto donde se decide si manda `images` o la `image` de
+ * siempre, por el mismo motivo que `animationSourceOf` en el Creador de
+ * Reels: con la decisión escrita en dos lados —el editor y la página—, una
+ * campaña se vería distinta según quién la resuelva.
+ *
+ * Devuelve [] cuando no hay ninguna: el hero cae a su fondo liso, que es
+ * exactamente lo que hacía antes.
+ */
+export function heroSlides(hero = {}) {
+    const list = arr(hero?.images)
+        .map(im => ({ url: String(im?.url ?? '').trim(), alt: String(im?.alt ?? '') }))
+        .filter(im => im.url)
+        .slice(0, HERO_MAX_SLIDES);
+    if (list.length) return list;
+    const single = String(hero?.image ?? '').trim();
+    return single ? [{ url: single, alt: String(hero?.imageAlt ?? '') }] : [];
+}
+
 const normalizeCta = (raw = {}) => ({
     label: str(raw?.label, 80),
     // El destino sólo puede ser http(s) o ruta interna — el mismo cierre que
@@ -231,6 +258,13 @@ export function normalizeContent(raw = {}) {
             highlight: str(c.hero?.highlight, 160),
             image: str(c.hero?.image, 600),
             imageAlt: str(c.hero?.imageAlt, 200),
+            // Varias imágenes que se van turnando, igual que el hero de la
+            // portada. `image`/`imageAlt` se CONSERVAN: es la regla aditiva
+            // del sitio —una campaña guardada con una sola imagen se sigue
+            // viendo igual— y `heroSlides` es quien resuelve cuál manda.
+            images: arr(c.hero?.images).slice(0, HERO_MAX_SLIDES)
+                .map(im => ({ url: str(im?.url, 600), alt: str(im?.alt, 200) }))
+                .filter(im => im.url),
             badge: str(c.hero?.badge, 80),          // «EMERGENCIA · TERREMOTO COLOMBIA»
             ctaPrimary: normalizeCta(c.hero?.ctaPrimary),
             ctaSecondary: normalizeCta(c.hero?.ctaSecondary),
