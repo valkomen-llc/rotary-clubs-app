@@ -92,13 +92,40 @@ export const PALETTE = {
 // Degradado dorado de la curva: el mismo que se ve en la tarjeta tradicional.
 export const GOLD_GRADIENT = ['#B07E1F', '#F2CE6B', '#C9962F', '#F7E4A8', '#B8842A'];
 
+// ─── Tipografías ───────────────────────────────────────────────────────
+//
+// Dos clases, y la diferencia importa:
+//
+//   · Las del SISTEMA están siempre disponibles y no cuestan una descarga.
+//     Ninguna pieza ya guardada puede quedarse sin su letra.
+//   · Las EMPAQUETADAS (`web: true`) viajan con la aplicación en
+//     `public/fonts/` y las carga `designFonts.ts` ANTES de medir y de
+//     dibujar. Son las que reproducen el carácter de las piezas de referencia
+//     del Distrito —una sans condensada pesada en mayúsculas— que ningún stack
+//     del sistema tiene.
+//
+// La cautela que hasta v4.836 prohibía toda fuente web sigue en pie; lo que
+// cambió es que ahora se RESUELVE en vez de evitarse. El peligro que enunciaba
+// era que la fuente llegara para la vista previa y no para la exportación:
+// como las dos leen ESTA misma cadena y comparten `document.fonts`, esperar
+// `document.fonts.ready` las deja ver lo mismo, y si la descarga falla caen
+// JUNTAS al respaldo. La paridad se conserva siempre; lo que se degrada es el
+// parecido con la referencia, y eso se dice. Ver `designFonts.ts`.
+//
+// ⚠️ La cadena de una familia empaquetada TERMINA en tipografías del sistema a
+// propósito. Sin respaldo, un fallo de descarga dejaría el texto en la letra
+// por omisión del navegador, que puede ser una serif — y una pieza
+// institucional compuesta en Times es peor que una compuesta en Arial.
+//
+// ⚠️ `sans` se queda PRIMERA: `fontStack` cae a `FONTS[0]` cuando el id no se
+// reconoce, así que moverla cambiaría la letra de todo documento guardado con
+// una familia que después se retire.
 export const FONTS = [
-    // Sólo tipografías del SISTEMA, con su cadena de respaldo. Una fuente web
-    // habría que cargarla antes de exportar, y el exportador dibuja en un canvas
-    // del navegador: si la fuente no llegó, el archivo sale con otra y la vista
-    // previa deja de ser el archivo. Es la misma cautela que con todo lo demás
-    // acá — antes que una tipografía más, que lo que se ve sea lo que se baja.
     { id: 'sans', label: 'Institucional (Arial)', stack: 'Arial, Helvetica, sans-serif' },
+    // Open Sans es la tipografía de marca de Rotary International; no se
+    // eligió por gusto. Oswald es la condensada de los titulares y las cifras.
+    { id: 'brand', label: 'Rotary (Open Sans)', stack: '"Open Sans", "Segoe UI", Arial, Helvetica, sans-serif', web: true },
+    { id: 'condensed', label: 'Condensada (Oswald)', stack: 'Oswald, "Arial Narrow", Impact, "Arial Black", sans-serif', web: true },
     { id: 'system', label: 'Del sistema', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
     { id: 'verdana', label: 'Verdana', stack: 'Verdana, Geneva, sans-serif' },
     { id: 'tahoma', label: 'Tahoma', stack: 'Tahoma, Geneva, sans-serif' },
@@ -110,6 +137,12 @@ export const FONTS = [
     { id: 'garamond', label: 'Garamond', stack: 'Garamond, "Times New Roman", serif' },
     { id: 'mono', label: 'Monoespaciada', stack: '"Courier New", monospace' },
 ];
+
+/** Las familias que dependen de una descarga. Es el CRITERIO —vive acá, no en
+ *  el cargador— porque lo consumen las dos puntas: `designFonts.ts` para saber
+ *  qué pedir y la pantalla para avisar cuando una pieza salió con la letra de
+ *  respaldo. */
+export const WEB_FONTS = FONTS.filter(f => f.web);
 export const fontStack = (id) => (FONTS.find(f => f.id === id) || FONTS[0]).stack;
 
 // ─── Categorías de plantilla ───────────────────────────────────────────
@@ -198,6 +231,12 @@ export const TEXT_DEFAULTS = {
     lineHeight: 1.2, letterSpacing: 0, italic: false, uppercase: false,
     autoFit: true, minFontSize: 0.018,
 };
+
+/** Las formas con las que se puede RECORTAR una fotografía. Es un catálogo
+ *  CERRADO y no la lista entera de `shapePath`: un recorte con `rect` es lo
+ *  que ya hace `radius`, y una forma inventada dejaría la foto sin dibujar sin
+ *  decir por qué. Al agregar una máscara, agregarla acá y a `shapePath`. */
+export const MASK_SHAPES = ['sweep', 'sweepLeft', 'dome', 'arc', 'wave', 'ribbon', 'ellipse'];
 
 export const IMAGE_DEFAULTS = { fit: 'cover', radius: 0, src: null };
 export const SHAPE_DEFAULTS = { shape: 'rect', fill: PALETTE.royal, radius: 0, stroke: null, strokeWidth: 0 };
@@ -320,6 +359,18 @@ export const normalizeNode = (raw, index = 0) => {
             fit: ['cover', 'contain'].includes(raw?.fit) ? raw.fit : IMAGE_DEFAULTS.fit,
             radius: Math.min(0.5, Math.max(0, Number.isFinite(+raw?.radius) ? +raw.radius : 0)),
             circle: !!raw?.circle,
+            // ── LA MÁSCARA ───────────────────────────────────────────
+            //
+            // Recorta la fotografía con una de las formas de `MASK_SHAPES` en
+            // vez de con un rectángulo. Es lo que permite el borde curvo de las
+            // piezas de referencia sin componer nada encima: la fotografía
+            // viaja INTACTA y sólo cambia por dónde se la recorta —ni filtros,
+            // ni escalas forzadas, ni corrección de color—.
+            //
+            // Manda sobre `circle` y `radius`: son tres formas de decir lo
+            // mismo y hace falta un orden, o el resultado dependería de en qué
+            // rama caiga cada renderizador.
+            mask: MASK_SHAPES.includes(raw?.mask) ? raw.mask : null,
         };
     }
     // shape | icon
@@ -468,10 +519,33 @@ const nodeHasContent = (node) => node.type === 'image'
 // cambia es cómo se ve. Quién es ese nodo lo decide `fusedPhotoId`, en
 // `designCompose.js`: acá sólo se obedece, para que la regla de «qué se dibuja»
 // siga estando en UN solo sitio.
+// ── QUÉ NODO RESPONDE POR UNA VARIABLE ─────────────────────────────────
+//
+// Hasta v4.836 sólo respondían los nodos de IMAGEN. `requiresVar` se inventó
+// para la placa blanca que da contraste al logotipo, que depende de una imagen,
+// y con eso alcanzaba. Las Infografías de Campaña (v4.833) lo usaron para una
+// variable de TEXTO —la pastilla del botón, `requiresVar: 'cta'`— y como
+// ninguna imagen se llama `cta`, la pastilla se caía SIEMPRE: el llamado a la
+// acción salió como texto suelto flotando en toda pieza generada, en las diez
+// plantillas y en las dos versiones publicadas. No dio ningún error; se veía
+// como una pieza sosa.
+//
+// Un nodo de texto responde por su variable SÓLO si ES la variable entera. Con
+// texto mezclado —«Cifras al {{corte}}»— no se puede saber: sin valor el nodo
+// sigue teniendo contenido («Cifras al») y daría la variable por satisfecha,
+// que es el error contrario y peor. Ante la duda, no responde nadie.
+const PURE_VAR = /^\{\{\s*([a-zA-Z0-9_]+)\s*\}\}$/;
+const answersFor = (n) => {
+    if (n.type === 'image') return n.srcVar || null;
+    if (n.type !== 'text' || !n.srcText) return null;
+    const m = String(n.srcText).trim().match(PURE_VAR);
+    return m ? m[1] : null;
+};
+
 export const visibleNodes = (nodes = [], { slots = false, fusedId = null } = {}) => {
     const satisfied = new Map();
     for (const n of nodes) {
-        const key = n.type === 'image' ? n.srcVar : null;
+        const key = answersFor(n);
         if (!key) continue;
         satisfied.set(key, (satisfied.get(key) || false) || nodeHasContent(n));
     }
@@ -580,6 +654,26 @@ export const shapePath = (shape, w, h, opts = {}) => {
         case 'arc':
             // Arco superior (la curva que corona la tarjeta tradicional).
             return `M 0 0 L ${w} 0 L ${w} ${h * 0.52} C ${w * 0.68} ${h * 0.94}, ${w * 0.3} ${h * 0.16}, 0 ${h * 0.72} Z`;
+        // ── Las formas de las piezas de referencia del Distrito ────────
+        //
+        // No son adorno: son el rasgo que hace reconocible la papelería de una
+        // campaña. La fotografía no entra en un rectángulo sino en un lienzo
+        // recortado por una curva ancha, y el pie no es una banda recta sino
+        // un arco. Las dos se declaran acá —en el ÚNICO sitio donde vive la
+        // geometría— y las leen por igual el DOM y el canvas.
+        case 'sweep':
+            // Barrido: el borde inferior baja hacia la DERECHA. Es la máscara
+            // de la fotografía cuando el texto entra por la izquierda.
+            return `M 0 0 L ${w} 0 L ${w} ${h} C ${w * 0.62} ${h * 1.02}, ${w * 0.3} ${h * 0.72}, 0 ${h * 0.55} Z`;
+        case 'sweepLeft':
+            // El mismo barrido, espejado. Hace falta como forma propia porque
+            // no hay reflejo: rotar 180° voltearía también la fotografía.
+            return `M 0 0 L ${w} 0 L ${w} ${h * 0.55} C ${w * 0.7} ${h * 0.72}, ${w * 0.38} ${h * 1.02}, 0 ${h} Z`;
+        case 'dome':
+            // Arco: la banda del pie, con el borde superior curvo. A
+            // diferencia de `wave`, no se sale del recuadro por arriba —lo que
+            // permite apoyarla contra el borde del lienzo sin dejar un hueco—.
+            return `M 0 ${h} L 0 ${h * 0.45} C ${w * 0.3} ${h * 0.02}, ${w * 0.7} ${h * 0.02}, ${w} ${h * 0.45} L ${w} ${h} Z`;
         case 'ribbon':
             return `M 0 ${h * 0.5} C ${w * 0.25} ${h * 0.08}, ${w * 0.75} ${h * 0.92}, ${w} ${h * 0.5} L ${w} ${h} L 0 ${h} Z`;
         case 'rect':

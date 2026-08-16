@@ -37,6 +37,31 @@ import {
     type DesignDocument, type DesignNode, type ImageNode, type ShapeNode, type Fill,
 } from '../../../lib/designSpec';
 import { displayUrl } from '../../../lib/designRender';
+import { ensureDesignFonts, fontState, onFontState, type FontState } from '../../../lib/designFonts';
+
+/**
+ * Pide las tipografías empaquetadas y REPINTA cuando llegan.
+ *
+ * El repintado no es cosmético: `layoutFor` mide con `measureText`, así que el
+ * primer render calcula los saltos de línea y el `autoFit` con la letra de
+ * respaldo. Sin volver a pintar, la vista previa se queda con esa maquetación
+ * mientras la exportación —que sí espera a las fuentes— usa la definitiva, y
+ * las dos dejan de coincidir. Que es exactamente lo que este módulo no puede
+ * permitirse.
+ *
+ * Va acá porque `DesignCanvas` es la ÚNICA vista previa del sitio: la usan el
+ * editor, el preset de campañas y el portal público. Puesto en cada pantalla,
+ * la siguiente se olvidaría.
+ */
+const useDesignFonts = (): FontState => {
+    const [estado, setEstado] = useState<FontState>(() => fontState());
+    useEffect(() => {
+        const baja = onFontState(setEstado);
+        void ensureDesignFonts();
+        return baja;
+    }, []);
+    return estado;
+};
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -107,6 +132,11 @@ const DesignCanvas: React.FC<Props> = ({
 }) => {
     const fmt = formatOf(doc.format);
     const W = fmt.width, H = fmt.height;
+
+    // Va ARRIBA de todo, como manda `check:hooks`. El valor no se lee en el
+    // JSX: lo que importa es que un cambio de estado fuerce el repintado, y con
+    // él una medición nueva con la letra ya cargada.
+    useDesignFonts();
 
     const stageRef = useRef<HTMLDivElement>(null);
     const drag = useRef<DragState | null>(null);
@@ -369,7 +399,18 @@ const DesignCanvas: React.FC<Props> = ({
             return (
                 <div key={node.id} style={{
                     ...style,
-                    borderRadius: img.circle ? '50%' : img.radius ? img.radius * Math.min(node.w * W, node.h * H) : undefined,
+                    // MISMO orden que `drawImageNode` en `designRender.ts`:
+                    // `mask` manda sobre `circle` y sobre `radius`. El trazo es
+                    // el MISMO string que dibuja el canvas —`shapePath`—, y por
+                    // eso el recorte no puede diferir entre lo que se ve y lo
+                    // que se baja. `clip-path: path()` trabaja en píxeles de la
+                    // caja del elemento, que es exactamente el sistema en el que
+                    // `shapePath` devuelve el trazo: el zoom es un `scale()` de
+                    // afuera y no lo altera.
+                    clipPath: img.mask
+                        ? `path('${shapePath(img.mask, node.w * W, node.h * H)}')`
+                        : undefined,
+                    borderRadius: img.mask ? undefined : img.circle ? '50%' : img.radius ? img.radius * Math.min(node.w * W, node.h * H) : undefined,
                     overflow: 'hidden',
                     // El tablero a cuadros y el «Sin imagen» son afordancias
                     // del EDITOR: dicen «acá hay un hueco que podés

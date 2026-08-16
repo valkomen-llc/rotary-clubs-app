@@ -528,7 +528,7 @@ export function buildCampaignBrief({ campaign, objective, audience, language, st
 //
 // La frontera entre la campaña y el grafo de escena. Todo lo que la pieza
 // dibuja sale de acá; la plantilla sólo dice DÓNDE va cada cosa.
-export function buildVariables({ campaign, copy = {}, stats = [], items = [], centers = null, partners = [], imageUrl = '', logoUrl = '', qrUrl = '' } = {}) {
+export function buildVariables({ campaign, copy = {}, stats = [], items = [], centers = null, partners = [], imageUrl = '', logoUrl = '', familyUrls = [], qrUrl = '' } = {}) {
     const content = normalizeContent(campaign?.content);
     const v = {
         titulo: str(copy.headline, 90) || str(content.hero.title, 90),
@@ -572,6 +572,11 @@ export function buildVariables({ campaign, copy = {}, stats = [], items = [], ce
             : `${centers.total} punto${centers.total === 1 ? '' : 's'} de acopio`;
     }
     (partners || []).forEach((p, i) => { v[`aliado${i + 1}`] = str(p.logo, 600); });
+    // La familia Rotary del pie institucional. Llegan PACKED —sin huecos en el
+    // medio— porque los nodos de la franja se consumen en orden y el que no
+    // recibe valor no se dibuja: un sitio con dos escudos cargados muestra dos,
+    // no dos y dos huecos. Son archivos reales del sitio; acá sólo se acotan.
+    (familyUrls || []).forEach((u, i) => { v[`familia${i + 1}`] = str(u, 600); });
     // La fecha de corte de lo que se muestra. Es un dato de la pieza, no del
     // copy: quien la vea tiene que poder saber a cuándo corresponden las cifras
     // sin ir a buscarlo.

@@ -30,6 +30,7 @@ import {
     layoutFor, verticalOffset, shapePath, visibleNodes,
     type DesignDocument, type TextNode, type ImageNode, type ShapeNode, type Fill,
 } from './designSpec';
+import { ensureDesignFonts } from './designFonts';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -124,7 +125,14 @@ const drawImageNode = (ctx: CanvasRenderingContext2D, node: ImageNode, img: HTML
     if (!img) return;
 
     ctx.save();
-    if (node.circle) {
+    // El ORDEN importa y está declarado en `designSpec`: `mask` manda sobre
+    // `circle` y sobre `radius`. Son tres formas de decir lo mismo, y sin un
+    // orden fijo el recorte dependería de en qué rama caiga cada renderizador
+    // —que es justo la clase de diferencia entre la vista previa y el archivo
+    // que este módulo existe para no tener—.
+    if (node.mask) {
+        ctx.clip(new Path2D(shapePath(node.mask, w, h)));
+    } else if (node.circle) {
         const r = Math.min(w, h) / 2;
         ctx.beginPath();
         ctx.ellipse(w / 2, h / 2, r, r, 0, 0, Math.PI * 2);
@@ -143,6 +151,55 @@ const drawImageNode = (ctx: CanvasRenderingContext2D, node: ImageNode, img: HTML
     const dw = img.width * scale, dh = img.height * scale;
     ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
     ctx.restore();
+};
+
+// ─── La LÍNEA BASE que va a usar CSS ───────────────────────────────────
+//
+// El canvas tiene que apoyar cada línea exactamente donde la apoya el DOM, o la
+// vista previa deja de ser el archivo. Hasta v4.836 se DEDUCÍA con
+// `fontBoundingBoxAscent/Descent` y el modelo de medio interlineado de CSS, y
+// con Arial coincidía. Con las tipografías empaquetadas (v4.837) dejó de
+// coincidir: Chromium devuelve esas métricas ya redondeadas a entero mientras
+// que la maquetación de línea trabaja con la fraccionaria, y la diferencia caía
+// justo en el borde de un píxel — el texto del archivo salía 1 px por debajo
+// del de la vista previa en la mitad de las composiciones de campaña. Medido
+// nodo por nodo, no a ojo.
+//
+// Deducir una métrica que el navegador ya sabe era el error. Un elemento
+// `inline-block` de alto CERO se apoya EN LA LÍNEA BASE por definición, así que
+// su borde superior respecto del bloque es la línea base que CSS va a usar,
+// exacta y sin suposiciones sobre qué tabla de la fuente se consultó.
+//
+// Se cachea por (familia, peso, cursiva, tamaño, interlineado): son unas pocas
+// combinaciones por pieza y crear un elemento por línea volvería lento el
+// editor — el mismo motivo por el que `measureContext` es único.
+const baselineCache = new Map<string, number>();
+
+const cssBaseline = (node: TextNode, px: number): number | null => {
+    if (typeof document === 'undefined' || !document.body) return null;
+    const lineBox = px * node.lineHeight;
+    const key = `${node.fontFamily}|${node.fontWeight}|${node.italic ? 1 : 0}|${px}|${lineBox}`;
+    const hit = baselineCache.get(key);
+    if (hit !== undefined) return hit;
+    try {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre;';
+        probe.style.fontFamily = fontStack(node.fontFamily);
+        probe.style.fontWeight = String(node.fontWeight);
+        probe.style.fontStyle = node.italic ? 'italic' : 'normal';
+        probe.style.fontSize = `${px}px`;
+        probe.style.lineHeight = `${lineBox}px`;
+        const marca = document.createElement('span');
+        marca.style.cssText = 'display:inline-block;width:0;height:0;';
+        probe.appendChild(document.createTextNode('Hg'));
+        probe.appendChild(marca);
+        document.body.appendChild(probe);
+        const base = marca.getBoundingClientRect().top - probe.getBoundingClientRect().top;
+        probe.remove();
+        if (!Number.isFinite(base)) return null;
+        baselineCache.set(key, base);
+        return base;
+    } catch { return null; }
 };
 
 const drawTextNode = (ctx: CanvasRenderingContext2D, node: TextNode, W: number, H: number) => {
@@ -178,7 +235,11 @@ const drawTextNode = (ctx: CanvasRenderingContext2D, node: TextNode, W: number, 
     const descent = probe.fontBoundingBoxDescent || px * 0.2;
     const lineBox = px * node.lineHeight;
     const halfLeading = (lineBox - (ascent + descent)) / 2;
-    const baseline = halfLeading + ascent;
+    // Se le PREGUNTA al DOM. La deducción de arriba queda de respaldo para un
+    // entorno sin DOM y para el caso en que la sonda no se pueda medir: es una
+    // aproximación buena —fue lo que bajó la diferencia del 4,44 % al 1,02 %—
+    // pero no es exacta con toda tipografía. Ver `cssBaseline`.
+    const baseline = cssBaseline(node, px) ?? (halfLeading + ascent);
 
     let y = verticalOffset(node, layout, h);
     const spacing = (node.letterSpacing || 0) * W;
@@ -211,6 +272,21 @@ export interface RenderOptions {
 }
 
 export const renderDocumentToCanvas = async (doc: DesignDocument, opts: RenderOptions = {}): Promise<HTMLCanvasElement> => {
+    // ── LA TIPOGRAFÍA, ANTES DE MEDIR NADA ────────────────────────────
+    //
+    // `layoutFor` decide los saltos de línea y el tamaño con `measureText`, y
+    // `measureText` devuelve el ancho de la fuente que el documento tenga
+    // CARGADA en ese instante. Sin esta espera, una pieza exportada mientras la
+    // fuente viaja se mide con la de respaldo y se dibuja con la definitiva: el
+    // texto entra en pantalla y se sale en el archivo.
+    //
+    // Va acá y no en cada pantalla porque acá pasan TODOS los caminos que
+    // rasterizan —exportar, subir a la Biblioteca, la miniatura del listado y
+    // la descarga del carrusel—. Puesto en las pantallas, la siguiente se
+    // olvidaría. Es idempotente y no rechaza: con la descarga fallida se
+    // compone con las del sistema (ver `designFonts.ts`).
+    await ensureDesignFonts();
+
     const fmt = formatOf(doc.format);
     const scale = Math.min(MAX_SCALE, Math.max(0.1, opts.scale ?? 1));
     const W = Math.round(fmt.width * scale);
