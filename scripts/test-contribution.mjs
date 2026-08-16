@@ -797,6 +797,15 @@ check('la página usa el criterio compartido para los videos, no una comprobaci�
 check('con más de un video hay flechas atrás y siguiente',
     /aria-label="Video anterior"/.test(landingSrc) && /aria-label="Video siguiente"/.test(landingSrc)
     && /videos\.length > 1 &&/.test(landingSrc));
+// v4.817: encima del video tapaban el reproductor —y la barra de controles
+// del navegador en un archivo propio—: no hay sitio libre seguro sobre un
+// video en todos los tamaños.
+check('las flechas van FUERA del video, no encimadas', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
+    const controles = sec.slice(sec.indexOf('aria-label="Video anterior"'));
+    // Ni posicionamiento absoluto ni fondo translúcido: eso era estar encima.
+    return !/absolute (left|right)-3/.test(sec) && !/bg-black\/45/.test(sec) && controles.length > 0;
+})());
 // Un video que se cambia solo mientras alguien lo mira es un defecto, no una
 // animación: acá NO hay intervalo, al revés que el hero.
 check('los videos NO rotan solos', (() => {
@@ -809,6 +818,21 @@ check('se dibuja SÓLO el video que manda, y se remonta al cambiar',
     /key=\{videoActual\.url\}/.test(landingSrc));
 check('un índice que quedó fuera de rango no rompe la sección',
     /videos\[Math\.min\(videoIdx, videos\.length - 1\)\] \|\| null/.test(landingSrc));
+
+// v4.817: el botón que cierra la sección de elementos.
+check('el botón configurado pasa por CampaignCta, no por una copia a mano',
+    /itemsCta\?\.label \? \([\s\S]{0,300}<CampaignCta cta=\{itemsCta\}/.test(landingSrc));
+// Regla aditiva: una campaña guardada antes no puede quedarse sin su botón.
+check('sin configurar se conserva el «Ver centros de acopio» de siempre',
+    /\) : hasCenters && \(/.test(landingSrc) && /Ver centros de acopio/.test(landingSrc));
+check('el botón se normaliza con el MISMO normalizeCta que el resto', (() => {
+    const n = normalizeContent({ requiredItemsCta: { label: 'Quiero donar', action: 'donate', url: 'javascript:x' } });
+    // La URL peligrosa se descarta aunque la acción no la use: acabaría en un href.
+    return n.requiredItemsCta.label === 'Quiero donar' && n.requiredItemsCta.action === 'donate'
+        && n.requiredItemsCta.url === '';
+})());
+check('un botón sin configurar queda vacío y no se pinta',
+    normalizeContent({}).requiredItemsCta.label === '');
 check('el video va DESPUÉS de las cajas de elementos', (() => {
     const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
     return sec.indexOf('requiredItems.map') < sec.indexOf('{videoActual &&');
@@ -875,6 +899,10 @@ check('una campaña con UN video lo ve en el editor como su primera fila',
     /content\.requiredItemsVideos\?\.length \? content\.requiredItemsVideos/.test(adminSrc));
 check('el editor no inventa su propio tope de videos: usa el del spec',
     /MAX_SECTION_VIDEOS/.test(adminSrc));
+check('el botón del final se edita con el MISMO CtaEditor que el resto',
+    /<CtaEditor label="Botón al final de la sección"[\s\S]{0,200}requiredItemsCta/.test(adminSrc));
+check('el editor DICE qué pasa si se deja vacío',
+    /Sin texto se conserva el botón «Ver centros de acopio»/.test(adminSrc));
 // Un diálogo que ofrece fotos a quien va a subir un video ofrece lo que no
 // sirve; el `accept` del input se lee al abrirlo, así que hace falta el suyo.
 check('el diálogo de archivo y la Biblioteca se abren en modo VIDEO para ese campo',

@@ -1043,6 +1043,20 @@ const ContributionCampaigns: React.FC = () => {
                                 </div>
                             )}
                         </div>
+
+                        {/* El botón que cierra la sección. Es el MISMO editor
+                            que el resto de los botones de la campaña: escrito
+                            aparte se separaría en silencio. */}
+                        <div className="border-t border-gray-100 pt-5 mt-2">
+                            <CtaEditor label="Botón al final de la sección"
+                                value={content.requiredItemsCta || emptyCta()}
+                                onChange={v => patchContent({ requiredItemsCta: v })} />
+                            {!content.requiredItemsCta?.label && (
+                                <p className="text-[11px] text-gray-400 mt-2">
+                                    Sin texto se conserva el botón «Ver centros de acopio», que aparece cuando la campaña tiene centros publicados.
+                                </p>
+                            )}
+                        </div>
                     </div>
                 </Card>
 

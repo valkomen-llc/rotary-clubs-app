@@ -2553,6 +2553,15 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   al pasar al siguiente.
 - **El índice se acota AL LEER** (`Math.min(idx, len - 1)`), no con otro
   efecto: quitar videos desde el panel deja el índice guardado fuera de rango.
+- **Los controles del carrusel van FUERA del video** (v4.817). Encimados
+  tapaban el reproductor —y en un archivo propio, justo la barra de controles
+  del navegador—: sobre un video no hay sitio libre que sea seguro en todos
+  los tamaños. Van debajo, en una fila con las flechas, los puntos y el
+  contador. No reintroducir `absolute` sobre el marco del video.
+- **El botón que cierra la sección pasa por `CampaignCta`**, como el resto:
+  el criterio de a dónde lleva y cómo se abre es UNO solo. Sin `label` se
+  conserva el «Ver centros de acopio» heredado — regla aditiva, una campaña
+  guardada antes no puede quedarse sin su botón.
 - **El `MediaPicker` acepta `mediaType`** y sigue en `image` por omisión: las
   nueve pantallas que ya lo usaban piden imágenes y estaba fijado en el
   código. Sin esto, el botón «Biblioteca» del campo de video ofrecería fotos,
