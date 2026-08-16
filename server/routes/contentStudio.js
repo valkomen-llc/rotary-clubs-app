@@ -58,6 +58,7 @@ import {
     getActiveReels
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
+import { getCampaignPostOptions, composeCampaignPost } from '../controllers/campaignPostController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
@@ -79,6 +80,13 @@ router.post('/reel-webhook', handleRenderWebhook);
 
 // Content Generation
 router.post('/generate-post', authMiddleware, generatePost);
+
+// ── Infografías de Campaña (v4.833) ──
+// El preset «Maneras de Contribuir» del Generador de Publicaciones. Compone
+// una pieza con el motor de Plantillas IA a partir de una campaña de
+// contribución; el alcance lo decide el servidor con el clubId del token.
+router.get('/campaign-post/options', authMiddleware, getCampaignPostOptions);
+router.post('/campaign-post/compose', authMiddleware, composeCampaignPost);
 
 // Generación de textos de contenedores de la portada desde el Cerebro (RAG).
 router.post('/generate-container', authMiddleware, generateContainer);

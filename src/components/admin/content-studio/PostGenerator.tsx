@@ -1,4 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { publicationTypes, CAMPAIGN_TYPE_ID, CAMPAIGN_TYPE_LABEL } from '../../../lib/publicationContext';
+import CampaignPostPanel from './CampaignPostPanel';
 import {
     Image as ImageIcon,
     Sparkles,
@@ -551,8 +553,55 @@ const PostGenerator: React.FC = () => {
         }
     };
 
+    // ── El preset de Campañas de Contribución ─────────────────────────
+    //
+    // Es el ÚNICO que COMPONE la pieza en vez de regenerar la fotografía con un
+    // modelo de imagen, así que tiene pantalla propia: el motor de imagen, el
+    // enfoque Rotary y el selector de foto de arriba no significan nada acá, y
+    // dejarlos a la vista haría creer que participan.
+    //
+    // Va ANTES del `return` de siempre, no dentro: es otra pantalla, no una
+    // variante de ésta.
+    const esCampana = aiConfig.type === CAMPAIGN_TYPE_ID;
+
     return (
         <div className="space-y-6 pb-12">
+            {/* El conmutador. Los nueve tipos de siempre viven en la rejilla de
+                más abajo; éste va acá arriba porque cambia la pantalla entera. */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-3">
+                <div className="flex-1 min-w-[220px]">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Qué vas a generar</p>
+                    <p className="text-sm font-bold text-gray-700 mt-1">
+                        {esCampana
+                            ? 'Una infografía compuesta con los datos de una campaña.'
+                            : 'Una publicación a partir de una fotografía.'}
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setAiConfig({ ...aiConfig, type: 'standard' })}
+                        className={`px-4 py-2.5 rounded-xl text-[11px] font-black border-2 transition-all ${
+                            !esCampana ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
+                                : 'bg-white border-gray-100 text-gray-400 hover:border-blue-100'}`}
+                    >
+                        DESDE UNA FOTO
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setAiConfig({ ...aiConfig, type: CAMPAIGN_TYPE_ID })}
+                        className={`px-4 py-2.5 rounded-xl text-[11px] font-black border-2 transition-all ${
+                            esCampana ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
+                                : 'bg-white border-gray-100 text-gray-400 hover:border-blue-100'}`}
+                    >
+                        {CAMPAIGN_TYPE_LABEL.toUpperCase()}
+                    </button>
+                </div>
+            </div>
+
+            {esCampana && <CampaignPostPanel />}
+
+            {!esCampana && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* 1. Panel de Control */}
                 <div className="space-y-6">
@@ -606,18 +655,13 @@ const PostGenerator: React.FC = () => {
                     <div className="grid grid-cols-1 gap-4">
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Tipo de Publicación (IA Preset)</label>
+                            {/* Las etiquetas salen de `publicationContext.ts`, el
+                                espejo del catálogo del servidor. Estaban escritas a
+                                mano acá —con otros nombres: «Storytelling» contra
+                                «Narración de historias»—, que es justo lo que la regla
+                                de v4.667 dice que no puede pasar. */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {[
-                                    { id: 'standard', label: 'Estándar' },
-                                    { id: 'storytelling', label: 'Storytelling' },
-                                    { id: 'fundraising', label: 'Fundraising' },
-                                    { id: 'event', label: 'Evento' },
-                                    { id: 'project', label: 'Proyecto' },
-                                    { id: 'membership', label: 'Membresía' },
-                                    { id: 'networking', label: 'Networking' },
-                                    { id: 'endpolio', label: 'End Polio Now' },
-                                    { id: 'crowdfunding', label: 'Crowdfunding' }
-                                ].map((type) => (
+                                {publicationTypes().map((type) => (
                                     <button
                                         key={type.id}
                                         onClick={() => setAiConfig({ ...aiConfig, type: type.id })}
@@ -1037,6 +1081,7 @@ const PostGenerator: React.FC = () => {
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Schedule modal — v4.345 */}
             {isScheduleModalOpen && (

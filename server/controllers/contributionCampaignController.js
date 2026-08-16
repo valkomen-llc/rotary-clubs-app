@@ -577,7 +577,7 @@ export const saveCenters = async (req, res) => {
 };
 
 // Los centros que ve UN sitio: los centrales + los suyos (F4). Activos.
-const publicCentersFor = async (campaignId, clubId) => {
+export const publicCentersFor = async (campaignId, clubId) => {
     const { rows } = await db.query(
         `SELECT id, city, "groupLabel", name, address, complement, schedule,
                 "contactName", phone, notes, active, "sortOrder", "clubId"
@@ -595,7 +595,7 @@ const publicCentersFor = async (campaignId, clubId) => {
 // Los sitios que la campaña alcanza se resuelven contra la MISMA forma de
 // club que usa el resto de la plataforma: id, districtId y el texto district
 // (que es una LISTA, v4.748).
-const siteOf = async (clubId) => {
+export const siteOf = async (clubId) => {
     const { rows } = await db.query(
         `SELECT id, "districtId", district FROM "Club" WHERE id = $1 LIMIT 1`,
         [clubId]
@@ -603,7 +603,7 @@ const siteOf = async (clubId) => {
     return rows[0] || null;
 };
 
-const servableCampaigns = async () => {
+export const servableCampaigns = async () => {
     const { rows } = await db.query(
         `SELECT * FROM "ContributionCampaign" WHERE status IN ('scheduled', 'active')`
     );

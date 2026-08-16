@@ -57,7 +57,12 @@ export const FORMATS = {
         width: 1080, height: 1080, available: true,
         networks: ['Instagram', 'Facebook', 'LinkedIn', 'WhatsApp', 'X'],
     },
-    post_4_5: { id: 'post_4_5', label: 'Post vertical', ratio: '4:5', width: 1080, height: 1350, available: false, networks: ['Instagram', 'Facebook'] },
+    // v4.833: activo. Lo que faltaba NO era el interruptor —los nodos son
+    // fracciones y el motor nunca dependió del alto— sino plantillas
+    // AUTORIZADAS para esta proporción: una compuesta para 1:1 y estirada a
+    // 4:5 deja el texto flotando. Las de Infografías de Campaña
+    // (`campaignTemplates.js`) son las primeras en declararlo.
+    post_4_5: { id: 'post_4_5', label: 'Post vertical', ratio: '4:5', width: 1080, height: 1350, available: true, networks: ['Instagram', 'Facebook'] },
     story_9_16: { id: 'story_9_16', label: 'Historia', ratio: '9:16', width: 1080, height: 1920, available: false, networks: ['Instagram', 'Facebook', 'WhatsApp'] },
     post_16_9: { id: 'post_16_9', label: 'Apaisado', ratio: '16:9', width: 1920, height: 1080, available: false, networks: ['LinkedIn', 'X', 'YouTube'] },
 };

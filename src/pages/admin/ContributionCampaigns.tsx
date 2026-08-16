@@ -1011,6 +1011,25 @@ const ContributionCampaigns: React.FC = () => {
                                 <input className={field} placeholder="EMERGENCIA · TERREMOTO COLOMBIA" value={hero.badge || ''}
                                     onChange={e => patchContent({ hero: { ...hero, badge: e.target.value } })} /></div>
                         </div>
+                        {/* ── Dónde y cuándo ocurrió ──
+                            Campos propios desde v4.833. Hasta entonces el lugar
+                            vivía dentro del título o de la etiqueta y la fecha
+                            no existía en ninguna parte —la vigencia de la
+                            campaña no es cuándo ocurrió el hecho—.
+                            El Generador de Publicaciones los necesita para
+                            poder nombrarlos: sin ellos NO los deduce del texto,
+                            porque adivinar una ciudad o una fecha en una pieza
+                            institucional es inventar. */}
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><label className={lbl}>Lugar del hecho</label>
+                                <input className={field} placeholder="San José del Palmar, Chocó — Colombia" value={content.location || ''}
+                                    onChange={e => patchContent({ location: e.target.value })} />
+                                <p className="text-[11px] text-gray-400 mt-1">Sin este dato, las piezas generadas no nombran el lugar.</p></div>
+                            <div><label className={lbl}>Fecha del hecho</label>
+                                <input className={field} placeholder="14 de agosto de 2026" value={content.eventDate || ''}
+                                    onChange={e => patchContent({ eventDate: e.target.value })} />
+                                <p className="text-[11px] text-gray-400 mt-1">No es la vigencia de la campaña: es cuándo ocurrió.</p></div>
+                        </div>
                         {/* ── Imágenes del hero ──
                             Varias, y se van turnando cada 5 s como en la
                             portada del sitio. La `image` de una sola —de las

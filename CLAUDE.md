@@ -2391,6 +2391,141 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
+## Infografías de Campaña (Generador de Publicaciones) — v4.833 (Fase 1)
+
+El preset **«Maneras de Contribuir»** del Generador de Publicaciones convierte
+una campaña de contribución en una pieza para redes: elige la campaña, el
+objetivo, el formato y el idioma, y compone la infografía con los datos que ya
+están cargados. Fase 1 de tres.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/campaignPostSpec.js` | El CRITERIO. **Puro**: objetivos, audiencias, idiomas, presets de layout, cupos, indicadores publicables, validación previa y el brief |
+| `src/lib/campaignPostSpec.ts` | Espejo en el navegador: avisos en vivo con el mismo criterio |
+| `server/lib/campaignTemplates.js` | Las composiciones: **datos**, tres × dos formatos |
+| `server/controllers/campaignPostController.js` | Alcance, copy validado y compilación del documento |
+| `src/components/admin/content-studio/CampaignPostPanel.tsx` | La pantalla del preset |
+| `src/lib/publicationContext.ts` | Espejo del catálogo de tipos, que estaba duplicado en el JSX |
+
+Pruebas: `npm run test:campaign-post` (94 casos, **sin base, credenciales ni
+red**). El smoke de navegador monta el Generador de Publicaciones con la API
+interceptada (26 comprobaciones).
+
+**Reglas durables:**
+
+- **SE COMPONE, NO SE GENERA, y es la decisión de la que cuelga todo.** El
+  Generador de Publicaciones regenera la FOTOGRAFÍA con un modelo de imagen;
+  eso no sirve para una infografía por dos motivos independientes: la regla #1
+  del sitio prohíbe postprocesar la salida de un modelo —el equipo rechazó el
+  composite dos veces con las palabras «se ve overlay / montaje»—, así que no se
+  puede dibujar el texto encima; y pedirle al modelo que ESCRIBA las cifras
+  tampoco, porque `designCompose.js` ya dejó documentado que los modelos
+  generativos no escriben texto de forma fiable y que cuando sale mal **no hay
+  salida limpia**. La pieza se compone con el grafo de escena de Plantillas IA,
+  que es determinista.
+- **El preset vive en el Generador de Publicaciones y el MOTOR es el de
+  Plantillas IA.** La vista previa es `DesignCanvas` en sólo lectura y la
+  exportación es `designRender.ts`: los MISMOS. Un segundo previsualizador o un
+  segundo exportador reintroducen la duplicación de maquetación que ese módulo
+  existe para evitar, y la diferencia se ve como «la vista previa no es lo que
+  descargué». **No agregar un segundo camino de maquetación.**
+- **Un indicador sin FUENTE no llega a una pieza** (`publishableStats`). Es la
+  misma exigencia que `validateStats` impone al publicar la campaña y que
+  `resolveForSite` aplica a la página pública: etiqueta, valor, fuente y fecha.
+  Y los descartados se DEVUELVEN con su motivo — un filtro silencioso deja al
+  usuario mirando una pieza sin la cifra que esperaba y sin saber qué le falta.
+  Uno **desactivado** no se reporta: es una decisión del administrador, no un
+  defecto, y avisarlo llenaría la pantalla de avisos que nadie tiene que
+  atender.
+- **La FUENTE va pegada a su cifra, no en un pie común.** Una campaña puede
+  mezclar un balance oficial con otro dato; un pie único los atribuiría a todos
+  a la misma fuente, que es falso.
+- **El modelo escribe el copy y el CÓDIGO lo valida**, con
+  `validateEmergencyCopy` y su bucle de reintento: es la capa 3 de la Campaña de
+  Emergencia y la que hace verdadera la promesa de no inventar. Se validan
+  TODOS los textos, incluidos los de cada red — un titular limpio con un copy de
+  Instagram inventando una cifra es el mismo defecto por la otra puerta.
+  **Los valores de los indicadores entran al universo de lo suministrado**: son
+  datos de la campaña con fuente registrada, así que mencionarlos no es
+  inventar; sin eso, un copy que dijera la cifra que la pieza muestra al lado se
+  rechazaría por «número no suministrado».
+- **Agotados los reintentos el copy se ENTREGA con sus avisos, no se descarta.**
+  Es editable antes de publicar y quitarlo dejaría la pieza sin ninguno — misma
+  decisión que el guion de la Campaña de Emergencia (v4.783).
+- **La validación va ANTES de llamar al modelo.** Producir la pieza y descubrir
+  después que le falta el título es pagar por nada. Y se separa en `errors`
+  —no se puede generar— y `warnings` —se puede, y hay que decirlo—: tratarlos
+  igual convierte cualquier aviso en un bloqueo y se dejan de leer.
+- **UBICACIÓN y FECHA DEL HECHO son campos propios de la campaña** (v4.833,
+  `content.location` y `content.eventDate`, aditivos). No existían: el lugar
+  vivía dentro del título o de la insignia y la fecha en ninguna parte
+  —`startAt` es la vigencia de la CAMPAÑA, no cuándo ocurrió—. **No se deducen
+  del texto**: adivinar una ciudad o una fecha en una pieza institucional es
+  exactamente lo que la regla de veracidad prohíbe. Sin dato, el brief DICE que
+  no se sabe, que es lo que impide que el modelo lo complete — un hueco en
+  silencio es una invitación a llenarlo.
+- **Dos formatos y ninguno más** (`FORMAT_IDS`). Un formato arbitrario obligaría
+  a rehacer los layouts. El 4:5 quedó ACTIVO en `designSpec.FORMATS`: lo que
+  faltaba **no era el interruptor** —los nodos son fracciones y el motor nunca
+  dependió del alto— sino plantillas autorizadas para esa proporción. Una
+  compuesta para 1:1 y estirada a 4:5 deja el texto flotando.
+- **SEIS plantillas, no tres.** Lo que cambia entre formatos es CUÁNTO entra y
+  dónde respira, y eso se declara, no se calcula.
+- **Los bloques de un indicador se apilan SUMANDO sus alturas**
+  (`valueH + labelH + sourceH`), no con separaciones sueltas. Con un `gap`
+  propio, bastaba que la altura del valor creciera más que su separación para
+  que la etiqueta le quedara encima — y pasó en TRES de las seis composiciones.
+  Ojo con las unidades: `fontSize` es fracción del ANCHO y `h` lo es del ALTO;
+  en 4:5 no son lo mismo.
+- **Una prueba comprueba que los textos de una plantilla NO SE PISEN.** Es el
+  defecto concreto de una composición mal medida y no lo ve ninguna otra
+  comprobación: el código es válido, los tipos están bien y la pieza sale con
+  dos frases una encima de la otra. Encontró los tres solapamientos de arriba.
+  Se mide sobre los nodos de TEXTO; las formas se superponen a propósito (el
+  fondo, el velo, la pastilla del botón).
+- **Cada bloque de cifra y de elemento lleva `dropIfEmpty`**: una pieza con dos
+  cifras en una composición de tres no deja recuadros vacíos.
+- **Un objetivo declara qué EXIGE** (`needs`). Pedir «panorama» sin cifras
+  publicables o «ayuda humanitaria» sin elementos es un ERROR, no un aviso: la
+  pieza saldría vacía. Y si la composición pedida no puede pintar lo que hay,
+  `pickLayout` cae a la que sí puede **y lo anota** en vez de entregar un hueco.
+- **El alcance lo decide el SERVIDOR con el `clubId` del token.** El operador ve
+  todas las campañas vivas; un administrador de sitio ve ÚNICAMENTE la que
+  alcanza al suyo, resuelta con el MISMO `pickCampaignForSite` de la página
+  pública. Con un segundo criterio de alcance, el generador ofrecería una
+  campaña que la página del sitio no muestra y la pieza mandaría a una landing
+  que no existe ahí.
+- **El render sigue en el NAVEGADOR.** Componer texto en el servidor exige
+  rasterizar un SVG con sharp, y Vercel **no tiene ninguna fuente instalada**:
+  cada glifo sale como un cuadrito (medido en v4.794). El controlador resuelve
+  DATOS; no pinta nada. **No mover el dibujo al servidor.**
+- **El idioma se resuelve al GENERAR EL COPY**, no con el traductor del sitio:
+  aquél trabaja sobre el DOM y una pieza exportada a canvas lleva el texto
+  HORNEADO — ni el traductor ni `data-no-translate` la alcanzan. Los nombres
+  propios, cifras, ciudades e instituciones se protegen en el prompt.
+- **Rehacer el DISEÑO no vuelve a pedir el texto** (`copy` en el cuerpo). Es lo
+  que permite probar composiciones y formatos sin gastar una llamada al modelo
+  por cada una — mismo criterio que regenerar la voz sin regenerar el video en
+  el Creador de Reels.
+- **El catálogo de tipos ya no está duplicado** (`src/lib/publicationContext.ts`).
+  La regla de v4.667 decía que vive en un solo sitio y **seguía escrito a mano**
+  en `PostGenerator.tsx`, con otras etiquetas: «Storytelling» contra «Narración
+  de historias». Se resuelve con un espejo comparado por SALIDAS en la prueba,
+  que es el patrón de los otros seis specs del sitio y no cuesta un viaje de red.
+- **El preset NO entra en `TYPE_LABELS`.** Los nueve tipos de ahí sólo cambian
+  el TONO del copy; éste cambia el motor, la pantalla y los controles. Mezclarlo
+  en la misma lista dejaría a la vista el selector de foto, el motor de imagen y
+  el enfoque Rotary sin que signifiquen nada.
+- **El QR viaja como un nodo con `dropIfEmpty`**, así que encenderlo en la Fase 2
+  no obliga a rehacer las seis composiciones: hoy el hueco simplemente no se
+  dibuja y el resto no se mueve.
+
+**Pendientes conocidos (Fases 2 y 3):** el QR desde la URL real, los objetivos
+de centros de acopio / impacto / internacional con sus layouts, la franja de
+aliados, el carrusel de varias piezas, publicar o programar en las cuentas
+conectadas y las métricas de asset ligadas a la campaña. La arquitectura los
+admite sin tocar el compilador ni el modelo de datos.
+
 ## Campañas de Contribución — v4.807 (COMPLETO, F1-F5)
 
 «Maneras de Contribuir» es una landing de campañas configurable desde el

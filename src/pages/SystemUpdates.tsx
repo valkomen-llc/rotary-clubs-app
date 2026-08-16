@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.832.0 | 2026-08-16 (Siempre tres videos a la vista y la rotación no se para)
+// UI V4.833.0 | 2026-08-16 (Infografías de campaña en el Generador de Publicaciones)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.833.0',
+        title: 'Infografías de campaña, con los datos ya cargados 📊',
+        description: 'El Generador de Publicaciones tiene un modo nuevo: «Maneras de Contribuir». Elegís una campaña activa y el sistema arma la pieza con lo que ya está cargado en ella —título, cifras, elementos que se necesitan, colores, logotipo y la dirección de la landing—, sin volver a escribir nada. Cuatro objetivos (sensibilización, recaudación, ayuda humanitaria y panorama de la emergencia), dos formatos (1080×1080 y 1080×1350), audiencia local o rotaria internacional, y español o inglés. Además del diseño se generan los textos para Instagram, Facebook, LinkedIn, X y WhatsApp. Lo más importante: LAS CIFRAS NO LAS ESCRIBE LA IA. Se dibujan tal cual están en la campaña, cada una con su fuente al lado, y un indicador sin fuente registrada no se puede publicar — ni siquiera aparece para elegirlo. El texto que sí escribe la IA pasa por el control que rechaza cifras no suministradas, cuantificadores vagos y atribuciones inventadas. Podés rehacer el diseño sin gastar una generación de texto, descargar en PNG o JPG y guardar la pieza en la Biblioteca.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'contribuciones', 'campanas', 'ia', 'redes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Nuevo modo «Maneras de Contribuir» en el Generador de Publicaciones.' },
+            { type: 'added', text: 'La pieza se compone con los datos reales de la campaña: nada se vuelve a escribir.' },
+            { type: 'added', text: 'Formatos 1080×1080 y 1080×1350, con cuatro objetivos y dos audiencias.' },
+            { type: 'added', text: 'Textos listos para Instagram, Facebook, LinkedIn, X y WhatsApp.' },
+            { type: 'added', text: 'Lugar y fecha del hecho como campos propios de la campaña.' },
+        ]
+    },
     {
         version: '4.832.0',
         title: 'Siempre tres videos, y la rotación ya no se para 🔁',
