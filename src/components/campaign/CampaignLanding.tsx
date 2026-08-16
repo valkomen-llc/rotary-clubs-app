@@ -362,7 +362,16 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             un defecto, no una animación. */}
                         {videoActual && (
                             <div className="mt-14 max-w-3xl mx-auto">
-                                <div className="relative w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg" style={{ aspectRatio: '16 / 9' }}>
+                                {/* Este envoltorio existe SÓLO para posicionar
+                                    las flechas: mide exactamente lo que mide el
+                                    video, así `top-1/2` cae en el medio del
+                                    video y no en el medio del bloque —que
+                                    incluye el pie y los puntos y dejaba las
+                                    flechas 36 px por debajo del centro—.
+                                    Y no lleva `overflow-hidden`: el del marco
+                                    recortaría cualquier cosa colocada afuera. */}
+                                <div className="relative">
+                                <div className="w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg relative" style={{ aspectRatio: '16 / 9' }}>
                                     {videoActual.video.kind === 'file' ? (
                                         // Un archivo propio se reproduce con el
                                         // reproductor del navegador: no hace
@@ -396,22 +405,47 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     )}
 
                                 </div>
+
+                                {/* Las flechas A LOS LADOS del video, a media
+                                    altura y POR FUERA: `-left-16`/`-right-16`
+                                    las saca del marco, así no tapan nada del
+                                    reproductor —ni su barra de controles, que
+                                    es lo que estorbaban cuando iban encima—.
+
+                                    Se esconden por debajo de `xl` porque ahí
+                                    ya no hay margen lateral donde ponerlas sin
+                                    volver a invadir el video; en esos tamaños
+                                    quedan las de la fila de abajo. */}
+                                {videos.length > 1 && (
+                                    <>
+                                        <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                            aria-label="Video anterior"
+                                            className="hidden xl:flex absolute -left-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
+                                            <ChevronLeft className="w-6 h-6" />
+                                        </button>
+                                        <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                            aria-label="Video siguiente"
+                                            className="hidden xl:flex absolute -right-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 shadow-sm items-center justify-center transition-colors">
+                                            <ChevronRight className="w-6 h-6" />
+                                        </button>
+                                    </>
+                                )}
+                                </div>
+
                                 {videoActual.title && (
                                     <p className="text-center text-sm text-gray-500 mt-4">{videoActual.title}</p>
                                 )}
 
-                                {/* Los controles van DEBAJO, fuera del video.
-                                    Encima tapaban el reproductor —y en un
-                                    archivo propio, la barra de controles del
-                                    navegador—: sobre un video no hay sitio
-                                    libre que sea seguro en todos los tamaños.
-                                    Sólo con más de uno: una flecha que vuelve
-                                    al mismo sitio no controla nada (v4.650). */}
+                                {/* Los puntos y el contador, siempre debajo. Y
+                                    las flechas repetidas SÓLO en pantallas
+                                    angostas, donde las de los lados no caben:
+                                    sin ellas, en un móvil no habría forma de
+                                    pasar de video salvo apuntando a un punto. */}
                                 {videos.length > 1 && (
                                     <div className="flex items-center justify-center gap-4 mt-5">
                                         <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
-                                            aria-label="Video anterior"
-                                            className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            aria-label="Video anterior (compacto)"
+                                            className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <div className="flex items-center gap-2">
@@ -424,8 +458,8 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                             ))}
                                         </div>
                                         <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
-                                            aria-label="Video siguiente"
-                                            className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
+                                            aria-label="Video siguiente (compacto)"
+                                            className="xl:hidden w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-800 hover:border-gray-300 flex items-center justify-center transition-colors">
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                         <span className="text-xs font-bold text-gray-400 ml-1" data-no-translate>

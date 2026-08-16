@@ -2553,11 +2553,18 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   al pasar al siguiente.
 - **El índice se acota AL LEER** (`Math.min(idx, len - 1)`), no con otro
   efecto: quitar videos desde el panel deja el índice guardado fuera de rango.
-- **Los controles del carrusel van FUERA del video** (v4.817). Encimados
-  tapaban el reproductor —y en un archivo propio, justo la barra de controles
-  del navegador—: sobre un video no hay sitio libre que sea seguro en todos
-  los tamaños. Van debajo, en una fila con las flechas, los puntos y el
-  contador. No reintroducir `absolute` sobre el marco del video.
+- **Los controles del carrusel van FUERA del video** (v4.817-v4.818).
+  Encimados tapaban el reproductor —y en un archivo propio, justo la barra de
+  controles del navegador—. Las flechas van a los COSTADOS, a media altura,
+  con desplazamiento NEGATIVO (`-left-16`/`-right-16`) que las saca del marco;
+  los puntos y el contador, debajo. Por debajo de `xl` no hay margen lateral
+  donde ponerlas sin volver a invadir el video, así que ahí quedan las
+  compactas de la fila de abajo. No reintroducir `absolute left-3` sobre el
+  marco.
+- **El envoltorio que posiciona las flechas mide lo que mide el VIDEO**, no el
+  bloque entero: con `top-1/2` contra el bloque —que incluye el pie y los
+  puntos— quedaban 36 px por debajo del centro, medido. Y ese envoltorio no
+  lleva `overflow-hidden`: el del marco recorta lo que se ponga afuera.
 - **El botón que cierra la sección pasa por `CampaignCta`**, como el resto:
   el criterio de a dónde lleva y cómo se abre es UNO solo. Sin `label` se
   conserva el «Ver centros de acopio» heredado — regla aditiva, una campaña

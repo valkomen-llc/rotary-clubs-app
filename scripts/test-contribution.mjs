@@ -797,15 +797,29 @@ check('la página usa el criterio compartido para los videos, no una comprobaci�
 check('con más de un video hay flechas atrás y siguiente',
     /aria-label="Video anterior"/.test(landingSrc) && /aria-label="Video siguiente"/.test(landingSrc)
     && /videos\.length > 1 &&/.test(landingSrc));
-// v4.817: encima del video tapaban el reproductor —y la barra de controles
-// del navegador en un archivo propio—: no hay sitio libre seguro sobre un
-// video en todos los tamaños.
-check('las flechas van FUERA del video, no encimadas', (() => {
+// v4.818: a los lados del video, a media altura y POR FUERA. El
+// desplazamiento NEGATIVO es lo que las saca del marco — con `left-3` estarían
+// dentro, tapando el reproductor y su barra de controles.
+check('las flechas van a los lados, a media altura y FUERA del marco', (() => {
     const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
-    const controles = sec.slice(sec.indexOf('aria-label="Video anterior"'));
-    // Ni posicionamiento absoluto ni fondo translúcido: eso era estar encima.
-    return !/absolute (left|right)-3/.test(sec) && !/bg-black\/45/.test(sec) && controles.length > 0;
+    return /absolute -left-16 top-1\/2 -translate-y-1\/2/.test(sec)
+        && /absolute -right-16 top-1\/2 -translate-y-1\/2/.test(sec)
+        && !/absolute (left|right)-3/.test(sec) && !/bg-black\/45/.test(sec);
 })());
+// El posicionamiento cuelga del CONTENEDOR, no del marco del video: colgarlo
+// del marco las metería dentro otra vez.
+// `top-1/2` tiene que caer en el medio del VIDEO, no del bloque entero —que
+// incluye el pie y los puntos y dejaba las flechas 36 px por debajo.
+check('las flechas cuelgan de un envoltorio que mide lo que el video', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
+    return /Este envoltorio existe SÓLO para posicionar/.test(sec)
+        && sec.indexOf('<div className="relative">') < sec.indexOf('aspectRatio');
+})());
+// Sin margen lateral no hay dónde ponerlas sin volver a invadir el video: en
+// pantallas angostas quedan las de la fila de abajo.
+check('en pantallas angostas quedan las flechas compactas de abajo',
+    /hidden xl:flex absolute -left-16/.test(landingSrc)
+    && /xl:hidden w-10 h-10[\s\S]{0,260}ChevronLeft/.test(landingSrc));
 // Un video que se cambia solo mientras alguien lo mira es un defecto, no una
 // animación: acá NO hay intervalo, al revés que el hero.
 check('los videos NO rotan solos', (() => {
