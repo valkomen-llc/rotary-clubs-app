@@ -34,9 +34,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.822.0 | 2026-08-15 (La galeria es una tira a lo ancho que se desplaza sola)
+// UI V4.823.0 | 2026-08-16 (La tira avanza sola, con barra propia y tarjetas cuadradas)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.823.0',
+        title: 'La galería pasa sola y se puede recorrer 🖼️',
+        description: 'Las fotos y los videos de «Rotarios en acción» avanzan solos de a una tarjeta cada 3,5 segundos, sin que haya que empujarlos con el trackpad, y debajo aparece una barra propia que muestra dónde se está y se puede arrastrar. Las tarjetas pasan a ser CUADRADAS: las fotos que mandan los clubes vienen en proporciones muy dispares —verticales de móvil, apaisadas de cámara— y un marco cuadrado las trata a todas igual. Al pasar el cursor, ahora crece la tarjeta entera, no sólo la imagen dentro del marco, y la tira se detiene mientras tanto. Y al pulsar una pieza, la ventana grande SE ADAPTA a lo que hay dentro: una foto vertical se ve completa y sin las dos franjas negras a los lados que dejaba el marco fijo. Por dentro, la tira dejó de moverse con una animación y pasó a usar el desplazamiento del navegador, que es lo que permite tomarle el mando en cualquier momento; y las copias que hacen continuo el ciclo ya no son dos fijas sino las que hagan falta según el ancho de la pantalla — con dos, una galería de pocas fotos en una pantalla ancha llegaba al final y se quedaba ahí quieta sin que pareciera un fallo.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'galeria', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Las piezas avanzan solas cada 3,5 segundos, sin tocar nada.' },
+            { type: 'added', text: 'Barra de desplazamiento propia debajo de la tira, que se puede arrastrar.' },
+            { type: 'changed', text: 'Las tarjetas son cuadradas: las fotos vienen en proporciones dispares.' },
+            { type: 'improved', text: 'Al pasar el cursor crece la tarjeta entera, no sólo la imagen.' },
+            { type: 'fixed', text: 'La ventana grande se adapta a la foto o al video: sin franjas negras a los lados.' },
+            { type: 'fixed', text: 'La tira ya no se queda clavada al final cuando hay pocas piezas.' },
+        ]
+    },
     {
         version: '4.822.0',
         title: 'La galería, a lo ancho y en movimiento 🎞️',

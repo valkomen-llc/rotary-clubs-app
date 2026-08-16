@@ -93,14 +93,6 @@ module.exports = {
           from: { transform: "scale(1)" },
           to: { transform: "scale(1.08)" },
         },
-        // La tira de la galería «Rotarios en acción» (v4.822). La lista se
-        // duplica en el componente, así que desplazarse la MITAD deja la
-        // segunda copia exactamente donde estaba la primera: el salto de
-        // vuelta al inicio no se ve.
-        "gallery-marquee": {
-          from: { transform: "translateX(0)" },
-          to: { transform: "translateX(-50%)" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -110,10 +102,6 @@ module.exports = {
         // al cambiar. `forwards` deja la imagen en su tamaño final en vez de
         // dar un salto atrás.
         "hero-zoom": "hero-zoom 5s ease-out forwards",
-        // La duración real la pone el componente (`animationDuration`) en
-        // proporción a cuántas piezas hay: con una fija, más piezas
-        // desfilarían más rápido. Acá sólo se declara la curva y el ciclo.
-        "gallery-marquee": "gallery-marquee 40s linear infinite",
       },
     },
   },
