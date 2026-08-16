@@ -597,8 +597,12 @@ check('las escrituras del club también dejan historial e invalidan la caché',
 // ─── Fase 5: métricas, panel y OG ──────────────────────────────────────────
 grupo('Fase 5 — métricas por campaña, panel y tarjeta social');
 const { METRIC_TYPES } = await import('../server/controllers/contributionCampaignController.js');
+// v4.836: `asset_generated` se suma al final. El catálogo sigue CERRADO —sin
+// esa puerta el endpoint público sería un contador arbitrario— y el orden es el
+// del embudo, con la generación de piezas aparte porque no es tráfico de la
+// landing.
 check('el catálogo de tipos de métrica es CERRADO y cubre el embudo',
-    eq(METRIC_TYPES, ['view', 'cta_donate_click', 'cta_centers_click', 'share_click', 'checkout_started', 'donation_completed']));
+    eq(METRIC_TYPES, ['view', 'cta_donate_click', 'cta_centers_click', 'share_click', 'checkout_started', 'donation_completed', 'asset_generated']));
 
 const ctrl5 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
 check('las métricas son contadores DIARIOS agregados (UPSERT con incremento), no una fila por visita',

@@ -114,6 +114,77 @@ const item = (n, { y, size = 0.030, detailSize = 0.019, gap = 0.048 }) => ([
     },
 ]);
 
+/** Una CIUDAD con su cantidad de puntos. Es lo que cabe en un cuadrado. */
+const city = (n, { y, h = 0.052, size = 0.030 }) => ([
+    {
+        id: `vineta_c${n}`, type: 'shape', name: `Alfiler ${n}`, role: 'decoracion',
+        shape: 'ellipse', brand: 'accent',
+        x: 0.072, y: y + 0.012, w: 0.016, h: 0.016 * (1080 / 1080),
+        requiresVar: `ciudad${n}`,
+    },
+    {
+        id: `ciudad${n}`, type: 'text', name: `Ciudad ${n}`, role: 'ciudad', dropIfEmpty: true,
+        text: `{{ciudad${n}}}`, x: 0.105, y, w: 0.52, h,
+        fontSize: size, fontWeight: 800, color: W, align: 'left', lineHeight: 1.15, minFontSize: size * 0.7,
+    },
+    {
+        id: `ciudad${n}_puntos`, type: 'text', name: `Puntos ${n}`, role: 'ciudad', dropIfEmpty: true,
+        text: `{{ciudad${n}_puntos}}`, x: 0.63, y: y + 0.006, w: 0.30, h: h - 0.008,
+        fontSize: size * 0.62, fontWeight: 600, color: W, opacity: 0.75, align: 'right',
+        lineHeight: 1.2, minFontSize: size * 0.45,
+    },
+]);
+
+/** Un CENTRO con su dirección. Sólo en vertical: en un cuadrado, ocho
+ *  direcciones legibles no entran y achicar el texto para que quepan produce
+ *  una pieza que no se puede leer en un teléfono. */
+const center = (n, { y, gap = 0.030 }) => ([
+    {
+        id: `vineta_p${n}`, type: 'shape', name: `Alfiler ${n}`, role: 'decoracion',
+        shape: 'rect', brand: 'accent', radius: 0.005,
+        x: 0.07, y: y + 0.006, w: 0.009, h: gap + 0.020,
+        requiresVar: `centro${n}`,
+    },
+    {
+        id: `centro${n}`, type: 'text', name: `Punto ${n}`, role: 'centro', dropIfEmpty: true,
+        text: `{{centro${n}}}`, x: 0.10, y, w: 0.83, h: gap - 0.004,
+        fontSize: 0.0235, fontWeight: 800, color: W, align: 'left', lineHeight: 1.15, minFontSize: 0.017,
+    },
+    {
+        id: `centro${n}_dir`, type: 'text', name: `Dirección ${n}`, role: 'centro', dropIfEmpty: true,
+        text: `{{centro${n}_dir}}`, x: 0.10, y: y + gap, w: 0.83, h: 0.026,
+        fontSize: 0.0175, fontWeight: 500, color: W, opacity: 0.8, align: 'left',
+        lineHeight: 1.2, minFontSize: 0.013,
+    },
+]);
+
+/**
+ * La franja de ALIADOS: un rótulo y hasta cinco escudos.
+ *
+ * Sólo escudos. Un aliado sin logotipo no se nombra en texto al lado de los
+ * otros: una mezcla de escudos y nombres sueltos se lee como un error de
+ * maquetación, no como una lista.
+ */
+const partners = (y, { count = 4, h = 0.048, gap = 0.012 } = {}) => {
+    const total = count * h * (1080 / 1080) + (count - 1) * gap;
+    const ancho = (0.86 - (count - 1) * gap) / count;
+    const nodes = [{
+        id: 'aliados_rotulo', type: 'text', name: 'Con el apoyo de', role: 'aliados', dropIfEmpty: true,
+        text: 'Con el apoyo de', x: 0.07, y, w: 0.86, h: 0.026,
+        fontSize: 0.0165, fontWeight: 700, color: W, opacity: 0.6, align: 'left',
+        uppercase: true, letterSpacing: 0.005, minFontSize: 0.012,
+        requiresVar: 'aliado1',
+    }];
+    for (let i = 1; i <= count; i++) {
+        nodes.push({
+            id: `aliado${i}`, type: 'image', name: `Aliado ${i}`, role: 'aliado', dropIfEmpty: true,
+            src: `{{aliado${i}}}`, fit: 'contain',
+            x: 0.07 + (i - 1) * (ancho + gap), y: y + 0.034, w: ancho, h,
+        });
+    }
+    return nodes;
+};
+
 /**
  * El pie de acción: la fecha de corte, el botón, la dirección y el QR.
  *
@@ -337,6 +408,119 @@ export const CAMPAIGN_TEMPLATES = [
             ...item(5, { y: 0.652, gap: 0.040 }),
             ...item(6, { y: 0.747, gap: 0.040 }),
             ...actionFooter({ cut: 0.845, pill: 0.888, pillH: 0.058, url: 0.900, qr: 0.880, qrH: 0.075 }),
+        ],
+    },
+
+    // ══ Centros de acopio (v4.835) ═══════════════════════════════════
+    //
+    // Sin fotografía: es un directorio, y una escena real detrás de una lista
+    // de direcciones no deja leer ninguna de las dos cosas.
+    {
+        id: 'campana_centros_1_1',
+        layout: 'centros_acopio',
+        format: 'post_1_1',
+        name: 'Centros de acopio · cuadrado',
+        summary: 'Las ciudades con su cantidad de puntos. El detalle vive en la página.',
+        available: true,
+        requires: ['titulo'],
+        background: PALETTE.navy,
+        nodes: [
+            backdrop(),
+            { id: 'ola', type: 'shape', name: 'Curva', role: 'decoracion', locked: true, shape: 'wave', brand: 'accent', opacity: 0.22, x: -0.02, y: 0.74, w: 1.04, h: 0.28 },
+            badge(0.062),
+            logo(0.048, 0.075),
+            title(0.135, 0.10, 0.055),
+            paragraph('subtitulo', 'Subtítulo', 0.248, 0.052, 0.024, { role: 'subtitulo' }),
+            ...city(1, { y: 0.335 }),
+            ...city(2, { y: 0.405 }),
+            ...city(3, { y: 0.475 }),
+            ...city(4, { y: 0.545 }),
+            ...city(5, { y: 0.615 }),
+            // Cuántos puntos hay en total. Recortar la lista en silencio haría
+            // creer que ésos son todos, y quien vive en otra ciudad no buscaría.
+            paragraph('centros_total', 'Total de puntos', 0.695, 0.036, 0.019, { role: 'total', opacity: 0.7 }),
+            ...actionFooter({ cut: 0.750, pill: 0.845, url: 0.862, qr: 0.835, qrH: 0.10 }),
+        ],
+    },
+    {
+        id: 'campana_centros_4_5',
+        layout: 'centros_acopio',
+        format: 'post_4_5',
+        name: 'Centros de acopio · vertical',
+        summary: 'Con las direcciones, que es lo que hace falta para ir.',
+        available: true,
+        requires: ['titulo'],
+        background: PALETTE.navy,
+        nodes: [
+            backdrop(),
+            { id: 'ola', type: 'shape', name: 'Curva', role: 'decoracion', locked: true, shape: 'wave', brand: 'accent', opacity: 0.22, x: -0.02, y: 0.80, w: 1.04, h: 0.22 },
+            badge(0.048),
+            logo(0.038, 0.06),
+            title(0.108, 0.085, 0.055),
+            paragraph('subtitulo', 'Subtítulo', 0.204, 0.045, 0.024, { role: 'subtitulo' }),
+            ...center(1, { y: 0.272 }),
+            ...center(2, { y: 0.355 }),
+            ...center(3, { y: 0.438 }),
+            ...center(4, { y: 0.521 }),
+            ...center(5, { y: 0.604 }),
+            ...center(6, { y: 0.687 }),
+            paragraph('centros_total', 'Total de puntos', 0.775, 0.030, 0.018, { role: 'total', opacity: 0.7 }),
+            ...actionFooter({ cut: 0.815, pill: 0.888, pillH: 0.058, url: 0.900, qr: 0.880, qrH: 0.075 }),
+        ],
+    },
+
+    // ══ Impacto de la campaña (v4.835) ═══════════════════════════════
+    {
+        id: 'campana_resultados_1_1',
+        layout: 'resultados',
+        format: 'post_1_1',
+        name: 'Impacto de la campaña · cuadrado',
+        summary: 'Lo logrado, la frase institucional y los escudos de los aliados.',
+        available: true,
+        requires: ['titulo'],
+        background: PALETTE.navy,
+        nodes: [
+            backdrop(),
+            photo(0, 0.32),
+            scrim(0, 0.32, 0.38),
+            badge(0.055),
+            logo(0.042, 0.075),
+            title(0.355, 0.10, 0.052),
+            ...stat(1, { x: 0.07, y: 0.478, w: 0.27, size: 0.058, valueH: 0.070, labelH: 0.038, sourceH: 0.040 }),
+            ...stat(2, { x: 0.365, y: 0.478, w: 0.27, size: 0.058, valueH: 0.070, labelH: 0.038, sourceH: 0.040 }),
+            ...stat(3, { x: 0.66, y: 0.478, w: 0.27, size: 0.058, valueH: 0.070, labelH: 0.038, sourceH: 0.040 }),
+            paragraph('cierre', 'Frase de cierre', 0.640, 0.055, 0.023, { role: 'cierre' }),
+            ...partners(0.710, { count: 4 }),
+            ...actionFooter({ cut: 0.812, pill: 0.845, url: 0.862, qr: 0.835, qrH: 0.10 }),
+        ],
+    },
+    {
+        id: 'campana_resultados_4_5',
+        layout: 'resultados',
+        format: 'post_4_5',
+        name: 'Impacto de la campaña · vertical',
+        summary: 'Con una cifra más y sitio para cinco aliados.',
+        available: true,
+        requires: ['titulo'],
+        background: PALETTE.navy,
+        nodes: [
+            backdrop(),
+            photo(0, 0.28),
+            scrim(0, 0.28, 0.38),
+            badge(0.042),
+            logo(0.032, 0.06),
+            title(0.310, 0.085, 0.052),
+            paragraph('contexto', 'Contexto', 0.408, 0.058, 0.021),
+            ...stat(1, { x: 0.07, y: 0.492, w: 0.40, size: 0.055, valueH: 0.062, labelH: 0.034, sourceH: 0.036 }),
+            ...stat(2, { x: 0.53, y: 0.492, w: 0.40, size: 0.055, valueH: 0.062, labelH: 0.034, sourceH: 0.036 }),
+            ...stat(3, { x: 0.07, y: 0.630, w: 0.40, size: 0.055, valueH: 0.062, labelH: 0.034, sourceH: 0.036 }),
+            ...stat(4, { x: 0.53, y: 0.630, w: 0.40, size: 0.055, valueH: 0.062, labelH: 0.034, sourceH: 0.036 }),
+            paragraph('cierre', 'Frase de cierre', 0.768, 0.040, 0.022, { role: 'cierre' }),
+            ...partners(0.816, { count: 5, h: 0.038 }),
+            // La composición más apretada de las diez: el pie se corre para que
+            // la fecha de corte no se meta debajo de la dirección. Lo detectó
+            // la prueba de geometría, no leyendo el archivo.
+            ...actionFooter({ cut: 0.892, pill: 0.928, pillH: 0.052, url: 0.936, qr: 0.918, qrH: 0.062 }),
         ],
     },
 ];

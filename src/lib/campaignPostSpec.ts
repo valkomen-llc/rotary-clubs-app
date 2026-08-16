@@ -57,6 +57,16 @@ export const OBJECTIVES: Record<string, Objective> = {
         help: 'Las cifras con su fuente, en primer plano.',
         needs: ['stats'], layout: 'impacto_estadistico',
     },
+    centros: {
+        id: 'centros', label: 'Centros de acopio',
+        help: 'Dónde llevar lo que se dona.',
+        needs: ['centers'], layout: 'centros_acopio',
+    },
+    impacto: {
+        id: 'impacto', label: 'Impacto de la campaña',
+        help: 'Lo que ya se logró, con sus aliados.',
+        needs: ['stats'], layout: 'resultados',
+    },
 };
 
 export const DEFAULT_OBJECTIVE = 'sensibilizacion';
@@ -92,6 +102,8 @@ export interface Layout {
     maxStats: number | Record<string, number>;
     maxItems: number | Record<string, number>;
     maxCities: number | Record<string, number>;
+    maxCenters?: number | Record<string, number>;
+    maxPartners?: number | Record<string, number>;
     wantsImage: boolean;
 }
 
@@ -112,12 +124,29 @@ export const LAYOUTS: Record<string, Layout> = {
         maxStats: { post_1_1: 0, post_4_5: 2 },
         maxItems: { post_1_1: 4, post_4_5: 6 }, maxCities: 0, wantsImage: false,
     },
+    centros_acopio: {
+        id: 'centros_acopio', label: 'Centros de acopio',
+        summary: 'Dónde llevar la donación: por ciudad en 1:1, con dirección en 4:5.',
+        maxStats: 0, maxItems: 0,
+        maxCities: { post_1_1: 5, post_4_5: 3 },
+        maxCenters: { post_1_1: 0, post_4_5: 6 },
+        wantsImage: false,
+    },
+    resultados: {
+        id: 'resultados', label: 'Impacto de la campaña',
+        summary: 'Lo logrado, con la frase institucional y los aliados.',
+        maxStats: { post_1_1: 3, post_4_5: 4 }, maxItems: 0, maxCities: 0,
+        maxPartners: { post_1_1: 4, post_4_5: 5 },
+        wantsImage: true,
+    },
 };
 
 export const LAYOUT_IDS = Object.keys(LAYOUTS);
 export const layoutCatalog = () => LAYOUT_IDS.map(id => ({ id, label: LAYOUTS[id].label, summary: LAYOUTS[id].summary }));
 
-export const capacityOf = (layoutId: string, formatId: string, key: 'maxStats' | 'maxItems' | 'maxCities' = 'maxStats'): number => {
+export type CapacityKey = 'maxStats' | 'maxItems' | 'maxCities' | 'maxCenters' | 'maxPartners';
+
+export const capacityOf = (layoutId: string, formatId: string, key: CapacityKey = 'maxStats'): number => {
     const l = LAYOUTS[layoutId];
     if (!l) return 0;
     const v = l[key];
@@ -125,8 +154,8 @@ export const capacityOf = (layoutId: string, formatId: string, key: 'maxStats' |
     return Number((v as Record<string, number>)?.[formatId] ?? 0);
 };
 
-export function pickLayout({ objective, requested = null, formatId = DEFAULT_FORMAT_ID, stats = [], items = [] }: {
-    objective?: string; requested?: string | null; formatId?: string; stats?: unknown[]; items?: unknown[];
+export function pickLayout({ objective, requested = null, formatId = DEFAULT_FORMAT_ID, stats = [], items = [], cities = 0 }: {
+    objective?: string; requested?: string | null; formatId?: string; stats?: unknown[]; items?: unknown[]; cities?: number;
 } = {}): { id: string; notes: string[]; capacity: number } {
     const notes: string[] = [];
     const obj = OBJECTIVES[objective || ''] || OBJECTIVES[DEFAULT_OBJECTIVE];
@@ -138,6 +167,14 @@ export function pickLayout({ objective, requested = null, formatId = DEFAULT_FOR
     }
     if (id === 'impacto_estadistico' && !stats.length) {
         notes.push('No hay indicadores publicables: se usa la composición de emergencia.');
+        id = 'emergencia_cta';
+    }
+    if (id === 'resultados' && !stats.length) {
+        notes.push('No hay indicadores publicables: se usa la composición de emergencia.');
+        id = 'emergencia_cta';
+    }
+    if (id === 'centros_acopio' && !cities) {
+        notes.push('La campaña no tiene centros publicados: se usa la composición de emergencia.');
         id = 'emergencia_cta';
     }
     return { id, notes, capacity: capacityOf(id, formatId) };
@@ -191,8 +228,8 @@ export function centerSummary(centers: unknown, capacity: number): { cities: { c
     };
 }
 
-export function validateBeforeGenerate({ campaign, objective, formatId, layoutId, imageUrl, stats }: {
-    campaign?: any; objective?: string; formatId?: string; layoutId?: string | null; imageUrl?: string; stats?: unknown[];
+export function validateBeforeGenerate({ campaign, objective, formatId, layoutId, imageUrl, stats, centerCount = null }: {
+    campaign?: any; objective?: string; formatId?: string; layoutId?: string | null; imageUrl?: string; stats?: unknown[]; centerCount?: number | null;
 } = {}): { ok: boolean; errors: string[]; warnings: string[] } {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -220,6 +257,9 @@ export function validateBeforeGenerate({ campaign, objective, formatId, layoutId
         }
         if (need === 'donationCta' && !content?.hero?.ctaPrimary?.label && !content?.donateCard?.buttonText) {
             warnings.push('La campaña no declara un botón de aporte: la pieza va a usar el llamado genérico.');
+        }
+        if (need === 'centers' && Number.isFinite(centerCount as number) && (centerCount as number) <= 0) {
+            errors.push('Este objetivo muestra los centros de acopio y la campaña no tiene ninguno publicado.');
         }
     }
 

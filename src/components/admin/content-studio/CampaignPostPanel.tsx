@@ -3,10 +3,12 @@ import { toast } from 'sonner';
 import {
     Megaphone, Image as ImageIcon, Upload, Library, Sparkles, Download,
     RefreshCw, AlertTriangle, Info, Check, Copy as CopyIcon, Loader2, FileImage,
+    Layers, Send, FileArchive,
 } from 'lucide-react';
 import DesignCanvas from '../design-studio/DesignCanvas';
 import MediaPicker from './MediaPicker';
-import { exportDocument, exportToFile } from '../../../lib/designRender';
+import { exportDocument, exportToFile, renderDocumentToCanvas, canvasToBlob } from '../../../lib/designRender';
+import { qrToDataUri } from '../../../lib/qrcode';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
 import {
     capacityOf, validateBeforeGenerate,
@@ -50,6 +52,7 @@ interface CampanaOpt {
     stats: StatOpt[];
     statsSkipped: { id: string; label: string; reason: string }[];
     items: { title: string; description: string }[];
+    partners: number;
     images: { url: string; alt?: string }[];
 }
 interface Opciones {
@@ -57,6 +60,7 @@ interface Opciones {
     formats: FormatoOpt[];
     defaults: { objective: string; audience: string; language: string; format: string };
     scope: 'platform' | 'site';
+    siteUrl: string;
     campaigns: CampanaOpt[];
 }
 
@@ -65,6 +69,21 @@ interface CopyPieza {
     headline?: string; subheadline?: string; context?: string;
     badge?: string; cta?: string; closing?: string;
     social?: Record<string, CopySocial>;
+}
+interface Slide {
+    objective: string;
+    label: string;
+    document: any;
+    layout: { id: string; notes: string[] };
+    templateId: string;
+}
+interface Carrusel {
+    slides: Slide[];
+    copy: CopyPieza;
+    copyIssues: string[];
+    format: string;
+    skipped: { objective: string; label: string; reason: string }[];
+    warnings: string[];
 }
 interface Compuesto {
     document: any;
@@ -104,6 +123,18 @@ const CampaignPostPanel: React.FC = () => {
     const [layoutId, setLayoutId] = useState<string>('');
     const [statIds, setStatIds] = useState<string[]>([]);
     const [imageUrl, setImageUrl] = useState('');
+    // El QR se dibuja desde la dirección REAL de la campaña, no es un adorno.
+    // Va apagado por defecto: no toda pieza lo necesita y ocupa el sitio de la
+    // dirección escrita, que es lo que se lee de un vistazo.
+    const [conQr, setConQr] = useState(false);
+    // El carrusel: varias piezas de una vez, cada una con su objetivo. Vive
+    // aparte de `pieza` porque son dos resultados distintos y mezclarlos haría
+    // que generar uno borrara el otro sin que nadie lo pidiera.
+    const [carrusel, setCarrusel] = useState<Carrusel | null>(null);
+    const [slideIdx, setSlideIdx] = useState(0);
+    const [cuentas, setCuentas] = useState<{ id: string; platform: string; name?: string }[]>([]);
+    const [cuentasSel, setCuentasSel] = useState<string[]>([]);
+    const [publicando, setPublicando] = useState(false);
 
     const [generando, setGenerando] = useState(false);
     const [pieza, setPieza] = useState<Compuesto | null>(null);
@@ -152,6 +183,21 @@ const CampaignPostPanel: React.FC = () => {
         return () => window.removeEventListener('resize', medir);
     }, [pieza]);
 
+    // Las cuentas conectadas, para poder publicar sin salir del módulo. Si no
+    // hay ninguna, el botón no se pinta: nunca un control que no lleva a
+    // ninguna parte.
+    useEffect(() => {
+        let vivo = true;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/social/accounts`, { headers: auth() });
+                const d = await r.json();
+                if (vivo && Array.isArray(d)) setCuentas(d.filter((c: any) => c?.id));
+            } catch { /* sin cuentas, sólo se descarga */ }
+        })();
+        return () => { vivo = false; };
+    }, []);
+
     const campana = useMemo(
         () => opciones?.campaigns.find(c => c.id === campaignId) || null,
         [opciones, campaignId]
@@ -164,7 +210,16 @@ const CampaignPostPanel: React.FC = () => {
         setStatIds([]);
         setImageUrl('');
         setPieza(null);
+        setCarrusel(null);
+        setSlideIdx(0);
     }, [campaignId]);
+
+    // La dirección pública de la campaña, que es lo que va al QR y al pie.
+    const urlCampana = useMemo(() => {
+        const base = String(opciones?.siteUrl || '').replace(/\/+$/, '');
+        if (!base || !campana?.slug) return '';
+        return `${base}/maneras-de-contribuir?c=${encodeURIComponent(campana.slug)}`;
+    }, [opciones, campana]);
 
     const objetivoActual = useMemo(
         () => opciones?.objectives.find(o => o.id === objective) || null,
@@ -217,6 +272,14 @@ const CampaignPostPanel: React.FC = () => {
                     layoutId: layoutId || null,
                     statIds: statIds.length ? statIds : null,
                     imageUrl,
+                    // El QR se genera ACÁ: `qrcode.ts` produce el SVG en el
+                    // acto y sin dependencias, y portarlo al servidor sería
+                    // una segunda copia del mismo algoritmo. El servidor
+                    // comprueba que lo que llega sea una imagen embebida.
+                    // La dirección la da el SERVIDOR (`siteUrl` de las
+                    // opciones): componerla acá daría una distinta según desde
+                    // dónde se abrió el panel, y el QR llevaría a otra parte.
+                    qrDataUri: conQr && urlCampana ? qrToDataUri(urlCampana, 320) : '',
                     // Rehacer SÓLO el diseño no vuelve a pedirle el texto al
                     // modelo: es lo que permite probar composiciones y formatos
                     // sin gastar una llamada por cada una.
@@ -229,13 +292,114 @@ const CampaignPostPanel: React.FC = () => {
                 throw new Error(`${d?.error || 'No se pudo generar'}${detalle}`);
             }
             setPieza(d);
+            setCarrusel(null);
             toast.success('Pieza lista.', { id: toastId });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo generar', { id: toastId, duration: 10000 });
         } finally {
             setGenerando(false);
         }
-    }, [campaignId, objective, audience, language, formatId, layoutId, statIds, imageUrl, pieza]);
+        // `conQr` y `urlCampana` VAN en las dependencias: sin ellas el
+        // manejador se queda con el valor que tenían al crearse y el
+        // interruptor del QR no llega nunca a la petición. Lo encontró el
+        // smoke, no el typecheck — el código es válido y está bien tipado.
+    }, [campaignId, objective, audience, language, formatId, layoutId, statIds, imageUrl, pieza, conQr, urlCampana]);
+
+    const generarCarrusel = useCallback(async () => {
+        if (!campaignId) { toast.error('Elegí una campaña.'); return; }
+        setGenerando(true);
+        const toastId = toast.loading('Generando el carrusel…');
+        try {
+            const r = await fetch(`${API}/content-studio/campaign-post/carousel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...auth() },
+                body: JSON.stringify({
+                    campaignId, audience, language, formatId, imageUrl,
+                    qrDataUri: conQr && urlCampana ? qrToDataUri(urlCampana, 320) : '',
+                }),
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                const detalle = Array.isArray(d?.errors) && d.errors.length ? `: ${d.errors[0]}` : '';
+                throw new Error(`${d?.error || 'No se pudo generar'}${detalle}`);
+            }
+            setCarrusel(d);
+            setSlideIdx(0);
+            setPieza(null);
+            toast.success(`Carrusel de ${d.slides.length} piezas.`, { id: toastId });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo generar', { id: toastId, duration: 10000 });
+        } finally { setGenerando(false); }
+    }, [campaignId, audience, language, formatId, imageUrl, conQr, urlCampana]);
+
+    /** Todas las piezas del carrusel en un ZIP. Descargarlas una por una hace
+     *  que el navegador bloquee todas menos la primera. */
+    const descargarZip = async () => {
+        if (!carrusel) return;
+        const toastId = toast.loading('Armando el archivo…');
+        try {
+            const { default: JSZip } = await import('jszip');
+            const zip = new JSZip();
+            for (const [i, s] of carrusel.slides.entries()) {
+                const canvas = await renderDocumentToCanvas(s.document, { scale: 2, opaque: true });
+                const blob = await canvasToBlob(canvas, 'image/png');
+                zip.file(`${String(i + 1).padStart(2, '0')}-${s.objective}.png`, blob);
+            }
+            const out = await zip.generateAsync({ type: 'blob' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(out);
+            a.download = `${campana?.slug || 'campana'}-carrusel.zip`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+            toast.success('Listo.', { id: toastId });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo armar el ZIP', { id: toastId });
+        }
+    };
+
+    /**
+     * Publicar en las cuentas conectadas.
+     *
+     * La pieza se sube PRIMERO a la Biblioteca: `/social/publish` recibe una
+     * dirección, no un archivo, y la fila de `Media` es además el registro de
+     * lo que se publicó. Es el mismo camino que usa el Generador de
+     * Publicaciones desde siempre — no se inventa un segundo.
+     */
+    const publicar = async () => {
+        const doc = carrusel ? carrusel.slides[slideIdx]?.document : pieza?.document;
+        const copia = carrusel ? carrusel.copy : pieza?.copy;
+        if (!doc || !cuentasSel.length) return;
+        setPublicando(true);
+        const toastId = toast.loading('Publicando…');
+        try {
+            const file = await exportToFile(doc, `${campana?.slug || 'campana'}-${objective}`);
+            const { uploaded, failed } = await uploadMediaFiles([file]);
+            if (failed.length) throw new Error(failed[0].reason);
+            const url = uploaded[0]?.url;
+            if (!url) throw new Error('La pieza no se pudo guardar antes de publicar');
+
+            const copies: Record<string, { copy: string; hashtags: string; cta: string }> = {};
+            for (const r of REDES) {
+                const c = copia?.social?.[r.id];
+                if (c?.copy) copies[r.id] = { copy: c.copy, hashtags: c.hashtags || '', cta: '' };
+            }
+            const resp = await fetch(`${API}/social/publish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...auth() },
+                body: JSON.stringify({
+                    accountIds: cuentasSel, imageUrl: url, copies,
+                    generatedBy: 'campaign-post',
+                }),
+            });
+            const d = await resp.json();
+            if (!resp.ok) throw new Error(d?.error || 'No se pudo publicar');
+            const fallidas = (d.results || []).filter((x: any) => !x.ok);
+            if (fallidas.length) toast.error(`Publicado con ${fallidas.length} error(es): ${fallidas[0].error || ''}`, { id: toastId, duration: 12000 });
+            else toast.success('Publicado.', { id: toastId });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo publicar', { id: toastId, duration: 12000 });
+        } finally { setPublicando(false); }
+    };
 
     const subirFoto = async (files: FileList | null) => {
         if (!files?.length) return;
@@ -255,18 +419,20 @@ const CampaignPostPanel: React.FC = () => {
     };
 
     const descargar = async (formato: 'png' | 'jpg') => {
-        if (!pieza) return;
+        const doc = carrusel ? carrusel.slides[slideIdx]?.document : pieza?.document;
+        if (!doc) return;
         try {
-            await exportDocument(pieza.document, { format: formato, title: `${campana?.slug || 'campana'}-${objective}` });
+            await exportDocument(doc, { format: formato, title: `${campana?.slug || 'campana'}-${objective}` });
         } catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo exportar'); }
     };
 
     const guardarEnBiblioteca = async () => {
-        if (!pieza) return;
+        const docGuardar = carrusel ? carrusel.slides[slideIdx]?.document : pieza?.document;
+        if (!docGuardar) return;
         setGuardando(true);
         const toastId = toast.loading('Guardando en la Biblioteca…');
         try {
-            const file = await exportToFile(pieza.document, `${campana?.slug || 'campana'}-${objective}`);
+            const file = await exportToFile(docGuardar, `${campana?.slug || 'campana'}-${objective}`);
             const { uploaded, failed } = await uploadMediaFiles([file]);
             if (failed.length) throw new Error(failed[0].reason);
             if (!uploaded.length) throw new Error('No se guardó ningún archivo');
@@ -314,6 +480,12 @@ const CampaignPostPanel: React.FC = () => {
 
     const fmt = opciones.formats.find(f => f.id === formatId);
     const escala = fmt ? Math.min(1, anchoPreview / fmt.width) : 0.4;
+    // Lo que se pinta: la pieza suelta o la diapositiva activa del carrusel.
+    // Es UN solo punto de decisión — con dos, el botón de descargar podría
+    // bajar una pieza distinta de la que se está viendo.
+    const docActivo = carrusel ? carrusel.slides[Math.min(slideIdx, carrusel.slides.length - 1)]?.document : pieza?.document;
+    const avisos = carrusel ? carrusel.warnings : (pieza?.warnings || []);
+    const problemas = carrusel ? carrusel.copyIssues : (pieza?.copyIssues || []);
 
     return (
         <div className="grid lg:grid-cols-2 gap-6 items-start">
@@ -477,6 +649,27 @@ const CampaignPostPanel: React.FC = () => {
                     <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => subirFoto(e.target.files)} />
                 </div>
 
+                {/* El código QR. Va apagado por defecto: no toda pieza lo
+                    necesita y ocupa el sitio de la dirección escrita, que es
+                    lo que se lee de un vistazo. Se dibuja desde la dirección
+                    REAL de la campaña — nunca es un adorno. */}
+                <div className={card}>
+                    <button type="button" onClick={() => urlCampana && setConQr(v => !v)}
+                        className="w-full flex items-center justify-between gap-3 text-left">
+                        <span>
+                            <span className={`${lbl} mb-1`}>Código QR</span>
+                            <span className="block text-xs text-gray-500">
+                                {urlCampana
+                                    ? <>Lleva a <span data-no-translate className="font-medium text-gray-600">{urlCampana.replace(/^https?:\/\//, '')}</span></>
+                                    : 'Este sitio todavía no tiene dominio configurado: sin dirección no se puede dibujar un QR.'}
+                            </span>
+                        </span>
+                        <span className={`w-11 h-6 rounded-full flex-shrink-0 transition-colors relative ${conQr && urlCampana ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${conQr && urlCampana ? 'left-[22px]' : 'left-0.5'}`} />
+                        </span>
+                    </button>
+                </div>
+
                 {/* Lo que falta y lo que conviene saber, ANTES de generar. Un
                     error bloquea; un aviso no — tratarlos igual convierte
                     cualquier advertencia en un bloqueo y se dejan de leer. */}
@@ -500,6 +693,17 @@ const CampaignPostPanel: React.FC = () => {
                     {generando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                     {generando ? 'Generando…' : 'Generar publicación'}
                 </button>
+
+                {/* El carrusel. Una campaña de emergencia tiene más información
+                    de la que entra en UNA pieza; acá se reparte en varias, cada
+                    una con su objetivo y en el orden en que se leen. El texto
+                    se genera UNA sola vez para todas: cinco llamadas darían
+                    cinco voces distintas para la misma campaña. */}
+                <button type="button" onClick={generarCarrusel} disabled={generando || !campaignId}
+                    className="w-full py-3 rounded-2xl bg-white border-2 border-gray-100 text-gray-600 font-black text-xs hover:border-blue-100 disabled:opacity-40 flex items-center justify-center gap-2">
+                    <Layers className="w-4 h-4" />
+                    Generar carrusel completo
+                </button>
             </div>
 
             {/* ── Vista previa y resultado ─────────────────────────── */}
@@ -514,13 +718,13 @@ const CampaignPostPanel: React.FC = () => {
                         )}
                     </div>
                     <div ref={cajaPreview}>
-                        {pieza ? (
+                        {docActivo ? (
                             <div className="rounded-xl overflow-hidden border border-gray-100 mx-auto"
                                 style={{ width: (fmt?.width || 1080) * escala, height: (fmt?.height || 1080) * escala }}>
                                 {/* El MISMO lienzo de Plantillas IA, en sólo
                                     lectura. Lo que se ve acá es lo que se
                                     descarga: no hay un segundo dibujo. */}
-                                <DesignCanvas doc={pieza.document} zoom={escala} interactive={false} showGuides={false} />
+                                <DesignCanvas doc={docActivo} zoom={escala} interactive={false} showGuides={false} />
                             </div>
                         ) : (
                             <div className="aspect-square rounded-xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-300 gap-2">
@@ -530,17 +734,17 @@ const CampaignPostPanel: React.FC = () => {
                         )}
                     </div>
 
-                    {pieza && (
+                    {docActivo && (
                         <>
                             <div className="flex flex-wrap gap-2 mt-4">
-                                <button type="button" onClick={() => componer({ conservarCopy: true })} disabled={generando}
+                                {pieza && <button type="button" onClick={() => componer({ conservarCopy: true })} disabled={generando}
                                     className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-[11px] font-black text-gray-600 hover:bg-gray-100 flex items-center gap-1.5 disabled:opacity-50">
                                     <RefreshCw className="w-3.5 h-3.5" /> Rehacer diseño
-                                </button>
-                                <button type="button" onClick={() => componer()} disabled={generando}
+                                </button>}
+                                {pieza && <button type="button" onClick={() => componer()} disabled={generando}
                                     className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-[11px] font-black text-gray-600 hover:bg-gray-100 flex items-center gap-1.5 disabled:opacity-50">
                                     <Sparkles className="w-3.5 h-3.5" /> Rehacer texto
-                                </button>
+                                </button>}
                                 <button type="button" onClick={() => descargar('png')}
                                     className="px-3 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[11px] font-black text-blue-700 hover:bg-blue-100 flex items-center gap-1.5">
                                     <Download className="w-3.5 h-3.5" /> PNG
@@ -555,9 +759,9 @@ const CampaignPostPanel: React.FC = () => {
                                 </button>
                             </div>
 
-                            {pieza.warnings.length > 0 && (
+                            {avisos.length > 0 && (
                                 <div className="mt-3 space-y-1">
-                                    {pieza.warnings.map((w, i) => (
+                                    {avisos.map((w, i) => (
                                         <p key={i} className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{w}</p>
                                     ))}
                                 </div>
@@ -567,17 +771,83 @@ const CampaignPostPanel: React.FC = () => {
                                 antes de publicar, y quitarlo dejaría la pieza sin
                                 ninguno. Misma decisión que el guion de la
                                 Campaña de Emergencia (v4.783). */}
-                            {pieza.copyIssues.length > 0 && (
+                            {problemas.length > 0 && (
                                 <div className="mt-3 text-[11px] text-red-700 bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
                                     <p className="font-black uppercase tracking-wider">Revisá el texto antes de publicar</p>
-                                    {pieza.copyIssues.map((m, i) => <p key={i}>{m}</p>)}
+                                    {problemas.map((m, i) => <p key={i}>{m}</p>)}
                                 </div>
                             )}
                         </>
                     )}
                 </div>
 
-                {pieza?.copy?.social && (
+                {/* El carrusel: la tira de diapositivas y el ZIP. Se descarga
+                    en un archivo porque bajarlas una por una hace que el
+                    navegador bloquee todas menos la primera. */}
+                {carrusel && (
+                    <div className={card}>
+                        <div className="flex items-center justify-between mb-3">
+                            <label className={`${lbl} mb-0`}>Carrusel · {carrusel.slides.length} piezas</label>
+                            <button type="button" onClick={descargarZip}
+                                className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-[11px] font-black text-blue-700 hover:bg-blue-100 flex items-center gap-1.5">
+                                <FileArchive className="w-3.5 h-3.5" /> Descargar todas
+                            </button>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                            {carrusel.slides.map((s, i) => (
+                                <button key={s.objective} type="button" onClick={() => setSlideIdx(i)}
+                                    className={`flex-shrink-0 px-3 py-2 rounded-xl text-[11px] font-black border-2 transition-all ${
+                                        slideIdx === i ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-100 text-gray-500 hover:border-gray-200'}`}>
+                                    {i + 1}. {s.label}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Las que NO entraron, con su motivo. Un carrusel más
+                            corto sin explicación hace pensar que falló. */}
+                        {carrusel.skipped.length > 0 && (
+                            <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-1">
+                                {carrusel.skipped.map(s => (
+                                    <p key={s.objective}>«{s.label}» no entró: {s.reason}</p>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Publicar en las cuentas conectadas. Si no hay ninguna, esto
+                    no se pinta: nunca un control que no lleva a ninguna parte. */}
+                {(pieza || carrusel) && cuentas.length > 0 && (
+                    <div className={card}>
+                        <label className={lbl}>Publicar en redes</label>
+                        <div className="space-y-2 mb-3">
+                            {cuentas.map(c => {
+                                const marcada = cuentasSel.includes(c.id);
+                                return (
+                                    <button key={c.id} type="button"
+                                        onClick={() => setCuentasSel(prev => marcada ? prev.filter(x => x !== c.id) : [...prev, c.id])}
+                                        className={`w-full flex items-center gap-3 p-2.5 rounded-xl border-2 text-left transition-all ${
+                                            marcada ? 'border-blue-200 bg-blue-50/50' : 'border-gray-50 hover:border-gray-100'}`}>
+                                        <span className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center ${marcada ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                                            {marcada && <Check className="w-3 h-3 text-white" />}
+                                        </span>
+                                        <span className="text-xs font-bold text-gray-700">{c.name || c.platform}</span>
+                                        <span className="text-[10px] font-black text-gray-400 uppercase ml-auto">{c.platform}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <button type="button" onClick={publicar} disabled={publicando || !cuentasSel.length}
+                            className="w-full py-3 rounded-xl bg-gray-900 text-white font-black text-xs hover:bg-gray-800 disabled:opacity-40 flex items-center justify-center gap-2">
+                            {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            {carrusel ? `Publicar la pieza ${slideIdx + 1}` : 'Publicar esta pieza'}
+                        </button>
+                        <p className="text-[11px] text-gray-400 mt-2">
+                            La pieza se guarda en la Biblioteca antes de publicarse: es lo que queda como registro de lo que salió.
+                        </p>
+                    </div>
+                )}
+
+                {(carrusel?.copy?.social || pieza?.copy?.social) && (
                     <div className={card}>
                         <label className={lbl}>Texto para cada red</label>
                         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -591,7 +861,7 @@ const CampaignPostPanel: React.FC = () => {
                         </div>
                         {(() => {
                             const red = REDES.find(r => r.id === redActiva)!;
-                            const s = pieza.copy.social?.[redActiva] || {};
+                            const s = (carrusel ? carrusel.copy : pieza!.copy).social?.[redActiva] || {};
                             const texto = [s.copy, s.hashtags].filter(Boolean).join('\n\n');
                             const excede = texto.length > red.limit;
                             return (

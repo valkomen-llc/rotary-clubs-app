@@ -34,9 +34,38 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.834.0 | 2026-08-16 (Los aportes internacionales se cobran en dólares)
+// UI V4.836.0 | 2026-08-16 (Infografías de campaña: centros, QR, carrusel y publicación)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.836.0',
+        title: 'Carrusel de campaña y publicación directa a redes 🎠',
+        description: 'El botón «Generar carrusel completo» arma varias piezas de una vez, cada una con su objetivo y en el orden en que se lee una emergencia: qué pasó, qué tan grave es, qué se necesita, dónde llevarlo y cómo aportar. El texto se escribe UNA sola vez para todas —cinco generaciones darían cinco voces distintas para la misma campaña— y las diapositivas que la campaña no puede llenar se saltean diciendo por qué. Se descargan todas juntas en un archivo comprimido. Y desde la misma pantalla se puede publicar en las cuentas conectadas: la pieza se guarda primero en la Biblioteca —que es lo que queda como registro de lo que salió— y se publica con el texto de cada red. Cada pieza generada queda contada en las métricas de su campaña.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'redes', 'carrusel'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Carrusel de hasta cinco piezas con un solo texto compartido.' },
+            { type: 'added', text: 'Descarga de todas las piezas en un archivo comprimido.' },
+            { type: 'added', text: 'Publicación directa en las cuentas conectadas.' },
+            { type: 'added', text: 'Las piezas generadas se cuentan en las métricas de la campaña.' },
+        ]
+    },
+    {
+        version: '4.835.0',
+        title: 'Centros de acopio, impacto y código QR en las piezas 📍',
+        description: 'Dos objetivos nuevos para las infografías de campaña. «Centros de acopio» dibuja dónde llevar la donación, con una densidad distinta según el formato: en cuadrado se resume por ciudad con su cantidad de puntos, y en vertical entran las direcciones —ocho direcciones legibles no caben en un cuadrado, y achicar el texto para que quepan produce una pieza que no se puede leer en un teléfono—. «Impacto de la campaña» muestra lo logrado con la frase institucional y los escudos de los aliados. Además, cualquier pieza puede llevar un código QR que apunta a la dirección real de la campaña: se dibuja desde esa dirección, nunca es un adorno, y si el sitio todavía no tiene dominio configurado el interruptor lo dice en vez de encenderse sin hacer nada.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'infografias'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Objetivo «Centros de acopio», por ciudad en cuadrado y con dirección en vertical.' },
+            { type: 'added', text: 'Objetivo «Impacto de la campaña», con la frase de cierre y los aliados.' },
+            { type: 'added', text: 'Código QR desde la dirección real de la campaña.' },
+        ]
+    },
     {
         version: '4.834.0',
         title: 'Los aportes internacionales se cobran en dólares 🌎',

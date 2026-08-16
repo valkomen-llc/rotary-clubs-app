@@ -58,7 +58,7 @@ import {
     getActiveReels
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
-import { getCampaignPostOptions, composeCampaignPost } from '../controllers/campaignPostController.js';
+import { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel } from '../controllers/campaignPostController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
@@ -87,6 +87,9 @@ router.post('/generate-post', authMiddleware, generatePost);
 // contribución; el alcance lo decide el servidor con el clubId del token.
 router.get('/campaign-post/options', authMiddleware, getCampaignPostOptions);
 router.post('/campaign-post/compose', authMiddleware, composeCampaignPost);
+// v4.836 — varias piezas de una vez. El copy se genera UNA sola vez y se
+// reparte: cinco llamadas darían cinco voces para la misma campaña.
+router.post('/campaign-post/carousel', authMiddleware, composeCampaignCarousel);
 
 // Generación de textos de contenedores de la portada desde el Cerebro (RAG).
 router.post('/generate-container', authMiddleware, generateContainer);
