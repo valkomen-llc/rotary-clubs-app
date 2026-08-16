@@ -11,10 +11,10 @@ import {
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
     STATUS_LABELS, canTransition, effectiveStatus, TARGETING_LABELS,
-    validateStats, normalizeCenters, heroSlides, HERO_MAX_SLIDES,
+    validateStats, normalizeCenters, heroSlides, HERO_MAX_SLIDES, resolveCampaignVideo,
     type CampaignStatus, type TargetingMode, type ContributionCenter,
 } from '../../lib/contributionSpec';
-import { uploadMediaFiles, IMAGE_ACCEPT } from '../../lib/mediaUpload';
+import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../lib/mediaUpload';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -151,6 +151,7 @@ const ContributionCampaigns: React.FC = () => {
     const [pickerField, setPickerField] = useState<string | null>(null);
     const uploadFieldRef = useRef<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const videoInputRef = useRef<HTMLInputElement>(null);
     const [uploading, setUploading] = useState(false);
 
     const now = new Date();
@@ -350,7 +351,8 @@ const ContributionCampaigns: React.FC = () => {
 
     const setImage = (target: string, url: string) => {
         if (!c) return;
-        if (target === 'heroAdd') addHeroImages([url]);
+        if (target === 'itemsVideo') patchContent({ requiredItemsVideo: { ...c.content?.requiredItemsVideo, url } });
+        else if (target === 'heroAdd') addHeroImages([url]);
         else if (target.startsWith('hero:')) {
             const idx = Number(target.split(':')[1]);
             const imgs = [...((c.content?.hero?.images || []) as any[])];
@@ -374,7 +376,9 @@ const ContributionCampaigns: React.FC = () => {
 
     const startUpload = (target: string) => {
         uploadFieldRef.current = target;
-        fileInputRef.current?.click();
+        // Cada destino abre el diálogo con SU tipo de archivo: ofrecerle fotos
+        // a quien va a subir un video es ofrecerle lo que no sirve.
+        (target === 'itemsVideo' ? videoInputRef : fileInputRef).current?.click();
     };
 
     const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -416,6 +420,10 @@ const ContributionCampaigns: React.FC = () => {
     const heroImgs: { url: string; alt?: string }[] = hero.images?.length ? hero.images : heroSlides(hero);
     const patchHeroImages = (images: { url: string; alt?: string }[]) =>
         patchContent({ hero: { ...hero, images } });
+    const itemsVideo = content.requiredItemsVideo || {};
+    // El MISMO criterio que la página: el aviso del editor no puede
+    // contradecir lo que se va a pintar.
+    const itemsVideoKind = resolveCampaignVideo(itemsVideo.url);
     const donateCard = content.donateCard || {};
     const finalCta = content.finalCta || {};
     const seo = content.seo || {};
@@ -528,7 +536,9 @@ const ContributionCampaigns: React.FC = () => {
     return (
         <AdminLayout>
             <input ref={fileInputRef} type="file" multiple accept={IMAGE_ACCEPT} className="hidden" onChange={onFileChosen} />
+            <input ref={videoInputRef} type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={onFileChosen} />
             <MediaPicker isOpen={pickerField !== null} onClose={() => setPickerField(null)} onSelect={onPicked}
+                mediaType={pickerField === 'itemsVideo' ? 'video' : 'image'}
                 maxSelection={pickerField === 'heroAdd' ? HERO_MAX_SLIDES : 1} />
 
             <div className="space-y-6">
@@ -928,6 +938,49 @@ const ContributionCampaigns: React.FC = () => {
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
                             <Plus className="w-4 h-4" /> Agregar elemento
                         </button>
+
+                        {/* ── El video que va DEBAJO de las cajas ──
+                            Se acepta YouTube, Vimeo o un archivo de video. Lo
+                            que decide si sirve es el MISMO criterio que usa la
+                            página (`resolveCampaignVideo`), así que el aviso de
+                            acá no puede contradecir lo que se va a pintar. */}
+                        <div className="border-t border-gray-100 pt-5 mt-2 space-y-3">
+                            <div>
+                                <label className={lbl}>Video debajo de los elementos (opcional)</label>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                    <input className={`${field} mt-0 flex-1`}
+                                        placeholder="Enlace de YouTube o Vimeo, o la URL de un video (.mp4)"
+                                        value={itemsVideo.url || ''}
+                                        onChange={e => patchContent({ requiredItemsVideo: { ...itemsVideo, url: e.target.value } })} />
+                                    <button type="button" onClick={() => startUpload('itemsVideo')} disabled={uploading}
+                                        className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 disabled:opacity-50">
+                                        <Upload className="w-4 h-4" /> Subir
+                                    </button>
+                                    <button type="button" onClick={() => setPickerField('itemsVideo')}
+                                        className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">
+                                        <ImageIcon className="w-4 h-4" /> Biblioteca
+                                    </button>
+                                </div>
+                                {/* Un enlace que no se reconoce se DICE acá, no
+                                    se descubre publicando: la página no pinta
+                                    nada y eso se leería como que no funciona. */}
+                                {itemsVideo.url && !itemsVideoKind && (
+                                    <p className="text-xs text-amber-600 mt-2 flex items-start gap-1.5">
+                                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                        No se reconoce ese enlace, así que el video no se va a mostrar. Se admiten YouTube, Vimeo o un archivo .mp4/.webm servido por https.
+                                    </p>
+                                )}
+                                {itemsVideoKind && (
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        Se mostrará como {itemsVideoKind.kind === 'file' ? 'video propio con controles' : `video de ${itemsVideoKind.kind === 'youtube' ? 'YouTube' : 'Vimeo'}`}.
+                                    </p>
+                                )}
+                            </div>
+                            <div><label className={lbl}>Pie del video (opcional)</label>
+                                <input className={field} placeholder="Ej: Así se clasifican las donaciones en el centro de acopio"
+                                    value={itemsVideo.title || ''}
+                                    onChange={e => patchContent({ requiredItemsVideo: { ...itemsVideo, title: e.target.value } })} /></div>
+                        </div>
                     </div>
                 </Card>
 

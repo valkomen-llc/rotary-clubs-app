@@ -29,7 +29,7 @@ import {
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
-    heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS,
+    heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -274,6 +274,37 @@ check('normalizeContent guarda las imágenes del hero y CONSERVA la `image` de s
     return n.hero.image === 'vieja.jpg' && eq(n.hero.images, [{ url: 'a.jpg', alt: 'A' }]);
 })());
 
+// ─── v4.815: el video de una sección ───────────────────────────────────────
+grupo('El video que va debajo de los elementos');
+const vid = u => resolveCampaignVideo(u);
+check('YouTube en sus cuatro formas da el mismo embed sin cookies', (() => {
+    const esperado = { kind: 'youtube', src: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' };
+    return ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://youtu.be/dQw4w9WgXcQ',
+        'https://www.youtube.com/embed/dQw4w9WgXcQ', 'https://youtube.com/shorts/dQw4w9WgXcQ']
+        .every(u => eq(vid(u), esperado));
+})());
+check('del `<iframe>` pegado entero se toma el src (nadie edita HTML a mano)',
+    vid('<iframe width="560" src="https://www.youtube.com/embed/dQw4w9WgXcQ" allowfullscreen></iframe>')?.kind === 'youtube');
+check('Vimeo se reconoce por su id', eq(vid('https://vimeo.com/123456789'),
+    { kind: 'vimeo', src: 'https://player.vimeo.com/video/123456789' }));
+check('un archivo de video se reproduce con el reproductor del navegador',
+    vid('https://cdn.ejemplo.org/clip.mp4')?.kind === 'file'
+    && vid('https://cdn.ejemplo.org/clip.webm')?.kind === 'file');
+// Un `<iframe>` se dibuja en una página pública: la lista de anfitriones es
+// cerrada por el mismo motivo que el mapa de la sede (v4.717).
+check('un anfitrión que no está en la lista NO se embebe',
+    vid('https://evil.example/video') === null && vid('https://rutube.ru/video/abc') === null);
+check('sin https no se embebe nada',
+    vid('http://www.youtube.com/watch?v=dQw4w9WgXcQ') === null
+    && vid('javascript:alert(1)') === null && vid('//youtube.com/watch?v=x') === null);
+check('lo vacío o irreconocible devuelve null, y la página no pinta nada',
+    vid('') === null && vid(null) === null && vid('cualquier cosa') === null
+    && vid('https://www.youtube.com/') === null);
+check('normalizeContent guarda la URL TAL CUAL, para que el editor pueda mostrar el error', (() => {
+    const n = normalizeContent({ requiredItemsVideo: { url: 'no sirve', title: 'Pie', poster: 'https://x/y.jpg' } });
+    return n.requiredItemsVideo.url === 'no sirve' && n.requiredItemsVideo.title === 'Pie';
+})());
+
 // ─── El espejo del navegador ───────────────────────────────────────────────
 let mirror = null;
 try {
@@ -328,6 +359,13 @@ if (mirror) {
     })());
     check('mismo tope y mismo intervalo del carrusel',
         HERO_MAX_SLIDES === mirror.HERO_MAX_SLIDES && HERO_SLIDE_MS === mirror.HERO_SLIDE_MS);
+    check('mismo criterio de video: el aviso del editor no puede contradecir lo que se pinta', (() => {
+        const casos = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://youtu.be/abc123',
+            'https://vimeo.com/123456789', 'https://cdn.x.org/a.mp4', 'https://evil.example/v',
+            'http://youtube.com/watch?v=x', '', 'cualquier cosa',
+            '<iframe src="https://player.vimeo.com/video/987654321"></iframe>'];
+        return casos.every(u => eq(resolveCampaignVideo(u), mirror.resolveCampaignVideo(u)));
+    })());
 }
 
 // ─── Comprobaciones de archivo ─────────────────────────────────────────────
@@ -705,6 +743,23 @@ check('las imágenes se cruzan por opacidad, montadas todas — no se desmontan 
 check('los puntos se anuncian al lector de pantalla',
     /aria-label=\{`Ver imagen \$\{i \+ 1\} de \$\{slides\.length\}`\}/.test(landingSrc));
 
+// v4.815: títulos de sección en peso normal y el video de los elementos.
+check('los títulos de sección NO van en negrilla, como el resto del sitio',
+    !/<h2 className="text-3xl md:text-4xl font-black/.test(landingSrc)
+    && (landingSrc.match(/<h2 className="text-3xl md:text-4xl font-light/g) || []).length >= 3);
+check('la página usa el criterio compartido para el video, no una comprobación a mano',
+    /resolveCampaignVideo\(content\.requiredItemsVideo\?\.url\)/.test(landingSrc)
+    && !/youtube\.com/.test(landingSrc));
+check('el video va DESPUÉS de las cajas de elementos', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
+    return sec.indexOf('requiredItems.map') < sec.indexOf('{itemsVideo &&');
+})());
+// Un archivo propio no se puede meter en un iframe: se reproduce con el
+// reproductor del navegador, y al revés tampoco funciona.
+check('un archivo propio va en <video> y un embed en <iframe>',
+    /itemsVideo\.kind === 'file' \?/.test(landingSrc)
+    && /<video[\s\S]{0,400}controls/.test(landingSrc) && /<iframe[\s\S]{0,700}allowFullScreen/.test(landingSrc));
+
 // v4.814: los centros van en mampostería, no en rejilla.
 check('las tarjetas de ciudad NO van en una rejilla que las estire a la más alta', (() => {
     // Se ancla en el `id` de la sección, no en la primera mención: el enlace
@@ -752,6 +807,18 @@ check('el editor no inventa su propio tope: usa el del spec',
     /HERO_MAX_SLIDES/.test(adminSrc) && !/slice\(0,\s*8\)/.test(adminSrc));
 check('una campaña con una sola imagen se ve en el editor como su primera fila',
     /hero\.images\?\.length \? hero\.images : heroSlides\(hero\)/.test(adminSrc));
+check('el editor avisa EN VIVO cuando el enlace del video no se reconoce',
+    /itemsVideo\.url && !itemsVideoKind/.test(adminSrc) && /resolveCampaignVideo\(itemsVideo\.url\)/.test(adminSrc));
+check('la casilla del video ofrece las DOS vías (v4.700)',
+    /startUpload\('itemsVideo'\)/.test(adminSrc) && /setPickerField\('itemsVideo'\)/.test(adminSrc));
+// Un diálogo que ofrece fotos a quien va a subir un video ofrece lo que no
+// sirve; el `accept` del input se lee al abrirlo, así que hace falta el suyo.
+check('el diálogo de archivo y la Biblioteca se abren en modo VIDEO para ese campo',
+    /VIDEO_ACCEPT/.test(adminSrc) && /target === 'itemsVideo' \? videoInputRef : fileInputRef/.test(adminSrc)
+    && /mediaType=\{pickerField === 'itemsVideo' \? 'video' : 'image'\}/.test(adminSrc));
+const pickerFile = readFileSync('src/components/admin/content-studio/MediaPicker.tsx', 'utf8');
+check('el selector conserva las imágenes por omisión: nueve pantallas ya lo usaban así',
+    /mediaType = 'image'/.test(pickerFile) && /new URLSearchParams\(\{ type: mediaType \}\)/.test(pickerFile));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

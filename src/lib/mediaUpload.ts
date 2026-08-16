@@ -199,3 +199,11 @@ export const uploadMediaFiles = async (
  * exactamente el archivo que más se sube.
  */
 export const IMAGE_ACCEPT = 'image/*,.heic,.heif';
+
+/**
+ * Lo que acepta una casilla de VIDEO. Se enumeran los contenedores además de
+ * `video/*` porque el navegador manda el tipo vacío con algunos archivos y sin
+ * la extensión el diálogo los dejaría fuera — el mismo motivo por el que
+ * `IMAGE_ACCEPT` nombra `.heic` aparte.
+ */
+export const VIDEO_ACCEPT = 'video/*,.mp4,.webm,.mov,.ogv';
