@@ -34,6 +34,11 @@ import CampaignGallery from './CampaignGallery';
 
 interface Cta { label: string; url: string; action: 'donate' | 'centers' | 'link' | 'share'; }
 
+/** Cada cuánto pasa solo al video siguiente (v4.830). Bastante más lento que
+ *  la tira de fotos: acá hay que darle tiempo a alguien para reconocer el
+ *  video y decidir si lo mira. Al ajustarlo, acá y en ningún otro sitio. */
+const VIDEO_ROTA_MS = 7000;
+
 // ── Métricas (F5) ───────────────────────────────────────────────────────────
 //
 // Se reporta con `sendBeacon`: no espera respuesta y sobrevive a que el
@@ -213,10 +218,41 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     }, [slideCount]);
 
     // El video que se está viendo. Va ACÁ ARRIBA con el resto de los hooks,
-    // antes de cualquier `return` (check:hooks). No hay intervalo: los videos
-    // NO rotan solos — uno que se cambia mientras alguien lo mira es un
-    // defecto, no una animación.
+    // antes de cualquier `return` (check:hooks).
     const [videoIdx, setVideoIdx] = useState(0);
+    const [videoQuieto, setVideoQuieto] = useState(false);   // cursor encima
+    const [videoTomado, setVideoTomado] = useState(false);   // le dieron play
+    // Cuántos videos hay. Se calcula ACÁ, antes del efecto que lo consume: un
+    // `const` declarado más abajo daría un error de zona muerta al evaluar el
+    // array de dependencias (el defecto de `uploadImage` en Plantillas IA).
+    const videoCount = sectionVideos(campaign.content?.requiredItemsVideos, campaign.content?.requiredItemsVideo).length;
+
+    // Los videos SÍ rotan solos desde v4.830, y eso invierte la regla de
+    // v4.816 —que era «un video que se cambia mientras alguien lo mira es un
+    // defecto, no una animación»—. Lo que la hacía necesaria eran justamente
+    // los dos frenos que ahora existen: la rotación se detiene con el cursor
+    // encima y se detiene DEL TODO en cuanto alguien le da play. Sin esos dos
+    // frenos, volver a quitar el intervalo.
+    useEffect(() => {
+        if (videoCount < 2 || videoQuieto || videoTomado) return;
+        const t = setInterval(() => setVideoIdx(i => (i + 1) % videoCount), VIDEO_ROTA_MS);
+        return () => clearInterval(t);
+    }, [videoCount, videoQuieto, videoTomado]);
+
+    // Un video EMBEBIDO (YouTube, Vimeo) se reproduce dentro de un `<iframe>`
+    // y desde acá no hay forma de saber que empezó: haría falta la API de
+    // cada proveedor, que es una librería más por visita. Lo que sí se puede
+    // observar es que el visitante PULSÓ dentro del reproductor — cuando eso
+    // pasa, el foco se va al iframe y la ventana pierde el foco. Es una
+    // heurística, no una señal de reproducción, y se usa sólo para DETENER la
+    // rotación: equivocarse deja el carrusel quieto, que es el lado seguro.
+    useEffect(() => {
+        const alPerderFoco = () => {
+            if (document.activeElement?.tagName === 'IFRAME') setVideoTomado(true);
+        };
+        window.addEventListener('blur', alPerderFoco);
+        return () => window.removeEventListener('blur', alPerderFoco);
+    }, []);
 
 
     const track = (type: string) => trackCampaign(campaign.id, clubId, type, preview);
@@ -500,7 +536,15 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     para que un vecino asome sin comerse el
                                     reproductor, y ahí queda el video solo con
                                     las flechas de la fila de abajo. */}
-                                <div className="relative">
+                                <div
+                                    className="relative"
+                                    // Con el cursor encima la rotación se
+                                    // detiene: es lo que hace mirable un video
+                                    // que si no se cambiaría solo debajo del
+                                    // puntero. Misma regla que la tira de fotos.
+                                    onMouseEnter={() => setVideoQuieto(true)}
+                                    onMouseLeave={() => setVideoQuieto(false)}
+                                >
                                     <div
                                         // Márgenes negativos: el carrusel llega
                                         // hasta el BORDE del contenedor y no
@@ -519,7 +563,16 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                             WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
                                         }}
                                     >
-                                        <div className="flex items-center justify-center gap-3 xl:gap-4 py-1">
+                                        {/* `py-6`: una banda del carrusel POR ENCIMA Y POR DEBAJO del
+                                                reproductor. No es respiro decorativo — es lo
+                                                que hace que el freno por cursor funcione con un
+                                                video EMBEBIDO: los eventos del ratón sobre un
+                                                `<iframe>` van a SU documento y el nuestro no los
+                                                ve nunca, así que sin esa banda el puntero que
+                                                baja en vertical entra directo al reproductor y
+                                                la rotación sigue. Medido: sobre el vecino se
+                                                detenía y sobre el reproductor no. */}
+                                        <div className="flex items-center justify-center gap-3 xl:gap-4 py-6">
                                             {vecinos.izq && (
                                                 <VideoVecino entry={vecinos.izq} lado="izq"
                                                     onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)} />
@@ -548,6 +601,10 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                             controls
                                                             playsInline
                                                             preload="metadata"
+                                                            // Darle play DETIENE la rotación para
+                                                            // siempre: quien eligió un video se
+                                                            // queda en él, que es lo pedido.
+                                                            onPlay={() => setVideoTomado(true)}
                                                             className="absolute inset-0 w-full h-full"
                                                         />
                                                     ) : (
