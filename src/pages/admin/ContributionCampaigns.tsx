@@ -18,7 +18,8 @@ import {
 import {
     FEED_METRICS, METRIC_KEYS, SOURCE_KINDS, SOURCE_FORMATS,
     normalizeFeed, validateFeed, formatFigure,
-    DEFAULT_MAX_JUMP_PCT, MAX_SOURCES, type FeedSource,
+    DEFAULT_MAX_JUMP_PCT, MAX_SOURCES, INTERVAL_OPTIONS, FEED_PRESETS,
+    type FeedSource,
 } from '../../lib/emergencyFeed';
 import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../lib/mediaUpload';
 
@@ -36,7 +37,7 @@ interface CampaignRow {
     id: string; slug: string; name: string; campaignType: string;
     status: string; effectiveStatus?: string;
     startAt: string | null; endAt: string | null; priority: number;
-    content: any; stats: Stat[]; targeting: any; feed?: any;
+    content: any; stats: Stat[]; targeting: any; feed?: any; feedRunAt?: string | null;
     recipientClubId: string | null; publishedAt: string | null; updatedAt: string;
 }
 
@@ -553,6 +554,17 @@ const ContributionCampaigns: React.FC = () => {
     const patchFeed = (updates: Partial<ReturnType<typeof normalizeFeed>>) =>
         patch({ feed: { ...feed, ...updates } });
     const patchSources = (sources: FeedSource[]) => patchFeed({ sources });
+    /** Agrega una fuente a partir de una plantilla: nombre, autoridad y
+     *  formato ya puestos, que es la parte que no se puede deducir mirando
+     *  una página. La dirección la pega el usuario. */
+    const addSourceFromPreset = (presetId: string) => {
+        const p = FEED_PRESETS.find(x => x.id === presetId);
+        if (!p) return;
+        patchSources([...feed.sources, {
+            id: `src-${Date.now()}`, name: p.name, url: p.url,
+            kind: p.kind, format: p.format, active: true,
+        }]);
+    };
 
     /** «Leer ahora»: la misma pasada que hace el cron, a pedido. */
     const runFeed = async () => {
@@ -571,10 +583,17 @@ const ContributionCampaigns: React.FC = () => {
             // Cero propuestas es el resultado NORMAL —la página no cambió— y
             // se dice así: un aviso de error haría buscar una avería
             // inexistente.
-            const errores = (d.fuentes || []).filter((f: any) => f.error);
-            if (errores.length) toast.error(`${errores[0].name || 'Una fuente'}: ${errores[0].error}`);
-            else if (d.propuestas || d.aplicadas) toast.success(`${d.propuestas} propuesta(s), ${d.aplicadas} aplicada(s) sola(s)`);
-            else toast.success('Se consultaron las fuentes: nada nuevo desde la última lectura');
+            // Decir QUÉ falta, no «nada nuevo»: sin fuentes configuradas el
+            // mensaje genérico hace creer que se consultó algo.
+            if (d.skipped === 'sin_fuentes') toast.error('Todavía no hay ninguna fuente activa con dirección válida: agregá una abajo.');
+            else if (d.skipped === 'apagada') toast.error('La lectura automática está apagada.');
+            else {
+                const errores = (d.fuentes || []).filter((f: any) => f.error);
+                if (errores.length) toast.error(`${errores[0].name || 'Una fuente'}: ${errores[0].error}`);
+                else if (d.propuestas || d.aplicadas) toast.success(`${d.propuestas} propuesta(s), ${d.aplicadas} aplicada(s) sola(s)`);
+                else toast.success('Se consultaron las fuentes: nada nuevo desde la última lectura');
+            }
+            if (c) setC(prev => (prev ? { ...prev, feedRunAt: new Date().toISOString() } : prev));
         } catch (e: any) {
             toast.error(e?.message || 'No se pudo consultar las fuentes');
         } finally { setReading(false); }
@@ -1485,6 +1504,31 @@ const ContributionCampaigns: React.FC = () => {
 
                         {feed.enabled && (
                             <>
+                                {/* Qué hace, en tres pasos. Sin esto, la sección
+                                    es una lista de campos sin contexto — se
+                                    reportó como «no entiendo, no funciona». */}
+                                <div className="rounded-2xl bg-gray-50/70 p-4 text-xs text-gray-600 space-y-1">
+                                    <p><b>1.</b> Se agrega una o varias fuentes abajo (de dónde se leen las cifras).</p>
+                                    <p><b>2.</b> La plataforma las consulta {(INTERVAL_OPTIONS.find(o => o.minutes === feed.intervalMinutes)?.label || '').toLowerCase()} y lee lo que publiquen.</p>
+                                    <p><b>3.</b> Lo que encuentre aparece acá abajo como <b>propuesta</b>, y se aplica con un clic al «Panorama de la emergencia».</p>
+                                    <p className="text-gray-400 pt-1">Un indicador del panorama sólo se actualiza solo si tiene declarada su métrica en «Actualización automática».</p>
+                                </div>
+
+                                <label className="block max-w-xs">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Cada cuánto se consulta</span>
+                                    <select className={field} value={feed.intervalMinutes}
+                                        onChange={e => patchFeed({ intervalMinutes: Number(e.target.value) })}>
+                                        {INTERVAL_OPTIONS.map(o => <option key={o.minutes} value={o.minutes}>{o.label}</option>)}
+                                    </select>
+                                    {/* La consecuencia del intervalo: cada vuelta
+                                        gasta una consulta al modelo POR FUENTE. */}
+                                    <span className="block text-xs text-gray-400 mt-1.5">
+                                        {INTERVAL_OPTIONS.find(o => o.minutes === feed.intervalMinutes)?.hint
+                                            || 'Cada consulta gasta una lectura por fuente.'}
+                                        {c?.feedRunAt && <> · Última consulta: <span data-no-translate>{new Date(c.feedRunAt).toLocaleString('es-CO')}</span></>}
+                                    </span>
+                                </label>
+
                                 <label className="flex items-start gap-3 cursor-pointer">
                                     <input type="checkbox" checked={feed.autoPublish} className="w-4 h-4 mt-1 accent-rotary-blue"
                                         onChange={e => patchFeed({ autoPublish: e.target.checked })} />
@@ -1539,14 +1583,52 @@ const ContributionCampaigns: React.FC = () => {
                                                     </select>
                                                 </label>
                                             </div>
+                                            {/* Qué significa lo que se eligió. La
+                                                autoridad decide si esa cifra puede
+                                                publicarse sola: no es un detalle. */}
+                                            <p className="text-xs text-gray-400">
+                                                {src.kind === 'oficial'
+                                                    ? 'Oficial: su cifra puede fijar el indicador y publicarse sola (si el interruptor de arriba está encendido).'
+                                                    : 'Secundaria: avisa de que hay balance nuevo, pero su cifra nunca se publica sola.'}
+                                                {src.format === 'imagen' && ' Se lee la IMAGEN: pegá la dirección de la infografía, no la de la página que la contiene.'}
+                                            </p>
                                         </div>
                                     ))}
+                                    {/* Sin fuentes, la sección no hace nada y hay
+                                        que decirlo con la salida: es el estado
+                                        en el que se reportó «no funciona». */}
+                                    {feed.sources.length === 0 && (
+                                        <div className="rounded-2xl border border-dashed border-gray-200 p-5 text-center">
+                                            <p className="text-sm font-bold text-gray-700">Todavía no hay ninguna fuente</p>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Sin una fuente no hay nada que consultar. Elegí una de la lista de abajo y pegá la dirección de la página o de la imagen del balance.
+                                            </p>
+                                        </div>
+                                    )}
                                     {feed.sources.length < MAX_SOURCES && (
-                                        <button type="button"
-                                            onClick={() => patchSources([...feed.sources, { id: `src-${Date.now()}`, name: '', url: '', kind: 'secundaria', format: 'texto', active: true }])}
-                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
-                                            <Plus className="w-4 h-4" /> Agregar fuente
-                                        </button>
+                                        <div className="flex flex-wrap items-end gap-3">
+                                            {/* Elegir de una lista en vez de escribir:
+                                                la plantilla fija la AUTORIDAD y el
+                                                FORMATO, que es lo que no se puede
+                                                deducir mirando una página. */}
+                                            <label className="block flex-1 min-w-[260px]">
+                                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Agregar una fuente</span>
+                                                <select className={field} value=""
+                                                    onChange={e => { addSourceFromPreset(e.target.value); e.target.value = ''; }}>
+                                                    <option value="">Elegí de dónde se leen las cifras…</option>
+                                                    {FEED_PRESETS.map(p => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name || (p.format === 'json' ? 'Otra fuente — JSON / API' : 'Otro medio de comunicación')}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <button type="button"
+                                                onClick={() => patchSources([...feed.sources, { id: `src-${Date.now()}`, name: '', url: '', kind: 'secundaria', format: 'texto', active: true }])}
+                                                className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
+                                                <Plus className="w-4 h-4" /> En blanco
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
 

@@ -1119,6 +1119,7 @@ check('el selector conserva las imágenes por omisión: nueve pantallas ya lo us
 const feedMod = await import('../server/lib/emergencyFeed.js');
 const {
     FEED_METRICS, METRIC_KEYS, SOURCE_KINDS, normalizeFeed, validateFeed,
+    INTERVAL_OPTIONS, DEFAULT_INTERVAL_MINUTES, FEED_PRESETS, shouldRunNow, MIN_POLL_MINUTES,
     isFetchableUrl, parseFigure, formatFigure, parseCutoff, parseExtraction,
     judgeReading, readingKey, applyReading, formatCutoff,
     publishedValueOf, publishedCutoffOf, buildExtractionPrompt,
@@ -1287,7 +1288,7 @@ check('la tabla de lecturas se crea en runtime, fuera de Prisma',
 // tabla nueva ahí, se da por presente y no se crea nunca.
 check('la comprobación rápida enumera la tabla Y la columna nuevas',
     /ContributionCampaignReading"'\) IS NOT NULL AS lectura/.test(ensureSrc)
-    && /column_name = 'feed'/.test(ensureSrc));
+    && /column_name = 'feedRunAt'/.test(ensureSrc));
 check('la columna feed se AGREGA, la tabla no se recrea',
     /ADD COLUMN IF NOT EXISTS feed JSONB/.test(ensureSrc) && !/DROP TABLE/.test(ensureSrc));
 // La dedupe vive en el índice, no en el código que inserta.
@@ -1363,6 +1364,10 @@ if (feedMirror) {
     check('el corte se lee y se rotula igual',
         ['15/08/2026 18:30', '2026-08-15T18:30:00Z', 'el jueves'].every(
             v => parseCutoff(v) === feedMirror.parseCutoff(v) && formatCutoff(v) === feedMirror.formatCutoff(v)));
+    check('mismas opciones de frecuencia y mismo valor por defecto',
+        eq(INTERVAL_OPTIONS, feedMirror.INTERVAL_OPTIONS)
+        && DEFAULT_INTERVAL_MINUTES === feedMirror.DEFAULT_INTERVAL_MINUTES);
+    check('mismas plantillas de fuente', eq(FEED_PRESETS, feedMirror.FEED_PRESETS));
     check('la misma dirección se acepta o se rechaza igual',
         ['https://a.co/x', 'http://a.co/x', 'https://localhost/x', 'https://127.0.0.1/x', 'javascript:x'].every(
             u => isFetchableUrl(u) === feedMirror.isFetchableUrl(u)));
@@ -1402,6 +1407,72 @@ check('las secciones con avisos los declaran en su cabecera',
 // En modo privado localStorage lanza, y eso no puede tumbar el editor.
 check('la preferencia se guarda envuelta en try',
     /try \{ localStorage\.setItem\('contrib_cards_open'/.test(admin826));
+
+grupo('v4.827 — cada cuánto se consulta y de dónde');
+// El cron pasa cada 15 minutos: ése es el PISO, no la frecuencia.
+check('el intervalo más corto no baja del paso del cron',
+    Math.min(...INTERVAL_OPTIONS.map(o => o.minutes)) === MIN_POLL_MINUTES);
+check('el intervalo se acota al catálogo: un valor libre prometería lo que el cron no da',
+    normalizeFeed({ intervalMinutes: 1 }).intervalMinutes === DEFAULT_INTERVAL_MINUTES
+    && normalizeFeed({ intervalMinutes: 60 }).intervalMinutes === 60
+    && normalizeFeed({}).intervalMinutes === DEFAULT_INTERVAL_MINUTES);
+const feedListo = { enabled: true, intervalMinutes: 60, sources: [oficial] };
+const T0 = new Date('2026-08-16T12:00:00Z');
+check('sin consulta previa, le toca', shouldRunNow({ feed: feedListo, lastRunAt: null, now: T0 }).run === true);
+check('dentro del intervalo NO le toca, y dice cuánto falta', (() => {
+    const r = shouldRunNow({ feed: feedListo, lastRunAt: '2026-08-16T11:30:00Z', now: T0 });
+    return r.run === false && r.reason === 'todavia_no' && r.minutesLeft === 30;
+})());
+check('pasado el intervalo, le toca',
+    shouldRunNow({ feed: feedListo, lastRunAt: '2026-08-16T10:30:00Z', now: T0 }).run === true);
+// «Leer ahora» es del usuario: hacerle esperar al intervalo sería
+// desobedecerlo.
+check('«Leer ahora» (force) ignora el intervalo',
+    shouldRunNow({ feed: feedListo, lastRunAt: '2026-08-16T11:59:00Z', now: T0, force: true }).run === true);
+// Apagada o sin fuentes NO es «todavía no»: es que no hay nada que consultar,
+// y decirlo distinto es lo que faltaba cuando se reportó «no funciona».
+check('apagada y sin fuentes se distinguen de «todavía no»',
+    shouldRunNow({ feed: { ...feedListo, enabled: false }, now: T0 }).reason === 'apagada'
+    && shouldRunNow({ feed: { ...feedListo, sources: [] }, now: T0 }).reason === 'sin_fuentes');
+// Una fuente con dirección inválida no cuenta como fuente: si contara, el
+// barrido gastaría la vuelta en algo que no se puede descargar.
+check('una fuente con dirección inválida no cuenta como fuente',
+    shouldRunNow({ feed: { ...feedListo, sources: [{ ...oficial, url: 'ftp://x' }] }, now: T0 }).reason === 'sin_fuentes');
+
+check('las plantillas de fuente declaran autoridad y formato válidos',
+    FEED_PRESETS.length >= 3
+    && FEED_PRESETS.every(p => SOURCE_KINDS[p.kind] && ['texto', 'imagen', 'json'].includes(p.format) && p.note));
+// La dirección de una nota o una infografía cambia cada día: dejarla escrita
+// sería prometer una integración que no existe.
+check('una plantilla con dirección apunta a la UNGRD y es https',
+    FEED_PRESETS.filter(p => p.url).every(p => /^https:\/\//.test(p.url))
+    && FEED_PRESETS.some(p => p.kind === 'oficial' && /gestiondelriesgo\.gov\.co/.test(p.url)));
+// Sólo la oficial puede publicar: una plantilla secundaria marcada oficial
+// abriría esa puerta sin que nadie lo decidiera.
+check('la plantilla de un medio es SECUNDARIA',
+    FEED_PRESETS.find(p => p.id === 'medio')?.kind === 'secundaria');
+
+const ctl827 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+// Se sella ANTES de leer: si la invocación muere a mitad, la vuelta siguiente
+// no reintenta en el acto y gasta modelo dos veces por lo mismo.
+check('la fecha de consulta se sella ANTES de leer',
+    /SET "feedRunAt" = NOW\(\)[\s\S]{0,200}const \{ results \} = await readCampaign/.test(ctl827));
+check('«Leer ahora» fuerza y el cron no', /force: true/.test(ctl827)
+    && /shouldRunNow\(\{ feed: c\.feed, lastRunAt: c\.feedRunAt \}\)/.test(ctl827));
+const ensure827 = readFileSync('server/lib/ensureContributionSchema.js', 'utf8');
+check('la columna de última consulta existe y está en la comprobación rápida',
+    /ADD COLUMN IF NOT EXISTS "feedRunAt" TIMESTAMPTZ/.test(ensure827)
+    && /column_name = 'feedRunAt'/.test(ensure827));
+const admin827 = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+check('la fuente se elige de una lista, no sólo se escribe',
+    /addSourceFromPreset/.test(admin827) && /Elegí de dónde se leen las cifras/.test(admin827));
+check('la frecuencia se elige en la pantalla',
+    /Cada cuánto se consulta/.test(admin827) && /patchFeed\(\{ intervalMinutes/.test(admin827));
+// «Nada nuevo» sobre una campaña sin fuentes hace creer que se consultó algo.
+check('sin fuentes, el aviso dice QUÉ falta y no «nada nuevo»',
+    /d\.skipped === 'sin_fuentes'/.test(admin827));
+check('la sección explica en tres pasos qué hace',
+    /aparece acá abajo como/.test(admin827) && /<b>1\.<\/b>/.test(admin827));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

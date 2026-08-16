@@ -96,8 +96,70 @@ export const SOURCE_FORMATS = {
 };
 
 export const DEFAULT_MAX_JUMP_PCT = 40;   // salto máximo que se publica solo
-export const MIN_POLL_MINUTES = 15;       // no se consulta una fuente más seguido
+export const MIN_POLL_MINUTES = 15;       // el piso: lo que tarda el cron en volver
 export const MAX_SOURCES = 12;
+
+// ─── Cada cuánto se consulta ────────────────────────────────────────────
+//
+// El cron pasa cada 15 minutos: ése es el PISO, no la frecuencia. Cada
+// campaña elige la suya y el barrido saltea las que todavía no toca — cada
+// vuelta gasta una llamada al modelo POR FUENTE, y un balance oficial no
+// cambia doce veces por hora.
+export const INTERVAL_OPTIONS = [
+    { minutes: 15, label: 'Cada 15 minutos', hint: 'Lo más seguido posible. Para las primeras horas de una emergencia.' },
+    { minutes: 30, label: 'Cada 30 minutos', hint: '' },
+    { minutes: 60, label: 'Cada hora', hint: 'Lo habitual: los balances oficiales se publican una o dos veces al día.' },
+    { minutes: 180, label: 'Cada 3 horas', hint: '' },
+    { minutes: 360, label: 'Cada 6 horas', hint: '' },
+    { minutes: 720, label: 'Dos veces al día', hint: '' },
+    { minutes: 1440, label: 'Una vez al día', hint: 'Para una emergencia ya estabilizada.' },
+];
+export const DEFAULT_INTERVAL_MINUTES = 60;
+
+// ─── Fuentes conocidas ──────────────────────────────────────────────────
+//
+// Plantillas para no tener que adivinar la AUTORIDAD y el FORMATO, que es la
+// parte que no se puede deducir mirando una página: si una fuente puede fijar
+// la cifra o sólo avisar, y si el balance viene como texto o como infografía.
+//
+// La DIRECCIÓN se pega a mano a propósito. Una nota de prensa o una
+// infografía tienen una dirección distinta cada día, y dejar una escrita acá
+// sería prometer una integración que no existe: son plantillas, no un
+// conector. `url` es el punto de partida, no el sitio del que se lee.
+export const FEED_PRESETS = [
+    {
+        id: 'ungrd-noticias',
+        name: 'UNGRD',
+        url: 'https://portal.gestiondelriesgo.gov.co/Paginas/Noticias.aspx',
+        kind: 'oficial',
+        format: 'texto',
+        note: 'La entidad que publica el balance oficial. Es la única clase de fuente que puede fijar la cifra.',
+    },
+    {
+        id: 'ungrd-infografia',
+        name: 'UNGRD — balance (infografía)',
+        url: '',
+        kind: 'oficial',
+        format: 'imagen',
+        note: 'La UNGRD publica el balance como IMAGEN. Pegá la dirección de la imagen, no la de la página que la contiene.',
+    },
+    {
+        id: 'medio',
+        name: '',
+        url: '',
+        kind: 'secundaria',
+        format: 'texto',
+        note: 'Un medio de comunicación. Avisa de que hay balance nuevo; su cifra nunca se publica sola.',
+    },
+    {
+        id: 'api',
+        name: '',
+        url: '',
+        kind: 'oficial',
+        format: 'json',
+        note: 'Un endpoint que devuelve JSON. Si algún día hay uno estructurado, es el camino más fiable.',
+    },
+];
 
 export function normalizeSource(raw, i = 0) {
     const kind = SOURCE_KINDS[str(raw?.kind, 20)] ? str(raw?.kind, 20) : 'secundaria';
@@ -118,14 +180,39 @@ export function normalizeSource(raw, i = 0) {
 // `feed` y `normalizeFeed` la deja apagada. Encenderla es un acto explícito.
 export function normalizeFeed(raw) {
     const pct = Number(raw?.maxJumpPct);
+    const min = Number(raw?.intervalMinutes);
     return {
         enabled: raw?.enabled === true,
         // APAGADA por omisión, y no por prudencia genérica: es la decisión
         // que pone una cifra en una página pública sin que nadie la mire.
         autoPublish: raw?.autoPublish === true,
         maxJumpPct: Number.isFinite(pct) && pct > 0 && pct <= 500 ? Math.round(pct) : DEFAULT_MAX_JUMP_PCT,
+        // Se acota al catálogo: un valor libre dejaría poner «cada minuto» y
+        // el cron no puede darlo —pasa cada 15—, así que sería una promesa
+        // que la pantalla hace y la infraestructura no cumple.
+        intervalMinutes: INTERVAL_OPTIONS.some(o => o.minutes === min) ? min : DEFAULT_INTERVAL_MINUTES,
         sources: arr(raw?.sources).slice(0, MAX_SOURCES).map(normalizeSource),
     };
+}
+
+/**
+ * ¿Le toca a esta campaña en esta vuelta del cron?
+ *
+ * Puro y con `now` por parámetro para poder probarlo. `force` es «Leer
+ * ahora»: el usuario pidió mirar, y hacerle esperar al intervalo sería
+ * desobedecerlo.
+ */
+export function shouldRunNow({ feed, lastRunAt, now = new Date(), force = false } = {}) {
+    const f = normalizeFeed(feed);
+    if (!f.enabled) return { run: false, reason: 'apagada' };
+    if (!f.sources.some(s => s.active && isFetchableUrl(s.url))) return { run: false, reason: 'sin_fuentes' };
+    if (force) return { run: true, reason: '' };
+    const t = lastRunAt ? new Date(lastRunAt).getTime() : 0;
+    if (!t || Number.isNaN(t)) return { run: true, reason: '' };
+    const faltan = t + f.intervalMinutes * 60_000 - (now instanceof Date ? now.getTime() : Date.now());
+    return faltan > 0
+        ? { run: false, reason: 'todavia_no', minutesLeft: Math.ceil(faltan / 60_000) }
+        : { run: true, reason: '' };
 }
 
 export function validateFeed(feed) {
@@ -444,6 +531,7 @@ export function buildExtractionPrompt() {
 export default {
     FEED_METRICS, METRIC_KEYS, metricLabel, SOURCE_KINDS, SOURCE_FORMATS,
     DEFAULT_MAX_JUMP_PCT, MIN_POLL_MINUTES, MAX_SOURCES,
+    INTERVAL_OPTIONS, DEFAULT_INTERVAL_MINUTES, FEED_PRESETS, shouldRunNow,
     normalizeSource, normalizeFeed, validateFeed, isFetchableUrl,
     parseFigure, formatFigure, parseExtraction, parseCutoff,
     judgeReading, readingKey, applyReading, formatCutoff,

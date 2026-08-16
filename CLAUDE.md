@@ -2907,7 +2907,34 @@ un modelo EXTRAE las cifras y el código las juzga. Lo que sale son PROPUESTAS.
   hora. Protegido con `CRON_SECRET`, con presupuesto de tiempo, y sólo sobre
   campañas `active`/`scheduled` — una archivada gastaría modelo por una página
   que nadie ve.
-- Pruebas: las de `npm run test:contribution` (367 casos, **sin base,
+- **El paso del cron (15 min) es el PISO, no la frecuencia** (v4.827,
+  `intervalMinutes` + `shouldRunNow`). Cada campaña elige la suya —de 15
+  minutos a una vez al día, «cada hora» por defecto— y el barrido saltea las
+  que todavía no toca. El intervalo se acota al catálogo: un valor libre
+  dejaría poner «cada minuto», que el cron no puede dar, y sería una promesa
+  que la pantalla hace y la infraestructura no cumple. «Leer ahora» pasa
+  `force` — el usuario pidió mirar y hacerle esperar sería desobedecerlo.
+- **`feedRunAt` es COLUMNA, no un campo del JSON.** La usa el barrido para
+  decidir a quién le toca: dentro del documento habría que traer y
+  deserializar todas las campañas para saberlo. Se sella **antes** de leer: si
+  la invocación muere a mitad, la vuelta siguiente no reintenta en el acto y
+  gasta modelo dos veces por lo mismo.
+- **Las fuentes se ELIGEN de una lista** (`FEED_PRESETS`), no se escriben de
+  cero. La plantilla fija el NOMBRE, la AUTORIDAD y el FORMATO, que es la
+  parte que no se puede deducir mirando una página; la DIRECCIÓN se pega a
+  mano a propósito —una nota o una infografía tienen una distinta cada día, y
+  dejarla escrita sería prometer una integración que no existe—. Son
+  plantillas, no un conector, y así hay que llamarlas.
+- **«No funciona» era «no hay ninguna fuente», y la pantalla no lo decía.**
+  Con la lectura encendida y cero fuentes, «Leer ahora» contestaba «nada nuevo
+  desde la última lectura» — que hace creer que se consultó algo. Ahora
+  `shouldRunNow` distingue `apagada`, `sin_fuentes` y `todavia_no`, y cada uno
+  se dice distinto. Al agregar un camino que no hace nada, preguntarse qué se
+  le contesta a quien lo usa.
+- **La sección se EXPLICA en la propia pantalla** (tres pasos) y cada fila de
+  fuente dice qué implica lo que se eligió. Un módulo que exige leer la
+  documentación para configurarlo no se configura: se reporta como roto.
+- Pruebas: las de `npm run test:contribution` (394 casos, **sin base,
   credenciales ni red**), con los números REALES del sismo, no unos inventados
   para que la prueba pase.
 

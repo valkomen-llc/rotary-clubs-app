@@ -33,7 +33,7 @@ export async function ensureContributionSchema() {
                 to_regclass('public."ContributionCampaignMetric"') IS NOT NULL AS metrica,
                 to_regclass('public."ContributionCampaignReading"') IS NOT NULL AS lectura,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feed') AS col_feed`
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feedRunAt') AS col_feed`
     );
     if (rows[0]?.campania && rows[0]?.centro && rows[0]?.override
         && rows[0]?.historial && rows[0]?.metrica
@@ -164,6 +164,11 @@ export async function ensureContributionSchema() {
     // cómo está armada—, así que es una columna JSONB más. AMPLIAR, nunca
     // recrear: `ContributionCampaign` tiene datos en producción.
     await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS feed JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+    // Cuándo se consultó por última vez. Es COLUMNA y no un campo del JSON
+    // porque la usa el barrido para decidir a quién le toca: dentro del
+    // documento habría que traer y deserializar todas las campañas para
+    // saberlo.
+    await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS "feedRunAt" TIMESTAMPTZ;`);
 
     // Cada lectura de una fuente queda registrada, se aplique o no.
     //

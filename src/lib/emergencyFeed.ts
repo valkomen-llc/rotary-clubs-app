@@ -27,6 +27,7 @@ export interface EmergencyFeed {
     enabled: boolean;
     autoPublish: boolean;
     maxJumpPct: number;
+    intervalMinutes: number;
     sources: FeedSource[];
 }
 
@@ -60,6 +61,57 @@ export const SOURCE_FORMATS: Record<string, { label: string }> = {
 export const DEFAULT_MAX_JUMP_PCT = 40;
 export const MAX_SOURCES = 12;
 
+// El cron pasa cada 15 minutos: ése es el PISO, no la frecuencia.
+export const INTERVAL_OPTIONS = [
+    { minutes: 15, label: 'Cada 15 minutos', hint: 'Lo más seguido posible. Para las primeras horas de una emergencia.' },
+    { minutes: 30, label: 'Cada 30 minutos', hint: '' },
+    { minutes: 60, label: 'Cada hora', hint: 'Lo habitual: los balances oficiales se publican una o dos veces al día.' },
+    { minutes: 180, label: 'Cada 3 horas', hint: '' },
+    { minutes: 360, label: 'Cada 6 horas', hint: '' },
+    { minutes: 720, label: 'Dos veces al día', hint: '' },
+    { minutes: 1440, label: 'Una vez al día', hint: 'Para una emergencia ya estabilizada.' },
+];
+export const DEFAULT_INTERVAL_MINUTES = 60;
+
+// Plantillas de fuente: fijan la AUTORIDAD y el FORMATO, que es la parte que
+// no se puede deducir mirando una página. La DIRECCIÓN se pega a mano — una
+// nota o una infografía tienen una distinta cada día, y dejarla escrita sería
+// prometer una integración que no existe.
+export const FEED_PRESETS = [
+    {
+        id: 'ungrd-noticias',
+        name: 'UNGRD',
+        url: 'https://portal.gestiondelriesgo.gov.co/Paginas/Noticias.aspx',
+        kind: 'oficial',
+        format: 'texto',
+        note: 'La entidad que publica el balance oficial. Es la única clase de fuente que puede fijar la cifra.',
+    },
+    {
+        id: 'ungrd-infografia',
+        name: 'UNGRD — balance (infografía)',
+        url: '',
+        kind: 'oficial',
+        format: 'imagen',
+        note: 'La UNGRD publica el balance como IMAGEN. Pegá la dirección de la imagen, no la de la página que la contiene.',
+    },
+    {
+        id: 'medio',
+        name: '',
+        url: '',
+        kind: 'secundaria',
+        format: 'texto',
+        note: 'Un medio de comunicación. Avisa de que hay balance nuevo; su cifra nunca se publica sola.',
+    },
+    {
+        id: 'api',
+        name: '',
+        url: '',
+        kind: 'oficial',
+        format: 'json',
+        note: 'Un endpoint que devuelve JSON. Si algún día hay uno estructurado, es el camino más fiable.',
+    },
+];
+
 export function normalizeSource(raw: any, i = 0): FeedSource {
     const kind = SOURCE_KINDS[str(raw?.kind, 20)] ? str(raw?.kind, 20) : 'secundaria';
     const format = SOURCE_FORMATS[str(raw?.format, 20)] ? str(raw?.format, 20) : 'texto';
@@ -75,10 +127,12 @@ export function normalizeSource(raw: any, i = 0): FeedSource {
 
 export function normalizeFeed(raw: any): EmergencyFeed {
     const pct = Number(raw?.maxJumpPct);
+    const min = Number(raw?.intervalMinutes);
     return {
         enabled: raw?.enabled === true,
         autoPublish: raw?.autoPublish === true,
         maxJumpPct: Number.isFinite(pct) && pct > 0 && pct <= 500 ? Math.round(pct) : DEFAULT_MAX_JUMP_PCT,
+        intervalMinutes: INTERVAL_OPTIONS.some(o => o.minutes === min) ? min : DEFAULT_INTERVAL_MINUTES,
         sources: arr(raw?.sources).slice(0, MAX_SOURCES).map(normalizeSource),
     };
 }
@@ -162,6 +216,7 @@ export function formatCutoff(iso: unknown): string {
 
 export default {
     FEED_METRICS, METRIC_KEYS, metricLabel, SOURCE_KINDS, SOURCE_FORMATS,
-    DEFAULT_MAX_JUMP_PCT, MAX_SOURCES, normalizeSource, normalizeFeed,
+    DEFAULT_MAX_JUMP_PCT, MAX_SOURCES, INTERVAL_OPTIONS, DEFAULT_INTERVAL_MINUTES,
+    FEED_PRESETS, normalizeSource, normalizeFeed,
     validateFeed, isFetchableUrl, parseFigure, formatFigure, parseCutoff, formatCutoff,
 };
