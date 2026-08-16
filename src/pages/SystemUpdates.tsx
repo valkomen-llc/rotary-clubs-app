@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.829.0 | 2026-08-16 (Los videos de elementos requeridos, en carrusel con vecinos)
+// UI V4.830.0 | 2026-08-16 (Los videos pasan solos y se detienen al mirarlos)
 // Cache bust: 2026-08-15t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.830.0',
+        title: 'Los videos pasan solos, y se quedan quietos al mirarlos ⏯️',
+        description: 'El carrusel de videos de «Elementos que se requieren» avanza solo cada 7 segundos, como la tira de «Rotarios en acción», con dos frenos que son los que lo hacen usable: al pasar el cursor por encima se detiene, y en cuanto alguien le da play se queda en ese video y no vuelve a moverse. La cadencia es más lenta que la de las fotos a propósito: un video necesita unos segundos para reconocerse antes de decidir si se mira. Un detalle que costó resolver: un video de YouTube o Vimeo se reproduce dentro de un recuadro incrustado y los movimientos del ratón sobre él no llegan a la página, así que el freno por cursor no se enteraba; se resolvió dejando una banda del carrusel por encima y por debajo del reproductor, que el puntero cruza antes de llegar a él. Y para saber que le dieron play a un video incrustado —donde tampoco hay forma de preguntarlo sin cargar la librería del proveedor— se observa que el foco se fue al reproductor.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Los videos pasan solos cada 7 segundos.' },
+            { type: 'added', text: 'Con el cursor encima el carrusel se detiene.' },
+            { type: 'added', text: 'Al darle play se queda en ese video y no vuelve a moverse.' },
+            { type: 'fixed', text: 'El freno por cursor también funciona sobre un video de YouTube o Vimeo.' },
+        ]
+    },
     {
         version: '4.829.0',
         title: 'Los videos, en carrusel con los vecinos a la vista 🎬',

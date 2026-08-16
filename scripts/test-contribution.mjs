@@ -878,12 +878,15 @@ check('en pantallas angostas quedan las flechas compactas de abajo',
     /hidden lg:flex absolute left-4/.test(landingSrc)
     && /lg:hidden w-10 h-10[\s\S]{0,260}ChevronLeft/.test(landingSrc)
     && /hidden lg:block flex-shrink-0/.test(landingSrc));
-// Un video que se cambia solo mientras alguien lo mira es un defecto, no una
-// animación: acá NO hay intervalo, al revés que el hero.
-check('los videos NO rotan solos', (() => {
-    const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
-    return !/setInterval/.test(sec);
-})());
+// v4.830 invierte la regla de v4.816. Lo que la hacía necesaria eran los dos
+// frenos que ahora existen: se detiene con el cursor encima y se detiene DEL
+// TODO al pulsar el reproductor. Sin esos dos frenos, quitar el intervalo.
+check('los videos rotan solos, y se frenan con el cursor y con el play',
+    /const t = setInterval\(\(\) => setVideoIdx\(i => \(i \+ 1\) % videoCount\), VIDEO_ROTA_MS\)/.test(landingSrc)
+    && /if \(videoCount < 2 \|\| videoQuieto \|\| videoTomado\) return;/.test(landingSrc)
+    && /onMouseEnter=\{\(\) => setVideoQuieto\(true\)\}/.test(landingSrc)
+    && /onMouseLeave=\{\(\) => setVideoQuieto\(false\)\}/.test(landingSrc)
+    && /onPlay=\{\(\) => setVideoTomado\(true\)\}/.test(landingSrc));
 // Montar los demás descargaría varios videos de una vez, y sin remontar el
 // anterior seguiría sonando al cambiar.
 check('se dibuja SÓLO el video que manda, y se remonta al cambiar',
@@ -1564,6 +1567,28 @@ check('las flechas van sobre los vecinos, no sobre el reproductor',
 // Para un lector de pantalla el video es el que suena, no los que asoman.
 check('los vecinos quedan fuera del recorrido del teclado y del lector',
     /aria-hidden\s*\n?\s*tabIndex=\{-1\}/.test(landing829));
+
+grupo('v4.830 — los videos rotan solos, con dos frenos');
+const landing830 = readFileSync('src/components/campaign/CampaignLanding.tsx', 'utf8');
+// La cadencia en UN solo número, como `MS_POR_PIEZA` en la galería.
+check('la cadencia es un solo número y es más lenta que la tira de fotos',
+    /const VIDEO_ROTA_MS = 7000;/.test(landing830)
+    && (landing830.match(/VIDEO_ROTA_MS/g) || []).length === 2);
+// Un video embebido se reproduce dentro de un iframe: desde el documento
+// padre no hay forma de saber que empezó sin cargar la API del proveedor.
+// Lo que sí se observa es que el foco se fue al iframe.
+check('con un embebido se detecta que PULSARON el reproductor, sin cargar la API del proveedor',
+    /document\.activeElement\?\.tagName === 'IFRAME'/.test(landing830)
+    && /window\.addEventListener\('blur', alPerderFoco\)/.test(landing830));
+// La banda de arriba y de abajo NO es respiro decorativo: es lo que hace que
+// el freno por cursor funcione con un embebido. Medido en el navegador: sin
+// ella, sobre el vecino se detenía y sobre el reproductor seguía rotando.
+check('hay banda del carrusel por encima y por debajo del reproductor',
+    /flex items-center justify-center gap-3 xl:gap-4 py-6/.test(landing830));
+// `videoCount` se calcula ANTES del efecto que lo consume: un `const` de más
+// abajo daría un error de zona muerta al evaluar las dependencias.
+check('el conteo de videos se declara antes del efecto que lo usa',
+    landing830.indexOf('const videoCount =') < landing830.indexOf('if (videoCount < 2'));
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

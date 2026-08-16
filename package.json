@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.829.0",
-  "cache_bust": "2026-08-16i (Los videos de elementos requeridos, en carrusel con vecinos.)",
+  "version": "4.830.0",
+  "cache_bust": "2026-08-16j (Los videos pasan solos y se detienen al mirarlos.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

@@ -2539,10 +2539,25 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
 - **Un archivo propio va en `<video controls>`, no en un `<iframe>`**, y al
   revés tampoco funciona. Por eso el criterio devuelve `kind` y no sólo la
   dirección.
-- **Varios videos se recorren con FLECHAS y NO rotan solos** (v4.816). Es la
-  diferencia con el hero: un video que se cambia mientras alguien lo está
-  mirando es una molestia, no una animación. No hay `setInterval` en esa
-  sección y la prueba lo comprueba.
+- **Los videos rotan solos (7 s) PERO con dos frenos** (v4.830, `VIDEO_ROTA_MS`).
+  Esto invierte la regla de v4.816 —«no rotan solos, un video que se cambia
+  mientras alguien lo mira es una molestia»— y lo que la hacía necesaria son
+  justamente los dos frenos: se detiene con el cursor encima
+  (`videoQuieto`) y se detiene DEL TODO en cuanto alguien pulsa el
+  reproductor (`videoTomado`). **Sin esos dos frenos, volver a quitar el
+  intervalo.** La cadencia es más lenta que la de la tira de fotos a
+  propósito: un video necesita unos segundos para reconocerse.
+- **Los eventos del ratón sobre un `<iframe>` NO llegan al documento padre**, y
+  eso rompía el freno por cursor con un video de YouTube o Vimeo. Medido: con
+  el puntero sobre el vecino se detenía y sobre el reproductor seguía rotando.
+  Lo resuelve la banda del carrusel por encima y por debajo (`py-6`), que el
+  puntero cruza antes de llegar al reproductor — **no es respiro decorativo**.
+- **Que le dieron play a un embebido se DEDUCE del foco**, no se pregunta: la
+  API de cada proveedor es una librería más por visita. Si al perder el foco
+  la ventana el elemento activo es un `<iframe>`, alguien pulsó dentro del
+  reproductor. Es una heurística y por eso sólo se usa para DETENER: si se
+  equivoca, el carrusel se queda quieto, que es el lado seguro. Con un archivo
+  propio no hace falta — ahí está el evento `play`.
 - **`sectionVideos` es el ÚNICO punto que arma la lista**, en los dos
   espejos, y DESCARTA lo que no se reconoce: la flecha «siguiente» no puede
   llevar a un recuadro vacío. `requiredItemsVideo` (singular) se conserva por
