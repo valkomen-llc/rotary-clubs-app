@@ -2575,37 +2575,72 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
   que es peor que no tenerlo. El diálogo de archivo necesita su PROPIO input
   con su `accept`: el atributo se lee al abrirlo, así que cambiarlo por estado
   no llega a tiempo dentro del gesto que dispara el clic.
-### La galería «Rotarios en acción» (v4.821)
+### La galería «Rotarios en acción» (v4.821-v4.823)
 
 - **Va DESPUÉS de los centros y ANTES del panorama**, y el sitio importa:
   «qué se necesita» y «dónde llevarlo» son un PAR funcional y meter una
   galería en medio corta a quien acaba de leer qué donar y busca dónde. Ahí es
   el giro de «lo que pedimos» a «lo que ya se está haciendo», con las caras
   justo antes de las cifras — se refuerzan entre sí.
-- **Es una TIRA a lo ancho que se desplaza sola** (v4.822,
+- **Es una TIRA a lo ancho que avanza sola** (v4.822-v4.823,
   `CampaignGallery.tsx`), no una pieza a la vez. Va FUERA del contenedor
   centrado: dentro quedaría del ancho del texto.
+- **El desplazamiento es NATIVO** (`overflow-x-auto`), no una animación de CSS
+  (v4.823). Con `@keyframes` la tira no se puede ARRASTRAR —una animación no
+  cede el control—, y quien tenga «reducir movimiento» en su sistema se
+  quedaba con una tira quieta. Ahora el avance automático es un empujón más
+  (`scrollBy` cada 3,5 s) sobre un contenedor que el usuario puede tomar en
+  cualquier momento, con el trackpad o con la barra propia de abajo.
+- **CUÁNTAS copias hacen falta se MIDE; no son dos.** Es el defecto que costó
+  la versión: el recorrido posible de un contenedor es `scrollWidth -
+  clientWidth`, así que con dos copias el punto de salto —una vuelta— sólo se
+  alcanza si UNA copia es más ancha que la tira. Con tres piezas en 1280 px no
+  lo es: medido, la tira avanzaba a 640 y se clavaba en el tope, 652, **para
+  siempre**. No se ve como un fallo, se ve como una galería que dejó de
+  moverse. `copias = max(2, ceil(clientWidth / vuelta) + 1)`, recalculado al
+  cambiar el tamaño de la ventana. Al duplicar contenido para un ciclo
+  continuo, comprobar que el punto de salto quepa dentro del recorrido.
+- **El paso se toma de la DISTANCIA entre dos tarjetas**
+  (`c[1].offsetLeft - c[0].offsetLeft`), no del ancho de una más el hueco
+  leído del estilo: sale exacto y no depende de que el hueco esté declarado
+  donde se lo busca. Sobre él se calcula la vuelta (`paso * items.length`), y
+  **no** sobre `scrollWidth / copias`, que arrastra el relleno del contenedor.
 - **La tira SE DETIENE al pasar el cursor**, y eso no es un adorno: es lo que
   hace utilizable el agrandado y el clic. Una tarjeta que crece mientras se
   escapa hacia el costado no se puede mirar ni pulsar.
+- **Las tarjetas son CUADRADAS** (v4.823). Las fotos que mandan los clubes
+  vienen en proporciones dispares —verticales de móvil, apaisadas de cámara— y
+  un marco cuadrado las trata a todas igual. Lo que crece con el cursor es la
+  TARJETA entera, no la imagen dentro del marco; por eso la tira lleva relleno
+  vertical (`py-6`): sin él, el crecimiento se recorta contra el borde de un
+  contenedor con desplazamiento.
+- **La barra de abajo es PROPIA** (`role="scrollbar"`, `.no-scrollbar` en la
+  tira). La del navegador es distinta en cada sistema y en varios ni se ve
+  hasta que uno la usa, y acá se pidió verla. Arrastrarla escucha en la
+  VENTANA, no en la barra: si no, el arrastre se corta al salirse el cursor.
 - **Un video NO se reproduce dentro de la tira.** En una tira en movimiento no
   se puede ver —y si el cursor sale, se lo lleva sonando fuera de la
   pantalla—. En la tira es una TARJETA con carátula y botón de reproducir; al
   pulsarla se abre en grande y ahí sí se reproduce. Sin esa ventana, mezclar
   videos en una tira móvil sería prometer algo que no funciona. Es la misma
   raíz que la regla de v4.816.
-- **La lista se DUPLICA** para que el ciclo no tenga costura, y la copia va con
-  `aria-hidden`: para un lector de pantalla las piezas son las que hay, no el
-  doble. El desplazamiento es de la MITAD (`translateX(-50%)`), que es lo que
-  deja la segunda copia exactamente donde estaba la primera.
-- **La velocidad es proporcional a la cantidad de piezas.** Con una duración
-  fija, más piezas desfilarían más rápido. La curva vive en el tema
-  (`gallery-marquee`) y la duración la pone el componente.
+- **La ventana en grande SE ADAPTA a la pieza** (v4.823). Una foto vertical
+  dentro de un marco 16:9 queda con dos franjas negras enormes a los lados. La
+  foto y el video PROPIO definen la caja —se acotan al alto y al ancho de la
+  pantalla y nada más—; la única excepción es el video EMBEBIDO, porque un
+  `<iframe>` no declara tamaño propio y ahí 16:9 no es una suposición. Los
+  controles cuelgan del DIÁLOGO, no de la pieza: con la caja cambiando de
+  tamaño en cada foto, saltarían de sitio.
+- **Sólo la primera vuelta existe para el lector de pantalla** (`aria-hidden`
+  en las demás): las piezas son las que hay, no las que se repiten.
 - **Chromium recalcula `:hover` con los EVENTOS del ratón**, no cuando el
   elemento se desliza bajo un puntero quieto. Al probarlo con un navegador hay
   que mover el ratón —`hover()` de Playwright además espera que el elemento
   esté QUIETO, y la tira sólo se detiene cuando el cursor ya está encima: un
-  candado—. Se usa `mouse.move` en varios pasos y se remata con 1 px.
+  candado—. Se usa `mouse.move` en varios pasos y se remata con 1 px. Y ANTES
+  de medir el avance automático hay que APARTAR el cursor: tras un
+  `scrollIntoViewIfNeeded` puede haber quedado sobre una tarjeta, y entonces
+  la tira está detenida a propósito y la prueba culpa al componente.
 - **El tipo de cada pieza se DERIVA de la dirección** (`galleryItems`), no se
   guarda: guardarlo aparte daría dos verdades sobre lo mismo y se
   contradirían en cuanto alguien cambie la URL de una fila — el error que ya

@@ -936,35 +936,68 @@ check('la tira va a lo ancho, fuera del contenedor centrado', (() => {
 })());
 
 const galSrc = readFileSync('src/components/campaign/CampaignGallery.tsx', 'utf8');
-check('la tira se desplaza sola con la animación del TEMA, no con un `<style>` propio',
-    /animate-gallery-marquee/.test(galSrc) && !/@keyframes/.test(galSrc));
-// Sin esto, la tarjeta crece mientras se escapa hacia el costado: no se puede
-// mirar ni pulsar. Es lo que hace utilizable el agrandado.
-check('la tira SE DETIENE al pasar el cursor',
-    /hover:\[animation-play-state:paused\]/.test(galSrc));
-check('la tarjeta se agranda al pasar el cursor, y crece la imagen DENTRO del marco',
-    /group-hover:scale-110/.test(galSrc) && /overflow-hidden/.test(galSrc));
-// La lista se duplica para que el desplazamiento no tenga costura; la copia
-// va oculta al lector de pantalla — las piezas son las que hay, no el doble.
-check('la lista se duplica y la copia va con aria-hidden',
-    /key=\{`a-\$\{i\}`\}/.test(galSrc) && /key=\{`b-\$\{i\}`\} item=\{it\}[\s\S]{0,60}aria=\{false\}/.test(galSrc)
-    && /aria-hidden=\{!aria\}/.test(galSrc));
-check('el desplazamiento es de la MITAD: por eso la vuelta al inicio no se ve',
-    /translateX\(-50%\)/.test(readFileSync('tailwind.config.js', 'utf8')));
-// Con duración fija, más piezas desfilarían más rápido.
-check('la velocidad es proporcional a la cantidad de piezas',
-    /items\.length \* SEGUNDOS_POR_PIEZA/.test(galSrc) && /animationDuration: duracion/.test(galSrc));
-// En una tira en movimiento no se puede ver un video: en la tira es una
-// tarjeta con carátula, y se reproduce en la ventana en grande.
+// v4.823: el desplazamiento es NATIVO, no una animación de CSS. Una animación
+// no cede el control —no se puede arrastrar— y con «reducir movimiento» del
+// sistema dejaba la tira quieta.
+check('la tira se desplaza de forma NATIVA, no con una animación de CSS',
+    /overflow-x-auto/.test(galSrc) && !/animate-gallery-marquee/.test(galSrc)
+    && !/gallery-marquee/.test(readFileSync('tailwind.config.js', 'utf8')));
+check('avanza sola de a una tarjeta, empujando el desplazamiento',
+    /setInterval\(/.test(galSrc) && /scrollBy\(\{ left: paso\(\), behavior: 'smooth' \}\)/.test(galSrc)
+    && /MS_POR_PIEZA/.test(galSrc));
+// El paso no se puede fijar en el código: el ancho de la tarjeta cambia con
+// el tamaño de la pantalla. Se toma de la DISTANCIA entre dos tarjetas.
+check('el paso se MIDE entre dos tarjetas, no se supone',
+    /c\[1\]\.offsetLeft - c\[0\]\.offsetLeft/.test(galSrc));
+// Pasada una vuelta se resta una vuelta SIN animación: las copias son
+// idénticas, así que el salto no se ve y el ciclo es continuo.
+check('el ciclo es continuo y el salto no se ve',
+    /el\.scrollLeft >= v\)/.test(galSrc) && /behavior: 'instant'/.test(galSrc));
+// El defecto medido: con DOS copias, el punto de salto —una vuelta— sólo se
+// alcanza si una copia es más ancha que la tira. Con tres piezas en 1280 px la
+// tira llegaba al tope (652) y se quedaba ahí, sin parecer un fallo.
+check('las copias se MIDEN: una vuelta tiene que caber en el recorrido',
+    /Math\.max\(2, Math\.ceil\(el\.clientWidth \/ v\) \+ 1\)/.test(galSrc)
+    && /addEventListener\('resize', calc\)/.test(galSrc));
+check('la tira SE DETIENE con el cursor encima y con la ventana abierta',
+    /onMouseEnter=\{\(\) => setQuieta\(true\)\}/.test(galSrc)
+    && /if \(items\.length < 2 \|\| quieta \|\| abierta !== null\) return;/.test(galSrc));
+// Se pidió que la tarjeta se amplíe, no sólo la imagen dentro del marco.
+check('al pasar el cursor crece la TARJETA entera',
+    /hover:scale-\[1\.07\]/.test(galSrc));
+// Un contenedor con desplazamiento horizontal no deja asomar nada por arriba.
+check('la tira lleva relleno vertical para que el crecimiento no se recorte',
+    /overflow-x-auto overflow-y-hidden py-6/.test(galSrc));
+check('las tarjetas son CUADRADAS: las fotos vienen en proporciones dispares',
+    /aspect-square/.test(galSrc));
+check('hay barra de desplazamiento propia y se puede arrastrar',
+    /role="scrollbar"/.test(galSrc) && /onPointerDown=\{arrastrar\}/.test(galSrc)
+    && /window\.addEventListener\('pointermove', onMove\)/.test(galSrc));
+// Con un marco 16:9 fijo, una foto vertical queda entre dos franjas negras.
+check('en grande, la FOTO define la caja — sin franjas a los lados',
+    /max-w-\[92vw\] max-h-\[82vh\] w-auto h-auto object-contain/.test(galSrc));
+check('un video propio también trae su proporción',
+    /<video[\s\S]{0,240}max-w-\[92vw\] max-h-\[82vh\] w-auto h-auto/.test(galSrc));
+// Un `<iframe>` no declara tamaño propio: ahí 16:9 no es una suposición.
+check('sólo el video EMBEBIDO conserva el marco 16:9, porque no tiene tamaño propio',
+    /aspectRatio: '16 \/ 9'[\s\S]{0,300}<iframe/.test(galSrc));
+// La pieza cambia de tamaño con cada foto: los botones saltarían de sitio.
+check('los controles cuelgan de la VENTANA, no de la pieza', (() => {
+    const dialogo = galSrc.slice(galSrc.indexOf('role="dialog"'));
+    return dialogo.indexOf('</div>\n                    </div>') < dialogo.indexOf('aria-label="Cerrar"')
+        && /onClick=\{e => \{ e\.stopPropagation\(\); setAbierta\(null\); \}\}/.test(dialogo);
+})());
+// La lista se repite para el ciclo; las copias van ocultas al lector.
+check('la lista se repite y sólo la primera vuelta existe para el lector',
+    /Array\.from\(\{ length: copias \}\)/.test(galSrc)
+    && /aria-hidden=\{c > 0 \|\| undefined\}/.test(galSrc)
+    && /aria=\{c === 0\}/.test(galSrc));
 check('un video NO se reproduce dentro de la tira: se abre en grande',
-    !/<video[\s\S]{0,400}controls[\s\S]{0,200}group-hover/.test(galSrc)
-    && /role="dialog"/.test(galSrc) && /autoPlay/.test(galSrc));
+    !/<video[\s\S]{0,400}group-hover/.test(galSrc) && /role="dialog"/.test(galSrc) && /autoPlay/.test(galSrc));
 check('la ventana se cierra con Escape y se recorre con las flechas del teclado',
     /e\.key === 'Escape'/.test(galSrc) && /e\.key === 'ArrowRight'/.test(galSrc));
 check('el clic del fondo cierra y el de dentro NO',
     /onClick=\{e => e\.stopPropagation\(\)\}/.test(galSrc));
-check('quien pidió menos animación recibe la tira quieta y desplazable a mano',
-    /motion-reduce:animate-none/.test(galSrc) && /motion-reduce:overflow-x-auto/.test(galSrc));
 check('el crédito de quien mandó la pieza es un DATO: no se traduce',
     (galSrc.match(/data-no-translate/g) || []).length >= 2);
 

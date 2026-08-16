@@ -69,6 +69,18 @@
 }
 
 @layer utilities {
+  /* Esconde la barra del navegador cuando hay una propia. Va acá y no como
+     clase del tema porque son tres declaraciones de proveedor distintas, no
+     un valor. NO lleva modificadores de opacidad, así que la trampa de
+     v4.719 no aplica. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .bg-rotary-blue {
     background-color: hsl(210 100% 25%);
   }

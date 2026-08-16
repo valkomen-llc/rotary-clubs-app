@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.822.0",
-  "cache_bust": "2026-08-15t (La galeria es una tira a lo ancho que se desplaza sola.)",
+  "version": "4.823.0",
+  "cache_bust": "2026-08-16a (La tira avanza sola, con barra propia y tarjetas cuadradas.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
