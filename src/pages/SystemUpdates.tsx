@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.815.0 | 2026-08-15 (Titulos en peso normal y video en elementos requeridos)
-// Cache bust: 2026-08-15m
+// UI V4.816.0 | 2026-08-15 (Varios videos con flechas atras y siguiente)
+// Cache bust: 2026-08-15n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.816.0',
+        title: 'Varios videos, con flechas para pasarlos ▶️',
+        description: 'Donde antes iba un video ahora van hasta ocho, en el mismo lugar de la página: se pasan con las flechas de los costados o con los puntos de abajo, y arriba se ve en cuál se va («2/3»). El pie sigue al video que se está viendo. No se cambian solos —un video que se cambia mientras alguien lo está mirando es una molestia, no una animación—: los pasa quien mira. En el editor los videos son una lista: se agregan varios de una vez subiéndolos o eligiéndolos de la Biblioteca Multimedia, se pega un enlace de YouTube o Vimeo, se reordenan con las flechas y cada uno lleva su propio pie. Si un enlace no se reconoce, se avisa en esa fila Y ese video queda fuera del carrusel, para que la flecha «siguiente» nunca lleve a un recuadro vacío. Con un solo video no aparecen flechas ni puntos: se ve igual que antes. Y una campaña que ya tenía su video no pierde nada — pasa a ser el primero de la lista.',
+        date: new Date().toISOString(),
+        tags: ['contribuciones', 'campanas', 'video', 'interfaz'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Hasta ocho videos debajo de los elementos requeridos, con flechas atrás y siguiente.' },
+            { type: 'added', text: 'Puntos de navegación, contador «2/3» y pie propio por video.' },
+            { type: 'added', text: 'Carga múltiple: varios videos de una vez, subiendo o desde la Biblioteca Multimedia.' },
+            { type: 'improved', text: 'Un enlace que no se reconoce queda fuera del carrusel: la flecha nunca lleva a un recuadro vacío.' },
+            { type: 'changed', text: 'Las campañas con un video ya configurado lo conservan como el primero de la lista.' },
+        ]
+    },
     {
         version: '4.815.0',
         title: 'Un video en «Elementos que se requieren» 🎥',

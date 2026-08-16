@@ -220,6 +220,32 @@ export function resolveCampaignVideo(raw: unknown): CampaignVideo | null {
     return null;
 }
 
+export interface SectionVideo { url: string; title: string; poster: string; video: CampaignVideo }
+
+/** Tope de videos por sección. El mismo que el hero: más no se recorre. */
+export const MAX_SECTION_VIDEOS = 8;
+
+/**
+ * Los videos de una sección, ya resueltos y en orden. ÚNICO punto que decide
+ * si mandan los varios o el de siempre — igual que `heroSlides`. Los que no
+ * se reconocen se descartan: la flecha «siguiente» no puede llevar a un
+ * recuadro vacío.
+ */
+export function sectionVideos(list: any, single: any): SectionVideo[] {
+    const crudos: any[] = Array.isArray(list) && list.length
+        ? list
+        : (single && String(single?.url ?? '').trim() ? [single] : []);
+    return crudos
+        .slice(0, MAX_SECTION_VIDEOS)
+        .map(v => ({
+            url: String(v?.url ?? '').trim(),
+            title: String(v?.title ?? ''),
+            poster: String(v?.poster ?? ''),
+            video: resolveCampaignVideo(v?.url),
+        }))
+        .filter((v): v is SectionVideo => v.video !== null);
+}
+
 // ─── Centros de acopio (F3) — espejo del criterio del servidor ─────────────
 export interface ContributionCenter {
     id: string; city: string; groupLabel: string; name: string; address: string;

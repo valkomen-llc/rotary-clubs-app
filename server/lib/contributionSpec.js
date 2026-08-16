@@ -301,6 +301,35 @@ export function resolveCampaignVideo(raw) {
     return null;
 }
 
+/** Tope de videos por sección. El mismo que el hero: más no se recorre. */
+export const MAX_SECTION_VIDEOS = 8;
+
+/**
+ * Los videos de una sección, ya resueltos y en orden.
+ *
+ * Es el ÚNICO punto que decide si mandan los VARIOS (`requiredItemsVideos`) o
+ * el de siempre (`requiredItemsVideo`), por el mismo motivo que `heroSlides`:
+ * con la decisión escrita en el editor y otra vez en la página, una campaña se
+ * vería distinta según quién la resuelva.
+ *
+ * Los que no se reconocen se DESCARTAN acá: la flecha «siguiente» no puede
+ * llevar a un recuadro vacío. Devuelve `[{ url, title, poster, video }]`.
+ */
+export function sectionVideos(list, single) {
+    const crudos = arr(list).length
+        ? arr(list)
+        : (single && String(single.url ?? '').trim() ? [single] : []);
+    return crudos
+        .slice(0, MAX_SECTION_VIDEOS)
+        .map(v => ({
+            url: String(v?.url ?? '').trim(),
+            title: String(v?.title ?? ''),
+            poster: String(v?.poster ?? ''),
+            video: resolveCampaignVideo(v?.url),
+        }))
+        .filter(v => v.video);
+}
+
 export function normalizeContent(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -353,6 +382,15 @@ export function normalizeContent(raw = {}) {
             title: str(c.requiredItemsVideo?.title, 200),
             poster: str(c.requiredItemsVideo?.poster, 600),
         },
+        // Varios videos que se recorren con las flechas. `requiredItemsVideo`
+        // (singular) se CONSERVA por la regla aditiva del sitio —una campaña
+        // guardada con un solo video se sigue viendo igual— y `sectionVideos`
+        // es quien resuelve la lista definitiva.
+        requiredItemsVideos: arr(c.requiredItemsVideos).slice(0, MAX_SECTION_VIDEOS).map(v => ({
+            url: str(v?.url, 600),
+            title: str(v?.title, 200),
+            poster: str(v?.poster, 600),
+        })).filter(v => v.url),
         centersNote: str(c.centersNote, 300),       // «Se habilitarán más puntos…»
         centersAlliance: str(c.centersAlliance, 200), // «En alianza con … ABACO»
         infoBlocks: arr(c.infoBlocks).slice(0, 6).map((b, i) => ({

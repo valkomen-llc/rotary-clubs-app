@@ -2539,6 +2539,20 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
 - **Un archivo propio va en `<video controls>`, no en un `<iframe>`**, y al
   revés tampoco funciona. Por eso el criterio devuelve `kind` y no sólo la
   dirección.
+- **Varios videos se recorren con FLECHAS y NO rotan solos** (v4.816). Es la
+  diferencia con el hero: un video que se cambia mientras alguien lo está
+  mirando es una molestia, no una animación. No hay `setInterval` en esa
+  sección y la prueba lo comprueba.
+- **`sectionVideos` es el ÚNICO punto que arma la lista**, en los dos
+  espejos, y DESCARTA lo que no se reconoce: la flecha «siguiente» no puede
+  llevar a un recuadro vacío. `requiredItemsVideo` (singular) se conserva por
+  la regla aditiva y entra como el primero.
+- **Se dibuja SÓLO el video que manda, con `key`** — al revés que las
+  imágenes del hero, que están todas montadas. Montar los demás descargaría
+  varios videos de una vez, y sin el remontaje el anterior seguiría sonando
+  al pasar al siguiente.
+- **El índice se acota AL LEER** (`Math.min(idx, len - 1)`), no con otro
+  efecto: quitar videos desde el panel deja el índice guardado fuera de rango.
 - **El `MediaPicker` acepta `mediaType`** y sigue en `image` por omisión: las
   nueve pantallas que ya lo usaban piden imágenes y estaba fijado en el
   código. Sin esto, el botón «Biblioteca» del campo de video ofrecería fotos,

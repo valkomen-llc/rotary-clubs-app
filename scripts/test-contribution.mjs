@@ -30,6 +30,7 @@ import {
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
+    sectionVideos, MAX_SECTION_VIDEOS,
 } from '../server/lib/contributionSpec.js';
 
 let ok = 0; const malos = [];
@@ -300,6 +301,39 @@ check('sin https no se embebe nada',
 check('lo vacío o irreconocible devuelve null, y la página no pinta nada',
     vid('') === null && vid(null) === null && vid('cualquier cosa') === null
     && vid('https://www.youtube.com/') === null);
+grupo('Varios videos, recorridos con las flechas');
+const yt = 'https://youtu.be/aaaaaa';
+const vm = 'https://vimeo.com/123456789';
+check('con varios, se devuelven todos resueltos y en orden', (() => {
+    const l = sectionVideos([{ url: yt, title: 'Uno' }, { url: vm, title: 'Dos' }], null);
+    return l.length === 2 && l[0].title === 'Uno' && l[0].video.kind === 'youtube' && l[1].video.kind === 'vimeo';
+})());
+// Regla ADITIVA: una campaña de v4.815 tiene UN video y no puede perderlo.
+check('una campaña con UN solo video (v4.815) lo sigue mostrando', (() => {
+    const l = sectionVideos(undefined, { url: yt, title: 'El de siempre' });
+    return l.length === 1 && l[0].title === 'El de siempre';
+})());
+check('cuando hay lista, la lista manda sobre el video único',
+    sectionVideos([{ url: vm }], { url: yt })[0].video.kind === 'vimeo');
+// La flecha «siguiente» no puede llevar a un recuadro vacío.
+check('un enlace que no se reconoce se DESCARTA de la lista', (() => {
+    const l = sectionVideos([{ url: yt }, { url: 'no sirve' }, { url: 'http://youtube.com/watch?v=x' }, { url: vm }], null);
+    return l.length === 2;
+})());
+check('sin ninguno, lista vacía y la sección no pinta video',
+    eq(sectionVideos([], null), []) && eq(sectionVideos(undefined, undefined), [])
+    && eq(sectionVideos(undefined, { url: '' }), []));
+check('lo que no es una lista no revienta', eq(sectionVideos('no', null), []));
+check('el tope se respeta',
+    sectionVideos(Array.from({ length: 20 }, () => ({ url: yt })), null).length === MAX_SECTION_VIDEOS);
+check('normalizeContent guarda los varios y CONSERVA el video único de siempre', (() => {
+    const n = normalizeContent({
+        requiredItemsVideo: { url: 'viejo.mp4' },
+        requiredItemsVideos: [{ url: 'https://x.org/a.mp4', title: 'A' }, { url: '' }],
+    });
+    return n.requiredItemsVideo.url === 'viejo.mp4' && n.requiredItemsVideos.length === 1;
+})());
+
 check('normalizeContent guarda la URL TAL CUAL, para que el editor pueda mostrar el error', (() => {
     const n = normalizeContent({ requiredItemsVideo: { url: 'no sirve', title: 'Pie', poster: 'https://x/y.jpg' } });
     return n.requiredItemsVideo.url === 'no sirve' && n.requiredItemsVideo.title === 'Pie';
@@ -359,6 +393,16 @@ if (mirror) {
     })());
     check('mismo tope y mismo intervalo del carrusel',
         HERO_MAX_SLIDES === mirror.HERO_MAX_SLIDES && HERO_SLIDE_MS === mirror.HERO_SLIDE_MS);
+    check('misma lista de videos: el editor y la página resuelven igual', (() => {
+        const casos = [
+            [[{ url: 'https://youtu.be/abc123', title: 'A' }, { url: 'no sirve' }], null],
+            [undefined, { url: 'https://vimeo.com/123456789', title: 'Único' }],
+            [[], { url: '' }],
+            ['no es lista', null],
+        ];
+        return casos.every(([l, u]) => eq(sectionVideos(l, u), mirror.sectionVideos(l, u)))
+            && MAX_SECTION_VIDEOS === mirror.MAX_SECTION_VIDEOS;
+    })());
     check('mismo criterio de video: el aviso del editor no puede contradecir lo que se pinta', (() => {
         const casos = ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://youtu.be/abc123',
             'https://vimeo.com/123456789', 'https://cdn.x.org/a.mp4', 'https://evil.example/v',
@@ -747,17 +791,32 @@ check('los puntos se anuncian al lector de pantalla',
 check('los títulos de sección NO van en negrilla, como el resto del sitio',
     !/<h2 className="text-3xl md:text-4xl font-black/.test(landingSrc)
     && (landingSrc.match(/<h2 className="text-3xl md:text-4xl font-light/g) || []).length >= 3);
-check('la página usa el criterio compartido para el video, no una comprobación a mano',
-    /resolveCampaignVideo\(content\.requiredItemsVideo\?\.url\)/.test(landingSrc)
+check('la página usa el criterio compartido para los videos, no una comprobación a mano',
+    /sectionVideos\(content\.requiredItemsVideos, content\.requiredItemsVideo\)/.test(landingSrc)
     && !/youtube\.com/.test(landingSrc));
+check('con más de un video hay flechas atrás y siguiente',
+    /aria-label="Video anterior"/.test(landingSrc) && /aria-label="Video siguiente"/.test(landingSrc)
+    && /videos\.length > 1 &&/.test(landingSrc));
+// Un video que se cambia solo mientras alguien lo mira es un defecto, no una
+// animación: acá NO hay intervalo, al revés que el hero.
+check('los videos NO rotan solos', (() => {
+    const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
+    return !/setInterval/.test(sec);
+})());
+// Montar los demás descargaría varios videos de una vez, y sin remontar el
+// anterior seguiría sonando al cambiar.
+check('se dibuja SÓLO el video que manda, y se remonta al cambiar',
+    /key=\{videoActual\.url\}/.test(landingSrc));
+check('un índice que quedó fuera de rango no rompe la sección',
+    /videos\[Math\.min\(videoIdx, videos\.length - 1\)\] \|\| null/.test(landingSrc));
 check('el video va DESPUÉS de las cajas de elementos', (() => {
     const sec = landingSrc.slice(landingSrc.indexOf('id="elementos-requeridos"'), landingSrc.indexOf('id="centros-de-acopio"'));
-    return sec.indexOf('requiredItems.map') < sec.indexOf('{itemsVideo &&');
+    return sec.indexOf('requiredItems.map') < sec.indexOf('{videoActual &&');
 })());
 // Un archivo propio no se puede meter en un iframe: se reproduce con el
 // reproductor del navegador, y al revés tampoco funciona.
 check('un archivo propio va en <video> y un embed en <iframe>',
-    /itemsVideo\.kind === 'file' \?/.test(landingSrc)
+    /videoActual\.video\.kind === 'file' \?/.test(landingSrc)
     && /<video[\s\S]{0,400}controls/.test(landingSrc) && /<iframe[\s\S]{0,700}allowFullScreen/.test(landingSrc));
 
 // v4.814: los centros van en mampostería, no en rejilla.
@@ -801,21 +860,26 @@ const adminSrc = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8
 check('el editor ofrece las DOS vías para agregar imágenes (v4.700)',
     /startUpload\('heroAdd'\)/.test(adminSrc) && /setPickerField\('heroAdd'\)/.test(adminSrc));
 check('se pueden elegir VARIAS de la Biblioteca de una vez',
-    /maxSelection=\{pickerField === 'heroAdd' \? HERO_MAX_SLIDES : 1\}/.test(adminSrc)
+    /maxSelection=\{pickerField === 'heroAdd' \? HERO_MAX_SLIDES : pickerField === 'itemsVideoAdd' \? MAX_SECTION_VIDEOS : 1\}/.test(adminSrc)
     && /<input ref=\{fileInputRef\} type="file" multiple/.test(adminSrc));
 check('el editor no inventa su propio tope: usa el del spec',
     /HERO_MAX_SLIDES/.test(adminSrc) && !/slice\(0,\s*8\)/.test(adminSrc));
 check('una campaña con una sola imagen se ve en el editor como su primera fila',
     /hero\.images\?\.length \? hero\.images : heroSlides\(hero\)/.test(adminSrc));
-check('el editor avisa EN VIVO cuando el enlace del video no se reconoce',
-    /itemsVideo\.url && !itemsVideoKind/.test(adminSrc) && /resolveCampaignVideo\(itemsVideo\.url\)/.test(adminSrc));
-check('la casilla del video ofrece las DOS vías (v4.700)',
-    /startUpload\('itemsVideo'\)/.test(adminSrc) && /setPickerField\('itemsVideo'\)/.test(adminSrc));
+check('el editor avisa EN VIVO, por fila, cuando un enlace no se reconoce',
+    /v\.url && !kind/.test(adminSrc) && /resolveCampaignVideo\(v\.url\)/.test(adminSrc));
+check('la lista de videos ofrece las DOS vías (v4.700) y además pegar un enlace',
+    /startUpload\('itemsVideoAdd'\)/.test(adminSrc) && /setPickerField\('itemsVideoAdd'\)/.test(adminSrc)
+    && /Pegar un enlace/.test(adminSrc));
+check('una campaña con UN video lo ve en el editor como su primera fila',
+    /content\.requiredItemsVideos\?\.length \? content\.requiredItemsVideos/.test(adminSrc));
+check('el editor no inventa su propio tope de videos: usa el del spec',
+    /MAX_SECTION_VIDEOS/.test(adminSrc));
 // Un diálogo que ofrece fotos a quien va a subir un video ofrece lo que no
 // sirve; el `accept` del input se lee al abrirlo, así que hace falta el suyo.
 check('el diálogo de archivo y la Biblioteca se abren en modo VIDEO para ese campo',
-    /VIDEO_ACCEPT/.test(adminSrc) && /target === 'itemsVideo' \? videoInputRef : fileInputRef/.test(adminSrc)
-    && /mediaType=\{pickerField === 'itemsVideo' \? 'video' : 'image'\}/.test(adminSrc));
+    /VIDEO_ACCEPT/.test(adminSrc) && /target\.startsWith\('itemsVideo'\) \? videoInputRef : fileInputRef/.test(adminSrc)
+    && /mediaType=\{pickerField\?\.startsWith\('itemsVideo'\) \? 'video' : 'image'\}/.test(adminSrc));
 const pickerFile = readFileSync('src/components/admin/content-studio/MediaPicker.tsx', 'utf8');
 check('el selector conserva las imágenes por omisión: nueve pantallas ya lo usaban así',
     /mediaType = 'image'/.test(pickerFile) && /new URLSearchParams\(\{ type: mediaType \}\)/.test(pickerFile));

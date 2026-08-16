@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User } from 'lucide-react';
+import { Heart, Share2, ArrowRight, MapPin, Phone, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { getBlockIcon } from '../../lib/paymentBlocks';
 import { ctaTarget } from '../../lib/ctaLinks';
-import { hexOrEmpty, groupCenters, heroSlides, resolveCampaignVideo, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
+import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -167,6 +167,12 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         return () => clearInterval(t);
     }, [slideCount]);
 
+    // El video que se está viendo. Va ACÁ ARRIBA con el resto de los hooks,
+    // antes de cualquier `return` (check:hooks). No hay intervalo: los videos
+    // NO rotan solos — uno que se cambia mientras alguien lo mira es un
+    // defecto, no una animación.
+    const [videoIdx, setVideoIdx] = useState(0);
+
     const track = (type: string) => trackCampaign(campaign.id, clubId, type, preview);
     const handleDonate = () => { track('cta_donate_click'); onDonate(); };
 
@@ -180,7 +186,12 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
     const requiredItems = (content.requiredItems || []).filter((it: any) => it.active !== false && it.title);
     // Qué video es —y si se puede pintar— lo decide el criterio compartido,
     // no esta pantalla: es lo mismo que mira el editor para avisar en vivo.
-    const itemsVideo = resolveCampaignVideo(content.requiredItemsVideo?.url);
+    // Qué videos hay —y si se pueden pintar— lo decide el criterio compartido,
+    // no esta pantalla: es lo mismo que mira el editor para avisar en vivo.
+    const videos = sectionVideos(content.requiredItemsVideos, content.requiredItemsVideo);
+    // Si se quitan videos desde el panel, el índice guardado puede quedar
+    // fuera de rango: se acota al leer en vez de con otro efecto.
+    const videoActual = videos[Math.min(videoIdx, videos.length - 1)] || null;
     const partners = (content.partners || []).filter((p: any) => p.active !== false && p.logo);
     // La agrupación por ciudad es el MISMO criterio del servidor (espejo).
     const centerGroups = groupCenters(campaign.centers);
@@ -339,20 +350,32 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                             })}
                         </div>
 
-                        {/* El video va DEBAJO de las cajas. Se pinta sólo si la
-                            dirección se reconoce (`resolveCampaignVideo`): una
-                            URL que no es de YouTube, Vimeo ni un archivo de
-                            video no deja un recuadro roto, no deja nada. */}
-                        {itemsVideo && (
+                        {/* Los videos van DEBAJO de las cajas y se recorren con
+                            las flechas. Sólo entran los que se reconocen
+                            (`sectionVideos` descarta el resto): la flecha
+                            «siguiente» no puede llevar a un recuadro vacío.
+
+                            NO rotan solas, al revés que el hero: un video que
+                            se cambia solo mientras alguien lo está viendo es
+                            un defecto, no una animación. */}
+                        {videoActual && (
                             <div className="mt-14 max-w-3xl mx-auto">
                                 <div className="relative w-full rounded-2xl overflow-hidden bg-gray-900 shadow-lg" style={{ aspectRatio: '16 / 9' }}>
-                                    {itemsVideo.kind === 'file' ? (
+                                    {videoActual.video.kind === 'file' ? (
                                         // Un archivo propio se reproduce con el
                                         // reproductor del navegador: no hace
                                         // falta librería ninguna.
+                                        //
+                                        // Se dibuja SÓLO el que manda —al revés
+                                        // que las imágenes del hero, que están
+                                        // todas montadas—: montar los demás
+                                        // descargaría varios videos de una vez,
+                                        // y `key` fuerza el remontaje para que
+                                        // el anterior deje de sonar al cambiar.
                                         <video
-                                            src={itemsVideo.src}
-                                            poster={content.requiredItemsVideo?.poster || undefined}
+                                            key={videoActual.url}
+                                            src={videoActual.video.src}
+                                            poster={videoActual.poster || undefined}
                                             controls
                                             playsInline
                                             preload="metadata"
@@ -360,17 +383,53 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                         />
                                     ) : (
                                         <iframe
-                                            src={itemsVideo.src}
-                                            title={content.requiredItemsVideo?.title || 'Video de la campaña'}
+                                            key={videoActual.url}
+                                            src={videoActual.video.src}
+                                            title={videoActual.title || 'Video de la campaña'}
                                             className="absolute inset-0 w-full h-full"
                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                             referrerPolicy="strict-origin-when-cross-origin"
                                             allowFullScreen
                                         />
                                     )}
+
+                                    {/* Las flechas sólo con más de un video: una
+                                        flecha que vuelve al mismo sitio es un
+                                        control que no controla (v4.650).
+                                        Van FUERA del área de los controles del
+                                        reproductor —arriba y a los costados—
+                                        para no taparle el botón de reproducir. */}
+                                    {videos.length > 1 && (
+                                        <>
+                                            <button type="button" onClick={() => setVideoIdx(i => (i - 1 + videos.length) % videos.length)}
+                                                aria-label="Video anterior"
+                                                className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm">
+                                                <ChevronLeft className="w-6 h-6" />
+                                            </button>
+                                            <button type="button" onClick={() => setVideoIdx(i => (i + 1) % videos.length)}
+                                                aria-label="Video siguiente"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/45 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm">
+                                                <ChevronRight className="w-6 h-6" />
+                                            </button>
+                                            <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/45 text-white text-xs font-bold backdrop-blur-sm" data-no-translate>
+                                                {videoIdx + 1}/{videos.length}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
-                                {content.requiredItemsVideo?.title && (
-                                    <p className="text-center text-sm text-gray-500 mt-4">{content.requiredItemsVideo.title}</p>
+                                {videoActual.title && (
+                                    <p className="text-center text-sm text-gray-500 mt-4">{videoActual.title}</p>
+                                )}
+                                {videos.length > 1 && (
+                                    <div className="flex justify-center gap-2 mt-4">
+                                        {videos.map((_, i) => (
+                                            <button key={i} type="button" onClick={() => setVideoIdx(i)}
+                                                aria-label={`Ver video ${i + 1} de ${videos.length}`}
+                                                aria-current={i === videoIdx}
+                                                className={`h-2.5 rounded-full transition-all duration-300 ${i === videoIdx ? 'w-7' : 'w-2.5 bg-gray-300 hover:bg-gray-400'}`}
+                                                style={i === videoIdx ? { backgroundColor: accent } : undefined} />
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         )}
