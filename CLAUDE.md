@@ -2649,6 +2649,20 @@ PayPal» era decorativo—. Quien aportaba desde ahí creía haber aportado.
 - **Comprobado en un navegador que de verdad se turnan.** Que roten solas es
   lo que se pidió y no se ve en una prueba de criterio: el smoke espera los
   5,6 s y comprueba que el punto activo se movió sin que nadie lo tocara.
+- **El acercamiento lento (`animate-hero-zoom`) vive en el TEMA** (v4.813,
+  `tailwind.config.js`), no en un `<style>` de cada pantalla. Lo llevaban
+  escrito a mano —idéntico— `HeroSection.tsx` y `YEPHero.tsx`, y la campaña
+  iba a ser la tercera copia: el día que alguien ajuste la escala, las otras
+  se quedan atrás y el mismo efecto se ve distinto según por dónde se entre.
+  Va en el tema y no en `@layer utilities` de `index.css` por la lección de
+  v4.719. Dura 5 s, lo mismo que una diapositiva, así que termina justo al
+  cambiar; `forwards` evita el salto atrás.
+- **La clase se comprueba contra el CSS COMPILADO**, no sólo contra el
+  archivo fuente: una clase que no llega al CSS no existe, en silencio
+  (v4.719). Ese bloque de la prueba se salta si no hay `dist/`.
+- **El acercamiento va sólo en la imagen que MANDA.** Animar las que no se
+  ven es trabajo invisible, y es además lo que hace que el acercamiento se
+  reinicie cuando a esa imagen le vuelve a tocar.
 
 ### El ícono se elige viéndolo, y una varita lo propone (v4.810-v4.811)
 

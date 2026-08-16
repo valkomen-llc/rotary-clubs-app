@@ -37,15 +37,8 @@ const YEPHero = () => {
 
   return (
     <>
-      <style>{`
-        @keyframes zoomIn {
-          0% { transform: scale(1); }
-          100% { transform: scale(1.08); }
-        }
-        .hero-slide-image {
-          animation: zoomIn 5s ease-out forwards;
-        }
-      `}</style>
+      {/* El acercamiento sale del tema (`animate-hero-zoom`), compartido con
+          los otros heroes con carrusel — ver tailwind.config.js. */}
       <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
         <div className="absolute inset-0">
           {slides.map((slide, index) => (
@@ -58,7 +51,7 @@ const YEPHero = () => {
               <img 
                 src={slide.image} 
                 alt={slide.alt} 
-                className={`w-full h-full object-cover ${index === currentSlide ? 'hero-slide-image' : ''}`}
+                className={`w-full h-full object-cover ${index === currentSlide ? 'animate-hero-zoom' : ''}`}
               />
             </div>
           ))}

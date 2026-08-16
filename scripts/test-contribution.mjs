@@ -19,7 +19,7 @@
 // guardián de db:push. Nada de eso lo ve el typecheck.
 // ════════════════════════════════════════════════════════════════════
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import {
     CAMPAIGN_TYPES, DEFAULT_CAMPAIGN_TYPE, campaignTypeCatalog,
@@ -704,6 +704,33 @@ check('las imágenes se cruzan por opacidad, montadas todas — no se desmontan 
     /transition-opacity duration-1000/.test(landingSrc) && /i === slide \? 'opacity-100 z-10' : 'opacity-0 z-0'/.test(landingSrc));
 check('los puntos se anuncian al lector de pantalla',
     /aria-label=\{`Ver imagen \$\{i \+ 1\} de \$\{slides\.length\}`\}/.test(landingSrc));
+
+// v4.813: el acercamiento lento, compartido con los otros heroes.
+check('el acercamiento va en la imagen que MANDA, no en las que no se ven',
+    /i === slide \? 'animate-hero-zoom' : ''/.test(landingSrc));
+const tw = readFileSync('tailwind.config.js', 'utf8');
+check('el acercamiento vive en el TEMA, con su duración y su relleno final',
+    /"hero-zoom":\s*\{[\s\S]{0,160}scale\(1\.08\)/.test(tw)
+    && /"hero-zoom":\s*"hero-zoom 5s ease-out forwards"/.test(tw));
+// Tres pantallas lo llevaban escrito a mano, idéntico: la copia que se queda
+// atrás hace que el mismo efecto se vea distinto según por dónde se entre.
+for (const f of ['src/sections/HeroSection.tsx', 'src/sections/YEPHero.tsx', 'src/components/campaign/CampaignLanding.tsx']) {
+    const src = readFileSync(f, 'utf8');
+    check(`${f.split('/').pop()}: usa el acercamiento del tema y no una copia propia`,
+        /animate-hero-zoom/.test(src) && !/@keyframes zoomIn/.test(src) && !/hero-slide-image/.test(src));
+}
+// La lección de v4.719: una clase que no llega al CSS compilado no existe, en
+// silencio. El bloque se salta si no hay dist/ — no es una prueba de criterio.
+const cssFile = (() => {
+    try { return readdirSync('dist/assets').find(f => /^index-.*\.css$/.test(f)); } catch { return null; }
+})();
+if (cssFile) {
+    const css = readFileSync(`dist/assets/${cssFile}`, 'utf8');
+    check('la clase llega DE VERDAD al CSS compilado (no basta con declararla)',
+        css.includes('animate-hero-zoom') && /@keyframes hero-zoom/.test(css));
+} else {
+    console.log('  ⚠ CSS compilado: se omite (falta dist/).  npx vite build');
+}
 
 const adminSrc = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
 check('el editor ofrece las DOS vías para agregar imágenes (v4.700)',

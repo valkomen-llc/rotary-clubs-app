@@ -82,11 +82,26 @@ module.exports = {
           "0%,70%,100%": { opacity: "1" },
           "20%,50%": { opacity: "0" },
         },
+        // El acercamiento lento de los heroes con carrusel (v4.813). Vive en
+        // el TEMA y no en un `<style>` de cada pantalla porque lo usan la
+        // portada y la landing de campaña: escrito dos veces, el día que se
+        // ajuste la escala una de las dos se queda atrás. Mismo criterio que
+        // `rotary-topbar` (v4.745) — y en el tema, no en `@layer utilities`
+        // de index.css, que es donde una clase a mano no genera lo que
+        // Tailwind sí genera (v4.719).
+        "hero-zoom": {
+          from: { transform: "scale(1)" },
+          to: { transform: "scale(1.08)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "caret-blink": "caret-blink 1.25s ease-out infinite",
+        // 5 s: lo que dura una diapositiva, así el acercamiento termina justo
+        // al cambiar. `forwards` deja la imagen en su tamaño final en vez de
+        // dar un salto atrás.
+        "hero-zoom": "hero-zoom 5s ease-out forwards",
       },
     },
   },
