@@ -14,6 +14,7 @@ import {
     listCenters, saveCenters,
     getSiteCampaign, saveSiteOverride, saveSiteCenters,
     trackCampaignEvent, getCampaignMetrics,
+    listReadings, runReadings, decideReading,
 } from '../controllers/contributionCampaignController.js';
 
 const router = express.Router();
@@ -48,6 +49,12 @@ router.post('/:id/preview-token', authMiddleware, superAdminOnly, issuePreviewTo
 router.get('/:id/centers', authMiddleware, superAdminOnly, listCenters);
 router.put('/:id/centers', authMiddleware, superAdminOnly, saveCenters);
 router.get('/:id/metrics', authMiddleware, superAdminOnly, getCampaignMetrics);
+// v4.825 — la lectura automatizada del «Panorama de la emergencia». Las
+// propuestas y su decisión son del OPERADOR: ponen una cifra en la página de
+// muchos sitios a la vez, no en la de uno.
+router.get('/:id/readings', authMiddleware, superAdminOnly, listReadings);
+router.post('/:id/readings/run', authMiddleware, superAdminOnly, runReadings);
+router.post('/:id/readings/:readingId', authMiddleware, superAdminOnly, decideReading);
 router.delete('/:id', authMiddleware, superAdminOnly, deleteCampaign);
 
 export default router;

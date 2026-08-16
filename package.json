@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.824.0",
-  "cache_bust": "2026-08-16b (La galeria pasa mas rapido y sin barra de desplazamiento.)",
+  "version": "4.825.0",
+  "cache_bust": "2026-08-16c (Lectura automatizada del panorama de la emergencia.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

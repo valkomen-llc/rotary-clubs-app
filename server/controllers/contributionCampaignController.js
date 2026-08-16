@@ -26,8 +26,13 @@ import {
     validateForPublish, sanitizeOverride, resolveForSite, slugify,
     normalizeCenters,
 } from '../lib/contributionSpec.js';
+import {
+    normalizeFeed, validateFeed, applyReading, formatCutoff,
+    publishedValueOf, publishedCutoffOf, metricLabel,
+} from '../lib/emergencyFeed.js';
+import { readCampaign } from '../lib/emergencyIngest.js';
 
-console.log('[CONTRIBUTION v4.807] Controller cargado — campañas de contribución (Fase 5: métricas, panel y OG por campaña)');
+console.log('[CONTRIBUTION v4.825] Controller cargado — campañas de contribución (lectura automatizada del panorama)');
 
 // ─── Métricas (F5) ─────────────────────────────────────────────────────────
 //
@@ -245,6 +250,7 @@ const rowToCampaign = (r) => ({
     content: r.content || {},
     stats: r.stats || [],
     targeting: r.targeting || {},
+    feed: r.feed || {},
     recipientClubId: r.recipientClubId,
     createdBy: r.createdBy,
     updatedBy: r.updatedBy,
@@ -376,6 +382,11 @@ export const updateCampaign = async (req, res) => {
         if (b.stats !== undefined) changed.push('stats');
         const targeting = b.targeting === undefined ? prev.targeting : normalizeTargeting(b.targeting);
         if (b.targeting !== undefined) changed.push('targeting');
+        // La lectura automatizada del panorama (v4.825). Se NORMALIZA antes
+        // de guardar: el body acepta cualquier campo y descartarlo en
+        // silencio es cómo una función se estrena sin hacer nada (v4.735).
+        const feed = b.feed === undefined ? (prev.feed || {}) : normalizeFeed(b.feed);
+        if (b.feed !== undefined) changed.push('feed');
 
         const recipientClubId = b.recipientClubId === undefined
             ? prev.recipientClubId
@@ -387,12 +398,12 @@ export const updateCampaign = async (req, res) => {
             `UPDATE "ContributionCampaign" SET
                 name = $2, "campaignType" = $3, "startAt" = $4, "endAt" = $5,
                 priority = $6, content = $7, stats = $8, targeting = $9,
-                "recipientClubId" = $10, "updatedBy" = $11, "updatedAt" = NOW()
+                "recipientClubId" = $10, "updatedBy" = $11, feed = $12, "updatedAt" = NOW()
              WHERE id = $1 RETURNING *`,
             [
                 req.params.id, name, campaignType, startAt, endAt, priority,
                 JSON.stringify(content), JSON.stringify(stats), JSON.stringify(targeting),
-                recipientClubId, actor,
+                recipientClubId, actor, JSON.stringify(feed),
             ]
         );
         if (changed.length > 0) await recordHistory(req.params.id, 'updated', actor, { changed });
@@ -400,6 +411,10 @@ export const updateCampaign = async (req, res) => {
         res.json({
             campaign: rowToCampaign(rows[0]),
             publishErrors: validateForPublish(rowToCampaign(rows[0])),
+            // Aparte de los de publicar: una lectura mal configurada no
+            // impide publicar la campaña —la página se ve igual—, pero
+            // callarlo dejaría un interruptor encendido que no hace nada.
+            feedErrors: validateFeed(rowToCampaign(rows[0]).feed),
         });
     } catch (e) {
         console.error('[CONTRIBUTION] updateCampaign:', e);
@@ -809,3 +824,234 @@ export const saveSiteCenters = async (req, res) => {
 };
 
 export { sanitizeOverride };
+
+// ─── Lectura automatizada del panorama (v4.825) ────────────────────────────
+//
+// El cron —y el botón «Leer ahora»— consultan las fuentes y dejan PROPUESTAS.
+// Una propuesta se aplica sola SÓLO si la campaña lo autorizó y la fuente es
+// oficial y no saltó ninguna guarda (`judgeReading`); si no, espera en la
+// bandeja. Ver `emergencyFeed.js` para por qué no se publica «lo último que
+// aparezca en Internet».
+
+const READING_STATES = ['pendiente', 'aplicada', 'descartada', 'rechazada'];
+
+const rowToReading = (r) => ({
+    id: r.id,
+    campaignId: r.campaignId,
+    sourceId: r.sourceId,
+    sourceName: r.sourceName,
+    url: r.url,
+    metric: r.metric,
+    label: r.label || metricLabel(r.metric),
+    before: r.valueBefore === null || r.valueBefore === undefined ? null : Number(r.valueBefore),
+    after: Number(r.valueAfter),
+    cutoff: r.cutoff,
+    cutoffLabel: formatCutoff(r.cutoff),
+    quote: r.quote,
+    warnings: r.warnings || [],
+    state: r.state,
+    autoPublished: r.autoPublished,
+    decidedBy: r.decidedBy,
+    decidedAt: r.decidedAt,
+    createdAt: r.createdAt,
+});
+
+/**
+ * Guarda una lectura. El índice único sobre `key` es lo que impide que el
+ * cron —que mira la misma página cada cuarto de hora— deje una propuesta
+ * nueva cada vuelta. `DO NOTHING` y no `DO UPDATE`: una lectura ya decidida
+ * no vuelve a la bandeja porque alguien recargó la página de origen.
+ */
+const saveReading = async (campaignId, r, { state = 'pendiente', autoPublished = false, actor = null } = {}) => {
+    const { rows } = await db.query(
+        `INSERT INTO "ContributionCampaignReading"
+            ("campaignId", key, "sourceId", "sourceName", url, metric, label,
+             "valueBefore", "valueAfter", cutoff, quote, warnings, state,
+             "autoPublished", "decidedBy", "decidedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                 CASE WHEN $13 = 'pendiente' THEN NULL ELSE NOW() END)
+         ON CONFLICT (key) DO NOTHING
+         RETURNING *`,
+        [
+            campaignId, r.key, r.sourceId, r.sourceName || null, r.url || null,
+            r.metric, r.label || null,
+            r.before === null || r.before === undefined ? null : r.before,
+            r.after, r.cutoff || null, r.quote || null,
+            JSON.stringify(r.warnings || []), state, autoPublished, actor,
+        ]
+    );
+    return rows[0] ? rowToReading(rows[0]) : null;
+};
+
+/**
+ * Corre la lectura de una campaña y persiste lo que salga.
+ *
+ * Devuelve un resumen; NUNCA lanza. Lo llaman el cron y el botón del panel,
+ * y en los dos casos un portal caído tiene que dejar un motivo escrito y no
+ * tumbar la vuelta entera.
+ */
+export const runCampaignFeed = async (campaignId, { actor = null, timeBudgetMs = 60_000 } = {}) => {
+    await ensureContributionSchema();
+    const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [campaignId]);
+    if (!rows[0]) return { ok: false, error: 'Campaña no encontrada' };
+
+    const campaign = rowToCampaign(rows[0]);
+    const feed = normalizeFeed(campaign.feed);
+    if (!feed.enabled) return { ok: true, skipped: 'apagada', propuestas: 0, aplicadas: 0, fuentes: [] };
+
+    const { results } = await readCampaign({ campaign, timeBudgetMs });
+
+    // Los indicadores se acumulan en MEMORIA y se escriben UNA vez. Con un
+    // UPDATE por lectura, dos métricas del mismo balance harían dos vueltas
+    // y la segunda leería los stats de antes de la primera.
+    let stats = Array.isArray(campaign.stats) ? campaign.stats : [];
+    let aplicadas = 0;
+    let propuestas = 0;
+    const fuentes = [];
+
+    for (const r of results) {
+        if (!r.ok) { fuentes.push({ sourceId: r.sourceId, name: r.sourceName, error: r.error }); continue; }
+        const resumen = { sourceId: r.sourceId, name: r.sourceName, leidas: 0, nuevas: 0, note: r.note || '' };
+        for (const lectura of r.readings || []) {
+            resumen.leidas++;
+            if (!lectura.ok) continue;
+            const fila = await saveReading(campaignId, lectura, {
+                state: lectura.autoPublish ? 'aplicada' : 'pendiente',
+                autoPublished: lectura.autoPublish,
+                actor: lectura.autoPublish ? 'lectura-automatica' : null,
+            });
+            if (!fila) continue;                       // ya se había visto
+            resumen.nuevas++;
+            if (lectura.autoPublish) {
+                stats = applyReading(stats, lectura).stats;
+                aplicadas++;
+            } else {
+                propuestas++;
+            }
+        }
+        fuentes.push(resumen);
+    }
+
+    if (aplicadas > 0) {
+        await db.query(
+            `UPDATE "ContributionCampaign" SET stats = $2, "updatedAt" = NOW() WHERE id = $1`,
+            [campaignId, JSON.stringify(normalizeStats(stats))]
+        );
+        await recordHistory(campaignId, 'feed_auto_applied', actor || 'lectura-automatica', { aplicadas });
+        invalidateCache();
+    }
+    return { ok: true, propuestas, aplicadas, fuentes };
+};
+
+// GET /api/contribution-campaigns/:id/readings?state=pendiente
+export const listReadings = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const state = READING_STATES.includes(String(req.query.state)) ? String(req.query.state) : null;
+        const { rows } = await db.query(
+            `SELECT * FROM "ContributionCampaignReading"
+              WHERE "campaignId" = $1 AND ($2::text IS NULL OR state = $2)
+              ORDER BY "createdAt" DESC LIMIT 120`,
+            [req.params.id, state]
+        );
+        res.json({ readings: rows.map(rowToReading) });
+    } catch (e) {
+        console.error('[CONTRIBUTION] listReadings:', e);
+        res.status(500).json({ error: 'No se pudieron leer las propuestas' });
+    }
+};
+
+// POST /api/contribution-campaigns/:id/readings/run — «Leer ahora»
+export const runReadings = async (req, res) => {
+    try {
+        const out = await runCampaignFeed(req.params.id, { actor: actorOf(req) });
+        if (!out.ok) return res.status(404).json(out);
+        res.json(out);
+    } catch (e) {
+        console.error('[CONTRIBUTION] runReadings:', e);
+        res.status(500).json({ error: 'No se pudo consultar las fuentes' });
+    }
+};
+
+// POST /api/contribution-campaigns/:id/readings/:readingId  { decision }
+//
+// `aplicar` escribe el indicador; `descartar` sólo cierra la propuesta. Las
+// dos dejan constancia: la pregunta que hay que poder contestar es por qué la
+// página dice una cifra y un medio dice otra.
+export const decideReading = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const decision = String(req.body?.decision || '');
+        if (!['aplicar', 'descartar'].includes(decision)) {
+            return res.status(400).json({ error: 'Decisión no reconocida' });
+        }
+        // Condicional sobre el estado: dos pestañas abiertas no pueden
+        // aplicar dos veces la misma lectura. Mismo candado que el resto del
+        // sitio (`sideTracksAt`, `ingestScene`).
+        const { rows } = await db.query(
+            `UPDATE "ContributionCampaignReading"
+                SET state = $3, "decidedBy" = $4, "decidedAt" = NOW()
+              WHERE id = $1 AND "campaignId" = $2 AND state = 'pendiente'
+              RETURNING *`,
+            [req.params.readingId, req.params.id, decision === 'aplicar' ? 'aplicada' : 'descartada', actorOf(req)]
+        );
+        if (!rows[0]) return res.status(409).json({ error: 'La propuesta ya no está pendiente' });
+        const lectura = rowToReading(rows[0]);
+
+        let campaign = null;
+        if (decision === 'aplicar') {
+            const { rows: cs } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
+            if (!cs[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+            const actual = rowToCampaign(cs[0]);
+            const { stats } = applyReading(actual.stats, {
+                metric: lectura.metric, label: lectura.label, after: lectura.after,
+                cutoff: lectura.cutoff, sourceName: lectura.sourceName,
+            });
+            const { rows: up } = await db.query(
+                `UPDATE "ContributionCampaign" SET stats = $2, "updatedBy" = $3, "updatedAt" = NOW()
+                 WHERE id = $1 RETURNING *`,
+                [req.params.id, JSON.stringify(normalizeStats(stats)), actorOf(req)]
+            );
+            campaign = rowToCampaign(up[0]);
+            invalidateCache();
+        }
+        await recordHistory(req.params.id, `reading_${decision}`, actorOf(req), {
+            metric: lectura.metric, value: lectura.after, source: lectura.sourceName,
+        });
+        res.json({ reading: lectura, campaign });
+    } catch (e) {
+        console.error('[CONTRIBUTION] decideReading:', e);
+        res.status(500).json({ error: 'No se pudo aplicar la decisión' });
+    }
+};
+
+/**
+ * El barrido del cron: todas las campañas SERVIBLES con lectura encendida.
+ *
+ * Con presupuesto de tiempo, como el de Reels: la función corta y lo que no
+ * entre se lee al minuto siguiente. Una campaña archivada o en borrador no
+ * se consulta — gastaría llamadas al modelo por una página que nadie ve.
+ */
+export const sweepCampaignFeeds = async ({ timeBudgetMs = 200_000 } = {}) => {
+    await ensureContributionSchema();
+    const { rows } = await db.query(
+        `SELECT id, name FROM "ContributionCampaign"
+          WHERE status IN ('active', 'scheduled')
+            AND COALESCE(feed->>'enabled', 'false') = 'true'
+          ORDER BY priority DESC, "updatedAt" DESC LIMIT 20`
+    );
+    const arranque = Date.now();
+    const out = [];
+    for (const c of rows) {
+        if (Date.now() - arranque > timeBudgetMs) {
+            out.push({ id: c.id, name: c.name, skipped: 'sin_presupuesto' });
+            continue;
+        }
+        try {
+            out.push({ id: c.id, name: c.name, ...(await runCampaignFeed(c.id)) });
+        } catch (e) {
+            out.push({ id: c.id, name: c.name, ok: false, error: String(e?.message || e).slice(0, 200) });
+        }
+    }
+    return { campanas: out.length, detalle: out };
+};

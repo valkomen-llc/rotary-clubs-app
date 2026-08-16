@@ -390,6 +390,7 @@ try {
     console.log('\n⚠ Espejo del navegador: se omite (falta esbuild).  npm i --no-save esbuild');
 }
 
+
 if (mirror) {
     grupo('El espejo del navegador dice lo MISMO que el servidor');
     check('mismo catálogo de tipos (ids, etiquetas y bandera de emergencia)',
@@ -1105,6 +1106,267 @@ const pickerFile = readFileSync('src/components/admin/content-studio/MediaPicker
 check('el selector conserva las imágenes por omisión: nueve pantallas ya lo usaban así',
     /mediaType = 'image'/.test(pickerFile)
     && /if \(mediaType !== 'all'\) params\.set\('type', mediaType\);/.test(pickerFile));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.825 — Lectura automatizada del «Panorama de la emergencia»
+//
+// Los números de estas pruebas son los MEDIDOS sobre el propio sismo de San
+// José del Palmar: para el mismo hecho, con cortes de horas de diferencia,
+// los medios daban 284/287/288/294 fallecidos mientras la UNGRD publicaba
+// 289, y las personas afectadas BAJARON de 145.601 a 115.461. Es el caso
+// real, no uno inventado para que la prueba pase.
+// ═══════════════════════════════════════════════════════════════════════════
+const feedMod = await import('../server/lib/emergencyFeed.js');
+const {
+    FEED_METRICS, METRIC_KEYS, SOURCE_KINDS, normalizeFeed, validateFeed,
+    isFetchableUrl, parseFigure, formatFigure, parseCutoff, parseExtraction,
+    judgeReading, readingKey, applyReading, formatCutoff,
+    publishedValueOf, publishedCutoffOf, buildExtractionPrompt,
+} = feedMod;
+
+grupo('v4.825 — leer una cifra');
+// El separador de miles en Colombia es el PUNTO: «14.705» son catorce mil.
+check('«14.705» son 14705 y «3.937» son 3937',
+    parseFigure('14.705')?.value === 14705 && parseFigure('3.937')?.value === 3937);
+check('«289» es 289 y no lleva calificador',
+    parseFigure('289')?.value === 289 && parseFigure('289')?.approx === false);
+// «más de 102.000» NO es una cifra: es una cota. Se lee, y se marca.
+check('«más de 102.000» se lee como aproximada',
+    parseFigure('más de 102.000')?.value === 102000 && parseFigure('más de 102.000')?.approx === true);
+check('lo que no es un entero legible se rechaza en vez de adivinarse',
+    parseFigure('varios cientos') === null && parseFigure('12,5') === null
+    && parseFigure('1.20') === null && parseFigure('') === null);
+check('la cifra se imprime con separador de miles', formatFigure(14705) === '14.705');
+
+grupo('v4.825 — la fecha de corte');
+check('acepta el formato de la UNGRD (dd/mm/aaaa hh:mm)',
+    parseCutoff('15/08/2026 18:30') === '2026-08-15T18:30:00.000Z');
+check('acepta ISO', parseCutoff('2026-08-15T18:30:00Z') === '2026-08-15T18:30:00.000Z');
+check('sin corte legible devuelve vacío', parseCutoff('el jueves') === '' && parseCutoff('') === '');
+check('se rotula como se cita', formatCutoff('2026-08-15T18:30:00Z') === '15/08/2026 6:30 p. m.');
+
+grupo('v4.825 — el modelo extrae, el código decide');
+const extraccion = parseExtraction(JSON.stringify({
+    cutoff: '15/08/2026 18:30',
+    figures: [
+        { metric: 'fallecidos', value: '289', quote: '289 Personas Fallecidas' },
+        { metric: 'heridos', value: '3.937' },
+        { metric: 'inventada', value: '5' },
+        { metric: 'fallecidos', value: '300' },
+        { metric: 'municipios', value: 'muchos' },
+    ],
+}));
+check('sobrevive lo del catálogo y legible', extraccion.figures.length === 2);
+check('una métrica inventada se descarta y se DICE',
+    extraccion.descartes.some(d => /inventada/.test(d)));
+check('la repetida se descarta y se dice',
+    extraccion.descartes.some(d => /venía dos veces/.test(d)));
+check('lo que no es cifra se descarta y se dice',
+    extraccion.descartes.some(d => /no es una cifra legible/.test(d)));
+check('el corte viaja normalizado', extraccion.cutoff === '2026-08-15T18:30:00.000Z');
+check('una respuesta que no es JSON no revienta: devuelve el motivo',
+    parseExtraction('lo siento, no puedo').figures.length === 0
+    && parseExtraction('lo siento, no puedo').descartes.length === 1);
+// El catálogo del prompt se arma desde FEED_METRICS: una métrica nueva que
+// no llegue al prompt no se extraería nunca.
+check('el prompt enumera TODAS las métricas del catálogo',
+    METRIC_KEYS.every(k => buildExtractionPrompt().includes(k)));
+
+grupo('v4.825 — el juicio de una lectura');
+const oficial = { id: 's1', name: 'UNGRD', url: 'https://portal.gestiondelriesgo.gov.co/x', kind: 'oficial', format: 'imagen', active: true };
+const medio = { ...oficial, id: 's2', name: 'El Contraste', kind: 'secundaria' };
+const feedOn = { enabled: true, autoPublish: true, maxJumpPct: 40, sources: [oficial, medio] };
+const AHORA = new Date('2026-08-16T00:00:00Z');
+const juzgar = (o) => judgeReading({
+    figure: { metric: 'fallecidos', value: 289, approx: false }, source: oficial,
+    cutoff: '15/08/2026 18:30', current: 288, publishedCutoff: '2026-08-14T16:30:00Z',
+    feed: feedOn, now: AHORA, ...o,
+});
+check('una lectura oficial, nueva y sin sobresaltos se publica sola', juzgar({}).autoPublish === true);
+check('la propuesta trae el antes, el después y la diferencia',
+    juzgar({}).before === 288 && juzgar({}).after === 289 && juzgar({}).delta === 1);
+// La regla del módulo: una fuente secundaria AVISA, no publica.
+check('una fuente secundaria no publica sola, y se dice por qué',
+    juzgar({ source: medio }).autoPublish === false
+    && juzgar({ source: medio }).warnings.some(w => /secundaria/.test(w)));
+// El caso medido: 294 → 289. Un retroceso NO se rechaza; se marca.
+check('un retroceso se PROPONE igual, marcado, no se rechaza',
+    juzgar({ figure: { metric: 'fallecidos', value: 289, approx: false }, current: 294 }).ok === true
+    && juzgar({ figure: { metric: 'fallecidos', value: 289, approx: false }, current: 294 }).autoPublish === false);
+check('el aviso del retroceso lleva LOS DOS números',
+    juzgar({ figure: { metric: 'fallecidos', value: 289, approx: false }, current: 294 })
+        .warnings.some(w => w.includes('294') && w.includes('289')));
+// Personas afectadas SÍ se mueve en los dos sentidos con normalidad
+// (145.601 → 115.461): ahí un descenso no dice nada y no se marca.
+check('en una métrica que se mueve en los dos sentidos, bajar no genera aviso de retroceso',
+    !judgeReading({
+        figure: { metric: 'personas', value: 115461, approx: false }, source: oficial,
+        cutoff: '15/08/2026 06:30', current: 145601, publishedCutoff: '2026-08-14T16:30:00Z',
+        feed: { ...feedOn, maxJumpPct: 500 }, now: AHORA,
+    }).warnings.some(w => /Retrocede/.test(w)));
+check('un salto por encima del tope no se publica solo',
+    juzgar({ figure: { metric: 'fallecidos', value: 900, approx: false } }).autoPublish === false);
+check('una cifra con calificador no se publica sola',
+    juzgar({ figure: { metric: 'fallecidos', value: 102000, approx: true } }).autoPublish === false);
+// Un corte que no es más nuevo NO es una actualización: es una nota vieja
+// recirculando, y es lo que haría retroceder la página sola.
+check('un corte igual o más viejo que el publicado se rechaza',
+    juzgar({ cutoff: '14/08/2026 16:30' }).ok === false
+    && juzgar({ cutoff: '14/08/2026 16:30' }).reason === 'viejo');
+check('un corte en el futuro se rechaza', juzgar({ cutoff: '20/09/2026 10:00' }).reason === 'corte_futuro');
+check('sin corte no hay lectura', juzgar({ cutoff: '' }).reason === 'sin_corte');
+// Con la auto-publicación apagada TODO espera en la bandeja, por buena que
+// sea la lectura: es el valor por defecto del módulo.
+check('con la publicación automática apagada, nada se publica solo',
+    juzgar({ feed: { ...feedOn, autoPublish: false } }).autoPublish === false
+    && juzgar({ feed: { ...feedOn, autoPublish: false } }).ok === true);
+
+grupo('v4.825 — aplicar una lectura a los indicadores');
+const statsBase = [
+    { id: 'a', metricKey: 'fallecidos', label: 'Fallecidos', value: '288', source: 'UNGRD, corte 14/08/2026', updatedAt: '2026-08-14T16:30:00Z', active: true },
+    { id: 'b', label: 'Clubes movilizados', value: '12', source: 'Distrito 4281', updatedAt: '2026-08-14T00:00:00Z', active: true },
+];
+const aplicada = applyReading(statsBase, {
+    metric: 'fallecidos', label: 'Personas fallecidas', after: 289,
+    cutoff: '2026-08-15T18:30:00Z', sourceName: 'UNGRD',
+});
+check('actualiza el indicador que declara esa métrica', aplicada.stats[0].value === '289');
+check('la fuente se reescribe con el corte, que es lo que se publica',
+    aplicada.stats[0].source === 'UNGRD, corte 15/08/2026 6:30 p. m.');
+// La regla que protege el trabajo humano: sin `metricKey` es MANUAL.
+check('NO toca el indicador escrito a mano', aplicada.stats[1].value === '12' && aplicada.stats[1].source === 'Distrito 4281');
+check('una métrica que ningún indicador declara se AGREGA, activa',
+    applyReading(statsBase, { metric: 'heridos', label: 'Personas heridas', after: 3937, cutoff: '2026-08-15T18:30:00Z', sourceName: 'UNGRD' })
+        .stats.length === 3);
+check('lee el valor y el corte publicados de una métrica',
+    publishedValueOf(statsBase, 'fallecidos') === 288
+    && publishedCutoffOf(statsBase, 'fallecidos') === '2026-08-14T16:30:00Z'
+    && publishedValueOf(statsBase, 'heridos') === null);
+
+grupo('v4.825 — deduplicación y direcciones');
+// El cron mira la misma página cada cuarto de hora: una página que no cambió
+// no puede dejar una propuesta nueva cada vuelta.
+const k = o => readingKey({ campaignId: 'c1', sourceId: 's1', metric: 'fallecidos', cutoff: '15/08/2026 18:30', value: 289, ...o });
+check('la misma lectura da la misma llave', k() === k());
+check('otra cifra o otro corte dan otra llave',
+    k({ value: 294 }) !== k() && k({ cutoff: '16/08/2026 06:30' }) !== k());
+// Es una dirección que el SERVIDOR descarga y cuyo contenido acaba en una
+// página pública: mismo criterio que el mapa de la sede y las redirecciones.
+check('sólo https', isFetchableUrl('https://portal.gestiondelriesgo.gov.co/x') === true
+    && isFetchableUrl('http://portal.gestiondelriesgo.gov.co/x') === false);
+check('nada de esquemas raros',
+    !isFetchableUrl('javascript:alert(1)') && !isFetchableUrl('data:text/html,x') && !isFetchableUrl('file:///etc/passwd'));
+// Un cron que descarga direcciones no puede ser un lector de la red interna.
+check('ni localhost ni una IP: sería leer la red interna de la función',
+    !isFetchableUrl('https://localhost/x') && !isFetchableUrl('https://127.0.0.1/x')
+    && !isFetchableUrl('https://169.254.169.254/latest/meta-data/'));
+
+grupo('v4.825 — la configuración');
+check('nace APAGADA: encenderla es un acto explícito',
+    normalizeFeed({}).enabled === false && normalizeFeed({}).autoPublish === false);
+check('una campaña anterior a v4.825 no trae feed y no se rompe',
+    normalizeFeed(undefined).sources.length === 0);
+check('apagada no se valida nada', validateFeed({ enabled: false, sources: [] }).length === 0);
+check('encendida sin fuentes activas se avisa',
+    validateFeed({ enabled: true, sources: [] }).some(e => /ninguna fuente activa/.test(e)));
+check('una fuente sin dirección válida se avisa con su nombre',
+    validateFeed({ enabled: true, sources: [{ name: 'UNGRD', url: 'ftp://x', kind: 'oficial' }] })
+        .some(e => /UNGRD/.test(e) && /https/.test(e)));
+// Un interruptor que no hace nada es peor que no tenerlo (v4.650).
+check('auto-publicar sin ninguna fuente oficial se avisa: no publicaría nada',
+    validateFeed({ enabled: true, autoPublish: true, sources: [{ name: 'Medio', url: 'https://x.co/a', kind: 'secundaria' }] })
+        .some(e => /ninguna fuente activa es oficial/.test(e)));
+check('sólo la fuente oficial autoriza a publicar',
+    SOURCE_KINDS.oficial.canPublish === true && SOURCE_KINDS.secundaria.canPublish === false);
+
+grupo('v4.825 — el cableado');
+const ensureSrc = readFileSync('server/lib/ensureContributionSchema.js', 'utf8');
+check('la tabla de lecturas se crea en runtime, fuera de Prisma',
+    /CREATE TABLE IF NOT EXISTS "ContributionCampaignReading"/.test(ensureSrc));
+// La lista de la comprobación rápida NO es un número de versión: sin la
+// tabla nueva ahí, se da por presente y no se crea nunca.
+check('la comprobación rápida enumera la tabla Y la columna nuevas',
+    /ContributionCampaignReading"'\) IS NOT NULL AS lectura/.test(ensureSrc)
+    && /column_name = 'feed'/.test(ensureSrc));
+check('la columna feed se AGREGA, la tabla no se recrea',
+    /ADD COLUMN IF NOT EXISTS feed JSONB/.test(ensureSrc) && !/DROP TABLE/.test(ensureSrc));
+// La dedupe vive en el índice, no en el código que inserta.
+check('el índice único sobre `key` es lo que deduplica',
+    /CREATE UNIQUE INDEX IF NOT EXISTS "ContributionCampaignReading_key_key"/.test(ensureSrc));
+const ctlSrc = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
+check('una lectura ya decidida no vuelve a la bandeja (DO NOTHING, no DO UPDATE)',
+    /ON CONFLICT \(key\) DO NOTHING/.test(ctlSrc));
+check('decidir es un UPDATE condicional: dos pestañas no aplican dos veces',
+    /AND state = 'pendiente'\s*\n\s*RETURNING \*/.test(ctlSrc));
+check('el barrido sólo mira campañas servibles con la lectura encendida',
+    /status IN \('active', 'scheduled'\)[\s\S]{0,120}feed->>'enabled'/.test(ctlSrc));
+const cronSrc = readFileSync('server/routes/cron.js', 'utf8');
+check('el cron existe y está protegido con CRON_SECRET',
+    /'\/emergency-feed'/.test(cronSrc) && /Bearer \$\{process\.env\.CRON_SECRET\}/.test(cronSrc));
+check('el cron está declarado en vercel.json cada 15 minutos',
+    JSON.parse(readFileSync('vercel.json', 'utf8')).crons
+        .some(c => c.path === '/api/cron/emergency-feed' && c.schedule === '*/15 * * * *'));
+const ingestSrc = readFileSync('server/lib/emergencyIngest.js', 'utf8');
+// `fetch` sigue los redireccionamientos solo: comprobar sólo la dirección de
+// entrada dejaría abierta la puerta que `isFetchableUrl` cierra.
+check('la dirección se revalida DESPUÉS de los redireccionamientos',
+    /isFetchableUrl\(res\.url \|\| url\)/.test(ingestSrc));
+check('la descarga tiene tope de tiempo y de tamaño',
+    /AbortController/.test(ingestSrc) && /MAX_BYTES/.test(ingestSrc));
+check('leer una fuente NUNCA lanza: devuelve el motivo escrito',
+    /return \{ ok: false, sourceId: src\.id, sourceName: src\.name, error:/.test(ingestSrc));
+const adminFeed = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+check('el panel manda `feed` al guardar: una columna que nadie llena no hace nada',
+    /feed: c\.feed/.test(adminFeed));
+check('cada indicador declara qué métrica es, y «Manual» es una opción',
+    /Manual — la lectura automática no lo toca/.test(adminFeed));
+// La consecuencia, no sólo el nombre del interruptor.
+check('el interruptor de auto-publicar DICE que la cifra sale sin revisar',
+    /sale publicada sin que nadie la revise/.test(adminFeed));
+check('la propuesta muestra el fragmento donde se leyó y el enlace a la fuente',
+    /r\.quote/.test(adminFeed) && /ver la fuente/.test(adminFeed));
+
+// El espejo de la lectura automatizada (v4.825). Se compara por SALIDAS: que
+// los dos den la misma lista de métricas no alcanza — lo que sostiene el
+// aviso en vivo del editor es que `validateFeed` y `parseFigure` digan lo
+// mismo, palabra por palabra, que el servidor.
+let feedMirror = null;
+if (mirror) {
+    try {
+        const { build } = await import('esbuild');
+        const out = await build({
+            entryPoints: ['src/lib/emergencyFeed.ts'],
+            bundle: true, write: false, format: 'esm', platform: 'neutral',
+        });
+        feedMirror = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
+    } catch { /* se dice abajo */ }
+}
+if (feedMirror) {
+    grupo('v4.825 — el espejo de la lectura dice lo MISMO');
+    check('mismo catálogo de métricas, con sus etiquetas y su bandera',
+        eq(FEED_METRICS, feedMirror.FEED_METRICS) && eq(METRIC_KEYS, feedMirror.METRIC_KEYS));
+    check('mismas autoridades de fuente', eq(SOURCE_KINDS, feedMirror.SOURCE_KINDS));
+    check('normalizeFeed da lo mismo, encendido y apagado',
+        eq(normalizeFeed({}), feedMirror.normalizeFeed({}))
+        && eq(normalizeFeed({ enabled: true, autoPublish: true, maxJumpPct: 12, sources: [oficial] }),
+              feedMirror.normalizeFeed({ enabled: true, autoPublish: true, maxJumpPct: 12, sources: [oficial] })));
+    // Si los mensajes divergen, el editor avisa una cosa y el servidor otra.
+    check('validateFeed da los MISMOS mensajes', [
+        { enabled: false },
+        { enabled: true, sources: [] },
+        { enabled: true, sources: [{ name: 'UNGRD', url: 'ftp://x', kind: 'oficial' }] },
+        { enabled: true, autoPublish: true, sources: [{ name: 'M', url: 'https://x.co/a', kind: 'secundaria' }] },
+    ].every(f => eq(validateFeed(f), feedMirror.validateFeed(f))));
+    check('parseFigure lee igual las cifras colombianas',
+        ['14.705', '289', 'más de 102.000', '12,5', 'varios', ''].every(
+            v => eq(parseFigure(v), feedMirror.parseFigure(v))));
+    check('el corte se lee y se rotula igual',
+        ['15/08/2026 18:30', '2026-08-15T18:30:00Z', 'el jueves'].every(
+            v => parseCutoff(v) === feedMirror.parseCutoff(v) && formatCutoff(v) === feedMirror.formatCutoff(v)));
+    check('la misma dirección se acepta o se rechaza igual',
+        ['https://a.co/x', 'http://a.co/x', 'https://localhost/x', 'https://127.0.0.1/x', 'javascript:x'].every(
+            u => isFetchableUrl(u) === feedMirror.isFetchableUrl(u)));
+}
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

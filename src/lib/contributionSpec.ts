@@ -102,6 +102,11 @@ export const TARGETING_LABELS: Record<TargetingMode, string> = {
 
 export interface CampaignStat {
     id: string; label: string; value: string; source: string; updatedAt: string; active: boolean;
+    /** Qué métrica del catálogo es este indicador (`emergencyFeed.ts`). Sólo
+     *  la lectura automática lo escribe, y sólo toca los que lo declaran: un
+     *  indicador sin `metricKey` es de escritura MANUAL y no se pisa nunca.
+     *  Campo ADITIVO — una campaña guardada antes de v4.825 no lo trae. */
+    metricKey?: string;
 }
 
 /** Aviso en vivo del editor — el mismo criterio Y los mismos mensajes que el
