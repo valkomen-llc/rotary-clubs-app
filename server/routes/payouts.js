@@ -6,7 +6,8 @@ import {
     getClubPayoutHistory,
     getAllPayoutRequests,
     updatePayoutStatus,
-    getLedgerReconciliation
+    getLedgerReconciliation,
+    backfillLedger
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -39,5 +40,8 @@ router.put('/admin/:id', roleMiddleware(superAdminRoles), updatePayoutStatus);
 // `GET /admin/:id`, éste tiene que quedar ANTES o «ledger» caería en el
 // parámetro — es lo que ya pasó con `/site/*` en las campañas.
 router.get('/admin/ledger/:clubId', roleMiddleware(superAdminRoles), getLedgerReconciliation);
+
+// v4.848 — Carga el historial en el libro. De ENSAYO salvo `{"apply": true}`.
+router.post('/admin/ledger/:clubId/backfill', roleMiddleware(superAdminRoles), backfillLedger);
 
 export default router;
