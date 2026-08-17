@@ -637,6 +637,9 @@ async function handleSuccessfulDonationCheckout(session) {
     let availableOn = null;
     let clubAvailableOn = null;
     let paymentMethod = null;
+    let datosTarjeta = null;   // v4.844 — marca, últimos 4 y billetera
+    let receiptUrl = null;     // v4.844 — el recibo de Stripe, tal cual
+    let receiptNumber = null;
 
     if (session.payment_intent) {
         try {
@@ -650,6 +653,22 @@ async function handleSuccessfulDonationCheckout(session) {
             if (charge?.payment_method_details?.type) {
                 paymentMethod = charge.payment_method_details.type;
             }
+            // v4.844 — Lo que hace falta para escribir la traza como la escribe
+            // el recibo de Stripe: la marca de la tarjeta, sus últimos cuatro
+            // dígitos, la billetera si la hubo y el enlace al recibo. NUNCA
+            // nada más de la tarjeta: los cuatro últimos son lo que se puede
+            // mostrar y lo que basta para reconocer un cobro.
+            const card = charge?.payment_method_details?.card;
+            if (card) {
+                datosTarjeta = {
+                    brand: card.brand || '',
+                    last4: card.last4 || '',
+                    wallet: card.wallet?.type || '',
+                };
+            }
+            if (charge?.receipt_url) receiptUrl = charge.receipt_url;
+            if (charge?.receipt_number) receiptNumber = charge.receipt_number;
+
             if (bt) {
                 stripeBalanceTxId = bt.id;
                 stripeStatus = bt.status || 'pending'; // 'available', 'pending'
@@ -697,12 +716,31 @@ async function handleSuccessfulDonationCheckout(session) {
                     availableOn,
                     clubAvailableOn,
                     paymentMethod,
+                    // v4.844 — La traza que la ficha del aportante necesita
+                    // para responder de dónde vino el aporte y cómo se pagó.
+                    // Va acá y no en columnas nuevas de Prisma a propósito:
+                    // `Payment` y `Donation` se consultan con `findMany` sin
+                    // `select` en media plataforma, así que una columna
+                    // declarada y todavía inexistente en la base dejaría esas
+                    // consultas en 500 hasta que alguien corriera `db:push`.
+                    // Es la regla de `logo_intl` (v4.699), y acá caería sobre
+                    // el cobro. `rawPayload` es texto con JSON libre.
                     rawPayload: JSON.stringify({
                         sessionId: session.id,
                         mode: session.mode,
                         customerDetails: session.customer_details,
                         stripeBalanceTxId,
-                        stripeFee: estimatedStripeFee
+                        stripeFee: estimatedStripeFee,
+                        // De dónde vino
+                        campaignId: session.metadata?.campaignId || null,
+                        campaignSlug: session.metadata?.campaignSlug || null,
+                        purpose: session.metadata?.purpose || null,
+                        blockId: session.metadata?.blockId || null,
+                        projectId: session.metadata?.projectId || null,
+                        // Cómo se pagó y dónde está su recibo
+                        card: datosTarjeta,
+                        receiptUrl,
+                        receiptNumber,
                     })
                 }
             });
@@ -731,6 +769,31 @@ async function handleSuccessfulDonationCheckout(session) {
                 message: message || null
             }
         });
+
+        // v4.844 — Se ata el aporte a su pago. Va DESPUÉS de crear los dos y no
+        // al revés: el pago es el que lleva la restricción de unicidad que
+        // impide registrar el mismo cobro dos veces, así que tiene que
+        // insertarse primero. Creando la donación antes, un choque del índice
+        // dejaría un aporte huérfano —visible en la ficha, sin dinero detrás—.
+        //
+        // El vínculo existe sólo de acá en adelante. Los aportes anteriores se
+        // emparejan por heurística al leerlos, y la ficha DICE cuál de los dos
+        // fue: una coincidencia deducida no puede presentarse como un hecho.
+        try {
+            const fila = await prisma.payment.findFirst({
+                where: { providerRef, provider: 'stripe' },
+                select: { id: true, rawPayload: true },
+            });
+            if (fila) {
+                const payload = JSON.parse(fila.rawPayload || '{}');
+                payload.donationId = donation.id;
+                await prisma.payment.update({ where: { id: fila.id }, data: { rawPayload: JSON.stringify(payload) } });
+            }
+        } catch (linkErr) {
+            // Sin el vínculo la ficha cae en la heurística, que es lo que hace
+            // con todo lo anterior. No se toca un pago ya acreditado por esto.
+            console.warn('[Stripe Webhook] No pude atar el aporte a su pago:', linkErr?.message);
+        }
 
         // v4.416 — Si la donación va a un proyecto, actualizar contadores agregados
         // (project.recaudado + project.donantes) para que la UI pública del proyecto

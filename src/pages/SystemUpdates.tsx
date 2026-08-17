@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.843.0 | 2026-08-17 (La barra superior también separa las monedas)
-// Cache bust: 2026-08-17f
+// UI V4.844.0 | 2026-08-17 (La trazabilidad vive dentro de la caja del aportante)
+// Cache bust: 2026-08-17g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.844.0',
+        title: 'Cada aporte cuenta su propia historia 🔍',
+        description: 'La Bóveda mostraba el mismo dinero en dos pestañas: «Movimientos» decía cuánto entró y cuándo se libera, y «Aportes recibidos» decía quién donó — pero no había forma de saber qué movimiento correspondía a qué aportante. Ahora es una sola lista: se pulsa la caja del aportante y debajo aparece toda su trazabilidad. De qué campaña vino el aporte, el monto que pagó el donante, la tarifa de Stripe, la tarifa de traslado, el neto para el club, con qué tarjeta se pagó, el número de recibo, cuándo lo libera Stripe y cuándo queda disponible para retiro — más un enlace al recibo de Stripe. La pestaña «Movimientos» se retiró. Y en el encabezado del panel quedó UN solo indicador de dinero, con las monedas una al lado de la otra en vez de dos indicadores con cuatro cifras.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'trazabilidad', 'aportes'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La caja del aportante se despliega y muestra el movimiento completo.' },
+            { type: 'added', text: 'El origen del aporte —la campaña, el proyecto o el destino— se ve sin desplegar.' },
+            { type: 'added', text: 'Método de pago, número de recibo y enlace al recibo de Stripe.' },
+            { type: 'removed', text: 'La pestaña «Movimientos»: su contenido vive ahora dentro de cada aporte.' },
+            { type: 'changed', text: 'Un solo indicador de dinero en el encabezado, con las monedas en fila.' },
+        ],
+        details: [
+            'El vínculo entre un aporte y su cobro no existía: Donation y Payment son dos tablas que se escriben seguidas en el mismo webhook y nada las ataba. Ahora el webhook guarda el id del aporte dentro de Payment.rawPayload, que es una columna de texto con JSON libre — NO se agrega una columna a Prisma porque esas dos tablas se consultan con findMany sin select en media plataforma, y una columna declarada y todavía inexistente en la base dejaría esas consultas en 500 hasta que alguien corriera db:push a mano (la regla de logo_intl, v4.699).',
+            'Los aportes anteriores no tienen ese vínculo, así que se emparejan por club, moneda, importe y momento — y la ficha DICE cuando el emparejamiento fue deducido en vez de presentarlo como un hecho. Un pago sólo se asigna a un aporte: dos donaciones del mismo importe en el mismo minuto no pueden quedarse las dos con el mismo movimiento.',
+            'El botón «Sincronizar con Stripe» rellena ahora también el origen, el método de pago y el recibo de los cobros anteriores. Ya consultaba Stripe: aprovecharlo evita inventar un segundo proceso de relleno.',
+            'Un cobro que no nació de una donación —una compra de la tienda, una membresía, una inscripción— aparece al final de la misma lista, marcado como tal. Al unificar no podía quedarse sin ningún sitio donde verse: es dinero del club.',
+            'El indicador del encabezado dice «Saldo actual · neto recibido» y no «disponible para retiro»: eso último es otra cosa y en la Bóveda vale otro número, porque descuenta lo que Stripe todavía no liberó. Dos rótulos iguales con dos cifras distintas en el mismo módulo es el defecto que esta reingeniería vino a quitar.',
+            'npm run test:wallet pasa a 58 y test:wallet:ui a 35, incluidas diez comprobaciones del emparejamiento y el recorrido completo en un navegador: desplegar la caja, leer el recibo y comprobar que el cobro sin aportante no desaparece.',
+        ]
+    },
     {
         version: '4.843.0',
         title: 'La barra superior también separa las monedas 🧮',

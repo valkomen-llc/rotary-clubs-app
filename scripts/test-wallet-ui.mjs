@@ -86,10 +86,44 @@ const WALLET = {
     platformHoldingDays: 6,
 };
 
+const traza = (currency, gross, net, fee, origen, tarjeta) => ({
+    id: `mov-${currency}`, providerRef: `pi_${currency}`, currency,
+    decimals: currency === 'COP' ? 0 : 2,
+    grossAmount: gross, stripeFee: gross - net - fee, applicationFee: fee, amount: net,
+    status: 'succeeded', stripeStatus: 'pending', bucket: 'in_transit',
+    availableOn: '2026-08-18T00:00:00.000Z', clubAvailableOn: '2026-08-24T00:00:00.000Z',
+    createdAt: '2026-08-16T14:00:00.000Z', stripeBalanceTxId: 'txn_kmT70Ij4d2s0',
+    origin: origen, method: tarjeta,
+    receiptUrl: 'https://pay.stripe.com/receipts/ejemplo',
+    receiptNumber: currency === 'COP' ? '1157-2878' : '1904-4540',
+});
+
 const DONACIONES = {
     donations: [
-        { id: 'don-cop-0001', amount: 50000, currency: 'COP', donorName: 'Ana Restrepo', donorEmail: 'ana@ejemplo.org', isAnonymous: false, message: null, date: '2026-08-16T14:00:00.000Z', status: 'success' },
-        { id: 'don-usd-0002', amount: 10, currency: 'USD', donorName: 'John Miller', donorEmail: 'john@ejemplo.org', isAnonymous: false, message: null, date: '2026-08-16T15:00:00.000Z', status: 'success' },
+        {
+            id: 'don-cop-0001', amount: 50000, currency: 'COP',
+            donorName: 'Rodrigo Diaz', donorEmail: 'jrdiazrojas@gmail.com',
+            isAnonymous: false, message: 'Aporte cali San Fernando',
+            date: '2026-08-16T14:31:00.000Z', status: 'success',
+            movement: traza('COP', 50000, 47499, 2500,
+                { kind: 'campana', label: 'Emergencia Terremoto Colombia 2026', id: 'c1' },
+                { label: 'Mastercard ···3778', brand: 'mastercard', last4: '3778', wallet: '' }),
+            movementMatch: 'exact',
+        },
+        {
+            id: 'don-usd-0002', amount: 10, currency: 'USD',
+            donorName: 'John Miller', donorEmail: 'john@ejemplo.org',
+            isAnonymous: false, message: null,
+            date: '2026-08-16T18:29:00.000Z', status: 'success',
+            movement: traza('USD', 10, 8.91, 0.5,
+                { kind: 'campana', label: 'Emergencia Terremoto Colombia 2026', id: 'c1' },
+                { label: 'Visa ···4242 Apple Pay', brand: 'visa', last4: '4242', wallet: 'apple_pay' }),
+            movementMatch: 'heuristic',
+        },
+    ],
+    // Un cobro sin aportante: no puede desaparecer al unificar la lista.
+    orphanMovements: [
+        { ...traza('COP', 30000, 28400, 1500, { kind: 'destino', label: 'Tienda del club', id: 'b1' }, null), id: 'mov-tienda' },
     ],
     byCurrency: [
         { currency: 'COP', decimals: 0, totalAmount: 50000, totalCount: 1 },
@@ -156,9 +190,9 @@ await page.route('**/api/admin/stats*', r => r.fulfill({
         products: 0, documents: 0, leads: 0, activeClubs: 1,
         clubName: 'Distrito 4281', clubCity: '', clubCountry: 'Colombia', clubDomain: 'rotary4281.org',
         donationsByCurrency: [{ currency: 'COP', amount: 50000 }, { currency: 'USD', amount: 10 }],
-        availableFundsByCurrency: [{ currency: 'COP', amount: 0 }, { currency: 'USD', amount: 8.91 }],
+        availableFundsByCurrency: [{ currency: 'COP', amount: 47499 }, { currency: 'USD', amount: 8.91 }],
         donations: 50000,
-        availableFunds: 0,
+        availableFunds: 47499,
     },
 }));
 
@@ -190,10 +224,6 @@ console.log('\n▸ Una sola moneda a la vista');
 
 let t = await texto();
 check('arranca en la moneda con saldo disponible (USD)', /US\$\s*8,91/.test(t), t.slice(0, 200));
-check('NO se pinta a la vez el movimiento en pesos', !/47\.499/.test(t),
-    'aparecieron las dos monedas apiladas — es el defecto reportado');
-
-// La suma ilegal de v4.840 no puede reaparecer por ninguna vía.
 check('no aparece por ningún lado la suma de las dos monedas', !/47[.,]507/.test(t));
 
 const selector = page.getByRole('tab', { name: /COP/ });
@@ -202,38 +232,71 @@ check('hay selector de moneda', await selector.count() > 0);
 console.log('\n▸ Cambiar de moneda cambia TODO el contexto');
 await selector.first().click();
 await page.waitForTimeout(400);
-t = await texto();
-check('ahora se ve el movimiento en pesos', /47\.499/.test(t));
 
 // La comprobación se acota al PANEL, no a la página entera: el selector
 // muestra a propósito el saldo de cada moneda —es lo que permite decidir a
-// cuál cambiarse, como en la pantalla de cuentas de un banco—, así que
-// «US$ 8,91» sigue estando arriba con toda razón. Lo que no puede repetirse
-// es el CONTENIDO, que es lo que hacía la página interminable.
+// cuál cambiarse— así que «US$ 8,91» sigue estando arriba con toda razón.
 const panel = () => page.locator('[role="tabpanel"]').innerText();
 const enPanel = await panel();
-check('el panel muestra el movimiento en pesos', /47\.499/.test(enPanel));
-check('y NO el de dólares', !/US\$/.test(enPanel),
+check('el panel muestra el aporte en pesos', /Rodrigo Diaz/.test(enPanel));
+check('y NO el de dólares', !/John Miller/.test(enPanel),
     'quedaron las dos monedas apiladas en el panel: es el defecto reportado');
 
 // ── Las pestañas ─────────────────────────────────────────────────────
-console.log('\n▸ Las pestañas separan el contenido');
+console.log('\n▸ Dos pestañas: la de Movimientos se retiró');
 
-check('hay pestaña de Movimientos', await page.getByRole('tab', { name: /Movimientos/ }).count() > 0);
 check('hay pestaña de Aportes', await page.getByRole('tab', { name: /Aportes/ }).count() > 0);
 check('hay pestaña de Retiros', await page.getByRole('tab', { name: /Retiros/ }).count() > 0);
+check('YA NO hay pestaña de Movimientos',
+    await page.getByRole('tab', { name: /^Movimientos/ }).count() === 0,
+    'la trazabilidad vive dentro de la caja del aportante, no en una pestaña aparte');
+check('el formulario de retiro no está a la vista en Aportes',
+    await page.locator('#payout-amount').count() === 0);
 
-// Con todo apilado, el formulario de retiro estaría visible desde el principio.
-check('el formulario de retiro NO está a la vista en Movimientos',
-    await page.locator('#payout-amount').count() === 0,
-    'el contenido sigue apilado en vez de repartido en pestañas');
+// ── La caja del aportante ────────────────────────────────────────────
+console.log('\n▸ La traza vive dentro de la caja del aportante');
 
-await page.getByRole('tab', { name: /Aportes/ }).click();
+check('el origen se ve SIN desplegar', /Emergencia Terremoto Colombia 2026/.test(enPanel), enPanel.slice(0, 300));
+check('el estado del dinero también', /En tránsito/i.test(enPanel));
+check('el desglose está cerrado al principio', !/Monto pagado por el donante/.test(enPanel));
+
+await page.locator('[role="tabpanel"] button:has-text("Rodrigo Diaz")').first().click();
 await page.waitForTimeout(300);
-t = await texto();
-check('Aportes muestra el donante en pesos', /Ana Restrepo/.test(t));
-check('y NO el donante en dólares', !/John Miller/.test(t),
-    'la lista de aportes no está acotada a la moneda activa');
+const abierta = await panel();
+
+check('al pulsar la caja se despliega el movimiento', /Monto pagado por el donante/.test(abierta));
+check('el rótulo es el que fijó el cliente', /Tarifa de procesamiento de traslado desde interbancos/.test(abierta));
+check('muestra el método de pago del recibo', /Mastercard ···3778/.test(abierta), abierta.slice(0, 600));
+check('muestra el número de recibo de Stripe', /1157-2878/.test(abierta));
+check('muestra la referencia de la transacción', /txn_kmT70Ij4d2s0/.test(abierta));
+check('enlaza al recibo de Stripe',
+    await page.locator('a[href="https://pay.stripe.com/receipts/ejemplo"]').count() > 0);
+check('el neto se escribe en pesos, sin céntimos', /47\.499/.test(abierta) && !/47\.498,84/.test(abierta));
+
+// Un vínculo deducido no puede presentarse como un hecho.
+check('el aporte con vínculo exacto NO se marca como emparejado',
+    !/emparejado por coincidencia/i.test(abierta));
+
+await page.getByRole('tab', { name: /USD/ }).click();
+await page.waitForTimeout(400);
+await page.locator('[role="tabpanel"] button:has-text("John Miller")').first().click();
+await page.waitForTimeout(300);
+const abiertaUsd = await panel();
+check('el aporte emparejado por heurística lo DICE',
+    /emparejado por coincidencia/i.test(abiertaUsd), abiertaUsd.slice(0, 600));
+check('la billetera se escribe como en el recibo', /Apple Pay/.test(abiertaUsd));
+
+// ── Nada se pierde al unificar ───────────────────────────────────────
+console.log('\n▸ Un cobro sin aportante no desaparece');
+
+await page.getByRole('tab', { name: /COP/ }).click();
+await page.waitForTimeout(400);
+const conHuerfano = await panel();
+check('el cobro sin aportante se muestra igual', /Tienda del club/.test(conHuerfano), conHuerfano.slice(0, 400));
+check('y se dice que no tiene aportante asociado', /sin aportante asociado/i.test(conHuerfano));
+
+// ── Retiros ──────────────────────────────────────────────────────────
+console.log('\n▸ Retiros');
 
 await page.getByRole('tab', { name: /Retiros/ }).click();
 await page.waitForTimeout(300);
@@ -241,24 +304,8 @@ t = await texto();
 check('Retiros muestra el formulario', await page.locator('#payout-amount').count() === 1);
 check('el formulario dice en qué moneda se retira', /\(COP\)/.test(t));
 check('el historial muestra el retiro en pesos', /20\.000/.test(t));
-
-// El selector de moneda DENTRO del formulario se retiró en v4.842: dos
-// controles para la misma decisión se contradicen en cuanto alguien cambia uno.
 check('el formulario NO tiene su propio selector de moneda',
     await page.locator('#payout-currency').count() === 0);
-
-// ── El rótulo que fijó el cliente ────────────────────────────────────
-console.log('\n▸ El desglose de un movimiento');
-
-await page.getByRole('tab', { name: /Movimientos/ }).click();
-await page.waitForTimeout(300);
-await page.locator('#root button:has-text("En tránsito")').first().click();
-await page.waitForTimeout(300);
-t = await texto();
-check('el desglose se abre', /Monto pagado por el donante/.test(t));
-check('el rótulo es el que fijó el cliente', /Tarifa de procesamiento de traslado desde interbancos/.test(t), t.slice(0, 400));
-check('el porcentaje sale del propio movimiento', /\(5%\)/.test(t));
-check('el neto se escribe en pesos, sin céntimos', /47\.499/.test(t) && !/47\.498,84/.test(t));
 
 // ── La barra superior del panel ──────────────────────────────────────
 console.log('\n▸ La barra superior');
@@ -266,15 +313,17 @@ console.log('\n▸ La barra superior');
 // Los dos indicadores de dinero viven en AdminLayout, que esta prueba monta
 // junto con la Bóveda. Hasta v4.842 mostraban un solo número por indicador y
 // era la suma de las dos monedas.
-const barra = await page.locator('a[href="/admin/boveda"]').allInnerTexts();
+const barra = await page.getByRole('link', { name: 'Saldo actual del club' }).allInnerTexts();
 const enBarra = barra.join(' | ');
 
-check('los aportes se ven en las DOS monedas',
-    /50\.000/.test(enBarra) && /10,00/.test(enBarra), enBarra);
-check('los fondos disponibles también',
-    /8,91/.test(enBarra), enBarra);
+check('hay UN solo indicador de dinero',
+    barra.length === 1, `hay ${barra.length}: el de aportes brutos debía retirarse`);
+check('muestra el saldo en las DOS monedas',
+    /47\.499/.test(enBarra) && /8,91/.test(enBarra), enBarra);
+check('NO muestra el bruto, que era el otro indicador',
+    !/50\.000/.test(enBarra) && !/10,00/.test(enBarra), enBarra);
 check('no aparece la suma de las dos monedas',
-    !/50\.010/.test(enBarra) && !/47[.,]507/.test(enBarra),
+    !/50\.010/.test(enBarra) && !/47[.,]507,75/.test(enBarra),
     `la barra volvió a sumar monedas: ${enBarra}`);
 // Con varias monedas se escribe el CÓDIGO: apilados a once píxeles, «$ 50.000»
 // y «US$ 10,00» empiezan los dos por «$» y el primero se lee como dólares.

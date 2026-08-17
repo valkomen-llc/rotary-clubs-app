@@ -11,6 +11,7 @@ import {
     sumByCurrency, groupByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
+import { parsePayload, originOf, methodOf, linkDonationsToPayments } from '../lib/paymentTrace.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -494,8 +495,19 @@ export const listClubDonations = async (req, res) => {
         const main = primaryCurrency(totals, preferred);
         const mainRow = byCurrency.find(r => r.currency === main);
 
+        // v4.844 — Cada aporte viaja con SU movimiento. Hasta v4.843 la
+        // pantalla mostraba los aportes en una pestaña y los movimientos en
+        // otra, sin forma de saber cuál era de quién: son dos tablas que se
+        // escriben seguidas en el mismo webhook y nada las ataba.
+        const conTraza = await attachTraces(clubId, donations);
+
         return res.json({
-            donations,
+            donations: conTraza.donations,
+            // Cobros REALES que no nacieron de una donación —una compra de la
+            // tienda, una membresía, una inscripción—. Se devuelven aparte
+            // para que no desaparezcan de la pantalla al unificar la lista:
+            // es dinero del club y tiene que verse en alguna parte.
+            orphanMovements: conTraza.orphans,
             byCurrency,
             // Campos sueltos sobre la moneda principal, nunca sobre la mezcla.
             // `totalCount` sí es el total de la lista: contar aportes no cruza
@@ -507,6 +519,94 @@ export const listClubDonations = async (req, res) => {
     } catch (error) {
         console.error('[FINANCIAL] Error listing donations:', error);
         return res.status(500).json({ error: 'Error listando donaciones', detail: error.message?.slice(0, 200) });
+    }
+};
+
+// En qué cubeta del dinero cae un pago. Vive en el módulo y no dentro de
+// `getClubWallet` porque lo consultan DOS caminos —la Bóveda y la traza de la
+// ficha del aportante—, y dos criterios sobre el mismo pago dirían cosas
+// distintas en dos pantallas del mismo módulo.
+const bucketOf = (p, now) => {
+    if (p.status === 'refunded') return 'refunded';
+    if (p.status === 'failed') return 'failed';
+    if (p.status === 'pending') return 'processing';
+    if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) return 'in_transit';
+    if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) return 'available_soon';
+    return 'available';
+};
+
+// v4.844 — El MOVIMIENTO de un aporte, con la forma que la ficha necesita.
+// Es lo mismo que `getClubWallet` arma para cada pago, y por eso el estado se
+// decide con `bucketOf`: dos criterios distintos sobre el mismo pago dirían
+// cosas distintas en dos pantallas del mismo módulo.
+const movementOf = (p, now) => {
+    const payload = parsePayload(p.rawPayload);
+    const currency = normalizeCurrency(p.currency);
+    const grossAmount = parseFloat(p.amount || 0);
+    const netClub = parseFloat(p.netAmount || 0);
+    const platformFee = parseFloat(p.applicationFee || 0);
+    return {
+        id: p.id,
+        providerRef: p.providerRef,
+        currency,
+        decimals: currencyMeta(currency).decimals,
+        grossAmount,
+        stripeFee: Math.max(0, grossAmount - netClub - platformFee),
+        applicationFee: platformFee,
+        amount: netClub,
+        status: p.status,
+        stripeStatus: p.stripeStatus,
+        bucket: bucketOf(p, now),
+        availableOn: p.availableOn,
+        clubAvailableOn: p.clubAvailableOn,
+        createdAt: p.createdAt,
+        stripeBalanceTxId: p.stripeBalanceTxId,
+        // La traza: de dónde vino, cómo se pagó y dónde está su recibo.
+        origin: originOf(payload),
+        method: methodOf(payload, p.paymentMethod),
+        receiptUrl: payload.receiptUrl || null,
+        receiptNumber: payload.receiptNumber || null,
+    };
+};
+
+/** Le pega a cada aporte su movimiento, y devuelve los pagos que no casaron. */
+const attachTraces = async (clubId, donations) => {
+    const now = new Date();
+    try {
+        const { rows } = await db.query(
+            `SELECT id, "providerRef", status, amount, currency, "applicationFee",
+                    "netAmount", "stripeBalanceTxId", "stripeStatus",
+                    "availableOn", "clubAvailableOn", "paymentMethod",
+                    "rawPayload", "createdAt"
+             FROM "Payment"
+             WHERE "clubId" = $1 AND "isPlatformCollection" = true
+             ORDER BY "createdAt" DESC
+             LIMIT 500`,
+            [clubId]
+        );
+
+        const { links, orphans } = linkDonationsToPayments(donations, rows);
+
+        return {
+            donations: donations.map(d => {
+                const enlace = links.get(d.id);
+                return {
+                    ...d,
+                    movement: enlace ? movementOf(enlace.payment, now) : null,
+                    // Se DECLARA cómo se ató. Una coincidencia deducida no
+                    // puede presentarse como un hecho: los aportes anteriores
+                    // a v4.844 no tienen vínculo y se emparejan por club,
+                    // moneda, importe y momento.
+                    movementMatch: enlace?.match || null,
+                };
+            }),
+            orphans: orphans.map(p => movementOf(p, now)),
+        };
+    } catch (e) {
+        // Sin traza la lista se sigue mostrando: es una mejora de la ficha, no
+        // un requisito para ver quién donó.
+        console.warn('[FINANCIAL] traza de aportes no resuelta:', e?.message);
+        return { donations: donations.map(d => ({ ...d, movement: null, movementMatch: null })), orphans: [] };
     }
 };
 
@@ -544,17 +644,6 @@ export const getClubWallet = async (req, res) => {
             [clubId]
         );
 
-        // En qué cubeta cae un pago. El criterio no cambió en v4.841; lo que
-        // cambió es que las cubetas se llenan POR MONEDA.
-        const bucketOf = (p) => {
-            if (p.status === 'refunded') return 'refunded';
-            if (p.status === 'failed') return 'failed';
-            if (p.status === 'pending') return 'processing';
-            if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) return 'in_transit';
-            if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) return 'available_soon';
-            return 'available';
-        };
-
         const items = paymentsResult.rows.map(p => {
             const currency = normalizeCurrency(p.currency);
             const grossAmount = parseFloat(p.amount || 0);
@@ -583,7 +672,7 @@ export const getClubWallet = async (req, res) => {
                 paymentMethod: p.paymentMethod || 'card',
                 stripeBalanceTxId: p.stripeBalanceTxId,
                 createdAt: p.createdAt,
-                bucket: bucketOf(p),
+                bucket: bucketOf(p, now),
             };
         });
 
@@ -787,7 +876,8 @@ export const syncPaymentsWithStripe = async (req, res) => {
             },
             select: {
                 id: true, providerRef: true, amount: true, currency: true,
-                applicationFee: true, availableOn: true, stripeBalanceTxId: true
+                applicationFee: true, availableOn: true, stripeBalanceTxId: true,
+                rawPayload: true
             },
             take: 200
         });
@@ -836,6 +926,31 @@ export const syncPaymentsWithStripe = async (req, res) => {
                     ? new Date(availableOn.getTime() + PLATFORM_HOLDING_DAYS * 24 * 60 * 60 * 1000)
                     : null;
 
+                // v4.844 — Se rellena también la TRAZA: el origen del aporte,
+                // el método de pago y el recibo. Los pagos anteriores a v4.844
+                // no la tienen, y sin ella la ficha del aportante no puede
+                // decir de qué campaña vino ni con qué tarjeta se pagó. Este
+                // botón ya consultaba Stripe: aprovecharlo evita inventar un
+                // segundo proceso de relleno.
+                //
+                // Se MEZCLA sobre lo que ya había en vez de reemplazarlo: ahí
+                // vive el `donationId` que ata el aporte a su movimiento, y
+                // pisarlo rompería justo lo que esto viene a arreglar.
+                const payload = parsePayload(payment.rawPayload);
+                const card = charge?.payment_method_details?.card;
+                const enriquecido = {
+                    ...payload,
+                    stripeFee: realFee,
+                    campaignId: payload.campaignId ?? (pi.metadata?.campaignId || null),
+                    campaignSlug: payload.campaignSlug ?? (pi.metadata?.campaignSlug || null),
+                    purpose: payload.purpose ?? (pi.metadata?.purpose || null),
+                    blockId: payload.blockId ?? (pi.metadata?.blockId || null),
+                    projectId: payload.projectId ?? (pi.metadata?.projectId || null),
+                    card: card ? { brand: card.brand || '', last4: card.last4 || '', wallet: card.wallet?.type || '' } : payload.card || null,
+                    receiptUrl: charge?.receipt_url || payload.receiptUrl || null,
+                    receiptNumber: charge?.receipt_number || payload.receiptNumber || null,
+                };
+
                 await prisma.payment.update({
                     where: { id: payment.id },
                     data: {
@@ -845,7 +960,8 @@ export const syncPaymentsWithStripe = async (req, res) => {
                         clubAvailableOn,
                         paymentMethod: charge?.payment_method_details?.type || 'card',
                         applicationFee,
-                        netAmount: newNetAmount
+                        netAmount: newNetAmount,
+                        rawPayload: JSON.stringify(enriquecido)
                     }
                 });
 

@@ -42,6 +42,35 @@ interface PayoutRequest {
     createdAt: string;
 }
 
+/**
+ * El MOVIMIENTO de un aporte: qué se le descontó, de dónde vino y cómo se pagó.
+ *
+ * v4.844 — Antes esto vivía en una pestaña aparte y no había forma de saber
+ * qué movimiento correspondía a qué aportante: son dos tablas que se escriben
+ * seguidas en el mismo webhook y nada las ataba.
+ */
+interface Movement {
+    id: string;
+    providerRef: string | null;
+    currency: string;
+    decimals: number;
+    grossAmount: number;
+    stripeFee: number;
+    applicationFee: number;
+    amount: number;
+    status: string;
+    stripeStatus: string | null;
+    bucket: 'processing' | 'in_transit' | 'available_soon' | 'available' | 'refunded' | 'failed';
+    availableOn: string | null;
+    clubAvailableOn: string | null;
+    createdAt: string;
+    stripeBalanceTxId: string | null;
+    origin: { kind: string; label: string; id: string | null } | null;
+    method: { label: string; brand: string; last4: string; wallet: string } | null;
+    receiptUrl: string | null;
+    receiptNumber: string | null;
+}
+
 interface DonationRecord {
     id: string;
     amount: number;
@@ -52,6 +81,11 @@ interface DonationRecord {
     message: string | null;
     date: string;
     status: string;
+    movement?: Movement | null;
+    /** Cómo se ató el aporte con su movimiento. `heuristic` es una deducción
+     *  —los aportes anteriores a v4.844 no tienen vínculo— y se DICE en la
+     *  ficha: una coincidencia deducida no puede presentarse como un hecho. */
+    movementMatch?: 'exact' | 'heuristic' | null;
 }
 
 // v4.421 — Wallet sincronizada con Stripe
@@ -160,7 +194,8 @@ export default function WalletManagement() {
     // dentro del formulario, y dos controles para la misma decisión se
     // contradicen en cuanto alguien cambia uno solo.
     const [activeCurrency, setActiveCurrency] = useState('');
-    const [tab, setTab] = useState<'movimientos' | 'aportes' | 'retiros'>('movimientos');
+    const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
+    const [orphanMovements, setOrphanMovements] = useState<Movement[]>([]);
 
     // Form states
     const [amount, setAmount] = useState<number | ''>('');
@@ -219,9 +254,11 @@ export default function WalletManagement() {
         if (donationsRes.status === 'fulfilled' && Array.isArray(donationsRes.value.data?.donations)) {
             setDonations(donationsRes.value.data.donations);
             setDonationTotals(donationsRes.value.data.byCurrency || []);
+            setOrphanMovements(donationsRes.value.data.orphanMovements || []);
         } else {
             setDonations([]);
             setDonationTotals([]);
+            setOrphanMovements([]);
             console.error('[Wallet] donations fetch failed:', donationsRes);
         }
 
@@ -360,19 +397,17 @@ export default function WalletManagement() {
     const activePayouts = payouts.filter(p => (p.currency || 'USD') === code);
     const activeDonationTotal = donationTotals.find(t => t.currency === code);
 
-    const movimientos = activeWallet
-        ? [
-            ...activeWallet.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
-            ...activeWallet.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
-            ...activeWallet.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
-            ...activeWallet.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
-            ...activeWallet.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
-        ]
-        : [];
+    // v4.844 — Un cobro real que NO nació de una donación: una compra de la
+    // tienda, una membresía, una inscripción. Al unificar la lista dentro de
+    // los aportes, estos se quedaban sin sitio donde verse — y son dinero del
+    // club. Van al final de la misma lista, marcados como lo que son.
+    const huerfanos = orphanMovements.filter(m => m.currency === code);
 
     const TABS = [
-        { id: 'movimientos' as const, label: 'Movimientos', icon: <Clock className="w-4 h-4" />, count: movimientos.length },
-        { id: 'aportes' as const, label: 'Aportes recibidos', icon: <Heart className="w-4 h-4" />, count: activeDonations.length },
+        {
+            id: 'aportes' as const, label: 'Aportes recibidos', icon: <Heart className="w-4 h-4" />,
+            count: activeDonations.length + huerfanos.length,
+        },
         { id: 'retiros' as const, label: 'Retiros', icon: <ArrowUpRight className="w-4 h-4" />, count: activePayouts.length },
     ];
 
@@ -613,35 +648,12 @@ export default function WalletManagement() {
                             })}
                         </div>
 
-                        {/* ── Movimientos ─────────────────────────────────── */}
-                        {tab === 'movimientos' && (
-                            <div role="tabpanel" aria-label="Movimientos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                                {movimientos.length === 0 ? (
-                                    <div className="text-center text-gray-400 py-12">
-                                        <Clock className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                                        <p className="text-sm">No hay movimientos en proceso en <span data-no-translate>{code}</span>.</p>
-                                        <p className="text-xs mt-1">Acá aparecen los aportes mientras Stripe los procesa y los libera.</p>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                            <Clock className="w-4 h-4 text-gray-400" />
-                                            Movimientos en proceso
-                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
-                                                Sincronizado con Stripe
-                                            </span>
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {movimientos.map(item => (
-                                                <WalletTxRow key={item.id} item={item} />
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {/* ── Aportes recibidos ───────────────────────────── */}
+                        {/* ── Aportes recibidos, con su trazabilidad dentro ──
+                            v4.844 — Antes había DOS pestañas —«Movimientos» y
+                            «Aportes recibidos»— que mostraban el mismo dinero
+                            visto desde dos tablas, sin forma de saber cuál era
+                            de quién. Ahora el movimiento vive DENTRO de la caja
+                            de su aportante: se pulsa y se despliega. */}
                         {tab === 'aportes' && (
                             <div role="tabpanel" aria-label="Aportes recibidos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
                                 <div className="flex items-center justify-between mb-6">
@@ -659,56 +671,34 @@ export default function WalletManagement() {
                                     )}
                                 </div>
 
-                                {activeDonations.length === 0 ? (
+                                {activeDonations.length === 0 && huerfanos.length === 0 ? (
                                     <div className="text-center text-gray-400 py-10">
                                         <Heart className="w-12 h-12 mx-auto mb-3 opacity-20" />
                                         <p className="text-sm">Todavía no hay aportes en <span data-no-translate>{code}</span>.</p>
                                         <p className="text-xs mt-1">Cuando un donante complete el pago vía Stripe, aparecerá acá automáticamente.</p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                                    <div className="space-y-3">
                                         {activeDonations.map(donation => (
-                                            <div key={donation.id} className="flex items-start gap-4 p-4 rounded-2xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white hover:from-white hover:shadow-sm transition-all">
-                                                <div className="w-10 h-10 rounded-full bg-[#9D2235]/10 flex items-center justify-center flex-shrink-0">
-                                                    <Heart className="w-5 h-5 text-[#9D2235]" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                                        <div className="font-bold text-gray-900">
-                                                            {donation.isAnonymous
-                                                                ? <span className="text-gray-500 italic">Donante Anónimo</span>
-                                                                : (donation.donorName || donation.donorEmail || 'Donante')}
-                                                        </div>
-                                                        <div className="font-black text-xl text-[#9D2235]" data-no-translate>
-                                                            {money(donation.amount, donation.currency || 'USD')}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-3">
-                                                        <span>
-                                                            {new Date(donation.date).toLocaleString('es-CO', {
-                                                                dateStyle: 'medium',
-                                                                timeStyle: 'short'
-                                                            })}
-                                                        </span>
-                                                        {!donation.isAnonymous && donation.donorEmail && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Mail className="w-3 h-3" /> {donation.donorEmail}
-                                                            </span>
-                                                        )}
-                                                        <span className="flex items-center gap-1 text-emerald-600">
-                                                            <CheckCircle2 className="w-3 h-3" /> Completado
-                                                        </span>
-                                                        <span className="text-gray-300 font-mono">#{donation.id.slice(-8).toUpperCase()}</span>
-                                                    </div>
-                                                    {donation.message && (
-                                                        <div className="mt-2 flex items-start gap-2 bg-amber-50 border-l-2 border-amber-300 rounded-r-lg px-3 py-2 text-sm text-gray-700">
-                                                            <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                                                            <span className="italic">"{donation.message}"</span>
-                                                        </div>
-                                                    )}
+                                            <DonorCard key={donation.id} donation={donation} holdingDays={wallet?.platformHoldingDays ?? 6} />
+                                        ))}
+
+                                        {/* Cobros que no nacieron de una donación —una compra
+                                            de la tienda, una membresía, una inscripción—. Son
+                                            dinero del club: al unificar la lista no pueden
+                                            quedarse sin ningún sitio donde verse. */}
+                                        {huerfanos.length > 0 && (
+                                            <div className="pt-4 mt-2 border-t border-gray-100">
+                                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                                                    Otros movimientos · sin aportante asociado
+                                                </p>
+                                                <div className="space-y-3">
+                                                    {huerfanos.map(m => (
+                                                        <DonorCard key={m.id} movementOnly={m} holdingDays={wallet?.platformHoldingDays ?? 6} />
+                                                    ))}
                                                 </div>
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -886,6 +876,205 @@ export default function WalletManagement() {
     );
 }
 
+// El estado del dinero de un movimiento, con el mismo nombre y el mismo color
+// que las cuatro tarjetas de arriba: es el mismo hecho visto de cerca.
+const ESTADOS: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
+    processing: { label: 'En procesamiento', bg: 'bg-gray-100', text: 'text-gray-700', icon: <Hourglass className="w-3 h-3" /> },
+    in_transit: { label: 'En tránsito', bg: 'bg-amber-100', text: 'text-amber-800', icon: <Plane className="w-3 h-3" /> },
+    available_soon: { label: 'Disponible próximamente', bg: 'bg-sky-100', text: 'text-sky-800', icon: <Clock className="w-3 h-3" /> },
+    available: { label: 'Disponible para retiro', bg: 'bg-emerald-100', text: 'text-emerald-800', icon: <CheckCircle2 className="w-3 h-3" /> },
+    refunded: { label: 'Reembolsado', bg: 'bg-red-50', text: 'text-red-700', icon: <Ban className="w-3 h-3" /> },
+    failed: { label: 'Fallido', bg: 'bg-red-100', text: 'text-red-800', icon: <XCircle className="w-3 h-3" /> },
+};
+
+const ORIGEN_LABEL: Record<string, string> = {
+    campana: 'Campaña',
+    proyecto: 'Proyecto',
+    destino: 'Destino',
+};
+
+/**
+ * La caja de un aportante — y, desplegada, TODA su trazabilidad.
+ *
+ * v4.844 — El movimiento vivía en otra pestaña y no había forma de saber cuál
+ * correspondía a quién. Ahora se pulsa la caja y aparece debajo: de dónde vino
+ * el aporte, qué se le descontó, con qué se pagó y dónde está su recibo.
+ *
+ * Sirve para las dos cosas que hay en la lista: un aporte con su movimiento
+ * (`donation`) y un cobro sin aportante asociado (`movementOnly`) — una compra
+ * de la tienda, una membresía. Se escribe una vez porque son la misma pieza
+ * con distinta cabecera; dos componentes se separarían en silencio.
+ */
+function DonorCard({ donation, movementOnly, holdingDays }: {
+    donation?: DonationRecord;
+    movementOnly?: Movement;
+    holdingDays: number;
+}) {
+    const [abierta, setAbierta] = useState(false);
+    const mov = donation?.movement || movementOnly || null;
+    const currency = donation?.currency || mov?.currency || 'USD';
+    const importe = donation?.amount ?? mov?.amount ?? 0;
+    const fecha = donation?.date || mov?.createdAt || null;
+    const estado = mov ? ESTADOS[mov.bucket] : null;
+    const ref = (donation?.id || mov?.id || '').slice(-8).toUpperCase();
+
+    const titulo = donation
+        ? (donation.isAnonymous
+            ? <span className="text-gray-500 italic">Donante Anónimo</span>
+            : (donation.donorName || donation.donorEmail || 'Donante'))
+        : (mov?.origin?.label || 'Cobro sin aportante asociado');
+
+    return (
+        <div className="rounded-2xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white hover:shadow-sm transition-all overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setAbierta(v => !v)}
+                aria-expanded={abierta}
+                className="w-full text-left flex items-start gap-4 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/40"
+            >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${donation ? 'bg-[#9D2235]/10' : 'bg-gray-200/60'}`}>
+                    {donation
+                        ? <Heart className="w-5 h-5 text-[#9D2235]" />
+                        : <Send className="w-5 h-5 text-gray-500" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="font-bold text-gray-900">{titulo}</div>
+                        <div className={`font-black text-xl ${donation ? 'text-[#9D2235]' : 'text-gray-700'}`} data-no-translate>
+                            {money(importe, currency)}
+                        </div>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {fecha && (
+                            <span>{new Date(fecha).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        )}
+                        {donation && !donation.isAnonymous && donation.donorEmail && (
+                            <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {donation.donorEmail}</span>
+                        )}
+                        {/* El ORIGEN se ve sin desplegar: es lo primero que se
+                            pregunta de un aporte y lo que la ficha no decía. */}
+                        {mov?.origin && (
+                            <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2 py-0.5 font-semibold text-gray-600">
+                                {ORIGEN_LABEL[mov.origin.kind] || 'Origen'}: {mov.origin.label}
+                            </span>
+                        )}
+                        {estado && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${estado.bg} ${estado.text}`}>
+                                {estado.icon}{estado.label}
+                            </span>
+                        )}
+                        <span className="text-gray-300 font-mono">#{ref}</span>
+                    </div>
+                    {donation?.message && (
+                        <div className="mt-2 flex items-start gap-2 bg-amber-50 border-l-2 border-amber-300 rounded-r-lg px-3 py-2 text-sm text-gray-700">
+                            <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                            <span className="italic">"{donation.message}"</span>
+                        </div>
+                    )}
+                </div>
+            </button>
+
+            {abierta && (
+                <div className="px-4 pb-4 border-t border-gray-100 bg-white/60">
+                    {!mov ? (
+                        // No se inventa un movimiento que no se encontró: un
+                        // aporte sin pago asociado es un dato que hay que ver,
+                        // no un hueco que rellenar.
+                        <p className="text-xs text-gray-500 pt-3">
+                            No se encontró el movimiento de este aporte. Puede que el cobro se haya
+                            registrado por otra vía. Probá «Sincronizar con Stripe».
+                        </p>
+                    ) : (
+                        <div className="pt-3 space-y-3">
+                            <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1.5">
+                                <div className="flex justify-between text-gray-700">
+                                    <span>Monto pagado por el donante</span>
+                                    <span className="font-mono font-semibold text-gray-900" data-no-translate>{money(mov.grossAmount, mov.currency)}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-500">
+                                    <span>− Tarifa de procesamiento de Stripe</span>
+                                    <span className="font-mono" data-no-translate>−{money(mov.stripeFee, mov.currency)}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-500">
+                                    {/* REGLA EXPRESA DEL CLIENTE (v4.842) — este rótulo
+                                        lo fijó el equipo y no se cambia por criterio
+                                        propio. Ver la nota completa en el commit de
+                                        v4.842: técnicamente es la comisión de la
+                                        plataforma por recaudar. */}
+                                    <span>
+                                        − Tarifa de procesamiento de traslado desde interbancos
+                                        {mov.grossAmount > 0 && (
+                                            <span data-no-translate> ({Math.round((mov.applicationFee / mov.grossAmount) * 1000) / 10}%)</span>
+                                        )}
+                                    </span>
+                                    <span className="font-mono" data-no-translate>−{money(mov.applicationFee, mov.currency)}</span>
+                                </div>
+                                <div className="flex justify-between pt-1.5 border-t border-gray-200 font-bold text-gray-900">
+                                    <span>Neto para el club</span>
+                                    <span className="font-mono" data-no-translate>{money(mov.amount, mov.currency)}</span>
+                                </div>
+                            </div>
+
+                            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                                {mov.origin && (
+                                    <Dato termino={ORIGEN_LABEL[mov.origin.kind] || 'Origen'} valor={mov.origin.label} />
+                                )}
+                                {mov.method?.label && <Dato termino="Método de pago" valor={mov.method.label} dato />}
+                                <Dato termino="Fecha del cobro" valor={fmtDate(mov.createdAt)} dato />
+                                {mov.availableOn && <Dato termino="Stripe libera" valor={fmtDate(mov.availableOn)} dato />}
+                                {mov.clubAvailableOn && (
+                                    <Dato termino={`Disponible para retiro (+${holdingDays} días)`} valor={fmtDate(mov.clubAvailableOn)} dato />
+                                )}
+                                {mov.receiptNumber && <Dato termino="Recibo" valor={`#${mov.receiptNumber}`} dato />}
+                                {mov.stripeBalanceTxId && <Dato termino="Transacción Stripe" valor={mov.stripeBalanceTxId} dato mono />}
+                                {mov.providerRef && <Dato termino="Referencia del pago" valor={mov.providerRef} dato mono />}
+                                {mov.stripeStatus && <Dato termino="Estado en Stripe" valor={mov.stripeStatus} dato />}
+                            </dl>
+
+                            <div className="flex flex-wrap items-center gap-3 pt-1">
+                                {mov.receiptUrl && (
+                                    <a
+                                        href={mov.receiptUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-rotary-blue hover:underline"
+                                    >
+                                        Ver el recibo de Stripe
+                                    </a>
+                                )}
+                                {/* Un vínculo DEDUCIDO no se presenta como un hecho.
+                                    Los aportes anteriores a v4.844 no lo tienen y se
+                                    emparejan por club, moneda, importe y momento. */}
+                                {donation?.movementMatch === 'heuristic' && (
+                                    <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                                        Movimiento emparejado por coincidencia de importe y fecha
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Un par término/valor de la traza. Lo que es DATO —una referencia, una
+ *  tarjeta, una fecha— no se traduce (v4.662). */
+function Dato({ termino, valor, dato, mono }: { termino: string; valor: string; dato?: boolean; mono?: boolean }) {
+    return (
+        <div className="flex justify-between gap-3">
+            <dt className="text-gray-500">{termino}</dt>
+            <dd
+                className={`text-gray-900 font-semibold text-right truncate ${mono ? 'font-mono text-[10px]' : ''}`}
+                {...(dato ? { 'data-no-translate': true } : {})}
+            >
+                {valor}
+            </dd>
+        </div>
+    );
+}
+
 // v4.421 — Tarjeta de bucket en el header de la Bóveda.
 type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red';
 function WalletBucketCard({ color, icon, label, total, currency, count, hint }: {
@@ -917,110 +1106,6 @@ function WalletBucketCard({ color, icon, label, total, currency, count, hint }: 
             <div className="text-xs text-gray-500 font-medium mt-2">
                 {count} {count === 1 ? 'movimiento' : 'movimientos'} · {hint}
             </div>
-        </div>
-    );
-}
-
-// v4.421 — Una fila por transacción con badge de estado + fechas estimadas
-// v4.422 — Desglose completo de fees: Bruto → Stripe fee → Net Stripe → Valkomen 5% → Net Club
-function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in_transit' | 'available_soon' | 'refunded' | 'failed' } }) {
-    const BADGES: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
-        processing:     { label: 'En procesamiento',      bg: 'bg-gray-100',    text: 'text-gray-700',    icon: <Hourglass className="w-3 h-3" /> },
-        in_transit:     { label: 'En tránsito',           bg: 'bg-amber-100',   text: 'text-amber-800',   icon: <Plane className="w-3 h-3" /> },
-        available_soon: { label: 'Disponible próximamente', bg: 'bg-sky-100',   text: 'text-sky-800',     icon: <Clock className="w-3 h-3" /> },
-        refunded:       { label: 'Reembolsado',           bg: 'bg-red-50',      text: 'text-red-700',     icon: <Ban className="w-3 h-3" /> },
-        failed:         { label: 'Fallido',               bg: 'bg-red-100',     text: 'text-red-800',     icon: <XCircle className="w-3 h-3" /> },
-    };
-    const badge = BADGES[item.bucket];
-    const ref = item.id.slice(-8).toUpperCase();
-    const dateLabel = item.bucket === 'available_soon' && item.clubAvailableOn
-        ? `Liberación: ${fmtDate(item.clubAvailableOn)}`
-        : item.bucket === 'in_transit' && item.availableOn
-            ? `Stripe libera: ${fmtDate(item.availableOn)}`
-            : null;
-
-    const stripeFee = item.stripeFee ?? Math.max(0, item.grossAmount - item.amount - item.applicationFee);
-    // El porcentaje real de ESTE movimiento, no la constante de la plataforma:
-    // la tasa puede cambiar por moneda, país o método de pago, y escribir «5%»
-    // a mano afirmaba un número que el propio dato podía desmentir.
-    const feePct = item.grossAmount > 0
-        ? Math.round((item.applicationFee / item.grossAmount) * 1000) / 10
-        : null;
-    const [expanded, setExpanded] = useState(false);
-
-    return (
-        <div className="rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
-            <button
-                type="button"
-                onClick={() => setExpanded(v => !v)}
-                className="w-full flex items-center justify-between gap-3 p-3 text-left"
-            >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text} flex-shrink-0`}>
-                        {badge.icon}
-                        {badge.label}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <div className="text-xs text-gray-500 font-medium truncate">
-                            {fmtDate(item.createdAt)}
-                            {dateLabel && <span className="ml-2 text-gray-400">· {dateLabel}</span>}
-                            <span className="ml-2 text-gray-300 font-mono">#{ref}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                    <div className="font-bold text-sm text-gray-900" data-no-translate>
-                        {money(item.amount, item.currency)}
-                    </div>
-                    <div className="text-[10px] text-gray-400">
-                        bruto <span data-no-translate>{money(item.grossAmount, item.currency)}</span>
-                        {' − comisiones '}
-                        <span data-no-translate>{money(item.grossAmount - item.amount, item.currency)}</span>
-                    </div>
-                </div>
-            </button>
-
-            {/* v4.422 — desglose detallado expandible */}
-            {expanded && (
-                <div className="px-3 pb-3 pt-1 border-t border-gray-100">
-                    <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1.5">
-                        <div className="flex justify-between text-gray-700">
-                            <span>Monto pagado por el donante</span>
-                            <span className="font-mono font-semibold text-gray-900" data-no-translate>{money(item.grossAmount, item.currency)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-500">
-                            <span>− Tarifa de procesamiento de Stripe</span>
-                            <span className="font-mono" data-no-translate>−{money(stripeFee, item.currency)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-500">
-                            {/* REGLA EXPRESA DEL CLIENTE (v4.842) — este rótulo lo
-                                fijó el equipo y no se cambia por criterio propio.
-                                Se pidió dos veces y la segunda con la objeción ya
-                                sobre la mesa: técnicamente este cobro es la
-                                comisión de la plataforma por recaudar a través de
-                                la cuenta maestra —se aplica igual sobre un aporte
-                                en dólares, donde no hay conversión ninguna—, así
-                                que el nombre describe un traslado interbancario
-                                que este componente por sí solo no representa. El
-                                equipo lo decidió con ese argumento delante.
-                                El porcentaje sigue calculándose sobre el propio
-                                movimiento, no escrito a mano. */}
-                            <span>− Tarifa de procesamiento de traslado desde interbancos{feePct !== null && <span data-no-translate> ({feePct}%)</span>}</span>
-                            <span className="font-mono" data-no-translate>−{money(item.applicationFee, item.currency)}</span>
-                        </div>
-                        <div className="flex justify-between pt-1.5 border-t border-gray-200 font-bold text-gray-900">
-                            <span>Neto para el club</span>
-                            <span className="font-mono" data-no-translate>{money(item.amount, item.currency)}</span>
-                        </div>
-                        <div className="pt-2 flex flex-wrap gap-3 text-[10px] text-gray-400">
-                            {item.paymentMethod && <span>Método: {item.paymentMethod}</span>}
-                            {item.stripeBalanceTxId && <span className="font-mono">tx: {item.stripeBalanceTxId.slice(-12)}</span>}
-                            {item.stripeStatus && <span>Stripe status: {item.stripeStatus}</span>}
-                            {item.availableOn && <span>Available on: {fmtDate(item.availableOn)}</span>}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
