@@ -5578,6 +5578,79 @@ decidida: los hallazgos los calcula el CÓDIGO con reglas, cada uno con su
 evidencia, y el modelo sólo los REDACTA. `descargarPDF` ya acepta ese texto y lo
 pinta DEBAJO de las cifras — lo que manda es el dato.
 
+### La Bóveda Central: todos los sitios, sin mezclar (v4.853, Fase 1)
+
+El Administrador Central abre en una vista consolidada de la plataforma; el
+administrador de un sitio sigue viendo exactamente lo de siempre.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/centralWallet.js` | El CRITERIO. **Puro**: fila por sitio y moneda, consolidación, take rate y ticket promedio |
+| `getCentralOverview` en `payoutController.js` | Dos consultas agregadas sobre `Payment` y `PayoutRequest` |
+| `src/components/admin/CentralVault.tsx` | La vista consolidada, de sólo lectura |
+| `GET /api/payouts/admin/overview` | Del OPERADOR de la plataforma |
+
+Pruebas: `npm run test:wallet:central` (32 casos, **sin base ni red**) y
+`npm run test:wallet:central:ui` (13, navegador con la API interceptada).
+
+**Reglas durables:**
+
+- **CONSOLIDAR NO ES MEZCLAR, y son DOS ejes que no se cruzan.** El primero es la
+  MONEDA: una tarjeta por moneda y ninguna cifra que sume COP con USD — la regla
+  del módulo desde v4.841, agravada acá porque el error se multiplicaría por la
+  cantidad de sitios alojados. El segundo es el SITIO: un total consolidado es
+  legítimo —«¿cuánto movió la plataforma este mes?» es una pregunta real— pero
+  **no sustituye al detalle**, y toda fila conserva su `clubId`. Las dos
+  preguntas son distintas y ninguna reemplaza a la otra: lo del Distrito 4281 es
+  del Distrito 4281, no de un fondo común.
+- **LA BÓVEDA LOCAL NO SE TOCA.** Es la exigencia expresa del pedido y por eso
+  `computeBalances` sigue acotado a un club y una prueba lo comprueba sobre el
+  archivo. Lo central AGREGA una vista; no cambia una línea de cómo cada sitio
+  calcula lo suyo ni de cómo se piden los retiros.
+- **La comisión del procesador se DERIVA** (`bruto − plataforma − neto`), igual
+  que en el libro mayor y por el mismo motivo: aceptarla de fuera permitiría un
+  desglose que cuadra porque alguien mandó el número que hacía falta. Y las dos
+  retenciones son DOS campos, no uno: fundirlas haría imposible contestar
+  «¿cuánto monetiza Club Platform?», que es justamente la pregunta que esta
+  pantalla existe para responder.
+- **El disponible usa el MISMO criterio que la Bóveda local** (`neto − retirado`,
+  acotado en cero dentro de SU moneda). Un segundo criterio daría dos cifras
+  distintas para el mismo club en dos pantallas de la misma plataforma.
+- **DOS CONSULTAS AGREGADAS, NO UNA POR SITIO.** Los aportes se agrupan en la
+  base con `GROUP BY p."clubId", p.currency` y los retiros con `GROUP BY
+  "clubId", currency`. Trayendo las filas y sumándolas fuera, la central sería
+  inusable con el segundo cliente grande — es el punto de escalabilidad del
+  pedido. Una prueba comprueba sobre el archivo que no haya `await db.query`
+  dentro de un bucle.
+- **⚠️ Los dos modos se deciden por ROL, no por si hay sitio.** La forma
+  aparentemente natural —«sin club, vista central»— **no funciona**: el operador
+  entra por el dominio de la plataforma y `by-domain` le devuelve el sitio
+  «Origen», así que «no hay club» nunca es cierto para él. `esOperador` decide
+  el modo y `sitioElegido` lo abandona; todas las consultas de la pantalla usan
+  `clubIdActivo`, no `club?.id`.
+- **`null` es «no se sabe», NO «cero por ciento».** Sin bruto, el take rate no es
+  0 %: es que no hubo nada que cobrar. Misma regla que el costo sin tarifa
+  configurada en el panel de auditoría del Creador de Reels — un cero es una
+  afirmación, un hueco es la verdad.
+- **Por defecto sólo se listan los sitios que recaudaron**, y se dice cuántos son
+  de cuántos. Sin ese filtro la tabla lista cientos de sitios en cero y el que
+  importa se pierde entre ellos; sin el recuento, quien filtra no sabe qué dejó
+  fuera.
+- **Un retiro en una moneda sin aportes se REPORTA, no se resta contra otra.**
+  Hasta v4.840 `PayoutRequest.currency` no se escribía y toda fila vieja quedó en
+  USD por omisión: adivinar cuál era es adivinar cuánto dinero salió. Mismo
+  criterio que la carga hacia atrás del libro.
+- **El redondeo se hace UNA vez al final, no por fila.** Acumular redondeos corre
+  el total en los céntimos, y acá se acumulan tantos como sitios haya.
+- **La fuente se DECLARA** (`fuente: 'payments'`) y está escrito por qué todavía
+  no lee del libro mayor: el libro está en sombra y su carga hacia atrás no se ha
+  corrido en producción. Cuando el informe de conciliación cuadre, se cambia acá
+  —en un solo sitio— y la pantalla podrá decirlo sin que nadie lo adivine.
+
+**Lo que sigue:** los reversos de los netos mal calculados (aportes anteriores a
+v4.845, que el libro reproduce mal a propósito), el `campaignId` en el libro, y
+el cambio de fuente de los saldos —**sólo cuando el informe cuadre**—.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

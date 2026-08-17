@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.852.0",
-  "cache_bust": "2026-08-17o (La Bóveda de un sitio sin aportes ya no revienta.)",
+  "version": "4.853.0",
+  "cache_bust": "2026-08-17p (La Bóveda Central: lo que recaudan todos los sitios, sin mezclar sus fondos.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -55,6 +55,8 @@
     "test:ledger:backfill": "node scripts/test-ledger-backfill.mjs",
     "test:ledger:write": "node scripts/test-ledger-write.mjs",
     "test:wallet": "node scripts/test-wallet.mjs",
+    "test:wallet:central": "node scripts/test-wallet-central.mjs",
+    "test:wallet:central:ui": "node scripts/test-wallet-central-ui.mjs",
     "test:wallet:empty": "node scripts/test-wallet-empty.mjs",
     "test:wallet:export": "node scripts/test-wallet-export.mjs",
     "test:wallet:filters": "node scripts/test-wallet-filters.mjs",
