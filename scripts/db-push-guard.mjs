@@ -22,8 +22,9 @@
 // Contribución: ContributionCampaign, ContributionCenter,
 // ContributionCampaignOverride, ContributionCampaignHistory,
 // ContributionCampaignMetric y ContributionCampaignReading, las dos del
-// Director Creativo IA: CreativeProfile y CreativeReference, y las tres del
-// libro mayor de la Bóveda: LedgerAccount, LedgerTransaction y LedgerLine).
+// Director Creativo IA: CreativeProfile y CreativeReference, las tres del
+// libro mayor de la Bóveda —LedgerAccount, LedgerTransaction y LedgerLine— y
+// NotificationDelivery, la bitácora de las notificaciones de aportes).
 // Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // La lista de arriba es DOCUMENTACIÓN: el guardián no la lee, deriva los
