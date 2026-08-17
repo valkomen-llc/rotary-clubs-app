@@ -1082,6 +1082,15 @@ export const syncPaymentsWithStripe = async (req, res) => {
                 //
                 // `sourceRef` es el id del pago: si el sync se corre diez veces
                 // —y se corre— el índice único rechaza el segundo asiento.
+                //
+                // ⚠️ LIMITACIÓN CONOCIDA: el asiento se queda con el neto que
+                // se conocía la primera vez. Si un sync posterior mejora la
+                // comisión —porque apareció la TRM del día, por ejemplo— el
+                // libro NO se entera: el segundo asiento choca con el índice y
+                // se descarta. Corregirlo es revertir y volver a asentar, y eso
+                // es Fase 2 junto con la carga hacia atrás. Mientras tanto es
+                // un descuadre que la conciliación VE, que es exactamente para
+                // lo que sirve la fase en sombra.
                 if (clubAvailableOn && new Date(clubAvailableOn) <= new Date() && newNetAmount > 0) {
                     const asiento = await postRelease({
                         clubId: payment.clubId,

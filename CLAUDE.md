@@ -5319,6 +5319,13 @@ en memoria). **Ninguna necesita Postgres, credenciales ni red.**
   («Tarifa de procesamiento de traslado desde interbancos»), y una prueba la
   fija: renombrarla de vuelta por criterio propio tiene que fallar.
 
+- **⚠️ Limitación conocida: un asiento no se corrige solo.** El de liberación
+  se queda con el neto que se conocía la primera vez; si un sync posterior
+  mejora la comisión —porque apareció la TRM del día—, el segundo asiento choca
+  con el índice y se descarta. Corregirlo es revertir y volver a asentar, y eso
+  es Fase 2. Mientras tanto es un descuadre que la conciliación VE, que es
+  exactamente para lo que sirve la fase en sombra.
+
 **Lo que sigue (Fase 2):** cargar hacia atrás los aportes anteriores a v4.847
 para que el informe pueda cuadrar, y sólo entonces cambiar la fuente de los
 saldos de la Bóveda al libro. Hasta que el informe cuadre, no se cambia nada.
