@@ -62,6 +62,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
 import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../lib/platformAdmin';
 import { useClub } from '../../contexts/ClubContext';
+import { useLang } from '../../contexts/LanguageContext';
+import { formatMoney } from '../../lib/locale';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
 import { SYSTEM_UPDATES } from '../../pages/SystemUpdates';
 
@@ -78,6 +80,59 @@ interface MenuItem {
     badge?: string;
     expandable?: boolean;
 }
+
+/**
+ * Un importe de la barra superior, con su moneda — y una línea POR MONEDA.
+ *
+ * v4.843 — Acá salían los dos números que el cliente reportó: «$50,010» y
+ * «$47,507.75». Eran `SUM` sin `GROUP BY currency` con un «$» escrito a mano
+ * delante, o sea 10 dólares más 50.000 pesos y 8,91 más 47.498,84. La Bóveda
+ * ya se había corregido en v4.841; esta barra consulta OTRO endpoint
+ * (`/admin/stats`) y seguía mezclando.
+ *
+ * Es un componente aparte y SIN estado propio a propósito: se usa dos veces y
+ * dentro de un `.map`, y un hook ahí depende del largo de la lista — el
+ * defecto que dejó una portada en blanco en v4.689.
+ *
+ * Con una sola moneda se ve exactamente como antes, que es el caso de casi
+ * todos los sitios. Sólo el que recibe en varias gana la segunda línea.
+ */
+const MoneyByCurrency: React.FC<{
+    rows?: { currency: string; amount: number }[];
+    legacy?: number;
+}> = ({ rows, legacy }) => {
+    // El formato depende del idioma activo; sin la suscripción se quedaría con
+    // el anterior hasta el siguiente repintado.
+    useLang();
+
+    // Sin `rows` —un servidor todavía sin desplegar— se cae al campo suelto,
+    // que el servidor conserva sobre la moneda PRINCIPAL y nunca sobre la
+    // mezcla. Muestra de menos, que es el lado seguro.
+    const lista = rows?.length ? rows : [{ currency: '', amount: legacy || 0 }];
+
+    if (lista.length === 1) {
+        return (
+            <span className="text-[12px] font-black text-gray-800" data-no-translate>
+                {formatMoney(lista[0].amount, lista[0].currency || 'USD')}
+            </span>
+        );
+    }
+
+    // Con varias monedas se escribe el CÓDIGO en vez del símbolo. El peso
+    // colombiano en es-CO se formatea «$ 50.000» y el dólar «US$ 10,00»: los
+    // dos empiezan por «$», y apilados en una barra de once píxeles el primero
+    // se lee como dólares de un vistazo. «COP 50.000» no se confunde con nada.
+    // Con una sola moneda se conserva el símbolo, que es como se veía antes.
+    return (
+        <span className="flex flex-col leading-[1.15] items-start" data-no-translate>
+            {lista.map(r => (
+                <span key={r.currency} className="text-[11px] font-black text-gray-800 whitespace-nowrap">
+                    {formatMoney(r.amount, r.currency, undefined, { currencyDisplay: 'code' })}
+                </span>
+            ))}
+        </span>
+    );
+};
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
@@ -918,7 +973,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 <div className="relative group/don">
                                     <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 transition-all">
                                         <TrendingUp className="w-4.5 h-4.5 text-emerald-500" />
-                                        <span className="text-[12px] font-black text-gray-800">${stats?.donations?.toLocaleString() || '0'}</span>
+                                        <MoneyByCurrency rows={stats?.donationsByCurrency} legacy={stats?.donations} />
                                     </Link>
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/don:opacity-100 group-hover/don:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
                                         Donaciones / Tienda
@@ -930,7 +985,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 <div className="relative group/fon">
                                     <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-all">
                                         <Wallet className="w-4.5 h-4.5 text-amber-500" />
-                                        <span className="text-[12px] font-black text-gray-800">${stats?.availableFunds?.toLocaleString() || '0'}</span>
+                                        <MoneyByCurrency rows={stats?.availableFundsByCurrency} legacy={stats?.availableFunds} />
                                     </Link>
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/fon:opacity-100 group-hover/fon:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
                                         Fondos Disponibles

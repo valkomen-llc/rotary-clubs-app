@@ -17,6 +17,8 @@ import {
 import { getWalletStats, getPools } from '../controllers/crowdfundController.js';
 import { getPhases, evaluateClubActivation } from '../services/activationService.js';
 import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
+import { sumByCurrency, subtractByCurrency, currenciesOf, primaryCurrency } from '../lib/money.js';
+import { siteCurrency } from '../lib/clubCurrency.js';
 
 const router = express.Router();
 
@@ -40,10 +42,15 @@ router.get('/stats', async (req, res) => {
             db.query(`SELECT COUNT(*) FROM "Publication" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "KnowledgeSource" WHERE "clubId" = $1 OR "clubId" IS NULL`, clubId ? [clubId] : [null]),
             clubId ? db.query('SELECT name, city, country, domain, subdomain FROM "Club" WHERE id = $1', [clubId]) : Promise.resolve({ rows: [] }),
-            db.query(`SELECT SUM("netAmount") FROM "Payment" WHERE "isPlatformCollection" = true AND status = 'succeeded' ${clubId ? `AND "clubId" = $1` : ''}`, params),
-            db.query(`SELECT SUM(amount) FROM "PayoutRequest" WHERE status IN ('pending', 'processing', 'completed') ${clubId ? `AND "clubId" = $1` : ''}`, params),
+            // v4.843 — POR MONEDA. Hasta v4.842 estos tres eran un `SUM` sin
+            // `GROUP BY currency` y de ahí salían los dos números de la barra
+            // superior: «$50,010» eran 10 dólares más 50.000 pesos, y
+            // «$47,507.75», 8,91 más 47.498,84. La Bóveda ya se había
+            // corregido; esta consulta es otra y seguía mezclando.
+            db.query(`SELECT currency, SUM("netAmount") AS total FROM "Payment" WHERE "isPlatformCollection" = true AND status = 'succeeded' ${clubId ? `AND "clubId" = $1` : ''} GROUP BY currency`, params),
+            db.query(`SELECT currency, SUM(amount) AS total FROM "PayoutRequest" WHERE status IN ('pending', 'processing', 'completed') ${clubId ? `AND "clubId" = $1` : ''} GROUP BY currency`, params),
             db.query(`SELECT COUNT(*) FROM "Club" WHERE status = 'active'`),
-            db.query(`SELECT SUM(amount) FROM "Donation" ${whereClub}`, params),
+            db.query(`SELECT currency, SUM(amount) AS total FROM "Donation" ${whereClub} GROUP BY currency`, params),
             db.query(`SELECT COUNT(*) FROM "Product" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "ClubDocument" ${whereClub}`, params),
         ]);
@@ -58,10 +65,38 @@ router.get('/stats', async (req, res) => {
         } catch { /* table not created yet */ }
 
         const club = clubInfo.rows[0];
-        const totalCollected = parseFloat(platformPaymentsSum.rows[0]?.sum || 0);
-        const totalRequested = parseFloat(payoutRequestsSum.rows[0]?.sum || 0);
-        const availableFunds = Math.max(0, totalCollected - totalRequested);
-        const donations = parseFloat(donationsSum.rows[0]?.sum || 0);
+
+        // v4.843 — Los importes viajan POR MONEDA. Los campos sueltos se
+        // conservan sobre la moneda principal —nunca sobre la mezcla— para que
+        // un navegador con el bundle anterior en caché muestre una cifra
+        // verdadera de una sola moneda en vez de la suma de todas. Es el mismo
+        // criterio que `/payouts/balance` desde v4.841.
+        const porMoneda = (rows) => sumByCurrency(rows, r => r.total, r => r.currency);
+
+        const collected = porMoneda(platformPaymentsSum.rows);
+        const requested = porMoneda(payoutRequestsSum.rows);
+        const donated = porMoneda(donationsSum.rows);
+
+        const disponible = {};
+        for (const [c, v] of Object.entries(subtractByCurrency(collected, requested))) {
+            disponible[c] = Math.max(0, v);
+        }
+
+        // La moneda que se muestra primero: la del sitio. Sin `clubId` —el
+        // panel global del operador— no hay sitio del que deducirla, y manda
+        // el importe.
+        const preferida = clubId ? await siteCurrency(clubId) : '';
+        const listaDe = (totales) => currenciesOf(totales, preferida)
+            .filter(Boolean)
+            .map(c => ({ currency: c, amount: totales[c] }));
+
+        const availableFundsByCurrency = listaDe(disponible);
+        const donationsByCurrency = listaDe(donated);
+
+        const availableFunds = availableFundsByCurrency.find(
+            r => r.currency === primaryCurrency(disponible, preferida))?.amount || 0;
+        const donations = donationsByCurrency.find(
+            r => r.currency === primaryCurrency(donated, preferida))?.amount || 0;
 
         res.json({
             users: parseInt(users.rows[0].count),
@@ -75,8 +110,10 @@ router.get('/stats', async (req, res) => {
             clubCountry: club?.country || '',
             clubDomain: club?.domain || club?.subdomain || '',
             availableFunds,
+            availableFundsByCurrency,
             activeClubs: parseInt(activeClubsCount.rows[0].count),
             donations,
+            donationsByCurrency,
             products: parseInt(products.rows[0].count),
             documents: parseInt(documents?.rows[0]?.count || 0),
             leads: leadsCount,

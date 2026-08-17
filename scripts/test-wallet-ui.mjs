@@ -147,6 +147,21 @@ await page.route('**/api/payouts/history*', r => r.fulfill({ json: RETIROS }));
 await page.route('**/api/financial/donations*', r => r.fulfill({ json: DONACIONES }));
 await page.route('**/api/financial/wallet*', r => r.fulfill({ json: WALLET }));
 
+// La barra superior del panel. Consulta OTRO endpoint que el de la Bóveda y
+// hasta v4.842 seguía sumando las monedas: de ahí salían los «$50,010» y
+// «$47,507.75» que el cliente reportó.
+await page.route('**/api/admin/stats*', r => r.fulfill({
+    json: {
+        users: 1, posts: 5, projects: 0, media: 0, publications: 0, knowledgeSources: 0,
+        products: 0, documents: 0, leads: 0, activeClubs: 1,
+        clubName: 'Distrito 4281', clubCity: '', clubCountry: 'Colombia', clubDomain: 'rotary4281.org',
+        donationsByCurrency: [{ currency: 'COP', amount: 50000 }, { currency: 'USD', amount: 10 }],
+        availableFundsByCurrency: [{ currency: 'COP', amount: 0 }, { currency: 'USD', amount: 8.91 }],
+        donations: 50000,
+        availableFunds: 0,
+    },
+}));
+
 // Hace falta un ORIGEN real: sobre `about:blank` un fetch a `/api/…` no tiene
 // base contra la que resolver y falla antes de salir, con lo cual la prueba
 // pasaría sin haber ejercitado nada.
@@ -244,6 +259,27 @@ check('el desglose se abre', /Monto pagado por el donante/.test(t));
 check('el rótulo es el que fijó el cliente', /Tarifa de procesamiento de traslado desde interbancos/.test(t), t.slice(0, 400));
 check('el porcentaje sale del propio movimiento', /\(5%\)/.test(t));
 check('el neto se escribe en pesos, sin céntimos', /47\.499/.test(t) && !/47\.498,84/.test(t));
+
+// ── La barra superior del panel ──────────────────────────────────────
+console.log('\n▸ La barra superior');
+
+// Los dos indicadores de dinero viven en AdminLayout, que esta prueba monta
+// junto con la Bóveda. Hasta v4.842 mostraban un solo número por indicador y
+// era la suma de las dos monedas.
+const barra = await page.locator('a[href="/admin/boveda"]').allInnerTexts();
+const enBarra = barra.join(' | ');
+
+check('los aportes se ven en las DOS monedas',
+    /50\.000/.test(enBarra) && /10,00/.test(enBarra), enBarra);
+check('los fondos disponibles también',
+    /8,91/.test(enBarra), enBarra);
+check('no aparece la suma de las dos monedas',
+    !/50\.010/.test(enBarra) && !/47[.,]507/.test(enBarra),
+    `la barra volvió a sumar monedas: ${enBarra}`);
+// Con varias monedas se escribe el CÓDIGO: apilados a once píxeles, «$ 50.000»
+// y «US$ 10,00» empiezan los dos por «$» y el primero se lee como dólares.
+check('cada importe lleva su código de moneda',
+    /COP/.test(enBarra) && /USD/.test(enBarra), enBarra);
 
 await browser.close();
 
