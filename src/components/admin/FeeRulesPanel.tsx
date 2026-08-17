@@ -36,6 +36,24 @@ const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('
 const aPorCiento = (v: number) => Math.round((Number(v) || 0) * 10000) / 100;
 const aTantoPorUno = (v: string) => Number(v) / 100;
 
+// ⚠️ UN FALLO DE SESIÓN SE DICE COMO LO QUE ES.
+//
+// v4.860 — Este panel se abre y se deja abierto: la tarifa se mira, se piensa y
+// se guarda un rato después. El token de plataforma dura un día, así que el GET
+// del principio puede funcionar y el PUT del final ya no. Cuando eso pasaba, el
+// servidor contestaba «Invalid token» —el traductor del sitio lo pintaba como
+// «Token inválido»— y quien lo leía no tenía forma de saber que lo único que
+// hacía falta era volver a entrar. Se reportó junto con el defecto de rutas y
+// es un fallo distinto: aquél no dejaba guardar NUNCA, éste deja de dejar.
+const mensajeDeFallo = (e: any): string => {
+    const status = e?.response?.status;
+    if (status === 401) return 'Tu sesión venció mientras esta pantalla estaba abierta. Volvé a entrar y guardá de nuevo: lo que escribiste sigue acá.';
+    if (status === 403) return 'Esta tarifa sólo la puede cambiar el operador de la plataforma.';
+    // Sin respuesta del servidor no es un rechazo, es que la petición no llegó.
+    if (!e?.response) return 'No se pudo contactar al servidor. Revisá la conexión y probá de nuevo.';
+    return e?.response?.data?.error || 'No se pudo guardar.';
+};
+
 export default function FeeRulesPanel() {
     const [datos, setDatos] = useState<Respuesta | null>(null);
     const [abierto, setAbierto] = useState(false);
@@ -52,7 +70,7 @@ export default function FeeRulesPanel() {
             setDatos(data);
             setBorrador(JSON.parse(JSON.stringify(data.rules)));
         } catch (e: any) {
-            setError(e?.response?.data?.error || 'No se pudo leer la configuración de comisiones.');
+            setError(mensajeDeFallo(e));
         }
     };
 
@@ -69,8 +87,7 @@ export default function FeeRulesPanel() {
             // Los errores del servidor llegan TODOS y con su motivo concreto:
             // «configuración inválida» a secas obliga a probar campo por campo.
             const errs = e?.response?.data?.errors;
-            setError(Array.isArray(errs) && errs.length ? errs.join(' · ')
-                : (e?.response?.data?.error || 'No se pudo guardar.'));
+            setError(Array.isArray(errs) && errs.length ? errs.join(' · ') : mensajeDeFallo(e));
         } finally {
             setGuardando(false);
         }

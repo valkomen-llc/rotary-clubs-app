@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.859.0 | 2026-08-17 (Entregas, reintentos y reembolsos)
-// Cache bust: 2026-08-17v
+// UI V4.860.0 | 2026-08-17 (Guardar la tarifa caía en el manejador equivocado)
+// Cache bust: 2026-08-17w
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.860.0',
+        title: 'Guardar la tarifa de la plataforma ya funciona 🩹',
+        description: 'Se reportó que al cambiar el porcentaje de la retención a 2,1 % la Bóveda no dejaba guardar. La causa no era la sesión ni el formulario: la ruta que guarda la tarifa era INALCANZABLE. Express hace coincidir las rutas en orden de declaración, y «PUT /admin/:id» —la que actualiza el estado de un retiro— estaba declarada antes, así que se tragaba «/admin/fee-rules» y la petición terminaba en el manejador de retiros con id = «fee-rules».',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'plataforma'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'La tarifa se guarda: la ruta va ahora por encima de la paramétrica.' },
+            { type: 'fixed', text: 'Otras dos rutas inalcanzables del mismo tipo: la lista de conversaciones de Agentes y la búsqueda global de Brains.' },
+            { type: 'added', text: 'npm run check:routes — corre en cada despliegue y lo rompe si una ruta queda tapada.' },
+            { type: 'improved', text: 'Una sesión vencida ahora se dice como tal, en vez de «Token inválido».' },
+        ],
+        details: [
+            'EL FALLO ERA MUDO Y ENGAÑOSO: no daba 404 sino la respuesta del manejador equivocado — «Estado inválido. Los admitidos son: pending, processing, completed, rejected», un mensaje que no menciona ni tarifas ni comisiones y manda a diagnosticar a otro sitio.',
+            'Es la CUARTA causa de módulo roto que no ve ninguna otra comprobación: el typecheck no mira los archivos del servidor, la comprobación de sintaxis los da por buenos —el archivo parsea perfectamente— y las pruebas de criterio pasaban enteras, porque el criterio nunca estuvo mal. Sólo se ve haciendo la petición.',
+            '⚠️ EL AVISO YA ESTABA ESCRITO EN PROSA dentro del propio archivo de rutas desde la v4.847 —«al agregar un GET /admin/:id, éstas tienen que quedar ANTES»— y el defecto entró igual, por la otra puerta: el comentario hablaba de un GET y llegó un PUT. Un comentario que depende de que alguien lo lea no protege nada. Ahora lo comprueba «check:routes», que corre en cada despliegue.',
+            'El barrido del resto de la plataforma encontró otras DOS rutas inalcanzables por lo mismo, las dos muertas desde que se escribieron: la lista de conversaciones del módulo de Agentes (consultaba un agente con id «conversations») y la búsqueda global de Brains (buscaba un brain con id «master»). Moverlas por encima no puede romper nada que hoy funcione, porque hoy no funcionan.',
+            'La primera versión del barrido comparaba PREFIJOS y daba 48 casos, casi todos falsos. Comparando por SEGMENTOS —que es como casa Express de verdad— son 3. Un guardián que grita en falso se termina desactivando, que es peor que no tenerlo.',
+            'Aparte del defecto de rutas: cuando la sesión vence con la pantalla abierta, el servidor contestaba «Invalid token» y el traductor lo pintaba como «Token inválido», sin decir qué hacer. Ahora dice que la sesión venció, que hay que volver a entrar y que lo escrito sigue ahí.',
+        ]
+    },
     {
         version: '4.859.0',
         title: 'Ya se sabe si el correo llegó, y un aporte devuelto avisa 🔁',
