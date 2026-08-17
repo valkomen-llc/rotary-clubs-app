@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.837.0 | 2026-08-16 (Director Creativo F1: tipografía real, curva de foto y pie institucional)
-// Cache bust: 2026-08-16p
+// UI V4.838.0 | 2026-08-17 (Director Creativo F2-3: referencias, Design DNA e indicadores)
+// Cache bust: 2026-08-17a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.838.0',
+        title: 'Subí tus piezas y las nuevas siguen su estilo 🧬',
+        description: 'En el preset «Maneras de Contribuir» aparece «Estilo de las referencias»: se suben dos o más piezas que el sitio ya haya publicado y la plataforma extrae de ellas su paleta, el carácter de la letra, el borde de la fotografía y la forma del pie. Las piezas nuevas se componen siguiendo eso. El reparto es deliberado: el CÓDIGO mide contando píxeles —paleta, cuánto de la pieza es texto y cuánto es fotografía, contraste— y el modelo de visión sólo describe la ESTRUCTURA, porque a un modelo se le puede preguntar dónde está la foto y acierta, y se le puede pedir un color exacto y lo inventa. Lo que sale queda a la vista, con su paleta y sus decisiones, en vez de aplicarse como una caja negra. Volver a analizar guarda una VERSIÓN nueva: las piezas ya generadas no cambian. Y cada pieza sale con cuatro indicadores —legibilidad, densidad, marca y estilo— que son deterministas y traen su desglose.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'infografias', 'diseno', 'ia'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Subida de piezas de referencia, con las dos vías y varias de una vez.' },
+            { type: 'added', text: 'Design DNA: paleta, tipografía, borde de la foto y forma del pie, a la vista.' },
+            { type: 'added', text: 'Los estilos se versionan: volver a analizar no reescribe el anterior.' },
+            { type: 'added', text: 'Cuatro indicadores por pieza, con el desglose de qué se comprobó.' },
+        ]
+    },
     {
         version: '4.837.0',
         title: 'Las piezas de campaña dejan de verse genéricas 🎨',

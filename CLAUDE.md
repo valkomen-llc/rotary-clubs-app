@@ -2789,6 +2789,150 @@ la fotografía, el pie institucional y el salto tipográfico.
   que el formato no existe mientras el servidor generaba piezas en él, y
   `test:design` lo marcaba desde entonces.
 
+### Director Creativo — Fase 2-3: el Design DNA (v4.838)
+
+El pedido literal: *«que en el DNA o configuración del análisis podamos subir
+las imágenes de referencia para que realice las imágenes siguiendo los patrones
+principales»*. Se suben dos o más piezas que el sitio ya publicó, se extrae de
+ellas un perfil y las piezas nuevas se componen siguiéndolo.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/creativeDNA.js` | El CRITERIO. **Puro**: catálogos cerrados, consolidación, traducción a ajustes, aplicación a la plantilla y los cuatro indicadores |
+| `server/lib/creativeAnalysis.js` | La orquestación: sharp cuenta píxeles, el modelo de visión describe estructura |
+| `server/lib/ensureCreativeSchema.js` | `CreativeProfile` y `CreativeReference` en runtime |
+| `server/controllers/creativeProfileController.js` | Alcance, versionado y `resolveProfileFor` |
+| `src/components/admin/content-studio/CreativeProfileDialog.tsx` | Subir las piezas y ver el DNA extraído |
+
+Pruebas: `npm run test:creative` (88 casos, **sin base, credenciales ni red**;
+la parte de medición usa sharp y se salta si no está).
+
+**Reglas durables:**
+
+- **EL CÓDIGO MIDE, EL MODELO DESCRIBE, Y ES LA DECISIÓN DE LA QUE CUELGA TODO.**
+  La forma ingenua es mandarle las referencias a un modelo y pedirle el
+  hexadecimal, los márgenes y las proporciones. Un modelo CONTESTA eso y se lo
+  inventa: no puede leer un color con precisión de un JPEG recomprimido ni medir
+  un margen en píxeles. Por eso el DNA tiene tres partes —`measured` (sharp),
+  `described` (visión, sólo estructura) y `derived` (traducción por tablas
+  CERRADAS)— y sólo la tercera la consume el compositor. Misma regla que
+  `emergencyFeed.js`, `templateComposer.js` y `seoAI.js`.
+- **CONSOLIDAR ES ARITMÉTICA, no una segunda pregunta al modelo.** Pedirle «las
+  características comunes de estas tres piezas» daría un resultado
+  irreproducible —dos análisis de las mismas piezas darían perfiles distintos— y
+  no auditable. Lo categórico se decide por MODA y lo numérico por MEDIANA, no
+  por media: una referencia atípica no puede arrastrar el perfil.
+- **Las paletas se juntan por CERCANÍA, no por igualdad.** Dos piezas de la
+  misma campaña usan «el mismo azul» y el JPEG lo devuelve con dos o tres
+  unidades de diferencia; sin agrupar, la paleta sale con seis azules casi
+  iguales y ningún acento. El tono del grupo es el de MAYOR cobertura: el
+  promedio de dos azules da un azul que no está en ninguna pieza.
+- **UN ACENTO SE DISTINGUE DEL FONDO; ESO NO ES CONTRASTAR.** Medido sobre las
+  referencias del Distrito: el rojo `#C8102E` sobre el azul marino `#0C2A5E` da
+  un contraste WCAG de **2,37** —por debajo del 3 que el estándar pide hasta
+  para texto grande— y el botón rojo se ve perfectamente, porque lo que los
+  separa es el TONO. Exigir contraste dejaba fuera el acento real y elegía el
+  dorado, que ahí es un filete. Se decide por distancia RGB **y** saturación.
+- **Y `accent: null` es una respuesta legítima.** Con una referencia compuesta
+  en un solo color, el criterio por contraste elegía un tinte desvaído del
+  propio fondo —un malva sobre bordó, saturación 0,20— y las cifras y el botón
+  salían casi invisibles. Cuando ninguno califica, manda el de la campaña.
+- **EL DERIVADO NO DIBUJA: MODULA.** `applyProfile` devuelve OTRA PLANTILLA
+  —datos— que compila el mismo `compileTemplate`. No hay una segunda vía de
+  maquetación: eso reintroduciría la duplicación que Plantillas IA existe para
+  evitar. La superficie está ACOTADA y todo en ella es seguro por construcción:
+  la paleta (un color no mueve nada), las dos familias (`autoFit` vuelve a
+  medir), la escala del titular (`autoFit` la acota al recuadro, así que no
+  puede desbordar), la máscara de la foto y la forma del pie. **Lo que NO puede
+  tocar es dónde está cada recuadro** — mover cajas desde un perfil deducido de
+  una fotografía es exactamente cómo se llega a dos textos encimados sin verlo
+  venir. Lo comprueba una prueba sobre las diez composiciones.
+- **TITULAR y CUERPO no se distinguen por `role`.** El valor de un indicador y
+  su etiqueta declaran los DOS `role: 'cifra'` —son la misma pieza de la
+  composición— pero uno se lee de lejos y el otro de cerca. Los separa el id: el
+  sufijo con guion bajo marca al nodo que ACOMPAÑA a otro. Sin eso, las
+  etiquetas recibían la letra de titular; se vio probando, no leyendo.
+- **El color de la CAMPAÑA manda sobre el del perfil, siempre.** La campaña es
+  la decisión explícita de quien la configuró; el perfil es una deducción a
+  partir de unas fotografías. El perfil RELLENA lo que la campaña dejó vacío —
+  misma regla que `putAuto` con las traducciones.
+- **El pie cambia de FORMA, nunca de presencia.** Los escudos de la familia
+  Rotary no son un rasgo de estilo que una referencia pueda desactivar: son la
+  firma institucional de la pieza.
+- **TEXTO Y FOTOGRAFÍA TIENEN LA MISMA VARIANZA**, y partir los bloques por
+  desviación típica fue el error de la primera versión: medido sobre las diez
+  composiciones propias —donde se sabe la respuesta— daba **35 % de fotografía
+  en una pieza que no tiene fotografía** y 0 % de tinta en una llena de texto.
+  Lo que los separa es la FORMA de esa varianza: el texto sobre un fondo liso es
+  BIMODAL y una fotografía es continua. Se mide con la separabilidad de Otsu.
+  Comprobado en los dos extremos: fondo liso con texto → 0 % foto / 16,4 %
+  tinta; textura tipo fotografía → 88 % foto / 0,7 % tinta.
+- **⚠️ Una fotografía MUY SUAVE es plana y no cuenta como fotografía.** Para lo
+  que la medida sirve —cuánta imagen con detalle carga la pieza— es lo correcto,
+  pero no hay que leerla como «qué porcentaje del lienzo ocupa una foto».
+- **El contraste NO sale de la paleta.** La paleta son los seis cubos más
+  poblados y el texto blanco de una pieza ocupa demasiados pocos píxeles para
+  entrar ahí: por percentiles daba 1,9 en piezas con letra blanca sobre azul,
+  que es un contraste altísimo. Se mide entre los percentiles 2 y 98 de
+  luminancia.
+- **Las referencias se analizan UNA POR UNA, no compuestas lado a lado.**
+  Componerlas —el recurso del Creador de Reels— haría falta si el modelo tuviera
+  que compararlas, y no es el caso: cada una se describe sola y el CÓDIGO
+  consolida. Además la composición habría que subirla a algún sitio para tener
+  URL.
+- **VOLVER A ANALIZAR CREA UNA VERSIÓN; NO REESCRIBE.** Es exigencia expresa del
+  pedido y además lo que impide que una campaña ya generada cambie de aspecto
+  porque alguien tocó una foto de referencia. Mismo patrón que `ReelCopy`. El
+  índice único es PARCIAL (`WHERE "isCurrent"`), así que un `ON CONFLICT` contra
+  él tendría que repetir el predicado — error real de v4.648.
+- **Hacen falta DOS referencias como mínimo, y el motivo se DICE.** Con una
+  sola, la consolidación por moda no consolida nada y el perfil describe ESA
+  pieza, no un estilo. Un número sin su motivo manda a adivinar.
+- **El DNA se MUESTRA, no se aplica a ciegas.** Un estilo que no dice qué tomó
+  de las referencias es una caja negra: cuando la pieza no se parece, no hay
+  dónde mirar. Se ven la paleta, el carácter, el recorte y el pie, que son
+  exactamente las cinco cosas que puede modular.
+- **El perfil lo RESUELVE el servidor.** El id llega del navegador pero se
+  comprueba contra el alcance antes de usarlo: sin eso, un sitio podría componer
+  con el estilo de otro. Un administrador de sitio USA los de la plataforma y no
+  los edita. `''` es «el activo del sitio» y `'none'` es «ninguno»: dos cosas
+  distintas que un solo valor vacío no podría distinguir.
+- **Sin perfil, todo sale exactamente como en v4.837.** `resolveProfileFor`
+  devuelve `null` ante cualquier fallo, incluida una tabla que todavía no
+  existe. Un estilo es una mejora, no un requisito.
+- **LOS CUATRO INDICADORES SON DETERMINISTAS**, y no es una limitación: un
+  número que sale de un juicio estético no se puede explicar ni reproducir, y en
+  una pantalla se lee como una autoridad que no tiene. Cada uno devuelve la
+  LISTA de lo que comprobó — un 6/10 sin desglose no le dice a nadie qué
+  corregir. `score: null` significa «no se pudo medir» y NO es un tipo de
+  «bien»: se pinta distinto, igual que `unknown` en el CRM.
+- **⚠️ LA CONSISTENCIA DE ESTILO NO ES UNA HUELLA PERCEPTUAL CONTRA LA
+  REFERENCIA**, y es la decisión que más importa de las cuatro. Comparar la
+  pieza con la referencia daría nota baja POR CONSTRUCCIÓN: tienen otro
+  contenido, otra fotografía y otras cifras, y DEBEN tenerlos. Es literalmente
+  la lección de v4.664 —medir contra la imagen equivocada— y la de v4.675, que
+  costó dos rondas de créditos. Se puntúa una lista de propiedades medibles del
+  perfil. Lo comprueba una prueba leyendo el archivo.
+- **El contraste sólo se juzga contra el FONDO DECLARADO.** Un texto sobre la
+  fotografía no se juzga: no se sabe de qué color es esa fotografía, y afirmar
+  un contraste que no se midió es peor que no medirlo.
+- **La densidad es una ESTIMACIÓN por área de los recuadros**, no un conteo de
+  píxeles —eso exigiría rasterizar—, y por eso la tolerancia es ancha: un número
+  apretado sobre una estimación es una precisión fingida.
+- **`CreativeProfile` y `CreativeReference` viven fuera de Prisma** y están en
+  la lista del guardián de `db:push`.
+- **Se guardan las mediciones de CADA referencia**, no sólo el DNA consolidado.
+  Sin ellas, «¿por qué el perfil dice que el titular es condensado?» no tiene
+  dónde mirarse — el mismo vacío que el CRM tenía antes de `CrmWebhookEvent`.
+- **`profileId` va en las dependencias del manejador**, por el mismo motivo que
+  `conQr` en v4.836: sin él, elegir un estilo no llegaría nunca a la petición.
+
+**Pendiente de la fase siguiente:** la previsualización comparativa
+(referencia | pieza) y la regeneración guiada por los indicadores. No hay
+espejo de `creativeDNA.js` en el navegador a propósito: el criterio se aplica
+ENTERO en el servidor y la pantalla sólo muestra el resultado, así que un espejo
+sería una copia sin consumidor — y las copias se separan en silencio.
+
 **Pendiente de las fases siguientes:** el Design DNA extraído de las
 referencias, los Creative Profiles versionados y los cuatro indicadores de
 calidad. La Fase 1 no introduce ninguna capa de IA nueva a propósito: era el
@@ -4980,8 +5124,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 40 tablas que la aplicación crea sola y que estas barreras protegen:
-`BannerTemplate`, `DesignProject`, `DesignPublicTemplate`, `EcosystemClone`,
+Las 42 tablas que la aplicación crea sola y que estas barreras protegen:
+`BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
+`DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,

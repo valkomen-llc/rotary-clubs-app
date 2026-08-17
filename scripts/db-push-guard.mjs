@@ -7,7 +7,7 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 43 tablas en tiempo de ejecución que no están en el
+// La aplicación crea 45 tablas en tiempo de ejecución que no están en el
 // schema (las once ProjectFair*, BannerTemplate, DesignProject,
 // DesignPublicTemplate, EcosystemClone, FAQ, MediaFolder, OutroProject,
 // las dos de la auditoría del CRM: CrmWebhookEvent y CrmOutboundLog, las seis del módulo
@@ -21,8 +21,13 @@
 // ReelCopy, ReelNarration y ReelUsage, y las seis de Campañas de
 // Contribución: ContributionCampaign, ContributionCenter,
 // ContributionCampaignOverride, ContributionCampaignHistory,
-// ContributionCampaignMetric y ContributionCampaignReading).
+// ContributionCampaignMetric y ContributionCampaignReading, y las dos del
+// Director Creativo IA: CreativeProfile y CreativeReference).
 // Sin esta barrera, un `db push` las borra sin preguntar.
+//
+// La lista de arriba es DOCUMENTACIÓN: el guardián no la lee, deriva los
+// modelos declarados del propio `schema.prisma`. Se mantiene al día igual,
+// porque es donde alguien mira para saber qué hay fuera de Prisma.
 //
 // Perder "Translation" no destruye contenido del cliente —se regenera sola
 // llamando al proveedor—, pero sí borra las traducciones CORREGIDAS A MANO y

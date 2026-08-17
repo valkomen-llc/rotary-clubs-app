@@ -59,6 +59,10 @@ import {
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel } from '../controllers/campaignPostController.js';
+import {
+    listCreativeProfiles, getCreativeProfile, saveCreativeProfile,
+    activateCreativeProfile, deactivateCreativeProfiles,
+} from '../controllers/creativeProfileController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
@@ -90,6 +94,16 @@ router.post('/campaign-post/compose', authMiddleware, composeCampaignPost);
 // v4.836 — varias piezas de una vez. El copy se genera UNA sola vez y se
 // reparte: cinco llamadas darían cinco voces para la misma campaña.
 router.post('/campaign-post/carousel', authMiddleware, composeCampaignCarousel);
+
+// ── Director Creativo IA (v4.838) ──
+// Las piezas de referencia y el Design DNA que sale de ellas. El alcance lo
+// decide el servidor con el clubId del token: un sitio ve los suyos y los de la
+// plataforma, y sólo puede editar los suyos.
+router.get('/creative-profiles', authMiddleware, listCreativeProfiles);
+router.get('/creative-profiles/:id', authMiddleware, getCreativeProfile);
+router.post('/creative-profiles', authMiddleware, saveCreativeProfile);
+router.post('/creative-profiles/:id/activate', authMiddleware, activateCreativeProfile);
+router.post('/creative-profiles/deactivate', authMiddleware, deactivateCreativeProfiles);
 
 // Generación de textos de contenedores de la portada desde el Cerebro (RAG).
 router.post('/generate-container', authMiddleware, generateContainer);

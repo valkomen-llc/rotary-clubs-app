@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import DesignCanvas from '../design-studio/DesignCanvas';
 import MediaPicker from './MediaPicker';
+import CreativeProfileDialog, { type CreativeProfile } from './CreativeProfileDialog';
 import { exportDocument, exportToFile, renderDocumentToCanvas, canvasToBlob } from '../../../lib/designRender';
 import { qrToDataUri } from '../../../lib/qrcode';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
@@ -71,12 +72,23 @@ interface CopyPieza {
     badge?: string; cta?: string; closing?: string;
     social?: Record<string, CopySocial>;
 }
+/** Los cuatro indicadores. Cada uno es `{ score, checks }` — la LISTA de lo que
+ *  se comprobó, no sólo la nota: un 6/10 sin desglose no le dice a nadie qué
+ *  corregir. `score: null` significa «no se pudo medir». */
+interface Calidad {
+    legibilidad: { score: number | null; checks: any[] };
+    densidad: { score: number | null; checks: any[] };
+    marca: { score: number | null; checks: any[] };
+    estilo: { score: number | null; checks: any[] };
+}
+
 interface Slide {
     objective: string;
     label: string;
     document: any;
     layout: { id: string; notes: string[] };
     templateId: string;
+    quality?: Calidad;
 }
 interface Carrusel {
     slides: Slide[];
@@ -95,6 +107,9 @@ interface Compuesto {
     url: string;
     warnings: string[];
     copyIssues: string[];
+    quality?: Calidad;
+    /** El estilo con el que se compuso, ya resuelto por el SERVIDOR. */
+    profile?: { id: string; name: string; version: number } | null;
 }
 
 const REDES: { id: string; label: string; limit: number }[] = [
@@ -122,6 +137,26 @@ const CampaignPostPanel: React.FC = () => {
         void ensureDesignFonts();
         return baja;
     }, []);
+
+    // ── El ESTILO de las referencias (v4.838) ─────────────────────
+    //
+    // El perfil se elige acá y lo RESUELVE el servidor: el id viaja, sí, pero
+    // se comprueba contra el alcance del token antes de usarlo. `''` significa
+    // «el activo del sitio» y `'none'`, «ninguno» — dos cosas distintas que un
+    // solo valor vacío no podría distinguir.
+    const [perfiles, setPerfiles] = useState<CreativeProfile[]>([]);
+    const [perfilId, setPerfilId] = useState('');
+    const [perfilAbierto, setPerfilAbierto] = useState(false);
+    const [perfilEditado, setPerfilEditado] = useState<CreativeProfile | null>(null);
+
+    const cargarPerfiles = useCallback(async () => {
+        try {
+            const r = await fetch(`${API}/content-studio/creative-profiles`, { headers: auth() });
+            const j = await r.json();
+            setPerfiles(Array.isArray(j?.profiles) ? j.profiles : []);
+        } catch { setPerfiles([]); }
+    }, []);
+    useEffect(() => { void cargarPerfiles(); }, [cargarPerfiles]);
 
     const [opciones, setOpciones] = useState<Opciones | null>(null);
     const [cargando, setCargando] = useState(true);
@@ -296,6 +331,7 @@ const CampaignPostPanel: React.FC = () => {
                     // modelo: es lo que permite probar composiciones y formatos
                     // sin gastar una llamada por cada una.
                     copy: opts.conservarCopy ? pieza?.copy || null : null,
+                    profileId: perfilId || null,
                 }),
             });
             const d = await r.json();
@@ -315,7 +351,9 @@ const CampaignPostPanel: React.FC = () => {
         // manejador se queda con el valor que tenían al crearse y el
         // interruptor del QR no llega nunca a la petición. Lo encontró el
         // smoke, no el typecheck — el código es válido y está bien tipado.
-    }, [campaignId, objective, audience, language, formatId, layoutId, statIds, imageUrl, pieza, conQr, urlCampana]);
+        // `perfilId` va en las dependencias por el mismo motivo que `conQr`:
+        // sin él, elegir un estilo no llegaría nunca a la petición.
+    }, [campaignId, objective, audience, language, formatId, layoutId, statIds, imageUrl, pieza, conQr, urlCampana, perfilId]);
 
     const generarCarrusel = useCallback(async () => {
         if (!campaignId) { toast.error('Elegí una campaña.'); return; }
@@ -328,6 +366,7 @@ const CampaignPostPanel: React.FC = () => {
                 body: JSON.stringify({
                     campaignId, audience, language, formatId, imageUrl,
                     qrDataUri: conQr && urlCampana ? qrToDataUri(urlCampana, 320) : '',
+                    profileId: perfilId || null,
                 }),
             });
             const d = await r.json();
@@ -342,7 +381,7 @@ const CampaignPostPanel: React.FC = () => {
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo generar', { id: toastId, duration: 10000 });
         } finally { setGenerando(false); }
-    }, [campaignId, audience, language, formatId, imageUrl, conQr, urlCampana]);
+    }, [campaignId, audience, language, formatId, imageUrl, conQr, urlCampana, perfilId]);
 
     /** Todas las piezas del carrusel en un ZIP. Descargarlas una por una hace
      *  que el navegador bloquee todas menos la primera. */
@@ -682,6 +721,54 @@ const CampaignPostPanel: React.FC = () => {
                     </button>
                 </div>
 
+                {/* ── EL ESTILO DE LAS REFERENCIAS (v4.838) ────────────
+                    Se suben las piezas que el sitio ya publicó y las nuevas
+                    siguen sus patrones. Lo que el estilo puede modular está
+                    acotado —paleta, tipografías, tamaño del titular, recorte de
+                    la fotografía y forma del pie—: nada que mueva un recuadro
+                    de sitio. */}
+                <div className={card}>
+                    <div className="flex items-center justify-between mb-3">
+                        <span className={`${lbl} mb-0`}>Estilo de las referencias</span>
+                        <button type="button"
+                            onClick={() => { setPerfilEditado(null); setPerfilAbierto(true); }}
+                            className="text-[11px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider">
+                            + Subir piezas
+                        </button>
+                    </div>
+                    {perfiles.length === 0 ? (
+                        <p className="text-xs text-gray-500">
+                            Todavía no hay ninguno. Subí dos o más piezas que ya hayan publicado y las nuevas
+                            van a seguir su paleta, su tipografía y sus formas.
+                        </p>
+                    ) : (
+                        <>
+                            <select className={field} value={perfilId} onChange={e => setPerfilId(e.target.value)}
+                                aria-label="Estilo de las referencias">
+                                <option value="">
+                                    {perfiles.find(p => p.active) ? `Activo del sitio · ${perfiles.find(p => p.active)!.name}` : 'Sin estilo'}
+                                </option>
+                                {perfiles.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.name}{p.shared ? ' (de la plataforma)' : ''} · v{p.version}
+                                    </option>
+                                ))}
+                                {/* «Sin estilo» tiene que ser una opción EXPRESA y distinta de la
+                                    vacía: sin ella no habría forma de apagar el activo para una
+                                    pieza suelta. */}
+                                <option value="none">Sin estilo — como lo declara la plantilla</option>
+                            </select>
+                            {perfilId && perfilId !== 'none' && (
+                                <button type="button"
+                                    onClick={() => { setPerfilEditado(perfiles.find(p => p.id === perfilId) || null); setPerfilAbierto(true); }}
+                                    className="mt-2 text-[11px] font-bold text-gray-500 hover:text-gray-700 underline">
+                                    Ver o cambiar sus piezas de referencia
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+
                 {/* Lo que falta y lo que conviene saber, ANTES de generar. Un
                     error bloquea; un aviso no — tratarlos igual convierte
                     cualquier advertencia en un bloqueo y se dejan de leer. */}
@@ -781,6 +868,46 @@ const CampaignPostPanel: React.FC = () => {
                                     {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Library className="w-3.5 h-3.5" />} Biblioteca
                                 </button>
                             </div>
+
+                            {/* ── LOS CUATRO INDICADORES (v4.838) ──────────
+                                Los cuatro son DETERMINISTAS: ninguno le pide
+                                una opinión a un modelo. `null` significa «no se
+                                pudo medir» y NO es un tipo de «bien» — se pinta
+                                distinto, igual que `unknown` en el CRM. Cada uno
+                                lleva su desglose en el `title`: un 6/10 sin
+                                decir qué falló no le sirve a nadie. */}
+                            {(() => {
+                                const q = (pieza || carrusel?.slides?.[slideIdx])?.quality;
+                                if (!q) return null;
+                                const ETIQ: Record<string, string> = {
+                                    legibilidad: 'Legibilidad', densidad: 'Densidad',
+                                    marca: 'Marca', estilo: 'Estilo',
+                                };
+                                return (
+                                    <div className="mt-4 grid grid-cols-4 gap-2">
+                                        {Object.entries(ETIQ).map(([k, etiqueta]) => {
+                                            const r: any = (q as any)[k];
+                                            const n = r?.score;
+                                            const tono = n === null || n === undefined
+                                                ? 'bg-gray-50 border-gray-100 text-gray-400'
+                                                : n >= 8 ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                                                : n >= 5 ? 'bg-amber-50 border-amber-100 text-amber-700'
+                                                : 'bg-red-50 border-red-100 text-red-700';
+                                            const detalle = (r?.checks || [])
+                                                .map((c: any) => `${c.ok ? '✓' : '✗'} ${c.detalle || c.id}`).join('\n');
+                                            return (
+                                                <div key={k} title={detalle || 'Sin desglose'}
+                                                    className={`rounded-xl border px-2 py-2 text-center ${tono}`}>
+                                                    <p className="text-sm font-black leading-none" data-no-translate>
+                                                        {n === null || n === undefined ? '—' : `${n}/10`}
+                                                    </p>
+                                                    <p className="text-[9px] font-black uppercase tracking-wider mt-1 opacity-70">{etiqueta}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
 
                             {avisos.length > 0 && (
                                 <div className="mt-3 space-y-1">
@@ -906,6 +1033,20 @@ const CampaignPostPanel: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            <CreativeProfileDialog
+                open={perfilAbierto}
+                profile={perfilEditado}
+                onClose={() => setPerfilAbierto(false)}
+                onSaved={p => {
+                    void cargarPerfiles();
+                    // Se selecciona el que se acaba de analizar: quien acaba de
+                    // subir sus referencias quiere generar CON ese estilo, y
+                    // dejarlo sin elegir obligaría a buscarlo en la lista.
+                    setPerfilId(p.id);
+                    setPerfilEditado(p);
+                }}
+            />
 
             <MediaPicker
                 isOpen={pickerAbierto}

@@ -40,7 +40,9 @@ import {
     validateBeforeGenerate, buildCampaignBrief, buildVariables, campaignUrl, planCarousel,
 } from '../lib/campaignPostSpec.js';
 import { templateFor } from '../lib/campaignTemplates.js';
-import { compileTemplate, PALETTE, formatOf } from '../lib/designSpec.js';
+import { compileTemplate, PALETTE, formatOf, FONTS } from '../lib/designSpec.js';
+import { applyProfile, mergeBranding, scorePiece } from '../lib/creativeDNA.js';
+import { resolveProfileFor } from './creativeProfileController.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { INSTITUTIONAL_VOICE } from '../lib/institutionalVoice.js';
 import { EMERGENCY_FACT_CLAUSE, validateEmergencyCopy, buildRetryInstruction } from '../lib/emergencySpec.js';
@@ -276,7 +278,7 @@ const generatePieceCopy = async ({ brief, factCtx, provider }) => {
  * diapositivas cueste UNA llamada al modelo en vez de cinco, y que las cinco
  * hablen con la misma voz.
  */
-const buildPiece = async ({ campaign, content, objective, formatId, layoutId, statIds, imageUrl, copy, qrDataUri, lang, req, centerRows, cityCount }) => {
+const buildPiece = async ({ campaign, content, objective, formatId, layoutId, statIds, imageUrl, copy, qrDataUri, lang, req, centerRows, cityCount, profile = null }) => {
     const { stats: publishable } = publishableStats(campaign.stats);
     const items = activeItems(content);
     const chosenLayout = pickLayout({ objective, requested: layoutId, formatId, stats: publishable, items, cities: cityCount });
@@ -299,8 +301,18 @@ const buildPiece = async ({ campaign, content, objective, formatId, layoutId, st
     }
     const partners = activePartners(content, capacityOf(chosenLayout.id, formatId, 'maxPartners'));
 
-    const template = templateFor(chosenLayout.id, formatId);
-    if (!template) throw new Error(`No hay composición «${chosenLayout.id}» para el formato ${formatId}.`);
+    const plantillaBase = templateFor(chosenLayout.id, formatId);
+    if (!plantillaBase) throw new Error(`No hay composición «${chosenLayout.id}» para el formato ${formatId}.`);
+
+    // ── EL ESTILO DE LAS REFERENCIAS ──────────────────────────────────
+    //
+    // `applyProfile` devuelve OTRA PLANTILLA —datos— y después compila el mismo
+    // `compileTemplate` de siempre: no hay una segunda vía de maquetación. Lo
+    // que puede modular está acotado a la paleta, las dos familias, la escala
+    // del titular, el recorte de la fotografía y la forma del pie; nada que
+    // mueva un recuadro de sitio. Sin perfil, la pieza sale exactamente como
+    // hasta v4.837. Ver la cabecera de `creativeDNA.js`.
+    const template = profile ? applyProfile(plantillaBase, profile.dna) : plantillaBase;
 
     const variables = buildVariables({
         campaign, copy, stats, items: shownItems, centers, partners,
@@ -309,14 +321,30 @@ const buildPiece = async ({ campaign, content, objective, formatId, layoutId, st
         qrUrl: acceptableQr(qrDataUri),
     });
 
+    // El color de la CAMPAÑA manda sobre el del perfil, siempre. La campaña es
+    // la decisión explícita de quien la configuró; el perfil es una deducción a
+    // partir de unas fotografías. Entre las dos manda la explícita — misma regla
+    // que `putAuto` con las traducciones y que lo manual en el SEO. El perfil
+    // RELLENA lo que la campaña dejó vacío.
+    const delPerfil = profile ? mergeBranding({
+        primary: hexOrEmpty(content.theme.primary),
+        accent: hexOrEmpty(content.theme.cta) || hexOrEmpty(content.theme.accent),
+    }, profile.dna) : {};
     const branding = {
-        primary: hexOrEmpty(content.theme.primary) || PALETTE.navy,
-        accent: hexOrEmpty(content.theme.cta) || hexOrEmpty(content.theme.accent) || PALETTE.gold,
+        primary: hexOrEmpty(content.theme.primary) || delPerfil.primary || PALETTE.navy,
+        accent: hexOrEmpty(content.theme.cta) || hexOrEmpty(content.theme.accent) || delPerfil.accent || PALETTE.gold,
         ink: PALETTE.ink,
     };
 
+    const document = compileTemplate({ template, variables, branding });
+
     return {
-        document: compileTemplate({ template, variables, branding }),
+        document,
+        // Los cuatro indicadores, DETERMINISTAS: ninguno pide una opinión a un
+        // modelo. `null` significa «no se pudo medir» y no es un tipo de «bien»
+        // — la pantalla lo pinta distinto, igual que `unknown` en el CRM.
+        quality: scorePiece(document, profile?.dna || null, { allowedFonts: FONTS.map(f => f.id) }),
+        profile: profile ? { id: profile.id, name: profile.name, version: profile.version } : null,
         variables, stats, items: shownItems, centers, partners,
         layout: { id: chosenLayout.id, notes: chosenLayout.notes },
         templateId: template.id,
@@ -362,11 +390,16 @@ export const composeCampaignCarousel = async (req, res) => {
         const factCtx = factContextOf({ content, stats: publishable, items: activeItems(content), url: '' });
         const out = await generatePieceCopy({ brief, factCtx, provider: copyProvider });
 
+        // El estilo se resuelve UNA vez para todo el carrusel: cinco consultas
+        // darían lo mismo, y —peor— si alguien cambiara el perfil activo a mitad
+        // del bucle, las diapositivas saldrían con estilos distintos.
+        const profile = await resolveProfileFor(req, req.body?.profileId);
+
         const slides = [];
         for (const s of plan.slides) {
             const piece = await buildPiece({
                 campaign, content, objective: s.objective, formatId: fmt, layoutId: null,
-                statIds: null, imageUrl, copy: out.copy, qrDataUri, lang, req, centerRows, cityCount,
+                statIds: null, imageUrl, copy: out.copy, qrDataUri, lang, req, centerRows, cityCount, profile,
             });
             slides.push({ objective: s.objective, label: s.label, ...piece });
         }
@@ -441,9 +474,13 @@ export const composeCampaignPost = async (req, res) => {
         // El armado es el MISMO que usa cada diapositiva del carrusel: dos
         // caminos distintos se separarían y la pieza suelta saldría diferente
         // de su equivalente dentro de un carrusel.
+        // El perfil se resuelve en el SERVIDOR. El id llega del navegador, sí,
+        // pero se comprueba contra el alcance antes de usarlo: sin eso, un sitio
+        // podría componer con el estilo de otro.
         const piece = await buildPiece({
             campaign, content, objective: obj, formatId: fmt, layoutId,
             statIds, imageUrl, copy, qrDataUri, lang, req, centerRows, cityCount,
+            profile: await resolveProfileFor(req, req.body?.profileId),
         });
         if (!piece.variables.url) piece.variables.url = url.replace(/^https?:\/\//, '');
 
