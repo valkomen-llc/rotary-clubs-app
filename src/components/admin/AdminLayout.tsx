@@ -27,7 +27,6 @@ import {
     Wallet,
     ExternalLink,
     Sparkles,
-    TrendingUp,
     Eye,
     Mail,
     Send,
@@ -118,17 +117,24 @@ const MoneyByCurrency: React.FC<{
         );
     }
 
-    // Con varias monedas se escribe el CÓDIGO en vez del símbolo. El peso
-    // colombiano en es-CO se formatea «$ 50.000» y el dólar «US$ 10,00»: los
-    // dos empiezan por «$», y apilados en una barra de once píxeles el primero
-    // se lee como dólares de un vistazo. «COP 50.000» no se confunde con nada.
-    // Con una sola moneda se conserva el símbolo, que es como se veía antes.
+    // Las monedas van UNA AL LADO DE LA OTRA, separadas por un filete: apiladas
+    // ocupaban dos renglones en una barra de una línea y empujaban todo lo
+    // demás. El orden lo da el servidor y pone primero la del sitio.
+    //
+    // Se escribe el CÓDIGO y no el símbolo: el peso colombiano en es-CO se
+    // formatea «$ 50.000» y el dólar «US$ 10,00», los dos empiezan por «$», y
+    // juntos a once píxeles el primero se lee como dólares de un vistazo.
+    // «COP 50.000» no se confunde con nada. Con una sola moneda se conserva el
+    // símbolo, que es como se veía antes.
     return (
-        <span className="flex flex-col leading-[1.15] items-start" data-no-translate>
-            {lista.map(r => (
-                <span key={r.currency} className="text-[11px] font-black text-gray-800 whitespace-nowrap">
-                    {formatMoney(r.amount, r.currency, undefined, { currencyDisplay: 'code' })}
-                </span>
+        <span className="flex items-center gap-2" data-no-translate>
+            {lista.map((r, i) => (
+                <React.Fragment key={r.currency}>
+                    {i > 0 && <span className="w-px h-4 bg-gray-200" aria-hidden="true" />}
+                    <span className="text-[12px] font-black text-gray-800 whitespace-nowrap">
+                        {formatMoney(r.amount, r.currency, undefined, { currencyDisplay: 'code' })}
+                    </span>
+                </React.Fragment>
             ))}
         </span>
     );
@@ -969,26 +975,36 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
                             {/* Prominent action icons: Donations, Funds, Notifications, Messages */}
                             <div className="flex items-center gap-1">
-                                {/* Donaciones / Tienda */}
-                                <div className="relative group/don">
-                                    <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 transition-all">
-                                        <TrendingUp className="w-4.5 h-4.5 text-emerald-500" />
-                                        <MoneyByCurrency rows={stats?.donationsByCurrency} legacy={stats?.donations} />
-                                    </Link>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/don:opacity-100 group-hover/don:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
-                                        Donaciones / Tienda
-                                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
-                                    </div>
-                                </div>
-
-                                {/* Fondos Disponibles */}
+                                {/* Saldo actual, por moneda.
+                                    v4.844 — Hay UN solo indicador de dinero. Había
+                                    dos —lo recaudado en bruto y lo disponible— y
+                                    con dos monedas cada uno eran cuatro cifras en
+                                    la barra: nadie las lee. Queda la que se puede
+                                    usar, ya descontadas las comisiones, y las
+                                    monedas van UNA AL LADO DE LA OTRA en vez de
+                                    apiladas. El bruto sigue en la Bóveda, en la
+                                    tarjeta de cada moneda. */}
                                 <div className="relative group/fon">
-                                    <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-all">
-                                        <Wallet className="w-4.5 h-4.5 text-amber-500" />
+                                    {/* `aria-label` porque el contenido del enlace son
+                                        cifras: sin él, el lector de pantalla lo anuncia
+                                        como «COP 47.499 USD 8,91» y no dice qué es. */}
+                                    <Link
+                                        to="/admin/boveda"
+                                        aria-label="Saldo actual del club"
+                                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-all"
+                                    >
+                                        <Wallet className="w-4.5 h-4.5 text-amber-500 flex-shrink-0" />
                                         <MoneyByCurrency rows={stats?.availableFundsByCurrency} legacy={stats?.availableFunds} />
                                     </Link>
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/fon:opacity-100 group-hover/fon:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
-                                        Fondos Disponibles
+                                        {/* NO dice «disponible para retiro»: eso es otra
+                                            cosa y en la Bóveda vale otro número. Acá está
+                                            lo NETO recibido —descontadas las comisiones—,
+                                            que incluye lo que Stripe todavía no liberó.
+                                            Dos rótulos iguales con dos cifras distintas en
+                                            el mismo módulo es el defecto que esta
+                                            reingeniería vino a quitar. */}
+                                        Saldo actual · neto recibido
                                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
                                     </div>
                                 </div>

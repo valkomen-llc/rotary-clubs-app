@@ -17,6 +17,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import {
+    linkDonationsToPayments, parsePayload, originOf, methodOf,
+} from '../server/lib/paymentTrace.js';
+import {
     ZERO_DECIMAL, stripeDecimals, CURRENCIES, currencyMeta, normalizeCurrency,
     toStripeAmount, fromStripeAmount, roundMoney, formatMoney,
     sumByCurrency, groupByCurrency, subtractByCurrency, currenciesOf, primaryCurrency,
@@ -300,6 +303,105 @@ check('un monto no numérico se rechaza en vez de colarse', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// 5b. La traza: atar cada aporte con su movimiento (v4.844)
+// ─────────────────────────────────────────────────────────────────────
+
+const pago = (id, amount, currency, createdAt, payload) => ({
+    id, amount, currency, createdAt,
+    rawPayload: payload === undefined ? null : JSON.stringify(payload),
+});
+const aporte = (id, amount, currency, date, donorEmail) => ({ id, amount, currency, date, donorEmail });
+
+check('el vínculo exacto manda sobre la heurística', () => {
+    const aportes = [aporte('d1', 50000, 'COP', '2026-08-16T14:00:00Z')];
+    const pagos = [
+        pago('p-cerca', 50000, 'COP', '2026-08-16T14:00:01Z', {}),
+        pago('p-exacto', 50000, 'COP', '2026-08-16T14:00:30Z', { donationId: 'd1' }),
+    ];
+    const { links } = linkDonationsToPayments(aportes, pagos);
+    eq(links.get('d1').payment.id, 'p-exacto', 'debe ganar el que declara el vínculo:');
+    eq(links.get('d1').match, 'exact');
+});
+
+check('sin vínculo se empareja por club, moneda, importe y momento', () => {
+    const aportes = [aporte('d1', 47498.84, 'COP', '2026-08-16T14:00:00Z')];
+    const pagos = [pago('p1', 47498.84, 'COP', '2026-08-16T14:00:20Z', {})];
+    const { links } = linkDonationsToPayments(aportes, pagos);
+    eq(links.get('d1').payment.id, 'p1');
+    eq(links.get('d1').match, 'heuristic', 'y se DECLARA que fue deducido:');
+});
+
+check('un pago de OTRA moneda no se empareja', () => {
+    const aportes = [aporte('d1', 10, 'USD', '2026-08-16T14:00:00Z')];
+    const pagos = [pago('p1', 10, 'COP', '2026-08-16T14:00:05Z', {})];
+    const { links, orphans } = linkDonationsToPayments(aportes, pagos);
+    ok(!links.has('d1'), 'no puede casar 10 USD con 10 COP');
+    eq(orphans.length, 1);
+});
+
+check('un pago lejano en el tiempo tampoco', () => {
+    const aportes = [aporte('d1', 100, 'USD', '2026-08-16T14:00:00Z')];
+    const pagos = [pago('p1', 100, 'USD', '2026-08-16T15:00:00Z', {})];
+    const { links } = linkDonationsToPayments(aportes, pagos);
+    ok(!links.has('d1'), 'una hora de diferencia no es el mismo hecho');
+});
+
+check('UN pago no puede quedarse con DOS aportes', () => {
+    // Es lo que mostraría el mismo dinero dos veces en la ficha.
+    const aportes = [
+        aporte('d1', 100, 'USD', '2026-08-16T14:00:00Z'),
+        aporte('d2', 100, 'USD', '2026-08-16T14:00:10Z'),
+    ];
+    const pagos = [pago('p1', 100, 'USD', '2026-08-16T14:00:02Z', {})];
+    const { links } = linkDonationsToPayments(aportes, pagos);
+    const usados = [...links.values()].map(v => v.payment.id);
+    eq(usados.length, 1, 'sólo un aporte puede quedarse con el pago:');
+    eq(links.get('d1')?.payment.id, 'p1', 'y es el más cercano en el tiempo:');
+});
+
+check('el correo desempata entre dos pagos igual de válidos', () => {
+    const aportes = [aporte('d1', 100, 'USD', '2026-08-16T14:00:00Z', 'ana@ejemplo.org')];
+    const pagos = [
+        pago('p-otro', 100, 'USD', '2026-08-16T14:00:01Z', { customerDetails: { email: 'juan@ejemplo.org' } }),
+        pago('p-ana', 100, 'USD', '2026-08-16T14:00:20Z', { customerDetails: { email: 'ana@ejemplo.org' } }),
+    ];
+    const { links } = linkDonationsToPayments(aportes, pagos);
+    eq(links.get('d1').payment.id, 'p-ana', 'aunque esté más lejos en el tiempo:');
+});
+
+check('un pago sin aporte NO desaparece', () => {
+    // Una compra de la tienda o una membresía es dinero del club y tiene que
+    // verse en alguna parte, aunque no haya nacido de una donación.
+    const pagos = [pago('p-tienda', 25, 'USD', '2026-08-16T14:00:00Z', {})];
+    const { orphans } = linkDonationsToPayments([], pagos);
+    eq(orphans.length, 1);
+    eq(orphans[0].id, 'p-tienda');
+});
+
+check('un rawPayload ilegible no rompe nada', () => {
+    const pagos = [{ id: 'p1', amount: 10, currency: 'USD', createdAt: '2026-08-16T14:00:00Z', rawPayload: '{roto' }];
+    const { links } = linkDonationsToPayments([aporte('d1', 10, 'USD', '2026-08-16T14:00:01Z')], pagos);
+    eq(links.get('d1').match, 'heuristic', 'se cae a la heurística en vez de lanzar:');
+    eq(parsePayload('{roto'), {});
+    eq(parsePayload(null), {});
+});
+
+check('el origen va de lo más específico a lo más general', () => {
+    eq(originOf({ projectTitle: 'Agua Limpia', campaignName: 'X' }).kind, 'proyecto');
+    eq(originOf({ campaignName: 'Terremoto', campaignId: 'c1' }).label, 'Terremoto');
+    eq(originOf({ purpose: 'Emergencia Terremoto Colombia 2026', campaignId: 'c1' }).kind, 'campana');
+    eq(originOf({ purpose: 'End Polio Now' }).kind, 'destino');
+    eq(originOf({}), null, 'sin dato no se inventa un origen:');
+});
+
+check('el método de pago se escribe como en el recibo', () => {
+    eq(methodOf({ card: { brand: 'visa', last4: '3778', wallet: 'apple_pay' } }).label, 'Visa ···3778 Apple Pay');
+    eq(methodOf({ card: { brand: 'mastercard', last4: '4242' } }).label, 'Mastercard ···4242');
+    eq(methodOf({}, 'card').label, 'card', 'sin detalle se usa el tipo que haya:');
+    eq(methodOf({}, null), null);
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // 6. Sobre los archivos — lo que no se ve mirando la pantalla
 // ─────────────────────────────────────────────────────────────────────
 
@@ -392,7 +494,11 @@ check('la pantalla no escribe el 5% a mano', () => {
     const src = stripComments(readSrc('src/pages/admin/WalletManagement.tsx'));
     ok(!/Club Platform \(5%\)/.test(src),
         'volvió el rótulo con el porcentaje escrito a mano');
-    ok(/feePct/.test(src), 'el porcentaje se calcula sobre el movimiento');
+    // El porcentaje se CALCULA sobre el propio movimiento. No se busca un
+    // identificador —la función que lo hacía cambió de nombre y de sitio en
+    // v4.844— sino la operación: la comisión dividida por el bruto.
+    ok(/applicationFee\s*\/\s*[\w.]*[gG]rossAmount/.test(src),
+        'el porcentaje volvió a escribirse a mano en vez de salir del movimiento');
 });
 
 check('el rótulo de la comisión es el que fijó el cliente', () => {
