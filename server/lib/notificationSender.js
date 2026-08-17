@@ -23,7 +23,7 @@ import db from './db.js';
 import EmailService from '../services/EmailService.js';
 import ensureNotificationSchema from './ensureNotificationSchema.js';
 import { verifiedDomains } from './senderDomains.js';
-import { claimDelivery, markSent, markFailed } from './notificationLog.js';
+import { claimDelivery, markSent, markFailed, pendingRetries } from './notificationLog.js';
 import {
     pickProfileFor, resolveSenderPlan, resolveRecipients, normalizeEmail,
 } from './notificationSpec.js';
@@ -107,7 +107,9 @@ const plantillaPara = async ({ profileId, campaignId, event, recipientKind }) =>
     }
     // La de fábrica depende del PAPEL: el aviso interno informa de un
     // movimiento, no agradece un aporte que ese destinatario no hizo.
-    return { template: defaultTemplateFor(recipientKind), version: 0, source: 'fábrica' };
+    // La de fábrica depende del PAPEL y del EVENTO: con sólo el papel, un
+    // reembolso saldría agradeciendo el aporte que se acaba de devolver.
+    return { template: defaultTemplateFor(recipientKind, event), version: 0, source: 'fábrica' };
 };
 
 /* ─── El envío ───────────────────────────────────────────────────────*/
@@ -272,4 +274,133 @@ const enviarUno = async ({
     }
 };
 
-export default { resolveNotificationPlan, sendContributionNotifications };
+/* ════════════════════════════════════════════════════════════════════
+   EL BARRIDO DE REINTENTOS  (v4.859)
+   ════════════════════════════════════════════════════════════════════
+ *
+ * ── SE VUELVE A COMPONER, NO SE GUARDA EL HTML ──────────────────
+ *
+ * La fila registra QUÉ se intentó mandar —a quién, de qué aporte, con qué
+ * plantilla—, no el cuerpo. Guardar el HTML de cada envío serían decenas de KB
+ * por fila en una tabla que se lee en cada listado de la Bóveda, y además
+ * dejaría el correo congelado con una plantilla que quizá ya se corrigió: si
+ * algo falló y se arregló, el reintento tiene que salir con lo arreglado.
+ *
+ * ── PRESUPUESTO DE TIEMPO ───────────────────────────────────────
+ *
+ * La función corta a los 300 s (`vercel.json`): se atiende lo que quepa y el
+ * resto espera al minuto siguiente. No se pierde nada — la cola se calcula
+ * leyendo la base, no manteniéndola en memoria.
+ */
+export const sweepRetries = async ({ limit = 20, timeBudgetMs = 60_000 } = {}) => {
+    const arranque = Date.now();
+    const filas = await pendingRetries({ limit });
+    let reintentadas = 0, logradas = 0, agotadas = 0;
+
+    for (const fila of filas) {
+        if (Date.now() - arranque > timeBudgetMs) break;
+        try {
+            // Se vuelve a tomar la fila con `allowRetry`: el propio
+            // `claimDelivery` incrementa `retryCount` con un UPDATE
+            // condicional, así que dos barridos simultáneos no reintentan el
+            // mismo envío dos veces.
+            const traza = await claimDelivery({
+                contributionId: fila.contributionId, event: fila.event,
+                recipient: fila.recipient, recipientKind: fila.recipientKind,
+                clubId: fila.clubId, campaignId: fila.campaignId,
+                beneficiaryId: fila.beneficiaryId, profileId: fila.profileId,
+                provider: fila.provider, fromAddress: fila.fromAddress, subject: fila.subject,
+            }, { allowRetry: true });
+            if (!traza.ok || !traza.claimed) { agotadas++; continue; }
+
+            const salida = await reintentarUno(fila, traza.delivery.id);
+            reintentadas++;
+            if (salida) logradas++;
+        } catch (e) {
+            console.warn(`[NOTIF-RETRY] ${fila.id}:`, e?.message);
+        }
+    }
+
+    return { pendientes: filas.length, reintentadas, logradas, agotadas, elapsedMs: Date.now() - arranque };
+};
+
+const reintentarUno = async (fila, deliveryId) => {
+    const plan = await resolveNotificationPlan({
+        clubId: fila.clubId, campaignId: fila.campaignId, event: fila.event,
+    });
+    if (!plan.profile) {
+        // El perfil desapareció o dejó de alcanzar al sitio. No se inventa un
+        // correo con otra identidad: se cierra el intento diciendo por qué.
+        await markFailed(deliveryId, {
+            errorMessage: `ya no hay perfil aplicable: ${plan.reason}`,
+            retryable: false,
+        });
+        return false;
+    }
+
+    const { template, version } = await plantillaPara({
+        profileId: plan.profile.id, campaignId: fila.campaignId,
+        event: fila.event, recipientKind: fila.recipientKind,
+    });
+    // Los datos del aporte se vuelven a leer: el correo se compone de nuevo,
+    // así que tiene que llevar las cifras de verdad y no un resumen guardado.
+    const vars = await variablesDelAporte(fila, plan);
+    const salida = renderTemplate({
+        template, vars, identity: plan.profile.identity || {}, beneficiary: plan.beneficiary,
+    });
+
+    const dominios = await verifiedDomains();
+    const remitente = resolveSenderPlan({
+        profile: plan.profile, siteDomain: plan.site?.domain || '', verifiedDomains: dominios,
+    });
+
+    const resultado = await EmailService.sendPlatformEmail({
+        to: fila.recipient, subject: salida.subject, html: salida.html, text: salida.text,
+        from: remitente.from, replyTo: remitente.replyTo || undefined,
+    });
+
+    if (resultado?.success) {
+        await markSent(deliveryId, { providerMessageId: resultado.messageId || null, fromAddress: remitente.address, subject: salida.subject });
+        console.log(`[NOTIF-RETRY] ✉️  ${fila.contributionId} → ${fila.recipient} (intento ${fila.retryCount + 1})`);
+        return true;
+    }
+    await markFailed(deliveryId, {
+        errorMessage: resultado?.error || 'sin motivo devuelto por el proveedor',
+        retryable: true,
+    });
+    return false;
+};
+
+/** Las variables del aporte, leídas de la base. El correo se compone de nuevo,
+ *  así que las cifras tienen que ser las de verdad. Si el aporte ya no está
+ *  —no debería pasar—, se manda lo que se sabe en vez de nada. */
+const variablesDelAporte = async (fila, plan) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT amount, currency, "donorName", "donorEmail", "isAnonymous", message, date
+               FROM "Donation" WHERE id = $1 LIMIT 1`,
+            [fila.contributionId]
+        );
+        const d = rows[0];
+        if (!d) return { contribution_id: fila.contributionId, site_name: plan.site?.name || '' };
+        return {
+            donor_name: d.isAnonymous ? 'Donante anónimo' : (d.donorName || 'amigo'),
+            donor_email: d.donorEmail || fila.recipient,
+            amount: new Intl.NumberFormat('es-CO', {
+                minimumFractionDigits: d.currency === 'COP' ? 0 : 2,
+                maximumFractionDigits: d.currency === 'COP' ? 0 : 2,
+            }).format(Number(d.amount) || 0),
+            currency: d.currency,
+            contribution_id: fila.contributionId,
+            contribution_date: new Date(d.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }),
+            donor_message: d.message || '',
+            site_name: plan.site?.name || '',
+            campaign_name: plan.campaign?.name || '',
+            beneficiary_name: plan.beneficiary?.tradeName || plan.beneficiary?.legalName || '',
+        };
+    } catch {
+        return { contribution_id: fila.contributionId };
+    }
+};
+
+export default { resolveNotificationPlan, sendContributionNotifications, sweepRetries };

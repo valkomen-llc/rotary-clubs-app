@@ -30,7 +30,7 @@ import {
     TEMPLATE_VARIABLES, isKnownVariable, sampleVariables,
     BLOCK_IDS, blockShape, safeUrl, templateShape, validateTemplate,
     variablesIn, escapeHtml, applyVariables, renderTemplate, defaultTemplate,
-    defaultInternalTemplate, defaultTemplateFor,
+    defaultInternalTemplate, defaultRefundTemplate, defaultTemplateFor,
 } from '../server/lib/notificationTemplate.js';
 
 let ok = 0;
@@ -47,16 +47,18 @@ grupo('Los eventos: catálogo cerrado y honesto');
 check('el catálogo tiene los cuatro eventos del pedido que dependen del pago',
     ['payment_confirmed', 'in_transit', 'refunded', 'failed'].every(isKnownEvent));
 check('un evento inventado NO entra', !isKnownEvent('contribution.whatever') && !isKnownEvent(''));
-// Lo que se puede observar hoy es UNO. Prometer los otros en la pantalla sería
-// una casilla que no hace nada (v4.650).
-check('sólo `payment_confirmed` está disponible hoy',
-    availableEvents().length === 1 && availableEvents()[0].id === 'payment_confirmed');
+// Sólo se ofrece lo que la plataforma puede OBSERVAR. Prometer los otros en la
+// pantalla sería una casilla que no hace nada (v4.650).
+check('están disponibles exactamente los dos que tienen fuente',
+    availableEvents().map(e => e.id).join(',') === 'payment_confirmed,refunded');
 check('cada evento DECLARA de dónde sale',
     NOTIFICATION_EVENTS.every(e => typeof e.source === 'string' && e.source.length > 3));
 // «¿por qué este aporte no disparó nada?» tiene que poder contestarse sin
 // leer el código.
-check('los eventos no disponibles explican qué falta',
-    NOTIFICATION_EVENTS.filter(e => !e.available).every(e => /necesita|todavía/i.test(e.help)));
+// Cada uno explica su situación: unos que falta trabajo, otro que NO aplica.
+// Las dos cosas son respuestas; «no disponible» a secas no lo es.
+check('los eventos no disponibles explican su situación',
+    NOTIFICATION_EVENTS.filter(e => !e.available).every(e => e.help.length > 40));
 check('`payment_confirmed` sale del webhook de Stripe, no del retorno del navegador',
     eventById('payment_confirmed').source === 'checkout.session.completed');
 
@@ -272,8 +274,8 @@ check('el default de fábrica avisa sólo al aportante', (() => {
 // Un evento que la plataforma todavía no puede observar se descarta aunque
 // venga marcado: encenderlo daría una casilla que no dispara nunca.
 check('un evento no disponible NO se puede encender', (() => {
-    const p = profileShape({ name: 'X', events: { refunded: { donor: true }, payment_confirmed: { donor: true } } });
-    return !('refunded' in p.events) && p.events.payment_confirmed.donor === true;
+    const p = profileShape({ name: 'X', events: { in_transit: { donor: true }, payment_confirmed: { donor: true } } });
+    return !('in_transit' in p.events) && p.events.payment_confirmed.donor === true;
 })());
 check('recipientsFor devuelve los papeles marcados', (() => {
     const p = profileShape({ name: 'X', events: { payment_confirmed: { donor: true, beneficiary: true } } });
@@ -619,6 +621,43 @@ check('la interna dice de qué campaña y cuánto',
     /\{\{campaign_name\}\}/.test(defaultInternalTemplate().subject)
     && /\{\{amount\}\}/.test(defaultInternalTemplate().preheader));
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('FASE 4 — el reembolso y lo que NO se puede prometer');
+
+// `refunded` ya tiene fuente: `charge.refunded` enrutado a donaciones.
+check('el reembolso pasa a estar disponible',
+    eventById('refunded').available === true
+    && availableEvents().map(e => e.id).join(',') === 'payment_confirmed,refunded');
+// `failed` NO se implementa, y el motivo no es que falte trabajo: un pago que
+// falla nunca crea una `Donation`, así que no hay contribución sobre la que
+// notificar —y la llave de idempotencia es contribución + evento +
+// destinatario—.
+check('«pago fallido» se declara como NO APLICABLE, no como pendiente',
+    eventById('failed').available === false
+    && /No aplica a este módulo/.test(eventById('failed').help)
+    && !/[Nn]ecesita/.test(eventById('failed').help));
+check('y explica por qué: no hay contribución ni destinatario',
+    /nunca crea un aporte/.test(eventById('failed').help));
+
+// Un aporte devuelto no se puede notificar con «gracias por tu aporte».
+check('el reembolso tiene su propia plantilla', validateTemplate(defaultRefundTemplate()).ok);
+check('y NO agradece',
+    !/[Gg]racias/.test(defaultRefundTemplate().subject)
+    && /devolución/i.test(defaultRefundTemplate().subject));
+check('el evento decide qué dice, el papel decide el tono',
+    defaultTemplateFor('donor', 'refunded').subject === defaultRefundTemplate().subject
+    && defaultTemplateFor('donor', 'payment_confirmed').subject === defaultTemplate().subject
+    && /devuelto/i.test(defaultTemplateFor('beneficiary', 'refunded').subject)
+    && /recibido/i.test(defaultTemplateFor('beneficiary', 'payment_confirmed').subject));
+// Sin evento se cae a la confirmación, que es el caso de siempre.
+check('sin evento se cae a la confirmación',
+    defaultTemplateFor('donor').subject === defaultTemplate().subject);
+// La plataforma no sabe POR QUÉ se reembolsó —lo decidió alguien en Stripe— y
+// suponer un motivo sería inventar.
+check('el texto del reembolso no supone un motivo',
+    !/(cancel|error|problema|rechaz)/i.test(defaultRefundTemplate().blocks.map(b => b.text || '').join(' ')));
+
 // ════════════════════════════════════════════════════════════════════
 grupo('Lo que no se ve ejecutando nada');
 {
@@ -771,8 +810,8 @@ grupo('Lo que no se ve ejecutando nada');
     // Cada una de estas es una dependencia que, si falta, no llega nunca a la
     // petición — y el defecto se ve como «la vista previa no cambió», nunca
     // como un error (la lección de `conQr`, v4.836).
-    check('la vista previa depende de la plantilla, el sitio y el destinatario',
-        /\}, \[perfil, plantilla, sitioPrueba, destinatario\]\);/.test(pantalla));
+    check('la vista previa depende de la plantilla, el sitio, el destinatario y el evento',
+        /\}, \[perfil, plantilla, sitioPrueba, destinatario, evento\]\);/.test(pantalla));
 
     // ── FASE 2 ────────────────────────────────────────────────────
     const emisor = readFileSync('server/lib/notificationSender.js', 'utf8');
@@ -819,8 +858,12 @@ grupo('Lo que no se ve ejecutando nada');
     check('el emisor RECLAMA antes de enviar',
         emisor.indexOf('claimDelivery(') < emisor.indexOf('EmailService.sendPlatformEmail'));
     // Consultar los dominios por destinatario sería repetir la misma pregunta.
-    check('los dominios se consultan UNA vez por aporte',
-        (emisor.match(/await verifiedDomains\(/g) || []).length === 1);
+    // Se mira DENTRO del envío: el reintento tiene su propia consulta, y es
+    // otro camino.
+    check('los dominios se consultan UNA vez por aporte', (() => {
+        const envio = emisor.slice(emisor.indexOf('const enviarTodas'), emisor.indexOf('const enviarUno'));
+        return (envio.match(/await verifiedDomains\(/g) || []).length === 1;
+    })());
     // Sin la versión en texto plano, algunos filtros puntúan el correo como
     // sospechoso y un cliente sin HTML muestra una página en blanco.
     check('el correo sale con su versión en texto plano',
@@ -880,6 +923,59 @@ grupo('Lo que no se ve ejecutando nada');
     check('el editor carga y guarda la plantilla del destinatario elegido',
         /recipientKind=\$\{encodeURIComponent\(kind\)\}/.test(pantalla)
         && /recipientKind: destinatario/.test(pantalla));
+
+    // ── FASE 4 ────────────────────────────────────────────────────
+    const mkt = readFileSync('server/controllers/emailMarketingController.js', 'utf8');
+    const cron = readFileSync('server/routes/cron.js', 'utf8');
+    const vercel = readFileSync('vercel.json', 'utf8');
+
+    // Resend manda TODOS sus eventos a la misma dirección: con dos endpoints
+    // habría que configurar dos, y una se quedaría sin configurar.
+    check('el webhook de Resend actualiza las entregas',
+        /ESTADO_RESEND/.test(mkt) && /applyProviderEvent/.test(mkt));
+    // Un fallo actualizando la entrega no puede impedir la baja del contacto,
+    // que es lo que protege de seguir escribiéndole a quien dijo que no.
+    check('y su fallo no tumba la baja del contacto del CRM',
+        /no se pudo actualizar la entrega/.test(mkt));
+    // Una queja de spam no es que la dirección rechazara el correo: es que la
+    // persona pidió no recibirlo. Confundirlos haría buscar un problema de
+    // entrega donde hay una decisión.
+    check('una queja se registra como bloqueo, no como rebote',
+        /'email\.complained': 'blocked'/.test(mkt));
+    // Un retraso no es un desenlace: marcarlo como fallo mandaría a reintentar
+    // algo que todavía va en camino.
+    // Se busca en el CÓDIGO, no en el comentario que explica por qué no está.
+    check('un retraso NO se traduce a ningún estado',
+        !/delivery_delayed/.test(mkt.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')));
+
+    // Insistirle a una dirección que ya dijo que no es lo que hunde la
+    // reputación del dominio.
+    check('el barrido de reintentos existe y está en el cron',
+        /sweepRetries/.test(emisor) && /notification-retries/.test(cron) && /notification-retries/.test(vercel));
+    check('y está protegido con CRON_SECRET',
+        /notification-retries[\s\S]{0,400}CRON_SECRET/.test(cron));
+    // Guardar el HTML serían decenas de KB por fila en una tabla que se lee en
+    // cada listado de la Bóveda, y dejaría el correo congelado con una
+    // plantilla que quizá ya se corrigió.
+    check('el reintento vuelve a COMPONER el correo, no guarda el HTML',
+        /renderTemplate\(\{/.test(emisor) && !/"html" TEXT|html TEXT/.test(ensure));
+    // Dos barridos simultáneos no pueden reintentar el mismo envío.
+    check('el reintento se RECLAMA con allowRetry',
+        /allowRetry: true/.test(emisor));
+
+    // Hasta v4.858 una donación reembolsada seguía figurando como ingreso del
+    // club para siempre.
+    check('charge.refunded llega a las donaciones',
+        /routeDonationRefund\(event\)/.test(pago) && /async function routeDonationRefund/.test(pago));
+    // El UPDATE condicional es lo que hace idempotente el reenvío del evento.
+    check('el aporte deja de contar como ingreso, una sola vez',
+        /SET status = 'refunded'[\s\S]{0,80}WHERE id = \$1 AND status = 'success'/.test(pago));
+    // Marcar el aporte equivocado sería peor que no marcar ninguno.
+    check('sin el vínculo NO se adivina cuál aporte era',
+        /sin donationId: el aporte no se pudo marcar/.test(pago));
+    // Un reembolso es un hecho nuevo, no la corrección de uno viejo.
+    check('el libro mayor y el pago NO se tocan',
+        !/routeDonationRefund[\s\S]{0,2000}(postDonation|DELETE FROM "Payment")/.test(pago));
 }
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

@@ -40,6 +40,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/notification-retries",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/crm-automation-tick",
       "schedule": "*/5 * * * *"
     },

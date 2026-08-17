@@ -428,11 +428,13 @@ export const defaultTemplate = () => ({
  * Es más seca a propósito: sin botón, sin firma institucional y con el asunto
  * que hace falta para reconocerla en una bandeja de trabajo.
  */
-export const defaultInternalTemplate = () => ({
-    subject: 'Nuevo aporte recibido — {{campaign_name}}',
+export const defaultInternalTemplate = (event = 'payment_confirmed') => ({
+    subject: event === 'refunded'
+        ? 'Aporte devuelto — {{campaign_name}}'
+        : 'Nuevo aporte recibido — {{campaign_name}}',
     preheader: '{{amount}} {{currency}} desde {{site_name}}.',
     blocks: [
-        { type: 'heading', text: 'Nuevo aporte recibido', align: 'left' },
+        { type: 'heading', text: event === 'refunded' ? 'Se devolvió un aporte' : 'Nuevo aporte recibido', align: 'left' },
         { type: 'summary', title: 'Detalle' },
         { type: 'paragraph', text: 'Aportante: {{donor_name}} ({{donor_email}}).', align: 'left' },
         { type: 'quote', title: 'Mensaje del aportante' },
@@ -440,16 +442,47 @@ export const defaultInternalTemplate = () => ({
     ],
 });
 
-/** La plantilla de fábrica que le toca a cada papel. El aportante recibe la
- *  de agradecimiento; los demás, la interna. */
-export const defaultTemplateFor = (recipientKind) =>
-    (recipientKind && recipientKind !== 'donor' ? defaultInternalTemplate() : defaultTemplate());
+/* ─── LA PLANTILLA DEL REEMBOLSO ─────────────────────────────────────
+ *
+ * Un aporte devuelto NO se puede notificar con «gracias por tu aporte»: sería
+ * agradecerle a alguien por un dinero que se le devolvió. Es el mismo motivo
+ * por el que el aviso interno tiene la suya, y la misma trampa: una plantilla
+ * de fábrica que sirve para un evento y se reutiliza para otro dice algo falso
+ * sin que nada avise.
+ *
+ * El texto es DELIBERADAMENTE neutro: la plataforma no sabe por qué se
+ * reembolsó —lo decidió alguien en Stripe— y suponer un motivo sería inventar.
+ */
+export const defaultRefundTemplate = () => ({
+    subject: 'Se procesó la devolución de tu aporte',
+    preheader: 'Tu aporte de {{amount}} {{currency}} fue devuelto.',
+    blocks: [
+        { type: 'logo', align: 'left' },
+        { type: 'heading', text: 'Se devolvió tu aporte', align: 'left' },
+        { type: 'paragraph', text: 'Hola {{donor_name}}, te escribimos para avisarte que se procesó la devolución de tu aporte.', align: 'left' },
+        { type: 'summary', title: 'Aporte devuelto' },
+        { type: 'paragraph', text: 'El dinero vuelve al medio de pago con el que aportaste. Según tu banco, puede tardar algunos días hábiles en verse reflejado.', align: 'left' },
+        { type: 'paragraph', text: 'Si no esperabas esta devolución, respondé a este correo y lo revisamos.', align: 'left' },
+        { type: 'signature', text: '{{beneficiary_name}}' },
+        { type: 'legal', text: 'Referencia del aporte: {{contribution_id}}.' },
+    ],
+});
+
+/** La plantilla de fábrica que le toca a cada combinación.
+ *
+ * El PAPEL decide el tono —el aportante recibe el correo dirigido a él, los
+ * demás el aviso interno— y el EVENTO decide qué dice. Con sólo el papel, un
+ * reembolso saldría agradeciendo el aporte que se acaba de devolver. */
+export const defaultTemplateFor = (recipientKind, event = 'payment_confirmed') => {
+    if (recipientKind && recipientKind !== 'donor') return defaultInternalTemplate(event);
+    return event === 'refunded' ? defaultRefundTemplate() : defaultTemplate();
+};
 
 export default {
     TEMPLATE_VARIABLES, VARIABLE_IDS, isKnownVariable, sampleVariables,
     BLOCK_TYPES, BLOCK_IDS, blockById, blockShape, safeUrl,
     templateShape, validateTemplate, variablesIn,
     escapeHtml, applyVariables, renderTemplate, defaultTemplate,
-    defaultInternalTemplate, defaultTemplateFor,
+    defaultInternalTemplate, defaultRefundTemplate, defaultTemplateFor,
     TEXT_MAX, BLOCKS_MAX,
 };

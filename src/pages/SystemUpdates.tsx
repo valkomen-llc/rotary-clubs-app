@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.858.0 | 2026-08-17 (Notificaciones en la Bóveda y por campaña)
-// Cache bust: 2026-08-17u
+// UI V4.859.0 | 2026-08-17 (Entregas, reintentos y reembolsos)
+// Cache bust: 2026-08-17v
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.859.0',
+        title: 'Ya se sabe si el correo llegó, y un aporte devuelto avisa 🔁',
+        description: 'Última pieza del módulo de notificaciones. El proveedor de correo ahora informa de vuelta qué pasó con cada mensaje: entregado, abierto, rebotado o bloqueado, y eso se ve en la ficha del aporte. Los envíos que fallaron por algo pasajero se reintentan solos cada cinco minutos —hasta tres veces, con esperas crecientes—; un rebote duro o un bloqueo NO se reintentan nunca, porque insistirle a una dirección que ya rechazó el correo es lo que arruina la reputación del dominio desde el que escribe toda la plataforma. Y cuando Stripe procesa una devolución, el aporte deja de contar como ingreso del club y quien aportó recibe un aviso con su propio texto, que no le agradece por un dinero que se le devolvió. Sobre «pago fallido»: no se implementó y no es que falte trabajo — un pago que falla nunca llega a crear un aporte, así que no hay nada a lo que atar la notificación ni destinatario registrado; Stripe ya avisa a quien intentó pagar.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'correo', 'boveda', 'campanas'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Estados reales de entrega: entregado, abierto, rebotado, bloqueado.' },
+            { type: 'added', text: 'Reintento automático de lo que falló por algo pasajero.' },
+            { type: 'added', text: 'Un aporte devuelto deja de contar como ingreso y avisa a quien aportó.' },
+            { type: 'changed', text: 'Un rebote duro o un bloqueo no se reintentan nunca.' },
+        ]
+    },
+
     {
         version: '4.858.0',
         title: 'En la Bóveda ya se ve si la confirmación llegó 📮',

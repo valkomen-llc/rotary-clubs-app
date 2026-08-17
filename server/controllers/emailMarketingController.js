@@ -994,9 +994,20 @@ export const getTags = async (req, res) => {
     }
 };
 
-// POST /api/public/resend-webhook — eventos de Resend (rebotes y quejas).
-// Al recibir un rebote duro o una queja de spam, se da de baja al contacto (optedOutAt)
-// para no volver a enviarle. Protección opcional por secreto compartido en ?secret=.
+// POST /api/public/resend-webhook — eventos de Resend.
+//
+// Hace DOS cosas independientes y ninguna puede tumbar a la otra:
+//
+//   1. Da de baja al contacto del CRM ante un rebote duro o una queja, para no
+//      volver a escribirle. Es lo que hacía desde siempre.
+//   2. v4.859 — Actualiza el estado de la entrega en la bitácora de
+//      Notificaciones de Contribuciones, si el mensaje es de ahí.
+//
+// Se amplió en vez de crear un segundo endpoint: Resend manda TODOS sus
+// eventos a la misma dirección, y con dos habría que configurar dos —y una se
+// quedaría sin configurar—.
+//
+// Protección opcional por secreto compartido en ?secret=.
 export const handleResendWebhook = async (req, res) => {
     try {
         if (process.env.RESEND_WEBHOOK_SECRET) {
@@ -1007,6 +1018,32 @@ export const handleResendWebhook = async (req, res) => {
         }
         const event = req.body || {};
         const type = event.type || event.event;
+
+        // ── La bitácora de notificaciones ─────────────────────────────
+        //
+        // Va PRIMERO y en su propio `try`: es lectura y escritura de otra
+        // tabla, y un fallo acá no puede impedir la baja del contacto, que es
+        // lo que protege a la plataforma de seguir escribiéndole a quien dijo
+        // que no.
+        //
+        // El estado NUEVO no pisa al que hay: lo decide `mergeDeliveryState`,
+        // porque los eventos de Resend llegan DESORDENADOS —es normal recibir
+        // `delivered` después de `opened`, son dos peticiones compitiendo—.
+        try {
+            const estado = ESTADO_RESEND[type];
+            const messageId = event?.data?.email_id || event?.data?.id || null;
+            if (estado && messageId) {
+                const { applyProviderEvent } = await import('../lib/notificationLog.js');
+                const r = await applyProviderEvent({
+                    providerMessageId: messageId,
+                    state: estado,
+                    at: event?.created_at || event?.data?.created_at || null,
+                });
+                if (r.ok) console.log(`[resend-webhook] ${type} → ${r.updated} entrega(s) actualizada(s)`);
+            }
+        } catch (e) {
+            console.warn('[resend-webhook] no se pudo actualizar la entrega:', e?.message);
+        }
         const optOutTypes = ['email.bounced', 'email.complained', 'bounced', 'complained', 'spam'];
         if (optOutTypes.includes(type)) {
             const data = event.data || {};
@@ -1032,6 +1069,24 @@ export const handleResendWebhook = async (req, res) => {
         console.error('[emailMarketing] handleResendWebhook:', error);
         res.json({ ok: true });
     }
+};
+
+/** Qué estado nuestro le corresponde a cada evento de Resend.
+ *
+ * `email.complained` se registra como `blocked` y no como `bounced`: una queja
+ * de spam no es que la dirección rechazara el correo, es que la persona pidió
+ * no recibirlo. Confundirlos haría creer que hay un problema de entrega donde
+ * hay una decisión de quien lo recibió.
+ *
+ * `email.delivery_delayed` NO se traduce: un retraso no es un desenlace y
+ * marcarlo como fallo mandaría a reintentar algo que todavía va en camino. */
+const ESTADO_RESEND = {
+    'email.sent': 'sent',
+    'email.delivered': 'delivered',
+    'email.opened': 'opened',
+    'email.bounced': 'bounced',
+    'email.complained': 'blocked',
+    'email.failed': 'failed',
 };
 
 // Pixel transparente 1x1 (GIF) para el tracking de aperturas.

@@ -16,6 +16,10 @@ import { claimDelivery, markSent, markFailed } from '../lib/notificationLog.js';
 // v4.857 — El envío por perfil. Cuando alguno alcanza a este sitio, manda él y
 // el recibo de siempre no sale. Tampoco lanza.
 import { sendContributionNotifications } from '../lib/notificationSender.js';
+// v4.859 — El reembolso de un aporte se resuelve con SQL directo: `Payment` se
+// consulta por `providerRef` y `Donation` con un UPDATE condicional, que es lo
+// que hace idempotente el reenvío del mismo evento de Stripe.
+import db from '../lib/db.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -189,6 +193,11 @@ export const stripeWebhook = async (req, res) => {
             case 'charge.refunded':
                 await routeProjectFairEvent(event, 'refunded');
                 await routeEventRegistration(event, 'refunded');
+                // v4.859 — Los aportes. Hasta ahora `charge.refunded` sólo
+                // llegaba a la Feria y a las inscripciones: una donación
+                // reembolsada seguía figurando como ingreso del club para
+                // siempre, y quien había aportado no recibía ningún aviso.
+                await routeDonationRefund(event);
                 break;
             case 'invoice.paid':
                 const invoice = event.data.object;
@@ -624,6 +633,90 @@ async function handleSubscriptionInvoicePaid(invoice) {
         console.log(`[Stripe Webhook] Membresía recurrente registrada: club ${md.clubId} $${totalAmount} (${invoice.billing_reason})`);
     } catch (err) {
         console.error('[Stripe Webhook] Error registrando invoice de suscripción:', err?.message);
+    }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   EL REEMBOLSO DE UN APORTE  (v4.859)
+   ════════════════════════════════════════════════════════════════════
+ *
+ * ── EL APORTE DEJA DE CONTAR COMO INGRESO ───────────────────────
+ *
+ * `Donation.status` pasa a `refunded`, y eso lo saca de la Bóveda —que filtra
+ * por `status = 'success'`— y de los totales del club. Es la consecuencia
+ * deliberada: hasta hoy un aporte devuelto seguía sumando para siempre, y un
+ * balance que cuenta dinero que ya se devolvió es peor que uno que baja.
+ *
+ * NO se toca el asiento del libro mayor ni la fila de `Payment`: son el
+ * registro de lo que OCURRIÓ, y un reembolso es un hecho nuevo, no la
+ * corrección de uno viejo. Asentarlo como contrapartida es trabajo del módulo
+ * de la Bóveda y queda declarado como pendiente.
+ *
+ * ── IDEMPOTENTE ─────────────────────────────────────────────────
+ *
+ * El UPDATE es condicional (`WHERE status = 'success'`): un reenvío del mismo
+ * evento de Stripe no vuelve a cambiar nada ni a notificar dos veces —y la
+ * llave de la bitácora, contribución + evento + destinatario, lo remata—.
+ */
+async function routeDonationRefund(event) {
+    const charge = event?.data?.object || {};
+    const providerRef = charge.payment_intent || charge.id;
+    if (!providerRef) return;
+
+    try {
+        // El aporte se encuentra por su PAGO, que es lo que Stripe identifica.
+        // `Donation` no guarda el `payment_intent`; el vínculo vive en
+        // `Payment.rawPayload.donationId` desde v4.844, y para lo anterior se
+        // cae a la heurística de importe y club.
+        const { rows: pagos } = await db.query(
+            `SELECT id, "clubId", "rawPayload" FROM "Payment"
+              WHERE "providerRef" = $1 AND provider = 'stripe' LIMIT 1`,
+            [providerRef]
+        );
+        const pago = pagos[0];
+        if (!pago) return; // no es un aporte nuestro
+
+        const donationId = JSON.parse(pago.rawPayload || '{}').donationId || null;
+        if (!donationId) {
+            // Sin el vínculo no se adivina cuál aporte era: marcar el
+            // equivocado sería peor que no marcar ninguno. Se anota para que
+            // se pueda resolver a mano.
+            console.warn(`[REFUND] pago ${providerRef} reembolsado pero sin donationId: el aporte no se pudo marcar`);
+            return;
+        }
+
+        const { rows } = await db.query(
+            `UPDATE "Donation" SET status = 'refunded'
+              WHERE id = $1 AND status = 'success'
+              RETURNING id, amount, currency, "donorName", "donorEmail", "isAnonymous", message, date, "clubId"`,
+            [donationId]
+        );
+        if (!rows[0]) return; // ya estaba reembolsado: reenvío de Stripe
+        const aporte = rows[0];
+        console.log(`[REFUND] aporte ${aporte.id} marcado como reembolsado (${aporte.amount} ${aporte.currency})`);
+
+        const campaignId = JSON.parse(pago.rawPayload || '{}').campaignId || null;
+        await sendContributionNotifications({
+            contributionId: aporte.id,
+            clubId: aporte.clubId,
+            campaignId,
+            event: 'refunded',
+            donorEmail: aporte.donorEmail || '',
+            vars: {
+                donor_name: aporte.isAnonymous ? 'Donante anónimo' : (aporte.donorName || 'amigo'),
+                donor_email: aporte.donorEmail || '',
+                amount: formatoDeMonto(aporte.amount, aporte.currency),
+                currency: aporte.currency,
+                contribution_id: aporte.id,
+                payment_reference: String(providerRef),
+                contribution_date: new Date(aporte.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }),
+                donor_message: aporte.message || '',
+            },
+        });
+    } catch (e) {
+        // Un fallo acá no puede tumbar el webhook: los otros destinos del
+        // mismo evento ya se procesaron.
+        console.error('[REFUND] no se pudo procesar el reembolso del aporte:', e?.message);
     }
 }
 
