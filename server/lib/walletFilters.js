@@ -25,7 +25,7 @@
 // Por eso `FILTRABLE` es un catálogo explícito y el saldo NO está en él. Y por
 // eso la pantalla lo DICE en vez de dejarlo deducir.
 
-import { normalizeCurrency } from './money.js';
+import { normalizeCurrency, roundMoney } from './money.js';
 
 /** Lo que el filtro de período SÍ mueve. El saldo disponible no está acá, y su
  *  ausencia es la regla de arriba escrita como dato. */
@@ -242,11 +242,71 @@ export const aplicarFiltros = (donations, { rango, destino } = {}) => {
 export const hayFiltro = ({ rango, destino } = {}) =>
     (!!rango && rango.id !== RANGO_DEFAULT) || (!!destino && destino !== DESTINO_TODOS);
 
+/**
+ * Lo que el club recibió en el período, POR MONEDA.
+ *
+ * v4.850 — Vive acá y no en el controlador porque es CRITERIO, y en el
+ * controlador no se podía probar: aquél importa la base, así que ejercitarlo
+ * exigiría Postgres y en la práctica no se ejercitaba. Se vio enseguida — la
+ * primera versión leía el movimiento con los nombres de la COLUMNA de la base
+ * (`platformFee`, `netAmount`) en vez de los de `movementOf` (`applicationFee`,
+ * `amount`), y eso no da error: da `undefined`, que suma cero. El bloque habría
+ * mostrado «0» de retención y «0» de neto diciendo ser el del período.
+ *
+ * v4.849 — Son FLUJOS: bruto, lo que retuvo el procesador, lo que retuvo la
+ * plataforma y el neto. Existen dentro de un rango y por eso se pueden filtrar
+ * por fecha. El SALDO disponible no está acá y no puede estarlo — es un stock,
+ * existe a una fecha, y filtrarlo por período daría un número que no significa
+ * nada justo donde alguien decide si pide un retiro.
+ *
+ * Las retenciones se leen del movimiento atado a cada aporte. Un aporte sin
+ * movimiento aporta su bruto y NO aporta retenciones: se cuenta lo que se sabe
+ * y se DICE cuántos quedaron sin medir, en vez de inventarles una comisión.
+ */
+export const resumenDelPeriodo = (donations) => {
+    const bruto = {}, procesador = {}, plataforma = {}, neto = {};
+    let sinMovimiento = 0;
+
+    const suma = (mapa, code, valor) => { mapa[code] = (mapa[code] || 0) + (Number(valor) || 0); };
+
+    for (const d of donations || []) {
+        const code = normalizeCurrency(d.currency);
+        suma(bruto, code, d.amount);
+        const m = d.movement;
+        if (!m) { sinMovimiento++; continue; }
+        // ⚠️ Los nombres son los de `movementOf`, no los de la columna de la
+        // base: la retención de la plataforma viaja como `applicationFee` y el
+        // neto como `amount`. Leerlos con el nombre de la columna no da error
+        // —da `undefined`, que suma cero— y el resumen habría mostrado «0» de
+        // retención y «0» de neto en un bloque que dice ser el del período.
+        suma(procesador, code, m.stripeFee);
+        suma(plataforma, code, m.applicationFee);
+        suma(neto, code, m.amount);
+    }
+
+    const redondear = (mapa) => {
+        const out = {};
+        for (const [code, valor] of Object.entries(mapa)) out[code] = roundMoney(valor, code);
+        return out;
+    };
+
+    return {
+        bruto: redondear(bruto),
+        procesador: redondear(procesador),
+        plataforma: redondear(plataforma),
+        neto: redondear(neto),
+        aportes: (donations || []).length,
+        // Los aportes de los que no se pudo leer la retención. Callarlos haría
+        // que el neto del período pareciera completo cuando le falta gente.
+        sinMovimiento,
+    };
+};
+
 export default {
     FILTRABLE, NO_FILTRABLE,
     RANGOS, RANGO_DEFAULT, RANGO_IDS, isRango, resolveRango, dentroDelRango,
     parseFecha, inicioDelDia, finDelDia,
     DESTINO_TODOS, DESTINO_SIN_DECLARAR, CLASES_DESTINO,
     destinoKeyOf, catalogoDestinos, esDelDestino,
-    aplicarFiltros, hayFiltro,
+    aplicarFiltros, hayFiltro, resumenDelPeriodo,
 };

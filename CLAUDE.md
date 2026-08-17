@@ -5477,6 +5477,80 @@ mal calculados** (los aportes anteriores a v4.845, que el libro reproduce mal a
 propósito). Un número equivocado en pantalla se corrige y desaparece; uno en un
 PDF que alguien archivó, no.
 
+### La Bóveda se exporta: Excel, CSV y PDF (v4.850, bloque B)
+
+Tres botones al final de la línea de filtros. Se exporta LO QUE SE VE.
+
+| Archivo | Qué es |
+|---|---|
+| `src/lib/walletReport.ts` | El INFORME. **Puro**: filas, totales, contexto y avisos |
+| `src/lib/walletExport.ts` | Los tres formatos, todos leyendo ese mismo informe |
+
+Pruebas: `npm run test:wallet:export` (46 casos, **sin base ni red**) y 9
+comprobaciones de navegador que **descargan los tres archivos de verdad**.
+
+**Reglas durables:**
+
+- **UN APORTE ANÓNIMO NO LLEVA CORREO AL ARCHIVO.** El correo sigue guardado y
+  la pantalla lo tiene, así que se habría colado en un archivo que va a una
+  junta o por correo. Un dato que en pantalla es de quien administra el sitio
+  deja de serlo en cuanto se descarga.
+- **Cada fila declara si su comisión se MIDIÓ o se estimó**, y el archivo avisa
+  cuántas son estimadas. Es lo que hace que el informe se pueda usar para
+  cuadrar mientras existan aportes anteriores a v4.845 con el neto aproximado.
+- **UN INFORME ES DE UNA MONEDA.** Uno «de todas» exigiría un total que las
+  sume. En un archivo la regla pesa más que en pantalla: la pantalla se
+  corrige, un archivo que alguien archivó, no.
+- **Los tres formatos leen el MISMO informe.** Escribir cada uno por su cuenta
+  daría tres verdades sobre el mismo período — es la razón por la que
+  `buildPiece` es único en las Infografías de Campaña.
+- **Se compone en el NAVEGADOR.** Vercel no tiene ninguna fuente instalada y
+  componer texto en el servidor saca cuadritos (medido en v4.794). `jspdf` y
+  `xlsx` ya eran dependencias y se importan de forma PEREZOSA: quien entra a
+  mirar su saldo no las descarga. **No mover esto al servidor.**
+- **El CSV lleva BOM y separador PUNTO Y COMA.** Sin BOM Excel abre los acentos
+  como «RodrÃ­go»; con coma mete toda la fila en una sola columna, porque en
+  configuración regional española el separador de lista es el punto y coma. Un
+  CSV que Excel abre mal es un CSV que nadie usa. Y todo texto se cita: un
+  nombre con coma partiría la fila y correría el resto.
+- **Los importes van como NÚMERO en el Excel**, no como texto con su símbolo:
+  una hoja en la que no se puede sumar una columna no sirve para lo que se pide
+  una hoja.
+- **El contexto va DENTRO del archivo** —sitio, moneda, período con sus fechas,
+  destino, emisión y totales—, no sólo en el nombre. Y los avisos también: quien
+  lo abra dentro de seis meses no tiene la pantalla delante.
+- **El saldo del archivo va rotulado «actual»**, aparte de los totales del
+  período. Sin esa etiqueta se leería como si el filtro lo hubiera calculado —
+  misma regla que el aviso de la pantalla.
+- **El PDF va en HORIZONTAL y deja fuera dos columnas** (`Base` y `Referencia`,
+  que sí van en el Excel, que es donde se audita): en vertical las doce columnas
+  obligan a una letra que no se lee en un teléfono, que es donde se mira.
+- **Los botones sólo salen si hay algo que exportar**, y cada uno dice DE QUÉ
+  MONEDA es: tres botones que sólo dijeran «Excel», «CSV» y «PDF» no distinguen
+  los dos archivos que esta pantalla puede emitir.
+- **La prueba DESCARGA los tres archivos**, no comprueba que el botón exista.
+  Las librerías se importan de forma perezosa y sólo se resuelven al pulsarlo:
+  el arnés las marcaba como externas y la exportación moría con «Failed to
+  resolve module specifier» — una prueba que no puede fallar donde el código
+  falla no prueba nada.
+
+**⚠️ `movementOf` NO usa los nombres de la columna de la base**, y van TRES
+tropiezos con esto en dos versiones: la retención viaja como `applicationFee` y
+el neto como `amount`, mientras la tabla los llama `applicationFee` y
+`netAmount`. Leerlos con el nombre de la columna **no da error**: da `undefined`,
+que cae a cero, y una columna entera sale en cero pareciendo un dato. Pasó en el
+resumen del período, en la base de la comisión y en la fila del informe. Al leer
+un movimiento, mirar `movementOf` — no la tabla.
+
+**Y por eso el resumen del período se movió a `walletFilters.js`**: en el
+controlador no se podía probar —importa la base— y ahí se coló el primero de los
+tres.
+
+**Pendiente del bloque C:** la varita de análisis. La regla del sitio ya está
+decidida: los hallazgos los calcula el CÓDIGO con reglas, cada uno con su
+evidencia, y el modelo sólo los REDACTA. `descargarPDF` ya acepta ese texto y lo
+pinta DEBAJO de las cifras — lo que manda es el dato.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

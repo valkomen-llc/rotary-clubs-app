@@ -34,9 +34,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.849.0 | 2026-08-17 (La Bóveda se filtra por período y por destino)
-// Cache bust: 2026-08-17l
+// UI V4.850.0 | 2026-08-17 (La Bóveda se exporta a Excel, CSV y PDF)
+// Cache bust: 2026-08-17m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.850.0',
+        title: 'La Bóveda se exporta a Excel, CSV y PDF 📄',
+        description: 'Bloque B. Al final de la línea de filtros hay tres botones: Excel, CSV y PDF. Se exporta LO QUE SE VE —el período, el destino y la moneda que están puestos— y el archivo lo dice adentro, porque un Excel de hace un mes tiene que poder interpretarse solo. Los importes van como número, no como texto con símbolo: un Excel en el que no se puede sumar una columna no sirve para lo que se pide un Excel. Y cada aporte declara si su tarifa de procesamiento se MIDIÓ o se estimó, que es lo que hace que el archivo se pueda usar para cuadrar.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'informes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Exportar a Excel (.xlsx), CSV y PDF lo que está filtrado en pantalla.' },
+            { type: 'added', text: 'Cada fila dice si su tarifa de procesamiento se midió o se estimó.' },
+            { type: 'fixed', text: 'Un aporte ANÓNIMO ya no lleva su correo al archivo descargado.' },
+            { type: 'fixed', text: 'El resumen del período mostraba 0 de retención y 0 de neto.' },
+            { type: 'added', text: 'npm run test:wallet:export (46 casos) y 9 comprobaciones más de navegador.' },
+        ],
+        details: [
+            'UN APORTE ANÓNIMO NO LLEVA CORREO AL ARCHIVO. El correo sigue guardado y la pantalla lo tiene, así que se habría colado en un archivo que va a una junta o por correo. Un dato que en pantalla es de quien administra el sitio deja de serlo en cuanto se descarga.',
+            'Cada fila declara si su tarifa de procesamiento es MEDIDA —el proveedor la devolvió, y con su tasa declarada si hubo conversión— o ESTIMADA. El archivo avisa cuántas son estimadas. Presentarlas igual es lo que hace que un informe deje de servir para cuadrar, y hoy hay aportes anteriores a v4.845 cuyo neto es aproximado.',
+            'Un informe es de UNA moneda. Uno «de todas» exigiría un total que las sume, que es justo lo que este módulo no hace: para dos monedas se emiten dos informes. En un archivo esa regla pesa más que en pantalla — la pantalla se corrige, un archivo que alguien archivó, no.',
+            'Los tres formatos leen el MISMO informe. Escribir cada uno por su cuenta daría tres verdades sobre el mismo período.',
+            'El PDF y el Excel se componen EN EL NAVEGADOR. Vercel no tiene ninguna fuente instalada y componer texto en el servidor saca cuadritos, medido en v4.794. Las dos librerías ya eran dependencias y se cargan sólo al pulsar el botón.',
+            'El CSV lleva BOM y separador punto y coma: sin lo primero Excel abre los acentos rotos, y con coma mete toda la fila en una sola columna, porque en configuración regional española el separador de lista es el punto y coma.',
+            'Corregido de paso: el resumen del período leía el movimiento con los nombres de la columna de la base en vez de los suyos, y mostraba «0» de retención y «0» de neto diciendo ser el del período. Se movió al módulo puro, donde sí se puede probar.',
+        ]
+    },
     {
         version: '4.849.0',
         title: 'La Bóveda se filtra por período y por destino 📅',

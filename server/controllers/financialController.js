@@ -16,6 +16,7 @@ import { trmForDate } from '../lib/trm.js';
 import { postRelease } from '../lib/ledger.js';
 import {
     resolveRango, aplicarFiltros, dentroDelRango, catalogoDestinos, DESTINO_TODOS,
+    resumenDelPeriodo,
 } from '../lib/walletFilters.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
@@ -474,53 +475,6 @@ export const getDonationSessionStatus = async (req, res) => {
 
 // GET /api/financial/donations  (autenticado — el admin del club ve su historial)
 // v4.414 — pg directo. El query engine de Prisma cold-starts demasiado lento.
-/**
- * Lo que el club recibió en el período, POR MONEDA.
- *
- * v4.849 — Son FLUJOS: bruto, lo que retuvo el procesador, lo que retuvo la
- * plataforma y el neto. Existen dentro de un rango y por eso se pueden filtrar
- * por fecha. El SALDO disponible no está acá y no puede estarlo — es un stock,
- * existe a una fecha, y filtrarlo por período daría un número que no significa
- * nada justo donde alguien decide si pide un retiro.
- *
- * Las retenciones se leen del movimiento atado a cada aporte. Un aporte sin
- * movimiento aporta su bruto y NO aporta retenciones: se cuenta lo que se sabe
- * y se DICE cuántos quedaron sin medir, en vez de inventarles una comisión.
- */
-const resumenDelPeriodo = (donations) => {
-    const bruto = {}, procesador = {}, plataforma = {}, neto = {};
-    let sinMovimiento = 0;
-
-    const suma = (mapa, code, valor) => { mapa[code] = (mapa[code] || 0) + (Number(valor) || 0); };
-
-    for (const d of donations || []) {
-        const code = normalizeCurrency(d.currency);
-        suma(bruto, code, d.amount);
-        const m = d.movement;
-        if (!m) { sinMovimiento++; continue; }
-        suma(procesador, code, m.stripeFee);
-        suma(plataforma, code, m.platformFee);
-        suma(neto, code, m.netAmount);
-    }
-
-    const redondear = (mapa) => {
-        const out = {};
-        for (const [code, valor] of Object.entries(mapa)) out[code] = roundMoney(valor, code);
-        return out;
-    };
-
-    return {
-        bruto: redondear(bruto),
-        procesador: redondear(procesador),
-        plataforma: redondear(plataforma),
-        neto: redondear(neto),
-        aportes: (donations || []).length,
-        // Los aportes de los que no se pudo leer la retención. Callarlos haría
-        // que el neto del período pareciera completo cuando le falta gente.
-        sinMovimiento,
-    };
-};
-
 export const listClubDonations = async (req, res) => {
     try {
         const clubId = req.user?.role === 'administrator' && req.query.clubId

@@ -17,6 +17,7 @@ import {
     FILTRABLE, NO_FILTRABLE, RANGOS, RANGO_DEFAULT, isRango, resolveRango,
     dentroDelRango, parseFecha, DESTINO_TODOS, DESTINO_SIN_DECLARAR,
     destinoKeyOf, catalogoDestinos, esDelDestino, aplicarFiltros, hayFiltro,
+    resumenDelPeriodo,
 } from '../server/lib/walletFilters.js';
 
 let pass = 0, fail = 0;
@@ -183,6 +184,38 @@ ok('sin filtros no hay nada que limpiar', !hayFiltro({ rango: { id: 'todo' }, de
 ok('con un rango puesto sí', hayFiltro({ rango: { id: '7d' }, destino: DESTINO_TODOS }));
 ok('con un destino puesto también', hayFiltro({ rango: { id: 'todo' }, destino: 'campana:c1' }));
 
+// ── 6b. El resumen del período ──────────────────────────────────────
+section('6b. Lo que el club recibió en el período');
+
+// ⚠️ Los nombres vienen de `movementOf`, NO de la columna de la base: la
+// retención viaja como `applicationFee` y el neto como `amount`. Leerlos con el
+// nombre de la columna no da error —da `undefined`, que suma cero— y el bloque
+// habría mostrado «0» de retención y «0» de neto diciendo ser el del período.
+// Por eso esta función vive acá y no en el controlador: ahí no se podía probar.
+const resumen = resumenDelPeriodo([
+    { currency: 'COP', amount: 50000, movement: { stripeFee: 4754, applicationFee: 2500, amount: 42746 } },
+    { currency: 'USD', amount: 10, movement: { stripeFee: 0.59, applicationFee: 0.5, amount: 8.91 } },
+    { currency: 'COP', amount: 1000, movement: null },
+]);
+eq('el bruto se agrupa por moneda', resumen.bruto, { COP: 51000, USD: 10 });
+eq('la retención de la plataforma NO sale en cero', resumen.plataforma, { COP: 2500, USD: 0.5 });
+eq('ni el neto', resumen.neto, { COP: 42746, USD: 8.91 });
+eq('la tarifa del procesador tampoco', resumen.procesador, { COP: 4754, USD: 0.59 });
+eq('se cuentan todos los aportes', resumen.aportes, 3);
+
+// Un aporte sin movimiento aporta su BRUTO y no sus retenciones. Se cuenta lo
+// que se sabe y se DICE cuántos quedaron sin medir, en vez de inventarles una
+// comisión — pero callarlo haría que el neto pareciera completo.
+eq('y se DICE cuántos no tienen movimiento', resumen.sinMovimiento, 1);
+ok('el bruto del que no tiene movimiento SÍ se cuenta', resumen.bruto.COP === 51000);
+
+eq('sin aportes devuelve mapas vacíos, no ceros inventados',
+    resumenDelPeriodo([]), { bruto: {}, procesador: {}, plataforma: {}, neto: {}, aportes: 0, sinMovimiento: 0 });
+
+// NUNCA un total que mezcle monedas: es la regla del módulo desde v4.841.
+ok('no hay ninguna clave que sume las dos monedas',
+    !('total' in resumen.bruto) && Object.keys(resumen.bruto).every(k => k === 'COP' || k === 'USD'));
+
 // ── 7. El espejo del navegador ──────────────────────────────────────
 section('7. Los dos espejos dicen lo mismo');
 
@@ -245,6 +278,11 @@ ok('el catálogo de destinos se arma ANTES de filtrar',
 
 // El período resuelto viaja del servidor a la pantalla, que no lo recalcula.
 ok('el servidor devuelve el período ya resuelto', /periodo: \{[\s\S]{0,200}?desde:/.test(ctrl));
+// El resumen es CRITERIO y vive en el módulo puro: en el controlador no se
+// podía probar —importa la base— y ahí se coló leer el movimiento con los
+// nombres de la columna en vez de los de `movementOf`.
+ok('el resumen del período NO vive en el controlador',
+    !/const resumenDelPeriodo = /.test(ctrl) && /resumenDelPeriodo,/.test(ctrl));
 ok('y la pantalla no rehace la aritmética de fechas',
     !/setUTCHours|86400000|24 \* 60 \* 60 \* 1000/.test(ui));
 

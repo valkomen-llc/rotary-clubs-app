@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info } from 'lucide-react';
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
 import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
+import { buildInforme } from '../../lib/walletReport';
 import { toast } from 'sonner';
 
 // v4.841 — Un saldo por MONEDA. Hasta v4.840 la pantalla recibía un escalar
@@ -252,6 +253,7 @@ export default function WalletManagement() {
     const [destino, setDestino] = useState<string>(DESTINO_TODOS);
     const [destinos, setDestinos] = useState<DestinoOpcion[]>([]);
     const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
+    const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
     const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
     const [orphanMovements, setOrphanMovements] = useState<Movement[]>([]);
 
@@ -303,6 +305,48 @@ export default function WalletManagement() {
         if (destino !== DESTINO_TODOS) q.set('destino', destino);
         return q.toString();
     }, [rango, desde, hasta, destino]);
+
+    // v4.850 — La exportación. El informe se arma UNA vez y lo consumen los tres
+    // formatos: escribir cada uno por su cuenta daría tres verdades sobre el
+    // mismo período. Las librerías se cargan de forma perezosa —`xlsx` y
+    // `jspdf` pesan— así que quien entra a mirar su saldo no las descarga.
+    const exportar = async (formato: 'xlsx' | 'csv' | 'pdf') => {
+        setExportando(formato);
+        try {
+            const mod = await import('../../lib/walletExport');
+            const informe = buildInforme({
+                club: club?.name || 'Sitio',
+                // La moneda es la que se está mirando, y es OBLIGATORIA: un
+                // informe «de todas las monedas» exigiría un total que las
+                // sume, que es justo lo que este módulo no hace. Para dos
+                // monedas se emiten dos informes.
+                moneda: code,
+                donations: activeDonations,
+                periodo: {
+                    label: periodo?.label || 'Todo el histórico',
+                    desde: periodo?.desde || null,
+                    hasta: periodo?.hasta || null,
+                    excluidos: periodo?.excluidos || 0,
+                },
+                destinoLabel: destino === DESTINO_TODOS
+                    ? 'Todos los destinos'
+                    : (destinos.find(d => d.key === destino)?.label || destino),
+                // El saldo ACTUAL, no el del período. Va rotulado como tal
+                // dentro del archivo.
+                saldoActual: selected?.availableBalance || 0,
+            });
+            if (formato === 'csv') mod.descargarCSV(informe);
+            else if (formato === 'xlsx') await mod.descargarExcel(informe);
+            else await mod.descargarPDF(informe);
+        } catch (e: any) {
+            // Un fallo al exportar no puede dejar la pantalla en un estado raro:
+            // se dice y se sigue.
+            console.error('[Wallet] exportación falló:', e);
+            toast.error('No pudimos generar el archivo. Intentá de nuevo.');
+        } finally {
+            setExportando(null);
+        }
+    };
 
     const fetchWalletData = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -660,6 +704,56 @@ export default function WalletManagement() {
                                 >
                                     Limpiar
                                 </button>
+                            )}
+
+                            {/* ── Exportar ────────────────────────────────
+                                v4.850 — Se exporta LO QUE SE VE: el período, el
+                                destino y la moneda que están puestos. Y el
+                                archivo lo dice adentro, porque un Excel de hace
+                                un mes tiene que poder interpretarse solo.
+
+                                Van al final de la línea y sólo si hay algo que
+                                exportar: un botón que descarga un archivo vacío
+                                es peor que no tenerlo. */}
+                            {activeDonations.length > 0 && (
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                    <button
+                                        onClick={() => exportar('xlsx')}
+                                        disabled={!!exportando}
+                                        title={`Descargar Excel de ${code}`}
+                                        aria-label={`Descargar Excel de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'xlsx'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileSpreadsheet className="w-4 h-4 text-emerald-600" aria-hidden="true" />}
+                                        Excel
+                                    </button>
+                                    <button
+                                        onClick={() => exportar('csv')}
+                                        disabled={!!exportando}
+                                        title={`Descargar CSV de ${code}`}
+                                        aria-label={`Descargar CSV de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'csv'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileText className="w-4 h-4 text-gray-500" aria-hidden="true" />}
+                                        CSV
+                                    </button>
+                                    <button
+                                        onClick={() => exportar('pdf')}
+                                        disabled={!!exportando}
+                                        title={`Descargar PDF de ${code}`}
+                                        aria-label={`Descargar PDF de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'pdf'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileText className="w-4 h-4 text-[#9D2235]" aria-hidden="true" />}
+                                        PDF
+                                    </button>
+                                </div>
                             )}
                         </div>
 

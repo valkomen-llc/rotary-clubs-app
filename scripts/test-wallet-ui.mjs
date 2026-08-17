@@ -186,15 +186,24 @@ const bundle = await build({
         'process.env.NODE_ENV': '"production"',
         __APP_VERSION__: '"0.0.0-test"',
     },
-    external: ['jspdf', 'xlsx'], jsx: 'automatic', logLevel: 'silent',
+    // ⚠️ `jspdf` y `xlsx` NO van como externos, aunque pesen. En producción Vite
+    // los empaqueta, y dejarlos fuera acá hacía imposible ejercitar la
+    // exportación: el botón existía, se pulsaba, y la importación perezosa
+    // moría con «Failed to resolve module specifier». Una prueba que no puede
+    // fallar donde el código falla no prueba nada.
+    jsx: 'automatic', logLevel: 'silent',
 });
 
 const SYSTEM_CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const browser = await chromium.launch(existsSync(SYSTEM_CHROME) ? { executablePath: SYSTEM_CHROME } : {});
-const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+const page = await browser.newPage({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
 
 const errores = [];
 page.on('pageerror', e => errores.push(e.message));
+// Los fallos de exportación se atrapan y salen por consola: sin capturarlos,
+// una descarga que no ocurre se ve como un tiempo agotado sin causa.
+const consola = [];
+page.on('console', m => { if (m.type() === 'error') consola.push(m.text()); });
 
 // El comodín va PRIMERO: Playwright resuelve la última ruta registrada antes
 // que las anteriores.
@@ -447,7 +456,55 @@ const limpio2 = await texto();
 check('se ve lo recibido en el período', /Recibido en el período/i.test(limpio2), limpio2.slice(0, 400));
 check('con la tarifa que pidió el cliente, no otro nombre',
     /Tarifa de procesamiento/i.test(limpio2));
+// ⚠️ Los IMPORTES, no sólo los rótulos. La primera versión leía el movimiento
+// con los nombres de la COLUMNA de la base (`platformFee`, `netAmount`) en vez
+// de los de `movementOf` (`applicationFee`, `amount`): no da error, da
+// `undefined`, que suma cero — y el bloque mostraba «0» de retención y «0» de
+// neto diciendo ser el del período. Comprobar el título no lo habría visto.
+check('la retención de la plataforma NO sale en cero',
+    /−\s*\$\s*2\.500/.test(limpio2), limpio2.slice(0, 900));
+check('ni el neto del período',
+    /42\.746/.test(limpio2), limpio2.slice(0, 900));
 check('sin errores tras manejar los filtros', errores.length === 0, errores.join(' | '));
+
+// ── Exportar (v4.850) ────────────────────────────────────────────────
+console.log('\n▸ Exportar');
+
+check('hay botón de Excel', await page.getByRole('button', { name: /Descargar Excel/ }).count() === 1);
+check('de CSV', await page.getByRole('button', { name: /Descargar CSV/ }).count() === 1);
+check('y de PDF', await page.getByRole('button', { name: /Descargar PDF/ }).count() === 1);
+// Tres botones que sólo dijeran «Excel», «CSV» y «PDF» no distinguen de qué
+// moneda es cada archivo, y en esta pantalla hay dos.
+check('cada uno dice de qué moneda es',
+    await page.getByRole('button', { name: /Descargar Excel de COP/ }).count() === 1);
+
+// La prueba de que la exportación FUNCIONA es que el navegador descargue algo.
+// Comprobar que el botón existe no dice nada sobre si `jspdf` y `xlsx` se
+// cargan y componen: son importaciones perezosas que sólo se resuelven al
+// pulsarlo.
+const bajar = async (nombre) => {
+    const espera = page.waitForEvent('download', { timeout: 20000 });
+    await page.getByRole('button', { name: nombre }).click();
+    return espera;
+};
+
+const csv = await bajar(/Descargar CSV de COP/);
+check('el CSV se descarga', !!csv, 'no llegó el evento de descarga');
+check('con el sitio, la moneda y la fecha en el nombre',
+    /boveda-.*-cop-\d{4}-\d{2}-\d{2}\.csv/.test(csv.suggestedFilename()), csv.suggestedFilename());
+
+const xlsx = await bajar(/Descargar Excel de COP/).catch(e => {
+    console.log('    consola:', consola.slice(-3).join(' | '));
+    throw e;
+});
+check('el Excel se descarga —`xlsx` carga y compone—',
+    /\.xlsx$/.test(xlsx.suggestedFilename()), xlsx.suggestedFilename());
+
+const pdf = await bajar(/Descargar PDF de COP/);
+check('el PDF se descarga —`jspdf` carga y compone—',
+    /\.pdf$/.test(pdf.suggestedFilename()), pdf.suggestedFilename());
+
+check('exportar no dejó errores en la consola', errores.length === 0, errores.join(' | '));
 
 await browser.close();
 
