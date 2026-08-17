@@ -1,5 +1,5 @@
 import express from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
     createDonationCheckout,
@@ -34,16 +34,17 @@ router.get('/donate/session/:id', getDonationSessionStatus);
 // PÚBLICO — suscripción a membresía recurrente (Fase 2)
 router.post('/subscribe', createSubscriptionCheckout);
 
-// AUTENTICADO — listado de donaciones del club (panel admin)
-router.get('/donations', authMiddleware, listClubDonations);
+// v4.841 — Las tres piden ADMINISTRADOR DEL SITIO, no sólo sesión. Llevan los
+// datos de todos los donantes del club y una de ellas gasta llamadas a Stripe;
+// hasta v4.840 bastaba con `authMiddleware`, que no mira el rol.
+router.get('/donations', authMiddleware, requireSiteAdmin, listClubDonations);
 
-// AUTENTICADO — mini-wallet sincronizada con Stripe: buckets por estado
-// (en tránsito / disponible próximamente / disponible / transferido)
-router.get('/wallet', authMiddleware, getClubWallet);
+// La Bóveda: saldos y movimientos POR MONEDA (v4.841).
+router.get('/wallet', authMiddleware, requireSiteAdmin, getClubWallet);
 
 // v4.422 — Sync retroactivo: enriquece Payments existentes con datos de
 // Stripe (fee real, availableOn, status, payment method). Idempotente.
-router.post('/wallet/sync-stripe', authMiddleware, syncPaymentsWithStripe);
+router.post('/wallet/sync-stripe', authMiddleware, requireSiteAdmin, syncPaymentsWithStripe);
 
 // v4.418 — DIAGNÓSTICO de email (super admin) para debuggear que el recibo no llega
 router.get('/email-status', authMiddleware, getEmailDiagnostics);

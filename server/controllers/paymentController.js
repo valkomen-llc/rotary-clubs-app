@@ -3,7 +3,20 @@ import EmailService from '../services/EmailService.js';
 import DomainProvisioningService from '../services/DomainProvisioningService.js';
 
 import prisma from '../lib/prisma.js';
-const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% fee when using Valkomen's master account
+import { ensureWalletSchema } from '../lib/ensureWalletSchema.js';
+
+// La comisión de la plataforma por recaudar a través de la cuenta maestra.
+//
+// v4.841 — NO es una tasa de cambio ni una comisión interbancaria, y conviene
+// que quede escrito porque se pidió renombrarla así: se cobra también sobre un
+// aporte en dólares que no pasa por ninguna conversión. El costo REAL de
+// conversión existe —lo cobra Stripe al liquidar en otra moneda— y hoy no se
+// modela en ninguna parte; separarlo de esto es la Fase 4.
+//
+// El número sigue duplicado en `financialController.js`. Se unifica cuando
+// deje de ser una constante y pase a configuración por moneda, país y método
+// de pago, que es lo que corresponde y también es Fase 4.
+const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05;
 
 // v4.411 — Remitente por defecto del recibo transaccional. Centralizado en
 // Club Platform para entregabilidad. Reply-to apunta al club si tiene email
@@ -590,7 +603,13 @@ async function handleSuccessfulDonationCheckout(session) {
 
     const providerRef = session.payment_intent || session.id;
 
-    // Idempotencia: si ya existe un Payment con este providerRef, salimos.
+    // El índice único que sostiene la idempotencia. Cacheado: una consulta al
+    // catálogo por arranque en frío, no por webhook.
+    await ensureWalletSchema();
+
+    // Lectura previa: evita el trabajo —consultar Stripe, escribir la
+    // donación— cuando el evento ya se procesó. NO es la protección: ésa la da
+    // el índice único al insertar. Ver el `catch (dup)` de más abajo.
     const existing = await prisma.payment.findFirst({
         where: { providerRef, provider: 'stripe' },
         select: { id: true }
@@ -650,31 +669,50 @@ async function handleSuccessfulDonationCheckout(session) {
     }
 
     try {
-        await prisma.payment.create({
-            data: {
-                provider: 'stripe',
-                providerRef,
-                status: 'succeeded',
-                amount: totalAmount,
-                currency,
-                applicationFee,
-                netAmount,
-                isPlatformCollection: true,
-                clubId,
-                stripeBalanceTxId,
-                stripeStatus,
-                availableOn,
-                clubAvailableOn,
-                paymentMethod,
-                rawPayload: JSON.stringify({
-                    sessionId: session.id,
-                    mode: session.mode,
-                    customerDetails: session.customer_details,
+        // v4.841 — La inserción es la que decide si este aporte ya estaba
+        // registrado, no la lectura de arriba. Entre aquella consulta y esta
+        // línea caben dos entregas concurrentes del mismo evento —Stripe
+        // reintenta— y el resultado sería el aporte contado dos veces. El
+        // índice único `Payment_provider_providerRef_key` lo hace imposible;
+        // acá sólo se atrapa el choque y se sale en silencio, que es lo que
+        // significa: alguien más ya lo registró.
+        //
+        // Si el índice todavía no existe —hay `providerRef` repetidos de antes
+        // y `ensureWalletSchema` no lo pudo crear— esto no lanza y seguimos
+        // con la protección que había. Degradar no empeora nada.
+        try {
+            await prisma.payment.create({
+                data: {
+                    provider: 'stripe',
+                    providerRef,
+                    status: 'succeeded',
+                    amount: totalAmount,
+                    currency,
+                    applicationFee,
+                    netAmount,
+                    isPlatformCollection: true,
+                    clubId,
                     stripeBalanceTxId,
-                    stripeFee: estimatedStripeFee
-                })
+                    stripeStatus,
+                    availableOn,
+                    clubAvailableOn,
+                    paymentMethod,
+                    rawPayload: JSON.stringify({
+                        sessionId: session.id,
+                        mode: session.mode,
+                        customerDetails: session.customer_details,
+                        stripeBalanceTxId,
+                        stripeFee: estimatedStripeFee
+                    })
+                }
+            });
+        } catch (dup) {
+            if (dup?.code === 'P2002') {
+                console.log(`[Stripe Webhook] Donación ya registrada (choque de índice) para ${providerRef} — se sale sin duplicar`);
+                return;
             }
-        });
+            throw dup;
+        }
 
         const isAnon = isAnonymous === 'true' || isAnonymous === true;
         const cleanProjectId = projectId && projectId !== '' ? projectId : null;
