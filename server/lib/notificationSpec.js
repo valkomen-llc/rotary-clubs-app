@@ -59,14 +59,27 @@ export const NOTIFICATION_EVENTS = [
     {
         id: 'refunded',
         label: 'Aporte reembolsado',
-        help: 'Necesita enrutar charge.refunded hacia donaciones: hoy sólo llega a la Feria de Proyectos y a las inscripciones de evento.',
+        help: 'Stripe confirmó la devolución del dinero. El aporte deja de contar como ingreso.',
         source: 'charge.refunded',
-        available: false,
+        available: true,
     },
     {
+        // v4.859 — NO se implementa, y el motivo NO es que falte trabajo: es
+        // que no hay a qué atarlo. Un pago fallido nunca llegó a crear una
+        // `Donation`, así que no existe la contribución sobre la que
+        // notificar, y la llave de idempotencia de este módulo es
+        // contribución + evento + destinatario. Tampoco hay a quién
+        // escribirle: el correo del aportante viaja en la metadata de la
+        // SESIÓN de checkout, que un `payment_intent.payment_failed` no
+        // siempre trae.
+        //
+        // Avisar de un pago fallido es un problema distinto —le corresponde a
+        // la pasarela, que ya lo hace— y meterlo acá exigiría una entidad que
+        // no existe. Se declara así en vez de dejarlo como «pendiente», que
+        // haría pensar que es cuestión de tiempo.
         id: 'failed',
         label: 'Pago fallido',
-        help: 'Necesita suscribir payment_intent.payment_failed en el webhook de Stripe.',
+        help: 'No aplica a este módulo: un pago que falla nunca crea un aporte, así que no hay contribución que notificar ni destinatario registrado. Stripe ya avisa a quien intentó pagar.',
         source: 'payment_intent.payment_failed',
         available: false,
     },

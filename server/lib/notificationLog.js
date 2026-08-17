@@ -24,7 +24,7 @@ import db from './db.js';
 import ensureNotificationSchema from './ensureNotificationSchema.js';
 import {
     normalizeDelivery, mergeDeliveryState, isKnownDeliveryState,
-    isFailureState, canRetry, nextRetryDelay, summarizeDeliveries,
+    isFailureState, canRetry, nextRetryDelay, summarizeDeliveries, MAX_RETRIES,
 } from './notificationSpec.js';
 
 const fallo = (reason) => ({ ok: false, reason });
@@ -273,7 +273,37 @@ export const listDeliveriesFor = async (contributionIds) => {
 export const deliverySummary = async (contributionId) =>
     summarizeDeliveries(await listDeliveries(contributionId));
 
+/* ─── LOS REINTENTOS ─────────────────────────────────────────────────
+ *
+ * Un barrido, no un proceso: en Vercel la función se congela al cerrar la
+ * respuesta, así que una cola con trabajador clásico exigiría infraestructura
+ * aparte. Es el mismo criterio del Creador de Reels y del CRM.
+ *
+ * Sólo se toma lo que `canRetry` admite —y eso ya excluye un rebote duro y un
+ * bloqueo—, y sólo cuando venció su espera. Reintentar lo definitivo es
+ * escribirle otra vez a quien ya dijo que no.
+ */
+export const pendingRetries = async ({ limit = 20 } = {}) => {
+    try {
+        await ensureNotificationSchema();
+        const { rows } = await db.query(
+            `SELECT * FROM "NotificationDelivery"
+              WHERE retryable
+                AND state IN ('failed')
+                AND "retryCount" < $1
+                AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= NOW())
+              ORDER BY "nextRetryAt" ASC NULLS FIRST
+              LIMIT $2`,
+            [MAX_RETRIES, Math.max(1, Math.min(100, limit))]
+        );
+        return rows;
+    } catch (e) {
+        console.warn('[NOTIF-LOG] no se pudo leer la cola de reintentos:', e?.message);
+        return [];
+    }
+};
+
 export default {
-    claimDelivery, markSent, markFailed, applyProviderEvent,
+    claimDelivery, markSent, markFailed, applyProviderEvent, pendingRetries,
     listDeliveries, listDeliveriesFor, deliverySummary,
 };

@@ -322,7 +322,7 @@ export const resolveTemplate = async ({ profileId = null, campaignId = null, eve
     }
     // La de fábrica depende del PAPEL: el aviso interno no puede agradecerle a
     // la tesorería por un aporte que no hizo.
-    return { template: defaultTemplateFor(rk), version: 0, source: 'fábrica', id: null };
+    return { template: defaultTemplateFor(rk, ev), version: 0, source: 'fábrica', id: null };
 };
 
 // GET /api/notification-profiles/templates?profileId=&campaignId=&event=&recipientKind=

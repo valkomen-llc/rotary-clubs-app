@@ -450,6 +450,34 @@ router.get('/reels-tick', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/notification-retries ─────────────────────────────
+//
+// Reintenta los correos de confirmación de aportes que fallaron por algo
+// TEMPORAL. Lo definitivo —un rebote duro, un bloqueo— no se reintenta nunca:
+// insistirle a una dirección que ya dijo que no es lo que, en volumen, hunde la
+// reputación del dominio desde el que envía toda la plataforma.
+//
+// Cada cinco minutos y no cada minuto: un fallo pasajero no se resuelve en
+// sesenta segundos, y la primera espera del reintento ya es de dos minutos.
+router.get('/notification-retries', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON notification-retries] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepRetries } = await import('../lib/notificationSender.js');
+        const resumen = await sweepRetries({ limit: 20, timeBudgetMs: 60000 });
+        if (resumen.reintentadas > 0) {
+            console.log(`[CRON notification-retries] reintentadas=${resumen.reintentadas} logradas=${resumen.logradas} agotadas=${resumen.agotadas} en ${resumen.elapsedMs}ms`);
+        }
+        res.json({ ok: true, ...resumen });
+    } catch (e) {
+        console.error('[CRON notification-retries] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Vercel Cron: /api/cron/emergency-feed ───────────────────────────────────
 //
 // Lee las fuentes del «Panorama de la emergencia» de cada campaña de

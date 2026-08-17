@@ -2695,6 +2695,84 @@ Acá el módulo empieza a gobernar el correo real.
   `recipientKind` en la petición y en las dependencias, cambiar de destinatario
   cargaría siempre la del aportante y se guardaría encima de la otra.
 
+### Fase 4 — el ciclo completo (v4.859)
+
+Con esto el módulo queda cerrado: las cinco fases del pedido están
+implementadas.
+
+- **El webhook de Resend se AMPLÍA, no se duplica.** Resend manda todos sus
+  eventos a la misma dirección: con dos endpoints habría que configurar dos, y
+  una se quedaría sin configurar. Hace dos cosas independientes —dar de baja al
+  contacto del CRM y actualizar la entrega— y el fallo de una no puede tumbar la
+  otra; la baja va protegida porque es lo que impide seguir escribiéndole a
+  quien dijo que no.
+- **Una QUEJA se registra como `blocked`, no como `bounced`.** Un rebote es que
+  la dirección rechazó el correo; una queja de spam es que la persona pidió no
+  recibirlo. Confundirlos manda a buscar un problema de entrega donde hay una
+  decisión de quien lo recibió.
+- **`email.delivery_delayed` NO se traduce a ningún estado.** Un retraso no es
+  un desenlace, y marcarlo como fallo mandaría a reintentar algo que todavía va
+  en camino.
+- **El reintento vuelve a COMPONER el correo; no se guarda el HTML.** Guardarlo
+  serían decenas de KB por fila en una tabla que se lee en cada listado de la
+  Bóveda, y dejaría el correo congelado con una plantilla que quizá ya se
+  corrigió: si algo falló y se arregló, el reintento tiene que salir con lo
+  arreglado. Las cifras se releen de la base por el mismo motivo.
+- **El reintento se RECLAMA** (`allowRetry`), y el reclamo va sobre
+  `retryCount`, que es un entero exacto: dos barridos simultáneos no reintentan
+  el mismo envío. Sobre `updatedAt` no funcionaría — el driver de pg trunca los
+  microsegundos (v4.800).
+- **Si el perfil dejó de aplicar, el reintento se CIERRA con su motivo.** No se
+  inventa un correo con otra identidad.
+- **El barrido va cada CINCO minutos, no cada uno.** Un fallo pasajero no se
+  resuelve en sesenta segundos, y la primera espera del reintento ya es de dos
+  minutos. Con presupuesto de tiempo y protegido con `CRON_SECRET`.
+- **UN APORTE REEMBOLSADO DEJA DE CONTAR COMO INGRESO.** `Donation.status` pasa
+  a `refunded`, lo que lo saca de la Bóveda —que filtra `status = 'success'`— y
+  de los totales. Es la consecuencia deliberada: hasta v4.858 un aporte devuelto
+  seguía sumando para siempre, y un balance que cuenta dinero ya devuelto es
+  peor que uno que baja.
+- **El libro mayor y la fila de `Payment` NO se tocan.** Son el registro de lo
+  que OCURRIÓ, y un reembolso es un hecho nuevo, no la corrección de uno viejo.
+  Asentarlo como contrapartida es trabajo de la Bóveda y queda **pendiente**.
+- **El UPDATE del reembolso es condicional** (`WHERE status = 'success'`): un
+  reenvío del mismo evento de Stripe no vuelve a cambiar nada ni a notificar dos
+  veces — y la llave de la bitácora lo remata.
+- **Sin `donationId` en la traza del pago NO se adivina cuál aporte era.**
+  Marcar el equivocado sería peor que no marcar ninguno; se anota para
+  resolverlo a mano. El vínculo existe desde v4.844.
+- **EL REEMBOLSO TIENE SU PROPIA PLANTILLA.** Notificarlo con «gracias por tu
+  aporte» sería agradecerle a alguien por un dinero que se le devolvió. El
+  EVENTO decide qué dice y el PAPEL decide el tono (`defaultTemplateFor`).
+- **El texto del reembolso NO supone un motivo.** La plataforma no sabe por qué
+  se reembolsó —lo decidió alguien en Stripe— y suponerlo sería inventar.
+- **`failed` NO se implementa, y no es que falte trabajo.** Un pago que falla
+  nunca crea una `Donation`, así que no hay contribución sobre la que notificar
+  —y la llave de idempotencia es contribución + evento + destinatario— ni
+  destinatario registrado: el correo del aportante viaja en la metadata de la
+  SESIÓN de checkout, que un `payment_intent.payment_failed` no siempre trae.
+  Se declara como «no aplica» y no como «pendiente», que haría pensar que es
+  cuestión de tiempo. Stripe ya avisa a quien intentó pagar.
+
+**Variables de entorno del módulo:**
+
+| Variable | Para qué |
+|---|---|
+| `NOTIFICATION_CENTRAL_DOMAIN` | El dominio central verificado (default `clubplatform.org`) |
+| `NOTIFICATION_FALLBACK_FROM` | La identidad de respaldo (default `noreply@clubplatform.org`) |
+| `NOTIFICATION_DOMAIN_TTL_MIN` | Cuánto vale una comprobación de dominio (720) |
+| `RESEND_API_KEY` | El envío |
+| `RESEND_INBOUND_API_KEY` | Key de LECTURA: la de sólo-envío no puede listar dominios |
+| `RESEND_WEBHOOK_SECRET` | Protege el webhook de estados de entrega |
+| `CRON_SECRET` | Protege `/api/cron/notification-retries` |
+
+**Pendientes conocidos del módulo:** el reembolso **no asienta una
+contrapartida** en el libro mayor —hoy sólo saca el aporte de los totales—; el
+evento `in_transit` está declarado y sin implementar (la fecha de liberación ya
+se mide, falta decidir a quién le sirve saberlo); y **no hay freno de volumen
+por sitio**: un sitio con muchísimos aportes podría copar la cola de reintentos
+del barrido.
+
 ## En qué moneda se cobra un aporte — v4.834
 
 Hasta v4.833 la moneda salía de `resolveClubCurrency` y nada más: la del SITIO.
