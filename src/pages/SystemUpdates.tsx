@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.862.0 | 2026-08-17 (Quiénes ya aportaron, debajo del botón de aportar)
+// UI V4.863.0 | 2026-08-17 (Lo que la plataforma comisionó, en la barra)
 // Cache bust: 2026-08-17y
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.863.0',
+        title: 'La barra del panel central muestra lo que la plataforma comisionó 💰',
+        description: 'En el sitio de un club, el indicador de la barra superior muestra su saldo por moneda —«COP 45.321 · USD 958,90»—. En el panel de Club Platform mostraba «US$ 0,00», que era el saldo del sitio «Origen»: una cifra que no significaba nada. Ahora muestra la UTILIDAD de la plataforma —lo retenido por prestar el servicio— en pesos y en dólares, por separado.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'plataforma'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Lo comisionado por la plataforma, por moneda, en la barra del panel central.' },
+            { type: 'changed', text: 'Otro icono y otro rótulo: es utilidad, no un saldo que se pueda retirar.' },
+            { type: 'added', text: 'npm run test:platform-revenue — 15 comprobaciones sobre el endpoint real.' },
+        ],
+        details: [
+            'EL MISMO CHIP MIDE DOS COSAS DISTINTAS SEGÚN DÓNDE SE MIRE, y por eso cambia de icono y de rótulo. En el sitio de un club es su SALDO: dinero suyo que va a recibir. En el panel de la plataforma es la UTILIDAD acumulada. Dejarlos con el mismo aspecto y el mismo texto sería el defecto que esta reingeniería vino a quitar: dos rótulos iguales con dos cifras que significan cosas distintas.',
+            'Se decide por CONTEXTO DE PLATAFORMA, no por «no hay club». En el dominio de la plataforma el servidor devuelve el sitio «Origen», así que «no hay club» nunca es cierto para el operador — es exactamente la lección de la Bóveda Central (v4.853). Un operador que entra por el dominio de un club está mirando ESE club y sigue viendo su saldo.',
+            'POR MONEDA Y NUNCA SUMADAS: los pesos comisionados no son dólares. Es la regla del módulo desde la v4.841 y acá pesa más, porque el error sería sobre la utilidad de la empresa.',
+            'Un administrador de sitio NO ve la utilidad de la plataforma, y no es que se esconda en la pantalla: la consulta ni siquiera se ejecuta. Esconder un dato que el servidor manda no lo protege — quien conoce el endpoint lo ve igual.',
+            'La cifra es global, sin filtro de club: la pregunta es «¿cuánto ha ganado Club Platform?», no «¿cuánto con este sitio?». Con filtro, el número cambiaría de significado según por dónde se entre.',
+        ]
+    },
     {
         version: '4.862.0',
         title: 'Quiénes ya aportaron, debajo del botón de aportar 🤝',

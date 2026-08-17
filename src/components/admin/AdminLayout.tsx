@@ -25,6 +25,7 @@ import {
     Store,
     Receipt,
     Wallet,
+    Percent,
     ExternalLink,
     Sparkles,
     Eye,
@@ -985,17 +986,39 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                     monedas van UNA AL LADO DE LA OTRA en vez de
                                     apiladas. El bruto sigue en la Bóveda, en la
                                     tarjeta de cada moneda. */}
+                                {/* ⚠️ EN EL PANEL DE LA PLATAFORMA ESTE CHIP MIDE OTRA
+                                    COSA, y por eso cambia de icono y de rótulo.
+                                    v4.863 — En el sitio de un club es su SALDO: dinero
+                                    suyo que va a recibir. En el panel de Club Platform
+                                    es la UTILIDAD: lo que la plataforma comisionó por
+                                    prestar el servicio. Hasta v4.862 mostraba «US$ 0,00»
+                                    —el saldo del sitio «Origen», que no recauda nada— y
+                                    era una cifra que no significaba nada.
+
+                                    Se decide por CONTEXTO DE PLATAFORMA (`isUIAdmin`:
+                                    operador Y fuera del dominio de un club), no por
+                                    «no hay club»: en el dominio de la plataforma
+                                    `by-domain` devuelve «Origen», así que «no hay club»
+                                    nunca es cierto para el operador. Es la misma lección
+                                    que la Bóveda Central (v4.853). Un operador que entra
+                                    por el dominio de un club está mirando ESE club y ve
+                                    su saldo, como corresponde. */}
                                 <div className="relative group/fon">
                                     {/* `aria-label` porque el contenido del enlace son
                                         cifras: sin él, el lector de pantalla lo anuncia
                                         como «COP 47.499 USD 8,91» y no dice qué es. */}
                                     <Link
                                         to="/admin/boveda"
-                                        aria-label="Saldo actual del club"
-                                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-all"
+                                        aria-label={isUIAdmin ? 'Comisionado por la plataforma' : 'Saldo actual del club'}
+                                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all ${isUIAdmin ? 'hover:bg-emerald-50' : 'hover:bg-amber-50'}`}
                                     >
-                                        <Wallet className="w-4.5 h-4.5 text-amber-500 flex-shrink-0" />
-                                        <MoneyByCurrency rows={stats?.availableFundsByCurrency} legacy={stats?.availableFunds} />
+                                        {isUIAdmin
+                                            ? <Percent className="w-4.5 h-4.5 text-emerald-600 flex-shrink-0" />
+                                            : <Wallet className="w-4.5 h-4.5 text-amber-500 flex-shrink-0" />}
+                                        <MoneyByCurrency
+                                            rows={isUIAdmin ? stats?.platformRevenueByCurrency : stats?.availableFundsByCurrency}
+                                            legacy={isUIAdmin ? 0 : stats?.availableFunds}
+                                        />
                                     </Link>
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/fon:opacity-100 group-hover/fon:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
                                         {/* NO dice «disponible para retiro»: eso es otra
@@ -1004,8 +1027,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                             que incluye lo que Stripe todavía no liberó.
                                             Dos rótulos iguales con dos cifras distintas en
                                             el mismo módulo es el defecto que esta
-                                            reingeniería vino a quitar. */}
-                                        Saldo actual · neto recibido
+                                            reingeniería vino a quitar.
+
+                                            Y por lo mismo el de la plataforma dice
+                                            «comisionado», no «saldo»: esa plata no es un
+                                            saldo que se pueda retirar, es la utilidad
+                                            acumulada por prestar el servicio. */}
+                                        {isUIAdmin
+                                            ? 'Comisionado por la plataforma · acumulado'
+                                            : 'Saldo actual · neto recibido'}
                                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
                                     </div>
                                 </div>
