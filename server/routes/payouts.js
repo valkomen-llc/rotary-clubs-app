@@ -8,7 +8,9 @@ import {
     updatePayoutStatus,
     getLedgerReconciliation,
     backfillLedger,
-    getCentralOverview
+    getCentralOverview,
+    getFeeRulesConfig,
+    updateFeeRulesConfig
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -35,6 +37,12 @@ router.put('/admin/:id', roleMiddleware(superAdminRoles), updatePayoutStatus);
 // v4.853 — La BÓVEDA CENTRAL: lo que recaudaron TODOS los sitios. Del operador
 // de la plataforma, porque es información de todas las organizaciones alojadas.
 router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOverview);
+
+// v4.854 — Las reglas de comisión. La tarifa es de la INFRAESTRUCTURA
+// compartida, no de una organización: un administrador de sitio no la ve ni la
+// cambia. Se comprueba acá, no sólo en la pantalla.
+router.get('/admin/fee-rules', roleMiddleware(superAdminRoles), getFeeRulesConfig);
+router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesConfig);
 
 // v4.847 — El libro mayor contra la Bóveda. Sólo lectura y sólo del operador:
 // es una herramienta de migración sobre infraestructura compartida, y lo que

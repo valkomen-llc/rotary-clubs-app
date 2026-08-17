@@ -5651,6 +5651,86 @@ Pruebas: `npm run test:wallet:central` (32 casos, **sin base ni red**) y
 v4.845, que el libro reproduce mal a propósito), el `campaignId` en el libro, y
 el cambio de fuente de los saldos —**sólo cuando el informe cuadre**—.
 
+### La tarifa vive en un solo sitio (v4.854, Fase 2)
+
+El 5 % que retiene la plataforma estaba escrito a mano en **cinco** sitios. Ahora
+es un criterio puro, configurable desde el panel por moneda y por sitio.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/feeRules.js` | El CRITERIO. **Puro**: cascada, cálculo, validación y cómo se explica |
+| `server/lib/feeRulesStore.js` | La I/O: `PlatformConfig`, caché e invalidación |
+| `src/components/admin/FeeRulesPanel.tsx` | El panel, dentro de la Bóveda Central |
+| `GET`/`PUT /api/payouts/admin/fee-rules` | Del operador de la plataforma |
+
+Pruebas: `npm run test:fee-rules` (58 casos, **sin base ni red**) más 9 de
+navegador dentro de `test:wallet:central:ui`.
+
+**Reglas durables:**
+
+- **DESPLEGAR ESTO NO CAMBIÓ NINGUNA CIFRA**, y es la comprobación que lo
+  autoriza: `DEFAULT_RULES` reproduce exactamente lo que había, **incluido el
+  estimado escrito para dólares y aplicado a toda moneda**. Se corrigió la
+  duplicación, no la tarifa.
+- **⚠️ SINCRONIZAR NO PUEDE APLICAR LA TARIFA DE HOY A UN COBRO DE AYER.**
+  `syncPaymentsWithStripe` recalculaba `totalAmount * PLATFORM_FEE_PERCENTAGE`, y
+  con la tarifa escrita a mano daba siempre lo mismo, así que el defecto era
+  invisible. En cuanto la tarifa se puede cambiar desde el panel, recalcular es
+  **reescribir la historia financiera de un cobro que ya ocurrió** — lo que el
+  rediseño prohíbe expresamente. Ahora se usa `payment.applicationFee`, y sólo se
+  calcula cuando falta. Al agregar un cálculo sobre un pago existente,
+  preguntarse si el dato ya está guardado.
+- **No hace falta una columna nueva en `Payment`, y no se agregó.** El importe
+  retenido ya se guarda, así que la tasa se reconstruye dividiendo y la historia
+  está preservada por construcción. Una columna en un modelo de Prisma que
+  todavía no existe en la base deja en 500 toda consulta que lo toque —la regla
+  de `logo_intl` (v4.699)— y acá caería sobre el cobro.
+- **La cascada va de lo particular a lo general**: acuerdo del SITIO → tarifa de
+  la MONEDA → general. Y **`0` es una tarifa válida**: con `||` en vez de una
+  comprobación de nulo, un club exento se leería como «no configurado» y volvería
+  a pagar el 5 %.
+- **`source` dice de dónde salió cada mitad.** Sin él, «¿por qué a este club se
+  le retuvo el 2 %?» no se puede contestar dos semanas después — el mismo vacío
+  que el CRM tenía antes de `CrmWebhookEvent`.
+- **⚠️ El estimado del procesador era `(total * 0.029) + 0.30` PARA TODA
+  MONEDA.** El 0,30 es el componente fijo en DÓLARES de la tarifa de Stripe,
+  aplicado tal cual a un cobro en pesos. **No se inventó** la tarifa real de
+  Stripe en Colombia —es un dato que hay que mirar en su panel, y la regla del
+  sitio prohíbe fabricarlo—: se conserva el valor heredado, se AVISA en la
+  pantalla y ya se puede configurar por moneda.
+- **La comisión se REDONDEA a la unidad de su moneda** y se acota al bruto. Sin
+  redondeo, la de un cobro en pesos salía con decimales que el peso no tiene —el
+  defecto de `roundMoney(8.915)` por la otra punta—; sin el tope, una tarifa fija
+  mayor que el aporte daría un neto negativo.
+- **El operador escribe, el CÓDIGO decide.** Escribir «5» queriendo decir 5 % se
+  RECHAZA con su motivo en vez de interpretarse: adivinar ahí es quedarse con el
+  500 % de un aporte. Y los errores se devuelven TODOS —«configuración inválida»
+  a secas obliga a probar campo por campo—.
+- **Los avisos NO bloquean.** Tratarlos como errores convierte cualquier
+  observación en un bloqueo y se dejan de leer. Y se recalculan **al leer**, no
+  sólo al guardar: una configuración que se dejó a medias hace meses tiene que
+  seguir diciéndolo.
+- **El catálogo de reglas es CERRADO** (`SCOPES`). Sin esa puerta podría aparecer
+  una tercera retención que nadie sabe de dónde salió.
+- **Un guardado parcial no deja la plataforma sin tarifa** (`mergeRules`). Misma
+  regla aditiva que `putAuto` con las traducciones.
+- **Leer la tarifa NUNCA lanza y va cacheada.** Esto corre en el camino del
+  cobro: una configuración ilegible degrada a la vigente —que es lo que había
+  antes— en vez de tumbar un pago, y sin caché cada aporte pagaría un viaje a la
+  base para leer un número que cambia una vez al año. Toda escritura invalida.
+- **El panel vive DENTRO de la Bóveda Central**, no en una pantalla propia: la
+  tarifa es lo que explica el take rate que se está mirando justo encima. Nace
+  plegado —se toca una vez al año— pero **su cabecera dice la tarifa vigente y
+  cuántos avisos hay**: plegar no puede esconder un problema (v4.826).
+- **El panel dice ANTES de que se toque nada que el cambio no reescribe los
+  cobros anteriores.** Es la pregunta que se hace quien va a mover una tarifa, y
+  sin respuesta a la vista no la mueve.
+- **El porcentaje se guarda en tanto por uno y se ESCRIBE en por ciento.** Nadie
+  teclea «0.05» pensando en una comisión. La conversión vive en un solo sitio y
+  una prueba de navegador comprueba que lo que SALE hacia el servidor sea `0.03`
+  y no `3` — una dependencia que falta o una conversión olvidada no las ve el
+  typecheck (la lección de `conQr` y `profileId`).
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.853.0 | 2026-08-17 (La Bóveda Central: todos los sitios, sin mezclar)
-// Cache bust: 2026-08-17p
+// UI V4.854.0 | 2026-08-17 (La tarifa vive en un solo sitio y se configura)
+// Cache bust: 2026-08-17q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.854.0',
+        title: 'La comisión de la plataforma se configura sin desplegar ⚙️',
+        description: 'El 5 % que retiene Club Platform estaba escrito a mano en CINCO sitios del código. Ahora vive en uno solo y se cambia desde la Bóveda Central: por moneda, y con acuerdos particulares por sitio. Desplegar esto no movió ninguna cifra — el valor por defecto es el 5 % de siempre.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'plataforma'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Panel de reglas de comisión en la Bóveda Central, plegado y con su tarifa a la vista.' },
+            { type: 'added', text: 'Tarifa por moneda y acuerdos particulares por sitio, incluida la exención (0 %).' },
+            { type: 'fixed', text: 'Sincronizar un aporte viejo ya no le aplica la tarifa de hoy.' },
+            { type: 'added', text: 'npm run test:fee-rules — 58 comprobaciones.' },
+        ],
+        details: [
+            'CINCO COPIAS DE UNA TARIFA es cómo se llega a que dos caminos de cobro retengan cantidades distintas por el mismo concepto: alguien cambia cuatro, se olvida de la quinta, y nada avisa. Una de las copias ni siquiera se usaba.',
+            '⚠️ CAMBIAR LA TARIFA NO REESCRIBE NINGÚN COBRO ANTERIOR, y sale gratis porque cada pago guarda el IMPORTE retenido, no el porcentaje. Pero el botón de sincronizar SÍ lo recalculaba: con la tarifa escrita a mano daba siempre lo mismo y no se notaba; en cuanto se puede cambiar, sincronizar un aporte de marzo le habría aplicado la tarifa de abril. Ahora usa la retención guardada y sólo calcula cuando falta.',
+            'Se descubrió además que el estimado del procesador era «(total × 2,9 %) + 0,30» PARA TODAS LAS MONEDAS: el 0,30 es el componente fijo en DÓLARES de la tarifa de Stripe, aplicado tal cual a un cobro en pesos, donde treinta centavos de peso no son nada. No se inventó la tarifa real de Stripe en Colombia —eso es un dato que hay que mirar en el panel de Stripe— pero el problema queda dicho en la pantalla y ya se puede configurar.',
+            'La comisión se REDONDEA a la unidad de su moneda: en pesos ya no salen decimales que el peso no tiene. Y nunca supera el aporte.',
+            'Escribir «5» queriendo decir «5 %» se RECHAZA con su motivo, en vez de interpretarse: adivinar ahí es quedarse con el 500 % de un aporte. Un club exento (0 %) sí se distingue de uno sin configurar.',
+            'La tarifa es de la infraestructura compartida, así que sólo la ve y la cambia el operador de la plataforma. Lo comprueba la ruta, no sólo la pantalla.',
+            'Una configuración ilegible o una base que no responde degradan a la tarifa vigente en vez de tumbar un cobro: esto corre en el camino del pago.',
+        ]
+    },
     {
         version: '4.853.0',
         title: 'La Bóveda Central: lo que recaudan TODOS los sitios 🏦',

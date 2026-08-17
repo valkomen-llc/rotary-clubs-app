@@ -8,6 +8,8 @@ import { stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
 import { fromStripeAmount } from '../lib/money.js';
 import { postDonation } from '../lib/ledger.js';
+import { platformFee, estimatedProcessorFee } from '../lib/feeRules.js';
+import { getFeeRules } from '../lib/feeRulesStore.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -15,12 +17,15 @@ import { postDonation } from '../lib/ledger.js';
 // que quede escrito porque se pidió renombrarla así: se cobra también sobre un
 // aporte en dólares que no pasa por ninguna conversión. El costo REAL de
 // conversión existe —lo cobra Stripe al liquidar en otra moneda— y hoy no se
-// modela en ninguna parte; separarlo de esto es la Fase 4.
+// modela en ninguna parte; separarlo de esto sigue pendiente.
 //
-// El número sigue duplicado en `financialController.js`. Se unifica cuando
-// deje de ser una constante y pase a configuración por moneda, país y método
-// de pago, que es lo que corresponde y también es Fase 4.
-const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05;
+// v4.854 — El número ya NO está escrito acá. Estaba duplicado en cinco sitios y
+// el comentario que lo decía llevaba versiones pidiendo que se unificara: vive
+// en `feeRules.js`, se configura por moneda y por sitio desde el panel, y el
+// valor por defecto es el 5 % de siempre, así que desplegar no movió ninguna
+// cifra. También sale de ahí el ESTIMADO del procesador, que hasta v4.853 era
+// `(total * 0.029) + 0.30` para toda moneda — con el 0,30 de DÓLARES aplicado a
+// un cobro en pesos.
 
 // v4.411 — Remitente por defecto del recibo transaccional. Centralizado en
 // Club Platform para entregabilidad. Reply-to apunta al club si tiene email
@@ -74,9 +79,11 @@ export const createPaymentIntent = async (req, res) => {
         const { stripe: dynamicStripe, isMaster } = await getStripeConfig(clubId);
 
         // Calculate application fee for Valkomen if using Master Account
-        const applicationFee = isMaster ? order.total * DEFAULT_PLATFORM_FEE_PERCENTAGE : 0;
-        // Approximation of standard Stripe Fee (2.9% + 0.30)
-        const estimatedStripeFee = (order.total * 0.029) + 0.30;
+        const reglas = await getFeeRules();
+        const applicationFee = isMaster
+            ? platformFee(order.total, { rules: reglas, currency: order.currency, clubId })
+            : 0;
+        const estimatedStripeFee = estimatedProcessorFee(order.total, { rules: reglas, currency: order.currency });
         const netAmount = order.total - applicationFee - estimatedStripeFee;
 
         const paymentIntent = await dynamicStripe.paymentIntents.create({
@@ -553,8 +560,9 @@ async function handleSubscriptionInvoicePaid(invoice) {
         const totalAmount = (invoice.amount_paid || 0) / 100;
         if (totalAmount <= 0) return;
         const currency = (invoice.currency || 'usd').toUpperCase();
-        const applicationFee = totalAmount * DEFAULT_PLATFORM_FEE_PERCENTAGE;
-        const estimatedStripeFee = (totalAmount * 0.029) + 0.30;
+        const reglas = await getFeeRules();
+        const applicationFee = platformFee(totalAmount, { rules: reglas, currency, clubId: md.clubId });
+        const estimatedStripeFee = estimatedProcessorFee(totalAmount, { rules: reglas, currency });
         const netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
 
         await prisma.payment.create({
@@ -626,11 +634,12 @@ async function handleSuccessfulDonationCheckout(session) {
     const totalAmount = (session.amount_total || 0) / 100;
     const currency = (session.currency || 'usd').toUpperCase();
 
-    // Comisión Valkomen (5%). Fee de Stripe lo dejamos como ESTIMACIÓN por
-    // si la llamada a balanceTransactions falla; si llega bien lo sobrescribimos
-    // con el valor real.
-    const applicationFee = totalAmount * DEFAULT_PLATFORM_FEE_PERCENTAGE;
-    let estimatedStripeFee = (totalAmount * 0.029) + 0.30;
+    // La retención de la plataforma, según la regla vigente para esta moneda y
+    // este sitio. El del procesador se deja como ESTIMACIÓN por si la llamada a
+    // balanceTransactions falla; si llega bien se sobrescribe con el real.
+    const reglas = await getFeeRules();
+    const applicationFee = platformFee(totalAmount, { rules: reglas, currency, clubId });
+    let estimatedStripeFee = estimatedProcessorFee(totalAmount, { rules: reglas, currency });
     let netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
 
     // v4.421 — Consultar Stripe balance transaction para datos reales.

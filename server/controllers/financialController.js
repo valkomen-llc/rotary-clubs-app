@@ -14,6 +14,8 @@ import { siteCurrency } from '../lib/clubCurrency.js';
 import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
 import { postRelease } from '../lib/ledger.js';
+import { platformFee } from '../lib/feeRules.js';
+import { getFeeRules } from '../lib/feeRulesStore.js';
 import {
     resolveRango, aplicarFiltros, dentroDelRango, catalogoDestinos, DESTINO_TODOS,
     resumenDelPeriodo,
@@ -83,9 +85,13 @@ const resolveCampaignRef = async (campaignId, clubId) => {
 
 // v4.422 — Margen Valkomen para retiro (debe coincidir con paymentController)
 const PLATFORM_HOLDING_DAYS = 6;
-const PLATFORM_FEE_PERCENTAGE = 0.05;
 
-const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% Valkomen fee
+// v4.854 — El porcentaje ya NO vive acá. Estaba escrito DOS veces en este mismo
+// archivo —`PLATFORM_FEE_PERCENTAGE` y un `DEFAULT_PLATFORM_FEE_PERCENTAGE` que
+// no usaba nadie— más una tercera en `paymentController.js`. Tres copias de una
+// tarifa es cómo se llega a que dos caminos de cobro retengan cantidades
+// distintas por el mismo concepto sin que nada avise. Ahora sale de
+// `feeRules.js`, configurable por moneda y por sitio.
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
@@ -1034,7 +1040,28 @@ export const syncPaymentsWithStripe = async (req, res) => {
                     trm,
                 });
                 const totalAmount = payment.amount;
-                const applicationFee = totalAmount * PLATFORM_FEE_PERCENTAGE;
+
+                // ⚠️ LA RETENCIÓN QUE SE APLICÓ, NO LA QUE SE APLICARÍA HOY.
+                //
+                // Hasta v4.853 esto era `totalAmount * PLATFORM_FEE_PERCENTAGE`
+                // —se RECALCULABA—, y con la tarifa escrita a mano daba siempre
+                // lo mismo, así que no se notaba. Desde que la tarifa se puede
+                // cambiar desde el panel, recalcular significaría que sincronizar
+                // un aporte de marzo le aplica la tarifa de abril: reescribir la
+                // historia financiera de un cobro que ya ocurrió, que es
+                // exactamente lo que el rediseño prohíbe.
+                //
+                // El importe ya está guardado en la fila, así que la regla nueva
+                // no lo alcanza. Sólo se calcula cuando FALTA —un pago anterior a
+                // que se guardara—, y ahí se usa la regla vigente porque es lo
+                // único que hay.
+                const applicationFee = Number.isFinite(Number(payment.applicationFee))
+                    ? Number(payment.applicationFee)
+                    : platformFee(totalAmount, {
+                        rules: await getFeeRules(),
+                        currency: payment.currency,
+                        clubId: payment.clubId,
+                    });
 
                 if (comision.amount === null) {
                     // Sin tasa no se toca el neto: restar otra moneda es el
