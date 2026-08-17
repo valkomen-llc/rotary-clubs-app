@@ -27,7 +27,7 @@ import { claimDelivery, markSent, markFailed } from './notificationLog.js';
 import {
     pickProfileFor, resolveSenderPlan, resolveRecipients, normalizeEmail,
 } from './notificationSpec.js';
-import { renderTemplate, templateShape, defaultTemplate } from './notificationTemplate.js';
+import { renderTemplate, templateShape, defaultTemplateFor } from './notificationTemplate.js';
 
 const fallo = (reason) => ({ ok: false, reason });
 
@@ -105,7 +105,9 @@ const plantillaPara = async ({ profileId, campaignId, event, recipientKind }) =>
         );
         if (rows[0]) return { template: templateShape(rows[0]), version: rows[0].version, source: i.origen };
     }
-    return { template: defaultTemplate(), version: 0, source: 'fábrica' };
+    // La de fábrica depende del PAPEL: el aviso interno informa de un
+    // movimiento, no agradece un aporte que ese destinatario no hizo.
+    return { template: defaultTemplateFor(recipientKind), version: 0, source: 'fábrica' };
 };
 
 /* ─── El envío ───────────────────────────────────────────────────────*/

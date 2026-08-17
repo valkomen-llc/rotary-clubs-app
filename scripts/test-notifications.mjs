@@ -30,6 +30,7 @@ import {
     TEMPLATE_VARIABLES, isKnownVariable, sampleVariables,
     BLOCK_IDS, blockShape, safeUrl, templateShape, validateTemplate,
     variablesIn, escapeHtml, applyVariables, renderTemplate, defaultTemplate,
+    defaultInternalTemplate, defaultTemplateFor,
 } from '../server/lib/notificationTemplate.js';
 
 let ok = 0;
@@ -589,6 +590,35 @@ check('«responsable de campaña» se salta y explica que no existe todavía', (
 check('sin nada marcado no se escribe a nadie',
     resolveRecipients({ profile: conPapeles({}), event: 'payment_confirmed', donorEmail: 'a@b.com' }).recipients.length === 0);
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('FASE 3 — el aviso interno no es la confirmación al aportante');
+
+// Con una sola plantilla, el aviso interno le agradecería a la tesorería por un
+// aporte que no hizo.
+check('la interna es válida', validateTemplate(defaultInternalTemplate()).ok);
+check('y NO agradece: informa de un movimiento',
+    /Nuevo aporte recibido/.test(defaultInternalTemplate().subject)
+    && !/Gracias/i.test(defaultInternalTemplate().subject));
+check('el aportante recibe la de agradecimiento',
+    defaultTemplateFor('donor').subject === defaultTemplate().subject);
+check('los demás papeles reciben la interna',
+    defaultTemplateFor('beneficiary').subject === defaultInternalTemplate().subject
+    && defaultTemplateFor('site').subject === defaultInternalTemplate().subject);
+// Sin papel declarado se cae al aportante, que es el caso de siempre.
+check('sin papel se cae a la del aportante',
+    defaultTemplateFor(null).subject === defaultTemplate().subject
+    && defaultTemplateFor(undefined).subject === defaultTemplate().subject);
+// La interna es más seca a propósito: sin botón y sin firma institucional.
+check('la interna no lleva botón ni firma', (() => {
+    const tipos = defaultInternalTemplate().blocks.map(b => b.type);
+    return !tipos.includes('button') && !tipos.includes('signature');
+})());
+// Quien la reciba tiene que poder reconocerla en una bandeja de trabajo.
+check('la interna dice de qué campaña y cuánto',
+    /\{\{campaign_name\}\}/.test(defaultInternalTemplate().subject)
+    && /\{\{amount\}\}/.test(defaultInternalTemplate().preheader));
+
 // ════════════════════════════════════════════════════════════════════
 grupo('Lo que no se ve ejecutando nada');
 {
@@ -738,8 +768,11 @@ grupo('Lo que no se ve ejecutando nada');
         /sandbox=""/.test(pantalla) && /srcDoc=\{vista\.html\}/.test(pantalla));
     // Una dependencia que falta en un useCallback no la ve el typecheck y el
     // ajuste simplemente no llega nunca (lección de `conQr`, v4.836).
-    check('la vista previa depende de la plantilla y del sitio elegido',
-        /\}, \[perfil, plantilla, sitioPrueba\]\);/.test(pantalla));
+    // Cada una de estas es una dependencia que, si falta, no llega nunca a la
+    // petición — y el defecto se ve como «la vista previa no cambió», nunca
+    // como un error (la lección de `conQr`, v4.836).
+    check('la vista previa depende de la plantilla, el sitio y el destinatario',
+        /\}, \[perfil, plantilla, sitioPrueba, destinatario\]\);/.test(pantalla));
 
     // ── FASE 2 ────────────────────────────────────────────────────
     const emisor = readFileSync('server/lib/notificationSender.js', 'utf8');
@@ -798,6 +831,55 @@ grupo('Lo que no se ve ejecutando nada');
         /from: remitente\.from/.test(ctrl) && /resolveSenderPlan\(/.test(ctrl));
     check('la pantalla muestra el remitente real, con su nivel y su motivo',
         /vista\.sender\.address/.test(pantalla) && /vista\.sender\.reason/.test(pantalla));
+
+    // ── FASE 3 ────────────────────────────────────────────────────
+    const boveda = readFileSync('src/pages/admin/WalletManagement.tsx', 'utf8');
+    const financiero = readFileSync('server/controllers/financialController.js', 'utf8');
+    const campanas = readFileSync('src/pages/admin/ContributionCampaigns.tsx', 'utf8');
+    const rutasFin = readFileSync('server/routes/financial.js', 'utf8');
+
+    // El aporte se busca ACOTADO por el clubId del token, no se lee y después
+    // se comprueba a quién pertenece: para quien pregunta por uno ajeno,
+    // simplemente no existe.
+    check('el reenvío acota el aporte por el sitio del token',
+        /FROM "Donation" WHERE id = \$1 AND "clubId" = \$2/.test(financiero));
+    // Reenviar no es leer: es un correo a un tercero.
+    check('y exige rol administrativo del sitio',
+        /donations\/:id\/resend', authMiddleware, requireSiteAdmin/.test(rutasFin));
+    check('queda registrado quién lo pidió', /\[RESEND\][\s\S]{0,80}req\.user\?\.email/.test(financiero));
+    // Con una consulta por aporte serían decenas por pantalla.
+    check('las notificaciones viajan con los aportes, en un viaje',
+        /notifications: await listDeliveriesFor\(donations\.map/.test(financiero));
+
+    // `sent` NO es `delivered`, y la tarjeta tiene que distinguirlo: es la
+    // pregunta que se hace cuando alguien dice que no recibió nada.
+    check('la Bóveda distingue enviado de entregado',
+        /sent: \{ label: 'Enviado'/.test(boveda) && /delivered: \{ label: 'Entregado'/.test(boveda));
+    // Vacío no es «no le llegó»: es que no se registró nada.
+    check('y dice que «sin registro» no es «no llegó»',
+        /No hay ningún envío registrado/.test(boveda));
+    check('el motivo del proveedor se ve TEXTUAL en la ficha',
+        /d\.errorMessage/.test(boveda));
+    // La llave de idempotencia es contribución + evento + destinatario.
+    check('se avisa que al mismo destinatario no se repite',
+        /Al mismo destinatario no se repite/.test(boveda));
+
+    // La decisión se toma donde ya se está trabajando la campaña: las
+    // pantallas que se olvidan son siempre las del segundo lugar.
+    check('la campaña puede elegir su perfil',
+        /notificationProfileId/.test(campanas) && /'notificaciones'/.test(campanas));
+    // Si no está en CARD_IDS se queda fuera de «Expandir todo».
+    check('y la tarjeta está en CARD_IDS',
+        /CARD_IDS = \[[\s\S]{0,200}'notificaciones'/.test(campanas));
+    // NULL es «heredar», el valor de todas las campañas existentes.
+    check('el servidor guarda la elección de la campaña',
+        /"notificationProfileId" = \$13/.test(readFileSync('server/controllers/contributionCampaignController.js', 'utf8')));
+
+    // Sin esto, cambiar de destinatario cargaría siempre la del aportante y se
+    // guardaría encima de la otra.
+    check('el editor carga y guarda la plantilla del destinatario elegido',
+        /recipientKind=\$\{encodeURIComponent\(kind\)\}/.test(pantalla)
+        && /recipientKind: destinatario/.test(pantalla));
 }
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

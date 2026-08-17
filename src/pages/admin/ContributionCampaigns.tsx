@@ -39,7 +39,14 @@ interface CampaignRow {
     startAt: string | null; endAt: string | null; priority: number;
     content: any; stats: Stat[]; targeting: any; feed?: any; feedRunAt?: string | null;
     recipientClubId: string | null; publishedAt: string | null; updatedAt: string;
+    /** v4.858 — El perfil de notificación elegido EXPRESAMENTE. `null` es
+     *  «heredar», que es el valor de todas las campañas anteriores. */
+    notificationProfileId?: string | null;
 }
+
+/** Los perfiles disponibles, para elegir. Se leen del módulo de
+ *  Notificaciones: duplicar el catálogo daría dos listas que se separan. */
+interface PerfilNotif { id: string; name: string; active: boolean }
 
 /** Una propuesta de la lectura automatizada (v4.825). */
 interface Reading {
@@ -133,7 +140,7 @@ const Card: React.FC<{
 // «Expandir todo»: con la lista escrita dos veces, una sección nueva se
 // quedaría fuera del botón sin que nada avisara.
 const CARD_IDS = [
-    'identidad', 'alcance', 'hero', 'aporte', 'ayudar', 'requeridos',
+    'identidad', 'alcance', 'notificaciones', 'hero', 'aporte', 'ayudar', 'requeridos',
     'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
     'aliados', 'seo', 'resultados', 'historial',
 ];
@@ -189,6 +196,7 @@ const ContributionCampaigns: React.FC = () => {
     const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [clubs, setClubs] = useState<ClubOption[]>([]);
+    const [perfilesNotif, setPerfilesNotif] = useState<PerfilNotif[]>([]);
 
     // Alta
     const [showCreate, setShowCreate] = useState(false);
@@ -264,6 +272,12 @@ const ContributionCampaigns: React.FC = () => {
                 setClubs((Array.isArray(dClubs) ? dClubs : []).map((x: any) => ({
                     id: x.id, name: x.name, type: x.type, district: x.district,
                 })));
+                // Los perfiles NO tumban la carga si fallan: la campaña se
+                // configura igual y el selector queda vacío con su aviso.
+                fetch(`${API}/notification-profiles`, { headers: authHeaders() })
+                    .then(r => (r.ok ? r.json() : []))
+                    .then(d => setPerfilesNotif(Array.isArray(d) ? d.map((p: any) => ({ id: p.id, name: p.name, active: p.active })) : []))
+                    .catch(() => { /* se configura igual sin el selector */ });
             } catch {
                 toast.error('No se pudieron cargar las campañas');
             } finally {
@@ -987,6 +1001,40 @@ const ContributionCampaigns: React.FC = () => {
                                     })}
                                 </div>
                             </div>
+                        )}
+                    </div>
+                </Card>
+
+                {/* ── NOTIFICACIONES (v4.858) ─────────────────────────
+                    Con qué identidad se confirma un aporte a ESTA campaña. La
+                    decisión se toma donde ya se está trabajando la campaña, no
+                    en una pantalla nueva: las pantallas que se olvidan son
+                    siempre las del segundo lugar. */}
+                <Card id="notificaciones" open={isOpen('notificaciones')} onToggle={toggleCard}
+                    title="Notificaciones"
+                    hint="Con qué identidad se le confirma el aporte a quien contribuye.">
+                    <div className="space-y-3">
+                        <label className="block">
+                            <span className={lbl}>Perfil de notificación</span>
+                            <select className={field} value={c.notificationProfileId || ''}
+                                onChange={e => setC({ ...c, notificationProfileId: e.target.value || null })}>
+                                <option value="">Heredar — el que alcance al sitio de origen</option>
+                                {perfilesNotif.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}{p.active ? '' : ' (apagado)'}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <p className="text-xs text-gray-500">
+                            {c.notificationProfileId
+                                ? 'Esta campaña usa un perfil fijo: el aporte se confirma con esa identidad venga del sitio que venga.'
+                                : 'Sin elegir uno, cada aporte se confirma con el perfil que alcance al sitio desde el que se hizo. Es lo que corresponde en casi todos los casos.'}
+                        </p>
+                        {perfilesNotif.length === 0 && (
+                            <p className="text-xs text-amber-700 flex gap-2">
+                                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                                Todavía no hay ningún perfil. Se crean en «Notificaciones de Aportes»; mientras tanto,
+                                los aportes se confirman con el recibo de siempre.
+                            </p>
                         )}
                     </div>
                 </Card>

@@ -258,6 +258,7 @@ const rowToCampaign = (r) => ({
     feed: r.feed || {},
     feedRunAt: r.feedRunAt || null,
     recipientClubId: r.recipientClubId,
+    notificationProfileId: r.notificationProfileId || null,
     createdBy: r.createdBy,
     updatedBy: r.updatedBy,
     publishedAt: r.publishedAt,
@@ -399,17 +400,28 @@ export const updateCampaign = async (req, res) => {
             : (b.recipientClubId ? String(b.recipientClubId) : null);
         if (recipientClubId !== prev.recipientClubId) changed.push('recipientClubId');
 
+        // v4.858 — El perfil de notificación que esta campaña elige
+        // EXPRESAMENTE. Es el primer escalón de la resolución: lo explícito
+        // manda sobre lo que se deduce del alcance. `null` significa
+        // «heredar», que es el valor de todas las campañas existentes y el
+        // comportamiento de siempre.
+        const notificationProfileId = b.notificationProfileId === undefined
+            ? prev.notificationProfileId
+            : (b.notificationProfileId ? String(b.notificationProfileId) : null);
+        if (notificationProfileId !== prev.notificationProfileId) changed.push('notificationProfileId');
+
         const actor = actorOf(req);
         const { rows } = await db.query(
             `UPDATE "ContributionCampaign" SET
                 name = $2, "campaignType" = $3, "startAt" = $4, "endAt" = $5,
                 priority = $6, content = $7, stats = $8, targeting = $9,
-                "recipientClubId" = $10, "updatedBy" = $11, feed = $12, "updatedAt" = NOW()
+                "recipientClubId" = $10, "updatedBy" = $11, feed = $12,
+                "notificationProfileId" = $13, "updatedAt" = NOW()
              WHERE id = $1 RETURNING *`,
             [
                 req.params.id, name, campaignType, startAt, endAt, priority,
                 JSON.stringify(content), JSON.stringify(stats), JSON.stringify(targeting),
-                recipientClubId, actor, JSON.stringify(feed),
+                recipientClubId, actor, JSON.stringify(feed), notificationProfileId,
             ]
         );
         if (changed.length > 0) await recordHistory(req.params.id, 'updated', actor, { changed });

@@ -2661,6 +2661,40 @@ Acá el módulo empieza a gobernar el correo real.
 | `NOTIFICATION_DOMAIN_TTL_MIN` | Cuánto vale una comprobación de dominio (720) |
 | `RESEND_INBOUND_API_KEY` | Key de LECTURA: la de sólo-envío no puede listar dominios |
 
+### Fase 3 — la Bóveda, la campaña y el aviso interno (v4.858)
+
+- **La ficha de un aporte muestra sus correos**, y distingue `sent` de
+  `delivered`: el primero dice que el proveedor lo aceptó y el segundo que
+  llegó. Es justo la distinción que hace falta cuando alguien dice que no
+  recibió nada. Y una lista vacía NO es «no le llegó»: la tarjeta dice que no se
+  registró nada, que es otra cosa.
+- **Las notificaciones viajan CON los aportes**, en el mismo viaje: con una
+  consulta por aporte serían decenas por pantalla.
+- **El reenvío acota el aporte por el `clubId` del token en el `WHERE`**, no lo
+  lee y comprueba después: para quien pregunta por un aporte ajeno, simplemente
+  no existe. Y exige rol administrativo del sitio — reenviar no es leer, es un
+  correo a un tercero — y queda registrado con quién lo pidió.
+- **Reenviar al MISMO destinatario no vuelve a salir**, y es a propósito: la
+  llave de idempotencia es contribución + evento + destinatario. Para volver a
+  mandarlo hay que escribir otra dirección, y la pantalla lo dice.
+- **Sin perfil que alcance al sitio, el reenvío responde 409 con su motivo** y
+  el camino para resolverlo. Lo que falta es configuración, no una avería.
+- **La campaña puede FIJAR su perfil** (`notificationProfileId`, columna
+  aditiva). `null` es «heredar», que es el valor de todas las campañas
+  existentes. La decisión se toma donde ya se está trabajando la campaña, no en
+  una pantalla nueva: las pantallas que se olvidan son siempre las del segundo
+  lugar. Al agregar la tarjeta hay que sumarla a `CARD_IDS` o se queda fuera de
+  «Expandir todo».
+- **EL AVISO INTERNO NO ES LA CONFIRMACIÓN AL APORTANTE**
+  (`defaultInternalTemplate`). Con una sola plantilla, el aviso interno le
+  agradecería a la tesorería por un aporte que no hizo. La interna informa de un
+  movimiento, va sin botón y sin firma institucional, y su asunto sirve para
+  reconocerla en una bandeja de trabajo. `defaultTemplateFor` decide cuál toca
+  según el papel.
+- **El editor carga y guarda la plantilla del destinatario ELEGIDO.** Sin
+  `recipientKind` en la petición y en las dependencias, cambiar de destinatario
+  cargaría siempre la del aportante y se guardaría encima de la otra.
+
 ## En qué moneda se cobra un aporte — v4.834
 
 Hasta v4.833 la moneda salía de `resolveClubCurrency` y nada más: la del SITIO.

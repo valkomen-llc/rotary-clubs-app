@@ -105,6 +105,10 @@ const ContributionNotifications: React.FC = () => {
     const [plantilla, setPlantilla] = useState<Template | null>(null);
     const [plantillaVersion, setPlantillaVersion] = useState<number | null>(null);
     const [plantillaOrigen, setPlantillaOrigen] = useState<string>('');
+    // v4.858 — De QUIÉN es la plantilla que se está editando. El aviso interno
+    // no puede llevar el mismo texto que la confirmación al aportante: uno
+    // agradece y el otro informa de un movimiento.
+    const [destinatario, setDestinatario] = useState('donor');
     const [vista, setVista] = useState<{ html: string; subject: string; missing: string[]; validation: Validation; sender?: Sender } | null>(null);
     const [ancho, setAncho] = useState<'desktop' | 'mobile'>('desktop');
     const [pruebaA, setPruebaA] = useState('');
@@ -146,9 +150,9 @@ const ContributionNotifications: React.FC = () => {
     /** La plantilla del perfil abierto. Se pide al servidor porque la
      *  resolución tiene fallback —campaña, perfil, plataforma, fábrica— y
      *  reproducirla acá daría un segundo criterio que se separaría. */
-    const cargarPlantilla = useCallback(async (profileId: string) => {
+    const cargarPlantilla = useCallback(async (profileId: string, kind = destinatario) => {
         try {
-            const r = await fetch(`${API}/notification-profiles/templates?profileId=${encodeURIComponent(profileId)}`, { headers: auth() });
+            const r = await fetch(`${API}/notification-profiles/templates?profileId=${encodeURIComponent(profileId)}&recipientKind=${encodeURIComponent(kind)}`, { headers: auth() });
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error || 'No se pudo cargar la plantilla');
             setPlantilla(d.template);
@@ -157,7 +161,10 @@ const ContributionNotifications: React.FC = () => {
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo cargar la plantilla');
         }
-    }, []);
+        // `destinatario` VA en las dependencias: sin él, cambiar de
+        // destinatario cargaría siempre la plantilla del aportante y se
+        // guardaría encima de la otra.
+    }, [destinatario]);
 
     const abrirPerfil = useCallback(async (p: Profile) => {
         setPerfil(p);
@@ -211,7 +218,7 @@ const ContributionNotifications: React.FC = () => {
         try {
             const r = await fetch(`${API}/notification-profiles/templates`, {
                 method: 'POST', headers: auth(),
-                body: JSON.stringify({ profileId: perfil.id, template: plantilla }),
+                body: JSON.stringify({ profileId: perfil.id, template: plantilla, recipientKind: destinatario }),
             });
             const d = await r.json();
             if (!r.ok) {
@@ -227,14 +234,14 @@ const ContributionNotifications: React.FC = () => {
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar', { duration: 10000 });
         } finally { setGuardando(false); }
-    }, [perfil, plantilla]);
+    }, [perfil, plantilla, destinatario]);
 
     const previsualizar = useCallback(async () => {
         if (!perfil) return;
         try {
             const r = await fetch(`${API}/notification-profiles/preview`, {
                 method: 'POST', headers: auth(),
-                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla, clubId: sitioPrueba || null }),
+                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla, clubId: sitioPrueba || null, recipientKind: destinatario }),
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error || 'No se pudo previsualizar');
@@ -249,7 +256,7 @@ const ContributionNotifications: React.FC = () => {
         // `sitioPrueba` VA en las dependencias por el mismo motivo que
         // `plantilla`: sin él, elegir un sitio no cambiaría el remitente que se
         // muestra y la vista previa mentiría sobre desde dónde sale el correo.
-    }, [perfil, plantilla, sitioPrueba]);
+    }, [perfil, plantilla, sitioPrueba, destinatario]);
 
     const enviarPrueba = useCallback(async () => {
         if (!perfil || !pruebaA.trim()) { toast.error('Escribí una dirección.'); return; }
@@ -794,6 +801,19 @@ const ContributionNotifications: React.FC = () => {
                                                 <History className="w-3.5 h-3.5" />
                                                 {plantillaVersion ? `versión ${plantillaVersion}` : 'sin versión'} · {plantillaOrigen}
                                             </span>
+                                        </div>
+                                        {/* De quién es esta plantilla. El aviso interno y la
+                                            confirmación al aportante son dos correos distintos y
+                                            no pueden compartir texto. */}
+                                        <div className="flex gap-2 mb-3">
+                                            {(opciones?.recipientKinds || []).filter(rk => rk.id !== 'campaign').map(rk => (
+                                                <button key={rk.id} type="button"
+                                                    onClick={() => { setDestinatario(rk.id); if (perfil.id) cargarPlantilla(perfil.id, rk.id); setVista(null); }}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-black ${
+                                                        destinatario === rk.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                    {rk.label}
+                                                </button>
+                                            ))}
                                         </div>
                                         {plantilla && (
                                             <div className="space-y-3">
