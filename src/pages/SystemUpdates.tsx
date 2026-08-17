@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.850.0 | 2026-08-17 (La Bóveda se exporta a Excel, CSV y PDF)
-// Cache bust: 2026-08-17m
+// UI V4.851.0 | 2026-08-17 (Filtros y descargas en la misma línea del saldo)
+// Cache bust: 2026-08-17n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.851.0',
+        title: 'Los filtros y las descargas, en una sola línea 🎚️',
+        description: 'Pedido del equipo. El período, la campaña y los tres botones de descarga pasan a la MISMA línea de los saldos por moneda, alineados a la derecha y en ese orden: período → campaña → Excel · CSV · PDF. Y el desplegable de campañas se muestra aunque haya una sola: con una, filtrar no cambia el resultado, pero el desplegable NOMBRA de qué campaña vino el dinero, y eso se quiere ver sin abrir ninguna ficha.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'informes'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'Filtros y descargas comparten línea con los saldos, a la derecha.' },
+            { type: 'changed', text: 'El filtro de campaña se muestra aunque haya una sola.' },
+            { type: 'fixed', text: 'El arnés de pruebas no cargaba el CSS: ninguna medida de disposición valía.' },
+        ],
+        details: [
+            'La v4.850 los tenía en dos líneas por miedo a que cuatro controles no cupieran en un portátil. El ajuste no ignora ese riesgo: la fila envuelve, así que en pantalla ancha va todo en una línea y al estrecharse el grupo de la derecha baja solo — que es exactamente la disposición anterior.',
+            'EL ARNÉS DE PRUEBAS NO CARGABA NINGÚN CSS, así que la página se montaba con «display: block» en todo y ninguna comprobación de disposición podía valer: las clases estaban en el DOM y las reglas no existían. Es la lección de v4.719 —una clase que no llega al CSS no existe, en silencio— aplicada a las pruebas. Ahora se inyecta el CSS compilado y las medidas son reales: se comprueba que el período y las descargas estén a la misma altura que los saldos, y en el orden pedido.',
+            'Mostrar el filtro con una sola campaña invierte la regla del sitio «un control que no controla nada». Se hace a propósito y por un motivo que aquella regla no contemplaba: acá el desplegable no sólo filtra, también nombra el destino de lo recibido.',
+        ]
+    },
     {
         version: '4.850.0',
         title: 'La Bóveda se exporta a Excel, CSV y PDF 📄',

@@ -604,6 +604,16 @@ export default function WalletManagement() {
                     </div>
                 ) : (
                     <>
+                        {/* ── UNA sola línea: monedas a la izquierda, filtros y
+                            descargas a la derecha ─────────────────────────
+                            v4.851 — Pedido expreso del equipo. La v4.850 los
+                            tenía en dos líneas por miedo a que cuatro controles
+                            no cupieran en un portátil; el `flex-wrap` con
+                            `ml-auto` resuelve las dos cosas — en pantalla ancha
+                            va todo en una línea, y al estrecharse el grupo de
+                            la derecha baja solo, que es exactamente la
+                            disposición anterior. */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                         {/* El selector sólo aparece con más de una moneda: con una
                             sola sería un control que no controla nada. */}
                         {balances.length > 1 && (
@@ -642,7 +652,7 @@ export default function WalletManagement() {
                             saldo existe a una fecha, no dentro de un rango, y
                             filtrarlo daría «US$ 0,00» a quien mira justo el
                             número con el que decide si pide un retiro. */}
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 ml-auto">
                             <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
                                 <Calendar className="w-4 h-4 text-gray-400" aria-hidden="true" />
                                 <span className="sr-only">Período</span>
@@ -674,10 +684,18 @@ export default function WalletManagement() {
                                 </div>
                             )}
 
-                            {/* El desplegable de destino sólo aparece si hay más
-                                de uno: con uno solo sería un control que no
-                                controla nada. */}
-                            {destinos.length > 1 && (
+                            {/* ⚠️ Se muestra con UNA sola campaña, y es un cambio
+                                deliberado respecto de v4.849 —donde la regla del
+                                sitio, «un control que no controla nada», lo
+                                escondía hasta tener dos—.
+                                El equipo lo pidió expresamente y tiene razón por
+                                un motivo que aquella regla no contemplaba: acá el
+                                desplegable no sólo filtra, NOMBRA de qué campaña
+                                vino el dinero. Con una sola, «Todos» y esa
+                                campaña dan lo mismo; lo que aporta es que el
+                                administrador vea a qué se atribuye lo recibido
+                                sin abrir ninguna ficha. */}
+                            {destinos.length > 0 && (
                                 <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
                                     <Tag className="w-4 h-4 text-gray-400" aria-hidden="true" />
                                     <span className="sr-only">Destino del aporte</span>
@@ -716,7 +734,7 @@ export default function WalletManagement() {
                                 exportar: un botón que descarga un archivo vacío
                                 es peor que no tenerlo. */}
                             {activeDonations.length > 0 && (
-                                <div className="flex items-center gap-1.5 ml-auto">
+                                <div className="flex items-center gap-1.5">
                                     <button
                                         onClick={() => exportar('xlsx')}
                                         disabled={!!exportando}
@@ -755,6 +773,8 @@ export default function WalletManagement() {
                                     </button>
                                 </div>
                             )}
+                        </div>
+
                         </div>
 
                         {/* El aviso vive junto a los filtros y sólo con alguno

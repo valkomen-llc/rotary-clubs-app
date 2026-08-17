@@ -5546,6 +5546,33 @@ un movimiento, mirar `movementOf` — no la tabla.
 controlador no se podía probar —importa la base— y ahí se coló el primero de los
 tres.
 
+### Los filtros y las descargas comparten línea con el saldo (v4.851)
+
+Pedido expreso del equipo: período → campaña → Excel · CSV · PDF, todo en la
+MISMA línea de los chips de moneda y alineado a la derecha (`ml-auto` dentro de
+un `flex flex-wrap`).
+
+- **La v4.850 los separaba en dos líneas por miedo a que no cupieran**, y el
+  miedo era razonable. El ajuste no lo ignora: la fila ENVUELVE, así que en
+  pantalla ancha va todo en una línea y al estrecharse el grupo de la derecha
+  baja solo — que es exactamente la disposición anterior. Medido con el CSS
+  compilado: fila 1132 px, chips 256, grupo derecho 788.
+- **El filtro de campaña se muestra con UNA sola**, invirtiendo a propósito la
+  regla del sitio «un control que no controla nada». El motivo que aquella regla
+  no contemplaba: acá el desplegable no sólo filtra, NOMBRA de qué campaña vino
+  el dinero, y eso el administrador lo quiere ver sin abrir ninguna ficha.
+
+**⚠️ EL ARNÉS DE NAVEGADOR NO CARGABA NINGÚN CSS**, y eso invalidaba toda
+comprobación de disposición: la página se montaba con `display: block` en todo,
+las clases estaban en el DOM y las reglas no existían. Las primeras medidas de
+esta versión daban los dos grupos a 1484 px —el ancho del contenedor— porque
+eran bloques, no elementos flex. Es la lección de v4.719 —una clase que no llega
+al CSS no existe, en silencio— aplicada al propio arnés. Ahora se inyecta
+`dist/assets/index-*.css` y las medidas son reales; sin `dist/` se salta ese
+bloque y el resto de la prueba sigue valiendo. **Al comprobar disposición en una
+prueba de navegador, verificar primero que el CSS esté cargado** — si no, pasa
+por los motivos equivocados.
+
 **Pendiente del bloque C:** la varita de análisis. La regla del sitio ya está
 decidida: los hallazgos los calcula el CÓDIGO con reglas, cada uno con su
 evidencia, y el modelo sólo los REDACTA. `descargarPDF` ya acepta ese texto y lo
