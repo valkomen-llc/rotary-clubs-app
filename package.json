@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.860.0",
-  "cache_bust": "2026-08-17w (Guardar la tarifa caía en el manejador de retiros: la ruta era inalcanzable.)",
+  "version": "4.861.0",
+  "cache_bust": "2026-08-17x (La tarifa nueva se puede aplicar a los aportes que todavía no se pueden retirar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -57,6 +57,7 @@
     "test:ledger:backfill": "node scripts/test-ledger-backfill.mjs",
     "test:ledger:write": "node scripts/test-ledger-write.mjs",
     "test:wallet": "node scripts/test-wallet.mjs",
+    "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
     "test:fee-rules:route": "node scripts/test-fee-rules-route.mjs",
     "test:wallet:central": "node scripts/test-wallet-central.mjs",

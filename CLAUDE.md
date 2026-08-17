@@ -6155,6 +6155,49 @@ navegador dentro de `test:wallet:central:ui`.
   y no `3` — una dependencia que falta o una conversión olvidada no las ve el
   typecheck (la lección de `conQr` y `profileId`).
 
+### Corregir la retención de un aporte ya registrado (v4.861)
+
+`server/lib/feeRecalc.js` (**puro**) + `POST /admin/fee-rules/recalculate`.
+Pruebas: `npm run test:fee-recalc` (42 casos) y la sección 6b de
+`test:fee-rules:route`, que ejercita el camino real.
+
+- **⚠️ ESTO NO CONTRADICE LA REGLA DE v4.854; LA COMPLEMENTA.** Aquélla prohíbe
+  que sincronizar RECALCULE —un cálculo que se dispara como efecto secundario de
+  otra operación reescribe la contabilidad sin que nadie lo decida— y sigue
+  intacta: una prueba comprueba sobre el archivo que `syncPaymentsWithStripe`
+  siga usando la retención guardada. Lo que se agrega es la vía DELIBERADA que
+  la propia especificación del rediseño pide («si se necesita corregir, crear un
+  *adjustment entry*; no sobrescribir historia financiera»). Lo que separa una
+  corrección de una reescritura son tres cosas: la pide una persona, queda
+  registrada, y tiene un límite demostrable.
+- **EL LÍMITE ES «TODAVÍA NO SE PUEDE RETIRAR», y el motivo es que es lo único
+  DEMOSTRABLE.** No hay vínculo por fila entre un `Payment` y el retiro que se lo
+  llevó —`PayoutRequest` es por club y por importe—, así que «¿este aporte ya se
+  giró?» no se puede contestar. Lo contrario sí: con `clubAvailableOn` en el
+  futuro, no puede haber salido en ningún retiro. Sin fecha NO se toca: ante la
+  duda, no se corrige.
+- **El límite va en el WHERE y OTRA VEZ en el UPDATE.** Entre leer y escribir
+  puede pasar el tiempo, y el candado sobre `applicationFee` hace que dos vueltas
+  simultáneas no se pisen — mismo criterio que `ingestScene`.
+- **LA COMISIÓN DEL PROCESADOR NO SE TOCA.** No es nuestra y muchas veces está
+  MEDIDA contra el balance transaction de Stripe: recalcularla sería inventar. Se
+  deduce de lo guardado (`bruto − neto − plataforma`, lo mismo que hace
+  `movementOf` para pintarla) y se vuelve a restar tal cual. **Si se moviera sólo
+  la retención sin recalcular el neto, la comisión de Stripe —que es derivada—
+  absorbería la diferencia** y la ficha mostraría una comisión de proveedor que
+  nunca ocurrió.
+- **De ENSAYO por defecto**, como el backfill del libro. Y lo que NO se pudo
+  corregir se devuelve agrupado por motivo, con ejemplos: sin eso, «no pasó nada»
+  es indistinguible de «no se pudo».
+- **La traza es una LISTA** (`feeCorrections` en `rawPayload`): valor anterior,
+  nuevo, regla, quién y cuándo. Una segunda corrección no borra la primera. Sin
+  ella, «¿por qué éste retiene 2,1 % y aquél 5 %?» no tiene dónde mirarse.
+- **Los totales son POR MONEDA**, como en todo el módulo. Acá el error sería
+  sobre una corrección de dinero, que es peor.
+- **Las pruebas usan los números REALES del reporte** —50.000 COP con comisión
+  medida de 3.629, y US$ 10 con 0,59—, no unos inventados para que pasen. Misma
+  exigencia que las cifras del sismo en `test:contribution`.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

@@ -16,9 +16,10 @@ import {
     filaDeSitio, consolidar, porSitio, takeRate, ticketPromedio, soloConMovimiento,
 } from '../lib/centralWallet.js';
 import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
+import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
 
-console.log('[PAYOUTS v4.854] Reglas de comisión configurables + Bóveda Central multi-sitio');
+console.log('[PAYOUTS v4.861] Recálculo deliberado de la retención + reglas de comisión configurables');
 
 // v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
 // `financialController` y la barra superior del panel, y tres copias del mismo
@@ -586,6 +587,103 @@ export const updateFeeRulesConfig = async (req, res) => {
     } catch (error) {
         console.error('[FEE-RULES] Error guardando la configuración:', error);
         res.status(500).json({ error: 'No se pudo guardar la configuración de comisiones.' });
+    }
+};
+
+/**
+ * Aplica la tarifa vigente a los aportes que TODAVÍA NO SE PUEDEN RETIRAR.
+ *
+ * ⚠️ Es la única vía por la que la retención de un cobro registrado cambia, y
+ * es deliberada: la pide una persona, es de ENSAYO salvo `{"apply": true}`,
+ * queda registrada en la traza del aporte y sólo alcanza el dinero que es
+ * imposible que se haya girado. `syncPaymentsWithStripe` sigue SIN recalcular
+ * nada — un cálculo que se dispara como efecto secundario de otra operación es
+ * lo que reescribe la contabilidad sin que nadie lo decida (v4.854).
+ */
+export const recalcFees = async (req, res) => {
+    try {
+        const aplicar = req.body?.apply === true;
+        const clubId = req.body?.clubId || null;
+        const ids = Array.isArray(req.body?.paymentIds) ? req.body.paymentIds.filter(Boolean) : null;
+        const ahora = new Date();
+
+        // Se traen SÓLO los que pueden cambiar: acreditados, de la plataforma y
+        // con la disponibilidad todavía por delante. El límite va en el WHERE y
+        // no después, así que un aporte ya retirable ni siquiera se mira.
+        const cond = [`p.status = 'succeeded'`, `p."isPlatformCollection" = true`, `p."clubAvailableOn" > $1`];
+        const args = [ahora];
+        if (clubId) { args.push(clubId); cond.push(`p."clubId" = $${args.length}`); }
+        if (ids?.length) { args.push(ids); cond.push(`p.id = ANY($${args.length})`); }
+
+        const { rows } = await db.query(
+            `SELECT p.id, p."clubId", p.amount, p.currency, p."applicationFee", p."netAmount",
+                    p.status, p."isPlatformCollection", p."clubAvailableOn", p."rawPayload", p."createdAt",
+                    c.name AS "clubName"
+               FROM "Payment" p
+               LEFT JOIN "Club" c ON c.id = p."clubId"
+              WHERE ${cond.join(' AND ')}
+              ORDER BY p."createdAt" DESC
+              LIMIT 500`,
+            args
+        );
+
+        const rules = await getFeeRules();
+        const plan = planRecalc(rows, { rules, ahora });
+
+        if (!aplicar) {
+            return res.json({
+                ensayo: true,
+                ...plan,
+                aviso: 'Nada se escribió. Repetí con {"apply": true} para aplicarlo.',
+            });
+        }
+
+        // Se escribe uno por uno y con UPDATE CONDICIONAL sobre la retención
+        // anterior: si otra vuelta ya lo corrigió, esta no vuelve a hacerlo. Es
+        // el mismo candado optimista de `ingestScene` y del reclamo de escenas.
+        const aplicados = [];
+        const fallidos = [];
+        for (const a of plan.aplicables) {
+            try {
+                const fila = rows.find(r => r.id === a.id);
+                let payload = {};
+                try { payload = fila?.rawPayload ? JSON.parse(fila.rawPayload) : {}; } catch { payload = {}; }
+                // La traza es una LISTA: una segunda corrección no borra la
+                // primera. Es lo que contesta «¿por qué éste retiene 2,1 % y
+                // aquél 5 %?» dentro de seis meses.
+                const correcciones = Array.isArray(payload.feeCorrections) ? payload.feeCorrections : [];
+                correcciones.push(registroDeCorreccion(a, {
+                    por: req.user?.email || req.user?.id || 'operador',
+                    cuando: ahora,
+                    motivo: req.body?.reason || 'la tarifa de la plataforma cambió',
+                }));
+                payload.feeCorrections = correcciones;
+
+                const upd = await db.query(
+                    `UPDATE "Payment"
+                        SET "applicationFee" = $2, "netAmount" = $3, "rawPayload" = $4, "updatedAt" = NOW()
+                      WHERE id = $1 AND "applicationFee" = $5 AND "clubAvailableOn" > $6
+                      RETURNING id`,
+                    [a.id, a.plataformaAhora, a.netoAhora, JSON.stringify(payload), a.plataformaAntes, ahora]
+                );
+                if (upd.rowCount) aplicados.push(a);
+                else fallidos.push({ id: a.id, error: 'otra vuelta lo corrigió primero, o ya es retirable' });
+            } catch (e) {
+                fallidos.push({ id: a.id, error: e?.message || 'no se pudo escribir' });
+            }
+        }
+
+        console.log(`[FEE-RECALC] ${aplicados.length} aporte(s) corregidos por ${req.user?.email || req.user?.id}`);
+        res.json({
+            ensayo: false,
+            ...plan,
+            aplicados: aplicados.length,
+            fallidos,
+            aviso: 'La corrección quedó registrada en la traza de cada aporte, con su valor anterior.',
+        });
+    } catch (error) {
+        console.error('[FEE-RECALC] Error recalculando:', error);
+        res.status(500).json({ error: 'No se pudo recalcular la retención.' });
     }
 };
 

@@ -169,6 +169,71 @@ ok('y el error dice cómo se escribe',
     /tanto por uno/i.test(JSON.stringify(errCuerpo?.errors || [])),
     JSON.stringify(errCuerpo).slice(0, 200));
 
+// ── 6b. El recálculo, por su camino real ────────────────────────────
+section('6b. Corregir la retención de los aportes ya recibidos');
+
+const { aportes, escrituras } = await import('./fixtures/db-fee-stub.mjs');
+// Los dos aportes del reporte, EN TRÁNSITO (retirables el 24, hoy es el 17).
+const enFuturo = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+const enPasado = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+aportes.push(
+    { id: 'p-rodrigo', clubId: 'c1', status: 'succeeded', isPlatformCollection: true,
+      amount: 50000, currency: 'COP', applicationFee: 2500, netAmount: 43871,
+      clubAvailableOn: enFuturo, rawPayload: null, createdAt: new Date() },
+    { id: 'p-melissa', clubId: 'c1', status: 'succeeded', isPlatformCollection: true,
+      amount: 10, currency: 'USD', applicationFee: 0.5, netAmount: 8.91,
+      clubAvailableOn: enFuturo, rawPayload: null, createdAt: new Date() },
+    // Éste YA es retirable: no se puede demostrar que siga acá.
+    { id: 'p-viejo', clubId: 'c1', status: 'succeeded', isPlatformCollection: true,
+      amount: 20000, currency: 'COP', applicationFee: 1000, netAmount: 18000,
+      clubAvailableOn: enPasado, rawPayload: null, createdAt: new Date() },
+);
+
+// Primero se fija la tarifa en 2,1 % (el PUT de arriba dejó 5 % tras el cuerpo
+// vacío), y después se corre el ensayo.
+await fetch(`${base}/admin/fee-rules`, {
+    method: 'PUT', headers: auth,
+    body: JSON.stringify({ rules: { platform: { percent: 0.021, fixed: 0 } } }),
+});
+
+const ensayo = await (await fetch(`${base}/admin/fee-rules/recalculate`, {
+    method: 'POST', headers: auth, body: JSON.stringify({}),
+})).json();
+
+ok('el ensayo NO escribe nada', ensayo.ensayo === true && escrituras.length === 0,
+    `escrituras: ${escrituras.length}`);
+ok('propone corregir los dos en tránsito', ensayo.aplicables?.length === 2,
+    JSON.stringify(ensayo.aplicables?.map(a => a.id)));
+// ⚠️ El ya retirable ni siquiera se mira: el límite va en el WHERE.
+ok('el ya retirable no entra', !ensayo.aplicables?.some(a => a.id === 'p-viejo'));
+ok('los pesos siguen sin sumarse con los dólares',
+    Object.keys(ensayo.porMoneda || {}).sort().join(',') === 'COP,USD');
+
+const aplicado = await (await fetch(`${base}/admin/fee-rules/recalculate`, {
+    method: 'POST', headers: auth, body: JSON.stringify({ apply: true }),
+})).json();
+
+ok('aplicar corrige los dos', aplicado.aplicados === 2, JSON.stringify(aplicado.aplicados));
+const rod = aportes.find(a => a.id === 'p-rodrigo');
+ok('Rodrigo: la retención baja de 2.500 a 1.050', rod.applicationFee === 1050, String(rod.applicationFee));
+ok('y su neto sube a 45.321', rod.netAmount === 45321, String(rod.netAmount));
+const mel = aportes.find(a => a.id === 'p-melissa');
+ok('Melissa: la retención baja de 0,50 a 0,21', mel.applicationFee === 0.21, String(mel.applicationFee));
+ok('y su neto sube a 9,20', mel.netAmount === 9.20, String(mel.netAmount));
+const viejo = aportes.find(a => a.id === 'p-viejo');
+ok('el ya retirable quedó INTACTO', viejo.applicationFee === 1000 && viejo.netAmount === 18000);
+
+// La traza: sin ella, «¿por qué éste retiene 2,1 % y aquél 5 %?» no se contesta.
+const traza = JSON.parse(rod.rawPayload || '{}').feeCorrections || [];
+ok('queda la traza con el valor ANTERIOR', traza[0]?.platformFrom === 2500, JSON.stringify(traza[0]));
+ok('y con quién la hizo', !!traza[0]?.by && !!traza[0]?.at);
+
+// Correrlo dos veces no vuelve a cambiar nada: es idempotente.
+const repetido = await (await fetch(`${base}/admin/fee-rules/recalculate`, {
+    method: 'POST', headers: auth, body: JSON.stringify({ apply: true }),
+})).json();
+ok('correrlo de nuevo no cambia nada', repetido.aplicados === 0, JSON.stringify(repetido.aplicados));
+
 // ── 7. Que no vuelva a pasar ────────────────────────────────────────
 section('7. Ninguna ruta literal por debajo de su paramétrica');
 

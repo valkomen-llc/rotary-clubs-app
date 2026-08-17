@@ -10,7 +10,8 @@ import {
     backfillLedger,
     getCentralOverview,
     getFeeRulesConfig,
-    updateFeeRulesConfig
+    updateFeeRulesConfig,
+    recalcFees
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -58,6 +59,11 @@ router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOvervie
 // cambia. Se comprueba acá, no sólo en la pantalla.
 router.get('/admin/fee-rules', roleMiddleware(superAdminRoles), getFeeRulesConfig);
 router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesConfig);
+
+// v4.861 — Aplicar la tarifa vigente a los aportes que TODAVÍA NO se pueden
+// retirar. De ENSAYO salvo `{"apply": true}`. Es la única vía por la que la
+// retención de un cobro registrado cambia, y es deliberada.
+router.post('/admin/fee-rules/recalculate', roleMiddleware(superAdminRoles), recalcFees);
 
 // v4.847 — El libro mayor contra la Bóveda. Sólo lectura y sólo del operador:
 // es una herramienta de migración sobre infraestructura compartida, y lo que
