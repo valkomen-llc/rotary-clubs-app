@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.839.0 | 2026-08-17 (Design DNA: contexto narrado, prompt de estilo y el fondo de marca)
-// Cache bust: 2026-08-17b
+// UI V4.840.0 | 2026-08-17 (El lienzo de la pieza de campaña se genera con KIE)
+// Cache bust: 2026-08-17c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.840.0',
+        title: 'El fondo de una pieza de campaña ya lo puede componer la IA 🖼️',
+        description: 'En el preset «Maneras de Contribuir» aparece «Fondo generado con IA»: con la fotografía de la campaña elegida, KIE.AI la integra dentro de un lienzo institucional en vez de dejarla dentro de un recuadro. Es el MISMO motor que ya usa «Desde una foto» del Generador de Publicaciones —KIE.AI con Nano Banana— y la misma credencial: no se conectó un proveedor nuevo. Lo que la IA genera es el FONDO y sólo el fondo: el titular, las cifras, la fuente de cada dato y los escudos de la familia Rotary los sigue dibujando la plataforma, porque un modelo generativo no escribe texto de forma fiable y cuando sale mal no hay forma limpia de corregirlo. La dirección de arte sale del estilo que se haya extraído de las piezas de referencia, así que el fondo se parece a lo que el sitio ya publica. Va apagado por defecto, se enciende pieza por pieza, dice que gasta créditos, y tiene vuelta atrás: quitar el fondo devuelve la fotografía a su recuadro.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'infografias', 'ia'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón «Componer» que manda la fotografía a KIE.AI y trae el lienzo.' },
+            { type: 'added', text: 'El estilo de las referencias dirige el fondo generado.' },
+            { type: 'added', text: 'Vuelta atrás: «Quitar el fondo» devuelve la pieza a su composición.' },
+            { type: 'changed', text: 'El texto y las cifras se siguen componiendo encima, nunca los escribe la IA.' },
+        ]
+    },
     {
         version: '4.839.0',
         title: 'El estilo ahora se explica y se puede llevar a un generador de imágenes ✍️',

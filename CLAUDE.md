@@ -2967,14 +2967,82 @@ generación de imágenes»*.
   guardados con la versión del perfil y una pieza generada hace un mes se explica
   con el mismo texto que la generó.
 
-**Pendiente de la fase siguiente:** la previsualización comparativa
-(referencia | pieza) y la regeneración guiada por los indicadores. El prompt de
-estilo está listo para alimentar el `masterPrompt` del Motor de Composición de
-Plantillas IA —que es el campo que ya existe para la dirección de arte— pero ese
-cableado no está hecho: hoy el prompt se copia a mano. No hay
+No hay
 espejo de `creativeDNA.js` en el navegador a propósito: el criterio se aplica
 ENTERO en el servidor y la pantalla sólo muestra el resultado, así que un espejo
 sería una copia sin consumidor — y las copias se separan en silencio.
+
+**Pendiente de la fase siguiente:** la previsualización comparativa
+(referencia | pieza) y la regeneración guiada por los indicadores.
+
+### El lienzo de la pieza de campaña lo genera KIE (v4.840)
+
+Pedido literal: *«verifica que el modelo que está generando las imágenes es el de
+KIE.AI; si no está configurado, por favor conectarlo para que sea él quien genere
+el contenido, así como está configurado en el Generador de Publicaciones "DESDE
+UNA FOTO"»*. La verificación dio dos respuestas distintas según el camino, y de
+ahí sale la regla principal.
+
+- **«Desde una foto» YA generaba con KIE y sigue igual.** `generatePost` rutea
+  por el registro `ENGINES` con `DEFAULT_ENGINE = 'kie'` y despacha a
+  `generateWithKie` → `createKieImageTask({ model: 'google/nano-banana-edit' })`,
+  con `KIE_API_KEY`. No había nada que conectar ahí.
+- **«Maneras de Contribuir» NO generaba ninguna imagen, y eso era el diseño.**
+  Componía la pieza con el grafo de escena y la fotografía salía de la
+  Biblioteca. Es la decisión fundacional de v4.833 y se sostiene en dos hechos
+  medidos: la regla #1 del sitio prohíbe retocar la salida de un modelo —el
+  equipo rechazó el composite dos veces con las palabras «se ve overlay /
+  montaje»— y `designCompose.js` ya dejó documentado que los modelos generativos
+  **no escriben texto de forma fiable** y que cuando sale mal **no hay salida
+  limpia**.
+- **Por eso KIE genera el LIENZO, no la pieza.** El fondo —la fotografía
+  integrada en una lámina institucional— lo hace el motor; el titular, las
+  cifras, la fuente de cada dato y los escudos de la familia Rotary los sigue
+  dibujando la plataforma. Es el reparto que ya tenía Plantillas IA, y lo fija
+  una prueba: si el controlador empezara a pedirle texto al modelo, falla.
+- **NO hay un segundo cliente de KIE.** El endpoint del preset llama a
+  `startComposition` / `syncComposition` de `designBackdrop.js`, que son los
+  mismos que usa Plantillas IA. Escribir acá otra llamada a `createKieImageTask`
+  daría dos caminos hacia el proveedor que se separan en silencio — el problema
+  que `sendCampaign` arrastra en el CRM. Lo comprueba una prueba **buscando la
+  LLAMADA, no la mención**: el comentario que explica de dónde sale el motor
+  tiene que poder nombrarlo.
+- **La dirección de arte sale del perfil creativo** (`derived.stylePrompt` →
+  `masterPrompt`). Era el pendiente declarado en v4.839 —«hoy el prompt se copia
+  a mano»— y esto es su cableado. El prompt ya traía la cláusula de que la
+  imagen no lleva texto ni logotipos porque se componen encima: se escribió
+  para esto.
+- **El perfil se resuelve en el SERVIDOR también para el fondo.** El id llega
+  del navegador y se comprueba contra el alcance antes de usarlo; sin eso, un
+  sitio compondría con el estilo de otro.
+- **Sin fotografía se rechaza con su motivo.** `nano-banana-edit` es un modelo
+  de EDICIÓN: sin imagen de entrada no hay nada que componer. Se dice con esas
+  palabras en vez de dejar que falle en KIE con un error del proveedor que no
+  explica qué hacer. Igual la credencial ausente: se nombra `KIE_API_KEY`.
+- **Es ASÍNCRONO y la pieza SIN fondo ya está lista.** La composición tarda
+  20-60 s: se crea la tarea y el navegador sondea, con tope de espera. Un fallo
+  al componer **no rompe la pieza** —queda su composición declarada, con la
+  fotografía en su recuadro, descargable— y hay vuelta atrás explícita: una
+  generación que no gusta no puede dejar la pieza peor que antes.
+- **«Tiene fondo» se DERIVA del documento** (`hasBackdrop`), no de un estado
+  propio. Un booleano aparte daría dos verdades sobre la misma pila de nodos y
+  se contradirían al regenerar la pieza o al cambiar de diapositiva — el mismo
+  error que `publicKeyOf` evitó en Plantillas IA. Poner y quitar el fondo se
+  hace con `withBackdrop` / `withoutBackdrop` del espejo, que además apagan el
+  nodo de la fotografía: la foto ya está DENTRO de la imagen compuesta y
+  dejarla encima la mostraría dos veces.
+- **Va APAGADO por defecto y el costo se DICE.** Gasta créditos por pieza y
+  manda la fotografía a un proveedor externo: es una decisión de quien genera,
+  no un valor por omisión. Y no se dispara al componer la pieza — lo comprueba
+  una prueba leyendo el manejador.
+- **Dos botones con el mismo nombre en la misma pantalla no se distinguen.**
+  «Quitar» ya era el de la fotografía, así que el del fondo dice «Quitar el
+  fondo». Lo destapó la prueba de navegador, no el typecheck.
+- **Se verifica en un NAVEGADOR que los ajustes lleguen a la petición**
+  (`test:design:render`): fotografía, formato, documento y estilo. Es la
+  lección de `conQr` (v4.836) y de `profileId` (v4.838) — una dependencia que
+  falta en un `useCallback` no la ve el typecheck, el código es válido y el
+  ajuste simplemente no llega nunca.
 
 **Pendiente de las fases siguientes:** el Design DNA extraído de las
 referencias, los Creative Profiles versionados y los cuatro indicadores de

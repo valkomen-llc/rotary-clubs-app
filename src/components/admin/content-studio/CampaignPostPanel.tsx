@@ -10,6 +10,13 @@ import MediaPicker from './MediaPicker';
 import CreativeProfileDialog, { type CreativeProfile } from './CreativeProfileDialog';
 import { exportDocument, exportToFile, renderDocumentToCanvas, canvasToBlob } from '../../../lib/designRender';
 import { qrToDataUri } from '../../../lib/qrcode';
+// El fondo generado se pone y se quita con el MISMO criterio que en Plantillas
+// IA: `withBackdrop` lo mete debajo de todo y apaga el nodo de la fotografía
+// —la foto ya está dentro de la imagen compuesta y dejarla encima la mostraría
+// dos veces—, y `withoutBackdrop` devuelve la pieza a su composición declarada.
+// Escribirlo acá otra vez daría dos verdades sobre la misma pila de nodos.
+import { withBackdrop, withoutBackdrop, hasBackdrop } from '../../../lib/designCompose';
+import type { DesignDocument } from '../../../lib/designSpec';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
 import { ensureDesignFonts, fontState, onFontState, type FontState } from '../../../lib/designFonts';
 import {
@@ -174,6 +181,21 @@ const CampaignPostPanel: React.FC = () => {
     // Va apagado por defecto: no toda pieza lo necesita y ocupa el sitio de la
     // dirección escrita, que es lo que se lee de un vistazo.
     const [conQr, setConQr] = useState(false);
+    // ── EL LIENZO GENERADO CON KIE (v4.840) ──────────────────────────
+    //
+    // Lo que el motor genera es el FONDO —la fotografía integrada en un lienzo
+    // institucional—, no el texto ni las cifras: ésos los sigue componiendo la
+    // plataforma, porque un modelo generativo no escribe texto de forma fiable
+    // y corregirlo encima sería el composite que el equipo ya rechazó dos
+    // veces. Va apagado por defecto: gasta créditos por pieza y manda la
+    // fotografía a un proveedor externo, que es una decisión de quien genera.
+    //
+    // NO hay un estado «tiene fondo»: eso se DERIVA del documento con
+    // `hasBackdrop`. Un booleano aparte daría dos verdades sobre la misma pila
+    // de nodos y se contradirían en cuanto se regenere la pieza o se cambie de
+    // diapositiva — el mismo error que `publicKeyOf` evitó en Plantillas IA.
+    const [fondoTrabajando, setFondoTrabajando] = useState(false);
+    const fondoCancelado = useRef(false);
     // El carrusel: varias piezas de una vez, cada una con su objetivo. Vive
     // aparte de `pieza` porque son dos resultados distintos y mezclarlos haría
     // que generar uno borrara el otro sin que nadie lo pidiera.
@@ -383,6 +405,87 @@ const CampaignPostPanel: React.FC = () => {
         } finally { setGenerando(false); }
     }, [campaignId, audience, language, formatId, imageUrl, conQr, urlCampana, perfilId]);
 
+    /** Escribe el documento de la pieza suelta o de la diapositiva que se está
+     *  viendo. Un solo punto: con dos, el fondo podría acabar en una pieza
+     *  distinta de la que está en pantalla. */
+    const escribirDocActivo = useCallback((fn: (d: DesignDocument) => DesignDocument) => {
+        setCarrusel(prev => {
+            if (!prev) return prev;
+            const i = Math.min(slideIdx, prev.slides.length - 1);
+            const slides = prev.slides.map((s, k) => (k === i ? { ...s, document: fn(s.document) } : s));
+            return { ...prev, slides };
+        });
+        setPieza(prev => (prev ? { ...prev, document: fn(prev.document) } : prev));
+    }, [slideIdx]);
+
+    /** El LIENZO generado con KIE.
+     *
+     *  ── QUÉ GENERA Y QUÉ NO ──────────────────────────────────────────
+     *  KIE genera el FONDO: la fotografía de la campaña integrada en un lienzo
+     *  institucional. El titular, las cifras, la fuente de cada dato y los
+     *  escudos reales los sigue componiendo la plataforma — un modelo
+     *  generativo no escribe texto de forma fiable y retocar su salida para
+     *  corregirlo es el composite que el equipo rechazó dos veces.
+     *
+     *  Es el MISMO motor que «Desde una foto» (`google/nano-banana-edit` vía
+     *  KIE) y el mismo camino que el Motor de Composición de Plantillas IA.
+     *
+     *  ── SE SONDEA ────────────────────────────────────────────────────
+     *  Una composición tarda 20-60 s. Se crea la tarea y se pregunta; esperar
+     *  dentro de la petición agotaría el tiempo de la función. */
+    const generarFondo = useCallback(async () => {
+        const doc = carrusel
+            ? carrusel.slides[Math.min(slideIdx, carrusel.slides.length - 1)]?.document
+            : pieza?.document;
+        if (!doc) { toast.error('Generá la pieza primero.'); return; }
+        if (!imageUrl) { toast.error('Hace falta la fotografía de la campaña: el fondo se compone a partir de ella.'); return; }
+
+        fondoCancelado.current = false;
+        setFondoTrabajando(true);
+        const toastId = toast.loading('Componiendo el fondo con KIE…');
+        try {
+            const r = await fetch(`${API}/content-studio/campaign-post/backdrop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...auth() },
+                body: JSON.stringify({ document: doc, format: formatId, imageUrl, profileId: perfilId || null, variants: 1 }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error || 'No se pudo iniciar la composición');
+            const taskId = d.variants?.find((v: { taskId: string | null }) => v.taskId)?.taskId;
+            if (!taskId) throw new Error('KIE no devolvió ninguna tarea.');
+
+            // Tope de espera: sin él, un trabajo que nunca termina deja la
+            // pantalla girando para siempre y quien la abrió no sabe si esperar.
+            const limite = Date.now() + 150_000;
+            for (;;) {
+                if (fondoCancelado.current) { toast.dismiss(toastId); return; }
+                if (Date.now() > limite) throw new Error('KIE tardó más de lo esperado. La pieza sigue lista sin el fondo; se puede reintentar.');
+                await new Promise(res => setTimeout(res, 3000));
+                const s = await fetch(`${API}/content-studio/campaign-post/backdrop/${taskId}?format=${formatId}`, { headers: auth() });
+                const e = await s.json();
+                if (!s.ok) throw new Error(e?.error || 'No se pudo consultar la composición');
+                if (e.status === 'pending') continue;
+                if (e.status !== 'ready' || !e.url) throw new Error(e?.error || 'La composición no llegó a completarse.');
+                if (fondoCancelado.current) { toast.dismiss(toastId); return; }
+                escribirDocActivo(dd => withBackdrop(dd, e.url));
+                toast.success('Fondo aplicado.', { id: toastId });
+                return;
+            }
+        } catch (e) {
+            // Un fallo al componer NO rompe la pieza: queda su composición
+            // declarada, con la fotografía en su recuadro, que es una pieza
+            // correcta y descargable.
+            toast.error(e instanceof Error ? e.message : 'No se pudo componer el fondo', { id: toastId, duration: 10000 });
+        } finally { setFondoTrabajando(false); }
+    }, [carrusel, pieza, slideIdx, imageUrl, formatId, perfilId, escribirDocActivo]);
+
+    /** La vuelta atrás. Una generación que no gusta no puede dejar la pieza
+     *  peor que antes: se quita el fondo y la fotografía vuelve a su recuadro. */
+    const quitarFondo = useCallback(() => {
+        fondoCancelado.current = true;
+        escribirDocActivo(withoutBackdrop);
+    }, [escribirDocActivo]);
+
     /** Todas las piezas del carrusel en un ZIP. Descargarlas una por una hace
      *  que el navegador bloquee todas menos la primera. */
     const descargarZip = async () => {
@@ -535,6 +638,9 @@ const CampaignPostPanel: React.FC = () => {
     // Es UN solo punto de decisión — con dos, el botón de descargar podría
     // bajar una pieza distinta de la que se está viendo.
     const docActivo = carrusel ? carrusel.slides[Math.min(slideIdx, carrusel.slides.length - 1)]?.document : pieza?.document;
+    // Se DERIVA del documento, no de un estado propio: el documento es la
+    // única verdad sobre si la pieza lleva fondo generado.
+    const fondoActivo = docActivo ? hasBackdrop(docActivo) : false;
     const avisos = carrusel ? carrusel.warnings : (pieza?.warnings || []);
     const problemas = carrusel ? carrusel.copyIssues : (pieza?.copyIssues || []);
 
@@ -719,6 +825,50 @@ const CampaignPostPanel: React.FC = () => {
                             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${conQr && urlCampana ? 'left-[22px]' : 'left-0.5'}`} />
                         </span>
                     </button>
+                </div>
+
+                {/* ── EL LIENZO GENERADO CON KIE (v4.840) ──────────────
+                    Es el MISMO motor que «Desde una foto». Lo que genera es el
+                    FONDO, no el texto: las cifras, el titular, la fuente de
+                    cada dato y los escudos reales los sigue componiendo la
+                    plataforma. Va apagado por defecto y el costo se DICE —
+                    gasta créditos por pieza y manda la fotografía a un
+                    proveedor externo. */}
+                <div className={card}>
+                    <div className="flex items-center justify-between gap-3">
+                        <span>
+                            <span className={`${lbl} mb-1`}>Fondo generado con IA</span>
+                            <span className="block text-xs text-gray-500">
+                                {imageUrl
+                                    ? <>KIE.AI · <span data-no-translate>Nano Banana</span> compone la fotografía dentro de un lienzo institucional. El texto y las cifras los sigue dibujando la plataforma. Gasta créditos por pieza.</>
+                                    : 'Elegí primero la fotografía de la campaña: el fondo se compone A PARTIR de ella.'}
+                            </span>
+                        </span>
+                        {fondoActivo ? (
+                            <button type="button" onClick={quitarFondo}
+                                className="flex-shrink-0 text-[11px] font-black uppercase tracking-wider text-gray-500 hover:text-gray-800">
+                                {/* «Quitar» a secas ya es el botón de la
+                                    fotografía: dos botones con el mismo
+                                    nombre en la misma pantalla no se
+                                    distinguen, ni a la vista ni con un lector
+                                    de pantalla. */}
+                                Quitar el fondo
+                            </button>
+                        ) : (
+                            <button type="button" onClick={generarFondo}
+                                disabled={!docActivo || !imageUrl || fondoTrabajando}
+                                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed">
+                                {fondoTrabajando
+                                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Componiendo…</>
+                                    : <><Sparkles className="w-3.5 h-3.5" /> Componer</>}
+                            </button>
+                        )}
+                    </div>
+                    {fondoTrabajando && (
+                        <p className="mt-2 text-xs text-gray-500">
+                            Tarda entre 20 y 60 segundos. La pieza sin fondo ya está lista: si esto falla, se descarga igual.
+                        </p>
+                    )}
                 </div>
 
                 {/* ── EL ESTILO DE LAS REFERENCIAS (v4.838) ────────────
