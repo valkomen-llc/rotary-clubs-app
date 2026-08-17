@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { formatMoney } from '../../lib/locale';
 import { useLang } from '../../contexts/LanguageContext';
+import FeeRulesPanel from './FeeRulesPanel';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -249,6 +250,11 @@ export default function CentralVault({ onAbrirSitio }: { onAbrirSitio?: (clubId:
                     </div>
                 )}
             </div>
+
+            {/* La tarifa que explica el take rate de arriba. Va acá y no en una
+                pantalla propia: la decisión se toma donde ya se está mirando el
+                número que esa tarifa produce. */}
+            <FeeRulesPanel />
 
             {/* ⚠️ Un retiro en una moneda en la que el sitio nunca recibió
                 aportes no se puede conciliar. Se REPORTA en vez de restarse

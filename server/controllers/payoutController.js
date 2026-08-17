@@ -15,8 +15,10 @@ import { postPayout, postPayoutCancel, reconcileClub, backfillClub } from '../li
 import {
     filaDeSitio, consolidar, porSitio, takeRate, ticketPromedio, soloConMovimiento,
 } from '../lib/centralWallet.js';
+import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
+import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
 
-console.log('[PAYOUTS v4.853] Bóveda Central multi-sitio + libro mayor en sombra');
+console.log('[PAYOUTS v4.854] Reglas de comisión configurables + Bóveda Central multi-sitio');
 
 // v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
 // `financialController` y la barra superior del panel, y tres copias del mismo
@@ -525,6 +527,65 @@ export const updatePayoutStatus = async (req, res) => {
     } catch (error) {
         console.error('Error updating payout status:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// LAS REGLAS DE COMISIÓN (v4.854)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Del OPERADOR de la plataforma: la tarifa es de la infraestructura compartida,
+// no de una organización. Un administrador de sitio no la ve ni la cambia — lo
+// comprueba la ruta, no sólo la pantalla.
+
+/** Qué tarifa rige hoy, y cómo queda para cada moneda. */
+export const getFeeRulesConfig = async (req, res) => {
+    try {
+        const rules = await getFeeRules();
+        // Se devuelve además la tarifa YA RESUELTA por moneda: un JSON con
+        // herencia no se lee de un vistazo, y quien mira el panel quiere saber
+        // qué se le cobra a un aporte en pesos, no reconstruir la cascada.
+        const monedas = ['COP', 'USD'];
+        const resuelto = {};
+        for (const code of monedas) {
+            const plataforma = resolveRate(rules, { scope: 'platform', currency: code });
+            const procesador = resolveRate(rules, { scope: 'processor', currency: code });
+            resuelto[code] = {
+                plataforma: { ...plataforma, texto: describeRate(plataforma) },
+                procesador: { ...procesador, texto: describeRate(procesador) },
+            };
+        }
+        // Los avisos se calculan sobre lo vigente, no sólo al guardar: una
+        // configuración que se dejó a medias hace meses tiene que seguir
+        // diciéndolo cada vez que alguien abra la pantalla.
+        const { warnings } = validateRules(rules);
+        res.json({ rules, porDefecto: DEFAULT_RULES, resuelto, warnings });
+    } catch (error) {
+        console.error('[FEE-RULES] Error leyendo la configuración:', error);
+        res.status(500).json({ error: 'No se pudo leer la configuración de comisiones.' });
+    }
+};
+
+/** Guarda la tarifa. El operador escribe; el CÓDIGO decide si es válida. */
+export const updateFeeRulesConfig = async (req, res) => {
+    try {
+        const { rules, errors, warnings } = validateRules(req.body?.rules);
+        // Los errores se devuelven TODOS y con su motivo concreto: «configuración
+        // inválida» a secas obliga a probar campo por campo.
+        if (errors.length) return res.status(422).json({ error: 'La configuración tiene errores.', errors });
+        await saveFeeRules(rules);
+        // ⚠️ Cambiar la tarifa NO mueve ningún cobro anterior: `Payment` guarda
+        // el IMPORTE retenido, no el porcentaje. Se dice en la respuesta para
+        // que la pantalla lo pueda decir, en vez de dejar a quien la cambia
+        // preguntándose si acaba de tocar la contabilidad del año.
+        res.json({
+            rules, warnings,
+            aviso: 'La tarifa nueva rige para los aportes que entren de ahora en adelante. '
+                + 'Los cobros ya registrados conservan la retención que se les aplicó.',
+        });
+    } catch (error) {
+        console.error('[FEE-RULES] Error guardando la configuración:', error);
+        res.status(500).json({ error: 'No se pudo guardar la configuración de comisiones.' });
     }
 };
 

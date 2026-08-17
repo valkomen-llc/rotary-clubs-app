@@ -110,6 +110,34 @@ await page.route('**/api/payouts/admin/overview*', r => r.fulfill({ json: {
     sinConciliar: [{ clubId: 'c-otro', currency: 'EUR', amount: 500 }],
     fuente: 'payments',
 } }));
+// v4.854 — Las reglas de comisión, dentro de la central. `guardado` recoge lo
+// que la pantalla manda de verdad: que un ajuste llegue a la petición es
+// justamente lo que el typecheck no ve (la lección de `conQr` y `profileId`).
+const guardado = [];
+await page.route('**/api/payouts/admin/fee-rules*', async r => {
+    if (r.request().method() === 'PUT') {
+        guardado.push(JSON.parse(r.request().postData() || '{}'));
+        return r.fulfill({ json: { rules: {}, warnings: [], aviso: 'La tarifa nueva rige de ahora en adelante.' } });
+    }
+    return r.fulfill({ json: {
+        rules: {
+            platform: { percent: 0.05, fixed: 0, byCurrency: {}, bySite: {} },
+            processor: { percent: 0.029, fixed: 0.30, byCurrency: {} },
+        },
+        porDefecto: {},
+        resuelto: {
+            COP: {
+                plataforma: { percent: 0.05, fixed: 0, texto: '5 %', source: { percent: 'general', fixed: 'general' } },
+                procesador: { percent: 0.029, fixed: 0.30, texto: '2.9 % + 0 COP', source: { percent: 'general', fixed: 'general' } },
+            },
+            USD: {
+                plataforma: { percent: 0.05, fixed: 0, texto: '5 %', source: { percent: 'general', fixed: 'general' } },
+                procesador: { percent: 0.029, fixed: 0.30, texto: '2.9 % + 0.30 USD', source: { percent: 'general', fixed: 'general' } },
+            },
+        },
+        warnings: ['El componente fijo del procesador (0.3) es el de dólares y se aplica a TODAS las monedas.'],
+    } });
+});
 await page.route('http://localhost/', r => r.fulfill({
     contentType: 'text/html',
     body: '<!doctype html><body><div id="root"></div></body>',
@@ -132,6 +160,26 @@ await page.evaluate(() => window.go());
 await page.waitForTimeout(2500);
 
 const texto = await page.locator('#root').innerText().catch(() => '(vacío)');
+
+// ── El panel de comisiones ──────────────────────────────────────────
+// Nace PLEGADO y su cabecera tiene que resumir la tarifa: una configuración
+// que hay que abrir para saber qué dice no se mira nunca.
+const resumenPlegado = await page.locator('text=Reglas de comisión').first()
+    .locator('xpath=ancestor::button[1]').innerText().catch(() => '');
+const camposPlegado = await page.locator('input[type="number"]').count();
+
+await page.locator('text=Reglas de comisión').first().click().catch(() => {});
+await page.waitForTimeout(500);
+const abierto = await page.locator('#root').innerText().catch(() => '');
+const camposAbierto = await page.locator('input[type="number"]').count();
+
+// Se escribe una tarifa nueva y se guarda: lo que importa es lo que SALE.
+const pct = page.locator('input[type="number"]').first();
+await pct.fill('3').catch(() => {});
+await page.locator('text=Guardar la tarifa').first().click().catch(() => {});
+await page.waitForTimeout(600);
+const trasGuardar = await page.locator('#root').innerText().catch(() => '');
+
 await browser.close();
 
 let pass = 0, fail = 0;
@@ -174,6 +222,36 @@ check('se dice cuántos sitios quedaron fuera del filtro',
 // Un retiro en una moneda sin aportes no se resta contra otra: se REPORTA.
 check('el retiro sin conciliar se avisa',
     /sin aportes/.test(texto), texto.slice(0, 1600));
+
+console.log('\n▸ Las reglas de comisión');
+
+check('el panel nace PLEGADO', camposPlegado === 0, `había ${camposPlegado} casillas`);
+// Plegado tiene que decir la tarifa: si no, hay que abrirlo para saber si el
+// 5 % sigue siendo el 5 %.
+check('y aun así dice la tarifa vigente',
+    /5 %/.test(resumenPlegado), resumenPlegado.slice(0, 200));
+// Plegar no puede ESCONDER un problema — la regla de v4.826.
+check('un aviso se ve con el panel cerrado',
+    /1 aviso/.test(resumenPlegado), resumenPlegado.slice(0, 200));
+
+check('al abrirlo aparecen las casillas', camposAbierto >= 4, `había ${camposAbierto}`);
+// ⚠️ La pregunta que se hace quien va a tocar una tarifa, contestada ANTES de
+// que toque nada.
+check('dice que no reescribe los cobros anteriores',
+    /de ahora en adelante/.test(abierto), abierto.slice(0, 600));
+check('avisa que el componente fijo es el de dólares',
+    /TODAS las monedas|todas las monedas/.test(abierto));
+
+// El ajuste tiene que LLEGAR a la petición: es lo que el typecheck no ve.
+check('guardar manda lo que se escribió', guardado.length === 1, `hubo ${guardado.length} PUT`);
+// ⚠️ Y en TANTO POR UNO. Se teclea «3» pensando en 3 %; mandar «3» al servidor
+// sería retener el 300 %. La conversión la hace la pantalla y el servidor la
+// rechazaría, pero eso sería un error donde debería haber un guardado.
+check('el porcentaje viaja en tanto por uno, no en por ciento',
+    guardado[0]?.rules?.platform?.percent === 0.03,
+    JSON.stringify(guardado[0]?.rules?.platform));
+check('y se confirma con el aviso de que no toca lo anterior',
+    /de ahora en adelante/.test(trasGuardar), trasGuardar.slice(0, 400));
 
 check('sin errores de render', !errores.some(e => /TypeError|PAGEERROR/.test(e)),
     errores.filter(e => /TypeError|PAGEERROR/.test(e)).join(' | '));
