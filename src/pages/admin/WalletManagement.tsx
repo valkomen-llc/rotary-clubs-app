@@ -514,10 +514,30 @@ export default function WalletManagement() {
             }]
             : [];
 
+    // ⚠️ v4.852 — ACÁ ESTABA EL FALLO QUE DEJABA LA BÓVEDA EN BLANCO.
+    //
+    // Cuando el sitio no tiene NINGÚN aporte, `/financial/wallet` responde
+    // `wallets: []` con `buckets: {}` y `summary: {}` —objetos vacíos, para que
+    // un bundle anterior encontrara las claves que espera—. Pero `{}` es
+    // TRUTHY: la condición `wallet ?` daba verdadero, el respaldo armaba una
+    // entrada con `buckets: {}`, y al pintar las cubetas
+    // `activeWallet.buckets.in_transit.count` reventaba con
+    // «Cannot read properties of undefined (reading 'count')».
+    //
+    // El error subía al límite de error, que desmonta TODO el subárbol —por eso
+    // la pantalla salía sin barra lateral—.
+    //
+    // NO le pasaba sólo al administrador central: le pasa a CUALQUIER sitio sin
+    // aportes, incluido un club recién creado. El central lo veía siempre
+    // porque consulta sin `clubId` y ahí nunca hay pagos.
+    //
+    // La comprobación es por CONTENIDO, no por existencia: el respaldo sólo
+    // vale si el payload trae de verdad las cubetas que se van a leer.
+    const respaldoUtil = !!wallet?.buckets && 'in_transit' in wallet.buckets;
     const wallets: CurrencyWallet[] = wallet?.wallets?.length
         ? wallet.wallets
-        : wallet
-            ? [{ currency: wallet.currency, decimals: 2, buckets: wallet.buckets, summary: wallet.summary }]
+        : respaldoUtil
+            ? [{ currency: wallet!.currency, decimals: 2, buckets: wallet!.buckets, summary: wallet!.summary }]
             : [];
 
     // v4.842 — TODO lo que se pinta de acá para abajo pertenece a la moneda
@@ -829,11 +849,11 @@ export default function WalletManagement() {
                                         </div>
                                     </div>
 
-                                    {activeWallet && activeWallet.summary.inTransit > 0 && selected.availableBalance === 0 && (
+                                    {(activeWallet?.summary?.inTransit ?? 0) > 0 && selected.availableBalance === 0 && (
                                         <p className="text-blue-100 text-xs mt-4 flex items-start gap-1.5">
                                             <Hourglass className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                             <span>
-                                                Hay <b data-no-translate>{money(activeWallet.summary.inTransit, selected.currency)}</b> en tránsito.
+                                                Hay <b data-no-translate>{money(activeWallet?.summary?.inTransit, selected.currency)}</b> en tránsito.
                                                 Stripe todavía no los liberó.
                                             </span>
                                         </p>
@@ -866,7 +886,11 @@ export default function WalletManagement() {
                         )}
 
                         {/* Estado del dinero — de la moneda activa y de ninguna otra */}
-                        {activeWallet && (
+                        {/* Se exige que las cubetas EXISTAN, no sólo que haya
+                            wallet: es la segunda barrera del fallo de v4.852.
+                            Un payload a medias no puede volver a tumbar la
+                            pantalla entera. */}
+                        {activeWallet?.buckets?.in_transit && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>

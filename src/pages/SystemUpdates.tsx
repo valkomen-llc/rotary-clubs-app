@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.851.0 | 2026-08-17 (Filtros y descargas en la misma línea del saldo)
-// Cache bust: 2026-08-17n
+// UI V4.852.0 | 2026-08-17 (La Bóveda de un sitio sin aportes ya no revienta)
+// Cache bust: 2026-08-17o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.852.0',
+        title: 'La Bóveda de un sitio SIN aportes ya no se cae 🩹',
+        description: 'Se reportó que la Bóveda del Administrador Central no cargaba: la pantalla entera quedaba sustituida por «Esta pantalla no se pudo mostrar», sin barra lateral. La causa no era del administrador central — le pasaba a CUALQUIER sitio que todavía no haya recibido ningún aporte, incluido un club recién creado. El central lo veía siempre porque consulta sin sitio y ahí nunca hay pagos.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos'],
+        type: 'fixed',
+        impact: 'Crítico',
+        changes: [
+            { type: 'fixed', text: 'La Bóveda de un sitio sin aportes se pinta vacía en vez de reventar.' },
+            { type: 'added', text: 'npm run test:wallet:empty — la regresión, reproducida en un navegador.' },
+        ],
+        details: [
+            'Sin ningún aporte, el servidor responde listas vacías y objetos vacíos —para que un navegador con el bundle anterior encontrara las claves que espera—. Pero un objeto vacío es TRUTHY: el respaldo del cliente daba por buena esa respuesta, armaba una entrada con las cubetas vacías y al pintarlas reventaba con «Cannot read properties of undefined».',
+            'El error subía al límite de error, que desmonta el subárbol ENTERO. Por eso la pantalla salía sin barra lateral y parecía que el panel completo había fallado.',
+            'La comprobación pasa a ser por CONTENIDO y no por existencia: el respaldo sólo vale si la respuesta trae de verdad las cubetas que se van a leer. Y el bloque que las pinta exige que existan, como segunda barrera.',
+            'La prueba de navegador que ya existía no lo veía porque monta la pantalla CON dinero. Al probar una pantalla, probarla también VACÍA — es el estado en el que la ve todo sitio nuevo.',
+        ]
+    },
     {
         version: '4.851.0',
         title: 'Los filtros y las descargas, en una sola línea 🎚️',
