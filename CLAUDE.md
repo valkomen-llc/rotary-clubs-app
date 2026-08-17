@@ -6276,6 +6276,39 @@ Pruebas: `npm run test:fee-recalc` (42 casos) y la sección 6b de
   medida de 3.629, y US$ 10 con 0,59—, no unos inventados para que pasen. Misma
   exigencia que las cifras del sismo en `test:contribution`.
 
+### Lo que la plataforma comisionó, en la barra (v4.863)
+
+El indicador de dinero de la barra superior mide **dos cosas distintas según
+dónde se mire**, y por eso cambia de icono y de rótulo.
+
+- **En el sitio de un club es su SALDO** —dinero suyo que va a recibir—. **En el
+  panel de Club Platform es la UTILIDAD**: lo retenido por prestar el servicio.
+  Hasta v4.862 mostraba «US$ 0,00», el saldo del sitio «Origen», que no recauda
+  nada: una cifra que no significaba nada. Dejar los dos con el mismo aspecto y
+  el mismo texto sería el defecto que esta reingeniería vino a quitar — dos
+  rótulos iguales con dos cifras que significan cosas distintas.
+- **⚠️ Se decide por CONTEXTO DE PLATAFORMA (`isUIAdmin`), no por «no hay
+  club».** En el dominio de la plataforma `by-domain` devuelve «Origen», así que
+  «no hay club» nunca es cierto para el operador — la misma lección que la
+  Bóveda Central (v4.853). Un operador que entra por el dominio de un club está
+  mirando ESE club y sigue viendo su saldo.
+- **Por moneda y nunca sumadas.** Los pesos comisionados no son dólares; acá el
+  error sería sobre la utilidad de la empresa.
+- **Un administrador de sitio no la ve, y la consulta NI SIQUIERA SE EJECUTA.**
+  Esconder en la pantalla un dato que el servidor manda no lo protege: quien
+  conoce el endpoint lo ve igual.
+- **La cifra es GLOBAL, sin filtro de club.** La pregunta es «¿cuánto ha ganado
+  Club Platform?», no «¿cuánto con este sitio?»: con filtro, el número cambiaría
+  de significado según por dónde se entre. Lo comprueba una prueba mirando el
+  SQL que se ejecutó.
+- **Es `applicationFee`, la retención NUESTRA** — no la tarifa de Stripe, que es
+  del procesador y no es un ingreso.
+- **No se cae al campo suelto `availableFunds`** cuando falta la lista: ese
+  respaldo es del SALDO y mostraría el de «Origen» como si fuera lo comisionado.
+- Pruebas: `npm run test:platform-revenue` (15 casos, **sin base ni red**),
+  sobre el endpoint REAL — el criterio puede estar bien y el defecto vivir en el
+  camino (v4.744).
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

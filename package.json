@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.862.0",
-  "cache_bust": "2026-08-17y (Debajo del botón de aportar: cuántos aportes lleva la campaña y quiénes dieron su nombre.)",
+  "version": "4.863.0",
+  "cache_bust": "2026-08-17y (La barra del panel central muestra lo que la plataforma comisionó, por moneda.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -59,6 +59,7 @@
     "test:ledger:write": "node scripts/test-ledger-write.mjs",
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
+    "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
     "test:fee-rules:route": "node scripts/test-fee-rules-route.mjs",
     "test:wallet:central": "node scripts/test-wallet-central.mjs",

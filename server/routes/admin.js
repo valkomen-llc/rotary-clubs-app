@@ -53,9 +53,24 @@ router.get('/stats', async (req, res) => {
             db.query(`SELECT currency, SUM(amount) AS total FROM "Donation" ${whereClub} GROUP BY currency`, params),
             db.query(`SELECT COUNT(*) FROM "Product" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "ClubDocument" ${whereClub}`, params),
+            // v4.863 — LO QUE HA COMISIONADO LA PLATAFORMA, por moneda.
+            //
+            // Es un dato de la INFRAESTRUCTURA, no de un sitio: sale sin filtro
+            // de club porque la pregunta es «¿cuánto ha ganado Club Platform?»,
+            // y sólo se consulta para el operador. Un administrador de sitio no
+            // tiene por qué ver la utilidad de la plataforma, así que ni
+            // siquiera se calcula — no es que se esconda en la pantalla.
+            //
+            // ⚠️ Es `applicationFee`, la retención NUESTRA. No confundirla con
+            // la tarifa de Stripe, que es del procesador y no es un ingreso.
+            req.user.role === 'administrator'
+                ? db.query(`SELECT currency, SUM("applicationFee") AS total FROM "Payment"
+                             WHERE "isPlatformCollection" = true AND status = 'succeeded'
+                             GROUP BY currency`)
+                : Promise.resolve({ rows: [] }),
         ]);
 
-        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum, products, documents] = results;
+        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum, products, documents, platformRevenueSum] = results;
 
         // Lead table may not exist yet on first deploy
         let leadsCount = 0;
@@ -93,6 +108,11 @@ router.get('/stats', async (req, res) => {
         const availableFundsByCurrency = listaDe(disponible);
         const donationsByCurrency = listaDe(donated);
 
+        // La utilidad de la plataforma, POR MONEDA y nunca sumada entre ellas:
+        // los pesos que comisionó no son dólares. Para un administrador de
+        // sitio la lista queda vacía, que es lo correcto — no es su dato.
+        const platformRevenueByCurrency = listaDe(porMoneda(platformRevenueSum.rows));
+
         const availableFunds = availableFundsByCurrency.find(
             r => r.currency === primaryCurrency(disponible, preferida))?.amount || 0;
         const donations = donationsByCurrency.find(
@@ -111,6 +131,7 @@ router.get('/stats', async (req, res) => {
             clubDomain: club?.domain || club?.subdomain || '',
             availableFunds,
             availableFundsByCurrency,
+            platformRevenueByCurrency,
             activeClubs: parseInt(activeClubsCount.rows[0].count),
             donations,
             donationsByCurrency,
