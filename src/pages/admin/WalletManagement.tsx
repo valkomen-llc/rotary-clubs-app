@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban } from 'lucide-react';
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
+import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
+import { buildInforme } from '../../lib/walletReport';
 import { toast } from 'sonner';
 
 // v4.841 — Un saldo por MONEDA. Hasta v4.840 la pantalla recibía un escalar
@@ -187,6 +189,32 @@ const fmtDate = (iso: string | null | undefined) => {
     return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+// v4.849 — Lo que el servidor devuelve del período y del catálogo de destinos.
+interface DestinoOpcion {
+    key: string;
+    kind: string;
+    label: string;
+    cuantos: number;
+    porMoneda: Record<string, number>;
+}
+
+interface PeriodoResumen {
+    id: string;
+    label: string;
+    desde: string | null;
+    hasta: string | null;
+    destino: string;
+    excluidos: number;
+    totales: {
+        bruto: Record<string, number>;
+        procesador: Record<string, number>;
+        plataforma: Record<string, number>;
+        neto: Record<string, number>;
+        aportes: number;
+        sinMovimiento: number;
+    };
+}
+
 export default function WalletManagement() {
     const { token } = useAuth();
     const { club } = useClub();
@@ -217,6 +245,15 @@ export default function WalletManagement() {
     // dentro del formulario, y dos controles para la misma decisión se
     // contradicen en cuanto alguien cambia uno solo.
     const [activeCurrency, setActiveCurrency] = useState('');
+    // v4.849 — Los filtros del PERÍODO. Sólo mueven los movimientos: el saldo
+    // de la caja azul es un saldo, no un flujo, y no se filtra nunca.
+    const [rango, setRango] = useState<string>(RANGO_DEFAULT);
+    const [desde, setDesde] = useState('');
+    const [hasta, setHasta] = useState('');
+    const [destino, setDestino] = useState<string>(DESTINO_TODOS);
+    const [destinos, setDestinos] = useState<DestinoOpcion[]>([]);
+    const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
+    const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
     const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
     const [orphanMovements, setOrphanMovements] = useState<Movement[]>([]);
 
@@ -232,6 +269,18 @@ export default function WalletManagement() {
         }
     }, [token, club?.id]);
 
+    // v4.849 — Al cambiar un filtro se recarga en SILENCIO: con el esqueleto de
+    // carga completo, cada cambio de rango haría parpadear la pantalla entera
+    // —incluida la caja del saldo, que ni siquiera se filtra—. Un rango
+    // personalizado no dispara nada hasta tener sus dos fechas: pedir con una
+    // sola daría un resultado que el servidor degrada y confunde más que ayuda.
+    useEffect(() => {
+        if (!token || !club?.id) return;
+        if (rango === 'personalizado' && (!desde || !hasta)) return;
+        fetchWalletData(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rango, desde, hasta, destino]);
+
     // La moneda activa arranca en la primera que tenga saldo disponible; si
     // ninguna lo tiene, en la primera que el servidor ordenó —que es la del
     // sitio—. Se elige sola UNA vez: después manda el usuario, y un efecto que
@@ -242,6 +291,62 @@ export default function WalletManagement() {
         const first = rows.find(b => b.availableBalance > 0) || rows[0];
         if (first) setActiveCurrency(first.currency);
     }, [balanceData, activeCurrency]);
+
+    // La query de los filtros, en UN solo sitio. El rango personalizado sólo
+    // viaja con sus dos fechas: mandarlo a medias haría que el servidor lo
+    // degradara a «todo» y el selector diría una cosa y la lista otra.
+    const filtroQuery = useCallback(() => {
+        const q = new URLSearchParams();
+        q.set('rango', rango);
+        if (rango === 'personalizado') {
+            if (desde) q.set('desde', desde);
+            if (hasta) q.set('hasta', hasta);
+        }
+        if (destino !== DESTINO_TODOS) q.set('destino', destino);
+        return q.toString();
+    }, [rango, desde, hasta, destino]);
+
+    // v4.850 — La exportación. El informe se arma UNA vez y lo consumen los tres
+    // formatos: escribir cada uno por su cuenta daría tres verdades sobre el
+    // mismo período. Las librerías se cargan de forma perezosa —`xlsx` y
+    // `jspdf` pesan— así que quien entra a mirar su saldo no las descarga.
+    const exportar = async (formato: 'xlsx' | 'csv' | 'pdf') => {
+        setExportando(formato);
+        try {
+            const mod = await import('../../lib/walletExport');
+            const informe = buildInforme({
+                club: club?.name || 'Sitio',
+                // La moneda es la que se está mirando, y es OBLIGATORIA: un
+                // informe «de todas las monedas» exigiría un total que las
+                // sume, que es justo lo que este módulo no hace. Para dos
+                // monedas se emiten dos informes.
+                moneda: code,
+                donations: activeDonations,
+                periodo: {
+                    label: periodo?.label || 'Todo el histórico',
+                    desde: periodo?.desde || null,
+                    hasta: periodo?.hasta || null,
+                    excluidos: periodo?.excluidos || 0,
+                },
+                destinoLabel: destino === DESTINO_TODOS
+                    ? 'Todos los destinos'
+                    : (destinos.find(d => d.key === destino)?.label || destino),
+                // El saldo ACTUAL, no el del período. Va rotulado como tal
+                // dentro del archivo.
+                saldoActual: selected?.availableBalance || 0,
+            });
+            if (formato === 'csv') mod.descargarCSV(informe);
+            else if (formato === 'xlsx') await mod.descargarExcel(informe);
+            else await mod.descargarPDF(informe);
+        } catch (e: any) {
+            // Un fallo al exportar no puede dejar la pantalla en un estado raro:
+            // se dice y se sigue.
+            console.error('[Wallet] exportación falló:', e);
+            toast.error('No pudimos generar el archivo. Intentá de nuevo.');
+        } finally {
+            setExportando(null);
+        }
+    };
 
     const fetchWalletData = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -254,7 +359,7 @@ export default function WalletManagement() {
         const [balanceRes, payoutsRes, donationsRes, walletRes] = await Promise.allSettled([
             axios.get(`${API_URL}/payouts/balance?clubId=${club?.id}`, { headers }),
             axios.get(`${API_URL}/payouts/history?clubId=${club?.id}`, { headers }),
-            axios.get(`${API_URL}/financial/donations?clubId=${club?.id}`, { headers }),
+            axios.get(`${API_URL}/financial/donations?clubId=${club?.id}&${filtroQuery()}`, { headers }),
             axios.get(`${API_URL}/financial/wallet?clubId=${club?.id}`, { headers }), // v4.421 — buckets Stripe
         ]);
 
@@ -278,6 +383,11 @@ export default function WalletManagement() {
             setDonations(donationsRes.value.data.donations);
             setDonationTotals(donationsRes.value.data.byCurrency || []);
             setOrphanMovements(donationsRes.value.data.orphanMovements || []);
+            // El catálogo de destinos y el período RESUELTO los manda el
+            // servidor: la pantalla no recalcula qué días entran, o el rótulo
+            // del selector y las filas de la lista podrían discrepar.
+            setDestinos(donationsRes.value.data.destinos || []);
+            setPeriodo(donationsRes.value.data.periodo || null);
         } else {
             setDonations([]);
             setDonationTotals([]);
@@ -426,6 +536,22 @@ export default function WalletManagement() {
     // club. Van al final de la misma lista, marcados como lo que son.
     const huerfanos = orphanMovements.filter(m => m.currency === code);
 
+    // v4.849 — El resumen del período, en la moneda que se está mirando. Se
+    // saca por moneda y NUNCA se suma entre ellas: es la regla del módulo desde
+    // v4.841. Si esta moneda no tuvo nada en el período, no se pinta el bloque
+    // —cuatro ceros no informan de nada—.
+    const resumenPeriodo = (() => {
+        const t = periodo?.totales;
+        if (!t) return null;
+        const fila = {
+            bruto: t.bruto?.[code] || 0,
+            procesador: t.procesador?.[code] || 0,
+            plataforma: t.plataforma?.[code] || 0,
+            neto: t.neto?.[code] || 0,
+        };
+        return fila.bruto === 0 && fila.neto === 0 ? null : fila;
+    })();
+
     const TABS = [
         {
             id: 'aportes' as const, label: 'Aportes recibidos', icon: <Heart className="w-4 h-4" />,
@@ -504,6 +630,141 @@ export default function WalletManagement() {
                                         </button>
                                     );
                                 })}
+                            </div>
+                        )}
+
+                        {/* ── Filtros del PERÍODO ─────────────────────────
+                            v4.849 — Van en su propia línea, DEBAJO del selector
+                            de moneda y no a la derecha del título: con cuatro
+                            controles en una sola fila se rompe en un portátil.
+
+                            ⚠️ Estos filtros NO tocan el saldo de abajo. Un
+                            saldo existe a una fecha, no dentro de un rango, y
+                            filtrarlo daría «US$ 0,00» a quien mira justo el
+                            número con el que decide si pide un retiro. */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
+                                <Calendar className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                                <span className="sr-only">Período</span>
+                                <select
+                                    aria-label="Período"
+                                    value={rango}
+                                    onChange={e => setRango(e.target.value)}
+                                    className="bg-transparent text-gray-800 font-medium focus:outline-none"
+                                >
+                                    {RANGOS.map(r => (
+                                        <option key={r.id} value={r.id}>{r.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            {rango === 'personalizado' && (
+                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
+                                    <input
+                                        type="date" aria-label="Desde" value={desde}
+                                        onChange={e => setDesde(e.target.value)}
+                                        className="bg-transparent text-gray-800 focus:outline-none"
+                                    />
+                                    <span className="text-gray-400">→</span>
+                                    <input
+                                        type="date" aria-label="Hasta" value={hasta}
+                                        onChange={e => setHasta(e.target.value)}
+                                        className="bg-transparent text-gray-800 focus:outline-none"
+                                    />
+                                </div>
+                            )}
+
+                            {/* El desplegable de destino sólo aparece si hay más
+                                de uno: con uno solo sería un control que no
+                                controla nada. */}
+                            {destinos.length > 1 && (
+                                <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
+                                    <Tag className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                                    <span className="sr-only">Destino del aporte</span>
+                                    <select
+                                        aria-label="Destino del aporte"
+                                        value={destino}
+                                        onChange={e => setDestino(e.target.value)}
+                                        className="bg-transparent text-gray-800 font-medium focus:outline-none max-w-[16rem]"
+                                    >
+                                        <option value={DESTINO_TODOS}>Todos los destinos</option>
+                                        {destinos.map(d => (
+                                            <option key={d.key} value={d.key}>
+                                                {d.label} ({d.cuantos})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+
+                            {hayFiltro({ rango, destino }) && (
+                                <button
+                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); }}
+                                    className="text-sm text-gray-500 hover:text-gray-800 underline underline-offset-4 px-1"
+                                >
+                                    Limpiar
+                                </button>
+                            )}
+
+                            {/* ── Exportar ────────────────────────────────
+                                v4.850 — Se exporta LO QUE SE VE: el período, el
+                                destino y la moneda que están puestos. Y el
+                                archivo lo dice adentro, porque un Excel de hace
+                                un mes tiene que poder interpretarse solo.
+
+                                Van al final de la línea y sólo si hay algo que
+                                exportar: un botón que descarga un archivo vacío
+                                es peor que no tenerlo. */}
+                            {activeDonations.length > 0 && (
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                    <button
+                                        onClick={() => exportar('xlsx')}
+                                        disabled={!!exportando}
+                                        title={`Descargar Excel de ${code}`}
+                                        aria-label={`Descargar Excel de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'xlsx'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileSpreadsheet className="w-4 h-4 text-emerald-600" aria-hidden="true" />}
+                                        Excel
+                                    </button>
+                                    <button
+                                        onClick={() => exportar('csv')}
+                                        disabled={!!exportando}
+                                        title={`Descargar CSV de ${code}`}
+                                        aria-label={`Descargar CSV de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'csv'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileText className="w-4 h-4 text-gray-500" aria-hidden="true" />}
+                                        CSV
+                                    </button>
+                                    <button
+                                        onClick={() => exportar('pdf')}
+                                        disabled={!!exportando}
+                                        title={`Descargar PDF de ${code}`}
+                                        aria-label={`Descargar PDF de ${code}`}
+                                        className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 rounded-2xl px-3 py-2 text-gray-700 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {exportando === 'pdf'
+                                            ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                            : <FileText className="w-4 h-4 text-[#9D2235]" aria-hidden="true" />}
+                                        PDF
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* El aviso vive junto a los filtros y sólo con alguno
+                            puesto: con todo por omisión sería ruido. Sin él,
+                            que el saldo no cambie al filtrar se lee como que el
+                            filtro no funciona. */}
+                        {hayFiltro({ rango, destino }) && (
+                            <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3">
+                                <Info className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
+                                <p>{AVISO_SALDO}</p>
                             </div>
                         )}
 
@@ -694,11 +955,64 @@ export default function WalletManagement() {
                                     )}
                                 </div>
 
+                                {/* ── Lo que el club recibió EN EL PERÍODO ────────
+                                    v4.849 — Son FLUJOS —bruto, lo que retuvo
+                                    cada uno y el neto—, así que sí existen
+                                    dentro de un rango. Es lo que el filtro
+                                    mueve, al revés que el saldo. */}
+                                {periodo && resumenPeriodo && (
+                                    <div className="mb-6 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                                Recibido en el período · <span data-no-translate>{periodo.label}</span>
+                                            </p>
+                                            <p className="text-[11px] text-gray-400" data-no-translate>
+                                                {periodo.totales.aportes} aporte{periodo.totales.aportes === 1 ? '' : 's'}
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                            <Dato termino="Bruto" valor={money(resumenPeriodo.bruto, code)} dato />
+                                            <Dato termino="Tarifa de procesamiento" valor={`− ${money(resumenPeriodo.procesador, code)}`} dato />
+                                            <Dato termino="Retención de la plataforma" valor={`− ${money(resumenPeriodo.plataforma, code)}`} dato />
+                                            <Dato termino="Neto del período" valor={money(resumenPeriodo.neto, code)} dato />
+                                        </div>
+                                        {/* Aportes de los que no se pudo leer la retención.
+                                            Callarlos haría que el neto pareciera completo
+                                            cuando le falta gente. */}
+                                        {periodo.totales.sinMovimiento > 0 && (
+                                            <p className="mt-3 text-xs text-amber-700">
+                                                {periodo.totales.sinMovimiento} aporte(s) sin movimiento asociado: su bruto está
+                                                contado, sus retenciones no.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {activeDonations.length === 0 && huerfanos.length === 0 ? (
                                     <div className="text-center text-gray-400 py-10">
                                         <Heart className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                                        <p className="text-sm">Todavía no hay aportes en <span data-no-translate>{code}</span>.</p>
-                                        <p className="text-xs mt-1">Cuando un donante complete el pago vía Stripe, aparecerá acá automáticamente.</p>
+                                        {/* Con un filtro puesto, «no hay aportes» a secas
+                                            hace pensar que el club no recibió nada nunca. Lo
+                                            que no hay es aportes EN ESTE PERÍODO, y se dice
+                                            con la salida a mano. */}
+                                        {hayFiltro({ rango, destino }) ? (
+                                            <>
+                                                <p className="text-sm">
+                                                    No hay aportes en <span data-no-translate>{code}</span> para el filtro elegido.
+                                                </p>
+                                                <button
+                                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); }}
+                                                    className="text-xs mt-2 text-rotary-blue underline underline-offset-4"
+                                                >
+                                                    Ver todo el histórico
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-sm">Todavía no hay aportes en <span data-no-translate>{code}</span>.</p>
+                                                <p className="text-xs mt-1">Cuando un donante complete el pago vía Stripe, aparecerá acá automáticamente.</p>
+                                            </>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="space-y-3">

@@ -5385,6 +5385,172 @@ informe y —**sólo si cuadra**— cambiar la fuente de los saldos de la Bóved
 libro. Hasta que cuadre, no se cambia nada. Después quedan los reversos de los
 netos mal calculados, que son otra cosa y van con su propio asiento.
 
+### La Bóveda se filtra por período y por destino (v4.849, bloque A)
+
+Debajo del selector de moneda: el PERÍODO (7/15/30/90 días o un rango a mano) y
+el DESTINO del aporte. Debajo de la lista, lo recibido en el período.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/walletFilters.js` | El CRITERIO. **Puro**: rangos, qué cae dentro, catálogo de destinos y qué se filtra y qué no |
+| `src/lib/walletFilters.ts` | Espejo MÍNIMO: sólo lo que hace falta para pintar el selector |
+| `resumenDelPeriodo` en `financialController.js` | Los flujos del período, por moneda |
+
+Pruebas: `npm run test:wallet:filters` (72 casos, **sin base ni red**) y 20
+comprobaciones más en `npm run test:wallet:ui`.
+
+**Reglas durables:**
+
+- **UN SALDO NO SE FILTRA POR FECHA.** Es la regla de la que cuelga el bloque.
+  Los aportes de un período son un FLUJO —existen dentro de un rango—; el
+  disponible para retiro es un SALDO —existe A UNA FECHA—. «Disponible para
+  retiro entre el 1 y el 15» no significa nada. Si el filtro tocara la caja
+  azul, alguien elegiría «últimos 7 días», vería «US$ 0,00» y concluiría que no
+  tiene dinero, justo en el número con el que decide si pide un retiro. Es la
+  misma clase de defecto que el «$47.507,75». Por eso `FILTRABLE` es un catálogo
+  EXPLÍCITO y el saldo no está en él, y por eso una prueba comprueba sobre el
+  archivo que `computeBalances` no reciba ningún rango.
+- **Y se DICE.** Que el saldo no cambie al filtrar se lee como que el filtro no
+  funciona; el aviso vive en el espejo (`AVISO_SALDO`), no suelto en el JSX,
+  porque es una afirmación sobre cómo se comporta el módulo, no una etiqueta.
+- **El valor por defecto es `todo`, NO «hoy».** Con «hoy» la Bóveda abriría casi
+  siempre en cero —los aportes de un club no son diarios— y se leería como un
+  módulo roto. `todo` es además lo que la pantalla muestra desde siempre: el
+  filtro es ADITIVO y quien no toque nada ve lo de antes.
+- **NO se llama «campaña», y no es un detalle de nombre.** Un aporte puede venir
+  de una campaña, de un PROYECTO, de un BLOQUE de la página de aportes o del
+  club a secas. Un filtro que sólo listara campañas haría desaparecer del
+  listado a todos los demás sin que nadie supiera por qué. Hay
+  `DESTINO_SIN_DECLARAR` para los anteriores a v4.844: existen y tienen que
+  poder filtrarse como grupo.
+- **El catálogo de destinos sale de los aportes REALES**, no de una lista de
+  campañas, y se arma ANTES de filtrar — si saliera de los filtrados, elegir un
+  destino haría desaparecer del desplegable a todos los demás y no habría forma
+  de volver. Lo comprueba una prueba mirando el orden en el archivo.
+- **El destino se agrupa con `originOf`**, el mismo criterio con que se rotula
+  la ficha del aportante y el recibo. Un segundo criterio de origen daría dos
+  verdades sobre el mismo aporte.
+- **Se DICE cuántos aportes dejó fuera el filtro** (`excluidos`). Sin ese
+  número, quien filtra no distingue «este período no tuvo aportes» de «el filtro
+  se comió algo». Y el vacío CON filtro dice algo distinto que el vacío sin
+  filtro, con la salida a mano.
+- **Una fila sin fecha legible se INCLUYE.** Descartarla haría desaparecer
+  dinero de la pantalla por un dato ausente, que es el error que este módulo no
+  puede cometer.
+- **El último día entra ENTERO** (`finDelDia`). Acotar «del 1 al 15» a las 00:00
+  del 15 se come el último día y nadie entiende por qué falta un aporte.
+- **Un rango a mano invertido se endereza** —es un error de dedo— y uno sin
+  ninguna punta degrada a `todo` en vez de vaciar la lista: ante la duda se
+  muestra de más, porque esconder dinero es el lado caro.
+- **El período lo resuelve el SERVIDOR y viaja resuelto.** La pantalla no rehace
+  la aritmética de fechas: con dos cálculos, el rótulo del selector y las filas
+  de la lista podrían discrepar sobre qué días entran. Lo comprueba una prueba
+  buscando aritmética de fechas en el `.tsx`.
+- **El rango personalizado no pide nada hasta tener sus DOS fechas.** Con una
+  sola, el servidor lo degrada a `todo` y el selector diría una cosa y la lista
+  otra.
+- **Al cambiar un filtro se recarga en SILENCIO.** Con el esqueleto de carga
+  completo, cada cambio haría parpadear la pantalla entera — incluida la caja
+  del saldo, que ni siquiera se filtra.
+- **Los filtros van en su PROPIA línea**, debajo del selector de moneda y no a
+  la derecha del título: con cuatro controles en una fila se rompe en un
+  portátil.
+- **El resumen del período es por MONEDA y nunca se suma entre ellas**, y si esa
+  moneda no tuvo nada en el período no se pinta — cuatro ceros no informan.
+  Un aporte sin movimiento asociado aporta su bruto y NO sus retenciones: se
+  cuenta lo que se sabe y se DICE cuántos quedaron sin medir, en vez de
+  inventarles una comisión.
+- **Que el filtro LLEGUE a la petición se comprueba en un navegador.** Una
+  dependencia que falta en un `useCallback` no la ve el typecheck: es la lección
+  de `conQr` (v4.836) y `profileId` (v4.838). El smoke guarda las URLs pedidas.
+
+**Pendiente de los bloques B y C:** exportar a Excel y PDF lo filtrado, y la
+varita de análisis. Sobre el PDF, la restricción ya conocida: **Vercel no tiene
+ninguna fuente instalada** (medido en v4.794), así que se compone en el
+NAVEGADOR, como `designRender.ts` y `qrcode.ts`. Y sobre la varita, la regla del
+sitio: los hallazgos los calcula el código con reglas y el modelo sólo los
+REDACTA — darle la base a un modelo y pedirle «analizá» produce cifras plausibles
+y no auditables, que en un informe financiero descargable es peligroso.
+
+⚠️ **Antes de publicar la exportación conviene cerrar los reversos de los netos
+mal calculados** (los aportes anteriores a v4.845, que el libro reproduce mal a
+propósito). Un número equivocado en pantalla se corrige y desaparece; uno en un
+PDF que alguien archivó, no.
+
+### La Bóveda se exporta: Excel, CSV y PDF (v4.850, bloque B)
+
+Tres botones al final de la línea de filtros. Se exporta LO QUE SE VE.
+
+| Archivo | Qué es |
+|---|---|
+| `src/lib/walletReport.ts` | El INFORME. **Puro**: filas, totales, contexto y avisos |
+| `src/lib/walletExport.ts` | Los tres formatos, todos leyendo ese mismo informe |
+
+Pruebas: `npm run test:wallet:export` (46 casos, **sin base ni red**) y 9
+comprobaciones de navegador que **descargan los tres archivos de verdad**.
+
+**Reglas durables:**
+
+- **UN APORTE ANÓNIMO NO LLEVA CORREO AL ARCHIVO.** El correo sigue guardado y
+  la pantalla lo tiene, así que se habría colado en un archivo que va a una
+  junta o por correo. Un dato que en pantalla es de quien administra el sitio
+  deja de serlo en cuanto se descarga.
+- **Cada fila declara si su comisión se MIDIÓ o se estimó**, y el archivo avisa
+  cuántas son estimadas. Es lo que hace que el informe se pueda usar para
+  cuadrar mientras existan aportes anteriores a v4.845 con el neto aproximado.
+- **UN INFORME ES DE UNA MONEDA.** Uno «de todas» exigiría un total que las
+  sume. En un archivo la regla pesa más que en pantalla: la pantalla se
+  corrige, un archivo que alguien archivó, no.
+- **Los tres formatos leen el MISMO informe.** Escribir cada uno por su cuenta
+  daría tres verdades sobre el mismo período — es la razón por la que
+  `buildPiece` es único en las Infografías de Campaña.
+- **Se compone en el NAVEGADOR.** Vercel no tiene ninguna fuente instalada y
+  componer texto en el servidor saca cuadritos (medido en v4.794). `jspdf` y
+  `xlsx` ya eran dependencias y se importan de forma PEREZOSA: quien entra a
+  mirar su saldo no las descarga. **No mover esto al servidor.**
+- **El CSV lleva BOM y separador PUNTO Y COMA.** Sin BOM Excel abre los acentos
+  como «RodrÃ­go»; con coma mete toda la fila en una sola columna, porque en
+  configuración regional española el separador de lista es el punto y coma. Un
+  CSV que Excel abre mal es un CSV que nadie usa. Y todo texto se cita: un
+  nombre con coma partiría la fila y correría el resto.
+- **Los importes van como NÚMERO en el Excel**, no como texto con su símbolo:
+  una hoja en la que no se puede sumar una columna no sirve para lo que se pide
+  una hoja.
+- **El contexto va DENTRO del archivo** —sitio, moneda, período con sus fechas,
+  destino, emisión y totales—, no sólo en el nombre. Y los avisos también: quien
+  lo abra dentro de seis meses no tiene la pantalla delante.
+- **El saldo del archivo va rotulado «actual»**, aparte de los totales del
+  período. Sin esa etiqueta se leería como si el filtro lo hubiera calculado —
+  misma regla que el aviso de la pantalla.
+- **El PDF va en HORIZONTAL y deja fuera dos columnas** (`Base` y `Referencia`,
+  que sí van en el Excel, que es donde se audita): en vertical las doce columnas
+  obligan a una letra que no se lee en un teléfono, que es donde se mira.
+- **Los botones sólo salen si hay algo que exportar**, y cada uno dice DE QUÉ
+  MONEDA es: tres botones que sólo dijeran «Excel», «CSV» y «PDF» no distinguen
+  los dos archivos que esta pantalla puede emitir.
+- **La prueba DESCARGA los tres archivos**, no comprueba que el botón exista.
+  Las librerías se importan de forma perezosa y sólo se resuelven al pulsarlo:
+  el arnés las marcaba como externas y la exportación moría con «Failed to
+  resolve module specifier» — una prueba que no puede fallar donde el código
+  falla no prueba nada.
+
+**⚠️ `movementOf` NO usa los nombres de la columna de la base**, y van TRES
+tropiezos con esto en dos versiones: la retención viaja como `applicationFee` y
+el neto como `amount`, mientras la tabla los llama `applicationFee` y
+`netAmount`. Leerlos con el nombre de la columna **no da error**: da `undefined`,
+que cae a cero, y una columna entera sale en cero pareciendo un dato. Pasó en el
+resumen del período, en la base de la comisión y en la fila del informe. Al leer
+un movimiento, mirar `movementOf` — no la tabla.
+
+**Y por eso el resumen del período se movió a `walletFilters.js`**: en el
+controlador no se podía probar —importa la base— y ahí se coló el primero de los
+tres.
+
+**Pendiente del bloque C:** la varita de análisis. La regla del sitio ya está
+decidida: los hallazgos los calcula el CÓDIGO con reglas, cada uno con su
+evidencia, y el modelo sólo los REDACTA. `descargarPDF` ya acepta ese texto y lo
+pinta DEBAJO de las cifras — lo que manda es el dato.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

@@ -34,9 +34,58 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.848.0 | 2026-08-17 (Fase 2: el libro se carga hacia atrás)
-// Cache bust: 2026-08-17k
+// UI V4.850.0 | 2026-08-17 (La Bóveda se exporta a Excel, CSV y PDF)
+// Cache bust: 2026-08-17m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.850.0',
+        title: 'La Bóveda se exporta a Excel, CSV y PDF 📄',
+        description: 'Bloque B. Al final de la línea de filtros hay tres botones: Excel, CSV y PDF. Se exporta LO QUE SE VE —el período, el destino y la moneda que están puestos— y el archivo lo dice adentro, porque un Excel de hace un mes tiene que poder interpretarse solo. Los importes van como número, no como texto con símbolo: un Excel en el que no se puede sumar una columna no sirve para lo que se pide un Excel. Y cada aporte declara si su tarifa de procesamiento se MIDIÓ o se estimó, que es lo que hace que el archivo se pueda usar para cuadrar.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'informes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Exportar a Excel (.xlsx), CSV y PDF lo que está filtrado en pantalla.' },
+            { type: 'added', text: 'Cada fila dice si su tarifa de procesamiento se midió o se estimó.' },
+            { type: 'fixed', text: 'Un aporte ANÓNIMO ya no lleva su correo al archivo descargado.' },
+            { type: 'fixed', text: 'El resumen del período mostraba 0 de retención y 0 de neto.' },
+            { type: 'added', text: 'npm run test:wallet:export (46 casos) y 9 comprobaciones más de navegador.' },
+        ],
+        details: [
+            'UN APORTE ANÓNIMO NO LLEVA CORREO AL ARCHIVO. El correo sigue guardado y la pantalla lo tiene, así que se habría colado en un archivo que va a una junta o por correo. Un dato que en pantalla es de quien administra el sitio deja de serlo en cuanto se descarga.',
+            'Cada fila declara si su tarifa de procesamiento es MEDIDA —el proveedor la devolvió, y con su tasa declarada si hubo conversión— o ESTIMADA. El archivo avisa cuántas son estimadas. Presentarlas igual es lo que hace que un informe deje de servir para cuadrar, y hoy hay aportes anteriores a v4.845 cuyo neto es aproximado.',
+            'Un informe es de UNA moneda. Uno «de todas» exigiría un total que las sume, que es justo lo que este módulo no hace: para dos monedas se emiten dos informes. En un archivo esa regla pesa más que en pantalla — la pantalla se corrige, un archivo que alguien archivó, no.',
+            'Los tres formatos leen el MISMO informe. Escribir cada uno por su cuenta daría tres verdades sobre el mismo período.',
+            'El PDF y el Excel se componen EN EL NAVEGADOR. Vercel no tiene ninguna fuente instalada y componer texto en el servidor saca cuadritos, medido en v4.794. Las dos librerías ya eran dependencias y se cargan sólo al pulsar el botón.',
+            'El CSV lleva BOM y separador punto y coma: sin lo primero Excel abre los acentos rotos, y con coma mete toda la fila en una sola columna, porque en configuración regional española el separador de lista es el punto y coma.',
+            'Corregido de paso: el resumen del período leía el movimiento con los nombres de la columna de la base en vez de los suyos, y mostraba «0» de retención y «0» de neto diciendo ser el del período. Se movió al módulo puro, donde sí se puede probar.',
+        ]
+    },
+    {
+        version: '4.849.0',
+        title: 'La Bóveda se filtra por período y por destino 📅',
+        description: 'Debajo del selector de moneda hay ahora dos controles: el PERÍODO —últimos 7, 15, 30 o 90 días, o un rango a mano— y el DESTINO del aporte, que se arma solo con las campañas, proyectos y bloques que ese sitio de verdad ha cobrado. Debajo de la lista aparece lo recibido en el período: bruto, lo que retuvo el procesador, lo que retuvo la plataforma y el neto. Lo que NO se filtra —y es la decisión de la que cuelga todo— es el saldo disponible para retiro.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'informes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Filtro de período: 7, 15, 30, 90 días o un rango a mano.' },
+            { type: 'added', text: 'Filtro de destino, construido con los aportes reales del sitio.' },
+            { type: 'added', text: 'Resumen de lo recibido en el período, por moneda.' },
+            { type: 'added', text: 'npm run test:wallet:filters (72 casos) y 20 comprobaciones más de navegador.' },
+        ],
+        details: [
+            'UN SALDO NO SE FILTRA POR FECHA, y es la regla de la que cuelga el módulo. Los aportes de un período son un FLUJO: existen dentro de un rango. El disponible para retiro es un SALDO: existe A UNA FECHA. «Disponible para retiro entre el 1 y el 15» no significa nada.',
+            'Si el filtro tocara la caja azul, alguien elegiría «últimos 7 días», vería «US$ 0,00» y concluiría que no tiene dinero — justo el número con el que decide si pide un retiro. Es la misma clase de defecto que el «$47.507,75»: una cifra correcta que no significa lo que parece. Por eso el saldo se queda quieto Y SE DICE, o que no cambie se leería como que el filtro no funciona.',
+            'El valor por defecto es TODO EL HISTÓRICO, no «hoy». Con «hoy» la Bóveda abriría casi siempre en cero —los aportes de un club no son diarios— y se leería como un módulo roto. Además «todo» es lo que la pantalla muestra desde siempre: quien entre y no toque nada ve exactamente lo de antes.',
+            'El filtro NO se llama «campaña», y no es un detalle de nombre: un aporte puede venir de una campaña, de un proyecto, de un bloque de la página de aportes o del club a secas. Un filtro que sólo listara campañas haría desaparecer del listado a todos los demás sin que nadie supiera por qué. Hay una opción «Sin destino declarado» para los aportes anteriores a que se guardara la traza: existen, y tienen que poder filtrarse.',
+            'El desplegable de destinos se arma con los aportes que el sitio de verdad ha cobrado, no con una lista de campañas: una campaña sin un solo aporte no aparece —un filtro que no filtra nada es un control que no controla— y un destino que ya no existe sigue apareciendo, porque su dinero sí existe.',
+            'El filtro DICE cuántos aportes dejó fuera. Sin ese número, quien filtra no distingue «este período no tuvo aportes» de «el filtro se comió algo», y en dinero esas dos cosas no se pueden confundir. Y «no hay aportes» con un filtro puesto dice que es del filtro, con la salida a mano.',
+            'Un rango a mano no pide nada hasta tener sus dos fechas, y el último día entra ENTERO: acotarlo a las 00:00 se comería el día final y nadie entendería por qué falta un aporte.',
+        ]
+    },
     {
         version: '4.848.0',
         title: 'El libro mayor se carga hacia atrás 📚',

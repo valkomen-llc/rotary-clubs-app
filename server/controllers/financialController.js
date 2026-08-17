@@ -14,6 +14,10 @@ import { siteCurrency } from '../lib/clubCurrency.js';
 import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
 import { postRelease } from '../lib/ledger.js';
+import {
+    resolveRango, aplicarFiltros, dentroDelRango, catalogoDestinos, DESTINO_TODOS,
+    resumenDelPeriodo,
+} from '../lib/walletFilters.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -21,7 +25,7 @@ import { DEFAULT_PAYMENT_BLOCKS } from '../lib/paymentBlockDefaults.js';
 import { isServable, targetsSite } from '../lib/contributionSpec.js';
 import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
 
-console.log('[FINANCIAL v4.841] Controller cargado — donaciones Stripe Checkout + Bóveda con saldos POR MONEDA');
+console.log('[FINANCIAL v4.849] Bóveda por MONEDA + filtro de período y destino (el saldo no se filtra)');
 
 // v4.808 — El DESTINO del aporte cuando nace de un bloque de la página de
 // Aportes («Aporte Voluntario», «End Polio Now»…).
@@ -489,12 +493,36 @@ export const listClubDonations = async (req, res) => {
             [clubId]
         );
 
-        const donations = result.rows.map(row => ({
+        const todas = result.rows.map(row => ({
             ...row,
             amount: parseFloat(row.amount),
             currency: normalizeCurrency(row.currency),
             isAnonymous: !!row.isAnonymous
         }));
+
+        // v4.849 — La traza se resuelve ANTES de filtrar, y el orden importa:
+        // el destino de un aporte vive en su movimiento, así que filtrar por
+        // destino exige tenerlo atado primero. Además el catálogo de destinos
+        // tiene que salir de TODOS los aportes y no de los del período — si
+        // saliera de los filtrados, elegir un destino haría desaparecer del
+        // desplegable a todos los demás y no habría forma de volver.
+        const conTrazaTodas = await attachTraces(clubId, todas);
+        const catalogo = catalogoDestinos(
+            conTrazaTodas.donations.map(d => ({
+                origen: d.movement?.origin || null,
+                currency: d.currency,
+                amount: d.amount,
+            }))
+        );
+
+        const rango = resolveRango({
+            rango: req.query.rango,
+            desde: req.query.desde,
+            hasta: req.query.hasta,
+        });
+        const destino = req.query.destino || DESTINO_TODOS;
+        const filtrado = aplicarFiltros(conTrazaTodas.donations, { rango, destino });
+        const donations = filtrado.donations;
 
         // v4.841 — Antes esto sumaba `amount` de todas las donaciones sin mirar
         // la moneda y rotulaba el total con la moneda de la PRIMERA fila de la
@@ -515,20 +543,42 @@ export const listClubDonations = async (req, res) => {
         const main = primaryCurrency(totals, preferred);
         const mainRow = byCurrency.find(r => r.currency === main);
 
-        // v4.844 — Cada aporte viaja con SU movimiento. Hasta v4.843 la
-        // pantalla mostraba los aportes en una pestaña y los movimientos en
-        // otra, sin forma de saber cuál era de quién: son dos tablas que se
-        // escriben seguidas en el mismo webhook y nada las ataba.
-        const conTraza = await attachTraces(clubId, donations);
+        // Lo que el club recibió DE VERDAD en el período: bruto, lo que se
+        // llevó cada retención y el neto. Son FLUJOS, así que filtrarlos por
+        // fecha es lo natural — al revés que el saldo, que no se filtra nunca.
+        const periodo = resumenDelPeriodo(donations);
 
         return res.json({
-            donations: conTraza.donations,
+            // v4.844 — Cada aporte viaja con SU movimiento. Hasta v4.843 la
+            // pantalla mostraba los aportes en una pestaña y los movimientos
+            // en otra, sin forma de saber cuál era de quién: son dos tablas que
+            // se escriben seguidas en el mismo webhook y nada las ataba.
+            donations,
             // Cobros REALES que no nacieron de una donación —una compra de la
             // tienda, una membresía, una inscripción—. Se devuelven aparte
             // para que no desaparezcan de la pantalla al unificar la lista:
             // es dinero del club y tiene que verse en alguna parte.
-            orphanMovements: conTraza.orphans,
+            //
+            // NO se filtran por destino —no tienen uno— y sí por fecha, que es
+            // lo único que se les puede aplicar sin mentir.
+            orphanMovements: conTrazaTodas.orphans.filter(m => dentroDelRango(m?.createdAt, rango)),
             byCurrency,
+            // El período resuelto, ya calculado. La pantalla NO vuelve a hacer
+            // esta aritmética: con dos cálculos, el rótulo del selector y las
+            // filas de la lista podrían discrepar sobre qué días entran.
+            periodo: {
+                id: rango.id,
+                label: rango.label,
+                desde: rango.desde ? rango.desde.toISOString() : null,
+                hasta: rango.hasta ? rango.hasta.toISOString() : null,
+                destino,
+                // Cuántos aportes dejó fuera el filtro. Sin este número, quien
+                // filtra no distingue «este período no tuvo aportes» de «el
+                // filtro se comió algo», y en dinero eso no se puede confundir.
+                excluidos: filtrado.excluidos,
+                totales: periodo,
+            },
+            destinos: catalogo,
             // Campos sueltos sobre la moneda principal, nunca sobre la mezcla.
             // `totalCount` sí es el total de la lista: contar aportes no cruza
             // monedas, y la pantalla lo usa para decir cuántos hay.
