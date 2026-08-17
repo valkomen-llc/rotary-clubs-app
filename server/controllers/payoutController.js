@@ -11,8 +11,9 @@ import {
     sumByCurrency, subtractByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
+import { postPayout, postPayoutCancel, reconcileClub } from '../lib/ledger.js';
 
-console.log('[PAYOUTS v4.841] Saldos POR MONEDA — se acabó el SUM sin GROUP BY');
+console.log('[PAYOUTS v4.847] Saldos POR MONEDA + libro mayor en sombra');
 
 // v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
 // `financialController` y la barra superior del panel, y tres copias del mismo
@@ -189,6 +190,20 @@ export const requestPayout = async (req, res) => {
             }
         });
 
+        // v4.847 — El asiento del retiro, EN SOMBRA. Se escribe después de
+        // crear la solicitud y nunca la rompe: si el libro falla, el retiro
+        // queda pedido igual. `sourceRef` es el id de la solicitud, así que un
+        // reintento no puede asentar el mismo retiro dos veces.
+        const asiento = await postPayout({
+            clubId,
+            currency: code,
+            amount: requested,
+            sourceRef: payout.id,
+            occurredAt: payout.createdAt || new Date(),
+            meta: { estado: 'pending' },
+        });
+        if (!asiento.ok) console.warn(`[LEDGER] el retiro ${payout.id} quedó sin asentar (${asiento.reason})`);
+
         res.status(201).json(payout);
     } catch (error) {
         console.error('Error requesting payout:', error);
@@ -246,6 +261,60 @@ export const getAllPayoutRequests = async (req, res) => {
 // asientos en el ledger; esto sólo cierra el conjunto.
 const PAYOUT_STATUSES = ['pending', 'processing', 'completed', 'rejected'];
 
+/**
+ * GET /api/payouts/admin/ledger/:clubId — el libro contra la Bóveda.
+ *
+ * v4.847 — Es lo ÚNICO que lee el libro en la Fase 1, y su razón de existir es
+ * que una fase en sombra sin forma de contrastar los dos libros es una promesa.
+ *
+ * Es del OPERADOR de la plataforma, no del administrador del sitio: es una
+ * herramienta de migración sobre infraestructura compartida, y lo que muestra
+ * —cuánto historial le falta al libro nuevo— se lee como un descuadre si no se
+ * sabe qué se está mirando. Lo comprueba la ruta, no la pantalla.
+ *
+ * Sólo LEE. Un diagnóstico que cambia cosas al mirarlas no sirve para
+ * diagnosticar (misma regla que el panel del CRM).
+ */
+export const getLedgerReconciliation = async (req, res) => {
+    try {
+        const clubId = req.params.clubId || req.user?.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+
+        const legacy = await computeBalances(clubId);
+        const report = await reconcileClub(clubId, legacy);
+
+        if (!report.ok) {
+            return res.json({
+                clubId,
+                estado: 'sin_libro',
+                // «No se pudo comprobar» NO es un tipo de «bien»: se dice
+                // distinto, igual que `unknown` en el diagnóstico del CRM.
+                mensaje: 'El libro todavía no existe en esta base. No hay nada que contrastar.',
+                legacy,
+            });
+        }
+
+        const cuadra = report.neto.ok && report.disponible.ok;
+        return res.json({
+            clubId,
+            estado: cuadra ? 'cuadra' : 'difiere',
+            // Que difiera es lo ESPERABLE hoy y decirlo evita que se lea como
+            // una avería: el libro arranca vacío y sólo asienta lo posterior a
+            // v4.847, así que la diferencia mide el historial que le falta.
+            mensaje: cuadra
+                ? 'El libro dice lo mismo que la Bóveda.'
+                : 'El libro difiere de la Bóveda. En la Fase 1 es lo esperable: sólo tiene los hechos posteriores a su estreno.',
+            neto: report.neto,
+            disponible: report.disponible,
+            cuentas: report.cuentas,
+            legacy,
+        });
+    } catch (error) {
+        console.error('Error reconciling ledger:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 // Admin only: update payout status
 export const updatePayoutStatus = async (req, res) => {
     try {
@@ -265,6 +334,25 @@ export const updatePayoutStatus = async (req, res) => {
                 ...(additionalNotes && { notes: additionalNotes })
             }
         });
+
+        // v4.847 — Un retiro RECHAZADO devuelve el dinero a disponible, y en el
+        // libro eso es un asiento nuevo, no una corrección del anterior: el
+        // libro sólo agrega. El asiento del retiro sigue ahí —el retiro se pidió
+        // de verdad— y encima queda el que lo anula.
+        //
+        // `sourceRef` lleva el sufijo `:anulado`, así que rechazar dos veces el
+        // mismo retiro no devuelve el dinero dos veces: choca con el índice.
+        if (status === 'rejected') {
+            const asiento = await postPayoutCancel({
+                clubId: payout.clubId,
+                currency: payout.currency,
+                amount: payout.amount,
+                payoutId: payout.id,
+                occurredAt: new Date(),
+                reason: additionalNotes || 'rechazado por el operador',
+            });
+            if (!asiento.ok) console.warn(`[LEDGER] la anulación del retiro ${payout.id} quedó sin asentar (${asiento.reason})`);
+        }
 
         res.json(payout);
     } catch (error) {

@@ -5197,6 +5197,139 @@ Módulo: configurador en el admin (`src/components/admin/content-studio/BannerTe
 
 **⚠️ Aplica a TODAS las áreas, no solo a pendones.** El 2026-07-13 se perdió la plantilla guardada por un **reseteo/migración a nivel de base de datos** originado en despliegues de OTRAS áreas (no del módulo de pendones). Por lo tanto, NINGÚN módulo/deploy/migración debe ejecutar operaciones destructivas de BD (drop de base, recreación, restore de un backup viejo, `TRUNCATE`, borrado de tablas no gestionadas por Prisma) que puedan eliminar `BannerTemplate` u otros datos del cliente. Si una tarea requiere tocar la base, preservar explícitamente esa fila. Ante la duda, preguntar antes de correr algo que pueda vaciar datos de producción.
 
+## La Bóveda de Fondos — libro mayor en sombra (v4.847, Fase 1)
+
+Fase 1 del rediseño financiero. Se crean las tablas del libro y se escriben los
+asientos EN PARALELO con lo que ya existe; **nadie los lee**. La Bóveda sigue
+calculando sus saldos desde `Payment` y `PayoutRequest`, igual que antes. La
+reversa es dejar de escribir: las tablas quedan sin consumidor.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/ledgerSpec.js` | El CRITERIO. **Puro**: cuentas, tipos de asiento, unidad mínima, cuadre y los constructores de asiento |
+| `server/lib/ensureLedgerSchema.js` | `LedgerAccount`, `LedgerTransaction` y `LedgerLine` en runtime |
+| `server/lib/ledger.js` | La escritura, la lectura de saldos y la conciliación |
+| `GET /api/payouts/admin/ledger/:clubId` | El informe: el libro contra la Bóveda. Sólo del operador |
+
+Pruebas: `npm run test:ledger` (88 casos, criterio puro) y
+`npm run test:ledger:write` (44, el CAMINO de escritura con la base sustituida
+en memoria). **Ninguna necesita Postgres, credenciales ni red.**
+
+**Reglas durables:**
+
+- **Se estrena EN SOMBRA porque los saldos de esta pantalla son dinero que un
+  club va a pedir.** Cambiar de dónde salen sin haber comprobado antes que el
+  libro nuevo dice lo mismo que el viejo sería estrenar un motor contable sobre
+  producción. Lo que hace útil la fase es `reconcileClub`: sin una forma de
+  contrastar los dos libros, el nuevo sería una promesa.
+- **TODO ENTRA COMO ENTERO, EN LA UNIDAD MÍNIMA**, y el motivo está MEDIDO en la
+  Fase 0: `roundMoney(8.915, 'USD')` devuelve 8,91 y no 8,92 —el doble más
+  cercano a 8.915 es 8.9149999…—, así que el redondeo de un importe con
+  decimales depende de cómo cayó el binario. Sobre un aporte suelto es un
+  centavo; sobre un libro que se suma miles de veces es un descuadre que nadie
+  puede explicar. `minor` es `BIGINT`: un `numeric` invitaría a meter decimales
+  y un `int` desbordaría —50.000 COP ya son 5.000.000 de unidades mínimas—.
+- **⚠️ La unidad del LIBRO es la del PROVEEDOR (`stripeDecimals`), no la de
+  presentación.** Son dos nociones distintas —es la regla de `money.js`— y COP
+  es justo donde difieren: se cobra con dos decimales y se escribe sin ninguno.
+  Llevar el libro en la unidad de presentación tiraría los centavos de cada
+  comisión, y la comisión de Stripe es precisamente la cifra con centavos.
+- **UN ASIENTO CUADRA POR MONEDA, NO EN TOTAL.** Un apunte de +10 USD y −40.000
+  COP no «cuadra en cero» de ninguna forma útil: es la misma mezcla que produjo
+  el «$47.507,75», escondida detrás de una invariante que parece rigurosa. Una
+  operación que cruza monedas son DOS asientos, cada uno cuadrado en la suya.
+- **La conversión ocurre ANTES del asiento, no dentro.** La comisión de un cobro
+  en pesos la cobra Stripe en dólares; su línea va en PESOS —es lo que de verdad
+  se le descontó al cobro— y el importe original en dólares viaja en `meta`, con
+  su tasa, su fuente y su fecha. Sin eso, «¿por qué la comisión de este aporte
+  son 4.750 pesos?» no se puede contestar dentro del libro.
+- **EL LIBRO SÓLO AGREGA.** No hay UPDATE ni DELETE sobre una línea ni sobre un
+  asiento; corregir es escribir un asiento que REVIERTE al anterior y lo nombra.
+  Un libro que se puede editar no responde «¿qué decía esto en marzo?», que es
+  la única pregunta para la que existe un libro. Lo comprueba una prueba leyendo
+  el archivo: un UPDATE escrito ahí no lo ve ninguna otra comprobación.
+- **ANULAR NO ES REVERTIR.** Un retiro rechazado deja un asiento NUEVO que
+  devuelve el dinero a disponible; el asiento del retiro se queda, porque el
+  club lo pidió de verdad. Un reverso diría que nunca existió.
+- **El NETO se DERIVA, no se recibe.** `buildDonationEntry` resta las
+  retenciones del bruto. Aceptarlo de fuera permitiría escribir un asiento que
+  cuadra porque alguien mandó el número que hacía falta, y entonces el libro
+  deja de comprobar nada. Un neto negativo se RECHAZA: no es un asiento raro, es
+  un dato mal leído, y se atrapa donde todavía se puede.
+- **Una retención en CERO no deja línea.** Un libro lleno de ceros esconde las
+  líneas que sí dicen algo.
+- **`basis` separa lo MEDIDO de lo ESTIMADO.** La comisión que devolvió el
+  proveedor es un hecho; la que calculamos con su tarifa publicada porque la
+  consulta falló es una cuenta nuestra. Presentarlas igual es lo que hace que un
+  libro deje de servir para cuadrar.
+- **NADIE PAGA POR EL LIBRO.** Toda función de escritura devuelve `{ ok, reason }`
+  y NUNCA lanza; el asiento va después de acreditar el cobro y en su propio
+  `try`. Un aporte que se perdiera porque falló su asiento sería cambiar un
+  problema de auditoría por uno de dinero — y el libro está en sombra, así que
+  todavía no vale nada.
+- **La idempotencia es de la BASE**: índice único sobre `(sourceType,
+  sourceRef)`. No hay lectura previa que sirva contra dos entregas concurrentes
+  del mismo webhook — es la misma lección que costó
+  `Payment_provider_providerRef_key` en v4.841. El aporte y su liberación llevan
+  la MISMA referencia y no chocan porque su `sourceType` difiere; una anulación
+  lleva el sufijo `:anulado`, así que rechazar dos veces el mismo retiro no
+  devuelve el dinero dos veces.
+- **La liberación se asienta cuando el CLUB puede pedirlo, no cuando Stripe
+  suelta.** Entre las dos fechas hay `PLATFORM_HOLDING_DAYS`, y asentar en la
+  primera pondría en «disponible para retiro» un dinero que la Bóveda todavía no
+  deja retirar: dos libros diciendo cosas distintas sobre lo mismo es
+  exactamente lo que la fase en sombra existe para no estrenar.
+- **NO hay tabla de saldos materializados**, y es a propósito: sería una segunda
+  verdad sobre las mismas líneas, y las segundas verdades se contradicen en
+  silencio en cuanto alguien escriba sin actualizarla —es lo que evitan
+  `publicKeyOf` y `hasBackdrop`—. El saldo es `SUM(minor)` con `GROUP BY account,
+  currency`. **Ese `GROUP BY currency` no es opcional**: su ausencia es
+  literalmente el defecto que abrió este rediseño. El día que la consulta duela
+  se materializa a sabiendas, con su recálculo; hoy no duele.
+- **Las tres tablas viven FUERA de Prisma** y están en la lista del guardián de
+  `db:push`. Un modelo declarado en `schema.prisma` que todavía no exista en la
+  base deja en 500 toda consulta que lo toque —la regla de `logo_intl`
+  (v4.699)— y acá caería sobre el cobro.
+- **El asiento y sus líneas van en UNA transacción de base.** Un asiento a
+  medias es un libro descuadrado que no se puede corregir, porque el libro sólo
+  agrega. Hace falta una conexión DEDICADA del pool: `db.query` toma una
+  distinta por llamada, así que un `BEGIN` por ahí no envolvería a los `INSERT`
+  siguientes y la transacción sería decorativa.
+- **El criterio vive aparte de la orquestación**, como `seoRules.js` frente a
+  `seoAudit.js`: un motor contable que sólo se ejercita contra una base real
+  termina sin pruebas, y entonces nadie se entera de que una regla cambió de
+  signo.
+- **Y aun así se prueba el CAMINO, no sólo el criterio** (`test:ledger:write`,
+  con la base sustituida en memoria). Es la lección de v4.744: `pickDistrictSite`
+  era correcto y el defecto estaba en el camino. Ahí se ve lo que una prueba
+  pura no puede ver — que la cuenta se cree antes que la línea, que un evento
+  reentregado no duplique dinero, que los saldos salgan agrupados por moneda—.
+  **Lo que ese doble NO demuestra es que el SQL sea válido para Postgres**: eso
+  se comprueba al desplegar, y no se afirma de más.
+- **⚠️ Al escribir SQL en un template literal, ninguna comilla invertida
+  adentro** — ni en un comentario. Cierra el literal a mitad y el módulo entero
+  deja de parsear; lo atrapó `npm run check:syntax`, que es la única barrera que
+  lo ve. Ya había pasado en `ensureDesignSchema.js` (v4.721.1).
+- **El informe de conciliación es del OPERADOR, sólo lectura, y HOY VA A
+  DIFERIR.** Decirlo es parte del informe: el libro arranca vacío y sólo asienta
+  lo posterior a v4.847, así que la diferencia mide cuánto historial le falta, no
+  un error. Presentarlo sin esa frase mandaría a buscar una avería inexistente —
+  misma regla que `unknown` en el diagnóstico del CRM.
+- **La etiqueta de `gasto_procesador` es la que pidió el cliente**, textual
+  («Tarifa de procesamiento de traslado desde interbancos»), y una prueba la
+  fija: renombrarla de vuelta por criterio propio tiene que fallar.
+
+- **⚠️ Limitación conocida: un asiento no se corrige solo.** El de liberación
+  se queda con el neto que se conocía la primera vez; si un sync posterior
+  mejora la comisión —porque apareció la TRM del día—, el segundo asiento choca
+  con el índice y se descarta. Corregirlo es revertir y volver a asentar, y eso
+  es Fase 2. Mientras tanto es un descuadre que la conciliación VE, que es
+  exactamente para lo que sirve la fase en sombra.
+
+**Lo que sigue (Fase 2):** cargar hacia atrás los aportes anteriores a v4.847
+para que el informe pueda cuadrar, y sólo entonces cambiar la fuente de los
+saldos de la Bóveda al libro. Hasta que el informe cuadre, no se cambia nada.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:
@@ -5235,7 +5368,7 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 42 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 45 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
 `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
@@ -5243,7 +5376,9 @@ Las 42 tablas que la aplicación crea sola y que estas barreras protegen:
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,
 `SeoAudit`, `SeoIssue`, `SeoKeyword`, `SeoMetric`),
-las once `ProjectFair*`
+las once `ProjectFair*`,
+las tres del libro mayor de la Bóveda (`LedgerAccount`, `LedgerTransaction`,
+`LedgerLine`)
 y las seis de Campañas de Contribución (`ContributionCampaign`,
 `ContributionCenter`, `ContributionCampaignOverride`,
 `ContributionCampaignHistory`, `ContributionCampaignMetric`,

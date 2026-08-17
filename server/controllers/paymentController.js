@@ -7,6 +7,7 @@ import { ensureWalletSchema } from '../lib/ensureWalletSchema.js';
 import { stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
 import { fromStripeAmount } from '../lib/money.js';
+import { postDonation } from '../lib/ledger.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -843,6 +844,41 @@ async function handleSuccessfulDonationCheckout(session) {
             // Sin el vínculo la ficha cae en la heurística, que es lo que hace
             // con todo lo anterior. No se toca un pago ya acreditado por esto.
             console.warn('[Stripe Webhook] No pude atar el aporte a su pago:', linkErr?.message);
+        }
+
+        // v4.847 — EL LIBRO MAYOR, EN SOMBRA. Se asienta el aporte con sus dos
+        // retenciones; nadie lo lee todavía. Va DESPUÉS de acreditar el cobro y
+        // sin `await` que pueda romperlo: `postDonation` nunca lanza y devuelve
+        // el motivo. Un aporte que se perdiera porque falló su asiento sería
+        // cambiar un problema de auditoría por uno de dinero.
+        //
+        // `sourceRef` es el `providerRef`, que es el mismo con el que Stripe
+        // identifica el cobro: si reentrega el evento, el índice único del
+        // libro rechaza el segundo asiento igual que lo hace el de `Payment`.
+        const asiento = await postDonation({
+            clubId,
+            currency,
+            gross: totalAmount,
+            processorFee: estimatedStripeFee,
+            platformFee: applicationFee,
+            // La distinción que pide el rediseño: lo que dijo Stripe es un
+            // hecho; lo que calculamos con su tarifa publicada porque la
+            // consulta falló es una cuenta nuestra, y se marca como tal.
+            processorFeeBasis: detalleComision?.amount != null ? 'real' : 'estimado',
+            processorFeeMeta: detalleComision ? {
+                original: detalleComision.original || null,
+                rate: detalleComision.rate ?? null,
+                rateSource: detalleComision.rateSource || null,
+                rateDate: detalleComision.rateDate || null,
+                rateOfficial: !!detalleComision.rateOfficial,
+                rateKind: detalleComision.rateKind || null,
+            } : { estimacion: 'tarifa publicada de Stripe (2,9% + 0,30)' },
+            sourceRef: providerRef,
+            occurredAt: new Date(),
+            meta: { sessionId: session.id, donationId: donation.id, stripeBalanceTxId },
+        });
+        if (!asiento.ok) {
+            console.warn(`[LEDGER] el aporte ${providerRef} quedó sin asentar (${asiento.reason})`);
         }
 
         // v4.416 — Si la donación va a un proyecto, actualizar contadores agregados
