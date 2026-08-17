@@ -150,12 +150,20 @@ export default function WalletManagement() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false); // v4.422 — sync retroactivo
 
+    // v4.842 — La moneda que se está mirando. Es el contexto de TODA la
+    // pantalla: las tarjetas de estado, los movimientos, los aportes, el
+    // historial de retiros y el formulario. Hasta v4.841 se apilaban las dos
+    // monedas una debajo de la otra y con unas pocas decenas de transferencias
+    // la página no terminaba nunca.
+    //
+    // Es también la moneda del retiro: hasta v4.841 había un selector propio
+    // dentro del formulario, y dos controles para la misma decisión se
+    // contradicen en cuanto alguien cambia uno solo.
+    const [activeCurrency, setActiveCurrency] = useState('');
+    const [tab, setTab] = useState<'movimientos' | 'aportes' | 'retiros'>('movimientos');
+
     // Form states
     const [amount, setAmount] = useState<number | ''>('');
-    // v4.841 — El retiro es EN UNA MONEDA y hay que decir cuál. Sin este campo
-    // el servidor guardaba toda solicitud como USD por el valor por omisión de
-    // la columna, dijera lo que dijera el cobro que la originó.
-    const [payoutCurrency, setPayoutCurrency] = useState('');
     const [bankName, setBankName] = useState('');
     const [accountNumber, setAccountNumber] = useState('');
     const [accountName, setAccountName] = useState('');
@@ -166,14 +174,16 @@ export default function WalletManagement() {
         }
     }, [token, club?.id]);
 
-    // La moneda del retiro arranca en la primera que tenga saldo. Se elige sola
-    // una vez y no vuelve a pisar lo que el usuario haya cambiado después.
+    // La moneda activa arranca en la primera que tenga saldo disponible; si
+    // ninguna lo tiene, en la primera que el servidor ordenó —que es la del
+    // sitio—. Se elige sola UNA vez: después manda el usuario, y un efecto que
+    // volviera a pisarla le cambiaría la pestaña bajo los pies al refrescar.
     useEffect(() => {
-        if (payoutCurrency) return;
-        const first = (balanceData?.byCurrency || []).find(b => b.availableBalance > 0)
-            || (balanceData?.byCurrency || [])[0];
-        if (first) setPayoutCurrency(first.currency);
-    }, [balanceData, payoutCurrency]);
+        if (activeCurrency) return;
+        const rows = balanceData?.byCurrency || [];
+        const first = rows.find(b => b.availableBalance > 0) || rows[0];
+        if (first) setActiveCurrency(first.currency);
+    }, [balanceData, activeCurrency]);
 
     const fetchWalletData = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -253,7 +263,7 @@ export default function WalletManagement() {
 
     const handleRequestPayout = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!payoutCurrency) {
+        if (!activeCurrency) {
             toast.error('Elegí la moneda del retiro');
             return;
         }
@@ -273,7 +283,7 @@ export default function WalletManagement() {
                 amount: Number(amount),
                 // La moneda viaja siempre. El servidor la valida contra el
                 // saldo de ESA moneda; no hay valor por omisión.
-                currency: payoutCurrency,
+                currency: activeCurrency,
                 bankDetails
             }, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -340,8 +350,31 @@ export default function WalletManagement() {
             ? [{ currency: wallet.currency, decimals: 2, buckets: wallet.buckets, summary: wallet.summary }]
             : [];
 
-    const donationsOf = (code: string) => donations.filter(d => (d.currency || 'USD') === code);
-    const selected = balances.find(b => b.currency === payoutCurrency) || null;
+    // v4.842 — TODO lo que se pinta de acá para abajo pertenece a la moneda
+    // activa. Nada mezcla, y nada obliga a desplazarse por la moneda que no se
+    // está mirando.
+    const code = activeCurrency || balances[0]?.currency || '';
+    const selected = balances.find(b => b.currency === code) || null;
+    const activeWallet = wallets.find(w => w.currency === code) || null;
+    const activeDonations = donations.filter(d => (d.currency || 'USD') === code);
+    const activePayouts = payouts.filter(p => (p.currency || 'USD') === code);
+    const activeDonationTotal = donationTotals.find(t => t.currency === code);
+
+    const movimientos = activeWallet
+        ? [
+            ...activeWallet.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
+            ...activeWallet.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
+            ...activeWallet.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
+            ...activeWallet.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
+            ...activeWallet.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
+        ]
+        : [];
+
+    const TABS = [
+        { id: 'movimientos' as const, label: 'Movimientos', icon: <Clock className="w-4 h-4" />, count: movimientos.length },
+        { id: 'aportes' as const, label: 'Aportes recibidos', icon: <Heart className="w-4 h-4" />, count: activeDonations.length },
+        { id: 'retiros' as const, label: 'Retiros', icon: <ArrowUpRight className="w-4 h-4" />, count: activePayouts.length },
+    ];
 
     return (
         <AdminLayout>
@@ -354,9 +387,12 @@ export default function WalletManagement() {
                     </div>
                 )}
 
-                {/* v4.841 — Una tarjeta por moneda. Antes había UN número aquí y
-                    era la suma de las dos: «$47.507,75» eran 8,91 dólares más
-                    47.498,84 pesos. */}
+                {/* ── La moneda que se está mirando ──────────────────────
+                    v4.842 — Una sola a la vista. Hasta v4.841 se apilaban COP
+                    y después USD, cada una con sus cuatro tarjetas y su lista
+                    de movimientos: con unas pocas decenas de transferencias la
+                    página no terminaba nunca y había que desplazarse por la
+                    moneda que no se estaba buscando. */}
                 <div className="flex items-center justify-between gap-3">
                     <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Bóveda de Fondos</h2>
                     <button
@@ -384,76 +420,94 @@ export default function WalletManagement() {
                     </div>
                 ) : (
                     <>
-                        <div className={`grid gap-6 ${balances.length === 1 ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
-                            {balances.map(b => {
-                                const w = wallets.find(x => x.currency === b.currency);
-                                const dons = donationsOf(b.currency);
-                                return (
-                                    <div key={b.currency} className="bg-rotary-blue rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-rotary-blue/20">
-                                        <div className="absolute top-0 right-0 p-12 opacity-10">
-                                            <Wallet className="w-56 h-56 rotate-12" />
-                                        </div>
-                                        <div className="relative z-10">
-                                            <div className="flex items-baseline gap-2 mb-1">
-                                                <span
-                                                    className="text-xs font-black tracking-[0.15em] bg-white/15 rounded-md px-2 py-1"
-                                                    data-no-translate
-                                                >
-                                                    {b.currency}
-                                                </span>
-                                                <h3 className="text-lg font-medium text-blue-100">Disponible para Retiro</h3>
-                                            </div>
-                                            <div className="text-4xl md:text-5xl font-black mb-6 mt-2" data-no-translate>
+                        {/* El selector sólo aparece con más de una moneda: con una
+                            sola sería un control que no controla nada. */}
+                        {balances.length > 1 && (
+                            <div role="tablist" aria-label="Moneda" className="flex flex-wrap gap-2">
+                                {balances.map(b => {
+                                    const on = b.currency === code;
+                                    return (
+                                        <button
+                                            key={b.currency}
+                                            role="tab"
+                                            aria-selected={on}
+                                            onClick={() => setActiveCurrency(b.currency)}
+                                            className={`flex items-baseline gap-2.5 px-4 py-2.5 rounded-2xl border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/40 ${on
+                                                ? 'bg-rotary-blue border-rotary-blue text-white shadow-md shadow-rotary-blue/20'
+                                                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <span className="text-xs font-black tracking-[0.12em]" data-no-translate>
+                                                {b.currency}
+                                            </span>
+                                            <span className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-900'}`} data-no-translate>
                                                 {money(b.availableBalance, b.currency)}
-                                            </div>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
-                                            <div className="grid grid-cols-2 gap-3 text-sm">
-                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
-                                                    <span className="text-blue-200 block mb-1 text-xs">Recibido bruto</span>
-                                                    <span className="font-bold" data-no-translate>{money(b.totalGross, b.currency)}</span>
-                                                </div>
-                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
-                                                    <span className="text-blue-200 block mb-1 text-xs">Neto acreditado</span>
-                                                    <span className="font-bold" data-no-translate>{money(b.totalCollected, b.currency)}</span>
-                                                </div>
-                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
-                                                    <span className="text-blue-200 block mb-1 text-xs">Retiros solicitados</span>
-                                                    <span className="font-bold" data-no-translate>{money(b.totalRequested, b.currency)}</span>
-                                                </div>
-                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
-                                                    <span className="text-blue-200 block mb-1 text-xs">Aportes recibidos</span>
-                                                    <span className="font-bold" data-no-translate>
-                                                        {dons.length} · {money(
-                                                            donationTotals.find(t => t.currency === b.currency)?.totalAmount ?? 0,
-                                                            b.currency,
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            </div>
+                        {/* El saldo de la moneda activa */}
+                        {selected && (
+                            <div className="bg-rotary-blue rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-rotary-blue/20">
+                                <div className="absolute top-0 right-0 p-12 opacity-10">
+                                    <Wallet className="w-56 h-56 rotate-12" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="flex items-baseline gap-2 mb-1">
+                                        <span
+                                            className="text-xs font-black tracking-[0.15em] bg-white/15 rounded-md px-2 py-1"
+                                            data-no-translate
+                                        >
+                                            {selected.currency}
+                                        </span>
+                                        <h3 className="text-lg font-medium text-blue-100">Disponible para Retiro</h3>
+                                    </div>
+                                    <div className="text-4xl md:text-6xl font-black mb-6 mt-2" data-no-translate>
+                                        {money(selected.availableBalance, selected.currency)}
+                                    </div>
 
-                                            {w && w.summary.inTransit > 0 && b.availableBalance === 0 && (
-                                                <p className="text-blue-100 text-xs mt-4 flex items-start gap-1.5">
-                                                    <Hourglass className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                                                    <span>
-                                                        Hay <b data-no-translate>{money(w.summary.inTransit, b.currency)}</b> en tránsito.
-                                                        Stripe todavía no los liberó.
-                                                    </span>
-                                                </p>
-                                            )}
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                        <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                            <span className="text-blue-200 block mb-1 text-xs">Recibido bruto</span>
+                                            <span className="font-bold" data-no-translate>{money(selected.totalGross, selected.currency)}</span>
+                                        </div>
+                                        <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                            <span className="text-blue-200 block mb-1 text-xs">Neto acreditado</span>
+                                            <span className="font-bold" data-no-translate>{money(selected.totalCollected, selected.currency)}</span>
+                                        </div>
+                                        <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                            <span className="text-blue-200 block mb-1 text-xs">Retiros solicitados</span>
+                                            <span className="font-bold" data-no-translate>{money(selected.totalRequested, selected.currency)}</span>
+                                        </div>
+                                        <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                            <span className="text-blue-200 block mb-1 text-xs">Aportes recibidos</span>
+                                            <span className="font-bold" data-no-translate>
+                                                {activeDonations.length} · {money(activeDonationTotal?.totalAmount ?? 0, selected.currency)}
+                                            </span>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
 
-                        {balances.length > 1 && (
-                            <p className="text-xs text-gray-500 flex items-start gap-1.5 -mt-4">
-                                <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" />
-                                <span>
-                                    Son saldos <b>independientes</b> y no se suman entre sí. Cada retiro
-                                    se solicita en su propia moneda.
-                                </span>
-                            </p>
+                                    {activeWallet && activeWallet.summary.inTransit > 0 && selected.availableBalance === 0 && (
+                                        <p className="text-blue-100 text-xs mt-4 flex items-start gap-1.5">
+                                            <Hourglass className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                                Hay <b data-no-translate>{money(activeWallet.summary.inTransit, selected.currency)}</b> en tránsito.
+                                                Stripe todavía no los liberó.
+                                            </span>
+                                        </p>
+                                    )}
+
+                                    {balances.length > 1 && (
+                                        <p className="text-blue-200 text-xs mt-4">
+                                            Estás viendo <b data-no-translate>{selected.currency}</b>. Los saldos de cada
+                                            moneda son independientes y no se suman entre sí.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
                         )}
 
                         {/* Un retiro en una moneda en la que el club nunca recibió
@@ -471,368 +525,361 @@ export default function WalletManagement() {
                                 </span>
                             </div>
                         )}
-                    </>
-                )}
 
-                {/* v4.421 — Estado financiero sincronizado con Stripe.
-                    v4.841 — Un juego de cubetas POR MONEDA. */}
-                {wallets.length > 0 && (
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between gap-3">
-                            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>
-                            {/* v4.422 — Botón sync para enriquecer Payments viejos con datos reales de Stripe */}
-                            <button
-                                onClick={() => handleSyncStripe(false)}
-                                disabled={isSyncing}
-                                title="Consulta Stripe para actualizar fees reales y fechas de disponibilidad de los aportes existentes"
-                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-wait"
-                            >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                                {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
-                            </button>
+                        {/* Estado del dinero — de la moneda activa y de ninguna otra */}
+                        {activeWallet && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>
+                                    <button
+                                        onClick={() => handleSyncStripe(false)}
+                                        disabled={isSyncing}
+                                        title="Consulta Stripe para actualizar fees reales y fechas de disponibilidad de los aportes existentes"
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                    >
+                                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                                        {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <WalletBucketCard
+                                        color="amber"
+                                        icon={<Hourglass className="w-5 h-5" />}
+                                        label="En Tránsito"
+                                        total={activeWallet.summary.inTransit}
+                                        currency={activeWallet.currency}
+                                        count={activeWallet.buckets.in_transit.count + activeWallet.buckets.processing.count}
+                                        hint="Stripe procesando el pago"
+                                    />
+                                    <WalletBucketCard
+                                        color="sky"
+                                        icon={<Plane className="w-5 h-5" />}
+                                        label="Disponible Próximamente"
+                                        total={activeWallet.summary.availableSoon}
+                                        currency={activeWallet.currency}
+                                        count={activeWallet.buckets.available_soon.count}
+                                        hint={`Liberación en ~${wallet?.platformHoldingDays ?? 6} días`}
+                                    />
+                                    <WalletBucketCard
+                                        color="emerald"
+                                        icon={<CheckCircle2 className="w-5 h-5" />}
+                                        label="Disponible para Retiro"
+                                        total={activeWallet.summary.availableForWithdrawal}
+                                        currency={activeWallet.currency}
+                                        count={activeWallet.buckets.available.count}
+                                        hint="Lista para solicitar payout"
+                                    />
+                                    <WalletBucketCard
+                                        color="indigo"
+                                        icon={<Send className="w-5 h-5" />}
+                                        label="Transferido"
+                                        total={activeWallet.summary.transferred}
+                                        currency={activeWallet.currency}
+                                        count={activePayouts.filter(p => p.status === 'completed').length}
+                                        hint="Payouts completados al banco"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Pestañas ──────────────────────────────────────
+                            El contenido deja de apilarse: se elige qué mirar.
+                            El formulario de retiro vive DENTRO de «Retiros»,
+                            junto a su historial — separarlos obligaría a
+                            cambiar de pestaña para comprobar si la solicitud
+                            que se acaba de enviar quedó registrada. */}
+                        <div className="border-b border-gray-200 flex gap-1 overflow-x-auto" role="tablist" aria-label="Secciones de la bóveda">
+                            {TABS.map(t => {
+                                const on = tab === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        role="tab"
+                                        aria-selected={on}
+                                        onClick={() => setTab(t.id)}
+                                        className={`flex items-center gap-2 px-4 py-3 text-sm font-bold whitespace-nowrap border-b-2 -mb-px transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rotary-blue/40 rounded-t-lg ${on
+                                            ? 'border-rotary-blue text-rotary-blue'
+                                            : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        {t.icon}
+                                        {t.label}
+                                        <span className={`text-[10px] font-black rounded-full px-1.5 py-0.5 ${on ? 'bg-rotary-blue/10 text-rotary-blue' : 'bg-gray-100 text-gray-500'
+                                            }`} data-no-translate>
+                                            {t.count}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {wallets.map(w => {
-                            const inProcess = [
-                                ...w.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
-                                ...w.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
-                                ...w.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
-                                ...w.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
-                                ...w.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
-                            ];
-                            return (
-                                <div key={w.currency} className="space-y-3">
-                                    {wallets.length > 1 && (
-                                        <div className="flex items-center gap-2">
-                                            <span
-                                                className="text-[10px] font-black tracking-[0.15em] bg-gray-900 text-white rounded px-2 py-1"
-                                                data-no-translate
-                                            >
-                                                {w.currency}
-                                            </span>
-                                            <div className="h-px flex-1 bg-gray-200" />
-                                        </div>
-                                    )}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <WalletBucketCard
-                                            color="amber"
-                                            icon={<Hourglass className="w-5 h-5" />}
-                                            label="En Tránsito"
-                                            total={w.summary.inTransit}
-                                            currency={w.currency}
-                                            count={w.buckets.in_transit.count + w.buckets.processing.count}
-                                            hint="Stripe procesando el pago"
-                                        />
-                                        <WalletBucketCard
-                                            color="sky"
-                                            icon={<Plane className="w-5 h-5" />}
-                                            label="Disponible Próximamente"
-                                            total={w.summary.availableSoon}
-                                            currency={w.currency}
-                                            count={w.buckets.available_soon.count}
-                                            hint={`Liberación en ~${wallet?.platformHoldingDays ?? 6} días`}
-                                        />
-                                        <WalletBucketCard
-                                            color="emerald"
-                                            icon={<CheckCircle2 className="w-5 h-5" />}
-                                            label="Disponible para Retiro"
-                                            total={w.summary.availableForWithdrawal}
-                                            currency={w.currency}
-                                            count={w.buckets.available.count}
-                                            hint="Lista para solicitar payout"
-                                        />
-                                        <WalletBucketCard
-                                            color="indigo"
-                                            icon={<Send className="w-5 h-5" />}
-                                            label="Transferido"
-                                            total={w.summary.transferred}
-                                            currency={w.currency}
-                                            count={payouts.filter(p => p.status === 'completed' && (p.currency || 'USD') === w.currency).length}
-                                            hint="Payouts completados al banco"
-                                        />
+                        {/* ── Movimientos ─────────────────────────────────── */}
+                        {tab === 'movimientos' && (
+                            <div role="tabpanel" aria-label="Movimientos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                                {movimientos.length === 0 ? (
+                                    <div className="text-center text-gray-400 py-12">
+                                        <Clock className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                        <p className="text-sm">No hay movimientos en proceso en <span data-no-translate>{code}</span>.</p>
+                                        <p className="text-xs mt-1">Acá aparecen los aportes mientras Stripe los procesa y los libera.</p>
                                     </div>
-
-                                    {inProcess.length > 0 && (
-                                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                                            <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                                <Clock className="w-4 h-4 text-gray-400" />
-                                                Movimientos en proceso
-                                                <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
-                                                    Sincronizado con Stripe
-                                                </span>
-                                            </h3>
-                                            <div className="space-y-2">
-                                                {inProcess.map(item => (
-                                                    <WalletTxRow key={item.id} item={item} />
-                                                ))}
-                                            </div>
+                                ) : (
+                                    <>
+                                        <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                            <Clock className="w-4 h-4 text-gray-400" />
+                                            Movimientos en proceso
+                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
+                                                Sincronizado con Stripe
+                                            </span>
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {movimientos.map(item => (
+                                                <WalletTxRow key={item.id} item={item} />
+                                            ))}
                                         </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ── Aportes recibidos ───────────────────────────── */}
+                        {tab === 'aportes' && (
+                            <div role="tabpanel" aria-label="Aportes recibidos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                        <Heart className="w-5 h-5 text-[#9D2235]" />
+                                        Aportes Recibidos
+                                    </h3>
+                                    {activeDonationTotal && (
+                                        <span
+                                            className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full"
+                                            data-no-translate
+                                        >
+                                            {activeDonationTotal.totalCount} · {money(activeDonationTotal.totalAmount, activeDonationTotal.currency)}
+                                        </span>
                                     )}
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
 
-                {/* Aportes Recibidos (v4.412) */}
-                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                            <Heart className="w-5 h-5 text-[#9D2235]" />
-                            Aportes Recibidos
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-2 justify-end">
-                            {/* Un total por moneda. Nunca uno solo: «2 · $50.010,00»
-                                era 10 dólares más 50.000 pesos. */}
-                            {donationTotals.map(t => (
-                                <span
-                                    key={t.currency}
-                                    className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full"
-                                    data-no-translate
-                                >
-                                    {t.totalCount} · {money(t.totalAmount, t.currency)}
-                                </span>
-                            ))}
-                            {donationTotals.length === 0 && (
-                                <span className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-                                    {donations.length} {donations.length === 1 ? 'donación' : 'donaciones'}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {donations.length === 0 ? (
-                        <div className="text-center text-gray-400 py-10">
-                            <Heart className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                            <p className="text-sm">Todavía no hay aportes registrados.</p>
-                            <p className="text-xs mt-1">Cuando un donante complete el pago vía Stripe, aparecerá acá automáticamente.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                            {donations.map(donation => (
-                                <div key={donation.id} className="flex items-start gap-4 p-4 rounded-2xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white hover:from-white hover:shadow-sm transition-all">
-                                    <div className="w-10 h-10 rounded-full bg-[#9D2235]/10 flex items-center justify-center flex-shrink-0">
-                                        <Heart className="w-5 h-5 text-[#9D2235]" />
+                                {activeDonations.length === 0 ? (
+                                    <div className="text-center text-gray-400 py-10">
+                                        <Heart className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                        <p className="text-sm">Todavía no hay aportes en <span data-no-translate>{code}</span>.</p>
+                                        <p className="text-xs mt-1">Cuando un donante complete el pago vía Stripe, aparecerá acá automáticamente.</p>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                            <div className="font-bold text-gray-900">
-                                                {donation.isAnonymous
-                                                    ? <span className="text-gray-500 italic">Donante Anónimo</span>
-                                                    : (donation.donorName || donation.donorEmail || 'Donante')}
+                                ) : (
+                                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                                        {activeDonations.map(donation => (
+                                            <div key={donation.id} className="flex items-start gap-4 p-4 rounded-2xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white hover:from-white hover:shadow-sm transition-all">
+                                                <div className="w-10 h-10 rounded-full bg-[#9D2235]/10 flex items-center justify-center flex-shrink-0">
+                                                    <Heart className="w-5 h-5 text-[#9D2235]" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                                        <div className="font-bold text-gray-900">
+                                                            {donation.isAnonymous
+                                                                ? <span className="text-gray-500 italic">Donante Anónimo</span>
+                                                                : (donation.donorName || donation.donorEmail || 'Donante')}
+                                                        </div>
+                                                        <div className="font-black text-xl text-[#9D2235]" data-no-translate>
+                                                            {money(donation.amount, donation.currency || 'USD')}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-3">
+                                                        <span>
+                                                            {new Date(donation.date).toLocaleString('es-CO', {
+                                                                dateStyle: 'medium',
+                                                                timeStyle: 'short'
+                                                            })}
+                                                        </span>
+                                                        {!donation.isAnonymous && donation.donorEmail && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Mail className="w-3 h-3" /> {donation.donorEmail}
+                                                            </span>
+                                                        )}
+                                                        <span className="flex items-center gap-1 text-emerald-600">
+                                                            <CheckCircle2 className="w-3 h-3" /> Completado
+                                                        </span>
+                                                        <span className="text-gray-300 font-mono">#{donation.id.slice(-8).toUpperCase()}</span>
+                                                    </div>
+                                                    {donation.message && (
+                                                        <div className="mt-2 flex items-start gap-2 bg-amber-50 border-l-2 border-amber-300 rounded-r-lg px-3 py-2 text-sm text-gray-700">
+                                                            <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                                                            <span className="italic">"{donation.message}"</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="font-black text-xl text-[#9D2235]" data-no-translate>
-                                                {money(donation.amount, donation.currency || 'USD')}
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ── Retiros: pedir y ver el historial ───────────── */}
+                        {tab === 'retiros' && (
+                            <div role="tabpanel" aria-label="Retiros" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="lg:col-span-1">
+                                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm sticky top-8">
+                                        <h3 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+                                            <ArrowUpRight className="w-5 h-5 text-rotary-blue" />
+                                            Solicitar Retiro
+                                        </h3>
+                                        {/* La moneda NO se elige acá: es la del selector de
+                                            arriba. Dos controles para la misma decisión se
+                                            contradicen en cuanto alguien cambia uno solo. */}
+                                        <p className="text-xs text-gray-500 mb-6">
+                                            En <b data-no-translate>{code}</b>, la moneda que estás viendo.
+                                            {balances.length > 1 && ' Para retirar en otra, cambiala arriba.'}
+                                        </p>
+
+                                        <form onSubmit={handleRequestPayout} className="space-y-5">
+                                            <div>
+                                                <label htmlFor="payout-amount" className="block text-sm font-bold text-gray-700 mb-2">
+                                                    Monto a retirar <span data-no-translate>({code})</span>
+                                                </label>
+                                                <input
+                                                    id="payout-amount"
+                                                    type="number"
+                                                    min={selected?.decimals === 0 ? '1' : '0.01'}
+                                                    max={selected?.availableBalance || undefined}
+                                                    // Una moneda sin céntimos no admite decimales, y el
+                                                    // servidor rechaza el importe que los traiga.
+                                                    step={selected?.decimals === 0 ? '1' : '0.01'}
+                                                    value={amount}
+                                                    onChange={(e) => setAmount(Number(e.target.value))}
+                                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 transition-all font-bold text-lg text-gray-900"
+                                                    placeholder={selected?.decimals === 0 ? 'Ej: 50000' : 'Ej: 50.00'}
+                                                    required
+                                                />
+                                                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                                                    <AlertCircle className="w-3 h-3" />
+                                                    <span>
+                                                        Máximo disponible:{' '}
+                                                        <b data-no-translate>{money(selected?.availableBalance, code)}</b>
+                                                    </span>
+                                                </p>
                                             </div>
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-3">
-                                            <span>
-                                                {new Date(donation.date).toLocaleString('es-CO', {
-                                                    dateStyle: 'medium',
-                                                    timeStyle: 'short'
-                                                })}
-                                            </span>
-                                            {!donation.isAnonymous && donation.donorEmail && (
-                                                <span className="flex items-center gap-1">
-                                                    <Mail className="w-3 h-3" /> {donation.donorEmail}
-                                                </span>
-                                            )}
-                                            <span className="flex items-center gap-1 text-emerald-600">
-                                                <CheckCircle2 className="w-3 h-3" /> Completado
-                                            </span>
-                                            <span className="text-gray-300 font-mono">#{donation.id.slice(-8).toUpperCase()}</span>
-                                        </div>
-                                        {donation.message && (
-                                            <div className="mt-2 flex items-start gap-2 bg-amber-50 border-l-2 border-amber-300 rounded-r-lg px-3 py-2 text-sm text-gray-700">
-                                                <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                                                <span className="italic">"{donation.message}"</span>
+
+                                            <div className="space-y-4 pt-4 border-t border-gray-100">
+                                                <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                                    <Building2 className="w-4 h-4 text-rotary-gold" />
+                                                    Datos Bancarios de Destino
+                                                </h4>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Nombre del Banco</label>
+                                                    <input
+                                                        type="text"
+                                                        value={bankName}
+                                                        onChange={(e) => setBankName(e.target.value)}
+                                                        className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Número de Cuenta / IBAN</label>
+                                                    <input
+                                                        type="text"
+                                                        value={accountNumber}
+                                                        onChange={(e) => setAccountNumber(e.target.value)}
+                                                        className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all font-mono"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Titular de la Cuenta</label>
+                                                    <input
+                                                        type="text"
+                                                        value={accountName}
+                                                        onChange={(e) => setAccountName(e.target.value)}
+                                                        className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="submit"
+                                                disabled={isRequesting || (selected?.availableBalance || 0) <= 0}
+                                                className="w-full pt-4 h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+                                            >
+                                                {isRequesting ? (
+                                                    <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin"></div>
+                                                ) : (
+                                                    <>Subir Petición</>
+                                                )}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <div className="lg:col-span-2">
+                                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm h-full max-h-[700px] flex flex-col">
+                                        <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                                            <Clock className="w-5 h-5 text-gray-400" />
+                                            Historial de Solicitudes
+                                        </h3>
+
+                                        {activePayouts.length === 0 ? (
+                                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 py-12">
+                                                <Wallet className="w-12 h-12 mb-4 opacity-20" />
+                                                <p>No hay solicitudes de retiro en <span data-no-translate>{code}</span>.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-y-auto pr-2 space-y-4">
+                                                {activePayouts.map(payout => (
+                                                    <div key={payout.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-white transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+
+                                                        <div>
+                                                            <div className="font-bold text-xl text-gray-900 tracking-tight" data-no-translate>
+                                                                {money(payout.amount, payout.currency)}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 mt-1">
+                                                                {new Date(payout.createdAt).toLocaleDateString('es-ES', {
+                                                                    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                                                })}
+                                                            </div>
+                                                            {payout.notes && (
+                                                                <div className="mt-2 text-sm text-gray-600 italic bg-gray-100 px-3 py-1.5 rounded-lg inline-block">
+                                                                    " {payout.notes} "
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="flex flex-col items-end gap-2 text-right">
+                                                            <div className={`px-3 py-1 rounded-full text-xs flex items-center gap-1.5 ${getStatusStyle(payout.status)}`}>
+                                                                {getStatusIcon(payout.status)}
+                                                                <span className="uppercase tracking-wider">{
+                                                                    payout.status === 'pending' ? 'En Revisión' :
+                                                                        payout.status === 'processing' ? 'Procesando Depósito' :
+                                                                            payout.status === 'completed' ? 'Completado' : 'Rechazado'
+                                                                }</span>
+                                                            </div>
+
+                                                            {payout.bankDetails && (
+                                                                <div className="text-xs text-gray-400 flex items-center gap-1">
+                                                                    <Building2 className="w-3 h-3" />
+                                                                    {(() => {
+                                                                        try {
+                                                                            const b = JSON.parse(payout.bankDetails);
+                                                                            return `${b.bankName} - *${b.accountNumber.slice(-4)}`;
+                                                                        } catch {
+                                                                            return 'Detalles bancarios ocultos';
+                                                                        }
+                                                                    })()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Request Form */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm sticky top-8">
-                            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <ArrowUpRight className="w-5 h-5 text-rotary-blue" />
-                                Solicitar Retiro
-                            </h3>
-
-                            <form onSubmit={handleRequestPayout} className="space-y-5">
-                                {/* v4.841 — La moneda primero: es la que decide contra
-                                    qué saldo se valida el monto. */}
-                                <div>
-                                    <label htmlFor="payout-currency" className="block text-sm font-bold text-gray-700 mb-2">
-                                        Moneda del retiro
-                                    </label>
-                                    <select
-                                        id="payout-currency"
-                                        value={payoutCurrency}
-                                        onChange={(e) => { setPayoutCurrency(e.target.value); setAmount(''); }}
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 transition-all font-bold text-gray-900 bg-white"
-                                        required
-                                    >
-                                        {balances.length === 0 && <option value="">Sin aportes recibidos</option>}
-                                        {balances.map(b => (
-                                            <option key={b.currency} value={b.currency}>
-                                                {b.currency} — {money(b.availableBalance, b.currency)} disponible
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label htmlFor="payout-amount" className="block text-sm font-bold text-gray-700 mb-2">
-                                        Monto a retirar {payoutCurrency && <span data-no-translate>({payoutCurrency})</span>}
-                                    </label>
-                                    <input
-                                        id="payout-amount"
-                                        type="number"
-                                        min={selected?.decimals === 0 ? '1' : '0.01'}
-                                        max={selected?.availableBalance || undefined}
-                                        // Una moneda sin céntimos no admite decimales, y el
-                                        // servidor rechaza el importe que los traiga.
-                                        step={selected?.decimals === 0 ? '1' : '0.01'}
-                                        value={amount}
-                                        onChange={(e) => setAmount(Number(e.target.value))}
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 transition-all font-bold text-lg text-gray-900"
-                                        placeholder={selected?.decimals === 0 ? 'Ej: 50000' : 'Ej: 50.00'}
-                                        required
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" />
-                                        <span>
-                                            Máximo disponible:{' '}
-                                            <b data-no-translate>{money(selected?.availableBalance, selected?.currency || payoutCurrency)}</b>
-                                        </span>
-                                    </p>
-                                </div>
-
-                                <div className="space-y-4 pt-4 border-t border-gray-100">
-                                    <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                                        <Building2 className="w-4 h-4 text-rotary-gold" />
-                                        Datos Bancarios de Destino
-                                    </h4>
-
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">Nombre del Banco</label>
-                                        <input
-                                            type="text"
-                                            value={bankName}
-                                            onChange={(e) => setBankName(e.target.value)}
-                                            className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">Número de Cuenta / IBAN</label>
-                                        <input
-                                            type="text"
-                                            value={accountNumber}
-                                            onChange={(e) => setAccountNumber(e.target.value)}
-                                            className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all font-mono"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">Titular de la Cuenta</label>
-                                        <input
-                                            type="text"
-                                            value={accountName}
-                                            onChange={(e) => setAccountName(e.target.value)}
-                                            className="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-rotary-blue transition-all"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={isRequesting || (selected?.availableBalance || 0) <= 0}
-                                    className="w-full pt-4 h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
-                                >
-                                    {isRequesting ? (
-                                        <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin"></div>
-                                    ) : (
-                                        <>Subir Petición</>
-                                    )}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-
-                    {/* History List */}
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm h-full max-h-[700px] flex flex-col">
-                            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <Clock className="w-5 h-5 text-gray-400" />
-                                Historial de Solicitudes
-                            </h3>
-
-                            {payouts.length === 0 ? (
-                                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 py-12">
-                                    <Wallet className="w-12 h-12 mb-4 opacity-20" />
-                                    <p>No has realizado solicitudes de retiro todavía.</p>
-                                </div>
-                            ) : (
-                                <div className="overflow-y-auto pr-2 space-y-4">
-                                    {payouts.map(payout => (
-                                        <div key={payout.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-white transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-
-                                            <div>
-                                                <div className="font-bold text-xl text-gray-900 tracking-tight" data-no-translate>
-                                                    {money(payout.amount, payout.currency)}
-                                                </div>
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                    {new Date(payout.createdAt).toLocaleDateString('es-ES', {
-                                                        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                                    })}
-                                                </div>
-                                                {payout.notes && (
-                                                    <div className="mt-2 text-sm text-gray-600 italic bg-gray-100 px-3 py-1.5 rounded-lg inline-block">
-                                                        " {payout.notes} "
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="flex flex-col items-end gap-2 text-right">
-                                                <div className={`px-3 py-1 rounded-full text-xs flex items-center gap-1.5 ${getStatusStyle(payout.status)}`}>
-                                                    {getStatusIcon(payout.status)}
-                                                    <span className="uppercase tracking-wider">{
-                                                        payout.status === 'pending' ? 'En Revisión' :
-                                                            payout.status === 'processing' ? 'Procesando Depósito' :
-                                                                payout.status === 'completed' ? 'Completado' : 'Rechazado'
-                                                    }</span>
-                                                </div>
-
-                                                {payout.bankDetails && (
-                                                    <div className="text-xs text-gray-400 flex items-center gap-1">
-                                                        <Building2 className="w-3 h-3" />
-                                                        {(() => {
-                                                            try {
-                                                                const b = JSON.parse(payout.bankDetails);
-                                                                return `${b.bankName} - *${b.accountNumber.slice(-4)}`;
-                                                            } catch {
-                                                                return 'Detalles bancarios ocultos';
-                                                            }
-                                                        })()}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                            </div>
+                        )}
+                    </>
+                )}
 
             </div>
         </AdminLayout>
@@ -946,14 +993,19 @@ function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in
                             <span className="font-mono" data-no-translate>−{money(stripeFee, item.currency)}</span>
                         </div>
                         <div className="flex justify-between text-gray-500">
-                            {/* v4.841 — El porcentaje se CALCULA sobre este movimiento;
-                                estaba escrito «(5%)» a mano. Y el rótulo dice lo que
-                                el cobro es: la comisión de la plataforma por recaudar.
-                                NO es una tasa de cambio ni una comisión interbancaria
-                                —se cobra igual sobre un aporte en dólares, donde no
-                                hay conversión ninguna—. El costo real de conversión
-                                existe, hoy no se mide, y separarlo es la Fase 4. */}
-                            <span>− Comisión de la plataforma{feePct !== null && <span data-no-translate> ({feePct}%)</span>}</span>
+                            {/* REGLA EXPRESA DEL CLIENTE (v4.842) — este rótulo lo
+                                fijó el equipo y no se cambia por criterio propio.
+                                Se pidió dos veces y la segunda con la objeción ya
+                                sobre la mesa: técnicamente este cobro es la
+                                comisión de la plataforma por recaudar a través de
+                                la cuenta maestra —se aplica igual sobre un aporte
+                                en dólares, donde no hay conversión ninguna—, así
+                                que el nombre describe un traslado interbancario
+                                que este componente por sí solo no representa. El
+                                equipo lo decidió con ese argumento delante.
+                                El porcentaje sigue calculándose sobre el propio
+                                movimiento, no escrito a mano. */}
+                            <span>− Tarifa de procesamiento de traslado desde interbancos{feePct !== null && <span data-no-translate> ({feePct}%)</span>}</span>
                             <span className="font-mono" data-no-translate>−{money(item.applicationFee, item.currency)}</span>
                         </div>
                         <div className="flex justify-between pt-1.5 border-t border-gray-200 font-bold text-gray-900">

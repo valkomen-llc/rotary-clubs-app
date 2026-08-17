@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.841.0 | 2026-08-17 (Bóveda de Fondos: saldos por moneda)
-// Cache bust: 2026-08-17d
+// UI V4.842.0 | 2026-08-17 (Bóveda: una moneda a la vez, en pestañas)
+// Cache bust: 2026-08-17e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.842.0',
+        title: 'La Bóveda se usa como la app de un banco 🏦',
+        description: 'Con las dos monedas apiladas —primero todo lo de pesos, después todo lo de dólares— la página no terminaba nunca, y eso con dos movimientos: con unas decenas de transferencias iba a ser inmanejable. Ahora arriba hay un selector de moneda y todo lo que está debajo pertenece a la que se eligió: las cuatro tarjetas de estado, los movimientos, los aportes y los retiros. Cambiar de moneda cambia la pantalla entera. Y el contenido dejó de estar todo junto: se reparte en tres pestañas —Movimientos, Aportes recibidos y Retiros—, cada una con su contador. La solicitud de retiro vive dentro de «Retiros», al lado de su historial, y ya no pregunta la moneda: usa la que se está viendo, porque dos controles para la misma decisión terminan contradiciéndose. El selector muestra el disponible de cada moneda, así que se ve de un vistazo dónde hay dinero sin cambiar de pestaña.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'ux'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Selector de moneda arriba: se ve una sola a la vez, con el disponible de cada una.' },
+            { type: 'added', text: 'Pestañas Movimientos · Aportes recibidos · Retiros, cada una con su contador.' },
+            { type: 'changed', text: 'Todo el contenido se acota a la moneda elegida: nada se apila.' },
+            { type: 'changed', text: 'El retiro toma la moneda del selector; se retiró el segundo selector del formulario.' },
+            { type: 'changed', text: 'El desglose dice «Tarifa de procesamiento de traslado desde interbancos».' },
+        ],
+        details: [
+            'El rótulo de la tarifa lo fijó el equipo del Distrito y queda como REGLA EXPRESA en el código: no se cambia por criterio propio. Se documenta también la objeción técnica que se planteó al pedirlo —el cobro se aplica igual sobre aportes en dólares, donde no hay traslado interbancario— para que quien lo lea después sepa que la decisión se tomó con ese argumento delante.',
+            'El porcentaje del desglose se sigue calculando sobre el propio movimiento, no escrito a mano.',
+            'Las pestañas llevan role="tab" y role="tabpanel": se recorren con el teclado y el lector de pantalla anuncia cuál está activa.',
+            'npm run test:wallet:ui — 23 comprobaciones en un navegador real, con la API interceptada y los dos movimientos del caso reportado. Comprueba que al cambiar de moneda el panel deje de mostrar la otra, que el formulario de retiro no esté a la vista desde Movimientos y que cada pestaña filtre por la moneda activa. Es una prueba de PANTALLA: que sólo se pinte una moneda no lo ve el typecheck ni una prueba de criterio.',
+            'npm run test:wallet sigue en 46 comprobaciones, ahora fijando el rótulo que pidió el cliente en vez de bloquearlo.',
+        ]
+    },
     {
         version: '4.841.0',
         title: 'La Bóveda ya no suma dólares con pesos 💱',
