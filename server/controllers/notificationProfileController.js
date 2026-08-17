@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Notificaciones de Contribuciones — perfiles, beneficiarios y plantillas
-// v4.856.0 (Fase 1)
+// v4.857.0 (Fase 2)
 //
 // La orquestación. El CRITERIO —qué perfil le toca a un sitio, qué le falta a
 // una plantilla, cómo se compone el correo— vive en `notificationSpec.js` y
@@ -14,11 +14,15 @@
 // cualquier parte. Lo comprueban las rutas con `superAdminOnly`, no la
 // pantalla: esconder un botón no sirve, quien conoce el endpoint se lo saltea.
 //
-// ── LA FASE 1 NO MANDA CORREOS DE APORTES ───────────────────────────
+// ── DESDE v4.857 ESTO SÍ GOBIERNA EL RECIBO REAL ────────────────────
 //
-// Se configura, se previsualiza y se manda una PRUEBA a una dirección que
-// escribe el administrador. El recibo real sigue saliendo como en v4.855; lo
-// cambia la Fase 2, cuando exista la resolución del remitente.
+// Un perfil que alcance a un sitio decide con qué identidad, con qué plantilla
+// y desde qué dominio sale la confirmación de cada aporte de ese sitio. Un
+// sitio sin ningún perfil sigue recibiendo el recibo de siempre: es el último
+// escalón de la jerarquía y lo que hace que esto no rompa nada.
+//
+// La PRUEBA sale por el mismo remitente que usaría un aporte real. Una prueba
+// que no prueba el camino que se va a usar no prueba nada.
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
@@ -33,6 +37,12 @@ import {
     sampleVariables, TEMPLATE_VARIABLES, BLOCK_TYPES,
 } from '../lib/notificationTemplate.js';
 import { normalizeTargeting } from '../lib/contributionSpec.js';
+// v4.857 — El estado de verificación de los dominios y la jerarquía del
+// remitente. La vista previa DEJA de decir «lo resuelve el servidor» y pasa a
+// enseñar la dirección real: sin eso, quien configura no puede comprobar si el
+// dominio propio de su sitio está funcionando hasta que llegue un aporte.
+import { domainReport, verifiedDomains, forgetDomains } from '../lib/senderDomains.js';
+import { resolveSenderPlan, normalizeDomain, centralDomain } from '../lib/notificationSpec.js';
 
 const fail = (res, e, code = 500, msg = null) => {
     console.error('[NOTIF-PROFILE]', e?.message || e);
@@ -421,18 +431,38 @@ export const previewTemplate = async (req, res) => {
         const { vars, beneficiary } = await contextoDePrueba(perfil);
         const salida = renderTemplate({ template: t, vars, identity: perfil?.identity || {}, beneficiary });
 
+        // El remitente REAL, resuelto con los dominios verificados. Si se pide
+        // un sitio concreto se calcula para ése; sin sitio, se enseña el
+        // resultado central, que es el que verían los sitios sin dominio propio.
+        const dominios = await verifiedDomains();
+        const sitio = req.body?.clubId ? await leerSitio(req.body.clubId) : null;
+        const remitente = resolveSenderPlan({
+            profile: perfil,
+            siteDomain: sitio?.domain || '',
+            verifiedDomains: dominios,
+        });
+
         res.json({
             ...salida,
             validation: validateTemplate(t),
-            // El remitente TODAVÍA no se resuelve: eso es la Fase 2. Decirlo es
-            // mejor que enseñar una dirección que no va a ser la real.
             sender: {
                 name: perfil?.identity?.fromName || null,
-                replyTo: perfil?.identity?.replyTo || null,
-                addressNote: 'La dirección de envío la resuelve el servidor con el dominio del sitio de origen (Fase 2).',
+                replyTo: remitente.replyTo,
+                address: remitente.address,
+                level: remitente.level,
+                reason: remitente.reason,
+                domain: remitente.domain,
+                site: sitio ? { id: sitio.id, name: sitio.name, domain: sitio.domain } : null,
             },
         });
     } catch (e) { fail(res, e, 400); }
+};
+
+const leerSitio = async (id) => {
+    const { rows } = await db.query(
+        `SELECT id, name, email, domain FROM "Club" WHERE id = $1 LIMIT 1`, [id]
+    );
+    return rows[0] || null;
 };
 
 const leerPerfil = async (id) => {
@@ -461,17 +491,25 @@ export const sendTestEmail = async (req, res) => {
         const { vars, beneficiary } = await contextoDePrueba(perfil);
         const salida = renderTemplate({ template: t, vars, identity: perfil?.identity || {}, beneficiary });
 
-        // La prueba sale por el camino de plataforma, con el remitente de
-        // siempre: la resolución del dominio propio es la Fase 2, y prometer
-        // acá una dirección que todavía no se resuelve daría una prueba que no
-        // prueba lo que se va a usar. Se DICE en la respuesta.
-        const nombre = perfil?.identity?.fromName || 'Club Platform for Rotary';
+        // La prueba sale por el MISMO remitente que usaría un aporte real: una
+        // prueba que no prueba el camino que se va a usar no prueba nada. Con
+        // `clubId` se calcula para ese sitio, que es como se comprueba si su
+        // dominio propio está funcionando.
+        const dominios = await verifiedDomains();
+        const sitio = req.body?.clubId ? await leerSitio(req.body.clubId) : null;
+        const remitente = resolveSenderPlan({
+            profile: perfil,
+            siteDomain: sitio?.domain || '',
+            verifiedDomains: dominios,
+        });
+
         const resultado = await EmailService.sendPlatformEmail({
             to,
             subject: `[PRUEBA] ${salida.subject}`,
             html: salida.html,
-            from: `"${nombre.replace(/"/g, '')}" <noreply@clubplatform.org>`,
-            replyTo: perfil?.identity?.replyTo || undefined,
+            text: salida.text,
+            from: remitente.from,
+            replyTo: remitente.replyTo || undefined,
         });
 
         // El error del proveedor se propaga TEXTUAL: convertirlo en «no se
@@ -483,7 +521,7 @@ export const sendTestEmail = async (req, res) => {
         }
         res.json({
             ok: true, messageId: resultado.messageId || null, to,
-            note: 'La prueba salió por el remitente central. La resolución del dominio propio del sitio llega en la Fase 2.',
+            sender: { address: remitente.address, level: remitente.level, reason: remitente.reason },
             missing: salida.missing,
         });
     } catch (e) { fail(res, e, 502); }
@@ -540,8 +578,45 @@ export const resolveForSite = async (req, res) => {
     } catch (e) { fail(res, e); }
 };
 
+/* ════════════════════════════════════════════════════════════════════
+   LOS DOMINIOS VERIFICADOS
+   ════════════════════════════════════════════════════════════════════ */
+
+// GET /api/notification-profiles/domains?refresh=1
+//
+// Existe para poder EXPLICAR por qué un sitio no envía desde lo suyo. Trae el
+// estado crudo del proveedor además del booleano: «pending» y «no está en
+// Resend» se corrigen en sitios distintos.
+export const listDomains = async (req, res) => {
+    try {
+        if (!isOperator(req)) return res.status(403).json({ error: 'Esta configuración es del operador de la plataforma.' });
+        // Sin esto, «Volver a comprobar» devolvería lo mismo durante un minuto
+        // y parecería que el botón no hace nada.
+        if (req.query.refresh) { forgetDomains(); await verifiedDomains({ force: true }); }
+
+        const dominios = await domainReport();
+        const central = centralDomain();
+        const { rows: sitios } = await db.query(
+            `SELECT id, name, domain FROM "Club" WHERE domain IS NOT NULL AND domain <> '' ORDER BY name ASC LIMIT 500`
+        );
+        const verificados = new Set(dominios.filter(d => d.verified).map(d => d.domain));
+
+        res.json({
+            central: { domain: central, verified: verificados.has(central) },
+            domains: dominios,
+            // Qué sitios pueden enviar desde lo suyo HOY. Es la respuesta a la
+            // pregunta que el diagnóstico dejó sin contestar por no tener la
+            // base delante.
+            sites: sitios.map(s => {
+                const d = normalizeDomain(s.domain);
+                return { id: s.id, name: s.name, domain: d, verified: verificados.has(d) };
+            }),
+        });
+    } catch (e) { fail(res, e); }
+};
+
 export default {
-    getNotificationOptions,
+    getNotificationOptions, listDomains,
     listBeneficiaries, saveBeneficiary, deleteBeneficiary,
     listProfiles, saveProfile, deleteProfile,
     getTemplate, saveTemplate, listTemplateVersions, resolveTemplate,

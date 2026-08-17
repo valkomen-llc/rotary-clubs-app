@@ -2583,6 +2583,84 @@ red**).
   columna y no un campo del documento `content` porque la resolución la
   consulta por campaña.
 
+### Fase 2 — la resolución del remitente (v4.857)
+
+Acá el módulo empieza a gobernar el correo real.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/senderDomains.js` | Qué dominios están verificados, con caché y vencimiento |
+| `server/lib/notificationSender.js` | El envío: perfil → plantilla → remitente → reclamo → correo |
+
+- **NUNCA se intenta enviar desde un dominio SIN VERIFICAR.** Es la regla que no
+  se negocia. Hasta hoy `EmailService.sendEmail` sí lo intentaba —le bastaba que
+  existiera una fila en `EmailAccount`— y descubría el problema por el rechazo
+  del proveedor: eso es un correo perdido por intento, y en volumen es lo que
+  hunde la reputación del dominio desde el que envía TODA la plataforma.
+- **La jerarquía es N1 dominio del sitio → N2 dominio central → N3 respaldo**, y
+  `resolveSenderPlan` devuelve el NIVEL y el MOTIVO. «No está verificado» y «el
+  perfil pide el central» se corrigen en sitios distintos: el motivo es la mitad
+  del diagnóstico.
+- **El criterio es PURO y recibe la lista de dominios verificados**, no la
+  consulta. Consultarla por dentro lo haría imposible de probar y metería una
+  llamada de red dentro del webhook de Stripe.
+- **La verificación NO está en nuestra base: se CACHEA con vencimiento**
+  (`NotificationDomain`, 12 h). Consultarla en cada envío sería una llamada a un
+  tercero en el camino crítico de un cobro, y Stripe da de baja los endpoints
+  que tardan. La caché se queda vieja y eso se asume: el riesgo está acotado por
+  el TTL y por lo que pasa después —el proveedor rechaza, el fallo queda escrito
+  con su motivo textual y el correo se puede reenviar—.
+- **«No se pudo preguntar» NO es «no hay ninguno».** `consultarProveedor`
+  devuelve `null` y no `[]`: con `[]` se borraría la caché guardada y todos los
+  sitios caerían al respaldo hasta la siguiente consulta exitosa. Ante un fallo
+  se usa lo último que se supo, aunque esté vencido.
+- **Se usa la key de LECTURA si existe** (`RESEND_INBOUND_API_KEY`): una key de
+  sólo-envío no puede listar dominios y devuelve `restricted`.
+- **Con perfil aplicable, el recibo de siempre NO sale.** Dos correos por el
+  mismo aporte es justo lo que este módulo existe para no producir. Se marca con
+  una BANDERA y no con un `return`, que saldría de
+  `handleSuccessfulDonationCheckout` entera.
+- **Sin ningún perfil, sale el recibo de v4.855, idéntico.** Es el último
+  escalón de la jerarquía y lo que hace que esta fase no rompa nada: todos los
+  sitios están así hasta que alguien cree un perfil.
+- **Un fallo del camino nuevo degrada al recibo de siempre.** El aportante no se
+  queda sin confirmación porque falle la configuración.
+- **`sendContributionNotifications` envuelve TODO su cuerpo en un `try`.**
+  «Nunca lanza» tiene que ser una propiedad del código y no un argumento sobre
+  qué puede fallar por dentro: así lo que se agregue después queda protegido
+  solo. Corre dentro del webhook de Stripe y una excepción tumbaría el `200`.
+- **Una notificación por destinatario, cada una con su propio reclamo.** Si el
+  correo del aportante falla, el de la entidad no tiene por qué caerse con él.
+- **Los dominios se consultan UNA vez por aporte**, no por destinatario: es la
+  misma pregunta.
+- **`resolveRecipients` DICE los papeles que no se pudieron resolver**, con su
+  motivo. Un aviso marcado que no sale y no lo dice es el silencio que este
+  módulo existe para no tener. «Responsable de campaña» se salta siempre y
+  explica por qué: la plataforma no guarda todavía un responsable por campaña, y
+  un aviso que llega al buzón equivocado es peor que uno que no llega.
+- **No se le escribe dos veces a la misma dirección.** La misma persona puede
+  ser dirección interna del perfil y correo del sitio.
+- **El correo lleva versión en TEXTO PLANO** (`text` en `EmailService`, aditivo).
+  Sin ella algunos filtros lo puntúan como sospechoso y un cliente que no dibuja
+  HTML mostraría una página en blanco.
+- **La PRUEBA sale por el mismo remitente que usaría un aporte real**, con el
+  sitio que se elija. Una prueba que no prueba el camino que se va a usar no
+  prueba nada. Y la vista previa muestra la dirección REAL, con su nivel y su
+  motivo — hasta v4.856 decía «lo resuelve el servidor», que no se puede
+  comprobar.
+- **El monto va SIN símbolo** (`formatoDeMonto`): la plantilla dibuja el importe
+  y la moneda por separado. Con el símbolo pegado saldría «$50.000 COP», y «$»
+  de pesos junto a «$» de dólares es la confusión de v4.843.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `NOTIFICATION_CENTRAL_DOMAIN` | El dominio central verificado (default `clubplatform.org`) |
+| `NOTIFICATION_FALLBACK_FROM` | La identidad de respaldo (default `noreply@clubplatform.org`) |
+| `NOTIFICATION_DOMAIN_TTL_MIN` | Cuánto vale una comprobación de dominio (720) |
+| `RESEND_INBOUND_API_KEY` | Key de LECTURA: la de sólo-envío no puede listar dominios |
+
 ## En qué moneda se cobra un aporte — v4.834
 
 Hasta v4.833 la moneda salía de `resolveClubCurrency` y nada más: la del SITIO.
@@ -5961,10 +6039,11 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 49 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 50 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
-las cuatro de Notificaciones de Contribuciones (`NotificationDelivery`,
-`NotificationBeneficiary`, `NotificationProfile`, `NotificationTemplate`),
+las cinco de Notificaciones de Contribuciones (`NotificationDelivery`,
+`NotificationBeneficiary`, `NotificationProfile`, `NotificationTemplate`,
+`NotificationDomain`),
 `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,

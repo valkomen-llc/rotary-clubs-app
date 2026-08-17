@@ -39,7 +39,11 @@ export class EmailService {
      *   - "smtp" → uses SMTP credentials from PlatformConfig
      *   - default → uses Resend API (env: RESEND_API_KEY)
      */
-    static async sendPlatformEmail({ to, subject, html, from, replyTo, cc, bcc, attachments }) {
+    // v4.857 — `text` es la versión en TEXTO PLANO del correo. No es un
+    // adorno: sin ella algunos filtros puntúan el mensaje como sospechoso, y un
+    // cliente que no dibuja HTML mostraría una página en blanco. Es OPCIONAL y
+    // aditivo — los diez llamadores que ya existen no cambian en nada.
+    static async sendPlatformEmail({ to, subject, html, text, from, replyTo, cc, bcc, attachments }) {
         try {
             // Check if platform prefers SMTP
             const providerConfig = await prisma.platformConfig.findUnique({
@@ -49,10 +53,10 @@ export class EmailService {
             const provider = providerConfig?.value || 'resend';
 
             if (provider === 'smtp') {
-                return await this._sendViaPlatformSMTP({ to, subject, html, from, replyTo, cc, bcc, attachments });
+                return await this._sendViaPlatformSMTP({ to, subject, html, text, from, replyTo, cc, bcc, attachments });
             }
 
-            return await this._sendViaResend({ to, subject, html, from, replyTo, cc, bcc, attachments });
+            return await this._sendViaResend({ to, subject, html, text, from, replyTo, cc, bcc, attachments });
         } catch (error) {
             console.error(`[EmailService] Platform email failed to ${to}:`, error);
             return { success: false, error: error.message };
@@ -90,7 +94,7 @@ export class EmailService {
         return list.length ? list : undefined;
     }
 
-    static async _sendViaResend({ to, subject, html, from: customFrom, replyTo, cc, bcc, attachments }) {
+    static async _sendViaResend({ to, subject, html, text, from: customFrom, replyTo, cc, bcc, attachments }) {
         const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey) {
             console.warn('[EmailService] RESEND_API_KEY not set. Intentando usar configuración SMTP de fallback del Super Admin...');
@@ -143,6 +147,7 @@ export class EmailService {
             html
         };
 
+        if (text) body.text = text;
         if (replyTo) body.reply_to = replyTo;
         if (cc) body.cc = EmailService.parseRecipients(cc);
         if (bcc) body.bcc = EmailService.parseRecipients(bcc);
@@ -171,7 +176,7 @@ export class EmailService {
     /**
      * Send via SMTP using PlatformConfig credentials
      */
-    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom, replyTo, cc, bcc, attachments }) {
+    static async _sendViaPlatformSMTP({ to, subject, html, text, from: customFrom, replyTo, cc, bcc, attachments }) {
         const keys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_name', 'smtp_from_email'];
         const configs = await prisma.platformConfig.findMany({
             where: { key: { in: keys } }
@@ -198,6 +203,7 @@ export class EmailService {
 
         const info = await transporter.sendMail({
             from: fromStr, to: EmailService.parseRecipients(to), subject, html,
+            ...(text ? { text } : {}),
             ...(replyTo ? { replyTo } : {}),
             ...(cc ? { cc: EmailService.parseRecipients(cc) } : {}),
             ...(bcc ? { bcc: EmailService.parseRecipients(bcc) } : {}),

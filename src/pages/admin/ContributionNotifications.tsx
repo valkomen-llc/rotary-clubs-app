@@ -10,18 +10,19 @@ import {
 
 // ════════════════════════════════════════════════════════════════════
 // Notificaciones de Contribuciones — el panel del Administrador Central
-// v4.856.0 (Fase 1)
+// v4.857.0 (Fase 2)
 //
 // Tres cosas y en este orden, que es el orden en que hay que configurarlas:
 // la ENTIDAD que recibe, el PERFIL que decide a quién se le escribe y desde
 // dónde, y la PLANTILLA del correo.
 //
-// ── ESTA FASE NO MANDA CORREOS DE APORTES ───────────────────────────
+// ── DESDE v4.857 ESTO GOBIERNA EL RECIBO REAL ───────────────────────
 //
-// Se configura, se previsualiza y se manda una PRUEBA. El recibo real sigue
-// saliendo como antes; lo cambia la Fase 2, cuando exista la resolución del
-// remitente. La pantalla lo DICE — un panel que parece estar gobernando algo
-// que todavía no gobierna es peor que uno que no existe.
+// Un perfil activo que alcance a un sitio decide la confirmación de cada
+// aporte de ese sitio. Un sitio sin perfil sigue recibiendo el recibo de
+// siempre. La pantalla DICE desde qué dirección va a salir y por qué, porque
+// «no salió desde mi dominio» es la pregunta que este módulo tiene que poder
+// contestar sin que nadie mire el código.
 // ════════════════════════════════════════════════════════════════════
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -51,6 +52,16 @@ interface Profile {
 }
 interface Block { type: string; text?: string; title?: string; align?: string; url?: string }
 interface Template { subject: string; preheader: string; blocks: Block[] }
+interface Sender {
+    name: string | null; replyTo: string | null; address: string;
+    level: number; reason: string; domain: string;
+    site?: { id: string; name: string; domain: string } | null;
+}
+interface DomainReport {
+    central: { domain: string; verified: boolean };
+    domains: { domain: string; verified: boolean; status: string | null; checkedAt: string }[];
+    sites: { id: string; name: string; domain: string; verified: boolean }[];
+}
 interface Options {
     events: { id: string; label: string; help: string }[];
     unavailableEvents: { id: string; label: string; help: string; source: string }[];
@@ -94,13 +105,19 @@ const ContributionNotifications: React.FC = () => {
     const [plantilla, setPlantilla] = useState<Template | null>(null);
     const [plantillaVersion, setPlantillaVersion] = useState<number | null>(null);
     const [plantillaOrigen, setPlantillaOrigen] = useState<string>('');
-    const [vista, setVista] = useState<{ html: string; subject: string; missing: string[]; validation: Validation } | null>(null);
+    const [vista, setVista] = useState<{ html: string; subject: string; missing: string[]; validation: Validation; sender?: Sender } | null>(null);
     const [ancho, setAncho] = useState<'desktop' | 'mobile'>('desktop');
     const [pruebaA, setPruebaA] = useState('');
     const [enviando, setEnviando] = useState(false);
     const [pickerAbierto, setPickerAbierto] = useState(false);
     const [pickerDestino, setPickerDestino] = useState<'perfil' | 'entidad'>('perfil');
     const [buscaSitio, setBuscaSitio] = useState('');
+    // El sitio con el que se previsualiza y se prueba. Sin él, la vista previa
+    // muestra el remitente CENTRAL, que es el que verían los sitios sin dominio
+    // propio; con uno elegido se ve la dirección real de ese sitio.
+    const [sitioPrueba, setSitioPrueba] = useState('');
+    const [dominios, setDominios] = useState<DomainReport | null>(null);
+    const [comprobando, setComprobando] = useState(false);
 
     const cargar = useCallback(async () => {
         setCargando(true);
@@ -114,6 +131,11 @@ const ContributionNotifications: React.FC = () => {
             setOpciones(o);
             setPerfiles(Array.isArray(p) ? p : []);
             setEntidades(Array.isArray(b) ? b : []);
+            // Los dominios NO tumban la carga si fallan: son diagnóstico, y la
+            // consulta sale a Resend.
+            fetch(`${API}/notification-profiles/domains`, { headers: auth() })
+                .then(r => r.json()).then(d => { if (!d?.error) setDominios(d); })
+                .catch(() => { /* el panel se usa igual sin el diagnóstico */ });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo cargar la configuración');
         } finally { setCargando(false); }
@@ -212,7 +234,7 @@ const ContributionNotifications: React.FC = () => {
         try {
             const r = await fetch(`${API}/notification-profiles/preview`, {
                 method: 'POST', headers: auth(),
-                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla }),
+                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla, clubId: sitioPrueba || null }),
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error || 'No se pudo previsualizar');
@@ -224,7 +246,10 @@ const ContributionNotifications: React.FC = () => {
         // quedaría con la versión que había al crearse el manejador y
         // mostraría algo distinto de lo que se está editando. Es la lección
         // de `conQr` (v4.836) — el typecheck no lo ve.
-    }, [perfil, plantilla]);
+        // `sitioPrueba` VA en las dependencias por el mismo motivo que
+        // `plantilla`: sin él, elegir un sitio no cambiaría el remitente que se
+        // muestra y la vista previa mentiría sobre desde dónde sale el correo.
+    }, [perfil, plantilla, sitioPrueba]);
 
     const enviarPrueba = useCallback(async () => {
         if (!perfil || !pruebaA.trim()) { toast.error('Escribí una dirección.'); return; }
@@ -232,16 +257,16 @@ const ContributionNotifications: React.FC = () => {
         try {
             const r = await fetch(`${API}/notification-profiles/test`, {
                 method: 'POST', headers: auth(),
-                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla, to: pruebaA }),
+                body: JSON.stringify({ profileId: perfil.id || null, template: plantilla, to: pruebaA, clubId: sitioPrueba || null }),
             });
             const d = await r.json();
             if (!r.ok) throw new Error([d?.error, ...(d?.errors || [])].filter(Boolean).join(' · '));
-            toast.success(`Prueba enviada a ${d.to}.`);
-            if (d.note) toast.info(d.note, { duration: 9000 });
+            toast.success(`Prueba enviada a ${d.to} desde ${d.sender?.address}.`);
+            if (d.sender?.level > 1) toast.info(`Salió por el nivel ${d.sender.level}: ${d.sender.reason}.`, { duration: 9000 });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo enviar', { duration: 10000 });
         } finally { setEnviando(false); }
-    }, [perfil, plantilla, pruebaA]);
+    }, [perfil, plantilla, pruebaA, sitioPrueba]);
 
     const sitiosFiltrados = useMemo(() => {
         const q = buscaSitio.trim().toLowerCase();
@@ -285,18 +310,68 @@ const ContributionNotifications: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Lo que esta fase todavía NO hace. Un panel que parece
-                    gobernar algo que no gobierna es peor que uno que no
-                    existe: quien lo configure creería que ya está al aire. */}
-                <div className="mb-6 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 flex gap-3">
-                    <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-amber-900">
-                        <strong className="font-black">Esta configuración todavía no gobierna el recibo real.</strong>{' '}
-                        Acá se define y se prueba. El correo que hoy recibe quien aporta sigue saliendo con el
-                        remitente central de siempre; empezará a usar este perfil cuando se conecte la resolución
-                        del dominio propio de cada sitio.
+                {/* Qué gobierna esto y qué pasa si no hay nada configurado.
+                    Sin esta línea, «¿por qué mi sitio manda con otra
+                    dirección?» no tiene dónde contestarse. */}
+                <div className="mb-6 rounded-2xl border-2 border-blue-100 bg-blue-50 p-4 flex gap-3">
+                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-900">
+                        <strong className="font-black">Un perfil activo gobierna la confirmación de los aportes de los sitios que alcanza.</strong>{' '}
+                        Un sitio al que no llegue ningún perfil sigue recibiendo el recibo de siempre, con el
+                        remitente central. El correo sale desde el dominio propio del sitio sólo si está
+                        verificado en el proveedor; si no, desde el dominio central.
                     </div>
                 </div>
+
+                {/* El estado de los dominios. Es lo que contesta «¿por qué este
+                    correo no salió desde rotary4281.org?» sin tener que leer el
+                    código: puede ser que no esté verificado, que no esté dado
+                    de alta, o que el perfil pida el central. */}
+                {dominios && (
+                    <div className={`${card} mb-6`}>
+                        <div className="flex items-center justify-between mb-3">
+                            <span className={`${lbl} mb-0`}>Dominios de envío</span>
+                            <button type="button" disabled={comprobando}
+                                onClick={async () => {
+                                    setComprobando(true);
+                                    try {
+                                        const r = await fetch(`${API}/notification-profiles/domains?refresh=1`, { headers: auth() });
+                                        const d = await r.json();
+                                        if (!r.ok) throw new Error(d?.error || 'No se pudo comprobar');
+                                        setDominios(d);
+                                        toast.success('Comprobado con el proveedor.');
+                                    } catch (e) {
+                                        toast.error(e instanceof Error ? e.message : 'No se pudo comprobar');
+                                    } finally { setComprobando(false); }
+                                }}
+                                className="text-[11px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider disabled:opacity-40">
+                                {comprobando ? 'Comprobando…' : 'Volver a comprobar'}
+                            </button>
+                        </div>
+                        <p className="text-sm mb-3">
+                            <strong className="font-black">Dominio central:</strong>{' '}
+                            <span data-no-translate>{dominios.central.domain}</span>{' '}
+                            {dominios.central.verified
+                                ? <span className="text-green-700 font-bold">· verificado</span>
+                                : <span className="text-red-700 font-bold">· NO verificado — todo saldrá por la identidad de respaldo</span>}
+                        </p>
+                        {dominios.sites.length > 0 && (
+                            <div className="max-h-40 overflow-y-auto text-sm divide-y divide-gray-50">
+                                {dominios.sites.map(s => (
+                                    <div key={s.id} className="flex items-center justify-between py-1.5">
+                                        <span className="truncate">{s.name}</span>
+                                        <span className="flex items-center gap-2 flex-shrink-0">
+                                            <span className="text-xs text-gray-500" data-no-translate>{s.domain}</span>
+                                            {s.verified
+                                                ? <span className="text-[10px] font-black uppercase text-green-700">verificado</span>
+                                                : <span className="text-[10px] font-black uppercase text-gray-400">sin verificar</span>}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="flex gap-2 mb-6">
                     {([['perfiles', 'Perfiles', Users], ['entidades', 'Entidades beneficiarias', Building2]] as const).map(([id, label, Icon]) => (
@@ -828,6 +903,19 @@ const ContributionNotifications: React.FC = () => {
                                             <div className="text-xs text-gray-500 mb-2">
                                                 <strong className="text-gray-700">Asunto:</strong> {vista.subject}
                                             </div>
+                                            {/* El remitente REAL, no una promesa. Con el nivel y el
+                                                motivo: «no está verificado» y «el perfil pide el
+                                                central» se corrigen en sitios distintos. */}
+                                            {vista.sender && (
+                                                <div className="text-xs text-gray-500 mb-2">
+                                                    <strong className="text-gray-700">Desde:</strong>{' '}
+                                                    <span data-no-translate>{vista.sender.address}</span>
+                                                    <span className={vista.sender.level === 1 ? 'text-green-700' : 'text-amber-700'}>
+                                                        {' '}· nivel {vista.sender.level}
+                                                    </span>
+                                                    <span className="block text-gray-400">{vista.sender.reason}</span>
+                                                </div>
+                                            )}
                                             {/* Una variable sin valor NO se borra: queda el marcador y se
                                                 dice. Un hueco donde iba el monto se publica sin que nadie
                                                 lo note; «{'{{amount}}'}» impreso se ve y se corrige. */}
@@ -851,6 +939,16 @@ const ContributionNotifications: React.FC = () => {
                                     )}
 
                                     <div className={card}>
+                                        <span className={lbl}>Probar como un sitio</span>
+                                        <select className={`${field} mb-3`} value={sitioPrueba}
+                                            onChange={e => setSitioPrueba(e.target.value)}>
+                                            <option value="">Sin sitio — se ve el remitente central</option>
+                                            {(dominios?.sites || []).map(s => (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.name} · {s.domain} {s.verified ? '(verificado)' : '(sin verificar)'}
+                                                </option>
+                                            ))}
+                                        </select>
                                         <span className={lbl}>Enviar un correo de prueba</span>
                                         <div className="flex gap-2">
                                             <input className={`${field} flex-1`} type="email" value={pruebaA}
@@ -861,8 +959,8 @@ const ContributionNotifications: React.FC = () => {
                                             </button>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-2">
-                                            La prueba sale por el remitente central de la plataforma. La resolución del
-                                            dominio propio de cada sitio llega en la fase siguiente.
+                                            La prueba sale por el MISMO remitente que usaría un aporte real de ese sitio:
+                                            una prueba que no prueba el camino que se va a usar no prueba nada.
                                         </p>
                                     </div>
                                 </>

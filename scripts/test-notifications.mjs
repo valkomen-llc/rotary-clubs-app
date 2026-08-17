@@ -23,6 +23,8 @@ import {
     beneficiaryShape, profileShape, identityShape, hexOrNull, routingShape,
     emailList, INTERNAL_RECIPIENTS_MAX, recipientsFor,
     pickProfileFor, validateProfile, defaultEventRules,
+    normalizeDomain, normalizeLocalPart, resolveSenderPlan, resolveRecipients,
+    centralDomain, fallbackSender, DEFAULT_LOCAL_PART,
 } from '../server/lib/notificationSpec.js';
 import {
     TEMPLATE_VARIABLES, isKnownVariable, sampleVariables,
@@ -461,6 +463,132 @@ check('el logotipo sin dirección no deja un hueco', (() => {
     return !/<img/.test(r.html);
 })());
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('FASE 2 — el dominio en su forma canónica');
+
+// El proveedor verifica el APEX, no el subdominio `www`. Si las dos formas no
+// se redujeran a la misma, un dominio verificado no se reconocería y el correo
+// caería al respaldo sin motivo.
+check('se quita el www', normalizeDomain('www.rotary4281.org') === 'rotary4281.org');
+check('se admite una URL entera',
+    normalizeDomain('https://www.rotary4281.org/aportes?x=1') === 'rotary4281.org');
+check('se normaliza a minúsculas y sin punto final',
+    normalizeDomain('  Rotary4281.ORG. ') === 'rotary4281.org');
+check('lo que no es un dominio se descarta',
+    normalizeDomain('localhost') === '' && normalizeDomain('') === '' && normalizeDomain(null) === '');
+check('la parte local se acota a lo que un buzón admite',
+    normalizeLocalPart('Aportes!! <script>') === 'aportesscript'
+    && normalizeLocalPart('a'.repeat(80)).length === 40);
+
+grupo('FASE 2 — la jerarquía del remitente');
+const PERFIL_ENVIO = profileShape({
+    name: 'Colrotarios',
+    identity: { fromName: 'Fundación Colombiana de Rotarios', replyTo: 'contacto@colrotarios.org' },
+    routing: { prefer: 'site', allowSiteDomain: true, localPart: 'aportes' },
+    events: { payment_confirmed: { donor: true } },
+});
+const plan = (extra) => resolveSenderPlan({ profile: PERFIL_ENVIO, ...extra });
+
+// N1 — el dominio propio, y sólo si está verificado.
+check('N1: dominio propio verificado', (() => {
+    const r = plan({ siteDomain: 'rotary4281.org', verifiedDomains: ['rotary4281.org', 'clubplatform.org'] });
+    return r.level === 1 && r.address === 'aportes@rotary4281.org';
+})());
+check('el www del sitio no impide reconocerlo', (() => {
+    const r = plan({ siteDomain: 'www.rotary4281.org', verifiedDomains: ['rotary4281.org'] });
+    return r.level === 1 && r.address === 'aportes@rotary4281.org';
+})());
+// LA REGLA QUE NO SE NEGOCIA: nunca desde un dominio sin verificar. Hasta hoy
+// `EmailService.sendEmail` sí lo intentaba y lo descubría por el rechazo — eso
+// es un correo perdido por intento, y en volumen hunde la reputación del
+// dominio desde el que envía toda la plataforma.
+check('un dominio SIN verificar NUNCA se usa', (() => {
+    const r = plan({ siteDomain: 'rotary4281.org', verifiedDomains: ['clubplatform.org'] });
+    return r.level === 2 && !r.address.includes('rotary4281.org');
+})());
+check('N2: el central verificado', (() => {
+    const r = plan({ siteDomain: '', verifiedDomains: ['clubplatform.org'] });
+    return r.level === 2 && r.address === 'aportes@clubplatform.org';
+})());
+// Sin ningún dominio verificado se cae al respaldo, que es exactamente el
+// comportamiento de antes de esta fase.
+check('N3: sin nada verificado, el respaldo de siempre', (() => {
+    const r = plan({ siteDomain: 'rotary4281.org', verifiedDomains: [] });
+    return r.level === 3 && r.address === fallbackSender();
+})());
+// Una decisión institucional, no técnica: una entidad puede querer firmar
+// siempre desde lo central aunque el sitio tenga su dominio verificado.
+check('un perfil puede prohibir el dominio del sitio', (() => {
+    const p = profileShape({ name: 'X', routing: { allowSiteDomain: false } });
+    const r = resolveSenderPlan({ profile: p, siteDomain: 'rotary4281.org', verifiedDomains: ['rotary4281.org', 'clubplatform.org'] });
+    return r.level === 2 && r.reason === 'el perfil pide el dominio central';
+})());
+// «No está verificado» y «el perfil no lo permite» se corrigen en sitios
+// distintos: el motivo es la mitad del diagnóstico.
+check('el motivo distingue los tres casos del nivel 2',
+    plan({ siteDomain: '', verifiedDomains: ['clubplatform.org'] }).reason === 'el sitio no tiene dominio propio configurado'
+    && plan({ siteDomain: 'x.org', verifiedDomains: ['clubplatform.org'] }).reason === 'el dominio del sitio no está verificado en el proveedor');
+check('el nombre visible viaja en el From', (() => {
+    const r = plan({ siteDomain: 'rotary4281.org', verifiedDomains: ['rotary4281.org'] });
+    return r.from === '"Fundación Colombiana de Rotarios" <aportes@rotary4281.org>';
+})());
+// Una comilla en el nombre partiría la cabecera del correo.
+check('una comilla en el nombre no rompe la cabecera', (() => {
+    const p = profileShape({ name: 'X', identity: { fromName: 'Fundación "Colrotarios"' } });
+    const r = resolveSenderPlan({ profile: p, siteDomain: '', verifiedDomains: ['clubplatform.org'] });
+    return (r.from.match(/"/g) || []).length === 2;
+})());
+check('el reply-to sale del perfil',
+    plan({ siteDomain: '', verifiedDomains: ['clubplatform.org'] }).replyTo === 'contacto@colrotarios.org');
+check('sin buzón declarado se usa el de omisión', (() => {
+    const p = profileShape({ name: 'X' });
+    const r = resolveSenderPlan({ profile: p, siteDomain: '', verifiedDomains: ['clubplatform.org'] });
+    return r.address === `${DEFAULT_LOCAL_PART}@${centralDomain()}`;
+})());
+// Sin perfil no se rompe: es el camino de un sitio que no configuró nada.
+check('sin perfil sigue resolviendo', resolveSenderPlan({}).level === 3);
+
+grupo('FASE 2 — a qué direcciones se escribe');
+const BEN = { email: 'direccion@colrotarios.org' };
+const conPapeles = (papeles) => profileShape({
+    name: 'X', internalRecipients: ['tesoreria@colrotarios.org'],
+    events: { payment_confirmed: papeles },
+});
+check('el aportante', (() => {
+    const r = resolveRecipients({ profile: conPapeles({ donor: true }), event: 'payment_confirmed', donorEmail: 'Ana@Club.org' });
+    return r.recipients.length === 1 && r.recipients[0].email === 'ana@club.org';
+})());
+// Las direcciones internas y el correo de la entidad son dos cosas: la primera
+// es a quién avisar en la operación, la segunda el buzón institucional.
+check('la entidad junta sus internas y su correo', (() => {
+    const r = resolveRecipients({ profile: conPapeles({ beneficiary: true }), event: 'payment_confirmed', beneficiary: BEN });
+    return r.recipients.length === 2;
+})());
+// La misma persona puede ser dirección interna y correo del sitio, y recibiría
+// dos veces el mismo aviso.
+check('no se le escribe dos veces a la misma dirección', (() => {
+    const r = resolveRecipients({
+        profile: conPapeles({ beneficiary: true, site: true }),
+        event: 'payment_confirmed', beneficiary: BEN, siteEmail: 'tesoreria@colrotarios.org',
+    });
+    return r.recipients.filter(x => x.email === 'tesoreria@colrotarios.org').length === 1;
+})());
+// Un aviso marcado que no sale y no lo dice es el silencio que este módulo
+// existe para no tener.
+check('un papel que no se pudo resolver se DICE, con su motivo', (() => {
+    const r = resolveRecipients({ profile: conPapeles({ site: true }), event: 'payment_confirmed', siteEmail: '' });
+    return r.recipients.length === 0 && /no tiene correo configurado/.test(r.skipped[0].reason);
+})());
+// La plataforma no guarda un responsable por campaña. Un aviso que llega al
+// buzón equivocado es peor que uno que no llega.
+check('«responsable de campaña» se salta y explica que no existe todavía', (() => {
+    const r = resolveRecipients({ profile: conPapeles({ campaign: true }), event: 'payment_confirmed' });
+    return r.recipients.length === 0 && /no declara responsable/.test(r.skipped[0].reason);
+})());
+check('sin nada marcado no se escribe a nadie',
+    resolveRecipients({ profile: conPapeles({}), event: 'payment_confirmed', donorEmail: 'a@b.com' }).recipients.length === 0);
+
 // ════════════════════════════════════════════════════════════════════
 grupo('Lo que no se ve ejecutando nada');
 {
@@ -599,17 +727,77 @@ grupo('Lo que no se ve ejecutando nada');
         /DELETE FROM "NotificationTemplate" WHERE "profileId"/.test(ctrl)
         && !/DELETE FROM "NotificationDelivery"/.test(ctrl));
 
-    // Un panel que parece gobernar algo que todavía no gobierna es peor que
-    // uno que no existe.
-    check('la pantalla DICE que todavía no gobierna el recibo real',
-        /todavía no gobierna el recibo real/i.test(pantalla));
+    // v4.857: ahora SÍ gobierna, y la pantalla dice qué pasa con un sitio al
+    // que no llegue ningún perfil. «¿Por qué mi sitio manda con otra
+    // dirección?» tiene que poder contestarse sin leer el código.
+    check('la pantalla DICE qué gobierna y qué pasa sin perfil',
+        /gobierna la confirmación de los aportes/i.test(pantalla)
+        && /sigue recibiendo el recibo de siempre/i.test(pantalla));
     // El correo se dibuja aislado: es HTML compuesto con datos de la campaña.
     check('la vista previa va en un iframe con sandbox vacío',
         /sandbox=""/.test(pantalla) && /srcDoc=\{vista\.html\}/.test(pantalla));
     // Una dependencia que falta en un useCallback no la ve el typecheck y el
     // ajuste simplemente no llega nunca (lección de `conQr`, v4.836).
-    check('la vista previa depende de la plantilla que se está editando',
-        /\}, \[perfil, plantilla\]\);/.test(pantalla));
+    check('la vista previa depende de la plantilla y del sitio elegido',
+        /\}, \[perfil, plantilla, sitioPrueba\]\);/.test(pantalla));
+
+    // ── FASE 2 ────────────────────────────────────────────────────
+    const emisor = readFileSync('server/lib/notificationSender.js', 'utf8');
+    const dominiosSrc = readFileSync('server/lib/senderDomains.js', 'utf8');
+
+    // Consultar al proveedor en cada envío sería una llamada de red a un
+    // tercero DENTRO del webhook de Stripe, y Stripe da de baja los endpoints
+    // que tardan.
+    check('la verificación de dominios se CACHEA con vencimiento',
+        /NotificationDomain/.test(ensure) && /DOMAIN_TTL_MIN/.test(dominiosSrc));
+    // `null` y `[]` son cosas distintas: confundirlas borraría la caché con una
+    // lista vacía y dejaría a todos los sitios en el respaldo.
+    check('«no se pudo preguntar» NO es «no hay ninguno»',
+        /Devuelve `null` —no `\[\]`—/.test(dominiosSrc)
+        && /if \(frescos === null\)/.test(dominiosSrc));
+    check('nada de la caché lanza',
+        (dominiosSrc.match(/catch/g) || []).length >= 4);
+
+    // Con perfil aplicable el recibo de siempre NO sale: dos correos por el
+    // mismo aporte es lo que este módulo existe para no producir.
+    const bloqueEmisor = pago.slice(pago.indexOf('v4.857 — EL PERFIL DE NOTIFICACIÓN'), pago.indexOf('} catch (emailErr)'));
+    check('con perfil aplicable, el recibo de siempre NO se manda',
+        /const traza = porPerfil\.handled\s*\?\s*\{ ok: true, claimed: false/.test(bloqueEmisor));
+    // Un `return` ahí saldría de la función entera.
+    check('y se sale con una bandera, no con un return',
+        !/\n\s*return;\s*\n/.test(bloqueEmisor));
+    // Sin ningún perfil configurado —el caso de todos los sitios hasta que
+    // alguien cree uno— sale el recibo idéntico al de v4.855.
+    check('sin perfil, el recibo de siempre sigue saliendo',
+        /sale el recibo de siempre/.test(bloqueEmisor)
+        && /from: PLATFORM_DONATION_SENDER/.test(bloqueEmisor));
+    // Un fallo del camino nuevo no puede dejar al aportante sin confirmación.
+    check('un fallo del perfil degrada al recibo de siempre',
+        /catch \(perfilErr\)[\s\S]{0,400}handled: false/.test(bloqueEmisor));
+
+    // Corre dentro del webhook, después de acreditar el cobro: una excepción
+    // tumbaría el 200 que Stripe espera. El try envuelve TODO el cuerpo, así
+    // que es una propiedad del código y no un argumento sobre qué puede fallar
+    // por dentro.
+    check('el emisor nunca lanza, por construcción',
+        /return await enviarTodas\(args\);\s*\} catch \(e\)/.test(emisor)
+        && /fallo inesperado/.test(emisor));
+    // El reclamo va antes del envío, igual que en la Fase 0.
+    check('el emisor RECLAMA antes de enviar',
+        emisor.indexOf('claimDelivery(') < emisor.indexOf('EmailService.sendPlatformEmail'));
+    // Consultar los dominios por destinatario sería repetir la misma pregunta.
+    check('los dominios se consultan UNA vez por aporte',
+        (emisor.match(/await verifiedDomains\(/g) || []).length === 1);
+    // Sin la versión en texto plano, algunos filtros puntúan el correo como
+    // sospechoso y un cliente sin HTML muestra una página en blanco.
+    check('el correo sale con su versión en texto plano',
+        /text: salida\.text/.test(emisor) && /if \(text\) body\.text = text;/.test(readFileSync('server/services/EmailService.js', 'utf8')));
+
+    // Una prueba que no prueba el camino que se va a usar no prueba nada.
+    check('la prueba sale por el MISMO remitente que un aporte real',
+        /from: remitente\.from/.test(ctrl) && /resolveSenderPlan\(/.test(ctrl));
+    check('la pantalla muestra el remitente real, con su nivel y su motivo',
+        /vista\.sender\.address/.test(pantalla) && /vista\.sender\.reason/.test(pantalla));
 }
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
