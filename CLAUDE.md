@@ -4004,6 +4004,84 @@ no se cambia más de manera automática».
   `campaignSeoFor` degrada a `null` ante cualquier fallo: corre en el
   catch-all de toda página pública.
 
+### Quiénes ya aportaron (v4.862)
+
+Debajo del botón «Aportar ahora» de la tarjeta de campaña va UNA sola línea:
+cuántos aportes lleva la campaña y, al lado, el nombre de quien aportó,
+pasando solo de uno al siguiente.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/contributorRoll.js` | El CRITERIO. **Puro**: quién puede aparecer, qué cuenta y cómo se arma la línea |
+| `contributorRollFor` / `getCampaignContributors` | El camino a los datos y la caché |
+| `src/components/campaign/ContributorRoll.tsx` | La línea y su rotación |
+
+Pruebas: dentro de `npm run test:contribution` (461 casos, **sin base ni red**)
+y `npm run test:contributors:ui` (12, navegador de verdad).
+
+- **UN APORTE ANÓNIMO NO PUBLICA NOMBRE, Y ESO SE DECIDE EN EL SERVIDOR.** Si
+  el nombre viajara en el JSON y la pantalla lo escondiera, bastaría abrir la
+  consola del navegador para leerlo. Es la misma decisión que tomó la
+  exportación de la Bóveda con el correo de un aportante anónimo (v4.850): el
+  dato sigue guardado y deja de SALIR. Va más lejos que la casilla — un aporte
+  no anónimo con el nombre vacío tampoco publica nada: no hay qué mostrar y un
+  renglón en blanco se lee como un error del sitio.
+- **EL TOTAL Y LOS NOMBRES SALEN DE LA MISMA CONSULTA.** El total podría salir
+  de `ContributionCampaignMetric` —ya cuenta `donation_completed` por campaña y
+  está indexado— y sería más barato; no se hace por dos motivos: ese contador
+  **no baja** cuando un aporte se reembolsa (v4.859 marca `status='refunded'` y
+  el contador diario se queda donde estaba), y los nombres tienen que salir de
+  `Donation` igual. Con dos fuentes, la línea podría decir «3 aportes» y saber
+  sólo dos nombres de tres aportantes que sí dieron el suyo, y nadie podría
+  explicar la diferencia.
+- **El anónimo SUMA al total.** La anonimidad esconde el nombre, no el hecho:
+  un aporte anónimo que no sumara le restaría a quien lo hizo el reconocimiento
+  de que existió, que es justo lo que este contador celebra. `named` y
+  `anonymous` se quedan del lado del servidor — decir cuántos se hicieron en
+  anónimo es lo que quien eligió el anónimo no pidió que se dijera.
+- **⚠️ `Donation` NO TIENE COLUMNA DE CAMPAÑA y no se le agrega.** La atribución
+  vive en `Payment.rawPayload` (v4.807) y el vínculo de vuelta, `donationId`,
+  desde v4.844. Agregar la columna a Prisma es la trampa de `logo_intl` (v4.699)
+  en su versión más cara: `Donation` y `Payment` se consultan con `findMany`
+  **sin `select`** en media plataforma, así que una columna declarada y todavía
+  inexistente deja esas consultas en 500 desde el primer despliegue — y eso cae
+  sobre el cobro.
+- **El SQL filtra amplio y la comprobación exacta se hace en JS.** Castear a
+  `jsonb` una columna de TEXTO estalla con una sola fila mal formada, y Postgres
+  no garantiza que el filtro que protege el casteo se evalúe antes que el
+  casteo. Mismo patrón que el reenvío de la Bóveda.
+- **La cota por fecha no es un tope; un `LIMIT` sí lo sería.** Ningún pago de
+  esta campaña puede ser anterior a la campaña, así que acota lo que se recorre
+  sin dejar fuera ni un aporte. Un total truncado presentado como total es peor
+  que no mostrar ninguno.
+- **La caché la vacía el APORTE, no sólo el reloj.** Quien acaba de aportar
+  recarga y quiere verse — y esta línea existe para eso. Se invalida en
+  `bumpMetric` **sólo** con `donation_completed` (las vistas llegan de a
+  cientos y la dejarían sin servir para nada) y en el reembolso.
+- **El nombre se muestra TAL CUAL lo escribieron**, con los espacios
+  normalizados y acotado sin partir palabras. No se recorta a «nombre y
+  apellido» contando palabras: quien firma «María Fernanda Restrepo» no se
+  llama «María Fernanda».
+- **Un aportante repetido aparece UNA vez** —«Ana · Ana» se lee como un fallo—
+  y sus dos aportes cuentan.
+- **Sin aportes no se pinta nada.** «0 aportes» debajo del botón no es un dato
+  neutro: es un cartel que desanima justo donde se pide ayuda. Con todos
+  anónimos queda el total solo, que es la verdad completa de lo que se puede
+  decir.
+- **Los nombres son DATOS, no lenguaje**: `data-no-translate` (v4.662). El
+  traductor del sitio convertiría el apellido de alguien en otra palabra.
+- **Con un solo nombre no hay intervalo**, y el freno del cursor se suelta con
+  `mouseleave` — un freno sin salida se lee como que la función dejó de
+  funcionar (v4.832).
+- **La línea se pide APARTE de `/active`.** Un dato que cambia con cada aporte
+  no tiene por qué gobernar el ritmo de la caché de la campaña, y si la
+  consulta falla la línea no se pinta y la página se ve igual que antes.
+- **No hay espejo del criterio en el navegador**, a propósito: se aplica entero
+  en el servidor y la pantalla sólo muestra el resultado — un espejo sería una
+  copia sin consumidor, y las copias se separan en silencio.
+- **Que los nombres pasen SOLOS se comprueba en un navegador.** Es literalmente
+  lo que se pidió y no se ve en una prueba de criterio.
+
 ### El editor de campañas se pliega (v4.826)
 
 Cada sección de la configuración es un `Card` plegable

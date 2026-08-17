@@ -31,8 +31,9 @@ import {
     publishedValueOf, publishedCutoffOf, metricLabel,
 } from '../lib/emergencyFeed.js';
 import { readCampaign } from '../lib/emergencyIngest.js';
+import { buildContributorRoll } from '../lib/contributorRoll.js';
 
-console.log('[CONTRIBUTION v4.825] Controller cargado — campañas de contribución (lectura automatizada del panorama)');
+console.log('[CONTRIBUTION v4.862] Controller cargado — campañas de contribución (quiénes ya aportaron)');
 
 // ─── Métricas (F5) ─────────────────────────────────────────────────────────
 //
@@ -70,6 +71,10 @@ export const bumpMetric = async ({ campaignId, clubId, type, amount = 0, currenc
                        currency = COALESCE("ContributionCampaignMetric".currency, $5)`,
         [campaignId, clubId, type, Number(amount) || 0, currency]
     );
+    // Un aporte confirmado cambia la línea de «quiénes ya aportaron», así que
+    // su caché se vacía acá. Sólo con ESE tipo: las vistas llegan de a cientos
+    // y vaciar la caché con cada una la dejaría sin servir para nada.
+    if (type === 'donation_completed') invalidateContributorRoll(campaignId);
     return true;
 };
 
@@ -667,6 +672,102 @@ export const getActiveCampaign = async (req, res) => {
         // Esto corre en cada visita de la página de aportes: degradar, nunca 500.
         console.error('[CONTRIBUTION] getActiveCampaign (degrada a null):', e?.message);
         res.json({ campaign: null });
+    }
+};
+
+// ─── Quiénes ya aportaron (v4.862) ─────────────────────────────────────────
+//
+// GET /api/contribution-campaigns/:id/contributors  (público)
+//
+// Devuelve `{ total, names }` para la línea que va debajo del botón de
+// aportar. El CRITERIO —a quién se le publica el nombre— vive en
+// `contributorRoll.js`; acá sólo está el camino a los datos.
+//
+// ⚠️ `Donation` NO TIENE COLUMNA DE CAMPAÑA, y no se le agrega. La atribución
+// vive dentro de `Payment.rawPayload`, que es texto con JSON libre, desde
+// v4.807; el vínculo de vuelta al aporte (`donationId`) desde v4.844. Agregar
+// la columna a Prisma es la trampa de `logo_intl` (v4.699) en su versión más
+// cara: `Donation` y `Payment` se consultan con `findMany` SIN `select` en
+// media plataforma, así que una columna declarada y todavía inexistente en la
+// base deja esas consultas en 500 desde el primer despliegue — y eso cae
+// sobre el cobro.
+//
+// Por eso el camino es: los pagos que MENCIONAN esta campaña → sus aportes.
+// El filtro del SQL es amplio a propósito (`LIKE '%<id>%'` sobre un id que es
+// un UUID) y la comprobación EXACTA se hace en JavaScript sobre el JSON ya
+// parseado: es el mismo patrón que usa el reenvío de la Bóveda, y evita
+// castear a `jsonb` una columna de texto que una sola fila mal formada
+// bastaría para hacer estallar — Postgres no garantiza que el filtro que
+// protege el casteo se evalúe antes que el casteo.
+//
+// La cota por fecha no es un tope: NINGÚN pago de esta campaña puede ser
+// anterior a la campaña misma, así que acota lo que se recorre sin dejar
+// fuera ni un aporte. Un `LIMIT` sí dejaría fuera —y un total truncado
+// presentado como total es peor que no mostrar ninguno.
+const ROLL_TTL_MS = 60 * 1000;
+const rollCache = new Map();
+
+/** Se vacía cuando entra un aporte de esta campaña, que es lo único que
+ *  cambia la línea. Con sólo el TTL, quien acaba de aportar podría recargar y
+ *  no verse — y esta línea existe justamente para que se vea. */
+export const invalidateContributorRoll = (campaignId) => {
+    if (campaignId) rollCache.delete(String(campaignId));
+    else rollCache.clear();
+};
+
+export const contributorRollFor = async (campaignId) => {
+    const { rows: campanas } = await db.query(
+        `SELECT id, "createdAt" FROM "ContributionCampaign" WHERE id = $1 LIMIT 1`,
+        [campaignId]
+    );
+    if (!campanas[0]) return { total: 0, names: [] };
+
+    const { rows: pagos } = await db.query(
+        `SELECT "rawPayload" FROM "Payment"
+          WHERE "rawPayload" LIKE $1 AND "createdAt" >= $2`,
+        [`%${campaignId}%`, campanas[0].createdAt]
+    );
+
+    const donationIds = [];
+    for (const p of pagos) {
+        let payload = null;
+        try { payload = JSON.parse(p.rawPayload || '{}'); } catch { continue; }
+        if (String(payload?.campaignId || '') !== String(campaignId)) continue;
+        if (payload?.donationId) donationIds.push(String(payload.donationId));
+    }
+    if (!donationIds.length) return { total: 0, names: [] };
+
+    const { rows: aportes } = await db.query(
+        `SELECT id, "donorName", "isAnonymous", status, date
+           FROM "Donation" WHERE id = ANY($1::text[])`,
+        [donationIds]
+    );
+
+    const roll = buildContributorRoll(aportes);
+    // `named` y `anonymous` se quedan del lado del servidor: la página no los
+    // usa y decir cuántos aportes se hicieron en anónimo es exactamente lo
+    // que quien eligió el anónimo no pidió que se dijera.
+    return { total: roll.total, names: roll.names };
+};
+
+export const getCampaignContributors = async (req, res) => {
+    try {
+        const campaignId = String(req.params.id || '').trim();
+        if (!campaignId) return res.json({ total: 0, names: [] });
+
+        const cached = rollCache.get(campaignId);
+        if (cached && Date.now() - cached.at < ROLL_TTL_MS) return res.json(cached.payload);
+
+        await ensureContributionSchema();
+        const payload = await contributorRollFor(campaignId);
+        rollCache.set(campaignId, { at: Date.now(), payload });
+        res.json(payload);
+    } catch (e) {
+        // Esto corre en la página pública de una emergencia: degrada a «no hay
+        // nada que contar», nunca a un error. Sin total no se pinta la línea y
+        // el resto de la página se ve igual.
+        console.error('[CONTRIBUTION] getCampaignContributors (degrada a vacío):', e?.message);
+        res.json({ total: 0, names: [] });
     }
 };
 

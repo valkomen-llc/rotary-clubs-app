@@ -7,6 +7,7 @@ import { ctaTarget } from '../../lib/ctaLinks';
 import { hexOrEmpty, groupCenters, heroSlides, sectionVideos, galleryItems, videoThumb, HERO_SLIDE_MS, type ContributionCenter } from '../../lib/contributionSpec';
 import { SITE_ACTION_BG } from '../../lib/siteChrome';
 import CampaignGallery from './CampaignGallery';
+import ContributorRoll, { type ContributorRollData } from './ContributorRoll';
 
 // ════════════════════════════════════════════════════════════════════
 // La landing de campaña — v4.804 (Fase 2)
@@ -220,6 +221,24 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
         viewSent.current = true;
         trackCampaign(campaign.id, clubId, 'view', preview);
     }, [campaign.id, clubId, preview]);
+
+    // ── Quiénes ya aportaron (v4.862) ──
+    //
+    // Se pide APARTE de la campaña, no dentro de su payload, y es deliberado:
+    // `/active` corre en cada visita de la página de aportes y su caché la
+    // vacía cualquier escritura de la campaña —un dato que cambia con cada
+    // aporte no tiene por qué gobernar ese ritmo—. Y si esta consulta falla,
+    // la línea no se pinta y la página se ve exactamente igual que antes.
+    const [roll, setRoll] = useState<ContributorRollData | null>(null);
+    useEffect(() => {
+        if (!campaign.id) return;
+        let vivo = true;
+        fetch(`${API_BASE}/contribution-campaigns/${encodeURIComponent(campaign.id)}/contributors`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => { if (vivo && d && typeof d.total === 'number') setRoll(d); })
+            .catch(() => { /* sin línea; la página no depende de esto */ });
+        return () => { vivo = false; };
+    }, [campaign.id]);
 
     // ── Las imágenes del hero se turnan, igual que en la portada ──
     //
@@ -485,6 +504,14 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                     <Heart className="w-5 h-5 fill-current" />
                                     {card.buttonText || 'APORTAR'}
                                 </button>
+                                {/* JUSTO DEBAJO del botón: cuántos aportes
+                                    lleva la campaña y quién aportó. Va acá y
+                                    no en otra sección porque es lo que le
+                                    contesta a quien tiene el dedo sobre el
+                                    botón la pregunta «¿alguien más ya lo
+                                    hizo?» — puesto más abajo llegaría cuando
+                                    ya decidió. */}
+                                <ContributorRoll roll={roll} accent={accent} />
                             </div>
                         </div>
                     )}
