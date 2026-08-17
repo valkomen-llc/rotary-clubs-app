@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.846.0",
-  "cache_bust": "2026-08-17i (La comisión de Stripe se convierte con la TRM del día del cobro.)",
+  "version": "4.847.0",
+  "cache_bust": "2026-08-17j (Fase 1: el libro mayor de la Bóveda, en sombra.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -51,6 +51,8 @@
     "test:creative": "node scripts/test-creative.mjs",
     "test:campaign-post": "node scripts/test-campaign-post.mjs",
     "test:currency": "node scripts/test-currency.mjs",
+    "test:ledger": "node scripts/test-ledger.mjs",
+    "test:ledger:write": "node scripts/test-ledger-write.mjs",
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:wallet:ui": "node scripts/test-wallet-ui.mjs"
   },

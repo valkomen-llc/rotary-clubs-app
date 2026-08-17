@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.846.0 | 2026-08-17 (La comisión de Stripe se convierte con la TRM)
-// Cache bust: 2026-08-17i
+// UI V4.847.0 | 2026-08-17 (Fase 1: el libro mayor de la Bóveda, en sombra)
+// Cache bust: 2026-08-17j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.847.0',
+        title: 'La Bóveda estrena su libro mayor, en sombra 📖',
+        description: 'Fase 1 del rediseño financiero. A partir de esta versión, cada aporte, cada liberación y cada retiro dejan además un ASIENTO CONTABLE: un registro de doble partida que dice, línea por línea, cuánto entró, cuánto se llevó el procesador, cuánto retuvo la plataforma y cuánto le queda al club. Nadie lo lee todavía — la Bóveda sigue calculando sus saldos exactamente como hasta ahora—, y eso es a propósito: los saldos de esta pantalla son dinero que un club va a pedir, y cambiar de dónde salen sin haber comprobado antes que el libro nuevo dice lo mismo que el viejo sería estrenar un motor contable sobre producción. Lo que sí llega es la forma de CONTRASTARLOS: el operador de la plataforma tiene ahora un informe que pone los dos libros uno al lado del otro, moneda por moneda. Cuando coincidan, la Fase 2 cambia la fuente.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'contabilidad'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Cada aporte, liberación y retiro deja su asiento contable de doble partida.' },
+            { type: 'added', text: 'La comisión guarda su importe original, su tasa y su fuente dentro del propio asiento.' },
+            { type: 'added', text: 'Informe de conciliación para el operador: el libro nuevo contra la Bóveda actual.' },
+            { type: 'added', text: 'npm run test:ledger (88 casos) y npm run test:ledger:write (44), sin base ni red.' },
+        ],
+        details: [
+            'El libro se lleva en NÚMEROS ENTEROS, en la unidad mínima de cada moneda. El motivo está medido: 8,915 no existe como número binario —el más cercano es 8,9149999…—, así que redondearlo da 8,91 y no 8,92. Sobre un aporte suelto es un centavo; sobre un libro que se suma miles de veces es un descuadre que nadie puede explicar.',
+            'Un asiento cuadra POR MONEDA, no en total. Un apunte de +10 dólares y −40.000 pesos no «cuadra en cero» de ninguna forma útil: es la misma mezcla que produjo el «$47.507,75», escondida detrás de una invariante que parece rigurosa.',
+            'El libro SÓLO AGREGA: no hay forma de editar ni de borrar un asiento. Corregir es escribir uno que revierte al anterior y lo nombra. Un libro que se puede editar no responde «¿qué decía esto en marzo?», que es la única pregunta para la que existe un libro.',
+            'Anular un retiro NO es lo mismo que revertirlo: el club lo pidió de verdad y ese hecho se queda: encima queda el asiento que devuelve el dinero a disponible.',
+            'NADIE PAGA POR EL LIBRO. Si el asiento falla, el aporte queda registrado igual y el fallo se anota. Al revés —un cobro que se pierde porque no se pudo escribir su asiento— sería cambiar un problema de auditoría por uno de dinero.',
+            'La comisión distingue lo MEDIDO de lo ESTIMADO: lo que devolvió Stripe es un hecho; lo que calculamos con su tarifa publicada porque la consulta falló es una cuenta nuestra, y queda marcada como tal.',
+            'Hoy el informe de conciliación va a DIFERIR, y saberlo es el resultado: el libro arranca vacío y sólo asienta lo posterior a esta versión, así que la diferencia mide cuánto historial le falta, no un error. La Fase 2 lo carga hacia atrás.',
+        ]
+    },
     {
         version: '4.846.0',
         title: 'La comisión de Stripe se convierte con la TRM oficial 🇨🇴',

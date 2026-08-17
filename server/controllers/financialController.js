@@ -13,6 +13,7 @@ import {
 import { siteCurrency } from '../lib/clubCurrency.js';
 import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
+import { postRelease } from '../lib/ledger.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -923,6 +924,11 @@ export const syncPaymentsWithStripe = async (req, res) => {
             select: {
                 id: true, providerRef: true, amount: true, currency: true,
                 applicationFee: true, availableOn: true, stripeBalanceTxId: true,
+                // v4.847 — `clubId` lo necesita el asiento de liberación. Un
+                // `select` que no lo pide devuelve `undefined`, y el asiento se
+                // rechazaría por «necesita club» en TODOS los pagos, en
+                // silencio: el libro está en sombra y su fallo no propaga.
+                clubId: true,
                 rawPayload: true, createdAt: true
             },
             take: 200
@@ -1062,6 +1068,31 @@ export const syncPaymentsWithStripe = async (req, res) => {
                         rawPayload: JSON.stringify(enriquecido)
                     }
                 });
+
+                // v4.847 — El asiento de LIBERACIÓN, en sombra. El sync es el
+                // único sitio que se entera de que el proveedor soltó el
+                // dinero, así que es donde el libro lo puede saber.
+                //
+                // Se asienta cuando el club YA lo puede pedir, no cuando Stripe
+                // lo libera: entre las dos fechas hay `PLATFORM_HOLDING_DAYS` y
+                // asentar en la primera pondría en «disponible para retiro» un
+                // dinero que la Bóveda todavía no deja retirar. Dos libros
+                // diciendo cosas distintas sobre lo mismo es exactamente lo que
+                // la fase en sombra existe para no estrenar.
+                //
+                // `sourceRef` es el id del pago: si el sync se corre diez veces
+                // —y se corre— el índice único rechaza el segundo asiento.
+                if (clubAvailableOn && new Date(clubAvailableOn) <= new Date() && newNetAmount > 0) {
+                    const asiento = await postRelease({
+                        clubId: payment.clubId,
+                        currency: payment.currency,
+                        net: newNetAmount,
+                        sourceRef: payment.id,
+                        occurredAt: clubAvailableOn,
+                        meta: { stripeBalanceTxId: bt.id, availableOn: availableOn?.toISOString() || null },
+                    });
+                    if (!asiento.ok) console.warn(`[LEDGER] la liberación de ${payment.id} quedó sin asentar (${asiento.reason})`);
+                }
 
                 results.synced++;
                 results.details.push({
