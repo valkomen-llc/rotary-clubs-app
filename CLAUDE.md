@@ -2485,6 +2485,104 @@ red**).
 - **`contributionId` es `Donation.id`**, que es además la referencia que el
   recibo ya le muestra al aportante.
 
+### Fase 1 — perfiles, beneficiarios y plantillas (v4.856)
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/notificationTemplate.js` | El correo: bloques, variables, escapado y render. **Puro** |
+| `server/controllers/notificationProfileController.js` | CRUD del operador, resolución, vista previa y envío de prueba |
+| `server/routes/notification-profiles.js` | Las rutas, todas del operador |
+| `src/pages/admin/ContributionNotifications.tsx` | La pantalla del Administrador Central |
+
+- **La Fase 1 NO manda correos de aportes**, y la pantalla lo DICE. Se
+  configura, se previsualiza y se manda una PRUEBA; el recibo real sigue
+  saliendo como en v4.855. Un panel que parece gobernar algo que todavía no
+  gobierna es peor que uno que no existe — quien lo configure creería que ya
+  está al aire.
+- **EL ALCANCE DE UN PERFIL SE RESUELVE CON `targetsSite` DE
+  `contributionSpec.js`**, no con un criterio propio. Ya trata `Club.district`
+  como una LISTA (v4.748) y ya está probado; con dos criterios, un perfil
+  podría alcanzar a un sitio que la campaña no alcanza y el correo hablaría de
+  una campaña que ese sitio no muestra.
+- **La resolución va de lo más específico a lo más general y DEVUELVE EL
+  MOTIVO**: la campaña que lo eligió expresamente → el perfil que alcanza al
+  sitio (mayor prioridad) → el perfil global → nada, y entonces sale el recibo
+  de siempre. El último escalón es deliberado (criterio 19): una contribución
+  no se queda sin notificación porque falte una personalización. Y el `reason`
+  es lo que contesta «¿por qué este aporte salió firmado así?» dos semanas
+  después.
+- **Que la campaña apunte a un perfil apagado o borrado NO deja el aporte sin
+  aviso**: se sigue bajando por la jerarquía.
+- **El desempate es ESTABLE** (prioridad, luego `updatedAt`, luego id). Si
+  dependiera del orden en que la base devuelve las filas, el mismo sitio
+  firmaría distinto en dos aportes seguidos — la lección de `pickDistrictSite`.
+- **La DIRECCIÓN de envío no se declara en el perfil.** Se declara el nombre
+  visible y el reply-to; la dirección la resuelve el servidor con el sitio de
+  origen (Fase 2). Dejarla escribir a mano permitiría firmar desde un dominio
+  ajeno, que es lo que el criterio 23 del pedido prohíbe.
+- **El beneficiario NO lleva cuentas bancarias**, y no es un olvido: el dinero
+  entra a la cuenta Stripe de la plataforma y se liquida por la Bóveda. Datos
+  de recaudo acá serían una segunda verdad sobre a dónde va el dinero, y sería
+  falsa.
+- **NO se manda todo por defecto** (criterio 12). Un perfil nuevo avisa al
+  aportante de su pago confirmado y a nadie más. Y un evento que la plataforma
+  todavía no puede observar se DESCARTA aunque venga marcado: encenderlo daría
+  una casilla que no dispara nunca.
+- **EL CORREO SE COMPONE CON BLOQUES, NUNCA CON HTML LIBRE.** Esto lo edita un
+  administrador y se renderiza en el cliente de correo de un tercero: HTML
+  arbitrario ahí es una inyección con pasos extra —un `<script>` no corre en
+  Gmail, pero un `<a>` a un destino ajeno, un `<img>` que llama a un servidor de
+  terceros o un `<style>` que tapa el contenido, sí—. Con bloques el HTML lo
+  escribimos nosotros y del administrador sólo entra TEXTO, que se escapa.
+  Misma decisión que `MASK_SHAPES` en Plantillas IA.
+- **El nombre de un aportante lo escribe un desconocido en un formulario
+  público**: es la entrada menos confiable del módulo y pasa por `escapeHtml`
+  como todo lo demás.
+- **Un color sólo puede ser un hexadecimal de seis** (`hexOrNull`): termina
+  dentro de un atributo `style`.
+- **La dirección de un botón se comprueba DESPUÉS de sustituir la variable**,
+  que es cuando se sabe a dónde apunta de verdad. Sólo `http` y `https`; un
+  botón cuya variable no se resolvió no se dibuja — uno que no lleva a ninguna
+  parte es peor que ninguno (v4.650), y en un correo no se corrige después de
+  enviado.
+- **UNA VARIABLE SIN VALOR NO SE BORRA: se deja el marcador y se REPORTA.** Es
+  lo contrario de `resolveVariables` en Plantillas IA, y a propósito — allá el
+  hueco se ve en el editor antes de publicar; acá el correo ya salió.
+  «Recibimos tu aporte de  » es peor que «Recibimos tu aporte de {{amount}}»:
+  lo segundo se lee como un error del sistema y lo primero como que no aportó
+  nada.
+- **El resumen no dibuja las filas sin valor.** Un renglón «Campaña: » en
+  blanco se lee como un error del sistema.
+- **El correo lleva versión en TEXTO PLANO.** No es un adorno: sin ella algunos
+  filtros puntúan el correo como sospechoso, y un cliente que no dibuja HTML
+  mostraría una página en blanco.
+- **Las plantillas se VERSIONAN; nunca se actualiza una fila.** Editar baja la
+  bandera de la vigente e inserta una versión nueva — es lo que permite
+  explicar un aporte de hace seis meses con la plantilla que lo generó
+  (criterio 18). Mismo patrón que `ReelCopy` y `CreativeProfile`.
+- **El índice único de la vigente es PARCIAL, así que NO se usa `ON CONFLICT`
+  contra él**: tendría que repetir el predicado o la sentencia falla entera
+  (v4.648). Se baja la bandera con un `UPDATE` y después se inserta. Y lleva
+  `COALESCE` porque en Postgres NULL nunca es igual a NULL: sin él, dos
+  plantillas globales —las dos con perfil y campaña en NULL— no chocarían
+  jamás, que es justo donde más se repiten.
+- **La plantilla se valida ANTES de escribirse.** Guardar una que no se puede
+  enviar deja una versión inservible marcada como vigente, y la siguiente
+  notificación sale con ella.
+- **Borrar un perfil se lleva sus plantillas y NO sus entregas.** Las entregas
+  son la traza de correos que de verdad salieron: borrarlas dejaría aportes sin
+  poder explicar.
+- **Esto es del OPERADOR de la plataforma**, comprobado en las rutas **y otra
+  vez** en cada método del controlador. Se protegen por separado a propósito:
+  una ruta que se reordene o se copie a otro archivo perdería la guardia sin
+  que nada avise.
+- **La vista previa va en un `iframe` con `sandbox=""`.** Es HTML compuesto con
+  datos de una campaña y no puede tocar el panel.
+- **`notificationProfileId` es COLUMNA de `ContributionCampaign`**, aditiva.
+  NULL —el valor de todas las campañas existentes— significa «heredar». Es
+  columna y no un campo del documento `content` porque la resolución la
+  consulta por campaña.
+
 ## En qué moneda se cobra un aporte — v4.834
 
 Hasta v4.833 la moneda salía de `resolveClubCurrency` y nada más: la del SITIO.
@@ -5863,9 +5961,10 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 46 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 49 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
-`NotificationDelivery`,
+las cuatro de Notificaciones de Contribuciones (`NotificationDelivery`,
+`NotificationBeneficiary`, `NotificationProfile`, `NotificationTemplate`),
 `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,

@@ -33,11 +33,13 @@ export async function ensureContributionSchema() {
                 to_regclass('public."ContributionCampaignMetric"') IS NOT NULL AS metrica,
                 to_regclass('public."ContributionCampaignReading"') IS NOT NULL AS lectura,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feedRunAt') AS col_feed`
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feedRunAt') AS col_feed,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'notificationProfileId') AS col_notif`
     );
     if (rows[0]?.campania && rows[0]?.centro && rows[0]?.override
         && rows[0]?.historial && rows[0]?.metrica
-        && rows[0]?.lectura && rows[0]?.col_feed) { _ready = true; return; }
+        && rows[0]?.lectura && rows[0]?.col_feed && rows[0]?.col_notif) { _ready = true; return; }
 
     // ── La campaña ────────────────────────────────────────────────────
     //
@@ -169,6 +171,19 @@ export async function ensureContributionSchema() {
     // documento habría que traer y deserializar todas las campañas para
     // saberlo.
     await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS "feedRunAt" TIMESTAMPTZ;`);
+
+    // ── Notificaciones de Contribuciones (v4.856) ─────────────────────
+    //
+    // El perfil que esta campaña eligió EXPRESAMENTE. Es el primer escalón de
+    // la resolución (`pickProfileFor`): lo explícito manda sobre lo deducido
+    // del alcance, misma regla que el color de la campaña sobre el del perfil
+    // creativo. NULL —el valor de todas las campañas existentes— significa
+    // «heredar», que es el comportamiento de siempre.
+    //
+    // Es COLUMNA y no un campo del documento `content` porque la resolución la
+    // consulta por campaña: dentro del JSON habría que traer y deserializar el
+    // contenido entero para leer un identificador.
+    await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS "notificationProfileId" TEXT;`);
 
     // Cada lectura de una fuente queda registrada, se aplique o no.
     //

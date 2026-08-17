@@ -22,6 +22,13 @@
 // Esta fase NO cambia lo que recibe el aportante. Registra lo que ya se
 // envía. El correo se sigue componiendo y mandando exactamente igual.
 // ════════════════════════════════════════════════════════════════════
+//
+// El ALCANCE de un perfil se resuelve con `targetsSite` de
+// `contributionSpec.js`, no con un criterio propio: ya trata `Club.district`
+// como una LISTA (v4.748) y ya está probado. Con dos criterios, un perfil
+// podría alcanzar a un sitio que la campaña no alcanza, y el correo hablaría
+// de una campaña que ese sitio no muestra.
+import { targetsSite } from './contributionSpec.js';
 
 /* ─── LOS EVENTOS ────────────────────────────────────────────────────
  *
@@ -300,6 +307,265 @@ export const summarizeDeliveries = (rows) => {
     };
 };
 
+/* ════════════════════════════════════════════════════════════════════
+   FASE 1 — LA ENTIDAD BENEFICIARIA Y EL PERFIL
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ─── EL BENEFICIARIO ────────────────────────────────────────────────
+ *
+ * La organización que gestiona lo recaudado: Colrotarios es el primer caso, y
+ * la forma es genérica a propósito — un distrito, una fundación o un programa
+ * entran igual sin tocar código.
+ *
+ * ── NO LLEVA CUENTAS BANCARIAS, Y NO ES UN OLVIDO ────────────────
+ *
+ * El dinero entra a la cuenta Stripe de la plataforma y se liquida por la
+ * Bóveda. Poner acá datos de recaudo crearía una SEGUNDA VERDAD sobre a dónde
+ * va el dinero, y sería falsa: nadie transfiere a esa cuenta. Cuando alguna
+ * campaña necesite cobrar a otra cuenta, eso se resuelve en el cobro, no en la
+ * identidad del correo.
+ */
+export const beneficiaryShape = (raw) => {
+    const b = raw && typeof raw === 'object' ? raw : {};
+    const legalName = recorta(b.legalName, 200);
+    if (!legalName) return null; // sin nombre legal no hay entidad que nombrar
+    return {
+        legalName,
+        // El nombre COMERCIAL es el que firma el correo: «Colrotarios» se lee
+        // y «Fundación Colombiana de Rotarios» es lo que va en el pie legal.
+        // Si no se declara, se usa el legal — nunca queda vacío.
+        tradeName: recorta(b.tradeName, 200) || legalName,
+        taxId: recorta(b.taxId, 60),
+        logoUrl: recorta(b.logoUrl, 600),
+        email: b.email ? normalizeEmail(b.email) : null,
+        website: recorta(b.website, 300),
+        phone: recorta(b.phone, 60),
+        address: recorta(b.address, 400),
+        contactName: recorta(b.contactName, 200),
+        notes: recorta(b.notes, 1000),
+    };
+};
+
+/* ─── LA IDENTIDAD DEL REMITENTE ─────────────────────────────────────
+ *
+ * Lo que ve el aportante en su bandeja. `fromName` y `replyTo` son cosas
+ * distintas y la diferencia importa: el nombre visible representa a la ENTIDAD
+ * («Fundación Colombiana de Rotarios») y el reply-to es a dónde contesta la
+ * gente, que puede ser otra dirección y otro equipo.
+ *
+ * La DIRECCIÓN de envío NO se declara acá: la resuelve el servidor con el
+ * sitio de origen y el estado de verificación del dominio (Fase 2). Dejarla
+ * escribir a mano permitiría firmar desde un dominio ajeno, que es
+ * exactamente lo que el criterio 23 del pedido prohíbe.
+ */
+export const identityShape = (raw) => {
+    const i = raw && typeof raw === 'object' ? raw : {};
+    return {
+        fromName: recorta(i.fromName, 120),
+        replyTo: i.replyTo ? normalizeEmail(i.replyTo) : null,
+        logoUrl: recorta(i.logoUrl, 600),
+        signature: recorta(i.signature, 300),
+        primaryColor: hexOrNull(i.primaryColor),
+        ctaColor: hexOrNull(i.ctaColor),
+        footer: recorta(i.footer, 1000),
+        legalText: recorta(i.legalText, 1000),
+    };
+};
+
+/** Un color sólo puede ser un hexadecimal. Termina dentro de un atributo
+ *  `style` de un correo: cualquier otra cosa es una vía de inyección, y además
+ *  un valor inválido rompe el bloque entero en algunos clientes. */
+export const hexOrNull = (v) => {
+    const s = String(v ?? '').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toUpperCase() : null;
+};
+
+/* ─── EL ENRUTAMIENTO DEL REMITENTE ──────────────────────────────────
+ *
+ * Qué dominio se prefiere. La jerarquía real —y la comprobación de que el
+ * dominio esté verificado— vive en la Fase 2; acá se declara la PREFERENCIA.
+ *
+ * `allowSiteDomain: false` es la salida para una entidad que quiere firmar
+ * siempre desde lo central aunque el sitio tenga su dominio verificado. Es una
+ * decisión institucional, no técnica.
+ */
+export const PREFERRED_SENDERS = ['site', 'central'];
+
+export const routingShape = (raw) => {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    return {
+        prefer: PREFERRED_SENDERS.includes(r.prefer) ? r.prefer : 'site',
+        allowSiteDomain: r.allowSiteDomain !== false,
+        // Buzón preferido dentro del dominio que se elija («aportes», «hola»).
+        // Sólo la parte local: el dominio lo pone el resolutor.
+        localPart: recorta(r.localPart, 60),
+    };
+};
+
+/* ─── QUÉ EVENTOS NOTIFICAN, Y A QUIÉN ───────────────────────────────
+ *
+ * NO se manda todo por defecto (criterio 12 del pedido). Un perfil recién
+ * creado avisa al aportante de su pago confirmado y a nadie más: es lo mínimo
+ * que hace útil el módulo y lo único que nadie discutiría.
+ *
+ * Un evento que la plataforma todavía no puede observar se DESCARTA aunque
+ * venga marcado: encenderlo daría una casilla que no dispara nunca.
+ */
+export const defaultEventRules = () => ({
+    payment_confirmed: { donor: true, beneficiary: false, site: false, campaign: false },
+});
+
+export const eventRulesShape = (raw) => {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const ev of availableEvents()) {
+        const fila = r[ev.id] && typeof r[ev.id] === 'object' ? r[ev.id] : {};
+        out[ev.id] = {};
+        for (const k of RECIPIENT_IDS) out[ev.id][k] = fila[k] === true;
+    }
+    return out;
+};
+
+/** Los papeles que este perfil va a notificar para un evento dado. */
+export const recipientsFor = (profile, event) => {
+    const fila = profile?.events?.[event];
+    if (!fila) return [];
+    return RECIPIENT_IDS.filter(k => fila[k] === true);
+};
+
+/* ─── EL PERFIL ──────────────────────────────────────────────────────
+ *
+ * `targeting` NO se define acá: se reutiliza el de `contributionSpec.js`. Ya
+ * resuelve «todos / por distrito / sitios específicos», ya trata `Club.district`
+ * como una LISTA (v4.748) y ya está probado. Un segundo criterio de alcance se
+ * separaría en silencio del que decide qué campaña ve un sitio, y entonces un
+ * perfil podría alcanzar a un sitio que la campaña no alcanza.
+ */
+export const profileShape = (raw) => {
+    const p = raw && typeof raw === 'object' ? raw : {};
+    const name = recorta(p.name, 200);
+    if (!name) return null;
+    return {
+        name,
+        active: p.active !== false,
+        // Un perfil GLOBAL es el último recurso de la resolución. Es lo que
+        // impide que un aporte se quede sin notificación por no tener perfil
+        // (criterio 19 del pedido).
+        isDefault: p.isDefault === true,
+        priority: Number.isFinite(Number(p.priority)) ? Math.trunc(Number(p.priority)) : 0,
+        beneficiaryId: recorta(p.beneficiaryId, 64),
+        identity: identityShape(p.identity),
+        routing: routingShape(p.routing),
+        events: eventRulesShape(p.events),
+        internalRecipients: emailList(p.internalRecipients),
+        notes: recorta(p.notes, 1000),
+    };
+};
+
+/** Una lista de correos, sin repetidos y sin basura. Acotada a propósito: una
+ *  notificación interna con cincuenta destinatarios es una lista de correo, y
+ *  eso se administra en otra parte. */
+export const INTERNAL_RECIPIENTS_MAX = 10;
+
+export const emailList = (raw) => {
+    const items = Array.isArray(raw) ? raw : String(raw ?? '').split(/[,;\n]/);
+    const vistos = new Set();
+    const out = [];
+    for (const x of items) {
+        const e = normalizeEmail(x);
+        // Comprobación deliberadamente simple: acá no se valida una dirección,
+        // se descarta lo que evidentemente no lo es. Quien decide de verdad es
+        // el proveedor al intentar entregarlo.
+        if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) || vistos.has(e)) continue;
+        vistos.add(e);
+        out.push(e);
+        if (out.length >= INTERNAL_RECIPIENTS_MAX) break;
+    }
+    return out;
+};
+
+/* ─── LA RESOLUCIÓN ──────────────────────────────────────────────────
+ *
+ * De lo más específico a lo más general, y NUNCA en silencio: devuelve
+ * también CÓMO se eligió, que es lo que contesta «¿por qué este aporte salió
+ * firmado así?» dos semanas después.
+ *
+ *   1. el perfil que la CAMPAÑA eligió expresamente
+ *   2. el perfil cuyo alcance cubre al SITIO, mayor prioridad
+ *   3. el perfil marcado como global
+ *   4. nada — y entonces sale el recibo de siempre
+ *
+ * El paso 4 es deliberado: una contribución no se queda sin notificación
+ * porque falte una personalización (criterio 19).
+ */
+export const pickProfileFor = ({ profiles, site, campaign = null }) => {
+    const vivos = (Array.isArray(profiles) ? profiles : []).filter(p => p && p.active !== false);
+    if (!vivos.length) return { profile: null, reason: 'no hay ningún perfil activo' };
+
+    if (campaign?.notificationProfileId) {
+        const elegido = vivos.find(p => String(p.id) === String(campaign.notificationProfileId));
+        if (elegido) return { profile: elegido, reason: 'elegido en la campaña' };
+        // Que la campaña apunte a un perfil apagado o borrado NO puede dejar
+        // el aporte sin aviso: se sigue bajando por la jerarquía y se DICE.
+    }
+
+    const delSitio = vivos
+        .filter(p => !p.isDefault && targetsSite(p.targeting, site))
+        .sort(ordenDePerfiles);
+    if (delSitio.length) return { profile: delSitio[0], reason: 'alcanza a este sitio' };
+
+    const global = vivos.filter(p => p.isDefault).sort(ordenDePerfiles);
+    if (global.length) return { profile: global[0], reason: 'perfil global' };
+
+    return { profile: null, reason: 'ningún perfil alcanza a este sitio' };
+};
+
+/** Prioridad explícita, y desempates ESTABLES. Si dependiera del orden en que
+ *  la base devuelve las filas, el mismo sitio firmaría distinto en dos aportes
+ *  seguidos — la lección de `pickDistrictSite` y de `pickCampaignForSite`. */
+const ordenDePerfiles = (a, b) =>
+    (Number(b.priority) || 0) - (Number(a.priority) || 0)
+    || new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+    || String(a.id).localeCompare(String(b.id));
+
+/* ─── QUÉ FALTA PARA QUE UN PERFIL SIRVA ─────────────────────────────
+ *
+ * Se separa en `errors` —no se puede usar— y `warnings` —se puede, y hay que
+ * decirlo—. Tratarlos igual convierte cualquier aviso en un bloqueo y se dejan
+ * de leer, que es la lección de `validateBeforeGenerate` en las Infografías.
+ */
+export const validateProfile = (profile, { beneficiary = null } = {}) => {
+    const errors = [];
+    const warnings = [];
+    if (!profile) return { ok: false, errors: ['El perfil no existe.'], warnings };
+
+    if (!profile.identity?.fromName) {
+        errors.push('Falta el nombre visible del remitente: es lo que el aportante ve en su bandeja.');
+    }
+    if (!profile.beneficiaryId) {
+        errors.push('Falta la entidad beneficiaria: el correo tiene que decir quién gestiona el aporte.');
+    } else if (beneficiary === null) {
+        errors.push('La entidad beneficiaria del perfil ya no existe.');
+    }
+    const conAviso = Object.values(profile.events || {}).some(f => Object.values(f || {}).some(Boolean));
+    if (!conAviso) {
+        errors.push('Este perfil no notifica a nadie: hay que marcar al menos un destinatario.');
+    }
+
+    const necesitaInternos = Object.values(profile.events || {})
+        .some(f => f?.beneficiary === true || f?.campaign === true);
+    if (necesitaInternos && !profile.internalRecipients?.length && !beneficiary?.email) {
+        warnings.push('Se marcó avisar a la entidad, pero no hay ninguna dirección interna ni correo del beneficiario: ese aviso no va a salir.');
+    }
+    if (!profile.identity?.replyTo) {
+        warnings.push('Sin dirección de respuesta, quien conteste el correo escribirá a un buzón que nadie lee.');
+    }
+    if (!profile.identity?.logoUrl && !beneficiary?.logoUrl) {
+        warnings.push('Sin logotipo, el correo sale sin la identidad de la entidad.');
+    }
+    return { ok: errors.length === 0, errors, warnings };
+};
+
 export default {
     NOTIFICATION_EVENTS, EVENT_IDS, eventById, isKnownEvent, availableEvents,
     RECIPIENT_KINDS, RECIPIENT_IDS, isKnownRecipientKind,
@@ -308,4 +574,8 @@ export default {
     normalizeEmail, deliveryKey,
     MAX_RETRIES, canRetry, RETRY_DELAYS_MIN, nextRetryDelay,
     normalizeDelivery, summarizeDeliveries,
+    beneficiaryShape, identityShape, hexOrNull, routingShape, PREFERRED_SENDERS,
+    defaultEventRules, eventRulesShape, recipientsFor,
+    profileShape, emailList, INTERNAL_RECIPIENTS_MAX,
+    pickProfileFor, validateProfile,
 };

@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.855.0 | 2026-08-17 (Notificaciones de aportes: la traza)
-// Cache bust: 2026-08-17r
+// UI V4.856.0 | 2026-08-17 (Perfiles de notificación de aportes)
+// Cache bust: 2026-08-17s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.856.0',
+        title: 'La confirmación de un aporte ya se puede configurar 🏛️',
+        description: 'Nueva sección en el Administrador Central: Notificaciones de Aportes. Ahí se crea una entidad beneficiaria —una fundación, un distrito— con su nombre legal, su nombre comercial, su NIT y su logotipo; se crea un perfil que dice con qué identidad se confirma un aporte, a qué sitios alcanza y a quién más se le avisa; y se edita la plantilla del correo con bloques (encabezado, párrafo, resumen del aporte, botón, firma, texto legal) y variables como el nombre de quien aportó, el monto o la campaña. Hay vista previa en escritorio y en móvil, y un botón para mandarse un correo de prueba. Las plantillas se versionan: editar guarda una versión nueva y la anterior se conserva, así un aporte de hace meses se puede explicar con el texto exacto que lo generó. Importante: esta versión todavía NO cambia el recibo que recibe quien aporta —eso llega cuando se conecte el envío desde el dominio propio de cada sitio—, y la pantalla lo dice.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'campanas', 'correo', 'administracion'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Entidades beneficiarias, con su identidad institucional completa.' },
+            { type: 'added', text: 'Perfiles de notificación con alcance por sitio o por distrito.' },
+            { type: 'added', text: 'Editor de plantilla por bloques, con variables y vista previa.' },
+            { type: 'added', text: 'Envío de correo de prueba y versionado de cada plantilla.' },
+        ]
+    },
+
     {
         version: '4.855.0',
         title: 'Ahora se puede saber si la confirmación de un aporte llegó 📬',

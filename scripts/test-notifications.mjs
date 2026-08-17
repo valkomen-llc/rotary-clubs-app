@@ -20,7 +20,15 @@ import {
     normalizeEmail, deliveryKey,
     MAX_RETRIES, canRetry, RETRY_DELAYS_MIN, nextRetryDelay,
     normalizeDelivery, summarizeDeliveries,
+    beneficiaryShape, profileShape, identityShape, hexOrNull, routingShape,
+    emailList, INTERNAL_RECIPIENTS_MAX, recipientsFor,
+    pickProfileFor, validateProfile, defaultEventRules,
 } from '../server/lib/notificationSpec.js';
+import {
+    TEMPLATE_VARIABLES, isKnownVariable, sampleVariables,
+    BLOCK_IDS, blockShape, safeUrl, templateShape, validateTemplate,
+    variablesIn, escapeHtml, applyVariables, renderTemplate, defaultTemplate,
+} from '../server/lib/notificationTemplate.js';
 
 let ok = 0;
 const malos = [];
@@ -195,6 +203,264 @@ check('sin ninguna fila lo DICE, en vez de afirmar que no llegó',
 check('con filas, `sinRegistro` es falso', r.sinRegistro === false);
 check('tolera basura', summarizeDeliveries(null).total === 0 && summarizeDeliveries([{}]).porEstado.pending === 1);
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('FASE 1 — la entidad beneficiaria');
+
+check('sin nombre legal no hay entidad', beneficiaryShape({}) === null && beneficiaryShape(null) === null);
+// El nombre comercial es el que FIRMA el correo; si no se declara se usa el
+// legal, y nunca queda vacío.
+check('el nombre comercial cae al legal cuando falta',
+    beneficiaryShape({ legalName: 'Fundación Colombiana de Rotarios' }).tradeName === 'Fundación Colombiana de Rotarios');
+check('y se respeta cuando se declara',
+    beneficiaryShape({ legalName: 'Fundación Colombiana de Rotarios', tradeName: 'Colrotarios' }).tradeName === 'Colrotarios');
+check('el correo se normaliza',
+    beneficiaryShape({ legalName: 'X', email: ' Contacto@Col.ORG ' }).email === 'contacto@col.org');
+// El dinero entra a la cuenta Stripe de la plataforma: datos de recaudo acá
+// serían una segunda verdad sobre a dónde va, y sería falsa.
+check('NO admite cuentas bancarias', (() => {
+    const b = beneficiaryShape({ legalName: 'X', bankAccount: '123', accountNumber: '456', iban: 'ES00' });
+    return !('bankAccount' in b) && !('accountNumber' in b) && !('iban' in b);
+})());
+
+grupo('FASE 1 — la identidad del remitente');
+// Un color termina dentro de un atributo `style` de un correo: cualquier otra
+// cosa es una vía de inyección.
+check('sólo se acepta un hexadecimal de seis',
+    hexOrNull('#0C2A5E') === '#0C2A5E'
+    && hexOrNull('0C2A5E') === null
+    && hexOrNull('red') === null
+    && hexOrNull('#0C2') === null
+    && hexOrNull('#0c2a5e"; onload=alert(1)') === null);
+check('se normaliza a mayúsculas', hexOrNull('#0c2a5e') === '#0C2A5E');
+// La DIRECCIÓN de envío no se declara en el perfil: la resuelve el servidor.
+// Dejarla escribir a mano permitiría firmar desde un dominio ajeno.
+check('la identidad NO deja escribir la dirección de envío', (() => {
+    const i = identityShape({ fromName: 'X', fromEmail: 'aportes@ajeno.org', from: 'x@y.org' });
+    return !('fromEmail' in i) && !('from' in i);
+})());
+check('el reply-to se normaliza', identityShape({ replyTo: ' A@B.ORG ' }).replyTo === 'a@b.org');
+check('el enrutamiento por defecto prefiere el dominio del sitio',
+    routingShape({}).prefer === 'site' && routingShape({}).allowSiteDomain === true);
+check('una preferencia inventada cae al sitio', routingShape({ prefer: 'marte' }).prefer === 'site');
+
+grupo('FASE 1 — las direcciones internas');
+check('quita repetidos, espacios y mayúsculas',
+    emailList(' A@b.com , a@B.com; c@d.org ').join(',') === 'a@b.com,c@d.org');
+check('descarta lo que evidentemente no es un correo',
+    emailList('hola, a@b.com, @nada, sin-arroba').join(',') === 'a@b.com');
+// Una notificación interna con cincuenta destinatarios es una lista de correo,
+// y eso se administra en otra parte.
+check('tiene tope', emailList(Array.from({ length: 40 }, (_, i) => `a${i}@b.com`)).length === INTERNAL_RECIPIENTS_MAX);
+check('acepta una cadena o un array',
+    emailList(['a@b.com']).length === 1 && emailList('a@b.com').length === 1);
+
+grupo('FASE 1 — el perfil');
+check('sin nombre no hay perfil', profileShape({}) === null);
+// NO se manda todo por defecto (criterio 12).
+check('un perfil nuevo no avisa a nadie hasta que se marque', (() => {
+    const p = profileShape({ name: 'X' });
+    return Object.values(p.events).every(f => Object.values(f).every(v => v === false));
+})());
+check('el default de fábrica avisa sólo al aportante', (() => {
+    const d = defaultEventRules();
+    return d.payment_confirmed.donor === true && d.payment_confirmed.beneficiary === false;
+})());
+// Un evento que la plataforma todavía no puede observar se descarta aunque
+// venga marcado: encenderlo daría una casilla que no dispara nunca.
+check('un evento no disponible NO se puede encender', (() => {
+    const p = profileShape({ name: 'X', events: { refunded: { donor: true }, payment_confirmed: { donor: true } } });
+    return !('refunded' in p.events) && p.events.payment_confirmed.donor === true;
+})());
+check('recipientsFor devuelve los papeles marcados', (() => {
+    const p = profileShape({ name: 'X', events: { payment_confirmed: { donor: true, beneficiary: true } } });
+    const r = recipientsFor(p, 'payment_confirmed');
+    return r.includes('donor') && r.includes('beneficiary') && r.length === 2;
+})());
+check('un evento sin reglas no notifica a nadie', recipientsFor(profileShape({ name: 'X' }), 'inventado').length === 0);
+
+grupo('FASE 1 — la resolución del perfil');
+const SITIO = { id: 'club-4281', district: '4271, 4281', districtId: null };
+const PERFILES = [
+    { id: 'p-global', active: true, isDefault: true, priority: 0, targeting: { mode: 'all' } },
+    { id: 'p-distrito', active: true, isDefault: false, priority: 5, targeting: { mode: 'districts', districts: ['4281'] } },
+    { id: 'p-otro', active: true, isDefault: false, priority: 9, targeting: { mode: 'districts', districts: ['4400'] } },
+];
+check('gana el que alcanza al sitio, no el global',
+    pickProfileFor({ profiles: PERFILES, site: SITIO }).profile.id === 'p-distrito');
+check('un perfil que NO alcanza al sitio no gana aunque tenga más prioridad',
+    pickProfileFor({ profiles: PERFILES, site: { id: 'x', district: '4400' } }).profile.id === 'p-otro');
+// `Club.district` es una LISTA: «4271, 4281». Un solo criterio deja fuera a la
+// mitad de los sitios — error ya pagado dos veces (v4.744/v4.748).
+check('el distrito se reconoce dentro de una lista',
+    pickProfileFor({ profiles: PERFILES, site: { id: 'y', district: 'Distrito 4281' } }).profile.id === 'p-distrito');
+check('«42811» NO cuenta como 4281',
+    pickProfileFor({ profiles: PERFILES, site: { id: 'z', district: '42811' } }).profile.id === 'p-global');
+// Lo explícito manda sobre lo deducido del alcance.
+check('la campaña manda sobre el alcance',
+    pickProfileFor({ profiles: PERFILES, site: SITIO, campaign: { notificationProfileId: 'p-otro' } }).profile.id === 'p-otro');
+// Que la campaña apunte a un perfil apagado no puede dejar el aporte sin aviso.
+check('una campaña que apunta a un perfil inexistente sigue bajando la jerarquía',
+    pickProfileFor({ profiles: PERFILES, site: SITIO, campaign: { notificationProfileId: 'no-existe' } }).profile.id === 'p-distrito');
+check('un perfil apagado no participa',
+    pickProfileFor({ profiles: [{ id: 'a', active: false, targeting: { mode: 'all' } }], site: SITIO }).profile === null);
+// El MOTIVO viaja siempre: es lo que contesta «¿por qué salió firmado así?».
+check('el motivo se DICE en los cuatro caminos',
+    pickProfileFor({ profiles: PERFILES, site: SITIO }).reason === 'alcanza a este sitio'
+    && pickProfileFor({ profiles: PERFILES, site: SITIO, campaign: { notificationProfileId: 'p-otro' } }).reason === 'elegido en la campaña'
+    && pickProfileFor({ profiles: [PERFILES[0]], site: SITIO }).reason === 'perfil global'
+    && pickProfileFor({ profiles: [], site: SITIO }).reason === 'no hay ningún perfil activo');
+// Si dependiera del orden de la base, el mismo sitio firmaría distinto en dos
+// aportes seguidos — la lección de `pickDistrictSite`.
+check('el desempate es ESTABLE', (() => {
+    const empatados = [
+        { id: 'b', active: true, priority: 3, targeting: { mode: 'all' } },
+        { id: 'a', active: true, priority: 3, targeting: { mode: 'all' } },
+    ];
+    const uno = pickProfileFor({ profiles: empatados, site: SITIO }).profile.id;
+    const dos = pickProfileFor({ profiles: [...empatados].reverse(), site: SITIO }).profile.id;
+    return uno === dos && uno === 'a';
+})());
+
+grupo('FASE 1 — qué le falta a un perfil');
+const P_OK = profileShape({
+    name: 'Colrotarios', beneficiaryId: 'b1',
+    identity: { fromName: 'Fundación Colombiana de Rotarios', replyTo: 'a@col.org', logoUrl: 'https://x/l.png' },
+    events: { payment_confirmed: { donor: true } },
+});
+check('un perfil completo pasa', validateProfile(P_OK, { beneficiary: { id: 'b1' } }).ok);
+check('sin nombre visible no se puede usar',
+    !validateProfile(profileShape({ ...P_OK, identity: {} }), { beneficiary: { id: 'b1' } }).ok);
+check('sin entidad beneficiaria tampoco',
+    !validateProfile(profileShape({ ...P_OK, beneficiaryId: null }), {}).ok);
+// Un perfil que no notifica a nadie es un perfil que no hace nada.
+check('un perfil que no avisa a nadie es un error',
+    !validateProfile(profileShape({ ...P_OK, events: {} }), { beneficiary: { id: 'b1' } }).ok);
+check('una entidad borrada se detecta', !validateProfile(P_OK, { beneficiary: null }).ok);
+// Los avisos NO bloquean: tratarlos igual convierte cualquiera en un bloqueo y
+// se dejan de leer.
+check('avisar a la entidad sin ninguna dirección es un AVISO, no un error', (() => {
+    const p = profileShape({ ...P_OK, events: { payment_confirmed: { donor: true, beneficiary: true } } });
+    const v = validateProfile(p, { beneficiary: { id: 'b1' } });
+    return v.ok && v.warnings.some(w => /no va a salir/.test(w));
+})());
+check('sin reply-to se avisa pero se puede usar', (() => {
+    const p = profileShape({ ...P_OK, identity: { fromName: 'X', logoUrl: 'https://x/l.png' } });
+    const v = validateProfile(p, { beneficiary: { id: 'b1' } });
+    return v.ok && v.warnings.length > 0;
+})());
+
+// ════════════════════════════════════════════════════════════════════
+grupo('FASE 1 — la plantilla');
+
+check('la de fábrica es válida', validateTemplate(defaultTemplate()).ok);
+check('sin asunto no se puede guardar', !validateTemplate({ subject: '', blocks: [{ type: 'paragraph', text: 'x' }] }).ok);
+check('sin bloques tampoco', !validateTemplate({ subject: 'x', blocks: [] }).ok);
+// Un bloque desconocido no se puede dibujar; dejarlo pasar daría un correo con
+// un hueco sin explicación.
+check('un bloque inventado se descarta', blockShape({ type: 'iframe', text: 'x' }) === null);
+check('un bloque sólo admite los campos que declara', (() => {
+    const b = blockShape({ type: 'divider', text: 'esto sobra', url: 'https://x' });
+    return !('text' in b) && !('url' in b) && b.type === 'divider';
+})());
+// Una variable que la plataforma no sabe resolver saldría IMPRESA en el correo.
+check('una variable desconocida bloquea el guardado',
+    !validateTemplate({ subject: 'Hola {{inventada}}', blocks: [{ type: 'paragraph', text: 'x' }] }).ok);
+check('las del catálogo pasan',
+    validateTemplate({ subject: 'Hola {{donor_name}}', blocks: [{ type: 'paragraph', text: '{{amount}} {{currency}}' }] }).ok);
+// Un botón que no lleva a ninguna parte es peor que ninguno (v4.650), y en un
+// correo no se puede corregir después de enviado.
+check('un botón sin destino bloquea',
+    !validateTemplate({ subject: 'x', blocks: [{ type: 'button', text: 'Ver' }] }).ok);
+check('variablesIn no repite', variablesIn('{{a}} {{b}} {{a}}').join(',') === 'a,b');
+
+grupo('FASE 1 — la dirección de un botón');
+// Termina en un `href`: `javascript:` y `data:` son las dos que convierten un
+// campo del panel en una vía de ataque.
+check('sólo http y https',
+    safeUrl('https://x.org') === 'https://x.org'
+    && safeUrl('http://x.org') === 'http://x.org'
+    && safeUrl('javascript:alert(1)') === ''
+    && safeUrl('data:text/html,<script>') === ''
+    && safeUrl('mailto:a@b.com') === ''
+    && safeUrl('no es una url') === '');
+// El marcador entero se admite y se comprueba DESPUÉS de sustituir, que es
+// cuando se sabe a dónde apunta de verdad.
+check('el marcador entero se admite y se comprueba al resolver',
+    safeUrl('{{campaign_url}}') === '{{campaign_url}}');
+
+grupo('FASE 1 — el escapado y el render');
+check('el escapado cubre los cinco',
+    escapeHtml('<a href="x" title=\'y\'>&</a>') === '&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;');
+// El nombre de un aportante lo escribe un desconocido en un formulario
+// público: es la entrada menos confiable de todo el módulo.
+check('un nombre con HTML sale escapado, no ejecutado', (() => {
+    const r = renderTemplate({
+        template: { subject: 'x', blocks: [{ type: 'paragraph', text: '{{donor_name}}' }] },
+        vars: { donor_name: '<img src=x onerror=alert(1)>' },
+    });
+    return !/<img src=x/.test(r.html) && /&lt;img/.test(r.html);
+})());
+check('un asunto con comillas no rompe el título', (() => {
+    const r = renderTemplate({ template: { subject: 'Gracias "{{donor_name}}"', blocks: [{ type: 'divider' }] }, vars: { donor_name: 'A' } });
+    return /&quot;A&quot;/.test(r.html);
+})());
+// El atributo de evento va precedido de un espacio dentro de la etiqueta:
+// `/on\w+=/` a secas casa con «content=» del `<meta viewport>` y daría un
+// falso positivo permanente.
+check('el render no mete ningún script ni manejador de evento', (() => {
+    const r = renderTemplate({ template: defaultTemplate(), vars: sampleVariables() });
+    return !/<script/i.test(r.html) && !/\son\w+\s*=/i.test(r.html);
+})());
+// Una variable sin valor NO se borra: se deja el marcador y se reporta. Un
+// hueco donde iba el monto se publica sin que nadie lo note.
+check('una variable sin valor deja el marcador y se REPORTA', (() => {
+    const r = applyVariables('Aporte de {{amount}}', {});
+    return r.text === 'Aporte de {{amount}}' && r.missing[0] === 'amount';
+})());
+check('y el render lo acumula', (() => {
+    const r = renderTemplate({ template: { subject: '{{campaign_name}}', blocks: [{ type: 'paragraph', text: '{{amount}}' }] }, vars: {} });
+    return r.missing.includes('amount') && r.missing.includes('campaign_name');
+})());
+// Un renglón «Campaña: » en blanco se lee como un error del sistema.
+check('el resumen no dibuja las filas sin valor', (() => {
+    const r = renderTemplate({ template: { subject: 'x', blocks: [{ type: 'summary' }] }, vars: { amount: '50.000', currency: 'COP' } });
+    return /50\.000 COP/.test(r.html) && !/Campaña:/.test(r.html);
+})());
+check('sin mensaje del aportante no queda un recuadro vacío', (() => {
+    const r = renderTemplate({ template: { subject: 'x', blocks: [{ type: 'quote', title: 'Tu mensaje' }] }, vars: {} });
+    return !/Tu mensaje/.test(r.html);
+})());
+// La dirección se comprueba DESPUÉS de sustituir: antes era un marcador.
+check('un botón cuya variable no se resolvió NO se dibuja', (() => {
+    const r = renderTemplate({ template: { subject: 'x', blocks: [{ type: 'button', text: 'Ver', url: '{{campaign_url}}' }] }, vars: {} });
+    return !/<a href/.test(r.html);
+})());
+check('y con destino válido sí', (() => {
+    const r = renderTemplate({ template: { subject: 'x', blocks: [{ type: 'button', text: 'Ver', url: '{{campaign_url}}' }] }, vars: { campaign_url: 'https://x.org/c' } });
+    return /<a href="https:\/\/x\.org\/c"/.test(r.html);
+})());
+// Sin versión en texto plano, algunos filtros puntúan el correo como
+// sospechoso y un cliente sin HTML mostraría una página en blanco.
+check('el correo lleva versión en texto plano', (() => {
+    const r = renderTemplate({ template: defaultTemplate(), vars: sampleVariables() });
+    return r.text.length > 80 && !/</.test(r.text);
+})());
+check('los valores de ejemplo son los que pidió el cliente',
+    sampleVariables().donor_name === 'Rodrigo Díaz'
+    && sampleVariables().amount === '50.000'
+    && sampleVariables().currency === 'COP'
+    && /Emergencia Terremoto Colombia 2026/.test(sampleVariables().campaign_name)
+    && /Rotary Distrito 4281/.test(sampleVariables().site_name));
+check('todas las variables del pedido están en el catálogo',
+    ['donor_name', 'donor_email', 'amount', 'currency', 'campaign_name', 'campaign_url',
+        'site_name', 'beneficiary_name', 'contribution_id', 'payment_reference',
+        'contribution_date', 'donor_message', 'receipt_url'].every(isKnownVariable));
+check('el logotipo sin dirección no deja un hueco', (() => {
+    const r = renderTemplate({ template: { subject: 'x', blocks: [{ type: 'logo' }] }, vars: {} });
+    return !/<img/.test(r.html);
+})());
+
 // ════════════════════════════════════════════════════════════════════
 grupo('Lo que no se ve ejecutando nada');
 {
@@ -203,6 +469,10 @@ grupo('Lo que no se ve ejecutando nada');
     const ensure = readFileSync('server/lib/ensureNotificationSchema.js', 'utf8');
     const pago = readFileSync('server/controllers/paymentController.js', 'utf8');
     const prismaSchema = readFileSync('server/prisma/schema.prisma', 'utf8');
+    const plantilla = readFileSync('server/lib/notificationTemplate.js', 'utf8');
+    const ctrl = readFileSync('server/controllers/notificationProfileController.js', 'utf8');
+    const rutas = readFileSync('server/routes/notification-profiles.js', 'utf8');
+    const pantalla = readFileSync('src/pages/admin/ContributionNotifications.tsx', 'utf8');
 
     // El criterio es PURO: sin base, sin red. Si importa `db.js` deja de
     // poderse probar sin Postgres, que es todo el punto de separarlo.
@@ -270,6 +540,76 @@ grupo('Lo que no se ve ejecutando nada');
     check('el asunto y el remitente del recibo no cambiaron',
         /Recibo de tu donación al \$\{subjectTopic\}/.test(pago)
         && /from: PLATFORM_DONATION_SENDER/.test(bloque));
+
+    // ── FASE 1 ────────────────────────────────────────────────────
+    //
+    // El alcance se resuelve con `targetsSite` de contributionSpec, no con un
+    // criterio propio: con dos, un perfil podría alcanzar a un sitio que la
+    // campaña no alcanza, y el correo hablaría de una campaña que ese sitio no
+    // muestra.
+    check('el alcance reutiliza el targeting de las campañas',
+        /from '\.\/contributionSpec\.js'/.test(spec) && /targetsSite\(/.test(spec));
+
+    // El HTML lo escribimos NOSOTROS: del administrador sólo entra texto, que
+    // se escapa. Un editor de HTML libre acá es una inyección con pasos extra.
+    const plantillaSinComentarios = plantilla
+        .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    check('la plantilla NO admite HTML arbitrario',
+        !/dangerouslySetInnerHTML|innerHTML/.test(plantillaSinComentarios)
+        && /escapeHtml/.test(plantillaSinComentarios));
+    // Ningún bloque escribe el texto del administrador sin pasar por el
+    // escapado: `txt()` es el único camino.
+    check('todo texto del administrador pasa por el escapado',
+        /const txt = \(v\) => \{[\s\S]{0,200}escapeHtml/.test(plantilla));
+
+    // Un perfil lleva la identidad institucional de un tercero y decide desde
+    // qué dominio sale el correo.
+    check('las rutas son del operador de la plataforma',
+        /roleMiddleware\(\['administrator'\]\)/.test(rutas) && /router\.use\(authMiddleware, soloOperador\)/.test(rutas));
+    // La ruta y el controlador se protegen por separado: una ruta que se
+    // reordene o se copie perdería la guardia sin que nada avise.
+    check('y el controlador lo comprueba OTRA VEZ',
+        (ctrl.match(/if \(!isOperator\(req\)\)/g) || []).length >= 8);
+
+    // Nunca se actualiza una fila: editar inserta una versión nueva. Es lo que
+    // permite explicar un aporte de hace seis meses con la plantilla que lo
+    // generó (criterio 18).
+    check('las plantillas se VERSIONAN, no se reescriben',
+        /UPDATE "NotificationTemplate" SET "isCurrent" = FALSE/.test(ctrl)
+        && /INSERT INTO "NotificationTemplate"/.test(ctrl)
+        && !/UPDATE "NotificationTemplate"[\s\S]{0,200}SET subject/.test(ctrl));
+    // El índice es PARCIAL (`WHERE "isCurrent"`), así que un ON CONFLICT
+    // tendría que repetir el predicado o la sentencia falla entera (v4.648).
+    check('y por eso NO se usa ON CONFLICT contra el índice parcial',
+        /WHERE "isCurrent";/.test(ensure)
+        && !/ON CONFLICT[\s\S]{0,80}NotificationTemplate/.test(ctrl));
+    // En Postgres NULL nunca es igual a NULL: sin COALESCE, dos plantillas
+    // globales no chocarían jamás.
+    check('el índice usa COALESCE para que las globales choquen',
+        /COALESCE\("profileId", ''\), COALESCE\("campaignId", ''\)/.test(ensure));
+
+    // Se valida ANTES de escribir: guardar una plantilla que no se puede
+    // enviar deja una versión inservible marcada como vigente.
+    check('la plantilla se valida antes de guardarse',
+        /const v = validateTemplate\(t\);[\s\S]{0,400}if \(!v\.ok\) return res\.status\(422\)/.test(ctrl));
+
+    // Borrar un perfil no puede llevarse la traza de correos que de verdad
+    // salieron: son la única forma de explicar un aporte.
+    check('borrar un perfil NO borra las entregas ya registradas',
+        /DELETE FROM "NotificationTemplate" WHERE "profileId"/.test(ctrl)
+        && !/DELETE FROM "NotificationDelivery"/.test(ctrl));
+
+    // Un panel que parece gobernar algo que todavía no gobierna es peor que
+    // uno que no existe.
+    check('la pantalla DICE que todavía no gobierna el recibo real',
+        /todavía no gobierna el recibo real/i.test(pantalla));
+    // El correo se dibuja aislado: es HTML compuesto con datos de la campaña.
+    check('la vista previa va en un iframe con sandbox vacío',
+        /sandbox=""/.test(pantalla) && /srcDoc=\{vista\.html\}/.test(pantalla));
+    // Una dependencia que falta en un useCallback no la ve el typecheck y el
+    // ajuste simplemente no llega nunca (lección de `conQr`, v4.836).
+    check('la vista previa depende de la plantilla que se está editando',
+        /\}, \[perfil, plantilla\]\);/.test(pantalla));
 }
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
