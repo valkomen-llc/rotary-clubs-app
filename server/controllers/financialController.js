@@ -7,11 +7,11 @@
 import Stripe from 'stripe';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import {
-    normalizeCurrency, currencyMeta, roundMoney,
+    normalizeCurrency, currencyMeta, roundMoney, fromStripeAmount,
     sumByCurrency, groupByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
-import { parsePayload, originOf, methodOf, linkDonationsToPayments } from '../lib/paymentTrace.js';
+import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -266,7 +266,25 @@ export const createDonationCheckout = async (req, res) => {
                 currency: decision.currency,
                 siteCurrency: decision.siteCurrency,
                 currencyReason: decision.reason
-            }
+            },
+            // v4.845 — La MISMA metadata al PaymentIntent. Hasta v4.844 sólo
+            // viajaba en la sesión, y el objeto que queda atado al cobro —y el
+            // que se consulta al reconstruir la traza— es el intent: sin esto
+            // hay que ir a buscar la sesión para saber de qué campaña vino un
+            // aporte. Stripe la copia al cargo, así que también aparece en el
+            // panel de Stripe junto al pago.
+            payment_intent_data: {
+                metadata: {
+                    type: 'donation',
+                    clubId,
+                    campaignId: campaign?.id || '',
+                    campaignSlug: campaign?.slug || '',
+                    purpose: purpose ? String(purpose).slice(0, 120) : '',
+                    blockId: block?.id || '',
+                    projectId: project?.id || '',
+                    donorEmail,
+                },
+            },
         });
 
         // v4.807 — el inicio de checkout lo registra el SERVIDOR: es el único
@@ -566,6 +584,13 @@ const movementOf = (p, now) => {
         method: methodOf(payload, p.paymentMethod),
         receiptUrl: payload.receiptUrl || null,
         receiptNumber: payload.receiptNumber || null,
+        // v4.845 — De dónde salió la comisión de Stripe. Cuando el cobro y la
+        // liquidación son en monedas distintas, el importe que se resta es una
+        // CONVERSIÓN y hay que poder ver el original: sin esto, «¿por qué la
+        // comisión de este aporte son 4.750 pesos?» no se puede contestar.
+        stripeFeeOriginal: payload.stripeFeeOriginal || null,
+        stripeFeeRate: payload.stripeFeeRate ?? null,
+        stripeFeeConverted: !!payload.stripeFeeConverted,
     };
 };
 
@@ -916,9 +941,31 @@ export const syncPaymentsWithStripe = async (req, res) => {
                     continue;
                 }
 
-                const realFee = (bt.fee || 0) / 100;
+                // v4.845 — La comisión, convertida a la moneda del cobro. Ver
+                // `stripeFeeInChargeCurrency`: el balance transaction se
+                // denomina en la moneda de liquidación de la cuenta y hasta
+                // v4.844 se restaba tal cual del bruto.
+                const comision = stripeFeeInChargeCurrency({
+                    fee: fromStripeAmount(bt.fee, bt.currency),
+                    feeCurrency: bt.currency,
+                    chargeCurrency: payment.currency,
+                    exchangeRate: bt.exchange_rate,
+                });
                 const totalAmount = payment.amount;
                 const applicationFee = totalAmount * PLATFORM_FEE_PERCENTAGE;
+
+                if (comision.amount === null) {
+                    // Sin tasa no se toca el neto: restar otra moneda es el
+                    // defecto que esto viene a corregir.
+                    results.failed++;
+                    results.details.push({
+                        id: payment.id,
+                        error: `Comisión en ${bt.currency} sobre un cobro en ${payment.currency} y sin tasa de cambio (${comision.reason}).`,
+                    });
+                    continue;
+                }
+
+                const realFee = comision.amount;
                 const newNetAmount = Math.max(0, totalAmount - applicationFee - realFee);
 
                 const availableOn = bt.available_on ? new Date(bt.available_on * 1000) : null;
@@ -937,15 +984,37 @@ export const syncPaymentsWithStripe = async (req, res) => {
                 // vive el `donationId` que ata el aporte a su movimiento, y
                 // pisarlo rompería justo lo que esto viene a arreglar.
                 const payload = parsePayload(payment.rawPayload);
+
+                // v4.845 — La metadata del aporte —la campaña, el destino, el
+                // proyecto— la pone `createDonationCheckout` en la CHECKOUT
+                // SESSION, no en el PaymentIntent. v4.844 la leía de
+                // `pi.metadata`, que para estos cobros viene VACÍA: por eso el
+                // origen no aparecía en la ficha por más que se sincronizara.
+                // Se busca en la sesión, que es donde de verdad está.
+                let metadata = pi.metadata && Object.keys(pi.metadata).length ? pi.metadata : null;
+                if (!metadata) {
+                    try {
+                        const sesion = payload.sessionId
+                            ? await stripe.checkout.sessions.retrieve(payload.sessionId)
+                            : (await stripe.checkout.sessions.list({ payment_intent: pi.id, limit: 1 })).data[0];
+                        metadata = sesion?.metadata || null;
+                    } catch (mErr) {
+                        console.warn(`[Wallet Sync] Sin metadata de la sesión de ${payment.id}:`, mErr?.message);
+                    }
+                }
+
                 const card = charge?.payment_method_details?.card;
                 const enriquecido = {
                     ...payload,
                     stripeFee: realFee,
-                    campaignId: payload.campaignId ?? (pi.metadata?.campaignId || null),
-                    campaignSlug: payload.campaignSlug ?? (pi.metadata?.campaignSlug || null),
-                    purpose: payload.purpose ?? (pi.metadata?.purpose || null),
-                    blockId: payload.blockId ?? (pi.metadata?.blockId || null),
-                    projectId: payload.projectId ?? (pi.metadata?.projectId || null),
+                    stripeFeeOriginal: comision.original || null,
+                    stripeFeeRate: comision.rate ?? null,
+                    stripeFeeConverted: comision.converted ?? false,
+                    campaignId: payload.campaignId ?? (metadata?.campaignId || null),
+                    campaignSlug: payload.campaignSlug ?? (metadata?.campaignSlug || null),
+                    purpose: payload.purpose ?? (metadata?.purpose || null),
+                    blockId: payload.blockId ?? (metadata?.blockId || null),
+                    projectId: payload.projectId ?? (metadata?.projectId || null),
                     card: card ? { brand: card.brand || '', last4: card.last4 || '', wallet: card.wallet?.type || '' } : payload.card || null,
                     receiptUrl: charge?.receipt_url || payload.receiptUrl || null,
                     receiptNumber: charge?.receipt_number || payload.receiptNumber || null,

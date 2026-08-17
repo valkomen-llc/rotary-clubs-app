@@ -69,6 +69,13 @@ interface Movement {
     method: { label: string; brand: string; last4: string; wallet: string } | null;
     receiptUrl: string | null;
     receiptNumber: string | null;
+    /** El importe ORIGINAL de la comisión de Stripe y la tasa con que se
+     *  convirtió. Un cobro en pesos liquidado en dólares trae la comisión en
+     *  dólares: lo que se resta del bruto es una conversión, y hay que poder
+     *  ver de dónde salió. */
+    stripeFeeOriginal?: { amount: number; currency: string } | null;
+    stripeFeeRate?: number | null;
+    stripeFeeConverted?: boolean;
 }
 
 interface DonationRecord {
@@ -158,6 +165,15 @@ interface WalletData {
  */
 const money = (n: number | null | undefined, currency: string) =>
     formatMoney(Number(n ?? 0), currency || 'USD');
+
+/** El importe con el CÓDIGO de la moneda en vez del símbolo.
+ *
+ *  Se usa donde el punto es justamente cuál moneda: el importe original de una
+ *  comisión convertida. En es-CO el dólar se escribe «US$ 1,16» y el peso
+ *  «$ 4.754» — los dos empiezan por «$» y, en una línea que explica de dónde
+ *  salió una conversión, eso es exactamente lo que no puede quedar ambiguo. */
+const moneyCode = (n: number | null | undefined, currency: string) =>
+    formatMoney(Number(n ?? 0), currency || 'USD', undefined, { currencyDisplay: 'code' });
 
 const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return '—';
@@ -986,13 +1002,43 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
                         </p>
                     ) : (
                         <div className="pt-3 space-y-3">
+                            {/* EL CONCEPTO va primero: es lo que contesta «¿de
+                                dónde salió este aporte?», que es la pregunta que
+                                la ficha no respondía. */}
+                            <div className="rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-0.5">
+                                    {mov.origin ? (ORIGEN_LABEL[mov.origin.kind] || 'Concepto') : 'Concepto'}
+                                </div>
+                                <div className="text-sm font-bold text-gray-900" data-no-translate>
+                                    {mov.origin?.label || 'Aporte al club'}
+                                </div>
+                                {!mov.origin && (
+                                    <p className="text-[11px] text-gray-500 mt-1">
+                                        Este cobro se registró antes de que se guardara su origen.
+                                        Pulsá «Sincronizar con Stripe» para recuperarlo.
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1.5">
                                 <div className="flex justify-between text-gray-700">
                                     <span>Monto pagado por el donante</span>
                                     <span className="font-mono font-semibold text-gray-900" data-no-translate>{money(mov.grossAmount, mov.currency)}</span>
                                 </div>
                                 <div className="flex justify-between text-gray-500">
-                                    <span>− Tarifa de procesamiento de Stripe</span>
+                                    <span>
+                                        − Tarifa de procesamiento de Stripe
+                                        {/* Cuando el cobro y la liquidación van en
+                                            monedas distintas, lo que se resta es una
+                                            CONVERSIÓN. Se muestra el original o el
+                                            número no se puede explicar. */}
+                                        {mov.stripeFeeConverted && mov.stripeFeeOriginal && (
+                                            <span className="block text-[10px] text-gray-400" data-no-translate>
+                                                {moneyCode(mov.stripeFeeOriginal.amount, mov.stripeFeeOriginal.currency)} cobrados
+                                                por Stripe, convertidos a {mov.currency} con su tasa
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="font-mono" data-no-translate>−{money(mov.stripeFee, mov.currency)}</span>
                                 </div>
                                 <div className="flex justify-between text-gray-500">
@@ -1016,9 +1062,6 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
                             </div>
 
                             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                                {mov.origin && (
-                                    <Dato termino={ORIGEN_LABEL[mov.origin.kind] || 'Origen'} valor={mov.origin.label} />
-                                )}
                                 {mov.method?.label && <Dato termino="Método de pago" valor={mov.method.label} dato />}
                                 <Dato termino="Fecha del cobro" valor={fmtDate(mov.createdAt)} dato />
                                 {mov.availableOn && <Dato termino="Stripe libera" valor={fmtDate(mov.availableOn)} dato />}
@@ -1028,11 +1071,15 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
                                 {mov.receiptNumber && <Dato termino="Recibo" valor={`#${mov.receiptNumber}`} dato />}
                                 {mov.stripeBalanceTxId && <Dato termino="Transacción Stripe" valor={mov.stripeBalanceTxId} dato mono />}
                                 {mov.providerRef && <Dato termino="Referencia del pago" valor={mov.providerRef} dato mono />}
-                                {mov.stripeStatus && <Dato termino="Estado en Stripe" valor={mov.stripeStatus} dato />}
+                                {/* «Estado en Stripe» se retiró en v4.845: decía
+                                    `pending` en crudo, en inglés y sin contexto,
+                                    justo debajo del estado del dinero que ya lo
+                                    explica en la insignia de arriba. Dos veces el
+                                    mismo hecho, una de ellas peor contada. */}
                             </dl>
 
-                            <div className="flex flex-wrap items-center gap-3 pt-1">
-                                {mov.receiptUrl && (
+                            {mov.receiptUrl && (
+                                <div className="pt-1">
                                     <a
                                         href={mov.receiptUrl}
                                         target="_blank"
@@ -1041,16 +1088,8 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
                                     >
                                         Ver el recibo de Stripe
                                     </a>
-                                )}
-                                {/* Un vínculo DEDUCIDO no se presenta como un hecho.
-                                    Los aportes anteriores a v4.844 no lo tienen y se
-                                    emparejan por club, moneda, importe y momento. */}
-                                {donation?.movementMatch === 'heuristic' && (
-                                    <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-                                        Movimiento emparejado por coincidencia de importe y fecha
-                                    </span>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

@@ -21,6 +21,58 @@
 // mire la ficha tiene que poder distinguir un vínculo exacto de una
 // coincidencia deducida.
 
+/**
+ * La comisión de Stripe, EN LA MONEDA DEL COBRO.
+ *
+ * v4.845 — Éste era el defecto de fondo del módulo y se confirmó con el recibo
+ * del propio Distrito: sobre un cobro de 50.000 COP, Stripe cobró
+ * «USD 0,16 + USD 1,00 = USD 1,16». El `balance transaction` se denomina en la
+ * moneda de LIQUIDACIÓN de la cuenta, no en la del cobro, y el código hacía
+ * `bt.fee / 100` y restaba el resultado del bruto en pesos: le descontaba
+ * 1,16 PESOS a un aporte al que Stripe le había cobrado 1,16 DÓLARES.
+ *
+ * La conversión usa `bt.exchange_rate`, que es la tasa que Stripe aplicó de
+ * verdad a ESTA operación. No hay ninguna tasa inventada ni consultada aparte:
+ * es el mismo dato con el que Stripe hizo la conversión.
+ *
+ * Dirección de la tasa, según Stripe: si se convirtió de A a B, entonces
+ * `importe_en_A × exchange_rate = importe_en_B`. Acá A es la moneda del cobro
+ * (COP) y B la de liquidación (USD), así que para volver a pesos se DIVIDE.
+ *
+ * Cuando no se puede convertir —no vino tasa, o vino en cero— NO se inventa
+ * una ni se resta el número crudo: se devuelve `null` y quien llame decide.
+ * Restar dólares a pesos porque falta un dato es exactamente el error que esto
+ * viene a corregir.
+ *
+ * @returns { amount, rate, original: { amount, currency }, converted } — o
+ *          `{ amount: null, reason }` si no se pudo.
+ */
+export const stripeFeeInChargeCurrency = ({ fee, feeCurrency, chargeCurrency, exchangeRate }) => {
+    const bruto = Number(fee);
+    if (!Number.isFinite(bruto)) return { amount: null, reason: 'sin_comision' };
+
+    const desde = String(feeCurrency || '').toUpperCase();
+    const hasta = String(chargeCurrency || '').toUpperCase();
+
+    // Misma moneda: no hay nada que convertir. Es el caso de un cobro en
+    // dólares con la cuenta liquidando en dólares.
+    if (!desde || !hasta || desde === hasta) {
+        return { amount: bruto, rate: null, original: { amount: bruto, currency: hasta || desde }, converted: false };
+    }
+
+    const tasa = Number(exchangeRate);
+    if (!Number.isFinite(tasa) || tasa <= 0) {
+        return { amount: null, reason: 'sin_tasa', original: { amount: bruto, currency: desde } };
+    }
+
+    return {
+        amount: bruto / tasa,
+        rate: tasa,
+        original: { amount: bruto, currency: desde },
+        converted: true,
+    };
+};
+
 /** Cuánto pueden separarse en el tiempo un aporte y su pago para considerarlos
  *  el mismo hecho. Se crean en la misma vuelta del webhook, con una llamada a
  *  Stripe de por medio: dos minutos es holgado y sigue siendo estrecho frente
@@ -151,4 +203,7 @@ export const linkDonationsToPayments = (donations, payments) => {
     return { links: enlaces, orphans: huerfanos };
 };
 
-export default { MATCH_WINDOW_MS, parsePayload, originOf, methodOf, linkDonationsToPayments };
+export default {
+    MATCH_WINDOW_MS, parsePayload, originOf, methodOf, linkDonationsToPayments,
+    stripeFeeInChargeCurrency,
+};

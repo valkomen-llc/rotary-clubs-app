@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import {
-    linkDonationsToPayments, parsePayload, originOf, methodOf,
+    linkDonationsToPayments, parsePayload, originOf, methodOf, stripeFeeInChargeCurrency,
 } from '../server/lib/paymentTrace.js';
 import {
     ZERO_DECIMAL, stripeDecimals, CURRENCIES, currencyMeta, normalizeCurrency,
@@ -386,6 +386,63 @@ check('un rawPayload ilegible no rompe nada', () => {
     eq(parsePayload(null), {});
 });
 
+check('EL CASO REAL: la comisión viene en dólares sobre un cobro en pesos', () => {
+    // El recibo del Distrito lo confirma: sobre 50.000 COP, Stripe cobró
+    // «USD 0,16 + USD 1,00 = USD 1,16». Hasta v4.844 se restaban 1,16 PESOS.
+    const tasa = 0.000244;   // COP × tasa = USD
+    const r = stripeFeeInChargeCurrency({
+        fee: 1.16, feeCurrency: 'usd', chargeCurrency: 'COP', exchangeRate: tasa,
+    });
+    ok(r.amount !== null, 'tiene que poder convertirse');
+    ok(r.converted, 'y declararse como conversión');
+    // 1,16 / 0,000244 ≈ 4.754 pesos, no 1,16.
+    ok(r.amount > 4000 && r.amount < 5500, `dio ${r.amount}, se esperaba ~4.754`);
+    eq(r.original, { amount: 1.16, currency: 'USD' }, 'el original se conserva:');
+
+    // Y el neto cambia de verdad: 50.000 − 4.754 − 2.500 ≈ 42.746.
+    const neto = roundMoney(50000 - r.amount - 2500, 'COP');
+    ok(neto > 42000 && neto < 43500, `el neto real es ~42.746, dio ${neto}`);
+    ok(neto !== 47499, 'el neto que mostraba la pantalla estaba mal calculado');
+});
+
+check('misma moneda: no se convierte nada', () => {
+    const r = stripeFeeInChargeCurrency({
+        fee: 0.59, feeCurrency: 'usd', chargeCurrency: 'USD', exchangeRate: null,
+    });
+    eq(r.amount, 0.59);
+    eq(r.converted, false);
+});
+
+check('sin tasa NO se resta el número crudo', () => {
+    // Restar dólares a pesos porque falta un dato es justamente el defecto.
+    const r = stripeFeeInChargeCurrency({
+        fee: 1.16, feeCurrency: 'usd', chargeCurrency: 'COP', exchangeRate: null,
+    });
+    eq(r.amount, null, 'se rechaza en vez de inventar:');
+    eq(r.reason, 'sin_tasa');
+    eq(r.original, { amount: 1.16, currency: 'USD' }, 'pero el original se reporta:');
+});
+
+check('una tasa en cero o negativa tampoco se usa', () => {
+    for (const tasa of [0, -1, NaN, 'x']) {
+        eq(stripeFeeInChargeCurrency({
+            fee: 1, feeCurrency: 'usd', chargeCurrency: 'COP', exchangeRate: tasa,
+        }).amount, null, `tasa ${String(tasa)}:`);
+    }
+});
+
+check('sin comisión no se inventa una', () => {
+    eq(stripeFeeInChargeCurrency({ fee: null, feeCurrency: 'usd', chargeCurrency: 'COP' }).amount, null);
+    eq(stripeFeeInChargeCurrency({ fee: undefined }).reason, 'sin_comision');
+});
+
+check('la comisión se lee en la unidad mínima de SU moneda, no la del cobro', () => {
+    // `bt.fee` está en la unidad mínima del balance transaction. Sobre un cobro
+    // en pesos liquidado en yenes, dividir por 100 multiplicaría por cien.
+    eq(fromStripeAmount(116, 'usd'), 1.16, 'dólar:');
+    eq(fromStripeAmount(116, 'jpy'), 116, 'yen:');
+});
+
 check('el origen va de lo más específico a lo más general', () => {
     eq(originOf({ projectTitle: 'Agua Limpia', campaignName: 'X' }).kind, 'proyecto');
     eq(originOf({ campaignName: 'Terremoto', campaignId: 'c1' }).label, 'Terremoto');
@@ -499,6 +556,39 @@ check('la pantalla no escribe el 5% a mano', () => {
     // v4.844— sino la operación: la comisión dividida por el bruto.
     ok(/applicationFee\s*\/\s*[\w.]*[gG]rossAmount/.test(src),
         'el porcentaje volvió a escribirse a mano en vez de salir del movimiento');
+});
+
+check('la ficha no muestra el estado crudo de Stripe', () => {
+    // Decía «pending», en inglés y sin contexto, justo debajo del estado del
+    // dinero que ya lo explica. Dos veces el mismo hecho, una peor contada.
+    const src = stripComments(readSrc('src/pages/admin/WalletManagement.tsx'));
+    ok(!/Estado en Stripe/.test(src), 'volvió el estado crudo de Stripe a la ficha');
+    ok(!/emparejado por coincidencia/i.test(src), 'volvió la etiqueta de emparejado');
+});
+
+check('la comisión convertida muestra su importe original', () => {
+    const src = stripComments(readSrc('src/pages/admin/WalletManagement.tsx'));
+    ok(/stripeFeeOriginal/.test(src),
+        'sin el original, una comisión convertida es un número que nadie puede explicar');
+});
+
+check('la comisión NO se resta sin convertir', () => {
+    for (const archivo of ['server/controllers/paymentController.js', 'server/controllers/financialController.js']) {
+        const src = stripComments(readSrc(archivo));
+        ok(!/bt\.fee\s*\/\s*100/.test(src),
+            `${archivo}: volvió \`bt.fee / 100\` — la comisión viene en la moneda de liquidación`);
+        ok(/stripeFeeInChargeCurrency/.test(src), `${archivo} debe convertirla`);
+    }
+});
+
+check('el origen se busca en la sesión, no sólo en el PaymentIntent', () => {
+    // La metadata la pone `createDonationCheckout` en la Checkout Session.
+    // v4.844 la leía de `pi.metadata`, que para estos cobros viene vacía.
+    const src = stripComments(readSrc('server/controllers/financialController.js'));
+    ok(/checkout\.sessions\.(retrieve|list)/.test(src),
+        'el relleno no consulta la sesión: el origen nunca llegaría');
+    ok(/payment_intent_data/.test(src),
+        'los aportes nuevos deben mandar la metadata también al PaymentIntent');
 });
 
 check('el rótulo de la comisión es el que fijó el cliente', () => {
