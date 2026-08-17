@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.857.0 | 2026-08-17 (El remitente de la confirmación de aportes)
-// Cache bust: 2026-08-17t
+// UI V4.858.0 | 2026-08-17 (Notificaciones en la Bóveda y por campaña)
+// Cache bust: 2026-08-17u
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.858.0',
+        title: 'En la Bóveda ya se ve si la confirmación llegó 📮',
+        description: 'Al abrir un aporte en la Bóveda de Fondos aparece su historial de correos: a quién se le escribió, desde qué dirección, cuándo y con qué resultado. Se distingue «enviado» —el proveedor lo aceptó— de «entregado» —llegó al destinatario—, que es justo lo que hace falta saber cuando alguien dice que no recibió nada; y cuando falla se muestra el motivo exacto del proveedor, sin resumir. Hay un botón para reenviar la confirmación, que se puede mandar a otra dirección si la original estaba mal escrita. Además, cada campaña puede elegir su propio perfil de notificación en vez de heredar el que le toque al sitio, y el aviso interno a la entidad beneficiaria ahora tiene su propia plantilla: informa de un movimiento en vez de agradecer un aporte que esa persona no hizo.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'boveda', 'correo', 'campanas'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Historial de correos de cada aporte, dentro de su ficha en la Bóveda.' },
+            { type: 'added', text: 'Botón para reenviar la confirmación, a la misma dirección o a otra.' },
+            { type: 'added', text: 'Cada campaña puede fijar su perfil de notificación.' },
+            { type: 'added', text: 'Plantilla propia para el aviso interno a la entidad.' },
+        ]
+    },
+
     {
         version: '4.857.0',
         title: 'La confirmación de un aporte ya sale con la identidad correcta ✉️',

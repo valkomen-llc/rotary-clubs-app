@@ -1419,7 +1419,11 @@ check('cada id declarado tiene su Card y cada Card su id', (() => {
     const ids = JSON.parse('[' + admin826.match(/const CARD_IDS = \[([\s\S]*?)\];/)[1]
         .replace(/'/g, '"').replace(/,\s*\]/, ']').replace(/,\s*$/, '') + ']');
     const usados = [...admin826.matchAll(/<Card id="([^"]+)"/g)].map(m => m[1]);
-    return ids.length === 16 && usados.length === 16
+    // Se comparan los DOS conjuntos entre sí, sin un número fijo: la cuenta
+    // literal obligaba a tocar esta prueba cada vez que se agrega una sección
+    // —y entonces se actualiza sin mirar, que es como un guardián deja de
+    // guardar—. Lo que importa es que ninguna lista tenga algo que la otra no.
+    return ids.length > 10 && ids.length === usados.length
         && usados.every(u => ids.includes(u)) && ids.every(i => usados.includes(i));
 })());
 // Dentro del pliegue, cerrar la sección escondería la única forma de guardar.

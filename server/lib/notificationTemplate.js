@@ -418,10 +418,38 @@ export const defaultTemplate = () => ({
     ],
 });
 
+/* ─── LA PLANTILLA DEL AVISO INTERNO ─────────────────────────────────
+ *
+ * NO puede ser la misma que la del aportante, y por eso existe: una dice
+ * «gracias por tu aporte» y la otra informa de un movimiento a quien lo va a
+ * gestionar. Con una sola, el aviso interno le agradecería a la tesorería por
+ * un aporte que no hizo.
+ *
+ * Es más seca a propósito: sin botón, sin firma institucional y con el asunto
+ * que hace falta para reconocerla en una bandeja de trabajo.
+ */
+export const defaultInternalTemplate = () => ({
+    subject: 'Nuevo aporte recibido — {{campaign_name}}',
+    preheader: '{{amount}} {{currency}} desde {{site_name}}.',
+    blocks: [
+        { type: 'heading', text: 'Nuevo aporte recibido', align: 'left' },
+        { type: 'summary', title: 'Detalle' },
+        { type: 'paragraph', text: 'Aportante: {{donor_name}} ({{donor_email}}).', align: 'left' },
+        { type: 'quote', title: 'Mensaje del aportante' },
+        { type: 'legal', text: 'Referencia del pago: {{payment_reference}}.' },
+    ],
+});
+
+/** La plantilla de fábrica que le toca a cada papel. El aportante recibe la
+ *  de agradecimiento; los demás, la interna. */
+export const defaultTemplateFor = (recipientKind) =>
+    (recipientKind && recipientKind !== 'donor' ? defaultInternalTemplate() : defaultTemplate());
+
 export default {
     TEMPLATE_VARIABLES, VARIABLE_IDS, isKnownVariable, sampleVariables,
     BLOCK_TYPES, BLOCK_IDS, blockById, blockShape, safeUrl,
     templateShape, validateTemplate, variablesIn,
     escapeHtml, applyVariables, renderTemplate, defaultTemplate,
+    defaultInternalTemplate, defaultTemplateFor,
     TEXT_MAX, BLOCKS_MAX,
 };

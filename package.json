@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.857.0",
-  "cache_bust": "2026-08-17t (El aporte se confirma con la identidad de su perfil y desde el dominio del sitio si está verificado.)",
+  "version": "4.858.0",
+  "cache_bust": "2026-08-17u (La Bóveda muestra las notificaciones de cada aporte y deja reenviarlas.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

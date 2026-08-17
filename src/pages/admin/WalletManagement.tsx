@@ -52,6 +52,15 @@ interface PayoutRequest {
  * qué movimiento correspondía a qué aportante: son dos tablas que se escriben
  * seguidas en el mismo webhook y nada las ataba.
  */
+/** Un envío registrado. `sent` NO es `delivered`: el primero dice que el
+ *  proveedor lo aceptó y el segundo que llegó, y esa distinción es justo la que
+ *  hace falta cuando alguien dice que no recibió nada. */
+interface Delivery {
+    id: string; recipient: string; recipientKind: string; state: string;
+    subject: string | null; fromAddress: string | null;
+    errorMessage: string | null; sentAt: string | null; createdAt: string;
+}
+
 interface Movement {
     id: string;
     providerRef: string | null;
@@ -249,6 +258,10 @@ export default function WalletManagement() {
     const [balanceData, setBalanceData] = useState<BalanceData | null>(null);
     const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
     const [donations, setDonations] = useState<DonationRecord[]>([]);
+    // v4.858 — Las notificaciones de cada aporte, por id. Vienen en el MISMO
+    // viaje que los aportes: con una consulta por aporte serían decenas por
+    // pantalla.
+    const [notificaciones, setNotificaciones] = useState<Record<string, Delivery[]>>({});
     const [donationTotals, setDonationTotals] = useState<{ currency: string; totalAmount: number; totalCount: number }[]>([]);
     const [wallet, setWallet] = useState<WalletData | null>(null); // v4.421 — Stripe sync
     const [isLoading, setIsLoading] = useState(true);
@@ -403,6 +416,7 @@ export default function WalletManagement() {
 
         if (donationsRes.status === 'fulfilled' && Array.isArray(donationsRes.value.data?.donations)) {
             setDonations(donationsRes.value.data.donations);
+            setNotificaciones(donationsRes.value.data.notifications || {});
             setDonationTotals(donationsRes.value.data.byCurrency || []);
             setOrphanMovements(donationsRes.value.data.orphanMovements || []);
             // El catálogo de destinos y el período RESUELTO los manda el
@@ -412,6 +426,7 @@ export default function WalletManagement() {
             setPeriodo(donationsRes.value.data.periodo || null);
         } else {
             setDonations([]);
+            setNotificaciones({});
             setDonationTotals([]);
             setOrphanMovements([]);
             console.error('[Wallet] donations fetch failed:', donationsRes);
@@ -1122,7 +1137,10 @@ export default function WalletManagement() {
                                 ) : (
                                     <div className="space-y-3">
                                         {activeDonations.map(donation => (
-                                            <DonorCard key={donation.id} donation={donation} holdingDays={wallet?.platformHoldingDays ?? 6} />
+                                            <DonorCard key={donation.id} donation={donation} holdingDays={wallet?.platformHoldingDays ?? 6}
+                                                deliveries={notificaciones[donation.id] || []}
+                                                onResent={(d) => setNotificaciones(prev => ({ ...prev, [donation.id]: d }))}
+                                                clubId={clubIdActivo} />
                                         ))}
 
                                         {/* Cobros que no nacieron de una donación —una compra
@@ -1347,12 +1365,36 @@ const ORIGEN_LABEL: Record<string, string> = {
  * de la tienda, una membresía. Se escribe una vez porque son la misma pieza
  * con distinta cabecera; dos componentes se separarían en silencio.
  */
-function DonorCard({ donation, movementOnly, holdingDays }: {
+/** `API_URL` vive DENTRO del componente principal y `DonorCard` es otra
+ *  función: sin esta constante de módulo, el reenvío no tendría a dónde
+ *  llamar. No se toca la de arriba — funciona y la usan veinte llamadas. */
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+/** Cómo se pinta cada estado de entrega. `sent` va en gris y no en verde a
+ *  propósito: el proveedor lo aceptó, que NO es que haya llegado. */
+const ENTREGA: Record<string, { label: string; cls: string }> = {
+    pending: { label: 'Pendiente', cls: 'bg-gray-100 text-gray-600' },
+    sent: { label: 'Enviado', cls: 'bg-sky-100 text-sky-700' },
+    delivered: { label: 'Entregado', cls: 'bg-green-100 text-green-700' },
+    opened: { label: 'Abierto', cls: 'bg-green-100 text-green-800' },
+    bounced: { label: 'Rebotado', cls: 'bg-red-100 text-red-700' },
+    failed: { label: 'Fallido', cls: 'bg-red-100 text-red-700' },
+    blocked: { label: 'Bloqueado', cls: 'bg-amber-100 text-amber-800' },
+};
+
+function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onResent, clubId }: {
     donation?: DonationRecord;
     movementOnly?: Movement;
     holdingDays: number;
+    /** Los envíos registrados de este aporte. Vacío no es «no le llegó»: es que
+     *  no se registró nada — son cosas distintas y la tarjeta lo dice así. */
+    deliveries?: Delivery[];
+    onResent?: (d: Delivery[]) => void;
+    clubId?: string;
 }) {
     const [abierta, setAbierta] = useState(false);
+    const [reenviando, setReenviando] = useState(false);
+    const [otroCorreo, setOtroCorreo] = useState('');
     const mov = donation?.movement || movementOnly || null;
     const currency = donation?.currency || mov?.currency || 'USD';
     const importe = donation?.amount ?? mov?.amount ?? 0;
@@ -1418,6 +1460,82 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
 
             {abierta && (
                 <div className="px-4 pb-4 border-t border-gray-100 bg-white/60">
+                    {/* ── LAS NOTIFICACIONES DE ESTE APORTE (v4.858) ──────
+                        «Le llegó» son `delivered` y `opened`: `sent` significa
+                        que el proveedor lo aceptó, que es otra cosa y es justo
+                        la distinción que hace falta cuando alguien dice que no
+                        recibió nada. Y una lista vacía NO es «no le llegó»: es
+                        que no se registró nada. */}
+                    {donation && (
+                        <div className="pt-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Confirmación por correo</div>
+                            {deliveries.length === 0 ? (
+                                <p className="text-xs text-gray-500">
+                                    No hay ningún envío registrado para este aporte. Puede ser anterior a que
+                                    se empezara a registrar, o que el sitio no tuviera notificaciones configuradas.
+                                </p>
+                            ) : (
+                                <ul className="space-y-1.5 mb-2">
+                                    {deliveries.map(d => (
+                                        <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                                            <span className={`inline-flex px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${ENTREGA[d.state]?.cls || 'bg-gray-100 text-gray-600'}`}>
+                                                {ENTREGA[d.state]?.label || d.state}
+                                            </span>
+                                            <span className="text-gray-700" data-no-translate>{d.recipient}</span>
+                                            {d.fromAddress && <span className="text-gray-400" data-no-translate>desde {d.fromAddress}</span>}
+                                            {d.sentAt && (
+                                                <span className="text-gray-400">
+                                                    {new Date(d.sentAt).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
+                                                </span>
+                                            )}
+                                            {/* El motivo del proveedor, TEXTUAL: convertirlo en
+                                                «no se pudo enviar» deja a quien corrige sin saber
+                                                si el problema es el dominio o la dirección. */}
+                                            {d.errorMessage && (
+                                                <span className="w-full text-red-600 mt-0.5">{d.errorMessage}</span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <input
+                                    type="email"
+                                    value={otroCorreo}
+                                    onChange={e => setOtroCorreo(e.target.value)}
+                                    placeholder={donation.donorEmail || 'correo@destino.com'}
+                                    className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs w-56"
+                                />
+                                <button
+                                    type="button"
+                                    disabled={reenviando}
+                                    onClick={async () => {
+                                        setReenviando(true);
+                                        try {
+                                            const r = await axios.post(
+                                                `${API_BASE}/financial/donations/${donation.id}/resend`,
+                                                { to: otroCorreo || undefined, clubId },
+                                                { headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` } }
+                                            );
+                                            if (r.data?.deliveries && onResent) onResent(r.data.deliveries);
+                                            toast.success(r.data?.note || 'Confirmación reenviada.');
+                                        } catch (e: any) {
+                                            toast.error(e?.response?.data?.error || 'No se pudo reenviar', { duration: 10000 });
+                                        } finally { setReenviando(false); }
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-black disabled:opacity-40"
+                                >
+                                    <Send className="w-3 h-3" /> {reenviando ? 'Reenviando…' : 'Reenviar confirmación'}
+                                </button>
+                            </div>
+                            {/* La llave de idempotencia es contribución + evento +
+                                destinatario: reenviar al MISMO correo no vuelve a
+                                salir, y eso es a propósito. */}
+                            <p className="text-[11px] text-gray-400 mt-1">
+                                Al mismo destinatario no se repite. Para volver a mandarlo, escribí otra dirección.
+                            </p>
+                        </div>
+                    )}
                     {!mov ? (
                         // No se inventa un movimiento que no se encontró: un
                         // aporte sin pago asociado es un dato que hay que ver,

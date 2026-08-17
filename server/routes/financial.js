@@ -7,6 +7,7 @@ import {
     createSubscriptionCheckout,
     getDonationSessionStatus,
     listClubDonations,
+    resendDonationConfirmation,
     getEmailDiagnostics,
     sendTestEmail,
     getClubWallet,
@@ -40,6 +41,10 @@ router.post('/subscribe', createSubscriptionCheckout);
 router.get('/donations', authMiddleware, requireSiteAdmin, listClubDonations);
 
 // La Bóveda: saldos y movimientos POR MONEDA (v4.841).
+// v4.858 — Reenviar la confirmación de un aporte. Es un correo a un TERCERO:
+// exige rol administrativo del sitio y el aporte se busca acotado por el
+// `clubId` del token.
+router.post('/donations/:id/resend', authMiddleware, requireSiteAdmin, resendDonationConfirmation);
 router.get('/wallet', authMiddleware, requireSiteAdmin, getClubWallet);
 
 // v4.422 — Sync retroactivo: enriquece Payments existentes con datos de

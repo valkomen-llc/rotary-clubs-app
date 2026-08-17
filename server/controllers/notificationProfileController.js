@@ -33,7 +33,7 @@ import {
     PREFERRED_SENDERS, defaultEventRules, normalizeEmail,
 } from '../lib/notificationSpec.js';
 import {
-    templateShape, validateTemplate, renderTemplate, defaultTemplate,
+    templateShape, validateTemplate, renderTemplate, defaultTemplate, defaultTemplateFor,
     sampleVariables, TEMPLATE_VARIABLES, BLOCK_TYPES,
 } from '../lib/notificationTemplate.js';
 import { normalizeTargeting } from '../lib/contributionSpec.js';
@@ -320,7 +320,9 @@ export const resolveTemplate = async ({ profileId = null, campaignId = null, eve
         );
         if (rows[0]) return { template: templateShape(rows[0]), version: rows[0].version, source: i.origen, id: rows[0].id };
     }
-    return { template: defaultTemplate(), version: 0, source: 'fábrica', id: null };
+    // La de fábrica depende del PAPEL: el aviso interno no puede agradecerle a
+    // la tesorería por un aporte que no hizo.
+    return { template: defaultTemplateFor(rk), version: 0, source: 'fábrica', id: null };
 };
 
 // GET /api/notification-profiles/templates?profileId=&campaignId=&event=&recipientKind=
@@ -426,7 +428,10 @@ export const previewTemplate = async (req, res) => {
         const perfil = req.body?.profileId ? await leerPerfil(req.body.profileId) : null;
         const t = req.body?.template
             ? templateShape(req.body.template)
-            : (await resolveTemplate({ profileId: req.body?.profileId, campaignId: req.body?.campaignId })).template;
+            : (await resolveTemplate({
+                profileId: req.body?.profileId, campaignId: req.body?.campaignId,
+                recipientKind: req.body?.recipientKind,
+            })).template;
 
         const { vars, beneficiary } = await contextoDePrueba(perfil);
         const salida = renderTemplate({ template: t, vars, identity: perfil?.identity || {}, beneficiary });
@@ -484,7 +489,10 @@ export const sendTestEmail = async (req, res) => {
         const perfil = req.body?.profileId ? await leerPerfil(req.body.profileId) : null;
         const t = req.body?.template
             ? templateShape(req.body.template)
-            : (await resolveTemplate({ profileId: req.body?.profileId, campaignId: req.body?.campaignId })).template;
+            : (await resolveTemplate({
+                profileId: req.body?.profileId, campaignId: req.body?.campaignId,
+                recipientKind: req.body?.recipientKind,
+            })).template;
         const v = validateTemplate(t);
         if (!v.ok) return res.status(422).json({ error: 'La plantilla no se puede enviar todavía.', errors: v.errors });
 

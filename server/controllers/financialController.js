@@ -26,6 +26,10 @@ import EmailService from '../services/EmailService.js';
 import { DEFAULT_PAYMENT_BLOCKS } from '../lib/paymentBlockDefaults.js';
 import { isServable, targetsSite } from '../lib/contributionSpec.js';
 import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
+// v4.858 — La bitácora de notificaciones. La ficha de un aporte responde «¿le
+// llegó la confirmación?», y el reenvío es la salida cuando no llegó.
+import { listDeliveriesFor, listDeliveries } from '../lib/notificationLog.js';
+import { sendContributionNotifications } from '../lib/notificationSender.js';
 
 console.log('[FINANCIAL v4.849] Bóveda por MONEDA + filtro de período y destino (el saldo no se filtra)');
 
@@ -560,6 +564,11 @@ export const listClubDonations = async (req, res) => {
             // en otra, sin forma de saber cuál era de quién: son dos tablas que
             // se escriben seguidas en el mismo webhook y nada las ataba.
             donations,
+            // v4.858 — Las notificaciones de cada aporte, en un solo viaje. Con
+            // una consulta por aporte serían decenas por pantalla. `{}` cuando
+            // la bitácora no está disponible: que falte el diagnóstico no puede
+            // impedir ver el dinero.
+            notifications: await listDeliveriesFor(donations.map(d => d.id)),
             // Cobros REALES que no nacieron de una donación —una compra de la
             // tienda, una membresía, una inscripción—. Se devuelven aparte
             // para que no desaparezcan de la pantalla al unificar la lista:
@@ -1199,5 +1208,105 @@ export const syncPaymentsWithStripe = async (req, res) => {
     } catch (error) {
         console.error('[FINANCIAL] Error syncing payments with Stripe:', error);
         return res.status(500).json({ error: 'Error sincronizando con Stripe', detail: error.message?.slice(0, 200) });
+    }
+};
+
+
+/* ════════════════════════════════════════════════════════════════════
+   REENVIAR LA CONFIRMACIÓN DE UN APORTE  (v4.858)
+   ════════════════════════════════════════════════════════════════════
+ *
+ * POST /api/financial/donations/:id/resend
+ *
+ * ── EL AISLAMIENTO VA EN EL «WHERE» ─────────────────────────────
+ *
+ * El aporte se busca acotado por el `clubId` del token, no se lee y después se
+ * comprueba a quién pertenece: para quien pregunta por un aporte ajeno,
+ * simplemente no existe. Es el mismo criterio del panel del asistente y de la
+ * Librería de Medios.
+ *
+ * ── ES UN CORREO A UN TERCERO ───────────────────────────────────
+ *
+ * Por eso exige rol administrativo del sitio y queda registrado con quién lo
+ * pidió. Reenviar no es leer.
+ */
+export const resendDonationConfirmation = async (req, res) => {
+    try {
+        const clubId = req.user?.role === 'administrator' && req.body?.clubId
+            ? req.body.clubId
+            : req.user?.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        const { rows } = await db.query(
+            `SELECT id, amount, currency, "donorName", "donorEmail", "isAnonymous", message, date
+               FROM "Donation" WHERE id = $1 AND "clubId" = $2 LIMIT 1`,
+            [String(req.params.id || ''), clubId]
+        );
+        const aporte = rows[0];
+        if (!aporte) return res.status(404).json({ error: 'El aporte no existe.' });
+
+        const destino = String(req.body?.to || aporte.donorEmail || '').trim();
+        if (!destino) {
+            return res.status(400).json({ error: 'Este aporte no tiene correo de quien aportó: escribí una dirección para reenviarlo.' });
+        }
+
+        // La campaña sale de la traza del pago, que es donde vive desde v4.807
+        // —`Donation` no tiene columna de campaña—. Sin ella el correo sale
+        // igual, con el nombre del sitio.
+        let campaignId = null;
+        try {
+            const pago = await db.query(
+                `SELECT "rawPayload" FROM "Payment"
+                  WHERE "clubId" = $1 AND "rawPayload" LIKE $2 ORDER BY "createdAt" DESC LIMIT 1`,
+                [clubId, `%${aporte.id}%`]
+            );
+            campaignId = JSON.parse(pago.rows[0]?.rawPayload || '{}').campaignId || null;
+        } catch { /* sin campaña se sigue igual */ }
+
+        const salida = await sendContributionNotifications({
+            contributionId: aporte.id,
+            clubId,
+            campaignId,
+            event: 'payment_confirmed',
+            donorEmail: destino,
+            vars: {
+                donor_name: aporte.isAnonymous ? 'Donante anónimo' : (aporte.donorName || 'amigo'),
+                donor_email: destino,
+                amount: new Intl.NumberFormat('es-CO', {
+                    minimumFractionDigits: aporte.currency === 'COP' ? 0 : 2,
+                    maximumFractionDigits: aporte.currency === 'COP' ? 0 : 2,
+                }).format(Number(aporte.amount) || 0),
+                currency: aporte.currency,
+                contribution_id: aporte.id,
+                contribution_date: new Date(aporte.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }),
+                donor_message: aporte.message || '',
+            },
+        });
+
+        if (!salida.handled) {
+            // Sin perfil que alcance a este sitio no hay nada que reenviar por
+            // esta vía. Se dice con su motivo en vez de un «no se pudo»: lo que
+            // falta es configuración, y está a un clic de distancia.
+            return res.status(409).json({
+                error: `Este sitio todavía no tiene un perfil de notificación (${salida.reason}). Configuralo en Notificaciones de Aportes.`,
+            });
+        }
+
+        console.log(`[RESEND] ${aporte.id} → ${destino} por ${req.user?.email || req.user?.id}`);
+        return res.json({
+            ok: true,
+            sent: salida.sent,
+            duplicated: salida.duplicated,
+            // Un reenvío al MISMO destinatario no vuelve a salir: la llave de
+            // idempotencia es contribución + evento + destinatario, y eso es a
+            // propósito. Para volver a mandarlo hay que escribir otra dirección.
+            note: salida.duplicated
+                ? 'Ya se había enviado a esa dirección, así que no se repitió. Para volver a mandarlo, escribí otra dirección.'
+                : null,
+            deliveries: await listDeliveries(aporte.id),
+        });
+    } catch (error) {
+        console.error('[FINANCIAL] Error reenviando confirmación:', error);
+        return res.status(500).json({ error: error.message?.slice(0, 200) || 'No se pudo reenviar' });
     }
 };
