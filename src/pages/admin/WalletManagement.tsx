@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -8,6 +8,7 @@ import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
 import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
 import { buildInforme } from '../../lib/walletReport';
+import CentralVault from '../../components/admin/CentralVault';
 import { toast } from 'sonner';
 
 // v4.841 — Un saldo por MONEDA. Hasta v4.840 la pantalla recibía un escalar
@@ -216,8 +217,29 @@ interface PeriodoResumen {
 }
 
 export default function WalletManagement() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const { club } = useClub();
+
+    // v4.853 — DOS MODOS, y el scope de datos es lo que los separa.
+    //
+    //   CENTRAL  el operador de la plataforma: todos los sitios, sólo lectura.
+    //   LOCAL    el sitio: sólo sus fondos, con sus retiros y su traza.
+    //
+    // Se distingue por ROL, no por si hay sitio activo: `app.clubplatform.org`
+    // resuelve al sitio «Origen», así que el operador SÍ tiene club y una
+    // comprobación por `club` lo mandaría a la Bóveda de Origen creyendo estar
+    // viendo la plataforma entera.
+    //
+    // El operador puede bajar a un sitio concreto —`sitioElegido`— y ahí ve
+    // exactamente la Bóveda local de ese sitio, que es la que ya funciona.
+    const esOperador = user?.role === 'administrator';
+    const [sitioElegido, setSitioElegido] = useState<string | null>(null);
+    const modoCentral = esOperador && !sitioElegido;
+    // El sitio del que se están mirando los fondos. Para un administrador de
+    // sitio es SIEMPRE el suyo —`sitioElegido` no se puede fijar sin ser
+    // operador—, así que esto no abre ninguna puerta entre organizaciones: el
+    // servidor sólo acepta `?clubId=` de un operador y lo comprueba él.
+    const clubIdActivo = sitioElegido || club?.id;
     // El formateo de importes depende del idioma activo. Sin esta suscripción,
     // cambiar de idioma dejaría las cifras con el formato anterior hasta que
     // algo más repintara la pantalla.
@@ -264,10 +286,10 @@ export default function WalletManagement() {
     const [accountName, setAccountName] = useState('');
 
     useEffect(() => {
-        if (token && club?.id) {
+        if (token && clubIdActivo) {
             fetchWalletData();
         }
-    }, [token, club?.id]);
+    }, [token, clubIdActivo]);
 
     // v4.849 — Al cambiar un filtro se recarga en SILENCIO: con el esqueleto de
     // carga completo, cada cambio de rango haría parpadear la pantalla entera
@@ -275,7 +297,7 @@ export default function WalletManagement() {
     // personalizado no dispara nada hasta tener sus dos fechas: pedir con una
     // sola daría un resultado que el servidor degrada y confunde más que ayuda.
     useEffect(() => {
-        if (!token || !club?.id) return;
+        if (!token || !clubIdActivo) return;
         if (rango === 'personalizado' && (!desde || !hasta)) return;
         fetchWalletData(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,10 +379,10 @@ export default function WalletManagement() {
         // Defensive: each endpoint resuelve independiente. Si /donations falla
         // (router no montado en algún env), balance + payouts siguen mostrándose.
         const [balanceRes, payoutsRes, donationsRes, walletRes] = await Promise.allSettled([
-            axios.get(`${API_URL}/payouts/balance?clubId=${club?.id}`, { headers }),
-            axios.get(`${API_URL}/payouts/history?clubId=${club?.id}`, { headers }),
-            axios.get(`${API_URL}/financial/donations?clubId=${club?.id}&${filtroQuery()}`, { headers }),
-            axios.get(`${API_URL}/financial/wallet?clubId=${club?.id}`, { headers }), // v4.421 — buckets Stripe
+            axios.get(`${API_URL}/payouts/balance?clubId=${clubIdActivo}`, { headers }),
+            axios.get(`${API_URL}/payouts/history?clubId=${clubIdActivo}`, { headers }),
+            axios.get(`${API_URL}/financial/donations?clubId=${clubIdActivo}&${filtroQuery()}`, { headers }),
+            axios.get(`${API_URL}/financial/wallet?clubId=${clubIdActivo}`, { headers }), // v4.421 — buckets Stripe
         ]);
 
         if (balanceRes.status === 'fulfilled' && typeof balanceRes.value.data?.availableBalance === 'number') {
@@ -408,11 +430,11 @@ export default function WalletManagement() {
 
     // v4.422 — Sincroniza Payments antiguos con Stripe (fee real, availableOn, etc.)
     const handleSyncStripe = async (force = false) => {
-        if (!token || !club?.id) return;
+        if (!token || !clubIdActivo) return;
         setIsSyncing(true);
         try {
             const res = await axios.post(`${API_URL}/financial/wallet/sync-stripe`,
-                { clubId: club.id, force },
+                { clubId: clubIdActivo, force },
                 { headers: { 'Authorization': `Bearer ${token}` } }
             );
             const { synced, failed, skipped, total } = res.data;
@@ -487,6 +509,31 @@ export default function WalletManagement() {
             default: return <Clock className="w-4 h-4" />;
         }
     };
+
+    // v4.853 — MODO CENTRAL. Va antes que el esqueleto de carga porque no
+    // depende de nada de lo que la Bóveda local está cargando: son dos scopes
+    // de datos distintos y esperar al del sitio sería esperar por nada.
+    if (modoCentral) {
+        return (
+            <AdminLayout>
+                <div className="space-y-6">
+                    <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-gray-400">
+                            Bóveda de Fondos
+                        </p>
+                        <h1 className="text-2xl font-black text-gray-900 mt-1">Todos los sitios</h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Lo que ha recaudado cada organización alojada en Club Platform. Cada sitio
+                            conserva su dinero por separado.
+                        </p>
+                    </div>
+                    {/* Pulsar un sitio abre SU Bóveda —la local, la que ya
+                        funciona— en vez de reimplementar el detalle acá. */}
+                    <CentralVault onAbrirSitio={setSitioElegido} />
+                </div>
+            </AdminLayout>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -624,6 +671,20 @@ export default function WalletManagement() {
                     </div>
                 ) : (
                     <>
+                        {/* v4.853 — El operador que bajó a un sitio tiene que poder
+                            volver. Sin esto queda atrapado en la Bóveda de ese
+                            sitio y la única salida es recargar. */}
+                        {sitioElegido && (
+                            <button
+                                type="button"
+                                onClick={() => setSitioElegido(null)}
+                                className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
+                            >
+                                <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                                Todos los sitios
+                            </button>
+                        )}
+
                         {/* ── UNA sola línea: monedas a la izquierda, filtros y
                             descargas a la derecha ─────────────────────────
                             v4.851 — Pedido expreso del equipo. La v4.850 los

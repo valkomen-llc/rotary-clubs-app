@@ -1,25 +1,12 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
-// La Bóveda de un sitio SIN APORTES.  npm run test:wallet:empty
-// v4.852.0
+// La BÓVEDA CENTRAL en un navegador.  npm run test:wallet:central:ui
+// v4.853.0
 //
-// REGRESIÓN DEL FALLO REPORTADO EN `/admin/boveda` DEL ADMINISTRADOR CENTRAL.
-//
-// Cuando el sitio no tiene ningún aporte, `/financial/wallet` responde
-// `wallets: []` con `buckets: {}` y `summary: {}`. `{}` es TRUTHY, así que el
-// respaldo del cliente armaba una entrada con `buckets: {}` y al pintar las
-// cubetas reventaba con «Cannot read properties of undefined (reading
-// 'count')». El error subía al límite de error, que desmonta TODO el subárbol
-// — por eso la pantalla salía sin barra lateral.
-//
-// ⚠️ NO era un fallo del administrador central: le pasaba a CUALQUIER sitio sin
-// aportes, incluido un club recién creado. El central lo veía siempre porque
-// consulta sin `clubId` y ahí nunca hay pagos. Por eso esta prueba entra con
-// rol de SITIO: desde v4.853 un operador ve otra pantalla, y probar con su rol
-// dejaría de ejercitar el defecto.
-//
-// `test:wallet:ui` no lo veía porque monta la pantalla CON dinero. Al probar
-// una pantalla, probarla también VACÍA.
+// Comprueba lo que una prueba de criterio no puede ver: que el OPERADOR de la
+// plataforma vea la vista consolidada —y no la Bóveda del sitio «Origen», que
+// es lo que vería si el modo se decidiera por «hay club activo»—, que el
+// consolidado no mezcle monedas, y que pulsar un sitio baje a su Bóveda local.
 //
 // Pide `playwright` y `esbuild` y se salta solo si faltan.
 // ════════════════════════════════════════════════════════════════════
@@ -28,7 +15,7 @@ try {
     ({ chromium } = await import('playwright'));
     ({ build } = await import('esbuild'));
 } catch {
-    console.log('\n⊘ test:wallet:empty — falta playwright o esbuild, se salta.\n');
+    console.log('\n⊘ test:wallet:central:ui — falta playwright o esbuild, se salta.\n');
     process.exit(0);
 }
 
@@ -91,9 +78,37 @@ await page.route('**/api/financial/donations*', r => r.fulfill({ json: {
 } }));
 await page.route('**/api/financial/wallet*', r => r.fulfill({ json: {
     wallets: [], currencies: [], currency: 'USD',
-    buckets: {},   // ← objeto VACÍO
-    summary: {},   // ← vacío pero TRUTHY
-    platformHoldingDays: 6,
+    buckets: {}, summary: {}, platformHoldingDays: 6,
+} }));
+
+// Dos sitios, uno con dos monedas. Es el caso que el rediseño tiene que
+// resolver sin mezclar nada.
+await page.route('**/api/payouts/admin/overview*', r => r.fulfill({ json: {
+    generadoEn: '2026-08-17T16:00:00.000Z',
+    total: {
+        COP: { currency: 'COP', aportes: 5, bruto: 370000, procesador: 20254, plataforma: 18500,
+               neto: 330746, enTransito: 42746, disponibleProximamente: 0, retirado: 120000,
+               disponible: 210746, sitios: 2 },
+        USD: { currency: 'USD', aportes: 1, bruto: 10, procesador: 0.59, plataforma: 0.5,
+               neto: 8.91, enTransito: 8.91, disponibleProximamente: 0, retirado: 0,
+               disponible: 8.91, sitios: 1 },
+    },
+    takeRate: { COP: 5, USD: 5 },
+    ticketPromedio: { COP: 74000, USD: 10 },
+    sitios: [
+        { clubId: 'c-4281', clubName: 'Distrito 4281', clubType: 'district', district: '4281', aportes: 3,
+          monedas: [
+            { currency: 'COP', aportes: 2, bruto: 70000, procesador: 5754, plataforma: 3500, neto: 60746, enTransito: 42746, disponible: 40746, retirado: 20000 },
+            { currency: 'USD', aportes: 1, bruto: 10, procesador: 0.59, plataforma: 0.5, neto: 8.91, enTransito: 8.91, disponible: 8.91, retirado: 0 },
+          ] },
+        { clubId: 'c-feria', clubName: 'Feria de Proyectos', clubType: 'fair', district: '4271, 4281', aportes: 3,
+          monedas: [
+            { currency: 'COP', aportes: 3, bruto: 300000, procesador: 14500, plataforma: 15000, neto: 270000, enTransito: 0, disponible: 170000, retirado: 100000 },
+          ] },
+    ],
+    sitiosConMovimiento: 2, sitiosTotales: 7,
+    sinConciliar: [{ clubId: 'c-otro', currency: 'EUR', amount: 500 }],
+    fuente: 'payments',
 } }));
 await page.route('http://localhost/', r => r.fulfill({
     contentType: 'text/html',
@@ -102,11 +117,10 @@ await page.route('http://localhost/', r => r.fulfill({
 await page.goto('http://localhost/');
 await page.evaluate(() => {
     localStorage.setItem('rotary_token', 't-diag');
-    // ⚠️ ROL DE SITIO, no de operador. Desde v4.853 un `administrator` ve la
-    // Bóveda CENTRAL, que es otra pantalla: con ese rol esta prueba dejaría de
-    // ejercitar el fallo que protege y pasaría por el motivo equivocado.
-    // El defecto es de la Bóveda LOCAL de un sitio sin aportes.
-    localStorage.setItem('rotary_user', JSON.stringify({ id: 'u1', role: 'club_admin', clubId: 'origen' }));
+    // El OPERADOR de la plataforma. Ojo: `by-domain` le devuelve el sitio
+    // «Origen», así que SÍ tiene club activo — el modo se decide por ROL, y
+    // esta prueba es la que lo comprueba.
+    localStorage.setItem('rotary_user', JSON.stringify({ id: 'u1', role: 'administrator', clubId: 'origen' }));
 });
 try {
     const css = readdirSync('dist/assets').filter(f => f.startsWith('index-') && f.endsWith('.css'));
@@ -126,28 +140,47 @@ const check = (name, cond, extra = '') => {
     else { fail++; console.log(`  FALLA ${name}${extra ? ` — ${extra}` : ''}`); }
 };
 
-console.log('\n▸ Un sitio sin aportes NO tumba la Bóveda');
+console.log('\n▸ El operador ve la Bóveda CENTRAL');
 
-// El síntoma exacto que se reportó, con captura: la pantalla entera sustituida
-// por el límite de error, sin barra lateral.
-check('no aparece el límite de error',
-    !/Esta pantalla no se pudo mostrar/.test(texto), texto.slice(0, 200));
-check('la barra lateral sigue ahí — el límite desmonta TODO el subárbol',
-    /Bóveda de Fondos|GENERAL/.test(texto), texto.slice(0, 200));
+// ⚠️ La comprobación que importa: `by-domain` le devuelve el sitio «Origen», así
+// que el operador SÍ tiene club activo. Si el modo se decidiera por «hay club»,
+// estaría viendo la Bóveda de Origen creyendo ver la plataforma entera.
+check('ve la vista consolidada, no la de un sitio',
+    /Todos los sitios/.test(texto), texto.slice(0, 300));
+check('y NO el saldo de un solo sitio',
+    !/Disponible para Retiro/.test(texto), texto.slice(0, 400));
 
-// La causa concreta. Si vuelve, vuelve con este mensaje.
-const elFallo = errores.find(e => /reading 'count'/.test(e));
-check('no revienta leyendo las cubetas vacías', !elFallo, elFallo || '');
-check('sin ningún error de render',
-    !errores.some(e => /TypeError|PAGEERROR/.test(e)),
+console.log('\n▸ Consolidar no es mezclar');
+
+check('hay una tarjeta por MONEDA', /COP/.test(texto) && /USD/.test(texto));
+check('los pesos van por su lado', /370\.000/.test(texto), texto.slice(0, 900));
+check('y los dólares por el suyo', /8,91|10,00/.test(texto), texto.slice(0, 900));
+// El error que este módulo entero existe para no cometer, multiplicado por la
+// cantidad de sitios: 370.000 + 10 no puede aparecer en ninguna parte.
+check('no aparece ninguna suma entre monedas', !/370\.010/.test(texto), texto.slice(0, 900));
+
+check('se ven las DOS retenciones por separado',
+    /Tarifa de procesamiento/.test(texto) && /Retención de la plataforma/.test(texto));
+check('y el take rate', /Take rate/.test(texto));
+
+console.log('\n▸ Cada sitio conserva lo suyo');
+
+check('se listan los dos sitios',
+    /Distrito 4281/.test(texto) && /Feria de Proyectos/.test(texto), texto.slice(0, 1200));
+check('el sitio con dos monedas las muestra dentro',
+    (texto.match(/COP/g) || []).length >= 2);
+check('se dice cuántos sitios quedaron fuera del filtro',
+    /2 de 7/.test(texto), texto.slice(0, 1500));
+// Un retiro en una moneda sin aportes no se resta contra otra: se REPORTA.
+check('el retiro sin conciliar se avisa',
+    /sin aportes/.test(texto), texto.slice(0, 1600));
+
+check('sin errores de render', !errores.some(e => /TypeError|PAGEERROR/.test(e)),
     errores.filter(e => /TypeError|PAGEERROR/.test(e)).join(' | '));
-
-// Y lo que SÍ tiene que verse: la Bóveda, vacía y explicada.
-check('se pinta la Bóveda', /BÓVEDA DE FONDOS/i.test(texto), texto.slice(0, 300));
 
 console.log('');
 if (fail) {
     console.log(`\x1b[31m✗ ${fail} fallo(s), ${pass} bien\x1b[0m\n`);
     process.exit(1);
 }
-console.log(`\x1b[32m✓ ${pass} comprobaciones — la Bóveda vacía se pinta en vez de reventar\x1b[0m\n`);
+console.log(`\x1b[32m✓ ${pass} comprobaciones — la central consolida sin mezclar\x1b[0m\n`);

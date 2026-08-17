@@ -7,7 +7,8 @@ import {
     getAllPayoutRequests,
     updatePayoutStatus,
     getLedgerReconciliation,
-    backfillLedger
+    backfillLedger,
+    getCentralOverview
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -31,14 +32,19 @@ const superAdminRoles = ['administrator'];
 router.get('/admin', roleMiddleware(superAdminRoles), getAllPayoutRequests);
 router.put('/admin/:id', roleMiddleware(superAdminRoles), updatePayoutStatus);
 
+// v4.853 — La BÓVEDA CENTRAL: lo que recaudaron TODOS los sitios. Del operador
+// de la plataforma, porque es información de todas las organizaciones alojadas.
+router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOverview);
+
 // v4.847 — El libro mayor contra la Bóveda. Sólo lectura y sólo del operador:
 // es una herramienta de migración sobre infraestructura compartida, y lo que
 // muestra —cuánto historial le falta al libro nuevo— se lee como un descuadre
 // si no se sabe qué se está mirando.
 //
-// Hoy no choca con `/admin/:id` porque aquélla es un PUT. Al agregar un
-// `GET /admin/:id`, éste tiene que quedar ANTES o «ledger» caería en el
-// parámetro — es lo que ya pasó con `/site/*` en las campañas.
+// Hoy no choca con `/admin/:id` porque aquélla es un PUT y `/admin` es exacta.
+// Al agregar un `GET /admin/:id`, éstas tienen que quedar ANTES o «overview» y
+// «ledger» caerían en el parámetro — es lo que ya pasó con `/site/*` en las
+// campañas.
 router.get('/admin/ledger/:clubId', roleMiddleware(superAdminRoles), getLedgerReconciliation);
 
 // v4.848 — Carga el historial en el libro. De ENSAYO salvo `{"apply": true}`.

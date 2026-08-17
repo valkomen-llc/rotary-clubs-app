@@ -12,8 +12,11 @@ import {
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
 import { postPayout, postPayoutCancel, reconcileClub, backfillClub } from '../lib/ledger.js';
+import {
+    filaDeSitio, consolidar, porSitio, takeRate, ticketPromedio, soloConMovimiento,
+} from '../lib/centralWallet.js';
 
-console.log('[PAYOUTS v4.848] Libro mayor en sombra + carga del historial');
+console.log('[PAYOUTS v4.853] Bóveda Central multi-sitio + libro mayor en sombra');
 
 // v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
 // `financialController` y la barra superior del panel, y tres copias del mismo
@@ -368,6 +371,114 @@ export const backfillLedger = async (req, res) => {
     } catch (error) {
         console.error('Error backfilling ledger:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+/**
+ * GET /api/payouts/admin/overview — la BÓVEDA CENTRAL.
+ *
+ * v4.853 — Fase 1 de la wallet multi-sitio. Lo que recaudaron TODOS los sitios,
+ * por sitio y por moneda, con su consolidado.
+ *
+ * ⚠️ DOS CONSULTAS AGREGADAS, NO UNA POR SITIO. Con `GROUP BY` en la base, la
+ * pantalla escala a miles de sitios; trayendo los aportes y sumándolos en el
+ * navegador —que es lo que hace hoy la Bóveda local, y está bien para UN
+ * sitio— la central sería inusable con el segundo cliente grande.
+ *
+ * ⚠️ LEE DE `Payment`, NO DEL LIBRO MAYOR, y es a propósito: el libro está en
+ * sombra y su historial se está cargando. Cuando el informe de conciliación
+ * cuadre se cambia la fuente acá, en un solo sitio. Mientras tanto la Bóveda
+ * central dice exactamente lo mismo que la local de cada sitio, que es la
+ * propiedad que hace comparables las dos pantallas.
+ *
+ * Del OPERADOR de la plataforma. Un administrador de sitio no puede ver esto:
+ * es información de todas las organizaciones alojadas.
+ */
+export const getCentralOverview = async (req, res) => {
+    try {
+        const soloActivos = req.query.movimiento !== 'todos';
+        const ahora = new Date();
+
+        // Los aportes, agrupados por sitio y moneda. Las cubetas se resuelven
+        // en SQL con el MISMO criterio que `bucketOf` en la Bóveda local: entre
+        // que Stripe libera y que el club puede pedirlo hay un período de
+        // retención, y las dos pantallas tienen que contarlo igual.
+        const [aportes, retiros] = await Promise.all([
+            db.query(
+                `SELECT p."clubId", p.currency,
+                        COUNT(*)::int                                      AS aportes,
+                        COALESCE(SUM(p.amount), 0)                         AS bruto,
+                        COALESCE(SUM(p."applicationFee"), 0)               AS plataforma,
+                        COALESCE(SUM(p."netAmount"), 0)                    AS neto,
+                        COALESCE(SUM(CASE WHEN p."availableOn" IS NULL OR p."availableOn" > NOW()
+                                          THEN p."netAmount" ELSE 0 END), 0)      AS en_transito,
+                        COALESCE(SUM(CASE WHEN p."availableOn" <= NOW()
+                                           AND p."clubAvailableOn" > NOW()
+                                          THEN p."netAmount" ELSE 0 END), 0)      AS disponible_pronto,
+                        c.name, c.type, c.district
+                   FROM "Payment" p
+                   LEFT JOIN "Club" c ON c.id = p."clubId"
+                  WHERE p."isPlatformCollection" = true AND p.status = 'succeeded'
+                  GROUP BY p."clubId", p.currency, c.name, c.type, c.district`
+            ),
+            db.query(
+                `SELECT "clubId", currency, COALESCE(SUM(amount), 0) AS retirado
+                   FROM "PayoutRequest"
+                  WHERE status IN ('pending', 'processing', 'completed')
+                  GROUP BY "clubId", currency`
+            ),
+        ]);
+
+        const retiradoDe = new Map();
+        for (const r of retiros.rows) {
+            retiradoDe.set(`${r.clubId}|${normalizeCurrency(r.currency)}`, Number(r.retirado) || 0);
+        }
+
+        const filas = aportes.rows.map(r => filaDeSitio({
+            clubId: r.clubId,
+            clubName: r.name,
+            clubType: r.type,
+            district: r.district,
+            currency: r.currency,
+            aportes: Number(r.aportes) || 0,
+            bruto: Number(r.bruto) || 0,
+            plataforma: Number(r.plataforma) || 0,
+            neto: Number(r.neto) || 0,
+            enTransito: Number(r.en_transito) || 0,
+            disponibleProximamente: Number(r.disponible_pronto) || 0,
+            retirado: retiradoDe.get(`${r.clubId}|${normalizeCurrency(r.currency)}`) || 0,
+        }));
+
+        const total = consolidar(filas);
+        const sitiosTodos = porSitio(filas);
+        const sitios = soloActivos ? soloConMovimiento(sitiosTodos) : sitiosTodos;
+
+        // ⚠️ Un retiro en una moneda en la que el sitio nunca recibió aportes no
+        // se puede conciliar y se REPORTA en vez de restarse contra otra: hasta
+        // v4.840 `PayoutRequest.currency` no se escribía y toda fila vieja quedó
+        // en USD por omisión. Es el mismo aviso que da la Bóveda local, ahora
+        // sobre toda la plataforma.
+        const conAportes = new Set(filas.map(f => `${f.clubId}|${f.currency}`));
+        const sinConciliar = retiros.rows
+            .filter(r => !conAportes.has(`${r.clubId}|${normalizeCurrency(r.currency)}`))
+            .map(r => ({ clubId: r.clubId, currency: normalizeCurrency(r.currency), amount: Number(r.retirado) || 0 }));
+
+        return res.json({
+            generadoEn: ahora.toISOString(),
+            total,
+            takeRate: takeRate(total),
+            ticketPromedio: ticketPromedio(total),
+            sitios,
+            sitiosConMovimiento: soloConMovimiento(sitiosTodos).length,
+            sitiosTotales: sitiosTodos.length,
+            sinConciliar,
+            // De dónde salen las cifras. Cuando la fuente pase al libro mayor,
+            // esta pantalla tiene que poder decirlo sin que nadie lo adivine.
+            fuente: 'payments',
+        });
+    } catch (error) {
+        console.error('[Payouts] Error en la Bóveda Central:', error);
+        res.status(500).json({ error: 'Internal server error', detail: error.message?.slice(0, 200) });
     }
 };
 

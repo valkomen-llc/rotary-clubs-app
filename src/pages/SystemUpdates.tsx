@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.852.0 | 2026-08-17 (La Bóveda de un sitio sin aportes ya no revienta)
-// Cache bust: 2026-08-17o
+// UI V4.853.0 | 2026-08-17 (La Bóveda Central: todos los sitios, sin mezclar)
+// Cache bust: 2026-08-17p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.853.0',
+        title: 'La Bóveda Central: lo que recaudan TODOS los sitios 🏦',
+        description: 'El Administrador Central abre ahora en una vista consolidada de la plataforma: cuánto se recaudó en total, cuánto se llevó el procesador, cuánto retuvo la plataforma y cuánto le quedó a cada sitio. Con una regla que gobierna todo lo demás: CONSOLIDAR NO ES MEZCLAR. Ni entre monedas ni entre sitios — el dinero del Distrito 4281 sigue siendo del Distrito 4281.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'plataforma'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Consolidado por moneda: bruto, tarifa de procesamiento, retención de la plataforma, neto y disponible.' },
+            { type: 'added', text: 'Take rate y ticket promedio por moneda — «sin aportes» en vez de «0 %» cuando no hubo nada que cobrar.' },
+            { type: 'added', text: 'Una fila por sitio; pulsarla abre SU Bóveda, con el botón para volver.' },
+            { type: 'added', text: 'npm run test:wallet:central y :central:ui — 45 comprobaciones.' },
+        ],
+        details: [
+            'UNA TARJETA POR MONEDA, nunca una cifra que sume pesos con dólares. Es la regla del módulo desde v4.841 y acá pesa más: en la vista central el error se multiplicaría por la cantidad de sitios alojados.',
+            'La comisión del procesador se DERIVA restando (bruto − retención de la plataforma − neto), igual que en el libro mayor. Aceptarla de fuera permitiría un desglose que cuadra porque alguien mandó el número que hacía falta.',
+            'El disponible de cada sitio usa el MISMO criterio que su propia Bóveda (neto − retirado). Un segundo criterio daría dos cifras distintas para el mismo club en dos pantallas de la misma plataforma.',
+            'LA BÓVEDA LOCAL NO SE TOCA. Se agregó una vista; no se cambió una línea de cómo cada sitio calcula lo suyo, ni de cómo se piden los retiros.',
+            'Las cifras se agrupan EN LA BASE con dos consultas, no trayendo los aportes y sumándolos fuera. Con una consulta por sitio, la central sería inusable con el segundo cliente grande.',
+            'Los dos modos se deciden por ROL, no por si hay sitio: el operador entra por el dominio de la plataforma y el servidor le devuelve el sitio «Origen», así que «no hay club» nunca es cierto para él.',
+            'Un retiro en una moneda en la que ese sitio nunca recibió aportes se REPORTA aparte en vez de restarse contra otra: hasta v4.840 la moneda del retiro no se escribía y toda fila vieja quedó en dólares por omisión. Adivinar cuál era sería adivinar cuánto dinero salió.',
+        ]
+    },
     {
         version: '4.852.0',
         title: 'La Bóveda de un sitio SIN aportes ya no se cae 🩹',
