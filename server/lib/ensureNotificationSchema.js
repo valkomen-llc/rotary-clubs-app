@@ -33,9 +33,12 @@ export async function ensureNotificationSchema() {
     if (_ready) return;
 
     const { rows } = await db.query(
-        `SELECT to_regclass('public."NotificationDelivery"') IS NOT NULL AS entrega`
+        `SELECT to_regclass('public."NotificationDelivery"') IS NOT NULL AS entrega,
+                to_regclass('public."NotificationBeneficiary"') IS NOT NULL AS beneficiario,
+                to_regclass('public."NotificationProfile"') IS NOT NULL AS perfil,
+                to_regclass('public."NotificationTemplate"') IS NOT NULL AS plantilla`
     );
-    if (rows[0]?.entrega) { _ready = true; return; }
+    if (rows[0]?.entrega && rows[0]?.beneficiario && rows[0]?.perfil && rows[0]?.plantilla) { _ready = true; return; }
 
     // ── Una fila por ENVÍO ────────────────────────────────────────────
     //
@@ -114,6 +117,118 @@ export async function ensureNotificationSchema() {
 
     // El panel del operador: qué falló en este sitio, lo más reciente arriba.
     await db.query(`CREATE INDEX IF NOT EXISTS "NotificationDelivery_club_state_idx" ON "NotificationDelivery" ("clubId", state, "createdAt" DESC);`);
+
+    // ── La entidad beneficiaria (v4.856) ──────────────────────────────
+    //
+    // Colrotarios es el primer caso; la forma es genérica a propósito.
+    //
+    // SIN cuentas bancarias, y no es un olvido: el dinero entra a la cuenta
+    // Stripe de la plataforma y se liquida por la Bóveda. Datos de recaudo acá
+    // crearían una segunda verdad sobre a dónde va el dinero, y sería falsa.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "NotificationBeneficiary" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "legalName" TEXT NOT NULL,
+            "tradeName" TEXT,
+            "taxId" TEXT,
+            "logoUrl" TEXT,
+            email TEXT,
+            website TEXT,
+            phone TEXT,
+            address TEXT,
+            "contactName" TEXT,
+            notes TEXT,
+            active BOOLEAN NOT NULL DEFAULT true,
+            "createdBy" TEXT,
+            "updatedBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "NotificationBeneficiary_active_idx" ON "NotificationBeneficiary" (active, "legalName");`);
+
+    // ── El perfil ─────────────────────────────────────────────────────
+    //
+    // `targeting` es JSONB con el MISMO documento que `ContributionCampaign`:
+    // se resuelve con `targetsSite` de `contributionSpec.js`, no con un
+    // criterio propio. Con dos criterios, un perfil podría alcanzar a un sitio
+    // que la campaña no alcanza.
+    //
+    // `identity`, `routing` y `events` también son documentos: normalizarlos a
+    // columnas obligaría a migrar el esquema con cada campo nuevo sin ganar
+    // ninguna consulta. Lo que SÍ es columna es lo que se filtra o se ordena.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "NotificationProfile" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            name TEXT NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT true,
+
+            -- El último recurso de la resolución: es lo que impide que un
+            -- aporte se quede sin notificación por no tener perfil.
+            "isDefault" BOOLEAN NOT NULL DEFAULT false,
+            priority INTEGER NOT NULL DEFAULT 0,
+
+            "beneficiaryId" TEXT,
+            identity JSONB NOT NULL DEFAULT '{}'::jsonb,
+            routing JSONB NOT NULL DEFAULT '{}'::jsonb,
+            events JSONB NOT NULL DEFAULT '{}'::jsonb,
+            targeting JSONB NOT NULL DEFAULT '{}'::jsonb,
+            "internalRecipients" JSONB NOT NULL DEFAULT '[]'::jsonb,
+            notes TEXT,
+
+            "createdBy" TEXT,
+            "updatedBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "NotificationProfile_active_idx" ON "NotificationProfile" (active, priority DESC, "updatedAt" DESC);`);
+
+    // ── La plantilla, VERSIONADA ──────────────────────────────────────
+    //
+    // Nunca se actualiza una fila: editar inserta una versión nueva y baja la
+    // bandera de la anterior. Mismo patrón que `ReelCopy` y `CreativeProfile`,
+    // y acá es exigencia del pedido (criterio 18): un aporte de hace seis
+    // meses tiene que poder explicarse con la plantilla que lo generó.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "NotificationTemplate" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+
+            -- De quién es esta plantilla. NULL en las dos = la GLOBAL de la
+            -- plataforma, que es el último escalón del fallback.
+            "profileId" TEXT,
+            "campaignId" TEXT,
+
+            event TEXT NOT NULL DEFAULT 'payment_confirmed',
+            "recipientKind" TEXT NOT NULL DEFAULT 'donor',
+
+            version INTEGER NOT NULL DEFAULT 1,
+            "isCurrent" BOOLEAN NOT NULL DEFAULT true,
+
+            subject TEXT NOT NULL DEFAULT '',
+            preheader TEXT,
+            blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
+    // El índice único es PARCIAL: sólo puede haber UNA versión vigente por
+    // (perfil, campaña, evento, destinatario). Por serlo, un `ON CONFLICT`
+    // contra él tendría que repetir el predicado o la sentencia falla entera
+    // (error real de v4.648) — por eso el guardado NO usa ON CONFLICT acá:
+    // baja la bandera con un UPDATE y después inserta.
+    //
+    // `COALESCE` porque en Postgres NULL nunca es igual a NULL: sin él, dos
+    // plantillas globales —las dos con perfil y campaña en NULL— no chocarían
+    // jamás, que es justo donde más se repiten.
+    await db.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "NotificationTemplate_current_key"
+            ON "NotificationTemplate" (
+                COALESCE("profileId", ''), COALESCE("campaignId", ''), event, "recipientKind"
+            ) WHERE "isCurrent";
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS "NotificationTemplate_profile_idx" ON "NotificationTemplate" ("profileId", event, version DESC);`);
 
     _ready = true;
 }

@@ -186,6 +186,8 @@ let _seoEngine;
 const getSeoEngine = async () => _seoEngine || (({ default: _seoEngine } = await import('../server/routes/seo-engine.js')), _seoEngine);
 let _contribution;
 const getContribution = async () => _contribution || (({ default: _contribution } = await import('../server/routes/contribution-campaigns.js')), _contribution);
+let _notifProfiles;
+const getNotifProfiles = async () => _notifProfiles || (({ default: _notifProfiles } = await import('../server/routes/notification-profiles.js')), _notifProfiles);
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
@@ -286,6 +288,8 @@ app.use('/api/scout-grants', async (req, res, next) => { try { return (await get
 app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-ecosystem', async (req, res, next) => { try { return (await getDistEcosystem())(req, res, next); } catch (e) { console.error('API Error [district-ecosystem]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/contribution-campaigns', async (req, res, next) => { try { return (await getContribution())(req, res, next); } catch (e) { console.error('API Error [contribution-campaigns]:', e); res.status(500).json({ error: e.message }); } });
+// Notificaciones de Contribuciones (v4.856) — perfiles, beneficiarios y plantillas.
+app.use('/api/notification-profiles', async (req, res, next) => { try { return (await getNotifProfiles())(req, res, next); } catch (e) { console.error('API Error [notification-profiles]:', e); res.status(500).json({ error: e.message }); } });
 
 // Club Platform Insights — Informes Ejecutivos Inteligentes (v4.552.0)
 app.use('/api/reports', async (req, res, next) => { try { return (await getReports())(req, res, next); } catch (e) { console.error('API Error [reports]:', e); res.status(500).json({ error: e.message }); } });
