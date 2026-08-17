@@ -34,9 +34,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.854.0 | 2026-08-17 (La tarifa vive en un solo sitio y se configura)
-// Cache bust: 2026-08-17q
+// UI V4.855.0 | 2026-08-17 (Notificaciones de aportes: la traza)
+// Cache bust: 2026-08-17r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.855.0',
+        title: 'Ahora se puede saber si la confirmación de un aporte llegó 📬',
+        description: 'Cuando alguien aporta, la plataforma le manda su recibo por correo. Hasta ahora, si esa persona escribía diciendo que no le había llegado nada, no había forma de comprobarlo: el resultado del envío se escribía en la consola del servidor y ahí no se puede consultar después. Desde esta versión cada envío deja una fila con su destinatario, su asunto, la fecha, el estado y —cuando falla— el motivo exacto que devolvió el proveedor de correo, sin resumir. Además, el envío se reserva ANTES de mandarse, así que si el aviso de pago de Stripe llega dos veces (que es algo que ocurre) el aportante no recibe dos correos. Esta versión no cambia nada de lo que ve quien aporta: mismo recibo, mismo remitente. Es la base sobre la que se construyen los perfiles de notificación, la identidad de cada fundación y las plantillas editables.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'campanas', 'correo', 'boveda'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Cada recibo de aporte queda registrado con su estado y su motivo de fallo.' },
+            { type: 'added', text: 'El envío se reserva antes de salir: un aviso repetido de Stripe no duplica el correo.' },
+            { type: 'changed', text: 'Se distingue «el proveedor lo aceptó» de «le llegó al destinatario».' },
+        ]
+    },
+
     {
         version: '4.854.0',
         title: 'La comisión de la plataforma se configura sin desplegar ⚙️',

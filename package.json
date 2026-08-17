@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.854.0",
-  "cache_bust": "2026-08-17q (La tarifa de la plataforma vive en un solo sitio y se configura sin desplegar.)",
+  "version": "4.855.0",
+  "cache_bust": "2026-08-17r (Las notificaciones de aportes dejan traza: quién, cuándo y con qué resultado.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -51,6 +51,7 @@
     "test:creative": "node scripts/test-creative.mjs",
     "test:campaign-post": "node scripts/test-campaign-post.mjs",
     "test:currency": "node scripts/test-currency.mjs",
+    "test:notifications": "node scripts/test-notifications.mjs",
     "test:ledger": "node scripts/test-ledger.mjs",
     "test:ledger:backfill": "node scripts/test-ledger-backfill.mjs",
     "test:ledger:write": "node scripts/test-ledger-write.mjs",

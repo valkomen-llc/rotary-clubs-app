@@ -10,6 +10,9 @@ import { fromStripeAmount } from '../lib/money.js';
 import { postDonation } from '../lib/ledger.js';
 import { platformFee, estimatedProcessorFee } from '../lib/feeRules.js';
 import { getFeeRules } from '../lib/feeRulesStore.js';
+// v4.855 — La bitácora de notificaciones. Nada de acá lanza: corre dentro del
+// webhook de Stripe, después de acreditar el cobro.
+import { claimDelivery, markSent, markFailed } from '../lib/notificationLog.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -972,18 +975,72 @@ async function handleSuccessfulDonationCheckout(session) {
                 // El método devuelve { success, messageId?, error? } incluso cuando "falla"
                 // graceful (sin throw). Necesitamos ver explícitamente el resultado.
                 console.log(`[DONATION-EMAIL] Intentando enviar recibo a ${recipientEmail} (Resend key: ${process.env.RESEND_API_KEY ? 'SET' : 'NOT SET'})`);
-                const emailResult = await EmailService.sendPlatformEmail({
+
+                // v4.855 — LA TRAZA. Se RECLAMA el envío antes de mandarlo, no
+                // se anota después: el índice único sobre (contribución +
+                // evento + destinatario) es lo que impide que dos entregas
+                // concurrentes del mismo webhook manden dos recibos a la misma
+                // persona. Anotarlo después dejaría esa puerta abierta —es el
+                // mismo razonamiento del índice de `Payment` unas líneas
+                // arriba, en este mismo webhook.
+                //
+                // Si el reclamo no se puede hacer —la tabla todavía no existe,
+                // la base no responde—, el recibo SE MANDA IGUAL. Lo que se
+                // pierde es su rastro, y quedarse sin recibo por no poder
+                // anotarlo sería cambiar un problema de auditoría por uno de
+                // servicio.
+                const asunto = `Recibo de tu donación al ${subjectTopic}`;
+                const traza = await claimDelivery({
+                    contributionId: donation.id,
+                    event: 'payment_confirmed',
+                    recipient: recipientEmail,
+                    recipientKind: 'donor',
+                    clubId,
+                    campaignId: session.metadata?.campaignId || null,
+                    provider: 'resend',
+                    fromAddress: 'noreply@clubplatform.org',
+                    subject: asunto,
+                });
+                // Alguien más ya reclamó este envío: es exactamente el
+                // duplicado que el registro existe para impedir. Se marca con
+                // una bandera y NO con un `return`, que saldría de la función
+                // entera y dejaría fuera cualquier paso que se agregue
+                // después de este bloque.
+                const yaEnviado = traza.ok && !traza.claimed;
+                if (!traza.ok) {
+                    console.warn(`[DONATION-EMAIL] el recibo no se pudo registrar (${traza.reason}); se envía igual`);
+                } else if (yaEnviado) {
+                    console.log(`[DONATION-EMAIL] recibo ya enviado para ${donation.id} (${traza.reason}) — no se repite`);
+                }
+
+                const emailResult = yaEnviado ? null : await EmailService.sendPlatformEmail({
                     to: recipientEmail,
-                    subject: `Recibo de tu donación al ${subjectTopic}`,
+                    subject: asunto,
                     html,
                     from: PLATFORM_DONATION_SENDER,
                     replyTo: club?.email || undefined
                 });
-                if (emailResult?.success) {
+                if (yaEnviado) {
+                    // Nada que registrar: la fila ya cuenta lo que pasó.
+                } else if (emailResult?.success) {
                     console.log(`[DONATION-EMAIL] ✉️  ✅ Recibo enviado a ${recipientEmail} (messageId: ${emailResult.messageId})${project ? ` proyecto ${project.id}` : ''}`);
+                    if (traza.delivery?.id) {
+                        await markSent(traza.delivery.id, { providerMessageId: emailResult.messageId || null });
+                    }
                 } else {
                     console.error(`[DONATION-EMAIL] ❌ Recibo NO enviado a ${recipientEmail}. Error:`, emailResult?.error || 'unknown');
                     console.error(`[DONATION-EMAIL] Sender: ${PLATFORM_DONATION_SENDER}, replyTo: ${club?.email || 'none'}, subject: ${subjectTopic}`);
+                    if (traza.delivery?.id) {
+                        // `retryable: true` porque `sendPlatformEmail` no
+                        // distingue un rechazo definitivo de uno pasajero:
+                        // devuelve `{success:false, error}` para los dos. Se
+                        // deja abierta la puerta al reintento y el motivo
+                        // TEXTUAL queda escrito para poder decidir mirándolo.
+                        await markFailed(traza.delivery.id, {
+                            errorMessage: emailResult?.error || 'sin motivo devuelto por el proveedor',
+                            retryable: true,
+                        });
+                    }
                 }
             } catch (emailErr) {
                 console.error('[DONATION-EMAIL] 💥 Excepción enviando recibo de donación:', emailErr?.message || emailErr);

@@ -2391,6 +2391,100 @@ y la de navegador pide `playwright` y `esbuild` y **se salta sola** si faltan).
 - **Un guardado fallido REVIERTE el interruptor.** Dejarlo donde el usuario lo
   puso, sabiendo que no se guardó, hace creer que el cambio quedó hecho.
 
+## Notificaciones de Contribuciones — v4.855 (Fase 0: la traza)
+
+Cuando alguien aporta, el recibo sale y **hasta v4.854 no quedaba rastro de
+nada**: `EmailService.sendPlatformEmail` —el camino que usa el recibo— no llama
+a `logCommunication`, que sólo se invoca desde `sendEmail`, el camino del correo
+de club. La respuesta a «¿le llegó la confirmación a este aportante?» vivía en
+un `console.log`, efímero en Vercel. Es el mismo vacío que tenía el CRM antes de
+`CrmWebhookEvent` (v4.702).
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/notificationSpec.js` | El CRITERIO. **Puro**: eventos, estados de entrega, papeles del destinatario, llave de idempotencia, reintentos y el resumen de la ficha |
+| `server/lib/ensureNotificationSchema.js` | Crea `NotificationDelivery` en runtime |
+| `server/lib/notificationLog.js` | La I/O: reclamar, marcar, aplicar el evento del proveedor y leer |
+
+Pruebas: `npm run test:notifications` (74 casos, **sin base, credenciales ni
+red**).
+
+**Reglas durables:**
+
+- **La Fase 0 NO cambia lo que recibe el aportante.** Registra lo que ya se
+  envía: mismo asunto, mismo remitente, mismo cuerpo. La identidad
+  institucional, los perfiles y las plantillas llegan en las fases siguientes.
+- **EL ENVÍO SE RECLAMA ANTES DE MANDARSE, no se anota después.** Es la
+  decisión de la que cuelga la no-duplicación: `INSERT ... ON CONFLICT (key)
+  DO NOTHING RETURNING *` decide quién manda. Comprobar con un `SELECT` previo
+  no sirve —entre la lectura y la escritura caben dos entregas concurrentes del
+  mismo webhook, porque Stripe reintenta— y el resultado serían dos correos
+  diciéndole a la misma persona que recibimos su aporte. Es el mismo
+  razonamiento que sostiene `Payment_provider_providerRef_key` unas líneas
+  arriba en el mismo webhook.
+- **La llave es `contribución + evento + destinatario`**, con el correo en
+  minúsculas y sin espacios. `Ana@Club.org` y `ana@club.org` son la misma
+  persona: con dos llaves distintas recibiría el aviso dos veces. Se normaliza
+  en `deliveryKey` y en ningún otro sitio — construida distinto en dos lugares,
+  el índice único dejaría pasar el duplicado que existe para impedir.
+- **El índice único NO es parcial**, y eso es a propósito: las tres columnas de
+  la llave son `NOT NULL`, así que no hay predicado que repetir en el
+  `ON CONFLICT` — la trampa que costó una corrección en v4.648.
+- **Si el registro falla, el recibo SE MANDA IGUAL.** Quedarse sin recibo por
+  no poder anotarlo sería cambiar un problema de auditoría por uno de servicio.
+  Lo mismo si la tabla todavía no existe: se degrada en silencio.
+- **Nada de la bitácora puede lanzar.** Corre dentro del webhook de Stripe,
+  después de acreditar el cobro: una excepción tumbaría el `200` que Stripe
+  espera y provocaría el reintento de un evento ya procesado. Toda función
+  devuelve `{ ok, reason }`; las lecturas degradan a `[]` / `{}`. Mismo criterio
+  que `postDonation` y `bumpMetric`.
+- **Se sale con una BANDERA, no con un `return`.** Un `return` dentro del bloque
+  del recibo saldría de `handleSuccessfulDonationCheckout` entera y dejaría
+  fuera cualquier paso que se agregue después.
+- **`sent` no es `delivered`, y la diferencia es el diagnóstico.** `sent`
+  significa que el proveedor lo aceptó; `delivered`, que el servidor del
+  destinatario lo recibió. Cuando alguien dice que no le llegó nada, `sent` sin
+  `delivered` señala el camino y no nuestro envío. Por eso el resumen cuenta
+  como «le llegó» sólo `delivered` y `opened`.
+- **LOS EVENTOS DEL PROVEEDOR LLEGAN DESORDENADOS.** Resend entrega por webhook
+  sin garantizar orden: es normal recibir `delivered` DESPUÉS de `opened`,
+  porque son dos peticiones HTTP compitiendo. Si el último pisara al anterior,
+  una entrega abierta volvería a «Entregado» y se contarían mal las aperturas.
+  `mergeDeliveryState` hace que el progreso sólo AVANCE.
+- **Un fallo gana, salvo contra la entrega demostrada.** Un rebote después de un
+  `sent` es la corrección de lo que creíamos y manda; después de un `opened` es
+  una CONTRADICCIÓN —nadie abre un correo que rebotó— y ahí se conserva la
+  evidencia más fuerte. Dejar ganar al fallo pintaría de rojo una entrega que el
+  destinatario demostró haber leído.
+- **Un estado desconocido no cambia nada.** Es dato de un tercero y no se
+  inventa una traducción.
+- **No se reintenta lo definitivo.** Un rebote duro o un bloqueo no mejoran por
+  insistir, y en volumen es lo que arruina la reputación del dominio desde el
+  que envía TODA la plataforma. `retryable` lo DECLARA quien registra el fallo,
+  no se deduce: ante la duda no se reintenta — un aviso que no sale se ve en la
+  ficha y se reenvía a mano; uno que sale cinco veces ya salió.
+- **El motivo del proveedor se guarda TEXTUAL**, acotado a 500 caracteres pero
+  nunca resumido ni traducido. Convertirlo en «no se pudo enviar» deja a quien
+  corrige sin saber si el problema es el dominio, la dirección o la credencial —
+  la regla que el CRM aprendió con `metaCode` / `metaDetails`.
+- **«Sin registro» NO es «no le llegó».** `sinRegistro` es un tercer estado y se
+  dice distinto: confundirlo con un fallo manda a buscar el problema donde no
+  está. Misma regla que `unknown` en el CRM.
+- **Un evento que no se puede observar se DECLARA como no disponible.** De los
+  seis del pedido, hoy sólo `payment_confirmed` tiene fuente real:
+  `charge.refunded` no está enrutado a donaciones y
+  `payment_intent.payment_failed` no está suscrito. Cada entrada del catálogo
+  lleva su `source` y su `available`, como los motores del Generador de
+  Publicaciones. Ofrecerlos igual sería una casilla que no hace nada (v4.650).
+- **`NotificationDelivery` vive fuera de Prisma** y sin clave foránea a
+  `Donation`. Acá pesa más que de costumbre: `Donation` y `Payment` se consultan
+  con `findMany` **sin `select`** en media plataforma, así que una columna
+  declarada y todavía inexistente dejaría esas consultas en 500 desde el primer
+  despliegue — y eso cae sobre el cobro. El vínculo va por `contributionId`
+  desde esta tabla, nunca al revés.
+- **`contributionId` es `Donation.id`**, que es además la referencia que el
+  recibo ya le muestra al aportante.
+
 ## En qué moneda se cobra un aporte — v4.834
 
 Hasta v4.833 la moneda salía de `resolveClubCurrency` y nada más: la del SITIO.
@@ -5769,8 +5863,9 @@ Nunca volver a poner `db push` en el `build`.
    perderían y cuántas filas tienen. Para sincronizar de todos modos, a
    sabiendas: `npm run db:push:force`.
 
-Las 45 tablas que la aplicación crea sola y que estas barreras protegen:
+Las 46 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
+`NotificationDelivery`,
 `DesignPublicTemplate`, `EcosystemClone`,
 `EventRegistration`, `MediaFolder`, `EventAttendeeAccount`,
 `EventAttendeeLogin`, `FAQ`, `OutroProject`, `ReelProject`, `ReelScene`,
