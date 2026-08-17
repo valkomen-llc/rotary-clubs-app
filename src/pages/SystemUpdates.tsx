@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.860.0 | 2026-08-17 (Guardar la tarifa caía en el manejador equivocado)
-// Cache bust: 2026-08-17w
+// UI V4.861.0 | 2026-08-17 (La tarifa nueva se aplica a lo que aún no se retira)
+// Cache bust: 2026-08-17x
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.861.0',
+        title: 'La tarifa nueva se puede aplicar a los aportes ya recibidos ⚖️',
+        description: 'Al bajar la retención del 5 % al 2,1 %, los aportes que ya estaban registrados seguían mostrando el 5 % — que es exactamente lo que la v4.854 decidió a propósito: la tarifa nueva rige de ahora en adelante y un cobro registrado conserva la retención que se le aplicó. Pero cuando la tarifa anterior era un valor provisional, esa regla deja mal contados aportes cuyo dinero todavía no salió. Ahora hay una corrección DELIBERADA, con un límite que se puede demostrar.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'plataforma'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón «Ver qué cambiaría» y «Aplicar la corrección» en las Reglas de comisión.' },
+            { type: 'added', text: 'Sólo alcanza los aportes cuyo dinero el club todavía NO puede retirar.' },
+            { type: 'added', text: 'Cada corrección queda registrada con su valor anterior, quién y cuándo.' },
+            { type: 'added', text: 'npm run test:fee-recalc — 42 comprobaciones con los números reales.' },
+        ],
+        details: [
+            'EL LÍMITE ES LO QUE SEPARA UNA CORRECCIÓN DE UNA REESCRITURA. No hay vínculo por fila entre un aporte y el retiro que se lo llevó, así que «¿ya se giró?» no se puede contestar. Lo que sí se puede DEMOSTRAR es lo contrario: si el dinero todavía no está disponible para retiro, no puede haber salido en ningún giro. Se corrige eso y nada más; lo demás se rechaza con su motivo.',
+            'LA COMISIÓN DE STRIPE NO SE TOCA. No es nuestra y está MEDIDA contra el balance transaction del proveedor —en el aporte de 50.000 son USD 1,16 convertidos con la TRM del día—: recalcularla sería inventar. Se conserva intacta y lo que se mueve es la retención de la plataforma; el neto se deriva restando.',
+            'Va en DOS pasos: primero se ve qué cambiaría, sin escribir nada, y aplicar es un segundo gesto. Igual que la carga hacia atrás del libro mayor.',
+            'La corrección queda escrita en la traza de cada aporte —de cuánto a cuánto, con qué regla, quién y cuándo— y es una LISTA: una segunda corrección no borra la primera. Sin eso, «¿por qué éste retiene 2,1 % y aquél 5 %?» no tendría dónde mirarse dentro de seis meses.',
+            'La regla de la v4.854 SIGUE EN PIE: sincronizar con Stripe no recalcula nada. Un cálculo que se dispara como efecto secundario de otra operación es lo que reescribe la contabilidad sin que nadie lo decida. Lo que se agrega es una vía explícita, no un aflojamiento de aquélla.',
+            'Es idempotente y lleva candado sobre la retención anterior: correrlo dos veces no vuelve a mover nada, y dos vueltas simultáneas no se pisan.',
+        ]
+    },
     {
         version: '4.860.0',
         title: 'Guardar la tarifa de la plataforma ya funciona 🩹',

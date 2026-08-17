@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Percent, AlertTriangle, ChevronDown, Save, Info } from 'lucide-react';
+import { Percent, AlertTriangle, ChevronDown, Save, Info, RefreshCw } from 'lucide-react';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -211,8 +211,130 @@ export default function FeeRulesPanel() {
                             Descartar los cambios
                         </button>
                     </div>
+
+                    <Recalculo />
                 </div>
             )}
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// APLICAR LA TARIFA A LOS APORTES QUE TODAVÍA NO SE PUEDEN RETIRAR
+// ═══════════════════════════════════════════════════════════════════
+//
+// ⚠️ Es la única vía por la que la retención de un cobro registrado cambia, y
+// por eso se hace en DOS pasos: primero se ve qué cambiaría, y aplicar es un
+// segundo gesto. La regla de v4.854 sigue en pie —sincronizar no recalcula—;
+// esto es una corrección deliberada, no un efecto secundario.
+function Recalculo() {
+    const [plan, setPlan] = useState<any>(null);
+    const [corriendo, setCorriendo] = useState(false);
+    const [fallo, setFallo] = useState<string | null>(null);
+    const [hecho, setHecho] = useState<string | null>(null);
+
+    const correr = async (aplicar: boolean) => {
+        setCorriendo(true); setFallo(null); if (aplicar) setHecho(null);
+        try {
+            const { data } = await axios.post(
+                `${API_URL}/payouts/admin/fee-rules/recalculate`,
+                aplicar ? { apply: true } : {},
+                auth()
+            );
+            setPlan(data);
+            if (aplicar) { setHecho(`${data.aplicados} aporte(s) corregidos.`); }
+        } catch (e: any) {
+            setFallo(mensajeDeFallo(e));
+        } finally {
+            setCorriendo(false);
+        }
+    };
+
+    const monedas = Object.keys(plan?.porMoneda || {});
+
+    return (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4 space-y-3">
+            <div>
+                <h4 className="font-bold text-gray-900 text-sm">Aplicar la tarifa a los aportes ya recibidos</h4>
+                {/* El límite se DICE antes de que nadie pulse nada: es lo que
+                    separa esto de reescribir la contabilidad. */}
+                <p className="text-xs text-gray-500 mt-0.5">
+                    Sólo alcanza los aportes cuyo dinero el club <b>todavía no puede retirar</b>: si ya está
+                    disponible, pudo haber salido en un giro y el registro tiene que seguir diciendo lo que
+                    de verdad pasó. La comisión de Stripe no se toca — es la medida, no la nuestra.
+                </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    onClick={() => correr(false)}
+                    disabled={corriendo}
+                    className="inline-flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 font-bold rounded-xl px-4 py-2 text-sm disabled:opacity-50 transition-colors"
+                >
+                    <RefreshCw className={`w-4 h-4 ${corriendo ? 'animate-spin' : ''}`} />
+                    Ver qué cambiaría
+                </button>
+                {/* Aplicar sólo se ofrece DESPUÉS de haber visto el ensayo, y
+                    desaparece una vez aplicado: un botón que no va a hacer nada
+                    es peor que no tenerlo. */}
+                {plan?.ensayo && plan.aplicables?.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => correr(true)}
+                        disabled={corriendo}
+                        className="inline-flex items-center gap-2 bg-rotary-blue hover:bg-rotary-navy text-white font-bold rounded-xl px-4 py-2 text-sm disabled:opacity-50 transition-colors"
+                    >
+                        Aplicar la corrección
+                    </button>
+                )}
+            </div>
+
+            {plan && (
+                <div className="text-sm space-y-2">
+                    {plan.aplicables?.length === 0 ? (
+                        <p className="text-gray-500">
+                            No hay ningún aporte que corregir: o ya tienen la tarifa vigente, o su dinero ya
+                            está disponible para retiro.
+                        </p>
+                    ) : (
+                        <>
+                            <p className="text-gray-700">
+                                <b data-no-translate>{plan.aplicables.length}</b> aporte(s) cambiarían
+                                {plan.ensayo ? ' (todavía no se escribió nada)' : ''}:
+                            </p>
+                            {/* Los totales POR MONEDA, nunca sumadas. */}
+                            {monedas.map(code => {
+                                const t = plan.porMoneda[code];
+                                return (
+                                    <div key={code} className="rounded-xl bg-white border border-gray-200 px-3 py-2 flex flex-wrap gap-x-5 gap-y-1">
+                                        <span className="text-[10px] font-black tracking-wider text-gray-400 self-center" data-no-translate>{code}</span>
+                                        <span className="text-gray-600">
+                                            Retención: <b data-no-translate>{t.plataformaAntes}</b> → <b data-no-translate>{t.plataformaAhora}</b>
+                                        </span>
+                                        <span className="text-gray-600">
+                                            Neto del club: <b data-no-translate>{t.netoAntes}</b> → <b data-no-translate>{t.netoAhora}</b>
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </>
+                    )}
+                    {/* Lo que NO se pudo corregir es la mitad del resultado. */}
+                    {plan.descartados?.map((d: any) => (
+                        <p key={d.motivo} className="text-xs text-gray-500">
+                            <b data-no-translate>{d.cuantos}</b> quedaron fuera: {d.texto}
+                        </p>
+                    ))}
+                </div>
+            )}
+
+            {hecho && (
+                <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    {hecho} La corrección quedó registrada en cada aporte con su valor anterior.
+                </p>
+            )}
+            {fallo && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{fallo}</p>}
         </div>
     );
 }
