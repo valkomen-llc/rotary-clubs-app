@@ -40,7 +40,9 @@ import {
     validateBeforeGenerate, buildCampaignBrief, buildVariables, campaignUrl, planCarousel,
 } from '../lib/campaignPostSpec.js';
 import { templateFor } from '../lib/campaignTemplates.js';
-import { compileTemplate, PALETTE, formatOf, FONTS } from '../lib/designSpec.js';
+import { compileTemplate, normalizeDocument, PALETTE, formatOf, FONTS } from '../lib/designSpec.js';
+import { normalizeComposition } from '../lib/designCompose.js';
+import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { applyProfile, mergeBranding, scorePiece } from '../lib/creativeDNA.js';
 import { resolveProfileFor } from './creativeProfileController.js';
 import { generateCopy } from '../services/copywritingService.js';
@@ -595,4 +597,107 @@ const familyFor = async (campaign, req) => {
     } catch { return []; }
 };
 
-export default { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel };
+// ─── El LIENZO generado con IA (KIE) ───────────────────────────────────
+//
+// ── QUÉ GENERA KIE ACÁ, Y QUÉ NO ────────────────────────────────────
+//
+// El preset COMPONE la pieza con el grafo de escena: las cifras, el titular, la
+// fuente de cada dato y los escudos reales los dibuja la plataforma. Eso no
+// cambia y no puede cambiar — un modelo generativo no escribe texto de forma
+// fiable (`designCompose.js` lo dejó medido) y retocar su salida para corregirlo
+// es el composite que el equipo rechazó dos veces («se ve overlay / montaje»).
+//
+// Lo que KIE genera es el LIENZO: el fondo sobre el que se compone, con la
+// fotografía de la campaña integrada en él. Es el MISMO motor y el MISMO camino
+// que el Generador de Publicaciones «Desde una foto» y que el Motor de
+// Composición de Plantillas IA — `google/nano-banana-edit` vía
+// `createKieImageTask`, con `KIE_API_KEY`. No hay un segundo cliente de KIE.
+//
+// ── ES ASÍNCRONO A PROPÓSITO ────────────────────────────────────────
+//
+// Una composición tarda 20-60 s y la función corta a los 300 s (`vercel.json`),
+// pero la pieza SIN fondo ya está lista y es utilizable: hacer esperar a quien
+// no pidió fondo sería cobrarle el tiempo de una función que no usa. Se crea la
+// tarea, se devuelve el id y el navegador sondea. Misma forma que Outros,
+// Reels y Plantillas IA.
+//
+// ── LA DIRECCIÓN DE ARTE SALE DEL PERFIL CREATIVO ───────────────────
+//
+// `masterPrompt` es el campo que `designCompose.js` ya tiene para dirección de
+// arte, y el `stylePrompt` del Design DNA se escribió exactamente para esto
+// (v4.839): lleva la paleta medida, el carácter tipográfico y la cláusula de
+// que la imagen NO lleva texto ni logotipos porque se componen encima. Era el
+// pendiente declarado —«hoy el prompt se copia a mano»— y esto es su cableado.
+
+/** La composición que se le pide a KIE para una pieza de campaña.
+ *
+ *  No es configurable por pieza a propósito: lo que la distingue es el estilo
+ *  del perfil, que ya está medido y versionado. Un segundo juego de ajustes
+ *  daría dos sitios donde mirar cuando una pieza no se parece a las demás. */
+const composicionDeCampana = (profile, variants) => normalizeComposition({
+    enabled: true,
+    masterPrompt: profile?.dna?.derived?.stylePrompt || '',
+    photo: { strategy: 'compose', plan: 'auto', width: 'medio' },
+    variants,
+});
+
+// ── POST /api/content-studio/campaign-post/backdrop ────────────────────
+export const startCampaignBackdrop = async (req, res) => {
+    try {
+        const { document = null, format = DEFAULT_FORMAT_ID, imageUrl = '', variants = 1 } = req.body || {};
+        if (!isCampaignFormat(format)) return res.status(400).json({ error: `Formato «${format}» no disponible para una infografía de campaña.` });
+
+        // `nano-banana-edit` es un modelo de EDICIÓN: sin imagen de entrada no
+        // hay nada que componer. Se dice con esas palabras en vez de dejar que
+        // falle en KIE con un error del proveedor que no explica qué hacer.
+        const foto = String(imageUrl || '').trim();
+        if (!foto) return res.status(400).json({ error: 'Hace falta la fotografía de la campaña: el fondo se compone A PARTIR de ella.' });
+        if (!process.env.KIE_API_KEY) return res.status(503).json({ error: 'KIE no está configurado en este entorno (falta KIE_API_KEY).' });
+
+        // El perfil se resuelve en el SERVIDOR, igual que al componer la pieza:
+        // el id llega del navegador pero se comprueba contra el alcance antes
+        // de usarlo. Sin eso, un sitio compondría con el estilo de otro.
+        const profile = await resolveProfileFor(req, req.body?.profileId);
+
+        // El documento pasa por el normalizador como todo lo que llega del
+        // navegador. Acá sólo se LEE —para saber dónde va a caer el texto que
+        // imprimimos encima y dejar esa franja tranquila—, pero la puerta es la
+        // misma para todos.
+        const doc = document ? normalizeDocument(document) : null;
+        // El color de la pieza sale del nodo de fondo YA COMPILADO, no de la
+        // campaña: es el que ganó entre lo que declaró la campaña y lo que
+        // rellenó el perfil, así que es el único que describe lo que se va a
+        // ver. Volver a resolverlo acá daría un segundo criterio de color.
+        const fondo = (doc?.nodes || []).find(n => n.id === 'fondo');
+
+        const r = await startComposition({
+            composition: composicionDeCampana(profile, variants),
+            format, photoUrl: foto, document: doc,
+            palette: { primary: hexOrEmpty(fondo?.fill) || PALETTE.navy },
+            variants,
+        });
+        // Si NINGUNA variante arrancó es un fallo: devolver 200 con los errores
+        // adentro dejaría la pantalla esperando algo que no viene.
+        if (!r.variants.some(v => v.taskId)) {
+            return res.status(502).json({ error: r.variants[0]?.error || 'Ninguna variante pudo iniciarse.', variants: r.variants });
+        }
+        res.json({ ...r, profile: profile ? { id: profile.id, name: profile.name } : null });
+    } catch (e) { fail(res, e, 400, e.message); }
+};
+
+// ── GET /api/content-studio/campaign-post/backdrop/:taskId ─────────────
+export const syncCampaignBackdrop = async (req, res) => {
+    try {
+        const format = isCampaignFormat(req.query.format) ? req.query.format : DEFAULT_FORMAT_ID;
+        res.json(await syncComposition({
+            taskId: req.params.taskId,
+            format,
+            clubId: isOperator(req) ? (req.user?.clubId || null) : (req.user?.clubId || null),
+        }));
+    } catch (e) { fail(res, e, 500, e.message); }
+};
+
+export default {
+    getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel,
+    startCampaignBackdrop, syncCampaignBackdrop,
+};

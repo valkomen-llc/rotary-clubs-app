@@ -58,7 +58,10 @@ import {
     getActiveReels
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
-import { getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel } from '../controllers/campaignPostController.js';
+import {
+    getCampaignPostOptions, composeCampaignPost, composeCampaignCarousel,
+    startCampaignBackdrop, syncCampaignBackdrop,
+} from '../controllers/campaignPostController.js';
 import {
     listCreativeProfiles, getCreativeProfile, saveCreativeProfile,
     activateCreativeProfile, deactivateCreativeProfiles,
@@ -94,6 +97,12 @@ router.post('/campaign-post/compose', authMiddleware, composeCampaignPost);
 // v4.836 — varias piezas de una vez. El copy se genera UNA sola vez y se
 // reparte: cinco llamadas darían cinco voces para la misma campaña.
 router.post('/campaign-post/carousel', authMiddleware, composeCampaignCarousel);
+// v4.840 — el LIENZO generado con KIE. Es el mismo motor y el mismo cliente que
+// «Desde una foto» (`google/nano-banana-edit` vía `createKieImageTask`); lo que
+// genera es el fondo, no el texto ni las cifras, que los sigue componiendo la
+// plataforma. Asíncrono: se crea la tarea y el navegador sondea.
+router.post('/campaign-post/backdrop', authMiddleware, startCampaignBackdrop);
+router.get('/campaign-post/backdrop/:taskId', authMiddleware, syncCampaignBackdrop);
 
 // ── Director Creativo IA (v4.838) ──
 // Las piezas de referencia y el Design DNA que sale de ellas. El alcance lo

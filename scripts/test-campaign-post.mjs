@@ -598,6 +598,85 @@ try {
     console.log(`  … paridad de espejos: se salta (${e.message.slice(0, 60)})`);
 }
 
+grupo('v4.840 — el lienzo generado con KIE');
+// Lo que se comprueba acá es el REPARTO: qué genera el motor y qué sigue
+// componiendo la plataforma. Es la regla de la que cuelga el preset entero y
+// no la ve ningún typecheck.
+{
+    const ctrl = readFileSync('server/controllers/campaignPostController.js', 'utf8');
+    const rutas = readFileSync('server/routes/contentStudio.js', 'utf8');
+    const panel = readFileSync('src/components/admin/content-studio/CampaignPostPanel.tsx', 'utf8');
+    const studio = readFileSync('server/controllers/contentStudioController.js', 'utf8');
+
+    // UN solo cliente de KIE. Un segundo daría dos caminos hacia el proveedor
+    // que se separan en silencio — el problema que `sendCampaign` arrastra.
+    // Se busca la LLAMADA, no la mención: el comentario que explica de dónde
+    // sale el motor tiene que poder nombrarlo sin hacer fallar la prueba.
+    // Misma lección que la comprobación de `ctaStyles`.
+    const ctrlSinComentarios = ctrl.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    check('el fondo se pide por el MISMO camino que Plantillas IA', (() => {
+        const i = ctrl.indexOf('export const startCampaignBackdrop');
+        const bloque = ctrl.slice(i, ctrl.indexOf('export const syncCampaignBackdrop'));
+        return /from '\.\.\/lib\/designBackdrop\.js'/.test(ctrl)
+            && /await startComposition\(/.test(bloque)
+            && !/createKieImageTask\(/.test(ctrlSinComentarios);
+    })());
+    check('«Desde una foto» sigue despachando a KIE por defecto',
+        /const DEFAULT_ENGINE = 'kie'/.test(studio)
+        && /model: 'google\/nano-banana-edit'/.test(studio));
+
+    // El titular, las cifras y los escudos los dibuja la plataforma. Si algún
+    // día el controlador empezara a pedirle texto al modelo, esto falla.
+    check('el controlador de campaña NO le pide texto a un modelo de imagen',
+        !/text|caption|headline/i.test(
+            ctrl.slice(ctrl.indexOf('const composicionDeCampana'), ctrl.indexOf('export const syncCampaignBackdrop'))
+                .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')));
+
+    // Sin fotografía no hay nada que componer: `nano-banana-edit` es un modelo
+    // de EDICIÓN. Se dice con esas palabras en vez de dejar que falle en KIE.
+    check('sin fotografía se rechaza con su motivo, no se llama a KIE',
+        /Hace falta la fotografía de la campaña/.test(ctrl));
+    check('sin credencial de KIE se dice cuál falta',
+        /KIE_API_KEY/.test(ctrl) && /503/.test(ctrl));
+
+    // La dirección de arte sale del perfil creativo: era el pendiente
+    // declarado en v4.839 («hoy el prompt se copia a mano»).
+    check('el prompt de estilo del perfil alimenta el masterPrompt',
+        /masterPrompt: profile\?\.dna\?\.derived\?\.stylePrompt/.test(ctrl));
+    // El id llega del navegador; el alcance lo decide el servidor.
+    check('el perfil se resuelve en el SERVIDOR también para el fondo',
+        /await resolveProfileFor\(req, req\.body\?\.profileId\)/.test(
+            ctrl.slice(ctrl.indexOf('export const startCampaignBackdrop'))));
+
+    check('las dos rutas del fondo están declaradas',
+        /campaign-post\/backdrop', authMiddleware, startCampaignBackdrop/.test(rutas)
+        && /campaign-post\/backdrop\/:taskId', authMiddleware, syncCampaignBackdrop/.test(rutas));
+
+    // Poner y quitar el fondo se hace con el criterio de Plantillas IA, no con
+    // una copia: dos verdades sobre la misma pila de nodos se contradicen.
+    check('la pantalla usa withBackdrop/withoutBackdrop del espejo',
+        /from '\.\.\/\.\.\/\.\.\/lib\/designCompose'/.test(panel)
+        && /withBackdrop\(dd, e\.url\)/.test(panel)
+        && /escribirDocActivo\(withoutBackdrop\)/.test(panel));
+    // Un booleano aparte se contradiría al regenerar la pieza o al cambiar de
+    // diapositiva. La verdad es el documento.
+    check('«tiene fondo» se DERIVA del documento, no de un estado propio',
+        /const fondoActivo = docActivo \? hasBackdrop\(docActivo\) : false/.test(panel)
+        && !/setFondoIA/.test(panel));
+    // Gasta créditos y manda la fotografía a un tercero: se enciende a
+    // propósito, nunca por omisión.
+    check('el fondo NO se genera solo al componer la pieza',
+        !/generarFondo\(\)/.test(panel.slice(panel.indexOf('const componer = useCallback'), panel.indexOf('const generarCarrusel'))));
+    check('el costo y el motor se DICEN en la pantalla',
+        /Gasta créditos por pieza/.test(panel) && /KIE\.AI/.test(panel));
+    // Sin tope, un trabajo que nunca termina deja la pantalla girando y quien
+    // la abrió no sabe si esperar.
+    check('el sondeo del fondo tiene tope de espera', /Date\.now\(\) > limite/.test(panel));
+    // Un fallo al componer no puede dejar la pieza peor que antes.
+    check('la vuelta atrás existe y devuelve la fotografía a su recuadro',
+        /const quitarFondo = useCallback/.test(panel));
+}
+
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);
 if (!paridad) console.log('  (el bloque de paridad no corrió: instalá esbuild con `npm i --no-save esbuild`)');

@@ -1406,6 +1406,152 @@ window.go = () => createRoot(document.getElementById('root')).render(
     await page.close();
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// El LIENZO generado con KIE en el preset de campaña (v4.840)
+// ══════════════════════════════════════════════════════════════════════
+//
+// Lo que se comprueba acá es el CAMINO, no el criterio: qué petición sale al
+// pulsar «Componer» y con qué datos. Es la lección de `conQr` (v4.836) y de
+// `profileId` (v4.838) — una dependencia que falta en un `useCallback` no la ve
+// el typecheck, el código es válido y el ajuste simplemente no llega nunca.
+console.log('\nEl lienzo generado del preset de campaña');
+{
+    const entry = `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import CampaignPostPanel from './src/components/admin/content-studio/CampaignPostPanel';
+import { AuthProvider } from './src/hooks/useAuth';
+window.go = () => createRoot(document.getElementById('root'))
+    .render(React.createElement(AuthProvider, null, React.createElement(CampaignPostPanel)));
+`;
+    const panel = await build({
+        stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
+        bundle: true, write: false, format: 'iife', platform: 'browser',
+        define: { 'import.meta.env.VITE_API_URL': '"/api"', 'process.env.NODE_ENV': '"production"', __APP_VERSION__: '"0.0.0-test"' },
+        external: ['jspdf'], jsx: 'automatic',
+    });
+
+    const FOTO = 'https://ejemplo.test/foto-campana.jpg';
+    // Un PNG de 1×1 para que las direcciones de ejemplo resuelvan.
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const OPCIONES = {
+        scope: 'platform',
+        siteUrl: 'https://rotary4281.org',
+        defaults: { objective: 'ayuda_humanitaria', audience: 'nacional', language: 'es', format: 'post_1_1' },
+        objectives: [{ id: 'ayuda_humanitaria', label: 'Ayuda humanitaria', needs: [] }],
+        audiences: [{ id: 'nacional', label: 'Nacional' }],
+        languages: [{ id: 'es', label: 'Español' }],
+        layouts: [{ id: 'elementos_requeridos', label: 'Elementos requeridos' }],
+        formats: [{ id: 'post_1_1', label: 'Post cuadrado', ratio: '1:1', width: 1080, height: 1080 }],
+        campaigns: [{
+            id: 'c1', slug: 'colombia-nos-necesita', name: 'Colombia nos necesita',
+            campaignType: 'emergencia', status: 'active',
+            title: 'Colombia nos necesita', subtitle: 'Sumate', badge: 'Emergencia',
+            location: 'Chocó', eventDate: '2026-08-14',
+            theme: { primary: '#0C2A5E', accent: '#F7A81B', cta: '' },
+            stats: [], statsSkipped: [],
+            items: [{ title: 'Agua', description: 'Botellones de 20 L' }],
+            partners: 0,
+            images: [{ url: FOTO, alt: 'Voluntarios descargando ayuda' }],
+        }],
+    };
+    // El documento que devuelve el servidor: lo mínimo que la pantalla necesita
+    // para pintar y para que `withBackdrop` tenga dónde meter el fondo.
+    const DOC = {
+        format: 'post_1_1', width: 1080, height: 1080,
+        nodes: [
+            { id: 'fondo', type: 'shape', name: 'Fondo', role: 'decoracion', shape: 'rect', fill: '#0C2A5E', x: 0, y: 0, w: 1, h: 1, rotation: 0, opacity: 1 },
+            { id: 'foto', type: 'image', name: 'Fotografía', role: 'foto', src: FOTO, srcVar: 'imagen', fit: 'cover', x: 0, y: 0, w: 1, h: 0.6, rotation: 0, opacity: 1 },
+            { id: 'titular', type: 'text', name: 'Titular', role: 'titulo', text: 'Colombia nos necesita', font: 'condensed', fontSize: 0.08, color: '#FFFFFF', align: 'left', x: 0.08, y: 0.65, w: 0.84, h: 0.12, rotation: 0, opacity: 1 },
+        ],
+    };
+
+    const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+    await servirFuentes(page);
+    const fallos = [];
+    page.on('pageerror', e => fallos.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') fallos.push(`console: ${m.text()}`); });
+
+    let cuerpoFondo = null, sondeos = 0;
+    // El comodín va PRIMERO: Playwright resuelve la última ruta registrada
+    // antes que las anteriores.
+    await page.route('**/api/**', r => r.fulfill({ json: {} }));
+    await page.route('**/api/content-studio/campaign-post/options*', r => r.fulfill({ json: OPCIONES }));
+    await page.route('**/api/creative-profiles*', r => r.fulfill({ json: { profiles: [] } }));
+    await page.route('**/api/content-studio/campaign-post/compose', r =>
+        r.fulfill({ json: { document: DOC, quality: {}, warnings: [], copyIssues: [], copy: {}, variables: {}, stats: [], items: [], layout: { id: 'elementos_requeridos', notes: [] } } }));
+    await page.route('**/api/content-studio/campaign-post/backdrop', r => {
+        cuerpoFondo = JSON.parse(r.request().postData() || '{}');
+        return r.fulfill({ json: { model: 'google/nano-banana-edit', aspect: '1:1', variants: [{ planId: 'auto', taskId: 'T-1', error: null }] } });
+    });
+    await page.route('**/api/content-studio/campaign-post/backdrop/**', r => {
+        sondeos++;
+        return r.fulfill({ json: sondeos < 2 ? { status: 'pending' } : { status: 'ready', url: 'https://ejemplo.test/fondo-generado.png', width: 1080, height: 1080, notes: [] } });
+    });
+
+    // Las imágenes de la campaña y el fondo generado son direcciones de
+    // ejemplo: sin interceptarlas, el navegador intenta salir a la red y el
+    // fallo aparece como un error de consola que enmascara los de verdad.
+    await page.route('https://ejemplo.test/**', r => r.fulfill({ contentType: 'image/png', body: PNG }));
+    await page.route('http://localhost/', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>' }));
+    await page.goto('http://localhost/');
+    await page.addScriptTag({ content: panel.outputFiles[0].text });
+    await page.evaluate(() => window.go());
+    await page.waitForTimeout(1200);
+
+    check('el preset se pinta', (await page.locator('#root').innerHTML()).length > 500);
+    check('sin errores al montar', fallos.length === 0, fallos.join(' | '));
+
+    // Sin fotografía el botón no se puede pulsar: `nano-banana-edit` es un
+    // modelo de EDICIÓN y sin imagen de entrada no hay nada que componer.
+    const componer = page.getByRole('button', { name: /^Componer$/ });
+    check('sin fotografía el botón de componer está apagado', await componer.isDisabled());
+    const textoInicial = await page.locator('#root').innerText();
+    check('y se dice por qué', /el fondo se compone A PARTIR de ella/i.test(textoInicial));
+
+    // La fotografía se elige de las que trae la campaña: es la vía que no
+    // depende de un archivo en disco ni de la Biblioteca.
+    await page.locator(`img[src="${FOTO}"]`).first().click();
+    await page.waitForTimeout(300);
+
+    await page.getByRole('button', { name: /Generar la pieza|Generar pieza|Generar/ }).first().click();
+    await page.waitForTimeout(1500);
+    check('la pieza se compone antes de tocar el fondo',
+        await page.locator('[data-node="titular"]').count() === 1);
+    check('y NO se generó ningún fondo sola', cuerpoFondo === null);
+
+    await page.getByRole('button', { name: /^Componer$/ }).click();
+    await page.waitForTimeout(9000);
+
+    check('la petición del fondo salió', cuerpoFondo !== null);
+    // Cada uno de estos es una dependencia del `useCallback` que, si falta, no
+    // llega nunca — y el defecto se ve como «el fondo sale distinto» o «el
+    // estilo no se aplica», nunca como un error.
+    check('lleva la fotografía', cuerpoFondo?.imageUrl === FOTO, JSON.stringify(cuerpoFondo));
+    check('lleva el formato', cuerpoFondo?.format === 'post_1_1');
+    check('lleva el documento, para saber dónde cae el texto',
+        Array.isArray(cuerpoFondo?.document?.nodes) && cuerpoFondo.document.nodes.length >= 3);
+    check('lleva el estilo elegido', 'profileId' in (cuerpoFondo || {}));
+
+    check('el fondo generado entra en la pieza',
+        await page.locator('[data-node="fondo_ia"]').count() === 1);
+    // La foto ya está DENTRO de la imagen compuesta: dejarla encima la
+    // mostraría dos veces.
+    check('y la fotografía se apaga', await page.locator('[data-node="foto"]').count() === 0);
+    check('el texto se sigue componiendo encima',
+        await page.locator('[data-node="titular"]').count() === 1);
+
+    // Una generación que no gusta no puede dejar la pieza peor que antes.
+    await page.getByRole('button', { name: /^Quitar el fondo$/ }).click();
+    await page.waitForTimeout(400);
+    check('quitar el fondo devuelve la fotografía a su recuadro',
+        await page.locator('[data-node="fondo_ia"]').count() === 0
+        && await page.locator('[data-node="foto"]').count() === 1);
+
+    check('componer el fondo no lanzó errores', fallos.length === 0, fallos.join(' | '));
+    await page.close();
+}
+
 check('el editor no lanzó ningún error', errores.length === 0, errores.join(' | '));
 await browser.close();
 
