@@ -36,9 +36,11 @@ export async function ensureNotificationSchema() {
         `SELECT to_regclass('public."NotificationDelivery"') IS NOT NULL AS entrega,
                 to_regclass('public."NotificationBeneficiary"') IS NOT NULL AS beneficiario,
                 to_regclass('public."NotificationProfile"') IS NOT NULL AS perfil,
-                to_regclass('public."NotificationTemplate"') IS NOT NULL AS plantilla`
+                to_regclass('public."NotificationTemplate"') IS NOT NULL AS plantilla,
+                to_regclass('public."NotificationDomain"') IS NOT NULL AS dominio`
     );
-    if (rows[0]?.entrega && rows[0]?.beneficiario && rows[0]?.perfil && rows[0]?.plantilla) { _ready = true; return; }
+    if (rows[0]?.entrega && rows[0]?.beneficiario && rows[0]?.perfil
+        && rows[0]?.plantilla && rows[0]?.dominio) { _ready = true; return; }
 
     // ── Una fila por ENVÍO ────────────────────────────────────────────
     //
@@ -229,6 +231,25 @@ export async function ensureNotificationSchema() {
             ) WHERE "isCurrent";
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS "NotificationTemplate_profile_idx" ON "NotificationTemplate" ("profileId", event, version DESC);`);
+
+    // ── La caché de verificación de dominios (v4.857) ─────────────────
+    //
+    // La verificación vive en Resend, no acá. Consultarla en cada envío sería
+    // una llamada de red a un tercero DENTRO del webhook de Stripe, y Stripe da
+    // de baja los endpoints que tardan. Se guarda con vencimiento.
+    //
+    // `status` guarda el estado CRUDO del proveedor además del booleano:
+    // «pending» y «no está en Resend» se corrigen en sitios distintos, y sin
+    // ese dato el panel no puede explicar por qué un sitio no envía desde lo
+    // suyo.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "NotificationDomain" (
+            domain TEXT PRIMARY KEY,
+            verified BOOLEAN NOT NULL DEFAULT false,
+            status TEXT,
+            "checkedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+    `);
 
     _ready = true;
 }

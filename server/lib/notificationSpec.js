@@ -566,6 +566,162 @@ export const validateProfile = (profile, { beneficiary = null } = {}) => {
     return { ok: errors.length === 0, errors, warnings };
 };
 
+/* ════════════════════════════════════════════════════════════════════
+   FASE 2 — LA JERARQUÍA DEL REMITENTE
+   ════════════════════════════════════════════════════════════════════ */
+
+/** El dominio central de la plataforma. Configurable porque la instalación
+ *  puede no ser ésta, y porque si algún día deja de estar verificado en el
+ *  proveedor hay que poder apuntar a otro sin desplegar. */
+export const centralDomain = () =>
+    normalizeDomain(process.env.NOTIFICATION_CENTRAL_DOMAIN) || 'clubplatform.org';
+
+/** El último recurso. Es la dirección con la que sale el recibo desde v4.411 y
+ *  la que se conserva cuando nada más se puede usar. */
+export const fallbackSender = () =>
+    normalizeEmail(process.env.NOTIFICATION_FALLBACK_FROM) || 'noreply@clubplatform.org';
+
+/** El buzón por omisión dentro del dominio que se elija. */
+export const DEFAULT_LOCAL_PART = 'aportes';
+
+/**
+ * El dominio, en su forma canónica.
+ *
+ * Se quita el `www.` porque el proveedor verifica el APEX, no el subdominio —
+ * es lo mismo que hace `EmailService.normalizeSenderEmail` desde siempre, y si
+ * las dos formas no se redujeran a la misma, un dominio verificado no se
+ * reconocería y el correo caería al respaldo sin motivo.
+ */
+export const normalizeDomain = (raw) => {
+    let s = String(raw ?? '').trim().toLowerCase();
+    if (!s) return '';
+    // Se admite una URL entera: el administrador pega lo que copió del
+    // navegador. Misma cortesía que `linkRedirects` con el destino.
+    s = s.replace(/^https?:\/\//, '').split('/')[0].split('?')[0];
+    s = s.replace(/^www\./, '').replace(/\.$/, '');
+    return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s) ? s : '';
+};
+
+/** La parte local de una dirección, acotada a lo que un buzón admite. */
+export const normalizeLocalPart = (raw) => {
+    const s = String(raw ?? '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    return s.slice(0, 40);
+};
+
+/**
+ * Desde qué dirección sale este correo.
+ *
+ * ── LA REGLA QUE NO SE NEGOCIA ──────────────────────────────────
+ *
+ * NUNCA se intenta enviar desde un dominio sin verificar. Hasta hoy
+ * `EmailService.sendEmail` sí lo intentaba —le bastaba que existiera una fila
+ * en `EmailAccount`— y descubría el problema por el rechazo del proveedor. Eso
+ * es un correo perdido por intento, y en volumen es lo que hunde la reputación
+ * del dominio desde el que envía TODA la plataforma.
+ *
+ * ── LA JERARQUÍA ────────────────────────────────────────────────
+ *
+ *   N1  el dominio propio del sitio, si está VERIFICADO y el perfil lo permite
+ *   N2  el dominio central de la plataforma, si está verificado
+ *   N3  la identidad de respaldo
+ *
+ * Es PURA: recibe el conjunto de dominios verificados en vez de consultarlo.
+ * Consultar al proveedor por dentro la haría imposible de probar y metería una
+ * llamada de red dentro del webhook de Stripe.
+ *
+ * Devuelve también el NIVEL y el MOTIVO: sin eso, «¿por qué este correo salió
+ * desde clubplatform.org y no desde rotary4281.org?» no se puede contestar.
+ */
+export const resolveSenderPlan = ({
+    profile = null,
+    siteDomain = '',
+    verifiedDomains = [],
+    displayName = '',
+    replyTo = '',
+} = {}) => {
+    const verificados = new Set(
+        (Array.isArray(verifiedDomains) ? verifiedDomains : []).map(normalizeDomain).filter(Boolean)
+    );
+    const routing = routingShape(profile?.routing);
+    const local = normalizeLocalPart(routing.localPart) || DEFAULT_LOCAL_PART;
+    const nombre = String(displayName || profile?.identity?.fromName || '').trim();
+    const responder = normalizeEmail(replyTo || profile?.identity?.replyTo || '') || null;
+
+    const sitio = normalizeDomain(siteDomain);
+    const central = centralDomain();
+
+    const arma = (address, level, reason, domain) => ({
+        address, level, reason, domain,
+        // El nombre visible se escapa de comillas: va dentro de
+        // `"Nombre" <dir>` y una comilla partiría la cabecera.
+        from: nombre ? `"${nombre.replace(/"/g, '')}" <${address}>` : address,
+        replyTo: responder,
+    });
+
+    if (routing.prefer === 'site' && routing.allowSiteDomain && sitio && verificados.has(sitio)) {
+        return arma(`${local}@${sitio}`, 1, 'el dominio propio del sitio está verificado', sitio);
+    }
+    if (verificados.has(central)) {
+        // Por qué NO se usó el del sitio: es la mitad del diagnóstico. «No está
+        // verificado» y «el perfil no lo permite» se corrigen en sitios
+        // distintos.
+        const motivo = !routing.allowSiteDomain || routing.prefer !== 'site'
+            ? 'el perfil pide el dominio central'
+            : !sitio
+                ? 'el sitio no tiene dominio propio configurado'
+                : 'el dominio del sitio no está verificado en el proveedor';
+        return arma(`${local}@${central}`, 2, motivo, central);
+    }
+    return arma(fallbackSender(), 3, 'no hay ningún dominio verificado disponible', normalizeDomain(fallbackSender().split('@')[1]));
+};
+
+/**
+ * A qué direcciones se le escribe, por papel.
+ *
+ * Devuelve también los papeles que se PIDIERON y no se pudieron resolver, con
+ * su motivo: un aviso marcado que no sale y no lo dice es exactamente el
+ * silencio que este módulo existe para no tener.
+ */
+export const resolveRecipients = ({ profile, event, donorEmail = '', beneficiary = null, siteEmail = '' }) => {
+    const papeles = recipientsFor(profile, event);
+    const out = [];
+    const skipped = [];
+
+    for (const papel of papeles) {
+        if (papel === 'donor') {
+            const e = normalizeEmail(donorEmail);
+            if (e) out.push({ kind: 'donor', email: e });
+            else skipped.push({ kind: 'donor', reason: 'el aporte no trae correo de quien aportó' });
+            continue;
+        }
+        if (papel === 'beneficiary') {
+            // Las direcciones internas del perfil y el correo de la entidad son
+            // dos cosas: la primera es a quién avisar en la operación, la
+            // segunda el buzón institucional. Se juntan sin repetir.
+            const lista = emailList([...(profile?.internalRecipients || []), beneficiary?.email || '']);
+            if (lista.length) lista.forEach(e => out.push({ kind: 'beneficiary', email: e }));
+            else skipped.push({ kind: 'beneficiary', reason: 'ni el perfil ni la entidad tienen una dirección' });
+            continue;
+        }
+        if (papel === 'site') {
+            const e = normalizeEmail(siteEmail);
+            if (e) out.push({ kind: 'site', email: e });
+            else skipped.push({ kind: 'site', reason: 'el sitio no tiene correo configurado' });
+            continue;
+        }
+        if (papel === 'campaign') {
+            // La plataforma NO guarda todavía un responsable por campaña. Se
+            // dice así en vez de mandarlo a otra parte: un aviso que llega al
+            // buzón equivocado es peor que uno que no llega.
+            skipped.push({ kind: 'campaign', reason: 'una campaña todavía no declara responsable; usá las direcciones internas del perfil' });
+        }
+    }
+    // Sin repetir: la misma persona puede ser dirección interna y correo del
+    // sitio, y recibiría dos veces el mismo aviso.
+    const vistos = new Set();
+    return { recipients: out.filter(r => (vistos.has(r.email) ? false : vistos.add(r.email))), skipped };
+};
+
 export default {
     NOTIFICATION_EVENTS, EVENT_IDS, eventById, isKnownEvent, availableEvents,
     RECIPIENT_KINDS, RECIPIENT_IDS, isKnownRecipientKind,
@@ -578,4 +734,6 @@ export default {
     defaultEventRules, eventRulesShape, recipientsFor,
     profileShape, emailList, INTERNAL_RECIPIENTS_MAX,
     pickProfileFor, validateProfile,
+    centralDomain, fallbackSender, DEFAULT_LOCAL_PART,
+    normalizeDomain, normalizeLocalPart, resolveSenderPlan, resolveRecipients,
 };

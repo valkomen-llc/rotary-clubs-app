@@ -24,8 +24,9 @@
 // ContributionCampaignMetric y ContributionCampaignReading, las dos del
 // Director Creativo IA: CreativeProfile y CreativeReference, las tres del
 // libro mayor de la Bóveda —LedgerAccount, LedgerTransaction y LedgerLine— y
-// las cuatro de Notificaciones de Contribuciones: NotificationDelivery,
-// NotificationBeneficiary, NotificationProfile y NotificationTemplate).
+// las cinco de Notificaciones de Contribuciones: NotificationDelivery,
+// NotificationBeneficiary, NotificationProfile, NotificationTemplate y
+// NotificationDomain).
 // Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // La lista de arriba es DOCUMENTACIÓN: el guardián no la lee, deriva los

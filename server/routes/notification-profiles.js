@@ -17,7 +17,7 @@ import {
     listBeneficiaries, saveBeneficiary, deleteBeneficiary,
     listProfiles, saveProfile, deleteProfile,
     getTemplate, saveTemplate, listTemplateVersions,
-    previewTemplate, sendTestEmail, resolveForSite,
+    previewTemplate, sendTestEmail, resolveForSite, listDomains,
 } from '../controllers/notificationProfileController.js';
 
 const router = express.Router();
@@ -44,6 +44,10 @@ router.post('/templates', saveTemplate);
 router.post('/preview', previewTemplate);
 router.post('/test', sendTestEmail);
 router.get('/resolve', resolveForSite);
+// v4.857 — Qué dominios están verificados y qué sitios pueden enviar desde lo
+// suyo. Es lo que permite EXPLICAR por qué un correo salió desde el dominio
+// central en vez del propio.
+router.get('/domains', listDomains);
 
 // Los perfiles. Van al final: `/:id` se come cualquier ruta que se declare
 // después.

@@ -34,9 +34,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.856.0 | 2026-08-17 (Perfiles de notificación de aportes)
-// Cache bust: 2026-08-17s
+// UI V4.857.0 | 2026-08-17 (El remitente de la confirmación de aportes)
+// Cache bust: 2026-08-17t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.857.0',
+        title: 'La confirmación de un aporte ya sale con la identidad correcta ✉️',
+        description: 'Los perfiles que se configuraron en la versión anterior ahora gobiernan de verdad el correo que recibe quien aporta: su nombre visible, su dirección de respuesta, su logotipo y su plantilla. Y sale desde el dominio propio del sitio —por ejemplo aportes@rotary4281.org— cuando ese dominio está verificado en el proveedor de correo; si no lo está, desde el dominio central de la plataforma; y si tampoco, desde la identidad de respaldo de siempre. NUNCA se intenta enviar desde un dominio sin verificar, porque cada intento así es un correo perdido y en volumen arruina la reputación del dominio desde el que envía toda la plataforma. La pantalla muestra qué dominios están verificados, qué sitios pueden usar el suyo, y desde qué dirección va a salir cada correo con el motivo. El envío de prueba sale por ese mismo camino, así que probar sirve para algo. Un sitio al que no llegue ningún perfil sigue recibiendo el recibo de siempre, sin ningún cambio.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'campanas', 'correo', 'dominios'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'El correo sale desde el dominio del sitio cuando está verificado.' },
+            { type: 'added', text: 'Panel con el estado de verificación de cada dominio y de cada sitio.' },
+            { type: 'added', text: 'La vista previa y la prueba muestran el remitente real y por qué es ése.' },
+            { type: 'changed', text: 'Nunca se intenta enviar desde un dominio sin verificar.' },
+        ]
+    },
+
     {
         version: '4.856.0',
         title: 'La confirmación de un aporte ya se puede configurar 🏛️',

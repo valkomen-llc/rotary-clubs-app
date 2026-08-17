@@ -13,6 +13,9 @@ import { getFeeRules } from '../lib/feeRulesStore.js';
 // v4.855 — La bitácora de notificaciones. Nada de acá lanza: corre dentro del
 // webhook de Stripe, después de acreditar el cobro.
 import { claimDelivery, markSent, markFailed } from '../lib/notificationLog.js';
+// v4.857 — El envío por perfil. Cuando alguno alcanza a este sitio, manda él y
+// el recibo de siempre no sale. Tampoco lanza.
+import { sendContributionNotifications } from '../lib/notificationSender.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -35,6 +38,22 @@ import { claimDelivery, markSent, markFailed } from '../lib/notificationLog.js';
 // configurado. Cada club podrá overridear este sender más adelante via
 // PlatformConfig o un campo en NotificationConfig (out of scope hoy).
 const PLATFORM_DONATION_SENDER = '"Club Platform for Rotary" <noreply@clubplatform.org>';
+
+// v4.857 — El monto tal como se escribe en el correo. Va SIN el símbolo: la
+// plantilla dibuja el importe y la moneda por separado («50.000 COP»), y con el
+// símbolo pegado saldría «$50.000 COP». Se usa el formato colombiano porque es
+// el de la instalación; la moneda la dice la variable de al lado, que es lo que
+// evita confundir «$» de pesos con «$» de dólares (la lección de v4.843).
+const formatoDeMonto = (monto, moneda) => {
+    try {
+        return new Intl.NumberFormat('es-CO', {
+            minimumFractionDigits: moneda === 'COP' ? 0 : 2,
+            maximumFractionDigits: moneda === 'COP' ? 0 : 2,
+        }).format(Number(monto) || 0);
+    } catch {
+        return String(monto);
+    }
+};
 
 // v4.421 — Margen operativo de Club Platform: después de que Stripe libere
 // el dinero (available_on), agregamos N días para conciliación + traslado
@@ -976,6 +995,61 @@ async function handleSuccessfulDonationCheckout(session) {
                 // graceful (sin throw). Necesitamos ver explícitamente el resultado.
                 console.log(`[DONATION-EMAIL] Intentando enviar recibo a ${recipientEmail} (Resend key: ${process.env.RESEND_API_KEY ? 'SET' : 'NOT SET'})`);
 
+                // v4.857 — EL PERFIL DE NOTIFICACIÓN, SI LO HAY.
+                //
+                // Si algún perfil alcanza a este sitio, manda él: su identidad,
+                // su plantilla, sus destinatarios y el dominio propio del sitio
+                // cuando está verificado. Y entonces este bloque NO hace nada
+                // más — dos correos por el mismo aporte es exactamente lo que
+                // el módulo existe para no producir.
+                //
+                // Sin ningún perfil configurado —que es el caso de todos los
+                // sitios hasta que alguien cree uno— se sigue de largo y sale
+                // el recibo de siempre, idéntico al de v4.855. Es el último
+                // escalón de la jerarquía: ninguna contribución se queda sin
+                // notificación porque falte una personalización.
+                let porPerfil = { handled: false, reason: 'sin evaluar' };
+                try {
+                    porPerfil = await sendContributionNotifications({
+                        contributionId: donation.id,
+                        clubId,
+                        campaignId: session.metadata?.campaignId || null,
+                        event: 'payment_confirmed',
+                        donorEmail: recipientEmail,
+                        vars: {
+                            donor_name: recipientName,
+                            donor_email: recipientEmail,
+                            amount: formatoDeMonto(totalAmount, currency),
+                            currency,
+                            campaign_name: session.metadata?.purpose || '',
+                            campaign_url: session.metadata?.campaignSlug
+                                ? `${club?.domain ? `https://${club.domain}` : ''}/maneras-de-contribuir`
+                                : '',
+                            contribution_id: donation.id,
+                            payment_reference: String(session.payment_intent || session.id || ''),
+                            contribution_date: new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }),
+                            donor_message: message || '',
+                            receipt_url: receiptUrl || '',
+                        },
+                    });
+                } catch (perfilErr) {
+                    // Un fallo del camino nuevo NO puede dejar al aportante sin
+                    // confirmación: se cae al recibo de siempre.
+                    console.error('[DONATION-EMAIL] el perfil de notificación falló, se usa el recibo de siempre:', perfilErr?.message);
+                    porPerfil = { handled: false, reason: perfilErr?.message };
+                }
+
+                // Con perfil aplicable, el recibo de siempre NO sale: dos
+                // correos por el mismo aporte es justo lo que este módulo
+                // existe para no producir. Se marca con una BANDERA y no con
+                // un `return`, que saldría de la función entera y dejaría
+                // fuera cualquier paso que se agregue después.
+                if (porPerfil.handled) {
+                    console.log(`[DONATION-EMAIL] ✅ notificado por el perfil «${porPerfil.profile?.name}» (${porPerfil.sent} envío(s), remitente N${porPerfil.sender?.level})`);
+                } else {
+                    console.log(`[DONATION-EMAIL] sin perfil aplicable (${porPerfil.reason}); sale el recibo de siempre`);
+                }
+
                 // v4.855 — LA TRAZA. Se RECLAMA el envío antes de mandarlo, no
                 // se anota después: el índice único sobre (contribución +
                 // evento + destinatario) es lo que impide que dos entregas
@@ -990,24 +1064,26 @@ async function handleSuccessfulDonationCheckout(session) {
                 // anotarlo sería cambiar un problema de auditoría por uno de
                 // servicio.
                 const asunto = `Recibo de tu donación al ${subjectTopic}`;
-                const traza = await claimDelivery({
-                    contributionId: donation.id,
-                    event: 'payment_confirmed',
-                    recipient: recipientEmail,
-                    recipientKind: 'donor',
-                    clubId,
-                    campaignId: session.metadata?.campaignId || null,
-                    provider: 'resend',
-                    fromAddress: 'noreply@clubplatform.org',
-                    subject: asunto,
-                });
-                // Alguien más ya reclamó este envío: es exactamente el
-                // duplicado que el registro existe para impedir. Se marca con
-                // una bandera y NO con un `return`, que saldría de la función
-                // entera y dejaría fuera cualquier paso que se agregue
-                // después de este bloque.
+                const traza = porPerfil.handled
+                    ? { ok: true, claimed: false, reason: 'el perfil de notificación ya se encargó' }
+                    : await claimDelivery({
+                        contributionId: donation.id,
+                        event: 'payment_confirmed',
+                        recipient: recipientEmail,
+                        recipientKind: 'donor',
+                        clubId,
+                        campaignId: session.metadata?.campaignId || null,
+                        provider: 'resend',
+                        fromAddress: 'noreply@clubplatform.org',
+                        subject: asunto,
+                    });
+                // Alguien más ya reclamó este envío —otra entrega del mismo
+                // webhook, o el perfil de notificación—: es exactamente el
+                // duplicado que el registro existe para impedir.
                 const yaEnviado = traza.ok && !traza.claimed;
-                if (!traza.ok) {
+                if (porPerfil.handled) {
+                    // Nada que decir: ya se registró arriba, con su perfil.
+                } else if (!traza.ok) {
                     console.warn(`[DONATION-EMAIL] el recibo no se pudo registrar (${traza.reason}); se envía igual`);
                 } else if (yaEnviado) {
                     console.log(`[DONATION-EMAIL] recibo ya enviado para ${donation.id} (${traza.reason}) — no se repite`);
