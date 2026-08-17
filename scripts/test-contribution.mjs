@@ -32,6 +32,9 @@ import {
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
     sectionVideos, MAX_SECTION_VIDEOS, galleryItems, MAX_GALLERY_ITEMS, GALLERY_SLIDE_MS,
 } from '../server/lib/contributionSpec.js';
+import {
+    ROLL_MAX_NAMES, cleanDonorName, publicDonorName, countsInRoll, buildContributorRoll,
+} from '../server/lib/contributorRoll.js';
 
 let ok = 0; const malos = [];
 const check = (n, cond, extra = '') => {
@@ -832,7 +835,11 @@ check('con una sola imagen no hay intervalo ni puntos',
 // (CampaignCta), y compararlos daría un falso negativo.
 check('los hooks del carrusel van ARRIBA, antes de cualquier return (regla de check:hooks)', (() => {
     const cuerpo = landingSrc.slice(landingSrc.indexOf('const CampaignLanding:'));
-    return cuerpo.indexOf('const [slide, setSlide] = useState(0)') < cuerpo.indexOf('return (');
+    // El return que importa es el que DEVUELVE JSX, y se reconoce por el
+    // salto de línea: un `return () => …` de la limpieza de un efecto también
+    // empieza por «return (» y daría un falso negativo — pasó al agregar la
+    // línea de aportantes (v4.862), con los hooks perfectamente ordenados.
+    return cuerpo.indexOf('const [slide, setSlide] = useState(0)') < cuerpo.indexOf('return (\n');
 })());
 check('las imágenes se cruzan por opacidad, montadas todas — no se desmontan y recargan',
     /transition-opacity duration-1000/.test(landingSrc) && /i === slide \? 'opacity-100 z-10' : 'opacity-0 z-0'/.test(landingSrc));
@@ -1702,6 +1709,208 @@ check('el punto se marca con el número del video, no con la posición',
     /const idxVideo = videos\.length \? \(\(videoPos % videos\.length\) \+ videos\.length\) % videos\.length : 0;/.test(landing832)
     && /aria-current=\{i === idxVideo\}/.test(landing832)
     && /\{idxVideo \+ 1\}\/\{videos\.length\}/.test(landing832));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Quiénes ya aportaron — v4.862
+//
+// El criterio vive en server/lib/contributorRoll.js y es PURO. Lo que se
+// prueba acá es lo que decide si un nombre sale a una página pública, que es
+// lo único de este módulo que no se puede corregir después de publicado.
+// ═══════════════════════════════════════════════════════════════════════════
+grupo('Quiénes ya aportaron — el criterio');
+
+const aporte = (o = {}) => ({ status: 'success', donorName: 'Ana Pérez', isAnonymous: false, date: '2026-08-01T10:00:00Z', ...o });
+
+// LA REGLA DE LA QUE CUELGA TODO: un aporte anónimo no publica nombre. Y se
+// decide en el SERVIDOR: si el nombre viajara en el JSON y la pantalla lo
+// escondiera, bastaría abrir la consola para leerlo.
+check('un aporte anónimo NO publica nombre',
+    publicDonorName(aporte({ isAnonymous: true, donorName: 'Ana Pérez' })) === null);
+check('un aporte no anónimo SIN nombre tampoco publica nada',
+    publicDonorName(aporte({ donorName: '   ' })) === null
+    && publicDonorName(aporte({ donorName: null })) === null);
+check('un aporte no anónimo con nombre sí lo publica',
+    publicDonorName(aporte()) === 'Ana Pérez');
+
+// `isAnonymous` es booleano en la base, pero un `undefined` —una fila vieja,
+// un `select` que no lo trajo— no puede leerse como «publicá el nombre»...
+// salvo que la columna tiene DEFAULT false y la consulta lo pide siempre. Lo
+// que sí se comprueba es que sólo el `true` explícito calla el nombre.
+check('sólo `isAnonymous === true` calla el nombre',
+    publicDonorName(aporte({ isAnonymous: false })) === 'Ana Pérez'
+    && publicDonorName(aporte({ isAnonymous: true })) === null);
+
+// Un aporte reembolsado dejó de ser un ingreso (v4.859): ni cuenta ni nombra.
+check('un aporte reembolsado no cuenta ni publica nombre',
+    countsInRoll(aporte({ status: 'refunded' })) === false
+    && publicDonorName(aporte({ status: 'refunded' })) === null);
+check('sólo `success` cuenta',
+    countsInRoll(aporte({ status: 'success' })) === true
+    && countsInRoll(aporte({ status: 'pending' })) === false
+    && countsInRoll(aporte({ status: '' })) === false);
+check('el estado se compara sin distinguir mayúsculas',
+    countsInRoll(aporte({ status: 'SUCCESS' })) === true);
+
+// El nombre se muestra TAL CUAL: no se recorta a dos palabras. Quien firma
+// «María Fernanda Restrepo» no se llama «María Fernanda».
+check('un nombre compuesto se conserva entero',
+    cleanDonorName('María Fernanda Restrepo') === 'María Fernanda Restrepo');
+check('los espacios se normalizan, el nombre no se toca',
+    cleanDonorName('  Ana   Pérez  ') === 'Ana Pérez');
+check('un nombre larguísimo se recorta SIN partir palabras',
+    (() => {
+        const largo = 'Juan Sebastián de la Santísima Trinidad Restrepo Gutiérrez';
+        const corto = cleanDonorName(largo, 20);
+        return corto.length <= 20 && !largo.slice(corto.length).startsWith(corto.slice(-1) + 'x')
+            && largo.startsWith(corto) && !/\s$/.test(corto) && corto.split(' ').every(w => largo.split(' ').includes(w));
+    })());
+check('si la primera palabra ya se pasa del tope, se deja entera antes que mutilada',
+    cleanDonorName('Bartolomé', 4) === 'Bartolomé');
+
+// El TOTAL cuenta a los anónimos: la anonimidad esconde el nombre, no el
+// hecho. Un aporte anónimo que no sumara le restaría a quien lo hizo el
+// reconocimiento de que existió.
+grupo('Quiénes ya aportaron — el total y los nombres');
+const roll1 = buildContributorRoll([
+    aporte({ donorName: 'Ana Pérez', date: '2026-08-01T10:00:00Z' }),
+    aporte({ donorName: 'Carlos Ruiz', isAnonymous: true, date: '2026-08-02T10:00:00Z' }),
+]);
+check('dos aportes, uno anónimo: total 2 y UN solo nombre',
+    roll1.total === 2 && eq(roll1.names, ['Ana Pérez']));
+check('el aporte anónimo suma al total y se declara aparte',
+    roll1.anonymous === 1 && roll1.named === 1);
+
+const roll2 = buildContributorRoll([
+    aporte({ donorName: 'Ana Pérez', date: '2026-08-01T10:00:00Z' }),
+    aporte({ donorName: 'Beto Gómez', date: '2026-08-03T10:00:00Z' }),
+    aporte({ donorName: 'Cami Soto', date: '2026-08-02T10:00:00Z' }),
+]);
+check('los nombres van del más reciente al más antiguo',
+    eq(roll2.names, ['Beto Gómez', 'Cami Soto', 'Ana Pérez']));
+
+// Quien aportó dos veces aparece UNA vez en el carrusel —«Ana · Ana» se lee
+// como un fallo— pero sus dos aportes cuentan.
+const roll3 = buildContributorRoll([
+    aporte({ donorName: 'Ana Pérez' }),
+    aporte({ donorName: 'ana pérez', date: '2026-08-05T10:00:00Z' }),
+]);
+check('un aportante repetido aparece una vez y sus dos aportes cuentan',
+    roll3.total === 2 && roll3.names.length === 1);
+
+check('sin aportes válidos, total 0 y ningún nombre',
+    (() => { const r = buildContributorRoll([aporte({ status: 'refunded' })]); return r.total === 0 && r.names.length === 0; })());
+check('sin lista, no revienta', (() => { const r = buildContributorRoll(null); return r.total === 0 && eq(r.names, []); })());
+check('todos anónimos: hay total y no hay nombres',
+    (() => {
+        const r = buildContributorRoll([aporte({ isAnonymous: true }), aporte({ isAnonymous: true })]);
+        return r.total === 2 && r.names.length === 0;
+    })());
+check('la lista de nombres tiene tope y el total NO',
+    (() => {
+        const muchos = Array.from({ length: ROLL_MAX_NAMES + 15 }, (_, i) => aporte({ donorName: `Persona ${i}`, date: `2026-08-01T10:00:${String(i).padStart(2, '0')}Z` }));
+        const r = buildContributorRoll(muchos);
+        return r.names.length === ROLL_MAX_NAMES && r.total === ROLL_MAX_NAMES + 15;
+    })());
+
+// ─── Lo que no se ve ejecutando el criterio ────────────────────────────────
+grupo('Quiénes ya aportaron — lo que no se ve ejecutando el criterio');
+const rollSrc = readFileSync(new URL('../server/lib/contributorRoll.js', import.meta.url), 'utf8');
+const ctrlRoll = readFileSync(new URL('../server/controllers/contributionCampaignController.js', import.meta.url), 'utf8');
+const rutasRoll = readFileSync(new URL('../server/routes/contribution-campaigns.js', import.meta.url), 'utf8');
+const rollTsx = readFileSync(new URL('../src/components/campaign/ContributorRoll.tsx', import.meta.url), 'utf8');
+const landingRoll = readFileSync(new URL('../src/components/campaign/CampaignLanding.tsx', import.meta.url), 'utf8');
+
+check('la ruta pública está montada y es de sólo lectura',
+    /router\.get\('\/:id\/contributors', getCampaignContributors\);/.test(rutasRoll));
+
+// El endpoint corre en la página pública de una emergencia: degrada, nunca 500.
+check('el endpoint degrada a vacío en vez de responder 500',
+    /getCampaignContributors[\s\S]*?catch \(e\)[\s\S]*?res\.json\(\{ total: 0, names: \[\] \}\)/.test(ctrlRoll));
+
+// ⚠️ NO se agrega una columna de campaña a `Donation`: es la trampa de
+// `logo_intl` en su versión más cara —`Donation` se consulta con findMany sin
+// select en media plataforma— y caería sobre el cobro.
+check('no se le agrega columna de campaña a Donation',
+    !/ALTER TABLE "Donation"/.test(ctrlRoll)
+    && !/campaignId\s+String/.test(readFileSync(new URL('../server/prisma/schema.prisma', import.meta.url), 'utf8')
+        .split('model Donation {')[1].split('}')[0]));
+
+// El casteo a jsonb de una columna de TEXTO estalla con una sola fila mal
+// formada, y Postgres no garantiza que el filtro que lo protege se evalúe
+// antes. El SQL filtra amplio y la comprobación exacta se hace en JS.
+check('la campaña se comprueba en JS, no casteando rawPayload a jsonb',
+    !/rawPayload"?\s*::\s*jsonb/.test(ctrlRoll)
+    && /String\(payload\?\.campaignId \|\| ''\) !== String\(campaignId\)/.test(ctrlRoll));
+
+// Un LIMIT truncaría el TOTAL, y un total truncado presentado como total es
+// peor que no mostrar ninguno. La cota por fecha no deja fuera nada.
+check('la consulta de pagos no lleva LIMIT',
+    !/rawPayload" LIKE \$1[\s\S]{0,120}LIMIT/.test(ctrlRoll));
+
+// El total y los nombres salen de la MISMA consulta: con dos fuentes, la
+// línea podría decir «3 aportes» y saber sólo dos nombres de tres aportantes
+// que sí dieron su nombre, y nadie podría explicar la diferencia.
+check('el total sale de las donaciones, no del contador de métricas',
+    /const roll = buildContributorRoll\(aportes\);/.test(ctrlRoll)
+    && !/donation_completed[\s\S]{0,200}contributorRollFor/.test(ctrlRoll));
+
+// `named` y `anonymous` se quedan del lado del servidor: decir cuántos
+// aportes se hicieron en anónimo es lo que quien eligió el anónimo no pidió.
+check('la respuesta pública lleva sólo total y nombres',
+    /return \{ total: roll\.total, names: roll\.names \};/.test(ctrlRoll));
+
+// Sin vaciar la caché, quien acaba de aportar podría recargar y no verse — y
+// esta línea existe justamente para que se vea. Sólo con el aporte
+// confirmado: las vistas llegan de a cientos.
+check('un aporte confirmado vacía la caché de la línea',
+    /if \(type === 'donation_completed'\) invalidateContributorRoll\(campaignId\);/.test(ctrlRoll));
+check('un reembolso también la vacía',
+    /invalidateContributorRoll\(campaignId\)/.test(
+        readFileSync(new URL('../server/controllers/paymentController.js', import.meta.url), 'utf8')));
+
+// Los nombres son DATOS, no lenguaje (v4.662): el traductor del sitio
+// convertiría el apellido de alguien en otra palabra.
+check('el nombre lleva data-no-translate', /data-no-translate/.test(rollTsx));
+
+// Sin aportes no se pinta nada: «0 aportes» debajo del botón no es un dato
+// neutro, es un cartel que desanima justo donde se pide ayuda.
+check('sin aportes la línea no se pinta', /if \(!total\) return null;/.test(rollTsx));
+
+// Con un solo nombre no hay intervalo, y el freno del cursor se suelta solo.
+check('con menos de dos nombres no hay intervalo',
+    /if \(names\.length < 2 \|\| quieto\) return;/.test(rollTsx));
+check('el freno del cursor es reversible',
+    /onMouseEnter=\{\(\) => setQuieto\(true\)\}/.test(rollTsx)
+    && /onMouseLeave=\{\(\) => setQuieto\(false\)\}/.test(rollTsx));
+
+// El singular no es un detalle: «1 aportes» se lee como un texto armado por
+// una máquina, justo en la línea que celebra que la campaña acompaña.
+check('el rótulo distingue singular de plural',
+    /\$\{total\} \$\{total === 1 \? 'aporte' : 'aportes'\}/.test(rollTsx));
+
+// El índice se acota AL LEER: si se quitan nombres —un reembolso—, el
+// guardado puede quedar fuera de rango y sin esto habría un render vacío.
+check('el índice se acota al leer, no con otro efecto',
+    /names\[Math\.min\(idx, names\.length - 1\)\]/.test(rollTsx));
+
+// La línea va JUSTO DEBAJO del botón, dentro de la tarjeta: puesta más abajo
+// llegaría cuando quien mira ya decidió.
+check('la línea va justo debajo del botón de aportar',
+    /\{card\.buttonText \|\| 'APORTAR'\}[\s\S]{0,60}<\/button>[\s\S]{0,600}<ContributorRoll roll=\{roll\} accent=\{accent\} \/>/.test(landingRoll));
+
+// Se pide APARTE de /active: un dato que cambia con cada aporte no tiene por
+// qué gobernar el ritmo de la caché de la campaña, y si falla la línea no se
+// pinta y la página se ve igual.
+check('la línea se pide aparte de la campaña y su fallo no rompe la página',
+    /\/contributors`\)/.test(landingRoll)
+    && /\.catch\(\(\) => \{ \/\* sin línea; la página no depende de esto \*\/ \}\)/.test(landingRoll));
+
+// No hay espejo en el navegador A PROPÓSITO: el criterio se aplica entero en
+// el servidor y la pantalla sólo muestra el resultado, así que un espejo
+// sería una copia sin consumidor — y las copias se separan en silencio.
+check('no hay espejo del criterio en el navegador',
+    !readdirSync(new URL('../src/lib/', import.meta.url)).includes('contributorRoll.ts'));
+
 
 // ─── Resumen ───────────────────────────────────────────────────────────────
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);

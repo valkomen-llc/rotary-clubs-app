@@ -696,6 +696,13 @@ async function routeDonationRefund(event) {
         console.log(`[REFUND] aporte ${aporte.id} marcado como reembolsado (${aporte.amount} ${aporte.currency})`);
 
         const campaignId = JSON.parse(pago.rawPayload || '{}').campaignId || null;
+        // Un aporte reembolsado deja de contar en la línea de «quiénes ya
+        // aportaron» (v4.862). Sin vaciar la caché, la página seguiría
+        // diciendo hasta un minuto que se recibió un dinero que se devolvió.
+        try {
+            const { invalidateContributorRoll } = await import('./contributionCampaignController.js');
+            invalidateContributorRoll(campaignId);
+        } catch { /* la caché no rompe un reembolso */ }
         await sendContributionNotifications({
             contributionId: aporte.id,
             clubId: aporte.clubId,

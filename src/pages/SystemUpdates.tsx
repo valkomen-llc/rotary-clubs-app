@@ -34,9 +34,35 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.861.0 | 2026-08-17 (La tarifa nueva se aplica a lo que aún no se retira)
-// Cache bust: 2026-08-17x
+// UI V4.862.0 | 2026-08-17 (Quiénes ya aportaron, debajo del botón de aportar)
+// Cache bust: 2026-08-17y
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.862.0',
+        title: 'Quiénes ya aportaron, debajo del botón de aportar 🤝',
+        description: 'La tarjeta de aporte de una campaña muestra ahora, en una sola línea justo debajo del botón, cuántos aportes lleva la campaña y el nombre de quien aportó — pasando solo de uno al siguiente. Un aporte hecho en anónimo suma al total y NO publica ningún nombre.',
+        date: new Date().toISOString(),
+        tags: ['campanas', 'aportes', 'publico'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Una línea: «2 aportes · Nombre del aportante», con los nombres pasando solos.' },
+            { type: 'added', text: 'Un aporte anónimo cuenta en el total y su nombre no sale por ninguna vía.' },
+            { type: 'added', text: 'La línea se detiene con el cursor encima y sigue al apartarlo.' },
+            { type: 'added', text: 'npm run test:contributors:ui — 12 comprobaciones en un navegador de verdad.' },
+        ],
+        details: [
+            'EL ANÓNIMO SE DECIDE EN EL SERVIDOR, no en la pantalla. Si el nombre viajara en la respuesta y la página lo escondiera, bastaría abrir la consola del navegador para leerlo. Es la misma decisión que tomó la exportación de la Bóveda con el correo de un aportante anónimo: el dato sigue guardado y deja de SALIR.',
+            'Y va más lejos que la casilla: un aporte no anónimo cuyo nombre esté vacío tampoco publica nada. No hay qué mostrar, y un renglón en blanco en medio se lee como un error del sitio.',
+            'EL TOTAL Y LOS NOMBRES SALEN DE LA MISMA CONSULTA. El total podría salir del contador de métricas, que es más barato, pero ese contador no baja cuando un aporte se reembolsa y los nombres tienen que salir de los aportes igual. Con dos fuentes, la línea podría decir «3 aportes» y saber sólo dos nombres de tres aportantes que sí dieron el suyo, y nadie podría explicar la diferencia.',
+            'Un aporte reembolsado deja de contar: ya no es un ingreso, y seguir contándolo sería decir que se recibió un dinero que se devolvió.',
+            'El nombre se muestra TAL CUAL lo escribieron. No se recorta a dos palabras: quien firma «María Fernanda Restrepo» no se llama «María Fernanda».',
+            'Quien aportó dos veces aparece UNA vez en la línea —«Ana · Ana» se lee como un fallo— y sus dos aportes cuentan.',
+            'Sin aportes no se pinta nada. «0 aportes» debajo del botón no es un dato neutro: es un cartel que desanima justo donde se pide ayuda.',
+            'Con todos los aportes en anónimo queda el total y ningún nombre, que es la verdad completa de lo que se puede decir.',
+            'La línea se pide APARTE de la campaña: si esa consulta falla, la línea no se pinta y la página se ve exactamente igual que antes.',
+        ],
+    },
     {
         version: '4.861.0',
         title: 'La tarifa nueva se puede aplicar a los aportes ya recibidos ⚖️',

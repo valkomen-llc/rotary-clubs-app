@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.861.0",
-  "cache_bust": "2026-08-17x (La tarifa nueva se puede aplicar a los aportes que todavía no se pueden retirar.)",
+  "version": "4.862.0",
+  "cache_bust": "2026-08-17y (Debajo del botón de aportar: cuántos aportes lleva la campaña y quiénes dieron su nombre.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -43,6 +43,7 @@
     "test:projects-page": "node scripts/test-projects-page.mjs",
     "test:site-name": "node scripts/test-site-name.mjs",
     "test:contribution": "node scripts/test-contribution.mjs",
+    "test:contributors:ui": "node scripts/test-contributor-roll-ui.mjs",
     "test:ecosystem": "node scripts/test-ecosystem.mjs",
     "test:ecosystem:ui": "node scripts/test-ecosystem-ui.mjs",
     "test:design": "node scripts/test-design.mjs",

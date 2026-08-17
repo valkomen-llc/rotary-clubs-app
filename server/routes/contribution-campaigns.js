@@ -10,7 +10,7 @@ import { authMiddleware, roleMiddleware, requireSiteAdmin } from '../middleware/
 import {
     listCampaigns, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
-    getActiveCampaign, getPreviewCampaign,
+    getActiveCampaign, getPreviewCampaign, getCampaignContributors,
     listCenters, saveCenters,
     getSiteCampaign, saveSiteOverride, saveSiteCenters,
     trackCampaignEvent, getCampaignMetrics,
@@ -32,6 +32,10 @@ router.put('/site/override', authMiddleware, requireSiteAdmin, saveSiteOverride)
 router.put('/site/centers', authMiddleware, requireSiteAdmin, saveSiteCenters);
 
 router.get('/:id/preview', getPreviewCampaign);
+// v4.862 — cuántos aportes lleva la campaña y quiénes dieron su nombre. Sólo
+// lectura, sin sesión y sin PII: un aporte anónimo no viaja acá ni con el
+// nombre escondido — se descarta en el servidor (ver contributorRoll.js).
+router.get('/:id/contributors', getCampaignContributors);
 // F5 — la página reporta vista y clics. Público y sin PII; los eventos que
 // valen dinero (checkout, donación) los escribe el servidor, no el navegador.
 router.post('/:id/track', trackCampaignEvent);
