@@ -20,6 +20,7 @@
 // ════════════════════════════════════════════════════════════════════
 import Stripe from 'stripe';
 import db from '../lib/db.js';
+import { TRM_PROVIDERS } from '../lib/trm.js';
 import EmailService from '../services/EmailService.js';
 import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMasterForm.js';
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
@@ -1355,90 +1356,11 @@ export const computePricing = (cfg, trm) => {
 // Nunca se usan valores estáticos: se consulta un proveedor cuya fuente es la
 // TRM oficial de la Superintendencia Financiera de Colombia (por defecto, el
 // dataset abierto de datos.gov.co) con proveedores de respaldo configurables.
-const TRM_PROVIDERS = {
-    // Fuente oficial: Superintendencia Financiera de Colombia, publicada en
-    // el portal de Datos Abiertos (dataset 32sa-8pi3).
-    superfinanciera: {
-        label: 'Superintendencia Financiera de Colombia (datos.gov.co)',
-        fetch: async () => {
-            const url = 'https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciadesde%20DESC';
-            const r = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const rows = await r.json();
-            const row = Array.isArray(rows) ? rows[0] : null;
-            const rate = Number(row?.valor);
-            if (!rate || !isFinite(rate)) throw new Error('Respuesta sin valor de TRM');
-            return { rate, validFrom: row?.vigenciadesde || null, validTo: row?.vigenciahasta || null };
-        },
-    },
-    open_er_api: {
-        label: 'open.er-api.com',
-        fetch: async () => {
-            const r = await fetch('https://open.er-api.com/v6/latest/USD');
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const rate = Number(data?.rates?.COP);
-            if (!rate) throw new Error('Respuesta sin COP');
-            return { rate };
-        },
-    },
-    exchangerate_host: {
-        label: 'exchangerate.host',
-        fetch: async () => {
-            const key = process.env.EXCHANGERATE_HOST_KEY;
-            const url = key
-                ? `https://api.exchangerate.host/live?access_key=${encodeURIComponent(key)}&source=USD&currencies=COP`
-                : 'https://api.exchangerate.host/latest?base=USD&symbols=COP';
-            const r = await fetch(url);
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const rate = Number(data?.quotes?.USDCOP ?? data?.rates?.COP);
-            if (!rate) throw new Error('Respuesta sin COP');
-            return { rate };
-        },
-    },
-    openexchangerates: {
-        label: 'openexchangerates.org',
-        fetch: async () => {
-            const appId = process.env.OPENEXCHANGERATES_APP_ID;
-            if (!appId) throw new Error('Falta OPENEXCHANGERATES_APP_ID');
-            const r = await fetch(`https://openexchangerates.org/api/latest.json?app_id=${encodeURIComponent(appId)}&symbols=COP`);
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const rate = Number(data?.rates?.COP);
-            if (!rate) throw new Error('Respuesta sin COP');
-            return { rate };
-        },
-    },
-    currencyapi: {
-        label: 'currencyapi.com',
-        fetch: async () => {
-            const key = process.env.CURRENCY_API_KEY;
-            if (!key) throw new Error('Falta CURRENCY_API_KEY');
-            const r = await fetch(`https://api.currencyapi.com/v3/latest?apikey=${encodeURIComponent(key)}&base_currency=USD&currencies=COP`);
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const rate = Number(data?.data?.COP?.value);
-            if (!rate) throw new Error('Respuesta sin COP');
-            return { rate };
-        },
-    },
-    apilayer: {
-        label: 'apilayer — Exchange Rates Data API',
-        fetch: async () => {
-            const key = process.env.APILAYER_KEY;
-            if (!key) throw new Error('Falta APILAYER_KEY');
-            const r = await fetch('https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols=COP', {
-                headers: { apikey: key },
-            });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const data = await r.json();
-            const rate = Number(data?.rates?.COP);
-            if (!rate) throw new Error('Respuesta sin COP');
-            return { rate };
-        },
-    },
-};
+// v4.846 — Los proveedores viven en `server/lib/trm.js`: la Bóveda necesita la
+// misma cadena para convertir a pesos la comisión que Stripe cobra en dólares,
+// y una segunda copia se separaría en silencio de ésta. El resolutor de ABAJO
+// se queda acá porque es de la Feria: depende de `ProjectFairConfig` (proveedor
+// elegido, respaldos, tasa manual) y de su propio criterio de vencimiento.
 
 // Caché en memoria (por instancia) + caché en BD (sobrevive cold starts).
 let _trmMemo = null; // { date, rate, source, fetchedAt }

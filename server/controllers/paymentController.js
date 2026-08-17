@@ -5,6 +5,7 @@ import DomainProvisioningService from '../services/DomainProvisioningService.js'
 import prisma from '../lib/prisma.js';
 import { ensureWalletSchema } from '../lib/ensureWalletSchema.js';
 import { stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
+import { trmForDate } from '../lib/trm.js';
 import { fromStripeAmount } from '../lib/money.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
@@ -693,11 +694,16 @@ async function handleSuccessfulDonationCheckout(session) {
                 // `bt.fee` está en la unidad mínima de la moneda del BALANCE
                 // TRANSACTION, no del cobro: por eso `fromStripeAmount` recibe
                 // `bt.currency` y no `currency`.
+                // La TRM del día del cobro. Es una consulta de red dentro del
+                // webhook, así que `trmForDate` nunca lanza: sin tasa se cae a
+                // la de Stripe y el aporte se registra igual.
+                const trm = await trmForDate(charge?.created ? charge.created * 1000 : Date.now());
                 const comision = stripeFeeInChargeCurrency({
                     fee: fromStripeAmount(bt.fee, bt.currency),
                     feeCurrency: bt.currency,
                     chargeCurrency: currency,
                     exchangeRate: bt.exchange_rate,
+                    trm,
                 });
 
                 if (comision.amount !== null) {
@@ -780,6 +786,9 @@ async function handleSuccessfulDonationCheckout(session) {
                         // aporte son 4.750 pesos?» no se puede contestar.
                         stripeFeeOriginal: detalleComision?.original || null,
                         stripeFeeRate: detalleComision?.rate ?? null,
+                        stripeFeeRateSource: detalleComision?.rateSource || null,
+                        stripeFeeRateDate: detalleComision?.rateDate || null,
+                        stripeFeeRateOfficial: !!detalleComision?.rateOfficial,
                         stripeFeeConverted: detalleComision?.converted ?? false,
                         stripeFeeIssue: detalleComision?.amount === null ? (detalleComision?.reason || null) : null,
                     })

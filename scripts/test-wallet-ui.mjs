@@ -98,7 +98,10 @@ const traza = (currency, gross, net, fee, origen, tarjeta) => ({
     receiptNumber: currency === 'COP' ? '1157-2878' : '1904-4540',
     // El caso real: sobre el cobro en pesos, Stripe cobró 1,16 USD.
     stripeFeeOriginal: currency === 'COP' ? { amount: 1.16, currency: 'USD' } : null,
-    stripeFeeRate: currency === 'COP' ? 0.000244 : null,
+    stripeFeeRate: currency === 'COP' ? 4100 : null,
+    stripeFeeRateSource: currency === 'COP' ? 'Superintendencia Financiera de Colombia (datos.gov.co)' : null,
+    stripeFeeRateDate: currency === 'COP' ? '2026-08-16' : null,
+    stripeFeeRateOfficial: currency === 'COP',
     stripeFeeConverted: currency === 'COP',
 });
 
@@ -280,8 +283,11 @@ check('enlaza al recibo de Stripe',
 check('el neto descuenta la comisión CONVERTIDA', /42\.746/.test(abierta),
     'el neto tiene que restar la comisión en pesos, no 1,16');
 check('se muestra el importe original de la comisión',
-    /1,16/.test(abierta) && /USD/.test(abierta),
+    /USD\s*1,16/.test(abierta),
     'sin el original, una comisión convertida es un número que nadie puede explicar');
+check('se muestra la TASA y su FUENTE',
+    /4\.100/.test(abierta) && /Superintendencia Financiera/.test(abierta), abierta.slice(0, 700));
+check('y la FECHA de la tasa', /2026-08-16/.test(abierta));
 check('el neto se escribe en pesos, sin céntimos', !/42\.746,\d/.test(abierta));
 
 // Un vínculo deducido no puede presentarse como un hecho.

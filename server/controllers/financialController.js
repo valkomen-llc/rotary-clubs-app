@@ -12,6 +12,7 @@ import {
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
 import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
+import { trmForDate } from '../lib/trm.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -590,6 +591,9 @@ const movementOf = (p, now) => {
         // comisión de este aporte son 4.750 pesos?» no se puede contestar.
         stripeFeeOriginal: payload.stripeFeeOriginal || null,
         stripeFeeRate: payload.stripeFeeRate ?? null,
+        stripeFeeRateSource: payload.stripeFeeRateSource || null,
+        stripeFeeRateDate: payload.stripeFeeRateDate || null,
+        stripeFeeRateOfficial: !!payload.stripeFeeRateOfficial,
         stripeFeeConverted: !!payload.stripeFeeConverted,
     };
 };
@@ -897,12 +901,29 @@ export const syncPaymentsWithStripe = async (req, res) => {
                 provider: 'stripe',
                 status: 'succeeded',
                 providerRef: { not: null },
-                ...(force ? {} : { availableOn: null })
+                // v4.846 — Acá estaba el motivo de que sincronizar no cambiara
+                // NADA. El filtro era sólo `availableOn: null`, es decir «los
+                // que nunca se sincronizaron», y los dos aportes del Distrito
+                // YA tenían fecha de liberación: quedaban fuera de la lista de
+                // candidatos, el botón contestaba «todos sincronizados» y ni la
+                // comisión convertida ni el origen llegaban nunca.
+                //
+                // Ahora también entra el pago cuya traza es ANTERIOR a la
+                // conversión —`stripeFeeRate` es la marca que la v4.846 deja
+                // escrita en `rawPayload`—. Es idempotente: una vez convertido,
+                // deja de ser candidato solo.
+                ...(force ? {} : {
+                    OR: [
+                        { availableOn: null },
+                        { rawPayload: null },
+                        { NOT: { rawPayload: { contains: 'stripeFeeRate' } } },
+                    ],
+                })
             },
             select: {
                 id: true, providerRef: true, amount: true, currency: true,
                 applicationFee: true, availableOn: true, stripeBalanceTxId: true,
-                rawPayload: true
+                rawPayload: true, createdAt: true
             },
             take: 200
         });
@@ -945,11 +966,16 @@ export const syncPaymentsWithStripe = async (req, res) => {
                 // `stripeFeeInChargeCurrency`: el balance transaction se
                 // denomina en la moneda de liquidación de la cuenta y hasta
                 // v4.844 se restaba tal cual del bruto.
+                // La TRM del día en que ocurrió el cobro, no la de hoy: un
+                // aporte de hace tres meses convertido con la tasa actual daría
+                // una cifra distinta cada vez que alguien abriera la ficha.
+                const trm = await trmForDate(charge?.created ? charge.created * 1000 : payment.createdAt);
                 const comision = stripeFeeInChargeCurrency({
                     fee: fromStripeAmount(bt.fee, bt.currency),
                     feeCurrency: bt.currency,
                     chargeCurrency: payment.currency,
                     exchangeRate: bt.exchange_rate,
+                    trm,
                 });
                 const totalAmount = payment.amount;
                 const applicationFee = totalAmount * PLATFORM_FEE_PERCENTAGE;
@@ -1009,6 +1035,9 @@ export const syncPaymentsWithStripe = async (req, res) => {
                     stripeFee: realFee,
                     stripeFeeOriginal: comision.original || null,
                     stripeFeeRate: comision.rate ?? null,
+                    stripeFeeRateSource: comision.rateSource || null,
+                    stripeFeeRateDate: comision.rateDate || null,
+                    stripeFeeRateOfficial: !!comision.rateOfficial,
                     stripeFeeConverted: comision.converted ?? false,
                     campaignId: payload.campaignId ?? (metadata?.campaignId || null),
                     campaignSlug: payload.campaignSlug ?? (metadata?.campaignSlug || null),

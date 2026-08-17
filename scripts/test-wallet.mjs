@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import {
     linkDonationsToPayments, parsePayload, originOf, methodOf, stripeFeeInChargeCurrency,
 } from '../server/lib/paymentTrace.js';
+import { bogotaDay, TRM_PROVIDERS } from '../server/lib/trm.js';
 import {
     ZERO_DECIMAL, stripeDecimals, CURRENCIES, currencyMeta, normalizeCurrency,
     toStripeAmount, fromStripeAmount, roundMoney, formatMoney,
@@ -405,6 +406,74 @@ check('EL CASO REAL: la comisión viene en dólares sobre un cobro en pesos', ()
     ok(neto !== 47499, 'el neto que mostraba la pantalla estaba mal calculado');
 });
 
+check('LA TRM manda sobre la tasa de Stripe', () => {
+    // Decisión del equipo: la TRM es la tasa OFICIAL colombiana. La de Stripe
+    // lleva su propio margen de conversión —sirve para cuadrar contra el libro
+    // de Stripe, no para decir qué recibirá el club en pesos—.
+    const r = stripeFeeInChargeCurrency({
+        fee: 1.16, feeCurrency: 'usd', chargeCurrency: 'COP',
+        exchangeRate: 0.000244,
+        trm: { rate: 4100, source: 'Superintendencia Financiera de Colombia (datos.gov.co)', date: '2026-08-16', official: true },
+    });
+    eq(r.rateKind, 'trm');
+    eq(Math.round(r.amount), 4756, '1,16 × 4.100 =');
+    ok(r.rateOfficial, 'la fuente oficial se declara como tal');
+    eq(r.rateDate, '2026-08-16', 'y con la fecha de la tasa:');
+});
+
+check('sin TRM se usa la tasa de Stripe, y se DICE', () => {
+    const r = stripeFeeInChargeCurrency({
+        fee: 1.16, feeCurrency: 'usd', chargeCurrency: 'COP', exchangeRate: 0.000244, trm: null,
+    });
+    eq(r.rateKind, 'stripe');
+    ok(!r.rateOfficial, 'la de Stripe NO es la tasa oficial');
+    ok(r.amount > 4000 && r.amount < 5500, `dio ${r.amount}`);
+});
+
+check('la tasa se publica SIEMPRE en la misma dirección', () => {
+    // Stripe la da como «COP × tasa = USD» (0,000244). Publicarla así al lado
+    // de una TRM de 4.100 haría imposible reconocer que son lo mismo.
+    const r = stripeFeeInChargeCurrency({
+        fee: 1, feeCurrency: 'usd', chargeCurrency: 'COP', exchangeRate: 0.000244,
+    });
+    ok(r.rate > 1000, `la tasa publicada debe ser ~4.098, dio ${r.rate}`);
+});
+
+check('la TRM sólo se aplica a USD → COP', () => {
+    // Es la tasa oficial COLOMBIANA: usarla para convertir a euros sería
+    // aplicar una tasa que no describe esa conversión.
+    const r = stripeFeeInChargeCurrency({
+        fee: 1, feeCurrency: 'usd', chargeCurrency: 'EUR',
+        exchangeRate: 1.1, trm: { rate: 4100, source: 'TRM' },
+    });
+    eq(r.rateKind, 'stripe', 'con EUR no puede usarse la TRM:');
+});
+
+check('el día de la TRM es el de BOGOTÁ, no el del servidor', () => {
+    // La función corre en UTC. Un aporte de las 8 de la noche en Colombia es
+    // del día siguiente en UTC y le tocaría otra tasa.
+    eq(bogotaDay('2026-08-17T02:31:00.000Z'), '2026-08-16',
+        'las 2:31 UTC son las 9:31 p.m. del día anterior en Bogotá:');
+    eq(bogotaDay('2026-08-16T19:00:00.000Z'), '2026-08-16');
+    eq(bogotaDay('no es una fecha'), null);
+});
+
+check('la fuente oficial es la Superintendencia Financiera', () => {
+    ok(TRM_PROVIDERS.superfinanciera.official, 'debe marcarse como oficial');
+    ok(!TRM_PROVIDERS.open_er_api.official, 'un proveedor de mercado NO es la TRM oficial');
+    ok(typeof TRM_PROVIDERS.superfinanciera.fetchForDate === 'function',
+        'la TRM histórica es lo que un aporte necesita: la de su día, no la de hoy');
+});
+
+check('una fecha PASADA no se convierte con la tasa de hoy', () => {
+    // Sólo el proveedor oficial sabe consultar una fecha; los de respaldo
+    // devuelven la de hoy, y usarla para un aporte de hace tres meses sería
+    // una cifra falsa presentada como histórica.
+    const src = stripComments(readSrc('server/lib/trm.js'));
+    ok(/esPasado \? provider\.fetchForDate : provider\.fetch/.test(src),
+        'volvió a usarse la tasa de hoy para una fecha pasada');
+});
+
 check('misma moneda: no se convierte nada', () => {
     const r = stripeFeeInChargeCurrency({
         fee: 0.59, feeCurrency: 'usd', chargeCurrency: 'USD', exchangeRate: null,
@@ -579,6 +648,24 @@ check('la comisión NO se resta sin convertir', () => {
             `${archivo}: volvió \`bt.fee / 100\` — la comisión viene en la moneda de liquidación`);
         ok(/stripeFeeInChargeCurrency/.test(src), `${archivo} debe convertirla`);
     }
+});
+
+check('el sincronizador alcanza a los pagos YA sincronizados', () => {
+    // Éste era el motivo de que pulsar «Sincronizar con Stripe» no cambiara
+    // nada: el filtro era sólo `availableOn: null` —«los que nunca se
+    // sincronizaron»— y los dos aportes del Distrito ya tenían fecha de
+    // liberación, así que quedaban fuera de la lista de candidatos.
+    const src = stripComments(readSrc('server/controllers/financialController.js'));
+    ok(/stripeFeeRate/.test(src) && /contains/.test(src),
+        'el filtro volvió a dejar fuera los pagos cuya comisión no se convirtió');
+});
+
+check('la TRM vive en UN solo sitio', () => {
+    const fair = stripComments(readSrc('server/controllers/projectFairController.js'));
+    ok(/from '\.\.\/lib\/trm\.js'/.test(fair),
+        'la Feria debe importar los proveedores, no tener su propia copia');
+    ok(!/^const TRM_PROVIDERS = \{/m.test(fair),
+        'volvió una segunda cadena de proveedores de TRM');
 });
 
 check('el origen se busca en la sesión, no sólo en el PaymentIntent', () => {

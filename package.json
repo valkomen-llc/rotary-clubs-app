@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.845.0",
-  "cache_bust": "2026-08-17h (La comisión de Stripe se convierte a la moneda del cobro.)",
+  "version": "4.846.0",
+  "cache_bust": "2026-08-17i (La comisión de Stripe se convierte con la TRM del día del cobro.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

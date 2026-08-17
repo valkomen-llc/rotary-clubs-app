@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
-import { formatMoney } from '../../lib/locale';
+import { formatMoney, formatNumber } from '../../lib/locale';
 import { toast } from 'sonner';
 
 // v4.841 — Un saldo por MONEDA. Hasta v4.840 la pantalla recibía un escalar
@@ -74,7 +74,14 @@ interface Movement {
      *  dólares: lo que se resta del bruto es una conversión, y hay que poder
      *  ver de dónde salió. */
     stripeFeeOriginal?: { amount: number; currency: string } | null;
+    /** Cuántas unidades de la moneda del cobro vale una de la de la comisión.
+     *  Se publica siempre en esa dirección —también cuando viene de Stripe, que
+     *  la da al revés— o la ficha mostraría «0,000244» al lado de «4.100» y
+     *  nadie sabría que son la misma cosa. */
     stripeFeeRate?: number | null;
+    stripeFeeRateSource?: string | null;
+    stripeFeeRateDate?: string | null;
+    stripeFeeRateOfficial?: boolean;
     stripeFeeConverted?: boolean;
 }
 
@@ -1025,21 +1032,33 @@ function DonorCard({ donation, movementOnly, holdingDays }: {
                                     <span>Monto pagado por el donante</span>
                                     <span className="font-mono font-semibold text-gray-900" data-no-translate>{money(mov.grossAmount, mov.currency)}</span>
                                 </div>
+                                {/* La comisión de Stripe: el importe que cobró EN SU
+                                    MONEDA y, al lado, su equivalente en la del cobro.
+                                    Stripe la denomina en la moneda de liquidación de
+                                    la cuenta —dólares—, así que sobre un aporte en
+                                    pesos lo que se resta es una CONVERSIÓN: sin ver el
+                                    original y la tasa, «−$ 4.754» es un número que
+                                    nadie puede explicar. */}
                                 <div className="flex justify-between text-gray-500">
                                     <span>
                                         − Tarifa de procesamiento de Stripe
-                                        {/* Cuando el cobro y la liquidación van en
-                                            monedas distintas, lo que se resta es una
-                                            CONVERSIÓN. Se muestra el original o el
-                                            número no se puede explicar. */}
                                         {mov.stripeFeeConverted && mov.stripeFeeOriginal && (
                                             <span className="block text-[10px] text-gray-400" data-no-translate>
-                                                {moneyCode(mov.stripeFeeOriginal.amount, mov.stripeFeeOriginal.currency)} cobrados
-                                                por Stripe, convertidos a {mov.currency} con su tasa
+                                                {moneyCode(mov.stripeFeeOriginal.amount, mov.stripeFeeOriginal.currency)}
+                                                {mov.stripeFeeRate ? ` × ${formatNumber(mov.stripeFeeRate)}` : ''}
+                                                {mov.stripeFeeRateSource ? ` · ${mov.stripeFeeRateSource}` : ''}
+                                                {mov.stripeFeeRateDate ? ` (${mov.stripeFeeRateDate})` : ''}
                                             </span>
                                         )}
                                     </span>
-                                    <span className="font-mono" data-no-translate>−{money(mov.stripeFee, mov.currency)}</span>
+                                    <span className="font-mono text-right" data-no-translate>
+                                        {mov.stripeFeeConverted && mov.stripeFeeOriginal && (
+                                            <span className="block text-[10px] text-gray-400">
+                                                −{moneyCode(mov.stripeFeeOriginal.amount, mov.stripeFeeOriginal.currency)}
+                                            </span>
+                                        )}
+                                        −{money(mov.stripeFee, mov.currency)}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between text-gray-500">
                                     {/* REGLA EXPRESA DEL CLIENTE (v4.842) — este rótulo
