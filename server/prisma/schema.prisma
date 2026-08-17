@@ -627,6 +627,14 @@ model Payment {
   updatedAt            DateTime  @updatedAt
   club                 Club      @relation(fields: [clubId], references: [id])
   order                Order?    @relation(fields: [orderId], references: [id])
+
+  // v4.841 — Lo que hace REAL la idempotencia del webhook. Está declarado
+  // también en `ensureWalletSchema.js`, que lo crea en runtime con este mismo
+  // nombre: el guardián de `db:push` compara TABLAS, así que un índice que
+  // existiera sólo en la base lo borraría la primera sincronización.
+  // En Postgres los NULL son distintos entre sí, así que los pagos sin
+  // `providerRef` no chocan.
+  @@unique([provider, providerRef])
 }
 
 model PaymentProviderConfig {

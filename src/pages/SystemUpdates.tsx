@@ -34,9 +34,39 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.840.0 | 2026-08-17 (El lienzo de la pieza de campaña se genera con KIE)
-// Cache bust: 2026-08-17c
+// UI V4.841.0 | 2026-08-17 (Bóveda de Fondos: saldos por moneda)
+// Cache bust: 2026-08-17d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.841.0',
+        title: 'La Bóveda ya no suma dólares con pesos 💱',
+        description: 'El «Fondo Disponible para Retiro» venía mostrando un solo número que era la suma de monedas distintas: en el Distrito 4281, los $47.507,75 eran ocho dólares con noventa y un centavos más cuarenta y siete mil cuatrocientos noventa y ocho pesos. El número era exacto y no significaba nada. Ahora hay una tarjeta por moneda, con su propio disponible, su bruto, su neto y sus retiros; los importes se escriben como corresponde a cada una —el peso ya no sale como «$50,000.00»— y en ningún lugar de la pantalla queda un total que las cruce. Además se corrigieron tres cosas del mismo módulo: el control que debía impedir un retiro sin saldo estaba muerto y dejaba pasar cualquier importe; la Bóveda y la solicitud de retiro las podía usar cualquier usuario con sesión, no sólo el administrador del sitio; y un reintento de Stripe podía llegar a registrar el mismo aporte dos veces. El retiro ahora se pide en una moneda concreta y se valida contra el saldo de ESA moneda.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'seguridad', 'monedas'],
+        type: 'fixed',
+        impact: 'Crítico',
+        changes: [
+            { type: 'fixed', text: 'Los saldos se calculan y se muestran por moneda. USD y COP nunca se suman.' },
+            { type: 'fixed', text: 'Un retiro por encima del saldo se rechaza de verdad: la comprobación no llegaba a ejecutarse.' },
+            { type: 'fixed', text: 'Los importes se escriben con el formato de su moneda, no todos como dólares.' },
+            { type: 'changed', text: 'La Bóveda, el historial y la solicitud de retiro piden rol de administrador del sitio.' },
+            { type: 'changed', text: 'El retiro se solicita en una moneda concreta y se valida contra ese saldo.' },
+            { type: 'added', text: 'Índice único que hace imposible registrar dos veces el mismo aporte.' },
+            { type: 'changed', text: 'El desglose dice «Comisión de la plataforma» con el porcentaje real del movimiento, no un 5% escrito a mano.' },
+        ],
+        details: [
+            'server/lib/money.js — el criterio del dinero, puro y probado: catálogo de monedas, unidad mínima de Stripe, redondeo y las funciones que suman SIN mezclar. Se extrae de eventRegistrationSpec.js, que lo tenía desde v4.648 y era el único sitio de la plataforma que trataba bien las monedas; aquél ahora lo re-exporta, así que no hay dos catálogos.',
+            'payoutController.js — computeBalances(clubId) devuelve saldos por moneda. Antes era un SUM("netAmount") sin GROUP BY currency y la respuesta se rotulaba currency: \'USD\' con un literal.',
+            'requestPayout — la guardia de saldo llamaba a getClubBalance con un objeto `res` falso y se quedaba con lo que devolviera, que era undefined: `amount > undefined` es siempre false en JavaScript, así que la comparación dejaba pasar cualquier importe sin avisar. Ahora usa computeBalances, que devuelve datos y no una respuesta HTTP.',
+            'financialController.js — /financial/wallet devuelve una wallet por moneda con sus propias cubetas; /financial/donations devuelve totales por moneda. Los campos sueltos se conservan sobre la moneda principal para un navegador con el bundle anterior en caché: muestra de menos, nunca la mezcla.',
+            'routes — requireSiteAdmin en /payouts/balance, /request, /history y en /financial/wallet, /wallet/sync-stripe, /donations. Antes bastaba authMiddleware, que verifica firma y audiencia pero no el rol.',
+            'ensureWalletSchema.js — índice único Payment(provider, providerRef), declarado también en schema.prisma para que db:push no lo borre. Si ya hay providerRef repetidos no se crea: se reportan y se sigue, porque borrar un cobro registrado para que el índice entre no se decide desde un arranque en frío.',
+            'paymentController.js — el webhook atrapa el choque del índice (P2002) en vez de confiar sólo en la lectura previa, que dejaba una ventana entre la consulta y la inserción.',
+            'WalletManagement.tsx — fmtUSD retirado; los importes salen por formatMoney de locale.ts, que ya sabe qué monedas se escriben sin céntimos.',
+            'npm run test:wallet — 46 comprobaciones, sin base ni red. La de referencia: 8,91 USD y 47.498,84 COP nunca pueden dar 47.507,75.',
+            'PENDIENTE de verificar en producción: la moneda de liquidación de la cuenta de Stripe. La comisión que se resta a un cobro en pesos podría venir denominada en dólares, y eso afectaría el neto. No se puede comprobar desde el código.',
+        ]
+    },
     {
         version: '4.840.0',
         title: 'El fondo de una pieza de campaña ya lo puede componer la IA 🖼️',

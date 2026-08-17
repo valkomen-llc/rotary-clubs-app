@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.840.0",
-  "cache_bust": "2026-08-17c (El lienzo de la pieza de campaña se genera con KIE; el texto lo sigue componiendo la plataforma.)",
+  "version": "4.841.0",
+  "cache_bust": "2026-08-17d (Bóveda de Fondos: saldos por moneda, la guardia del retiro vuelve a vivir.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -50,7 +50,8 @@
     "check:syntax": "node scripts/check-syntax.mjs",
     "test:creative": "node scripts/test-creative.mjs",
     "test:campaign-post": "node scripts/test-campaign-post.mjs",
-    "test:currency": "node scripts/test-currency.mjs"
+    "test:currency": "node scripts/test-currency.mjs",
+    "test:wallet": "node scripts/test-wallet.mjs"
   },
   "engines": {
     "node": "22.x"

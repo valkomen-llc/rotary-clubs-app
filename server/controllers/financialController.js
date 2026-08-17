@@ -6,6 +6,10 @@
 // vía /api/payouts/balance porque Payment.isPlatformCollection = true.
 import Stripe from 'stripe';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
+import {
+    normalizeCurrency, currencyMeta, roundMoney,
+    sumByCurrency, groupByCurrency, currenciesOf, primaryCurrency,
+} from '../lib/money.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -13,7 +17,7 @@ import { DEFAULT_PAYMENT_BLOCKS } from '../lib/paymentBlockDefaults.js';
 import { isServable, targetsSite } from '../lib/contributionSpec.js';
 import { ensureContributionSchema } from '../lib/ensureContributionSchema.js';
 
-console.log('[FINANCIAL v4.804] Controller cargado — donaciones Stripe Checkout + atribución de Campañas de Contribución');
+console.log('[FINANCIAL v4.841] Controller cargado — donaciones Stripe Checkout + Bóveda con saldos POR MONEDA');
 
 // v4.808 — El DESTINO del aporte cuando nace de un bloque de la página de
 // Aportes («Aporte Voluntario», «End Polio Now»…).
@@ -471,16 +475,38 @@ export const listClubDonations = async (req, res) => {
         const donations = result.rows.map(row => ({
             ...row,
             amount: parseFloat(row.amount),
+            currency: normalizeCurrency(row.currency),
             isAnonymous: !!row.isAnonymous
         }));
 
-        const totalAmount = donations.reduce((acc, d) => acc + (d.amount || 0), 0);
+        // v4.841 — Antes esto sumaba `amount` de todas las donaciones sin mirar
+        // la moneda y rotulaba el total con la moneda de la PRIMERA fila de la
+        // lista. De ahí salía «Aportes Recibidos 2 · $50.010,00», que eran
+        // 10 USD más 50.000 COP.
+        const preferred = await resolveClubCurrency(clubId);
+        const totals = sumByCurrency(donations, d => d.amount, d => d.currency);
+        const counts = {};
+        for (const d of donations) counts[d.currency] = (counts[d.currency] || 0) + 1;
+
+        const byCurrency = currenciesOf(totals, preferred).filter(Boolean).map(code => ({
+            currency: code,
+            decimals: currencyMeta(code).decimals,
+            totalAmount: totals[code],
+            totalCount: counts[code] || 0,
+        }));
+
+        const main = primaryCurrency(totals, preferred);
+        const mainRow = byCurrency.find(r => r.currency === main);
 
         return res.json({
             donations,
-            totalAmount,
+            byCurrency,
+            // Campos sueltos sobre la moneda principal, nunca sobre la mezcla.
+            // `totalCount` sí es el total de la lista: contar aportes no cruza
+            // monedas, y la pantalla lo usa para decir cuántos hay.
+            totalAmount: mainRow?.totalAmount || 0,
             totalCount: donations.length,
-            currency: donations[0]?.currency || 'USD'
+            currency: main,
         });
     } catch (error) {
         console.error('[FINANCIAL] Error listing donations:', error);
@@ -515,99 +541,118 @@ export const getClubWallet = async (req, res) => {
         );
 
         const payoutsResult = await db.query(
-            `SELECT id, amount, status, "createdAt"
+            `SELECT id, amount, currency, status, "createdAt"
              FROM "PayoutRequest"
              WHERE "clubId" = $1
              ORDER BY "createdAt" DESC`,
             [clubId]
         );
 
-        // Bucketización
-        const buckets = {
-            processing: [],          // status='pending' (Stripe aún no confirma)
-            in_transit: [],          // succeeded + Stripe pending (availableOn > now o stripeStatus='pending')
-            available_soon: [],      // Stripe available pero margen Valkomen no completado
-            available: [],           // Listo para retiro
-            refunded: [],
-            failed: []
+        // En qué cubeta cae un pago. El criterio no cambió en v4.841; lo que
+        // cambió es que las cubetas se llenan POR MONEDA.
+        const bucketOf = (p) => {
+            if (p.status === 'refunded') return 'refunded';
+            if (p.status === 'failed') return 'failed';
+            if (p.status === 'pending') return 'processing';
+            if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) return 'in_transit';
+            if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) return 'available_soon';
+            return 'available';
         };
 
-        for (const p of paymentsResult.rows) {
+        const items = paymentsResult.rows.map(p => {
+            const currency = normalizeCurrency(p.currency);
             const grossAmount = parseFloat(p.amount || 0);
             const netClub = parseFloat(p.netAmount || 0);
-            const valkomenFee = parseFloat(p.applicationFee || 0);
-            // Stripe fee = lo que falta entre el bruto, el net que recibe el club, y el fee Valkomen
-            const stripeFee = Math.max(0, grossAmount - netClub - valkomenFee);
-            const netStripe = grossAmount - stripeFee; // lo que entra a la cuenta master Valkomen
-            const item = {
+            const platformFee = parseFloat(p.applicationFee || 0);
+            // La comisión de Stripe se DEDUCE restando porque no tiene columna
+            // propia: hoy sólo vive dentro del JSON de `rawPayload`. Es lo que
+            // la Fase 1 corrige con `FeeComponent` — cada comisión guardada
+            // como tal, con su base y su tasa, en vez de reconstruida acá.
+            const stripeFee = Math.max(0, grossAmount - netClub - platformFee);
+            return {
                 id: p.id,
                 providerRef: p.providerRef,
-                amount: netClub,           // net final para el club (retirable)
+                amount: netClub,
                 grossAmount,
-                stripeFee,                 // v4.422 — fee Stripe explícito
-                netStripe,                 // v4.422 — net después de Stripe (antes de Valkomen)
-                applicationFee: valkomenFee, // fee Valkomen
-                fee: stripeFee + valkomenFee, // total fees (compat)
-                currency: p.currency,
+                stripeFee,
+                netStripe: grossAmount - stripeFee,
+                applicationFee: platformFee,
+                fee: stripeFee + platformFee,
+                currency,
+                decimals: currencyMeta(currency).decimals,
                 status: p.status,
                 stripeStatus: p.stripeStatus,
                 availableOn: p.availableOn,
                 clubAvailableOn: p.clubAvailableOn,
                 paymentMethod: p.paymentMethod || 'card',
                 stripeBalanceTxId: p.stripeBalanceTxId,
-                createdAt: p.createdAt
+                createdAt: p.createdAt,
+                bucket: bucketOf(p),
             };
+        });
 
-            if (p.status === 'refunded') {
-                buckets.refunded.push(item);
-            } else if (p.status === 'failed') {
-                buckets.failed.push(item);
-            } else if (p.status === 'pending') {
-                buckets.processing.push(item);
-            } else if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) {
-                buckets.in_transit.push(item);
-            } else if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) {
-                buckets.available_soon.push(item);
-            } else {
-                buckets.available.push(item);
+        const BUCKETS = ['processing', 'in_transit', 'available_soon', 'available', 'refunded', 'failed'];
+        const byCurrencyItems = groupByCurrency(items, it => it.currency);
+        const payoutsByCurrency = groupByCurrency(payoutsResult.rows, p => p.currency);
+
+        const preferred = await resolveClubCurrency(clubId);
+        const grossTotals = sumByCurrency(items, it => it.grossAmount, it => it.currency);
+        const codes = currenciesOf(grossTotals, preferred);
+
+        // Una wallet por moneda. Ninguna cifra de acá cruza con la de al lado.
+        const wallets = codes.filter(Boolean).map(code => {
+            const own = byCurrencyItems[code] || [];
+            const ownPayouts = payoutsByCurrency[code] || [];
+            const inBucket = (name) => own.filter(it => it.bucket === name);
+
+            const buckets = {};
+            for (const name of BUCKETS) {
+                const list = inBucket(name);
+                buckets[name] = {
+                    total: roundMoney(list.reduce((a, it) => a + it.amount, 0), code),
+                    count: list.length,
+                    items: list,
+                };
             }
-        }
 
-        const sum = (arr) => arr.reduce((acc, it) => acc + (it.amount || 0), 0);
+            const transferred = roundMoney(
+                ownPayouts.filter(p => p.status === 'completed')
+                    .reduce((a, p) => a + parseFloat(p.amount || 0), 0), code);
+            const requested = roundMoney(
+                ownPayouts.filter(p => ['pending', 'processing'].includes(p.status))
+                    .reduce((a, p) => a + parseFloat(p.amount || 0), 0), code);
 
-        // Total transferido = payouts completados (los fondos ya salieron)
-        const transferredAmount = payoutsResult.rows
-            .filter(p => p.status === 'completed')
-            .reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+            return {
+                currency: code,
+                decimals: currencyMeta(code).decimals,
+                buckets,
+                summary: {
+                    grossTotal: roundMoney(own.reduce((a, it) => a + it.grossAmount, 0), code),
+                    netTotal: roundMoney(own.reduce((a, it) => a + it.amount, 0), code),
+                    feesTotal: roundMoney(own.reduce((a, it) => a + it.fee, 0), code),
+                    inTransit: roundMoney(buckets.in_transit.total + buckets.processing.total, code),
+                    availableSoon: buckets.available_soon.total,
+                    availableForWithdrawal: Math.max(0, roundMoney(buckets.available.total - transferred - requested, code)),
+                    transferred,
+                    requested,
+                    refunded: buckets.refunded.total,
+                },
+            };
+        });
 
-        // Compromisos pendientes (payouts requested/processing)
-        const requestedAmount = payoutsResult.rows
-            .filter(p => ['pending', 'processing'].includes(p.status))
-            .reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
-
-        const availableForWithdrawal = Math.max(0, sum(buckets.available) - transferredAmount - requestedAmount);
+        // Los campos sueltos se conservan sobre la moneda PRINCIPAL, por el
+        // mismo motivo que en `/payouts/balance`: un navegador con el bundle
+        // anterior en caché muestra una cifra verdadera de una sola moneda en
+        // vez de la mezcla. `currency` dice cuál, en vez del literal 'USD'.
+        const main = wallets.find(w => w.currency === primaryCurrency(grossTotals, preferred)) || wallets[0] || null;
 
         return res.json({
-            currency: 'USD',
-            buckets: {
-                processing: { total: sum(buckets.processing), count: buckets.processing.length, items: buckets.processing },
-                in_transit: { total: sum(buckets.in_transit), count: buckets.in_transit.length, items: buckets.in_transit },
-                available_soon: { total: sum(buckets.available_soon), count: buckets.available_soon.length, items: buckets.available_soon },
-                available: { total: sum(buckets.available), count: buckets.available.length, items: buckets.available },
-                refunded: { total: sum(buckets.refunded), count: buckets.refunded.length, items: buckets.refunded },
-                failed: { total: sum(buckets.failed), count: buckets.failed.length, items: buckets.failed }
-            },
-            summary: {
-                grossTotal: paymentsResult.rows.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0),
-                netTotal: paymentsResult.rows.reduce((acc, p) => acc + parseFloat(p.netAmount || 0), 0),
-                inTransit: sum(buckets.in_transit) + sum(buckets.processing),
-                availableSoon: sum(buckets.available_soon),
-                availableForWithdrawal,
-                transferred: transferredAmount,
-                requested: requestedAmount,
-                refunded: sum(buckets.refunded)
-            },
-            platformHoldingDays: 6
+            wallets,
+            currencies: wallets.map(w => w.currency),
+            currency: main?.currency || preferred,
+            buckets: main?.buckets || {},
+            summary: main?.summary || {},
+            platformHoldingDays: PLATFORM_HOLDING_DAYS,
         });
     } catch (error) {
         console.error('[FINANCIAL] Error en wallet:', error);

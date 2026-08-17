@@ -4,9 +4,28 @@ import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCir
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
+import { useLang } from '../../contexts/LanguageContext';
+import { formatMoney } from '../../lib/locale';
 import { toast } from 'sonner';
 
+// v4.841 — Un saldo por MONEDA. Hasta v4.840 la pantalla recibía un escalar
+// que el servidor había armado sumando dólares con pesos, y lo pintaba con un
+// «$» escrito a mano delante.
+interface CurrencyBalance {
+    currency: string;
+    decimals: number;
+    availableBalance: number;
+    totalCollected: number;
+    totalGross: number;
+    totalRequested: number;
+}
+
 interface BalanceData {
+    byCurrency?: CurrencyBalance[];
+    unreconciled?: { currency: string; amount: number }[];
+    // Campos sueltos que el servidor conserva sobre la moneda principal. La
+    // pantalla nueva no los usa; están para un navegador con el bundle
+    // anterior en caché.
     availableBalance: number;
     totalCollected: number;
     totalRequested: number;
@@ -55,31 +74,56 @@ interface WalletItem {
     createdAt: string;
 }
 interface WalletBucket { total: number; count: number; items: WalletItem[]; }
-interface WalletData {
+interface WalletBuckets {
+    processing: WalletBucket;
+    in_transit: WalletBucket;
+    available_soon: WalletBucket;
+    available: WalletBucket;
+    refunded: WalletBucket;
+    failed: WalletBucket;
+}
+interface WalletSummary {
+    grossTotal: number;
+    netTotal: number;
+    feesTotal: number;
+    inTransit: number;
+    availableSoon: number;
+    availableForWithdrawal: number;
+    transferred: number;
+    requested: number;
+    refunded: number;
+}
+/** La bóveda de UNA moneda. Ninguna cifra de acá cruza con la de al lado. */
+interface CurrencyWallet {
     currency: string;
-    buckets: {
-        processing: WalletBucket;
-        in_transit: WalletBucket;
-        available_soon: WalletBucket;
-        available: WalletBucket;
-        refunded: WalletBucket;
-        failed: WalletBucket;
-    };
-    summary: {
-        grossTotal: number;
-        netTotal: number;
-        inTransit: number;
-        availableSoon: number;
-        availableForWithdrawal: number;
-        transferred: number;
-        requested: number;
-        refunded: number;
-    };
+    decimals: number;
+    buckets: WalletBuckets;
+    summary: WalletSummary;
+}
+interface WalletData {
+    wallets?: CurrencyWallet[];
+    currencies?: string[];
+    currency: string;
+    buckets: WalletBuckets;
+    summary: WalletSummary;
     platformHoldingDays: number;
 }
 
-const fmtUSD = (n: number | null | undefined) =>
-    Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/**
+ * El importe con SU moneda, siempre.
+ *
+ * v4.841 — Reemplaza a `fmtUSD`, que imprimía cualquier importe con formato
+ * anglosajón y un «$» escrito a mano delante: los 50.000 pesos salían como
+ * «$50,000.00», con separador de miles inglés y dos decimales que el peso
+ * colombiano no usa. `formatMoney` es el formateador del sitio y ya sabe qué
+ * monedas se escriben sin céntimos.
+ *
+ * No lleva `lang`: lo toma del idioma activo. Por eso el componente que la
+ * use tiene que suscribirse con `useLang()`, o se queda con el formato
+ * anterior hasta el siguiente repintado.
+ */
+const money = (n: number | null | undefined, currency: string) =>
+    formatMoney(Number(n ?? 0), currency || 'USD');
 
 const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return '—';
@@ -89,12 +133,16 @@ const fmtDate = (iso: string | null | undefined) => {
 export default function WalletManagement() {
     const { token } = useAuth();
     const { club } = useClub();
+    // El formateo de importes depende del idioma activo. Sin esta suscripción,
+    // cambiar de idioma dejaría las cifras con el formato anterior hasta que
+    // algo más repintara la pantalla.
+    useLang();
     const API_URL = import.meta.env.VITE_API_URL || '/api';
 
     const [balanceData, setBalanceData] = useState<BalanceData | null>(null);
     const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
     const [donations, setDonations] = useState<DonationRecord[]>([]);
-    const [donationsTotal, setDonationsTotal] = useState(0);
+    const [donationTotals, setDonationTotals] = useState<{ currency: string; totalAmount: number; totalCount: number }[]>([]);
     const [wallet, setWallet] = useState<WalletData | null>(null); // v4.421 — Stripe sync
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -104,6 +152,10 @@ export default function WalletManagement() {
 
     // Form states
     const [amount, setAmount] = useState<number | ''>('');
+    // v4.841 — El retiro es EN UNA MONEDA y hay que decir cuál. Sin este campo
+    // el servidor guardaba toda solicitud como USD por el valor por omisión de
+    // la columna, dijera lo que dijera el cobro que la originó.
+    const [payoutCurrency, setPayoutCurrency] = useState('');
     const [bankName, setBankName] = useState('');
     const [accountNumber, setAccountNumber] = useState('');
     const [accountName, setAccountName] = useState('');
@@ -113,6 +165,15 @@ export default function WalletManagement() {
             fetchWalletData();
         }
     }, [token, club?.id]);
+
+    // La moneda del retiro arranca en la primera que tenga saldo. Se elige sola
+    // una vez y no vuelve a pisar lo que el usuario haya cambiado después.
+    useEffect(() => {
+        if (payoutCurrency) return;
+        const first = (balanceData?.byCurrency || []).find(b => b.availableBalance > 0)
+            || (balanceData?.byCurrency || [])[0];
+        if (first) setPayoutCurrency(first.currency);
+    }, [balanceData, payoutCurrency]);
 
     const fetchWalletData = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -147,10 +208,10 @@ export default function WalletManagement() {
 
         if (donationsRes.status === 'fulfilled' && Array.isArray(donationsRes.value.data?.donations)) {
             setDonations(donationsRes.value.data.donations);
-            setDonationsTotal(donationsRes.value.data.totalAmount || 0);
+            setDonationTotals(donationsRes.value.data.byCurrency || []);
         } else {
             setDonations([]);
-            setDonationsTotal(0);
+            setDonationTotals([]);
             console.error('[Wallet] donations fetch failed:', donationsRes);
         }
 
@@ -192,6 +253,10 @@ export default function WalletManagement() {
 
     const handleRequestPayout = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!payoutCurrency) {
+            toast.error('Elegí la moneda del retiro');
+            return;
+        }
         if (!amount || Number(amount) <= 0) {
             toast.error('Ingrese un monto válido');
             return;
@@ -206,6 +271,9 @@ export default function WalletManagement() {
             const bankDetails = { bankName, accountNumber, accountName };
             await axios.post(`${API_URL}/payouts/request`, {
                 amount: Number(amount),
+                // La moneda viaja siempre. El servidor la valida contra el
+                // saldo de ESA moneda; no hay valor por omisión.
+                currency: payoutCurrency,
                 bankDetails
             }, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -250,7 +318,30 @@ export default function WalletManagement() {
         );
     }
 
-    const currencyUpper = (balanceData?.currency || 'USD').toUpperCase();
+    // v4.841 — Las monedas en las que este club tiene algo. Si el servidor
+    // todavía no manda `byCurrency` —un despliegue a medias— se arma una sola
+    // entrada con los campos sueltos, que ya vienen de UNA moneda.
+    const balances: CurrencyBalance[] = balanceData?.byCurrency?.length
+        ? balanceData.byCurrency
+        : balanceData
+            ? [{
+                currency: balanceData.currency || 'USD',
+                decimals: 2,
+                availableBalance: balanceData.availableBalance || 0,
+                totalCollected: balanceData.totalCollected || 0,
+                totalGross: balanceData.totalCollected || 0,
+                totalRequested: balanceData.totalRequested || 0,
+            }]
+            : [];
+
+    const wallets: CurrencyWallet[] = wallet?.wallets?.length
+        ? wallet.wallets
+        : wallet
+            ? [{ currency: wallet.currency, decimals: 2, buckets: wallet.buckets, summary: wallet.summary }]
+            : [];
+
+    const donationsOf = (code: string) => donations.filter(d => (d.currency || 'USD') === code);
+    const selected = balances.find(b => b.currency === payoutCurrency) || null;
 
     return (
         <AdminLayout>
@@ -263,48 +354,130 @@ export default function WalletManagement() {
                     </div>
                 )}
 
-                {/* Header info */}
-                <div className="bg-rotary-blue rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-rotary-blue/20">
-                    <div className="absolute top-0 right-0 p-12 opacity-10">
-                        <Wallet className="w-64 h-64 rotate-12" />
-                    </div>
-                    <div className="relative z-10">
-                        <div className="flex items-start justify-between mb-2">
-                            <h2 className="text-xl font-medium text-blue-100">Fondo Disponible para Retiro</h2>
-                            <button
-                                onClick={() => fetchWalletData(true)}
-                                disabled={isRefreshing}
-                                className="text-blue-100 hover:text-white p-2 -mt-1 -mr-1 rounded-lg hover:bg-white/10 transition-all disabled:opacity-50"
-                                title="Actualizar"
-                            >
-                                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                            </button>
-                        </div>
-                        <div className="text-5xl md:text-7xl font-black mb-6">
-                            ${fmtUSD(balanceData?.availableBalance)}
-                            <span className="text-2xl font-bold text-blue-200 ml-2">{currencyUpper}</span>
-                        </div>
-
-                        <div className="flex flex-wrap gap-6 text-sm">
-                            <div className="bg-white/10 rounded-xl py-3 px-5 backdrop-blur-sm border border-white/10">
-                                <span className="text-blue-200 block mb-1">Total Recaudado Bruto</span>
-                                <span className="font-bold text-lg">${fmtUSD(balanceData?.totalCollected)}</span>
-                            </div>
-                            <div className="bg-white/10 rounded-xl py-3 px-5 backdrop-blur-sm border border-white/10">
-                                <span className="text-blue-200 block mb-1">En Tránsito / Entregado</span>
-                                <span className="font-bold text-lg">${fmtUSD(balanceData?.totalRequested)}</span>
-                            </div>
-                            <div className="bg-white/10 rounded-xl py-3 px-5 backdrop-blur-sm border border-white/10">
-                                <span className="text-blue-200 block mb-1">Aportes Recibidos</span>
-                                <span className="font-bold text-lg">{donations.length} · ${fmtUSD(donationsTotal)}</span>
-                            </div>
-                        </div>
-                    </div>
+                {/* v4.841 — Una tarjeta por moneda. Antes había UN número aquí y
+                    era la suma de las dos: «$47.507,75» eran 8,91 dólares más
+                    47.498,84 pesos. */}
+                <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Bóveda de Fondos</h2>
+                    <button
+                        onClick={() => fetchWalletData(true)}
+                        disabled={isRefreshing}
+                        className="text-gray-400 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-all disabled:opacity-50"
+                        title="Actualizar"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
 
-                {/* v4.421 — Estado financiero sincronizado con Stripe */}
-                {wallet && (
-                    <div className="space-y-4">
+                {balances.length === 0 ? (
+                    <div className="bg-rotary-blue rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-rotary-blue/20">
+                        <div className="absolute top-0 right-0 p-12 opacity-10">
+                            <Wallet className="w-64 h-64 rotate-12" />
+                        </div>
+                        <div className="relative z-10">
+                            <h3 className="text-xl font-medium text-blue-100 mb-2">Fondo Disponible para Retiro</h3>
+                            <div className="text-5xl md:text-7xl font-black">—</div>
+                            <p className="text-blue-100 text-sm mt-4">
+                                Todavía no hay aportes registrados en ninguna moneda.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className={`grid gap-6 ${balances.length === 1 ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
+                            {balances.map(b => {
+                                const w = wallets.find(x => x.currency === b.currency);
+                                const dons = donationsOf(b.currency);
+                                return (
+                                    <div key={b.currency} className="bg-rotary-blue rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-rotary-blue/20">
+                                        <div className="absolute top-0 right-0 p-12 opacity-10">
+                                            <Wallet className="w-56 h-56 rotate-12" />
+                                        </div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-baseline gap-2 mb-1">
+                                                <span
+                                                    className="text-xs font-black tracking-[0.15em] bg-white/15 rounded-md px-2 py-1"
+                                                    data-no-translate
+                                                >
+                                                    {b.currency}
+                                                </span>
+                                                <h3 className="text-lg font-medium text-blue-100">Disponible para Retiro</h3>
+                                            </div>
+                                            <div className="text-4xl md:text-5xl font-black mb-6 mt-2" data-no-translate>
+                                                {money(b.availableBalance, b.currency)}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                                    <span className="text-blue-200 block mb-1 text-xs">Recibido bruto</span>
+                                                    <span className="font-bold" data-no-translate>{money(b.totalGross, b.currency)}</span>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                                    <span className="text-blue-200 block mb-1 text-xs">Neto acreditado</span>
+                                                    <span className="font-bold" data-no-translate>{money(b.totalCollected, b.currency)}</span>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                                    <span className="text-blue-200 block mb-1 text-xs">Retiros solicitados</span>
+                                                    <span className="font-bold" data-no-translate>{money(b.totalRequested, b.currency)}</span>
+                                                </div>
+                                                <div className="bg-white/10 rounded-xl py-3 px-4 backdrop-blur-sm border border-white/10">
+                                                    <span className="text-blue-200 block mb-1 text-xs">Aportes recibidos</span>
+                                                    <span className="font-bold" data-no-translate>
+                                                        {dons.length} · {money(
+                                                            donationTotals.find(t => t.currency === b.currency)?.totalAmount ?? 0,
+                                                            b.currency,
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {w && w.summary.inTransit > 0 && b.availableBalance === 0 && (
+                                                <p className="text-blue-100 text-xs mt-4 flex items-start gap-1.5">
+                                                    <Hourglass className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                                    <span>
+                                                        Hay <b data-no-translate>{money(w.summary.inTransit, b.currency)}</b> en tránsito.
+                                                        Stripe todavía no los liberó.
+                                                    </span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {balances.length > 1 && (
+                            <p className="text-xs text-gray-500 flex items-start gap-1.5 -mt-4">
+                                <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" />
+                                <span>
+                                    Son saldos <b>independientes</b> y no se suman entre sí. Cada retiro
+                                    se solicita en su propia moneda.
+                                </span>
+                            </p>
+                        )}
+
+                        {/* Un retiro en una moneda en la que el club nunca recibió
+                            nada no se puede conciliar: se DICE, no se descarta. */}
+                        {(balanceData?.unreconciled?.length ?? 0) > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <span>
+                                    Hay retiros registrados en{' '}
+                                    <b data-no-translate>
+                                        {balanceData?.unreconciled?.map(u => `${money(u.amount, u.currency)}`).join(' · ')}
+                                    </b>
+                                    , una moneda en la que este sitio no ha recibido aportes. No se
+                                    descuentan de ningún saldo hasta resolver a qué cobro corresponden.
+                                </span>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* v4.421 — Estado financiero sincronizado con Stripe.
+                    v4.841 — Un juego de cubetas POR MONEDA. */}
+                {wallets.length > 0 && (
+                    <div className="space-y-6">
                         <div className="flex items-center justify-between gap-3">
                             <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>
                             {/* v4.422 — Botón sync para enriquecer Payments viejos con datos reales de Stripe */}
@@ -318,64 +491,86 @@ export default function WalletManagement() {
                                 {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
                             </button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <WalletBucketCard
-                                color="amber"
-                                icon={<Hourglass className="w-5 h-5" />}
-                                label="En Tránsito"
-                                total={wallet.summary.inTransit}
-                                count={wallet.buckets.in_transit.count + wallet.buckets.processing.count}
-                                hint="Stripe procesando el pago"
-                            />
-                            <WalletBucketCard
-                                color="sky"
-                                icon={<Plane className="w-5 h-5" />}
-                                label="Disponible Próximamente"
-                                total={wallet.summary.availableSoon}
-                                count={wallet.buckets.available_soon.count}
-                                hint={`Liberación en ~${wallet.platformHoldingDays} días`}
-                            />
-                            <WalletBucketCard
-                                color="emerald"
-                                icon={<CheckCircle2 className="w-5 h-5" />}
-                                label="Disponible para Retiro"
-                                total={wallet.summary.availableForWithdrawal}
-                                count={wallet.buckets.available.count}
-                                hint="Lista para solicitar payout"
-                            />
-                            <WalletBucketCard
-                                color="indigo"
-                                icon={<Send className="w-5 h-5" />}
-                                label="Transferido"
-                                total={wallet.summary.transferred}
-                                count={payouts.filter(p => p.status === 'completed').length}
-                                hint="Payouts completados al banco"
-                            />
-                        </div>
 
-                        {/* Transacciones detalladas con badges + timeline */}
-                        {(wallet.buckets.in_transit.items.length + wallet.buckets.available_soon.items.length + wallet.buckets.processing.items.length + wallet.buckets.refunded.items.length + wallet.buckets.failed.items.length) > 0 && (
-                            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-                                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-gray-400" />
-                                    Movimientos en proceso
-                                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
-                                        Sincronizado con Stripe
-                                    </span>
-                                </h3>
-                                <div className="space-y-2">
-                                    {[
-                                        ...wallet.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
-                                        ...wallet.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
-                                        ...wallet.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
-                                        ...wallet.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
-                                        ...wallet.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
-                                    ].map(item => (
-                                        <WalletTxRow key={item.id} item={item} />
-                                    ))}
+                        {wallets.map(w => {
+                            const inProcess = [
+                                ...w.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
+                                ...w.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
+                                ...w.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
+                                ...w.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
+                                ...w.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
+                            ];
+                            return (
+                                <div key={w.currency} className="space-y-3">
+                                    {wallets.length > 1 && (
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className="text-[10px] font-black tracking-[0.15em] bg-gray-900 text-white rounded px-2 py-1"
+                                                data-no-translate
+                                            >
+                                                {w.currency}
+                                            </span>
+                                            <div className="h-px flex-1 bg-gray-200" />
+                                        </div>
+                                    )}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <WalletBucketCard
+                                            color="amber"
+                                            icon={<Hourglass className="w-5 h-5" />}
+                                            label="En Tránsito"
+                                            total={w.summary.inTransit}
+                                            currency={w.currency}
+                                            count={w.buckets.in_transit.count + w.buckets.processing.count}
+                                            hint="Stripe procesando el pago"
+                                        />
+                                        <WalletBucketCard
+                                            color="sky"
+                                            icon={<Plane className="w-5 h-5" />}
+                                            label="Disponible Próximamente"
+                                            total={w.summary.availableSoon}
+                                            currency={w.currency}
+                                            count={w.buckets.available_soon.count}
+                                            hint={`Liberación en ~${wallet?.platformHoldingDays ?? 6} días`}
+                                        />
+                                        <WalletBucketCard
+                                            color="emerald"
+                                            icon={<CheckCircle2 className="w-5 h-5" />}
+                                            label="Disponible para Retiro"
+                                            total={w.summary.availableForWithdrawal}
+                                            currency={w.currency}
+                                            count={w.buckets.available.count}
+                                            hint="Lista para solicitar payout"
+                                        />
+                                        <WalletBucketCard
+                                            color="indigo"
+                                            icon={<Send className="w-5 h-5" />}
+                                            label="Transferido"
+                                            total={w.summary.transferred}
+                                            currency={w.currency}
+                                            count={payouts.filter(p => p.status === 'completed' && (p.currency || 'USD') === w.currency).length}
+                                            hint="Payouts completados al banco"
+                                        />
+                                    </div>
+
+                                    {inProcess.length > 0 && (
+                                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                                            <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                <Clock className="w-4 h-4 text-gray-400" />
+                                                Movimientos en proceso
+                                                <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
+                                                    Sincronizado con Stripe
+                                                </span>
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {inProcess.map(item => (
+                                                    <WalletTxRow key={item.id} item={item} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })}
                     </div>
                 )}
 
@@ -386,9 +581,24 @@ export default function WalletManagement() {
                             <Heart className="w-5 h-5 text-[#9D2235]" />
                             Aportes Recibidos
                         </h3>
-                        <span className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-                            {donations.length} {donations.length === 1 ? 'donación' : 'donaciones'}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2 justify-end">
+                            {/* Un total por moneda. Nunca uno solo: «2 · $50.010,00»
+                                era 10 dólares más 50.000 pesos. */}
+                            {donationTotals.map(t => (
+                                <span
+                                    key={t.currency}
+                                    className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full"
+                                    data-no-translate
+                                >
+                                    {t.totalCount} · {money(t.totalAmount, t.currency)}
+                                </span>
+                            ))}
+                            {donationTotals.length === 0 && (
+                                <span className="text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+                                    {donations.length} {donations.length === 1 ? 'donación' : 'donaciones'}
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     {donations.length === 0 ? (
@@ -411,8 +621,8 @@ export default function WalletManagement() {
                                                     ? <span className="text-gray-500 italic">Donante Anónimo</span>
                                                     : (donation.donorName || donation.donorEmail || 'Donante')}
                                             </div>
-                                            <div className="font-black text-xl text-[#9D2235]">
-                                                ${fmtUSD(donation.amount)} <span className="text-xs font-bold text-gray-400">{donation.currency || 'USD'}</span>
+                                            <div className="font-black text-xl text-[#9D2235]" data-no-translate>
+                                                {money(donation.amount, donation.currency || 'USD')}
                                             </div>
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-3">
@@ -455,21 +665,52 @@ export default function WalletManagement() {
                             </h3>
 
                             <form onSubmit={handleRequestPayout} className="space-y-5">
+                                {/* v4.841 — La moneda primero: es la que decide contra
+                                    qué saldo se valida el monto. */}
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-2">Monto a retirar (USD)</label>
+                                    <label htmlFor="payout-currency" className="block text-sm font-bold text-gray-700 mb-2">
+                                        Moneda del retiro
+                                    </label>
+                                    <select
+                                        id="payout-currency"
+                                        value={payoutCurrency}
+                                        onChange={(e) => { setPayoutCurrency(e.target.value); setAmount(''); }}
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 transition-all font-bold text-gray-900 bg-white"
+                                        required
+                                    >
+                                        {balances.length === 0 && <option value="">Sin aportes recibidos</option>}
+                                        {balances.map(b => (
+                                            <option key={b.currency} value={b.currency}>
+                                                {b.currency} — {money(b.availableBalance, b.currency)} disponible
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="payout-amount" className="block text-sm font-bold text-gray-700 mb-2">
+                                        Monto a retirar {payoutCurrency && <span data-no-translate>({payoutCurrency})</span>}
+                                    </label>
                                     <input
+                                        id="payout-amount"
                                         type="number"
-                                        min="1"
-                                        max={balanceData?.availableBalance}
-                                        step="0.01"
+                                        min={selected?.decimals === 0 ? '1' : '0.01'}
+                                        max={selected?.availableBalance || undefined}
+                                        // Una moneda sin céntimos no admite decimales, y el
+                                        // servidor rechaza el importe que los traiga.
+                                        step={selected?.decimals === 0 ? '1' : '0.01'}
                                         value={amount}
                                         onChange={(e) => setAmount(Number(e.target.value))}
                                         className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 transition-all font-bold text-lg text-gray-900"
-                                        placeholder="Ej: 50.00"
+                                        placeholder={selected?.decimals === 0 ? 'Ej: 50000' : 'Ej: 50.00'}
                                         required
                                     />
                                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> Máximo disponible: ${fmtUSD(balanceData?.availableBalance)}
+                                        <AlertCircle className="w-3 h-3" />
+                                        <span>
+                                            Máximo disponible:{' '}
+                                            <b data-no-translate>{money(selected?.availableBalance, selected?.currency || payoutCurrency)}</b>
+                                        </span>
                                     </p>
                                 </div>
 
@@ -513,7 +754,7 @@ export default function WalletManagement() {
 
                                 <button
                                     type="submit"
-                                    disabled={isRequesting || (balanceData?.availableBalance || 0) <= 0}
+                                    disabled={isRequesting || (selected?.availableBalance || 0) <= 0}
                                     className="w-full pt-4 h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
                                 >
                                     {isRequesting ? (
@@ -545,8 +786,8 @@ export default function WalletManagement() {
                                         <div key={payout.id} className="p-5 rounded-2xl border border-gray-100 bg-gray-50 hover:bg-white transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 
                                             <div>
-                                                <div className="font-bold text-xl text-gray-900 tracking-tight">
-                                                    ${fmtUSD(payout.amount)} <span className="text-xs text-gray-500 uppercase">{payout.currency}</span>
+                                                <div className="font-bold text-xl text-gray-900 tracking-tight" data-no-translate>
+                                                    {money(payout.amount, payout.currency)}
                                                 </div>
                                                 <div className="text-xs text-gray-500 mt-1">
                                                     {new Date(payout.createdAt).toLocaleDateString('es-ES', {
@@ -600,11 +841,12 @@ export default function WalletManagement() {
 
 // v4.421 — Tarjeta de bucket en el header de la Bóveda.
 type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red';
-function WalletBucketCard({ color, icon, label, total, count, hint }: {
+function WalletBucketCard({ color, icon, label, total, currency, count, hint }: {
     color: BucketColor;
     icon: React.ReactNode;
     label: string;
     total: number;
+    currency: string;
     count: number;
     hint: string;
 }) {
@@ -622,8 +864,8 @@ function WalletBucketCard({ color, icon, label, total, count, hint }: {
                 {icon}
                 <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
             </div>
-            <div className={`text-3xl font-black ${p.text} leading-none mb-1`}>
-                ${fmtUSD(total)}
+            <div className={`text-3xl font-black ${p.text} leading-none mb-1`} data-no-translate>
+                {money(total, currency)}
             </div>
             <div className="text-xs text-gray-500 font-medium mt-2">
                 {count} {count === 1 ? 'movimiento' : 'movimientos'} · {hint}
@@ -651,6 +893,12 @@ function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in
             : null;
 
     const stripeFee = item.stripeFee ?? Math.max(0, item.grossAmount - item.amount - item.applicationFee);
+    // El porcentaje real de ESTE movimiento, no la constante de la plataforma:
+    // la tasa puede cambiar por moneda, país o método de pago, y escribir «5%»
+    // a mano afirmaba un número que el propio dato podía desmentir.
+    const feePct = item.grossAmount > 0
+        ? Math.round((item.applicationFee / item.grossAmount) * 1000) / 10
+        : null;
     const [expanded, setExpanded] = useState(false);
 
     return (
@@ -674,11 +922,13 @@ function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in
                     </div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                    <div className="font-bold text-sm text-gray-900">
-                        ${fmtUSD(item.amount)} <span className="text-[10px] text-gray-400">{item.currency}</span>
+                    <div className="font-bold text-sm text-gray-900" data-no-translate>
+                        {money(item.amount, item.currency)}
                     </div>
                     <div className="text-[10px] text-gray-400">
-                        bruto ${fmtUSD(item.grossAmount)} − fees ${fmtUSD(item.grossAmount - item.amount)}
+                        bruto <span data-no-translate>{money(item.grossAmount, item.currency)}</span>
+                        {' − comisiones '}
+                        <span data-no-translate>{money(item.grossAmount - item.amount, item.currency)}</span>
                     </div>
                 </div>
             </button>
@@ -689,19 +939,26 @@ function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in
                     <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1.5">
                         <div className="flex justify-between text-gray-700">
                             <span>Monto pagado por el donante</span>
-                            <span className="font-mono font-semibold text-gray-900">${fmtUSD(item.grossAmount)} {item.currency}</span>
+                            <span className="font-mono font-semibold text-gray-900" data-no-translate>{money(item.grossAmount, item.currency)}</span>
                         </div>
                         <div className="flex justify-between text-gray-500">
-                            <span>− Stripe processing fee</span>
-                            <span className="font-mono">−${fmtUSD(stripeFee)}</span>
+                            <span>− Tarifa de procesamiento de Stripe</span>
+                            <span className="font-mono" data-no-translate>−{money(stripeFee, item.currency)}</span>
                         </div>
                         <div className="flex justify-between text-gray-500">
-                            <span>− Club Platform (5%)</span>
-                            <span className="font-mono">−${fmtUSD(item.applicationFee)}</span>
+                            {/* v4.841 — El porcentaje se CALCULA sobre este movimiento;
+                                estaba escrito «(5%)» a mano. Y el rótulo dice lo que
+                                el cobro es: la comisión de la plataforma por recaudar.
+                                NO es una tasa de cambio ni una comisión interbancaria
+                                —se cobra igual sobre un aporte en dólares, donde no
+                                hay conversión ninguna—. El costo real de conversión
+                                existe, hoy no se mide, y separarlo es la Fase 4. */}
+                            <span>− Comisión de la plataforma{feePct !== null && <span data-no-translate> ({feePct}%)</span>}</span>
+                            <span className="font-mono" data-no-translate>−{money(item.applicationFee, item.currency)}</span>
                         </div>
                         <div className="flex justify-between pt-1.5 border-t border-gray-200 font-bold text-gray-900">
                             <span>Neto para el club</span>
-                            <span className="font-mono">${fmtUSD(item.amount)} {item.currency}</span>
+                            <span className="font-mono" data-no-translate>{money(item.amount, item.currency)}</span>
                         </div>
                         <div className="pt-2 flex flex-wrap gap-3 text-[10px] text-gray-400">
                             {item.paymentMethod && <span>Método: {item.paymentMethod}</span>}

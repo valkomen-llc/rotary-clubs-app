@@ -20,44 +20,22 @@
 import { DISTRICT_CATALOG } from './rotaryClubs.js';
 
 // ── Monedas ──────────────────────────────────────────────────────────
+//
+// v4.841 — El criterio vive en `money.js` y acá sólo se re-exporta. Estaba
+// escrito acá desde v4.648 y era el único sitio de la plataforma que trataba
+// bien las monedas; cuando la Bóveda de Fondos necesitó lo mismo, copiarlo
+// habría dado dos catálogos que se separan en silencio. Los consumidores de
+// este módulo no cambian: siguen importando de donde siempre.
+// Se IMPORTA y se re-exporta, no `export … from`: eso no crea binding local y
+// `roundMoney` se usa más abajo, en el cálculo del cobro.
+import {
+    ZERO_DECIMAL, stripeDecimals, toStripeAmount, fromStripeAmount,
+    CURRENCIES, currencyMeta, roundMoney, formatMoney,
+} from './money.js';
 
-/** Monedas que Stripe cobra sin decimales: el importe va tal cual. */
-export const ZERO_DECIMAL = new Set([
-    'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga',
-    'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
-]);
-
-export const toStripeAmount = (amount, currency) =>
-    ZERO_DECIMAL.has(String(currency || '').toLowerCase())
-        ? Math.round(Number(amount) || 0)
-        : Math.round((Number(amount) || 0) * 100);
-
-/** Monedas que el módulo sabe presentar. La lista no restringe a Stripe. */
-export const CURRENCIES = [
-    { code: 'USD', label: 'Dólar estadounidense', symbol: 'US$', decimals: 2 },
-    { code: 'COP', label: 'Peso colombiano', symbol: '$', decimals: 0 },
-    { code: 'EUR', label: 'Euro', symbol: '€', decimals: 2 },
-    { code: 'MXN', label: 'Peso mexicano', symbol: '$', decimals: 2 },
-    { code: 'BRL', label: 'Real brasileño', symbol: 'R$', decimals: 2 },
-];
-
-export const currencyMeta = (code) =>
-    CURRENCIES.find(c => c.code === String(code || '').toUpperCase())
-    || { code: String(code || 'USD').toUpperCase(), label: code, symbol: '', decimals: 2 };
-
-/** Redondea al número de decimales con que se factura esa moneda. */
-export const roundMoney = (amount, currency) => {
-    const decimals = currencyMeta(currency).decimals;
-    const factor = 10 ** decimals;
-    return Math.round((Number(amount) || 0) * factor) / factor;
-};
-
-export const formatMoney = (amount, currency) => {
-    const meta = currencyMeta(currency);
-    return `${Number(amount || 0).toLocaleString('es-CO', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: meta.decimals,
-    })} ${meta.code}`;
+export {
+    ZERO_DECIMAL, stripeDecimals, toStripeAmount, fromStripeAmount,
+    CURRENCIES, currencyMeta, roundMoney, formatMoney,
 };
 
 // ── Estados de una inscripción ───────────────────────────────────────
