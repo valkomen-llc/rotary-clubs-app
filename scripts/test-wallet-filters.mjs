@@ -295,6 +295,20 @@ ok('y ofrece limpiar', /Limpiar/.test(ui));
 ok('«no hay aportes» distingue si hay un filtro puesto',
     /para el filtro elegido/.test(ui));
 
+// v4.851 — El desplegable de campañas se muestra con UNA sola. Es un cambio
+// deliberado respecto de v4.849 —donde la regla «un control que no controla
+// nada» lo escondía hasta tener dos— y lo pidió el equipo: con una, filtrar no
+// cambia el resultado, pero el desplegable NOMBRA de qué campaña vino el
+// dinero, que es lo que se quiere ver sin abrir ninguna ficha.
+ok('el filtro de campaña se muestra con UNA sola', /destinos\.length > 0 && \(/.test(ui));
+
+// Todo va en UNA línea con los chips de moneda, alineado a la derecha. Que
+// quepa o no se comprueba en el navegador con el CSS compilado; acá sólo que
+// la fila exista y que el grupo derecho la empuje.
+ok('los filtros comparten fila con las monedas',
+    /flex flex-wrap items-center gap-x-3 gap-y-2/.test(ui));
+ok('y el grupo de la derecha se alinea al final', /items-center gap-2 ml-auto/.test(ui));
+
 // ── Resultado ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);

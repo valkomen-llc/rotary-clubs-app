@@ -32,7 +32,7 @@ try {
     process.exit(0);
 }
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 let pass = 0, fail = 0;
 const check = (name, cond, extra = '') => {
@@ -249,6 +249,17 @@ await page.evaluate(() => {
     localStorage.setItem('rotary_token', 't-prueba');
     localStorage.setItem('rotary_user', JSON.stringify({ id: 'u1', role: 'club_admin', clubId: 'club-4281' }));
 });
+// ⚠️ EL CSS COMPILADO. Sin él, la página se monta con `display: block` en todo
+// y NINGUNA comprobación de disposición vale: las clases están en el DOM y las
+// reglas no existen. Es la lección de v4.719 —una clase que no llega al CSS no
+// existe, en silencio— aplicada al arnés. Se salta si no hay `dist/`: la
+// prueba sigue verificando comportamiento, sólo pierde la disposición.
+let hayCss = false;
+try {
+    const css = readdirSync('dist/assets').filter(f => f.startsWith('index-') && f.endsWith('.css'));
+    if (css[0]) { await page.addStyleTag({ content: readFileSync(`dist/assets/${css[0]}`, 'utf8') }); hayCss = true; }
+} catch { /* sin dist se comprueba todo menos la disposición */ }
+
 await page.addScriptTag({ content: bundle.outputFiles[0].text });
 await page.evaluate(() => window.go());
 await page.waitForTimeout(1500);
@@ -389,8 +400,14 @@ console.log('\n▸ Los filtros del período');
 const saldoAntes = await texto();
 check('el selector de período está en la pantalla',
     await page.getByLabel('Período').count() === 1);
-check('y el de destino también, porque hay más de uno',
-    await page.getByLabel('Destino del aporte').count() === 1);
+check('y el de campaña también', await page.getByLabel('Destino del aporte').count() === 1);
+// v4.851 — Se muestra con UNA sola campaña. Es un cambio deliberado respecto de
+// v4.849: con una, «Todos» y esa campaña dan lo mismo, pero el desplegable
+// NOMBRA de qué campaña vino el dinero, y eso el administrador lo quiere ver
+// sin abrir ninguna ficha.
+check('y nombra la campaña de la que vino el dinero',
+    /Emergencia Terremoto Colombia 2026/.test(await page.getByLabel('Destino del aporte').innerText()),
+    await page.getByLabel('Destino del aporte').innerText());
 
 // Sin filtro no hay aviso ni botón de limpiar: sería ruido.
 check('sin filtro no se enseña el aviso del saldo',
@@ -493,10 +510,7 @@ check('el CSV se descarga', !!csv, 'no llegó el evento de descarga');
 check('con el sitio, la moneda y la fecha en el nombre',
     /boveda-.*-cop-\d{4}-\d{2}-\d{2}\.csv/.test(csv.suggestedFilename()), csv.suggestedFilename());
 
-const xlsx = await bajar(/Descargar Excel de COP/).catch(e => {
-    console.log('    consola:', consola.slice(-3).join(' | '));
-    throw e;
-});
+const xlsx = await bajar(/Descargar Excel de COP/);
 check('el Excel se descarga —`xlsx` carga y compone—',
     /\.xlsx$/.test(xlsx.suggestedFilename()), xlsx.suggestedFilename());
 
@@ -505,6 +519,39 @@ check('el PDF se descarga —`jspdf` carga y compone—',
     /\.pdf$/.test(pdf.suggestedFilename()), pdf.suggestedFilename());
 
 check('exportar no dejó errores en la consola', errores.length === 0, errores.join(' | '));
+
+// ── La disposición (v4.851) ──────────────────────────────────────────
+console.log('\n▸ Todo en una línea, a la derecha');
+if (!hayCss) console.log('  · sin dist/ no hay CSS: se salta la disposición (npm run build)');
+
+// El equipo lo pidió en UNA línea: monedas a la izquierda, filtros y descargas
+// a la derecha. Comprobar que los elementos EXISTEN no dice nada sobre dónde
+// están — hay que medirlos.
+const caja = async (loc) => (await loc.first().boundingBox());
+const chipCop = await caja(page.getByRole('tab', { name: /COP/ }));
+const selPeriodo = await caja(page.getByLabel('Período'));
+const selDestino = await caja(page.getByLabel('Destino del aporte'));
+const btnPdf = await caja(page.getByRole('button', { name: /Descargar PDF/ }));
+
+const mismaLinea = (a, b) => a && b && Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) < 12;
+
+if (hayCss) {
+    check('el período está en la MISMA línea que las monedas',
+        mismaLinea(chipCop, selPeriodo), `moneda y=${chipCop?.y}, período y=${selPeriodo?.y}`);
+    check('y las descargas también',
+        mismaLinea(chipCop, btnPdf), `moneda y=${chipCop?.y}, PDF y=${btnPdf?.y}`);
+}
+
+// El orden pedido: período → campaña → Excel/CSV/PDF, todo a la derecha.
+// El orden pedido: período → campaña → Excel/CSV/PDF, todo a la derecha.
+check('el período va a la DERECHA de las monedas',
+    selPeriodo.x > chipCop.x + chipCop.width, `moneda hasta ${chipCop.x + chipCop.width}, período en ${selPeriodo.x}`);
+check('la campaña va después del período',
+    selDestino.x > selPeriodo.x, `período ${selPeriodo.x}, campaña ${selDestino.x}`);
+if (hayCss) {
+    check('y las descargas al final',
+        btnPdf.x > selDestino.x, `campaña ${selDestino.x}, PDF ${btnPdf.x}`);
+}
 
 await browser.close();
 
