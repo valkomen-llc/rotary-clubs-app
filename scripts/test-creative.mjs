@@ -16,7 +16,8 @@
 import { readFileSync } from 'node:fs';
 import {
     DNA_VERSION, ZONE_ROLES, ZONE_BANDS, TYPE_CHARACTERS, TYPE_JUMPS, FOOT_STYLES, PHOTO_MASKS,
-    TITLE_SCALE_RANGE, ACCENT_MIN_CHROMA, ACCENT_MIN_DISTANCE,
+    TITLE_SCALE_RANGE, ACCENT_MIN_CHROMA, ACCENT_MIN_DISTANCE, BRAND_MIN_CHROMA, GROUND_MIN_CONTRAST,
+    buildStylePrompt, buildStyleContext, STYLE_NEGATIVE_PROMPT, STYLE_PROMPT_MAX_CHARS,
     luminance, contrastRatio, chroma, rgbDistance,
     normalizeMeasured, normalizeDescribed, mergePalettes, consolidate,
     deriveBrand, deriveStyle, applyProfile, mergeBranding, isHeadlineNode,
@@ -79,13 +80,59 @@ check('el rojo institucional está muy por encima del piso de saturación',
 check('el malva está muy por debajo', chroma('#8F5F5C') < ACCENT_MIN_CHROMA, chroma('#8F5F5C').toFixed(2));
 check('la distancia también manda: un tono casi igual no separa',
     rgbDistance('#0C2A5E', '#0D2B60') < ACCENT_MIN_DISTANCE);
-check('la tinta se elige por LEGIBILIDAD, no de la paleta: sobre claro va oscura',
-    deriveBrand([{ hex: '#F2F2F2', cobertura: .7 }, { hex: '#1E7A3C', cobertura: .3 }]).ink === '#0F1E3D');
+check('la tinta se elige por LEGIBILIDAD, no de la paleta: sobre un fondo claro va oscura',
+    deriveBrand([{ hex: '#F7D31B', cobertura: .7 }, { hex: '#0C2A5E', cobertura: .2 }]).ink === '#0F1E3D');
 check('y sobre oscuro, blanca',
     deriveBrand([{ hex: '#0C2A5E', cobertura: 1 }]).ink === '#FFFFFF');
+check('un gris neutro no es un color de marca: manda el que sí lo es',
+    deriveBrand([{ hex: '#F2F2F2', cobertura: .7 }, { hex: '#1E7A3C', cobertura: .3 }]).primary === '#1E7A3C');
 check('sin paleta no se inventa una marca', deriveBrand([]) === null);
 check('la luminancia sigue la fórmula del estándar (blanco 1, negro 0)',
     Math.abs(luminance('#FFFFFF') - 1) < 1e-6 && luminance('#000000') === 0);
+
+grupo('El fondo es el color de MARCA, no el papel');
+// Lo destapó la primera prueba con las referencias reales del Distrito: son
+// volantes BLANCOS con cabecera y pie azules, así que el color de mayor
+// cobertura es `#F2F1F1` con el 80 %. Tomado como fondo, las composiciones
+// —que declaran su texto en BLANCO— salían con el título blanco sobre un fondo
+// casi blanco. Ilegible, y sin que nada avisara.
+{
+    const REAL = [
+        { hex: '#F2F1F1', cobertura: .80 }, { hex: '#00368E', cobertura: .06 },
+        { hex: '#0046A8', cobertura: .04 }, { hex: '#141518', cobertura: .03 },
+    ];
+    const b = deriveBrand(REAL);
+    check('el papel blanco NO se toma como fondo', b.primary !== '#F2F1F1');
+    check('se toma el color de marca dominante', b.primary === '#00368E');
+    check('y se DICE que la referencia es de fondo claro',
+        b.notes.some(n => n.includes('fondo claro')), JSON.stringify(b.notes));
+    check('el blanco del papel está por debajo del piso de marca', chroma('#F2F1F1') < BRAND_MIN_CHROMA);
+    check('un azul marino institucional está por encima', chroma('#0C2A5E') >= BRAND_MIN_CHROMA, chroma('#0C2A5E').toFixed(2));
+    check('el piso de marca es MÁS BAJO que el del acento: un color de identidad tiene poca saturación',
+        BRAND_MIN_CHROMA < ACCENT_MIN_CHROMA);
+
+    // La red de seguridad: un color de marca CLARO tampoco puede llevar el
+    // texto blanco de las composiciones.
+    const claro = deriveBrand([{ hex: '#F7D31B', cobertura: .7 }, { hex: '#0C2A5E', cobertura: .2 }]);
+    check('un color de marca demasiado claro NO se aplica', claro.primary === null);
+    check('y se dice, en vez de entregar una pieza ilegible',
+        claro.notes.some(n => n.includes('demasiado claro')));
+    check('sin fondo del perfil, manda el de la campaña',
+        mergeBranding({}, { derived: { brand: claro } }).primary === undefined);
+
+    // Y la comprobación de punta a punta: con la paleta REAL del cliente, el
+    // título NO puede salir del mismo color que el fondo.
+    const dna = { derived: { ...deriveStyle({ measured: { paleta: REAL } }), brand: b } };
+    const doc = compileTemplate({
+        template: applyProfile(templateFor('impacto_estadistico', 'post_1_1'), dna),
+        variables: { titulo: 'Colombia te necesita' },
+        branding: mergeBranding({}, dna),
+    });
+    const fondo = doc.nodes.find(n => n.id === 'fondo').fill;
+    const titulo = doc.nodes.find(n => n.id === 'titulo').color;
+    check('con la paleta real del cliente, el título contrasta con el fondo',
+        contrastRatio(titulo, fondo) >= GROUND_MIN_CONTRAST, `${contrastRatio(titulo, fondo).toFixed(2)} (${titulo} sobre ${fondo})`);
+}
 
 grupo('Las paletas de varias referencias se juntan por CERCANÍA');
 {
@@ -123,6 +170,54 @@ grupo('Consolidar es aritmética, no una opinión de un modelo');
     check('y entonces el derivado cae a lo neutro, no a algo inventado',
         consolidate([{ measured: REF().measured }])?.derived?.fontTitular === 'brand');
     check('sin nada legible no hay perfil', consolidate([{}, {}]) === null);
+}
+
+grupo('El CONTEXTO se lee y el PROMPT se copia');
+{
+    const conContexto = (o = {}) => ({
+        measured: REF().measured,
+        described: { ...REF().described, contexto: 'Volantes institucionales de fondo claro con cabecera y pie azules en curva.', ...o },
+    });
+    const dna = consolidate([conContexto(), conContexto()]);
+
+    check('el contexto viaja dentro del DNA, no se calcula al pedirlo',
+        typeof dna.derived.contexto === 'string' && dna.derived.contexto.length > 40);
+    check('el contexto está en ESPAÑOL: lo lee una persona',
+        /titulares|paleta|fotografía/i.test(dna.derived.contexto));
+    check('cita lo que dijo el modelo', dna.derived.contexto.includes('Volantes institucionales'));
+    check('y agrega lo MEDIDO, que el modelo no puede saber',
+        dna.derived.contexto.includes('#0B2B5C') || dna.derived.contexto.includes('%'));
+
+    const p = dna.derived.stylePrompt;
+    check('el prompt existe y va en inglés: los motores responden mejor', /Institutional graphic background/.test(p));
+    check('lleva la paleta EXACTA, que es lo que hace reconocible el estilo', p.includes('#0B2B5C'));
+    // Es la regla del sitio y la razón por la que una pieza generada se puede
+    // publicar: el texto y los logotipos los compone el motor de escena encima.
+    check('prohíbe texto y logotipos DENTRO de la imagen', /NO text and NO logos/.test(p));
+    check('cita el contexto como dirección de arte', p.includes('Volantes institucionales'));
+    check('describe dónde va la fotografía', /Photography sits in/.test(p));
+    check('no se pasa del presupuesto', p.length <= STYLE_PROMPT_MAX_CHARS, String(p.length));
+
+    // Al recortar, lo que se sacrifica es lo descriptivo; la paleta y la
+    // cláusula de lo que no se dibuja NO se tocan.
+    const corto = buildStylePrompt(dna, { maxChars: 260 });
+    check('recortado, conserva la paleta', corto.includes('#0B2B5C'));
+    check('recortado, conserva la prohibición de texto y logotipos', /NO text and NO logos/.test(corto));
+    check('recortado, sacrifica lo descriptivo', !corto.includes('Volantes institucionales'));
+
+    check('el negativo es una lista cerrada y prohíbe lo que no se negocia',
+        STYLE_NEGATIVE_PROMPT.includes('text') && STYLE_NEGATIVE_PROMPT.includes('logo') && STYLE_NEGATIVE_PROMPT.includes('extra people'));
+    check('sin DNA no se inventa un prompt', buildStylePrompt(null) === '' && buildStyleContext(null) === '');
+    check('sin modelo de visión hay prompt igual, con lo medido',
+        buildStylePrompt(consolidate([{ measured: REF().measured }, { measured: REF().measured }])).includes('#0B2B5C'));
+
+    // El prompt es REPRODUCIBLE: es lo que lo hace utilizable para toda una
+    // campaña. Un prompt redactado por un modelo cambiaría entre dos análisis.
+    check('el mismo DNA da SIEMPRE el mismo prompt',
+        buildStylePrompt(dna) === buildStylePrompt(dna));
+    const fuente = readFileSync('server/lib/creativeDNA.js', 'utf8');
+    const cuerpo = fuente.slice(fuente.indexOf('export const buildStylePrompt'), fuente.indexOf('export const buildStyleContext'));
+    check('lo construye el CÓDIGO: no llama a ningún modelo', !/generateCopy|fetch\(|await /.test(cuerpo));
 }
 
 grupo('El derivado traduce con tablas cerradas');

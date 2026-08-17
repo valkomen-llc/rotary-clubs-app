@@ -162,8 +162,13 @@ export const saveCreativeProfile = async (req, res) => {
             });
         }
         if (!dna.described) {
-            notas.push('No hubo modelo de visión: el estilo se armó con la paleta y las coberturas, que son la mitad que no depende de un proveedor externo.');
+            notas.push('No hubo modelo de visión: el estilo se armó con la paleta y las coberturas, que son la mitad que no depende de un proveedor externo. Sin él no hay contexto narrado ni prompt de estilo completo.');
         }
+        // Lo que el propio criterio tuvo que decidir —un referente de fondo
+        // claro, un color demasiado claro para llevar texto blanco— se dice con
+        // el resto. Sin esto, el usuario ve un fondo que no es el de sus piezas
+        // y no tiene dónde enterarse de por qué.
+        notas.push(...(dna.derived?.notes || []));
 
         // ── La versión nueva ─────────────────────────────────────
         //

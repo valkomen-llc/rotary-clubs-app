@@ -254,7 +254,8 @@ Devolvés SOLO un objeto JSON, sin texto alrededor, con esta forma exacta:
   "jerarquia": [ … ],
   "caracter": …,
   "saltoTipografico": …,
-  "pie": …
+  "pie": …,
+  "contexto": "…"
 }
 
 Valores permitidos, y NINGÚN otro:
@@ -266,6 +267,10 @@ Valores permitidos, y NINGÚN otro:
 - saltoTipografico: ${lista(TYPE_JUMPS)}  ("extremo" si el titular es muchísimo mayor que el texto)
 - pie: ${lista(FOOT_STYLES)}  (cómo cierra la pieza abajo)
 - jerarquia: los roles ordenados por PESO VISUAL, del que más pesa al que menos.
+- contexto: DOS O TRES FRASES en español que describan a qué se parece la pieza y qué la hace
+  reconocible: el aire general, cómo se tratan la fotografía y los bloques de color, qué
+  sensación transmite. Es la única parte libre y sirve para dirigir un generador de imágenes.
+  Describí el ESTILO, nunca el contenido concreto.
 
 Reglas:
 - Describí SOLO lo que se ve. Si una zona no está en la pieza, no la incluyas.

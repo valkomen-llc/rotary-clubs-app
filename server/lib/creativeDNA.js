@@ -203,6 +203,17 @@ export const normalizeDescribed = (raw = {}) => {
         caracter: oneOf(raw.caracter, TYPE_CHARACTERS, 'grotesca-normal'),
         saltoTipografico: oneOf(raw.saltoTipografico, TYPE_JUMPS, 'moderado'),
         pie: oneOf(raw.pie, FOOT_STYLES, 'recto'),
+        // ── EL CONTEXTO NARRADO ──────────────────────────────────
+        //
+        // Prosa: dos o tres frases que dicen a qué se parece la pieza. Es la
+        // única parte del análisis que NO pasa por un catálogo cerrado, y se
+        // puede permitir porque no decide nada: no modula la composición, se
+        // LEE. Un modelo de lenguaje describe bien y mide mal, así que se le
+        // pide justo lo que hace bien.
+        //
+        // Se acota en largo porque después viaja dentro del prompt de estilo,
+        // que tiene presupuesto.
+        contexto: String(raw.contexto || '').replace(/\s+/g, ' ').trim().slice(0, 600),
         descartes,
     };
 };
@@ -300,13 +311,26 @@ export const consolidate = (analisis = []) => {
             })
             .filter(Boolean),
         jerarquia: descritos[0].jerarquia,
+        // El contexto NO se promedia ni se concatena: se toma el MÁS LARGO de
+        // los que hay. Concatenar tres descripciones de la misma familia de
+        // piezas produce un texto redundante que además revienta el presupuesto
+        // del prompt, y promediar prosa no significa nada.
+        contexto: descritos.map(d => d.contexto).filter(Boolean).sort((a, b) => b.length - a.length)[0] || '',
         caracter: moda(descritos.map(d => d.caracter), 'grotesca-normal'),
         saltoTipografico: moda(descritos.map(d => d.saltoTipografico), 'moderado'),
         pie: moda(descritos.map(d => d.pie), 'recto'),
         descartes: descritos.flatMap(d => d.descartes),
     } : null;
 
-    return { version: DNA_VERSION, measured, described, derived: deriveStyle({ measured, described }) };
+    const derived = deriveStyle({ measured, described });
+    const dna = { version: DNA_VERSION, measured, described, derived };
+    // El CONTEXTO y el PROMPT viven en el DNA, no se calculan al pedirlos: así
+    // quedan guardados con la versión del perfil y una pieza generada hace un
+    // mes se puede explicar con el mismo texto que la generó.
+    derived.contexto = buildStyleContext(dna);
+    derived.stylePrompt = buildStylePrompt(dna);
+    derived.negativePrompt = STYLE_NEGATIVE_PROMPT;
+    return dna;
 };
 
 // ─── DERIVAR: la única parte que el compositor consume ─────────────────
@@ -348,6 +372,21 @@ export const ACCENT_MIN_DISTANCE = 90;
  */
 export const ACCENT_MIN_CHROMA = 0.35;
 
+/**
+ * Cuánta saturación hace falta para que un color sea DE MARCA y no papel.
+ *
+ * Muy por debajo del piso del acento a propósito: el azul marino del Distrito
+ * (`#0C2A5E`) tiene 0,32 y el bordó de una pieza sobria, 0,26 — son colores de
+ * identidad y tienen poca saturación. Lo que este piso deja fuera es el papel:
+ * el blanco `#F2F1F1` da 0,004 y un negro de texto `#141518`, 0,02.
+ */
+export const BRAND_MIN_CHROMA = 0.15;
+
+/** Por debajo de este contraste, el fondo elegido no puede llevar el texto
+ *  blanco que las composiciones declaran, y aplicar la paleta dejaría la pieza
+ *  ilegible. Es 3, el mínimo del estándar para texto grande. */
+export const GROUND_MIN_CONTRAST = 3;
+
 /** Distancia euclídea en RGB. No es perceptualmente uniforme —para eso haría
  *  falta CIELAB— y para lo que se usa alcanza de sobra: separar un acento de un
  *  tinte del propio fondo. Traer un espacio de color entero por esto sería
@@ -367,17 +406,54 @@ export const chroma = (h) => {
     return (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
 };
 
+/**
+ * ── EL FONDO ES EL COLOR DE MARCA, NO EL PAPEL ──────────────────────
+ *
+ * Lo destapó la primera prueba con las referencias reales del Distrito: son
+ * volantes BLANCOS con cabecera y pie azules, así que el color de mayor
+ * cobertura es `#F2F1F1` con el **80 %**. Tomado como fondo, las composiciones
+ * de este preset —que declaran su texto en BLANCO— salían con el título blanco
+ * sobre un fondo casi blanco. Ilegible, y sin que nada avisara.
+ *
+ * El color de mayor cobertura de una pieza clara es su PAPEL, no su identidad.
+ * El fondo se toma del color de marca dominante; la cobertura sigue guardada en
+ * `measured.paleta`, que es lo que describe la referencia de verdad.
+ *
+ * ⚠️ Consecuencia que hay que decir en la pantalla: un referente de fondo CLARO
+ * no se puede trasladar tal cual, porque estas composiciones son de fondo
+ * oscuro. Honrar su claridad exigiría rediseñarlas —texto oscuro, velos, otra
+ * jerarquía—, que es bastante más que modular.
+ */
 export const deriveBrand = (paleta = []) => {
     if (!paleta.length) return null;
-    const primary = paleta[0].hex;
+    const notes = [];
+
+    const deMarca = paleta.filter(c => chroma(c.hex) >= BRAND_MIN_CHROMA);
+    const primary = (deMarca[0] || paleta[0]).hex;
+    if (deMarca[0] && deMarca[0].hex !== paleta[0].hex) {
+        notes.push(`La referencia es de fondo claro (${paleta[0].hex} ocupa el ${Math.round(paleta[0].cobertura * 100)} %). `
+            + `Estas composiciones son de fondo oscuro, así que se toma su color de marca ${primary} como fondo.`);
+    }
+
     // `null` cuando ninguno califica, y eso NO es un fallo: significa que la
     // referencia no tiene un color de acento, y entonces manda el que ya
     // declara la campaña o la plantilla. Inventar uno sería peor que no tener.
-    const accent = paleta.slice(1).find(c =>
+    const accent = paleta.filter(c => c.hex !== primary).find(c =>
         rgbDistance(c.hex, primary) >= ACCENT_MIN_DISTANCE && chroma(c.hex) >= ACCENT_MIN_CHROMA
     )?.hex || null;
+
     const ink = contrastRatio('#FFFFFF', primary) >= contrastRatio('#0F1E3D', primary) ? '#FFFFFF' : '#0F1E3D';
-    return { primary, accent, ink };
+
+    // La RED DE SEGURIDAD. Con un color de marca claro —un amarillo, un beige—
+    // el texto blanco de las composiciones seguiría sin leerse. Antes que
+    // entregar una pieza ilegible, no se aplica la paleta y se DICE.
+    const legible = contrastRatio('#FFFFFF', primary) >= GROUND_MIN_CONTRAST;
+    if (!legible) {
+        notes.push(`El color dominante de la referencia (${primary}) es demasiado claro para el texto blanco `
+            + 'de estas composiciones, así que se conserva el color de la campaña. El resto del estilo sí se aplica.');
+        return { primary: null, accent, ink, notes };
+    }
+    return { primary, accent, ink, notes };
 };
 
 /** La máscara de la fotografía sale del BORDE que se describió para su zona.
@@ -407,7 +483,129 @@ export const deriveStyle = ({ measured = null, described = null } = {}) => {
         // tiene por qué conocer la forma entera del DNA.
         tintaObjetivo: measured?.tintaCobertura ?? null,
         fotoObjetivo: measured?.fotoCobertura ?? null,
+        // Lo que la referencia dijo de sí misma, para que el prompt y el
+        // resumen no tengan que volver a `described`.
+        notes: brand?.notes || [],
     };
+};
+
+// ─── EL PROMPT DE ESTILO ───────────────────────────────────────────────
+//
+// Lo que el pedido llama «un prompt para que se pueda aplicar estos patrones en
+// la generación de imágenes». Sale del DNA y sirve para dos cosas: se copia a
+// cualquier generador, y alimenta el `masterPrompt` del Motor de Composición de
+// Plantillas IA, que es el campo que ya existe para la dirección de arte.
+//
+// ── LO ESCRIBE EL CÓDIGO, NO EL MODELO, Y NO ES CAPRICHO ────────────
+//
+// Un prompt que redacta un modelo cambia entre dos análisis de las mismas
+// referencias, y este tiene que ser REPRODUCIBLE: es lo que va a componer todas
+// las piezas de una campaña. Además carga las reglas que no se negocian —sin
+// texto dentro de la imagen, sin logotipos dibujados, sin personas inventadas—
+// y ésas no pueden depender de que un modelo se acuerde de incluirlas.
+//
+// Lo que sí aporta el modelo es el CONTEXTO narrado, que se cita como la parte
+// descriptiva. Es el mismo reparto de todo el módulo: el modelo describe, el
+// código decide.
+//
+// ── POR QUÉ EN INGLÉS ──────────────────────────────────────────────
+//
+// Los motores de imagen están entrenados mayoritariamente en inglés y responden
+// mejor. El CONTEXTO va en español porque lo lee una persona; el prompt, no.
+
+const CHARACTER_EN = {
+    'condensada-pesada': 'bold condensed sans-serif headlines in uppercase',
+    'grotesca-normal': 'clean grotesque sans-serif headlines',
+    'serif-institucional': 'institutional serif headlines',
+};
+const EDGE_EN = { recta: 'straight edges', curva: 'a broad organic curved edge', circular: 'a circular crop' };
+const BAND_EN = { superior: 'the upper band', medio: 'the middle band', inferior: 'the lower band' };
+const SIDE_EN = { izquierda: 'the left', centro: 'the centre', derecha: 'the right', completo: 'the full width' };
+
+/** Lo que NO se negocia, pase lo que pase con las referencias. Va aparte del
+ *  positivo por la regla del sitio: dentro de la descripción de la escena, el
+ *  modelo se obsesiona con lo prohibido; en su campo lo lee como lo que es. */
+export const STYLE_NEGATIVE_PROMPT = [
+    'text', 'lettering', 'words', 'numbers', 'captions', 'watermark',
+    'logo', 'emblem', 'wheel', 'badge', 'brand mark',
+    'extra people', 'invented faces', 'distorted hands',
+    'collage', 'frame', 'border', 'mockup', 'ui elements',
+].join(', ');
+
+export const STYLE_PROMPT_MAX_CHARS = 1200;
+
+/**
+ * El prompt de estilo a partir de un DNA.
+ *
+ * Se recorta con ORDEN si hace falta: primero el contexto narrado, después el
+ * mapa de zonas. Lo que NUNCA se recorta es la paleta y la cláusula de lo que no
+ * se dibuja — la paleta es lo que hace reconocible el estilo, y la cláusula es
+ * lo que impide que el motor escriba texto o dibuje un emblema.
+ */
+export const buildStylePrompt = (dna, { maxChars = STYLE_PROMPT_MAX_CHARS } = {}) => {
+    const d = dna?.derived, m = dna?.measured, x = dna?.described;
+    if (!d && !m) return '';
+
+    const paleta = (m?.paleta || []).slice(0, 4).map(c => c.hex).join(', ');
+    const nucleo = [
+        'Institutional graphic background for a non-profit social media piece.',
+        paleta ? `Strict colour palette: ${paleta}. Use no other hues.` : '',
+        // Va en el núcleo: es la regla del sitio y la razón por la que una pieza
+        // generada se puede publicar. El texto lo dibuja el compositor encima.
+        'The image carries NO text and NO logos of any kind: those are composed on top afterwards.',
+    ].filter(Boolean);
+
+    const opcional = [];
+    if (x?.contexto) opcional.push(`Art direction, from the reference pieces: ${x.contexto}`);
+    if (d?.fontTitular) {
+        const car = d.fontTitular === 'condensed' ? 'condensada-pesada'
+            : d.fontTitular === 'serif' ? 'serif-institucional' : 'grotesca-normal';
+        opcional.push(`The layout is built for ${CHARACTER_EN[car]}, so leave generous flat areas for them.`);
+    }
+    const foto = (x?.zonas || []).find(z => z.rol === 'foto');
+    if (foto) {
+        opcional.push(`Photography sits in ${BAND_EN[foto.banda] || 'the upper band'} on ${SIDE_EN[foto.lado] || 'the full width'}, with ${EDGE_EN[foto.borde] || 'straight edges'}.`);
+    }
+    if (Number.isFinite(m?.fotoCobertura)) {
+        opcional.push(`Roughly ${Math.round(m.fotoCobertura * 100)} % of the surface is photographic; the rest is flat colour.`);
+    }
+    if (d?.pie) opcional.push(d.pie === 'curvo' ? 'The piece closes with a curved band at the bottom.' : 'The piece closes with a straight band at the bottom.');
+
+    let out = nucleo.join(' ');
+    for (const frase of opcional) {
+        if (out.length + frase.length + 1 > maxChars) break;
+        out += ` ${frase}`;
+    }
+    return out.trim();
+};
+
+/**
+ * El CONTEXTO para una persona. Es el resumen legible del estilo: lo que el
+ * modelo describió, más lo que se midió. Se arma acá y no en la pantalla porque
+ * lo consumen las dos puntas —el panel lo muestra y viaja en la respuesta de la
+ * API—, y dos redacciones del mismo resumen se separarían en silencio.
+ */
+export const buildStyleContext = (dna) => {
+    const d = dna?.derived, m = dna?.measured, x = dna?.described;
+    if (!d && !m) return '';
+    const partes = [];
+    if (x?.contexto) partes.push(x.contexto);
+
+    const car = d?.fontTitular === 'condensed' ? 'una sans condensada y pesada'
+        : d?.fontTitular === 'serif' ? 'una serif institucional' : 'una grotesca normal';
+    partes.push(`Los titulares van en ${car}${d?.escalaTitular > 1 ? ', bastante mayores que el texto' : d?.escalaTitular < 1 ? ', sin mucha diferencia con el texto' : ''}.`);
+
+    if (m?.paleta?.length) {
+        partes.push(`La paleta se apoya en ${m.paleta.slice(0, 3).map(c => c.hex).join(', ')}`
+            + `${d?.brand?.primary ? `, con ${d.brand.primary} como color de marca` : ''}.`);
+    }
+    if (Number.isFinite(m?.fotoCobertura) && Number.isFinite(m?.tintaCobertura)) {
+        partes.push(`Alrededor del ${Math.round(m.fotoCobertura * 100)} % de la pieza es fotografía `
+            + `y el ${Math.round(m.tintaCobertura * 100)} % es texto.`);
+    }
+    if (d?.mascaraFoto && d.mascaraFoto !== 'ninguna') partes.push('La fotografía se recorta con una curva, no con un borde recto.');
+    if (d?.pie) partes.push(d.pie === 'curvo' ? 'El pie cierra con una curva.' : 'El pie cierra con una banda recta.');
+    return partes.join(' ');
 };
 
 // ─── APLICAR el perfil a una plantilla ─────────────────────────────────
@@ -696,5 +894,6 @@ export default {
     luminance, contrastRatio, chroma, rgbDistance, normalizeMeasured, normalizeDescribed,
     mergePalettes, consolidate, deriveBrand, deriveStyle,
     applyProfile, mergeBranding, scorePiece, isHeadlineNode,
+    buildStylePrompt, buildStyleContext, STYLE_NEGATIVE_PROMPT,
     legibilityScore, densityScore, brandComplianceScore, styleConsistencyScore,
 };

@@ -92,6 +92,56 @@ const DnaResumen: React.FC<{ dna: any }> = ({ dna }) => {
                 {dato('Pie', PIES[d.pie] || d.pie)}
                 {dato('Tamaño del titular', `${Math.round((d.escalaTitular || 1) * 100)} % de lo normal`)}
             </div>
+            {/* ── EL CONTEXTO Y EL PROMPT ──────────────────────────
+                Lo que el pedido llama «una descripción como un contexto y a la
+                vez un prompt». El contexto se lee; el prompt se copia a un
+                generador de imágenes o al campo de dirección de arte del Motor
+                de Composición. Los dos se guardan CON la versión del perfil, así
+                que una pieza generada hace un mes se explica con el mismo texto
+                que la generó. */}
+            {d.contexto && (
+                <div>
+                    <span className={lbl}>Cómo se ven estas piezas</span>
+                    <p className="text-xs leading-relaxed text-gray-600 -mt-1">{d.contexto}</p>
+                </div>
+            )}
+            {d.stylePrompt && (
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <span className={`${lbl} mb-0`}>Prompt para generar imágenes</span>
+                        <button type="button"
+                            onClick={() => { navigator.clipboard?.writeText(d.stylePrompt); toast.success('Prompt copiado.'); }}
+                            className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider">
+                            Copiar
+                        </button>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-gray-500 bg-white border border-gray-200 rounded-lg p-2.5 font-mono" data-no-translate>
+                        {d.stylePrompt}
+                    </p>
+                    {/* Va en inglés a propósito y hay que decirlo: los motores de
+                        imagen responden mejor, y quien lo copie tiene que saber
+                        que no es un descuido. */}
+                    <p className="text-[10px] text-gray-400 mt-1.5">
+                        En inglés porque los generadores de imagen responden mejor. Ya lleva la instrucción de
+                        no dibujar texto ni logotipos: esos se componen encima.
+                    </p>
+                </div>
+            )}
+            {d.negativePrompt && (
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <span className={`${lbl} mb-0`}>Lo que no debe dibujar</span>
+                        <button type="button"
+                            onClick={() => { navigator.clipboard?.writeText(d.negativePrompt); toast.success('Copiado.'); }}
+                            className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider">
+                            Copiar
+                        </button>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-gray-500 bg-white border border-gray-200 rounded-lg p-2.5 font-mono" data-no-translate>
+                        {d.negativePrompt}
+                    </p>
+                </div>
+            )}
             {!d.brand?.accent && (
                 // Un acento vacío NO es un fallo: la referencia no tiene un
                 // color de acento y entonces manda el de la campaña. Decirlo
