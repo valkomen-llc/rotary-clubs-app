@@ -4,6 +4,8 @@ import DomainProvisioningService from '../services/DomainProvisioningService.js'
 
 import prisma from '../lib/prisma.js';
 import { ensureWalletSchema } from '../lib/ensureWalletSchema.js';
+import { stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
+import { fromStripeAmount } from '../lib/money.js';
 
 // La comisión de la plataforma por recaudar a través de la cuenta maestra.
 //
@@ -640,6 +642,7 @@ async function handleSuccessfulDonationCheckout(session) {
     let datosTarjeta = null;   // v4.844 — marca, últimos 4 y billetera
     let receiptUrl = null;     // v4.844 — el recibo de Stripe, tal cual
     let receiptNumber = null;
+    let detalleComision = null;  // v4.845 — importe original, moneda y tasa
 
     if (session.payment_intent) {
         try {
@@ -676,10 +679,40 @@ async function handleSuccessfulDonationCheckout(session) {
                 if (availableOn) {
                     clubAvailableOn = new Date(availableOn.getTime() + PLATFORM_HOLDING_DAYS * 24 * 60 * 60 * 1000);
                 }
-                // Usamos el fee real de Stripe (no la estimación)
-                if (typeof bt.fee === 'number') {
-                    estimatedStripeFee = bt.fee / 100;
+                // v4.845 — La comisión REAL de Stripe, convertida a la moneda
+                // del cobro.
+                //
+                // Hasta v4.844 esto era `bt.fee / 100` y el resultado se
+                // restaba del bruto sin mirar en qué moneda venía. El
+                // `balance transaction` se denomina en la moneda de
+                // LIQUIDACIÓN de la cuenta: sobre el aporte de 50.000 COP del
+                // Distrito, Stripe cobró 1,16 USD y el código le descontó 1,16
+                // PESOS. El neto que la pantalla le prometía al club estaba
+                // calculado restando dólares a pesos.
+                //
+                // `bt.fee` está en la unidad mínima de la moneda del BALANCE
+                // TRANSACTION, no del cobro: por eso `fromStripeAmount` recibe
+                // `bt.currency` y no `currency`.
+                const comision = stripeFeeInChargeCurrency({
+                    fee: fromStripeAmount(bt.fee, bt.currency),
+                    feeCurrency: bt.currency,
+                    chargeCurrency: currency,
+                    exchangeRate: bt.exchange_rate,
+                });
+
+                if (comision.amount !== null) {
+                    estimatedStripeFee = comision.amount;
                     netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+                    detalleComision = comision;
+                } else {
+                    // Sin tasa no se convierte NI se resta el número crudo: se
+                    // conserva la estimación y se anota el motivo. Un neto
+                    // calculado restando otra moneda es peor que uno estimado.
+                    detalleComision = comision;
+                    console.warn(
+                        `[Stripe Webhook] Comisión en ${bt.currency} sobre un cobro en ${currency} ` +
+                        `y sin tasa de cambio (${comision.reason}): se conserva la estimación.`
+                    );
                 }
             }
         } catch (stripeErr) {
@@ -741,6 +774,14 @@ async function handleSuccessfulDonationCheckout(session) {
                         card: datosTarjeta,
                         receiptUrl,
                         receiptNumber,
+                        // De dónde salió la comisión de Stripe: su importe
+                        // original, en qué moneda vino y con qué tasa se
+                        // convirtió. Sin esto, «¿por qué la comisión de este
+                        // aporte son 4.750 pesos?» no se puede contestar.
+                        stripeFeeOriginal: detalleComision?.original || null,
+                        stripeFeeRate: detalleComision?.rate ?? null,
+                        stripeFeeConverted: detalleComision?.converted ?? false,
+                        stripeFeeIssue: detalleComision?.amount === null ? (detalleComision?.reason || null) : null,
                     })
                 }
             });

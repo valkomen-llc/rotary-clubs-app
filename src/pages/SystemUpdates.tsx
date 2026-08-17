@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.844.0 | 2026-08-17 (La trazabilidad vive dentro de la caja del aportante)
-// Cache bust: 2026-08-17g
+// UI V4.845.0 | 2026-08-17 (La comisión de Stripe se convierte a la moneda del cobro)
+// Cache bust: 2026-08-17h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.845.0',
+        title: 'El neto del club ahora sí es el neto 🧮',
+        description: 'El recibo de Stripe del aporte de 50.000 pesos dice «USD 0,16 + USD 1,00». La plataforma restaba «1,16» del bruto en pesos — es decir, le descontaba un peso con dieciséis a un aporte al que Stripe le había cobrado un dólar con dieciséis. El neto que la Bóveda mostraba estaba mal calculado, y de más: en ese aporte, unos 4.750 pesos de más. La causa es que Stripe denomina la comisión en la moneda de LIQUIDACIÓN de la cuenta, no en la del cobro, y el código nunca miraba en qué moneda venía. Ahora se convierte con la tasa que Stripe aplicó a esa misma operación —no una tasa inventada ni consultada aparte— y en la ficha se ve el importe original junto al convertido, para que la cifra se pueda explicar. Si alguna vez faltara la tasa, la comisión NO se resta: se conserva la estimación y se avisa, porque un neto calculado restando otra moneda es peor que uno estimado. Además: el concepto del aporte —de qué campaña vino— pasa a encabezar el detalle del movimiento, y se retiraron el «Estado en Stripe» y el aviso de emparejado.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'stripe'],
+        type: 'fixed',
+        impact: 'Crítico',
+        changes: [
+            { type: 'fixed', text: 'La comisión de Stripe se convierte a la moneda del cobro antes de restarla.' },
+            { type: 'added', text: 'La ficha muestra el importe original de la comisión y que hubo conversión.' },
+            { type: 'fixed', text: 'El concepto del aporte ahora llega de verdad: se leía del sitio equivocado.' },
+            { type: 'removed', text: 'El «Estado en Stripe» y la etiqueta de movimiento emparejado.' },
+            { type: 'changed', text: 'El concepto encabeza el detalle del movimiento.' },
+        ],
+        details: [
+            'Se confirma lo que quedó anotado como pendiente en el diagnóstico de v4.841: la cuenta liquida en una moneda distinta a la del cobro. El recibo del Distrito lo prueba — «Comisión por procesamiento USD 0,16» y «USD 1,00» sobre un cargo de COL$50.000.',
+            'La conversión usa bt.exchange_rate, la tasa que Stripe aplicó a ESA operación. Dirección según Stripe: importe_en_A × tasa = importe_en_B, con A la moneda del cobro y B la de liquidación, así que para volver a pesos se divide.',
+            'bt.fee está en la unidad mínima de la moneda del balance transaction, no del cobro: por eso se lee con esa moneda y no con la del cargo. Sobre una cuenta que liquidara en yenes, dividir por 100 habría multiplicado la comisión por cien.',
+            'Los cobros ya registrados se corrigen con «Sincronizar con Stripe», que recalcula el neto. Es de esperar que el saldo BAJE: es la corrección, no un efecto secundario.',
+            'El origen del aporte lo pone createDonationCheckout en la Checkout Session, no en el PaymentIntent. El relleno de v4.844 lo leía de pi.metadata, que para estos cobros viene vacía — por eso el concepto no aparecía por más que se sincronizara. Ahora se consulta la sesión, y los aportes nuevos mandan la metadata también al PaymentIntent.',
+            'npm run test:wallet pasa a 68 y test:wallet:ui a 39, con el caso real como referencia: 1,16 USD sobre 50.000 COP no puede dar un neto de 47.499.',
+        ]
+    },
     {
         version: '4.844.0',
         title: 'Cada aporte cuenta su propia historia 🔍',

@@ -96,6 +96,10 @@ const traza = (currency, gross, net, fee, origen, tarjeta) => ({
     origin: origen, method: tarjeta,
     receiptUrl: 'https://pay.stripe.com/receipts/ejemplo',
     receiptNumber: currency === 'COP' ? '1157-2878' : '1904-4540',
+    // El caso real: sobre el cobro en pesos, Stripe cobró 1,16 USD.
+    stripeFeeOriginal: currency === 'COP' ? { amount: 1.16, currency: 'USD' } : null,
+    stripeFeeRate: currency === 'COP' ? 0.000244 : null,
+    stripeFeeConverted: currency === 'COP',
 });
 
 const DONACIONES = {
@@ -105,7 +109,7 @@ const DONACIONES = {
             donorName: 'Rodrigo Diaz', donorEmail: 'jrdiazrojas@gmail.com',
             isAnonymous: false, message: 'Aporte cali San Fernando',
             date: '2026-08-16T14:31:00.000Z', status: 'success',
-            movement: traza('COP', 50000, 47499, 2500,
+            movement: traza('COP', 50000, 42746, 2500,
                 { kind: 'campana', label: 'Emergencia Terremoto Colombia 2026', id: 'c1' },
                 { label: 'Mastercard ···3778', brand: 'mastercard', last4: '3778', wallet: '' }),
             movementMatch: 'exact',
@@ -271,20 +275,29 @@ check('muestra el número de recibo de Stripe', /1157-2878/.test(abierta));
 check('muestra la referencia de la transacción', /txn_kmT70Ij4d2s0/.test(abierta));
 check('enlaza al recibo de Stripe',
     await page.locator('a[href="https://pay.stripe.com/receipts/ejemplo"]').count() > 0);
-check('el neto se escribe en pesos, sin céntimos', /47\.499/.test(abierta) && !/47\.498,84/.test(abierta));
+// El neto ya NO es 47.499: la comisión de Stripe vino en dólares (1,16 USD) y
+// convertida son ~4.754 pesos, no 1,16. 50.000 − 4.754 − 2.500 ≈ 42.746.
+check('el neto descuenta la comisión CONVERTIDA', /42\.746/.test(abierta),
+    'el neto tiene que restar la comisión en pesos, no 1,16');
+check('se muestra el importe original de la comisión',
+    /1,16/.test(abierta) && /USD/.test(abierta),
+    'sin el original, una comisión convertida es un número que nadie puede explicar');
+check('el neto se escribe en pesos, sin céntimos', !/42\.746,\d/.test(abierta));
 
 // Un vínculo deducido no puede presentarse como un hecho.
-check('el aporte con vínculo exacto NO se marca como emparejado',
-    !/emparejado por coincidencia/i.test(abierta));
+check('NO se muestra el estado crudo de Stripe', !/Estado en Stripe/.test(abierta));
+check('NO se muestra la etiqueta de emparejado', !/emparejado por coincidencia/i.test(abierta));
+check('el CONCEPTO del aporte se ve al desplegar',
+    /Emergencia Terremoto Colombia 2026/.test(abierta), abierta.slice(0, 400));
 
 await page.getByRole('tab', { name: /USD/ }).click();
 await page.waitForTimeout(400);
 await page.locator('[role="tabpanel"] button:has-text("John Miller")').first().click();
 await page.waitForTimeout(300);
 const abiertaUsd = await panel();
-check('el aporte emparejado por heurística lo DICE',
-    /emparejado por coincidencia/i.test(abiertaUsd), abiertaUsd.slice(0, 600));
 check('la billetera se escribe como en el recibo', /Apple Pay/.test(abiertaUsd));
+check('un cobro sin conversión no habla de tasas',
+    !/convertidos a/.test(abiertaUsd), 'el aporte en dólares no pasó por ninguna conversión');
 
 // ── Nada se pierde al unificar ───────────────────────────────────────
 console.log('\n▸ Un cobro sin aportante no desaparece');
