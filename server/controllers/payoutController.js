@@ -11,9 +11,9 @@ import {
     sumByCurrency, subtractByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
-import { postPayout, postPayoutCancel, reconcileClub } from '../lib/ledger.js';
+import { postPayout, postPayoutCancel, reconcileClub, backfillClub } from '../lib/ledger.js';
 
-console.log('[PAYOUTS v4.847] Saldos POR MONEDA + libro mayor en sombra');
+console.log('[PAYOUTS v4.848] Libro mayor en sombra + carga del historial');
 
 // v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
 // `financialController` y la barra superior del panel, y tres copias del mismo
@@ -294,7 +294,7 @@ export const getLedgerReconciliation = async (req, res) => {
             });
         }
 
-        const cuadra = report.neto.ok && report.disponible.ok;
+        const cuadra = report.neto.ok && report.saldo.ok;
         return res.json({
             clubId,
             estado: cuadra ? 'cuadra' : 'difiere',
@@ -305,12 +305,68 @@ export const getLedgerReconciliation = async (req, res) => {
                 ? 'El libro dice lo mismo que la Bóveda.'
                 : 'El libro difiere de la Bóveda. En la Fase 1 es lo esperable: sólo tiene los hechos posteriores a su estreno.',
             neto: report.neto,
-            disponible: report.disponible,
+            saldo: report.saldo,
+            soloEnElLibro: report.soloEnElLibro,
             cuentas: report.cuentas,
             legacy,
         });
     } catch (error) {
         console.error('Error reconciling ledger:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+/**
+ * POST /api/payouts/admin/ledger/:clubId/backfill — carga el historial.
+ *
+ * v4.848 — Fase 2, primer paso. Asienta hacia atrás lo que la plataforma ya
+ * tenía registrado, para que el informe de conciliación pueda llegar a cuadrar.
+ *
+ * **DE ENSAYO por defecto**: sin `{"apply": true}` no escribe nada y devuelve
+ * lo que haría. Escribir es idempotente —correrlo dos veces da todo duplicado,
+ * que es lo correcto— pero lo valioso es mirar primero: lo que NO se puede
+ * cargar y por qué es la mitad del resultado.
+ *
+ * Del operador de la plataforma, como el informe: es una herramienta de
+ * migración sobre infraestructura compartida.
+ */
+export const backfillLedger = async (req, res) => {
+    try {
+        const clubId = req.params.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+
+        const apply = req.body?.apply === true;
+        const resultado = await backfillClub(clubId, { apply });
+
+        if (!resultado.ok) {
+            return res.status(resultado.reason === 'sin_libro' ? 409 : 500).json({
+                error: resultado.reason === 'sin_libro'
+                    ? 'El libro todavía no existe en esta base.'
+                    : 'No pude leer el historial.',
+                detail: resultado.detail || null,
+            });
+        }
+
+        // Después de cargar, el informe: es la pregunta que se venía a hacer.
+        // En ensayo no se consulta —nada cambió— y decirlo evita que se lea el
+        // informe de antes como si fuera el de después.
+        const legacy = await computeBalances(clubId);
+        const report = apply ? await reconcileClub(clubId, legacy) : null;
+
+        return res.json({
+            clubId,
+            ...resultado,
+            conciliacion: report?.ok
+                ? {
+                    estado: report.neto.ok && report.saldo.ok ? 'cuadra' : 'difiere',
+                    neto: report.neto,
+                    saldo: report.saldo,
+                    soloEnElLibro: report.soloEnElLibro,
+                }
+                : null,
+        });
+    } catch (error) {
+        console.error('Error backfilling ledger:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

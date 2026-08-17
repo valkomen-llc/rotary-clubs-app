@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.847.0 | 2026-08-17 (Fase 1: el libro mayor de la Bóveda, en sombra)
-// Cache bust: 2026-08-17j
+// UI V4.848.0 | 2026-08-17 (Fase 2: el libro se carga hacia atrás)
+// Cache bust: 2026-08-17k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.848.0',
+        title: 'El libro mayor se carga hacia atrás 📚',
+        description: 'Fase 2, primer paso. El libro se estrenó vacío, así que el informe de conciliación decía «difiere» por definición: sólo tenía lo posterior a su estreno. Ahora se puede cargar hacia atrás con lo que la plataforma YA tenía registrado —cada aporte, cada liberación y cada retiro—, para que ese informe pueda llegar a cuadrar. Y sólo cuando cuadre se cambia la fuente de los saldos de la Bóveda: ése es el segundo paso y no se da hasta entonces. La carga es de ENSAYO por defecto: sin pedirlo expresamente no escribe nada y devuelve lo que haría, incluido lo que NO puede cargar y por qué — que es la mitad del resultado.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'contabilidad'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'La carga del historial en el libro, de ensayo por defecto y repetible sin riesgo.' },
+            { type: 'fixed', text: 'El informe comparaba el disponible del libro contra uno que no es la misma cantidad.' },
+            { type: 'added', text: 'Lo que no se puede cargar se reporta agrupado por motivo, con ejemplos.' },
+            { type: 'added', text: 'npm run test:ledger:backfill (59 casos). Las tres suites del libro suman 212.' },
+        ],
+        details: [
+            'LA REGLA DE LA QUE CUELGA TODO: se REPRODUCE, no se corrige. La comisión de cada aporte no se recalcula, se deriva restando, de modo que el neto del libro sea exactamente el que la plataforma tiene guardado. Varios aportes anteriores a v4.845 tienen el neto mal calculado y la carga los reproduce MAL a propósito.',
+            'El motivo: si se arreglaran al cargarlos, el informe pasaría a mezclar «lo que falta por cargar» con «lo que decidimos corregir», y entonces un descuadre ya no distinguiría un fallo de la carga de una corrección deliberada. El informe es el único instrumento que autoriza el cambio de fuente; no puede quedar ambiguo. Los netos mal calculados se corrigen después, con asientos de reverso que lo dicen.',
+            'Cada asiento cargado se marca como RECONSTRUIDO y su comisión como ESTIMADA cuando se dedujo restando. Dentro de un año, nadie tiene por qué confundir lo que se observó en vivo con lo que se dedujo del historial.',
+            'El informe comparaba el «disponible» del libro contra el de la Bóveda, y no son la misma cantidad: la Bóveda calcula recaudado menos retirado sin mirar el período de retención, y el libro sólo llama disponible a lo que el proveedor ya liberó. Con un aporte en tránsito los dos difieren estando los dos bien — habría reportado un descuadre inexistente.',
+            'Un pago sin neto registrado NO se carga, y tampoco es una omisión: la Bóveda lo cuenta como cero, así que dejarlo fuera hace que los dos coincidan; asentarlo con neto cero diría que el procesador se quedó con todo el aporte.',
+            'Un retiro en una moneda en la que el sitio nunca recibió aportes tampoco se carga. Hasta v4.840 la moneda del retiro no se escribía y toda fila vieja quedó en dólares por omisión: adivinar cuál era sería adivinar cuánto dinero salió.',
+            'Correr la carga dos veces es seguro: la segunda declara todo duplicado y no escribe nada. Y un aporte que el webhook ya asentó en vivo no se duplica, porque los dos caminos usan la misma referencia.',
+        ]
+    },
     {
         version: '4.847.0',
         title: 'La Bóveda estrena su libro mayor, en sombra 📖',

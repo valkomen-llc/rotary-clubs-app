@@ -20,6 +20,7 @@ import {
     buildDonationEntry, buildReleaseEntry, buildPayoutEntry, buildPayoutCancelEntry,
 } from './ledgerSpec.js';
 import { normalizeCurrency } from './money.js';
+import { planBackfill, summarizeSkipped } from './ledgerBackfill.js';
 
 const id = () => crypto.randomUUID();
 
@@ -265,28 +266,35 @@ export const reconcileClub = async (clubId, legacy) => {
     const balances = await ledgerBalances(clubId);
     if (!balances) return { ok: false, reason: 'sin_libro' };
 
-    // El disponible según el libro: lo liberado menos lo transferido.
-    const disponible = {};
-    for (const code of new Set([
-        ...Object.keys(balances.club_disponible || {}),
-        ...Object.keys(balances.club_transferido || {}),
-    ])) {
-        disponible[code] = (balances.club_disponible?.[code] || 0);
-    }
+    const monedas = (...cuentas) => new Set(cuentas.flatMap(c => Object.keys(balances[c] || {})));
 
     // El neto acumulado: lo que entró menos las dos retenciones. Es lo que la
     // Bóveda llama «recaudado neto» y se compara contra `collected`.
     const neto = {};
-    for (const code of new Set([
-        ...Object.keys(balances.ingreso_aportes || {}),
-        ...Object.keys(balances.gasto_procesador || {}),
-        ...Object.keys(balances.gasto_plataforma || {}),
-    ])) {
+    for (const code of monedas('ingreso_aportes', 'gasto_procesador', 'gasto_plataforma')) {
         // `ingreso_aportes` es negativo por naturaleza: se niega para leerlo
         // como un importe positivo.
         neto[code] = -(balances.ingreso_aportes?.[code] || 0)
             - (balances.gasto_procesador?.[code] || 0)
             - (balances.gasto_plataforma?.[code] || 0);
+    }
+
+    // ⚠️ SE COMPARA CONTRA LO COMPARABLE, y esto se corrigió en la Fase 2.
+    //
+    // La v4.847 contrastaba `club_disponible` del libro contra `available` de
+    // la Bóveda, y NO son la misma cantidad: `computeBalances` calcula
+    // `collected − requested` sin mirar el período de retención, mientras que
+    // el libro sólo llama disponible a lo que el proveedor ya liberó. Con un
+    // aporte en tránsito los dos números difieren estando los dos bien, y el
+    // informe habría reportado un descuadre inexistente — que es exactamente
+    // el error que la conciliación existe para no cometer.
+    //
+    // La cantidad del libro equivalente a `available` es `neto − transferido`.
+    // Lo que el libro sabe de más —cuánto está liberado y cuánto en tránsito—
+    // se DEVUELVE aparte, como lectura propia, sin compararlo contra nada.
+    const saldo = {};
+    for (const code of new Set([...Object.keys(neto), ...Object.keys(balances.club_transferido || {})])) {
+        saldo[code] = (neto[code] || 0) - (balances.club_transferido?.[code] || 0);
     }
 
     // El lado viejo llega con decimales; se pasa a unidad mínima para comparar.
@@ -301,8 +309,109 @@ export const reconcileClub = async (clubId, legacy) => {
     return {
         ok: true,
         neto: compareBalances(neto, aMinor(legacy?.collected)),
-        disponible: compareBalances(disponible, aMinor(legacy?.available)),
+        saldo: compareBalances(saldo, aMinor(legacy?.available)),
+        // Lo que el libro sabe y la Bóveda no: cuánto está de verdad liberado y
+        // cuánto sigue en tránsito. NO se compara contra nada — no hay contra
+        // qué, y presentarlo como un descuadre sería inventar uno.
+        soloEnElLibro: {
+            liberado: balances.club_disponible || {},
+            enTransito: balances.stripe_pendiente || {},
+        },
         cuentas: balances,
+    };
+};
+
+// ── Cargar el historial ──────────────────────────────────────────────
+
+/**
+ * Asienta hacia atrás lo que la plataforma ya tenía registrado.
+ *
+ * v4.848 — Fase 2, primer paso. El criterio de qué se asienta y qué no vive en
+ * `ledgerBackfill.js`, que es puro; acá está la lectura, la escritura y el
+ * presupuesto de tiempo.
+ *
+ * **De ENSAYO por defecto.** Sin `apply: true` no escribe nada y devuelve
+ * exactamente lo que haría. Escribir es idempotente y seguro —el índice único
+ * impide asentar dos veces—, pero lo valioso de esto es MIRAR primero: lo que
+ * no se puede cargar y por qué es la mitad del resultado.
+ *
+ * Tiene presupuesto de tiempo porque la función corta a los 120 s. Lo que no
+ * entra se DICE (`pendientes`) en vez de cortarse en silencio: un corte mudo se
+ * lee como «ya está todo cargado», que es justo la conclusión equivocada.
+ */
+export const backfillClub = async (clubId, { apply = false, timeBudgetMs = 60_000, limit = 500 } = {}) => {
+    const prep = await ensureLedgerSchema();
+    if (prep?.state === 'error') return { ok: false, reason: 'sin_libro' };
+
+    const arranque = Date.now();
+    let payments = [];
+    let payouts = [];
+    try {
+        const [pagos, retiros] = await Promise.all([
+            db.query(
+                `SELECT id, "providerRef", amount, currency, "applicationFee", "netAmount",
+                        "clubId", "stripeBalanceTxId", "clubAvailableOn", "rawPayload", "createdAt"
+                   FROM "Payment"
+                  WHERE "clubId" = $1 AND "isPlatformCollection" = true AND status = 'succeeded'
+                  ORDER BY "createdAt" ASC
+                  LIMIT $2`,
+                [clubId, limit]
+            ),
+            db.query(
+                `SELECT id, amount, currency, status, "clubId", "createdAt"
+                   FROM "PayoutRequest"
+                  WHERE "clubId" = $1
+                  ORDER BY "createdAt" ASC
+                  LIMIT $2`,
+                [clubId, limit]
+            ),
+        ]);
+        payments = pagos.rows;
+        payouts = retiros.rows;
+    } catch (e) {
+        console.error('[LEDGER] no pude leer el historial:', e?.message);
+        return { ok: false, reason: 'lectura', detail: e?.message };
+    }
+
+    const { asentar, omitidos } = planBackfill({ payments, payouts });
+
+    if (!apply) {
+        return {
+            ok: true,
+            ensayo: true,
+            leidos: { aportes: payments.length, retiros: payouts.length },
+            asentaria: asentar.length,
+            omitidos: summarizeSkipped(omitidos),
+            omitidosDetalle: omitidos,
+        };
+    }
+
+    let escritos = 0, duplicados = 0, fallidos = 0, pendientes = 0;
+    const errores = [];
+    for (const entry of asentar) {
+        if (Date.now() - arranque > timeBudgetMs) { pendientes = asentar.length - escritos - duplicados - fallidos; break; }
+        const r = await postEntry(entry);
+        if (r.duplicate) duplicados++;
+        else if (r.ok) escritos++;
+        else {
+            fallidos++;
+            if (errores.length < 10) errores.push({ ref: entry.sourceRef, motivo: r.reason, detalle: r.detail });
+        }
+    }
+
+    return {
+        ok: true,
+        ensayo: false,
+        leidos: { aportes: payments.length, retiros: payouts.length },
+        escritos,
+        // Un duplicado NO es un fallo: significa que ese hecho ya estaba
+        // asentado —por el webhook en vivo o por una carga anterior—. Correr
+        // esto dos veces es seguro y el segundo pase debe salir todo duplicado.
+        duplicados,
+        fallidos,
+        errores,
+        pendientes,
+        omitidos: summarizeSkipped(omitidos),
     };
 };
 
@@ -328,5 +437,5 @@ export const readableBalances = (balances) => {
 
 export default {
     postEntry, postDonation, postRelease, postPayout, postPayoutCancel,
-    ledgerBalances, reconcileClub, readableBalances,
+    ledgerBalances, reconcileClub, readableBalances, backfillClub,
 };

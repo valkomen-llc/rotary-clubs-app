@@ -194,6 +194,92 @@ const antes = stub.tablas.LedgerTransaction.length;
 await ledger.reconcileClub('c', { collected: {}, available: {} });
 eq('conciliar no escribe nada', stub.tablas.LedgerTransaction.length, antes);
 
+// ── 8. La carga del historial, de punta a punta ─────────────────────
+section('8. Cargar el historial hace que el informe CUADRE');
+
+// Es la prueba que justifica la Fase 2 entera: si después de cargar el informe
+// no cuadra, el cambio de fuente no se puede autorizar.
+stub.reset();
+const AYER = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+stub.sembrar({
+    payments: [
+        // El aporte real del Distrito, con el neto BIEN calculado.
+        {
+            id: 'pay-1', providerRef: 'pi_4281', clubId: 'c', amount: 50000, currency: 'COP',
+            applicationFee: 2500, netAmount: 42749.13, clubAvailableOn: AYER, createdAt: AYER,
+            rawPayload: JSON.stringify({ stripeFeeRate: 4095.58 }),
+        },
+        // Y el viejo, con el neto MAL calculado. La carga lo reproduce tal cual.
+        {
+            id: 'pay-2', providerRef: 'pi_viejo', clubId: 'c', amount: 10, currency: 'USD',
+            applicationFee: 0.5, netAmount: 8.91, clubAvailableOn: AYER, createdAt: AYER,
+            rawPayload: null,
+        },
+    ],
+    payouts: [
+        { id: 'po-1', clubId: 'c', amount: 10000, currency: 'COP', status: 'completed', createdAt: AYER },
+        { id: 'po-2', clubId: 'c', amount: 999, currency: 'COP', status: 'rejected', createdAt: AYER },
+    ],
+});
+
+// El ENSAYO no escribe nada. Es lo que permite mirar antes de tocar.
+const ensayo = await ledger.backfillClub('c', { apply: false });
+ok('el ensayo dice que es un ensayo', ensayo.ensayo === true);
+eq('y no escribió nada', stub.tablas.LedgerTransaction.length, 0);
+eq('dice cuántos asientos haría', ensayo.asentaria, 5);  // 2 aportes + 2 liberaciones + 1 retiro
+eq('y qué queda fuera', ensayo.omitidos.map(o => o.motivo), ['no_contado']);
+
+const carga = await ledger.backfillClub('c', { apply: true });
+ok('la carga se aplicó', carga.ensayo === false);
+eq('escribió los cinco', carga.escritos, 5);
+eq('sin fallos', carga.fallidos, 0);
+eq('y sin nada pendiente', carga.pendientes, 0);
+
+// LA COMPROBACIÓN. El lado viejo se calcula igual que `computeBalances`:
+//   collected = suma de netos          = 42.749,13 COP + 8,91 USD
+//   requested = retiros contados       = 10.000 COP   (el rechazado no cuenta)
+//   available = collected − requested  = 32.749,13 COP + 8,91 USD
+const informe = await ledger.reconcileClub('c', {
+    collected: { COP: 42749.13, USD: 8.91 },
+    available: { COP: 32749.13, USD: 8.91 },
+});
+ok('el NETO del libro coincide con el de la Bóveda', informe.neto.ok, JSON.stringify(informe.neto.off));
+ok('y el SALDO también', informe.saldo.ok, JSON.stringify(informe.saldo.off));
+eq('en las dos monedas, sin mezclarlas',
+    Object.keys(informe.neto.byCurrency).sort(), ['COP', 'USD']);
+
+// Lo que el libro sabe de más se devuelve aparte, sin compararlo contra nada:
+// la Bóveda no tiene esa cantidad y presentarla como descuadre sería inventar.
+// Liberado = lo que soltó el proveedor MENOS lo que ya se retiró.
+eq('el libro sabe además cuánto está liberado y sin retirar',
+    informe.soloEnElLibro.liberado.COP, 4274913 - 1000000);
+eq('y cuánto queda en tránsito', informe.soloEnElLibro.enTransito.COP, 0);
+
+// Con TODO liberado, la cantidad propia del libro y la comparable coinciden.
+// Es la comprobación de que las dos son la misma cosa cuando no hay retención
+// de por medio — y de que difieren sólo cuando la hay, que es justo por lo que
+// no se pueden comparar a ciegas.
+eq('sin nada en tránsito, liberado y saldo dicen lo mismo',
+    informe.soloEnElLibro.liberado.COP, informe.saldo.byCurrency.COP.ledger);
+
+// Correrla dos veces es seguro: el índice único rechaza todo.
+const otraVez = await ledger.backfillClub('c', { apply: true });
+eq('la segunda carga no escribe nada', otraVez.escritos, 0);
+eq('y declara todo duplicado', otraVez.duplicados, 5);
+eq('el libro no creció', stub.tablas.LedgerTransaction.length, 5);
+
+// Y un aporte que el webhook YA asentó en vivo no se duplica al cargar: la
+// referencia es la misma en los dos caminos.
+stub.reset();
+stub.sembrar({ payments: [{
+    id: 'pay-9', providerRef: 'pi_vivo', clubId: 'c', amount: 100, currency: 'USD',
+    applicationFee: 5, netAmount: 92, clubAvailableOn: null, createdAt: AYER, rawPayload: null,
+}] });
+await ledger.postDonation({ clubId: 'c', currency: 'USD', gross: 100, processorFee: 3, platformFee: 5, sourceRef: 'pi_vivo' });
+const solapado = await ledger.backfillClub('c', { apply: true });
+eq('lo que ya estaba en vivo se declara duplicado', solapado.duplicados, 1);
+eq('y no se escribió de nuevo', stub.tablas.LedgerTransaction.length, 1);
+
 // ── Resultado ───────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);

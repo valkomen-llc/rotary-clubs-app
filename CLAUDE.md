@@ -5319,6 +5319,60 @@ en memoria). **Ninguna necesita Postgres, credenciales ni red.**
   («Tarifa de procesamiento de traslado desde interbancos»), y una prueba la
   fija: renombrarla de vuelta por criterio propio tiene que fallar.
 
+### La carga hacia atrás (v4.848, Fase 2 — primer paso)
+
+`POST /api/payouts/admin/ledger/:clubId/backfill`. Criterio en
+`server/lib/ledgerBackfill.js` (**puro**), orquestación en `backfillClub`.
+Pruebas: `npm run test:ledger:backfill` (59 casos) más la sección de punta a
+punta de `test:ledger:write`, que comprueba que **después de cargar el informe
+CUADRA** — sin eso, la Fase 2 sería una promesa.
+
+- **SE REPRODUCE, NO SE CORRIGE, y de ahí cuelga todo lo demás.** La comisión no
+  se recalcula: se DERIVA restando (`bruto − retención − neto`), de modo que el
+  neto del libro sea EXACTAMENTE el `netAmount` guardado. Varios aportes
+  anteriores a v4.845 tienen el neto mal calculado —se les restó una comisión en
+  dólares como si fueran pesos— y la carga los reproduce MAL a propósito. Si se
+  arreglaran al cargarlos, el informe pasaría a mezclar «lo que falta por
+  cargar» con «lo que decidimos corregir» y un descuadre dejaría de distinguir
+  un fallo de la carga de una corrección deliberada. El informe es el ÚNICO
+  instrumento que autoriza el cambio de fuente; no puede quedar ambiguo. Los
+  netos malos se corrigen después, con asientos de reverso que lo dicen.
+- **Todo asiento cargado se marca `reconstruido`**, y su comisión `basis:
+  'estimado'` cuando se dedujo restando (`meta.derivada`). Dentro de un año
+  nadie tiene por qué confundir lo observado en vivo con lo deducido del
+  historial.
+- **La referencia es la MISMA que usa el webhook** (`providerRef`, o `id:<id>`
+  si falta). Es lo que impide que la carga duplique un aporte que ya se asentó
+  en vivo: el índice único lo rechaza. Correrla dos veces es seguro y el segundo
+  pase debe salir todo duplicado — lo comprueba una prueba.
+- **De ENSAYO por defecto.** Sin `{"apply": true}` no escribe y devuelve lo que
+  haría. Escribir es idempotente, pero lo valioso es mirar primero: **lo que no
+  se puede cargar y por qué es la mitad del resultado**, agrupado por motivo con
+  ejemplos — un listado de doscientas filas no lo lee nadie.
+- **Un pago SIN neto registrado no se carga**, y no es una omisión: la Bóveda lo
+  cuenta como cero (`Number(null) || 0`), así que dejarlo fuera hace que los dos
+  coincidan. Asentarlo con neto cero diría que el procesador se quedó con todo.
+- **Un retiro RECHAZADO tampoco**, por lo mismo: `computeBalances` no lo cuenta.
+  Asentarlo completo —retiro y anulación— exigiría inventar cuándo se pidió y
+  cuándo se rechazó, y ninguna de las dos fechas está guardada.
+- **Un retiro en una moneda sin aportes se REPORTA, no se adivina.** Hasta
+  v4.840 `PayoutRequest.currency` no se escribía y toda fila vieja quedó en USD
+  por omisión: adivinar cuál era es adivinar cuánto dinero salió.
+- **`PAYOUT_COUNTED` tiene que ser la MISMA lista que usa `computeBalances`** o
+  el libro y la Bóveda contarían retiros distintos y el informe nunca cuadraría.
+- **Presupuesto de tiempo, y lo que no entra se DICE** (`pendientes`). Un corte
+  mudo se lee como «ya está todo cargado», que es la conclusión equivocada.
+
+**⚠️ El informe comparaba dos cantidades que no son la misma** (corregido en
+v4.848). La v4.847 contrastaba `club_disponible` del libro contra `available` de
+la Bóveda: aquélla calcula `collected − requested` **sin** mirar el período de
+retención, y el libro sólo llama disponible a lo que el proveedor ya liberó. Con
+un aporte en tránsito los dos difieren estando los dos bien, y el informe habría
+reportado un descuadre inexistente — el error que la conciliación existe para no
+cometer. Ahora se compara `neto − transferido`, que sí es la cantidad
+equivalente, y lo que el libro sabe de más —liberado y en tránsito— se devuelve
+en `soloEnElLibro`, **sin compararlo contra nada**: no hay contra qué.
+
 - **⚠️ Limitación conocida: un asiento no se corrige solo.** El de liberación
   se queda con el neto que se conocía la primera vez; si un sync posterior
   mejora la comisión —porque apareció la TRM del día—, el segundo asiento choca
@@ -5326,9 +5380,10 @@ en memoria). **Ninguna necesita Postgres, credenciales ni red.**
   es Fase 2. Mientras tanto es un descuadre que la conciliación VE, que es
   exactamente para lo que sirve la fase en sombra.
 
-**Lo que sigue (Fase 2):** cargar hacia atrás los aportes anteriores a v4.847
-para que el informe pueda cuadrar, y sólo entonces cambiar la fuente de los
-saldos de la Bóveda al libro. Hasta que el informe cuadre, no se cambia nada.
+**Lo que sigue (Fase 2, segundo paso):** correr la carga en producción, mirar el
+informe y —**sólo si cuadra**— cambiar la fuente de los saldos de la Bóveda al
+libro. Hasta que cuadre, no se cambia nada. Después quedan los reversos de los
+netos mal calculados, que son otra cosa y van con su propio asiento.
 
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 

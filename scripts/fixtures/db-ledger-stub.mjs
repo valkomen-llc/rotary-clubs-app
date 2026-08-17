@@ -12,14 +12,20 @@
 // exige una base y se comprueba al desplegar; acá se dice para no afirmar de
 // más.
 
-export let tablas = { LedgerAccount: [], LedgerTransaction: [], LedgerLine: [] };
+export let tablas = { LedgerAccount: [], LedgerTransaction: [], LedgerLine: [], Payment: [], PayoutRequest: [] };
 export let log = [];
 export let fallar = null;   // pon un texto para que la siguiente consulta lance
 
 export const reset = () => {
-    tablas = { LedgerAccount: [], LedgerTransaction: [], LedgerLine: [] };
+    tablas = { LedgerAccount: [], LedgerTransaction: [], LedgerLine: [], Payment: [], PayoutRequest: [] };
     log = [];
     fallar = null;
+};
+
+/** Siembra el historial que la carga hacia atrás va a leer. */
+export const sembrar = ({ payments = [], payouts = [] }) => {
+    tablas.Payment.push(...payments);
+    tablas.PayoutRequest.push(...payouts);
 };
 export const romper = (msg) => { fallar = msg; };
 
@@ -81,6 +87,18 @@ const query = async (text, params = []) => {
                 return { account, currency, minor };
             }),
         };
+    }
+
+    // El historial que lee la carga hacia atrás. Se filtra por club y por los
+    // mismos criterios del SQL real, para que la prueba ejercite lo que de
+    // verdad va a leerse y no una lista completa.
+    if (/FROM "Payment"/.test(sql)) {
+        const [clubId] = params;
+        return { rows: tablas.Payment.filter(p => p.clubId === clubId) };
+    }
+    if (/FROM "PayoutRequest"/.test(sql)) {
+        const [clubId] = params;
+        return { rows: tablas.PayoutRequest.filter(p => p.clubId === clubId) };
     }
 
     throw new Error(`El doble no conoce esta consulta: ${sql.slice(0, 80)}`);
