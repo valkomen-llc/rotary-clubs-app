@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.848.0 | 2026-08-17 (Fase 2: el libro se carga hacia atrás)
-// Cache bust: 2026-08-17k
+// UI V4.849.0 | 2026-08-17 (La Bóveda se filtra por período y por destino)
+// Cache bust: 2026-08-17l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.849.0',
+        title: 'La Bóveda se filtra por período y por destino 📅',
+        description: 'Debajo del selector de moneda hay ahora dos controles: el PERÍODO —últimos 7, 15, 30 o 90 días, o un rango a mano— y el DESTINO del aporte, que se arma solo con las campañas, proyectos y bloques que ese sitio de verdad ha cobrado. Debajo de la lista aparece lo recibido en el período: bruto, lo que retuvo el procesador, lo que retuvo la plataforma y el neto. Lo que NO se filtra —y es la decisión de la que cuelga todo— es el saldo disponible para retiro.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'informes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Filtro de período: 7, 15, 30, 90 días o un rango a mano.' },
+            { type: 'added', text: 'Filtro de destino, construido con los aportes reales del sitio.' },
+            { type: 'added', text: 'Resumen de lo recibido en el período, por moneda.' },
+            { type: 'added', text: 'npm run test:wallet:filters (72 casos) y 20 comprobaciones más de navegador.' },
+        ],
+        details: [
+            'UN SALDO NO SE FILTRA POR FECHA, y es la regla de la que cuelga el módulo. Los aportes de un período son un FLUJO: existen dentro de un rango. El disponible para retiro es un SALDO: existe A UNA FECHA. «Disponible para retiro entre el 1 y el 15» no significa nada.',
+            'Si el filtro tocara la caja azul, alguien elegiría «últimos 7 días», vería «US$ 0,00» y concluiría que no tiene dinero — justo el número con el que decide si pide un retiro. Es la misma clase de defecto que el «$47.507,75»: una cifra correcta que no significa lo que parece. Por eso el saldo se queda quieto Y SE DICE, o que no cambie se leería como que el filtro no funciona.',
+            'El valor por defecto es TODO EL HISTÓRICO, no «hoy». Con «hoy» la Bóveda abriría casi siempre en cero —los aportes de un club no son diarios— y se leería como un módulo roto. Además «todo» es lo que la pantalla muestra desde siempre: quien entre y no toque nada ve exactamente lo de antes.',
+            'El filtro NO se llama «campaña», y no es un detalle de nombre: un aporte puede venir de una campaña, de un proyecto, de un bloque de la página de aportes o del club a secas. Un filtro que sólo listara campañas haría desaparecer del listado a todos los demás sin que nadie supiera por qué. Hay una opción «Sin destino declarado» para los aportes anteriores a que se guardara la traza: existen, y tienen que poder filtrarse.',
+            'El desplegable de destinos se arma con los aportes que el sitio de verdad ha cobrado, no con una lista de campañas: una campaña sin un solo aporte no aparece —un filtro que no filtra nada es un control que no controla— y un destino que ya no existe sigue apareciendo, porque su dinero sí existe.',
+            'El filtro DICE cuántos aportes dejó fuera. Sin ese número, quien filtra no distingue «este período no tuvo aportes» de «el filtro se comió algo», y en dinero esas dos cosas no se pueden confundir. Y «no hay aportes» con un filtro puesto dice que es del filtro, con la salida a mano.',
+            'Un rango a mano no pide nada hasta tener sus dos fechas, y el último día entra ENTERO: acotarlo a las 00:00 se comería el día final y nadie entendería por qué falta un aporte.',
+        ]
+    },
     {
         version: '4.848.0',
         title: 'El libro mayor se carga hacia atrás 📚',

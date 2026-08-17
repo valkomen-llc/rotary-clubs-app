@@ -136,6 +136,23 @@ const DONACIONES = {
         { currency: 'COP', decimals: 0, totalAmount: 50000, totalCount: 1 },
         { currency: 'USD', decimals: 2, totalAmount: 10, totalCount: 1 },
     ],
+    // v4.849 — El período resuelto y el catálogo de destinos los manda el
+    // servidor; la pantalla no rehace la aritmética de fechas.
+    periodo: {
+        id: 'todo', label: 'Todo el histórico', desde: null, hasta: null,
+        destino: 'todos', excluidos: 0,
+        totales: {
+            bruto: { COP: 50000, USD: 10 },
+            procesador: { COP: 4754, USD: 0.59 },
+            plataforma: { COP: 2500, USD: 0.5 },
+            neto: { COP: 42746, USD: 8.91 },
+            aportes: 2, sinMovimiento: 0,
+        },
+    },
+    destinos: [
+        { key: 'campana:c1', kind: 'campana', label: 'Emergencia Terremoto Colombia 2026', cuantos: 2, porMoneda: { COP: 50000, USD: 10 } },
+        { key: 'proyecto:p1', kind: 'proyecto', label: 'Agua potable', cuantos: 1, porMoneda: { COP: 20000 } },
+    ],
     totalAmount: 50000, totalCount: 2, currency: 'COP',
 };
 
@@ -185,7 +202,15 @@ await page.route('**/api/**', r => r.fulfill({ json: {} }));
 await page.route('**/api/clubs/**', r => r.fulfill({ json: { id: 'club-4281', name: 'Distrito 4281', settings: [] } }));
 await page.route('**/api/payouts/balance*', r => r.fulfill({ json: BALANCE }));
 await page.route('**/api/payouts/history*', r => r.fulfill({ json: RETIROS }));
-await page.route('**/api/financial/donations*', r => r.fulfill({ json: DONACIONES }));
+// v4.849 — Se GUARDAN las URLs pedidas: es la única forma de comprobar que el
+// filtro llega de verdad a la petición. Una dependencia que falta en un
+// `useCallback` no la ve el typecheck — es la lección de `conQr` (v4.836) y
+// `profileId` (v4.838): el código es válido y el ajuste no llega nunca.
+const pedidas = [];
+await page.route('**/api/financial/donations*', r => {
+    pedidas.push(r.request().url());
+    r.fulfill({ json: DONACIONES });
+});
 await page.route('**/api/financial/wallet*', r => r.fulfill({ json: WALLET }));
 
 // La barra superior del panel. Consulta OTRO endpoint que el de la Bóveda y
@@ -348,6 +373,81 @@ check('no aparece la suma de las dos monedas',
 // y «US$ 10,00» empiezan los dos por «$» y el primero se lee como dólares.
 check('cada importe lleva su código de moneda',
     /COP/.test(enBarra) && /USD/.test(enBarra), enBarra);
+
+// ── Los filtros del período (v4.849) ─────────────────────────────────
+console.log('\n▸ Los filtros del período');
+
+const saldoAntes = await texto();
+check('el selector de período está en la pantalla',
+    await page.getByLabel('Período').count() === 1);
+check('y el de destino también, porque hay más de uno',
+    await page.getByLabel('Destino del aporte').count() === 1);
+
+// Sin filtro no hay aviso ni botón de limpiar: sería ruido.
+check('sin filtro no se enseña el aviso del saldo',
+    !/saldo disponible es el actual/i.test(saldoAntes));
+
+const antes = pedidas.length;
+await page.getByLabel('Período').selectOption('7d');
+await page.waitForTimeout(600);
+
+check('cambiar el período dispara una petición nueva', pedidas.length > antes,
+    `se pidieron ${pedidas.length}, antes ${antes}`);
+check('y el rango VIAJA en la petición',
+    /[?&]rango=7d/.test(pedidas[pedidas.length - 1] || ''), pedidas[pedidas.length - 1]);
+
+const conFiltro = await texto();
+// ⚠️ LA COMPROBACIÓN QUE IMPORTA: el saldo NO se mueve al filtrar. Un saldo
+// existe a una fecha, no dentro de un rango, y filtrarlo daría «US$ 0,00» a
+// quien mira justo el número con el que decide si pide un retiro.
+check('el SALDO no cambia al filtrar', /US\$\s*8,91/.test(conFiltro), conFiltro.slice(0, 300));
+check('y se DICE por qué, o parecería que el filtro no funciona',
+    /saldo disponible es el actual/i.test(conFiltro));
+check('aparece el botón de limpiar', await page.getByRole('button', { name: 'Limpiar' }).count() === 1);
+
+const antesDestino = pedidas.length;
+await page.getByLabel('Destino del aporte').selectOption('campana:c1');
+await page.waitForTimeout(600);
+check('cambiar el destino también dispara una petición', pedidas.length > antesDestino);
+check('y el destino viaja en la petición',
+    /[?&]destino=campana%3Ac1/.test(pedidas[pedidas.length - 1] || ''), pedidas[pedidas.length - 1]);
+check('el rango sigue viajando junto al destino',
+    /[?&]rango=7d/.test(pedidas[pedidas.length - 1] || ''), pedidas[pedidas.length - 1]);
+
+// El rango personalizado NO pide hasta tener sus dos fechas: con una sola, el
+// servidor lo degrada a «todo» y el selector diría una cosa y la lista otra.
+const antesCustom = pedidas.length;
+await page.getByLabel('Período').selectOption('personalizado');
+await page.waitForTimeout(400);
+check('elegir «personalizado» todavía no pide nada', pedidas.length === antesCustom,
+    `pidió ${pedidas.length - antesCustom} veces sin tener las dos fechas`);
+await page.getByLabel('Desde').fill('2026-08-01');
+await page.waitForTimeout(300);
+check('con una sola fecha tampoco', pedidas.length === antesCustom);
+await page.getByLabel('Hasta').fill('2026-08-17');
+await page.waitForTimeout(600);
+check('con las dos, sí', pedidas.length > antesCustom);
+check('y las dos fechas viajan',
+    /desde=2026-08-01/.test(pedidas[pedidas.length - 1] || '') && /hasta=2026-08-17/.test(pedidas[pedidas.length - 1] || ''),
+    pedidas[pedidas.length - 1]);
+
+// Limpiar devuelve todo a su sitio.
+await page.getByRole('button', { name: 'Limpiar' }).click();
+await page.waitForTimeout(600);
+const limpio = await texto();
+check('limpiar quita el aviso', !/saldo disponible es el actual/i.test(limpio));
+check('y vuelve a «todo»',
+    /[?&]rango=todo/.test(pedidas[pedidas.length - 1] || ''), pedidas[pedidas.length - 1]);
+
+// El resumen del período: lo que el filtro SÍ mueve. Vive en la pestaña de
+// aportes, y la sección de Retiros dejó abierta la otra.
+await page.getByRole('tab', { name: /Aportes/ }).click();
+await page.waitForTimeout(300);
+const limpio2 = await texto();
+check('se ve lo recibido en el período', /Recibido en el período/i.test(limpio2), limpio2.slice(0, 400));
+check('con la tarifa que pidió el cliente, no otro nombre',
+    /Tarifa de procesamiento/i.test(limpio2));
+check('sin errores tras manejar los filtros', errores.length === 0, errores.join(' | '));
 
 await browser.close();
 

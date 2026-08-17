@@ -5385,6 +5385,98 @@ informe y —**sólo si cuadra**— cambiar la fuente de los saldos de la Bóved
 libro. Hasta que cuadre, no se cambia nada. Después quedan los reversos de los
 netos mal calculados, que son otra cosa y van con su propio asiento.
 
+### La Bóveda se filtra por período y por destino (v4.849, bloque A)
+
+Debajo del selector de moneda: el PERÍODO (7/15/30/90 días o un rango a mano) y
+el DESTINO del aporte. Debajo de la lista, lo recibido en el período.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/walletFilters.js` | El CRITERIO. **Puro**: rangos, qué cae dentro, catálogo de destinos y qué se filtra y qué no |
+| `src/lib/walletFilters.ts` | Espejo MÍNIMO: sólo lo que hace falta para pintar el selector |
+| `resumenDelPeriodo` en `financialController.js` | Los flujos del período, por moneda |
+
+Pruebas: `npm run test:wallet:filters` (72 casos, **sin base ni red**) y 20
+comprobaciones más en `npm run test:wallet:ui`.
+
+**Reglas durables:**
+
+- **UN SALDO NO SE FILTRA POR FECHA.** Es la regla de la que cuelga el bloque.
+  Los aportes de un período son un FLUJO —existen dentro de un rango—; el
+  disponible para retiro es un SALDO —existe A UNA FECHA—. «Disponible para
+  retiro entre el 1 y el 15» no significa nada. Si el filtro tocara la caja
+  azul, alguien elegiría «últimos 7 días», vería «US$ 0,00» y concluiría que no
+  tiene dinero, justo en el número con el que decide si pide un retiro. Es la
+  misma clase de defecto que el «$47.507,75». Por eso `FILTRABLE` es un catálogo
+  EXPLÍCITO y el saldo no está en él, y por eso una prueba comprueba sobre el
+  archivo que `computeBalances` no reciba ningún rango.
+- **Y se DICE.** Que el saldo no cambie al filtrar se lee como que el filtro no
+  funciona; el aviso vive en el espejo (`AVISO_SALDO`), no suelto en el JSX,
+  porque es una afirmación sobre cómo se comporta el módulo, no una etiqueta.
+- **El valor por defecto es `todo`, NO «hoy».** Con «hoy» la Bóveda abriría casi
+  siempre en cero —los aportes de un club no son diarios— y se leería como un
+  módulo roto. `todo` es además lo que la pantalla muestra desde siempre: el
+  filtro es ADITIVO y quien no toque nada ve lo de antes.
+- **NO se llama «campaña», y no es un detalle de nombre.** Un aporte puede venir
+  de una campaña, de un PROYECTO, de un BLOQUE de la página de aportes o del
+  club a secas. Un filtro que sólo listara campañas haría desaparecer del
+  listado a todos los demás sin que nadie supiera por qué. Hay
+  `DESTINO_SIN_DECLARAR` para los anteriores a v4.844: existen y tienen que
+  poder filtrarse como grupo.
+- **El catálogo de destinos sale de los aportes REALES**, no de una lista de
+  campañas, y se arma ANTES de filtrar — si saliera de los filtrados, elegir un
+  destino haría desaparecer del desplegable a todos los demás y no habría forma
+  de volver. Lo comprueba una prueba mirando el orden en el archivo.
+- **El destino se agrupa con `originOf`**, el mismo criterio con que se rotula
+  la ficha del aportante y el recibo. Un segundo criterio de origen daría dos
+  verdades sobre el mismo aporte.
+- **Se DICE cuántos aportes dejó fuera el filtro** (`excluidos`). Sin ese
+  número, quien filtra no distingue «este período no tuvo aportes» de «el filtro
+  se comió algo». Y el vacío CON filtro dice algo distinto que el vacío sin
+  filtro, con la salida a mano.
+- **Una fila sin fecha legible se INCLUYE.** Descartarla haría desaparecer
+  dinero de la pantalla por un dato ausente, que es el error que este módulo no
+  puede cometer.
+- **El último día entra ENTERO** (`finDelDia`). Acotar «del 1 al 15» a las 00:00
+  del 15 se come el último día y nadie entiende por qué falta un aporte.
+- **Un rango a mano invertido se endereza** —es un error de dedo— y uno sin
+  ninguna punta degrada a `todo` en vez de vaciar la lista: ante la duda se
+  muestra de más, porque esconder dinero es el lado caro.
+- **El período lo resuelve el SERVIDOR y viaja resuelto.** La pantalla no rehace
+  la aritmética de fechas: con dos cálculos, el rótulo del selector y las filas
+  de la lista podrían discrepar sobre qué días entran. Lo comprueba una prueba
+  buscando aritmética de fechas en el `.tsx`.
+- **El rango personalizado no pide nada hasta tener sus DOS fechas.** Con una
+  sola, el servidor lo degrada a `todo` y el selector diría una cosa y la lista
+  otra.
+- **Al cambiar un filtro se recarga en SILENCIO.** Con el esqueleto de carga
+  completo, cada cambio haría parpadear la pantalla entera — incluida la caja
+  del saldo, que ni siquiera se filtra.
+- **Los filtros van en su PROPIA línea**, debajo del selector de moneda y no a
+  la derecha del título: con cuatro controles en una fila se rompe en un
+  portátil.
+- **El resumen del período es por MONEDA y nunca se suma entre ellas**, y si esa
+  moneda no tuvo nada en el período no se pinta — cuatro ceros no informan.
+  Un aporte sin movimiento asociado aporta su bruto y NO sus retenciones: se
+  cuenta lo que se sabe y se DICE cuántos quedaron sin medir, en vez de
+  inventarles una comisión.
+- **Que el filtro LLEGUE a la petición se comprueba en un navegador.** Una
+  dependencia que falta en un `useCallback` no la ve el typecheck: es la lección
+  de `conQr` (v4.836) y `profileId` (v4.838). El smoke guarda las URLs pedidas.
+
+**Pendiente de los bloques B y C:** exportar a Excel y PDF lo filtrado, y la
+varita de análisis. Sobre el PDF, la restricción ya conocida: **Vercel no tiene
+ninguna fuente instalada** (medido en v4.794), así que se compone en el
+NAVEGADOR, como `designRender.ts` y `qrcode.ts`. Y sobre la varita, la regla del
+sitio: los hallazgos los calcula el código con reglas y el modelo sólo los
+REDACTA — darle la base a un modelo y pedirle «analizá» produce cifras plausibles
+y no auditables, que en un informe financiero descargable es peligroso.
+
+⚠️ **Antes de publicar la exportación conviene cerrar los reversos de los netos
+mal calculados** (los aportes anteriores a v4.845, que el libro reproduce mal a
+propósito). Un número equivocado en pantalla se corrige y desaparece; uno en un
+PDF que alguien archivó, no.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:
