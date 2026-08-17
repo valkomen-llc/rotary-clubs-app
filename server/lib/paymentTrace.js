@@ -47,7 +47,7 @@
  * @returns { amount, rate, original: { amount, currency }, converted } — o
  *          `{ amount: null, reason }` si no se pudo.
  */
-export const stripeFeeInChargeCurrency = ({ fee, feeCurrency, chargeCurrency, exchangeRate }) => {
+export const stripeFeeInChargeCurrency = ({ fee, feeCurrency, chargeCurrency, exchangeRate, trm }) => {
     const bruto = Number(fee);
     if (!Number.isFinite(bruto)) return { amount: null, reason: 'sin_comision' };
 
@@ -60,17 +60,54 @@ export const stripeFeeInChargeCurrency = ({ fee, feeCurrency, chargeCurrency, ex
         return { amount: bruto, rate: null, original: { amount: bruto, currency: hasta || desde }, converted: false };
     }
 
-    const tasa = Number(exchangeRate);
-    if (!Number.isFinite(tasa) || tasa <= 0) {
-        return { amount: null, reason: 'sin_tasa', original: { amount: bruto, currency: desde } };
+    // 1) LA TRM del día del cobro, cuando la conversión es USD → COP.
+    //
+    //    Es la tasa OFICIAL colombiana y es la que pidió el equipo. Se prefiere
+    //    a la de Stripe por un motivo concreto: la de Stripe lleva incorporado
+    //    su propio margen de conversión, así que sirve para cuadrar contra el
+    //    libro de Stripe pero no describe lo que el club recibirá en pesos.
+    //    Las dos son defendibles para preguntas distintas; por eso se DECLARA
+    //    cuál se usó en vez de dar una cifra sin procedencia.
+    const tasaTrm = Number(trm?.rate);
+    if (desde === 'USD' && hasta === 'COP' && Number.isFinite(tasaTrm) && tasaTrm > 0) {
+        return {
+            amount: bruto * tasaTrm,
+            rate: tasaTrm,
+            rateSource: trm.source || 'TRM',
+            rateDate: trm.date || null,
+            rateOfficial: !!trm.official,
+            rateKind: 'trm',
+            original: { amount: bruto, currency: desde },
+            converted: true,
+        };
     }
 
-    return {
-        amount: bruto / tasa,
-        rate: tasa,
-        original: { amount: bruto, currency: desde },
-        converted: true,
-    };
+    // 2) La tasa que Stripe aplicó a ESTA operación. Es el respaldo y sigue
+    //    siendo un dato real, no una estimación.
+    //
+    //    Dirección, según Stripe: importe_en_A × exchange_rate = importe_en_B,
+    //    con A la moneda del cobro y B la de liquidación. Para volver a la del
+    //    cobro se DIVIDE.
+    const tasaStripe = Number(exchangeRate);
+    if (Number.isFinite(tasaStripe) && tasaStripe > 0) {
+        return {
+            amount: bruto / tasaStripe,
+            // Se publica la tasa en la misma dirección que la TRM —cuántas
+            // unidades de la moneda del cobro vale una de la de liquidación—
+            // o la ficha mostraría «0,000244» al lado de «4.100» y nadie
+            // sabría que son la misma cosa.
+            rate: 1 / tasaStripe,
+            rateSource: 'Tasa aplicada por Stripe',
+            rateDate: null,
+            rateOfficial: false,
+            rateKind: 'stripe',
+            original: { amount: bruto, currency: desde },
+            converted: true,
+        };
+    }
+
+    // 3) Sin ninguna de las dos NO se resta el número crudo.
+    return { amount: null, reason: 'sin_tasa', original: { amount: bruto, currency: desde } };
 };
 
 /** Cuánto pueden separarse en el tiempo un aporte y su pago para considerarlos

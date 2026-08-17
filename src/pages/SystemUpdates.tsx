@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.845.0 | 2026-08-17 (La comisión de Stripe se convierte a la moneda del cobro)
-// Cache bust: 2026-08-17h
+// UI V4.846.0 | 2026-08-17 (La comisión de Stripe se convierte con la TRM)
+// Cache bust: 2026-08-17i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.846.0',
+        title: 'La comisión de Stripe se convierte con la TRM oficial 🇨🇴',
+        description: 'Sincronizar con Stripe no cambiaba nada, y ese era el defecto de fondo: el botón sólo miraba los cobros que NUNCA se habían sincronizado, y los dos aportes del Distrito ya tenían fecha de liberación — quedaban fuera de la lista y contestaba «todos sincronizados» sin haber tocado ninguno. Por eso la comisión seguía diciendo «−$ 1» y el concepto seguía en blanco. Corregido: ahora también entra el cobro cuya comisión no se ha convertido todavía. Y la conversión pasa a hacerse con la TRM de la Superintendencia Financiera del día en que ocurrió el aporte, no con la tasa interna de Stripe: la ficha muestra la comisión en dólares tal como la cobró Stripe y, al lado, su equivalente en pesos, con la tasa, la fuente y la fecha. La cadena de proveedores de TRM ya existía en el módulo de la Feria de Proyectos; se movió a un sitio compartido y se le agregó la consulta por fecha, porque un aporte hay que convertirlo con la tasa de su día y no con la de hoy.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'trm'],
+        type: 'fixed',
+        impact: 'Crítico',
+        changes: [
+            { type: 'fixed', text: 'Sincronizar con Stripe volvía a saltarse los cobros que más falta hacía corregir.' },
+            { type: 'added', text: 'La comisión se convierte con la TRM oficial del día del aporte.' },
+            { type: 'added', text: 'La ficha muestra el importe en dólares, la tasa, la fuente y la fecha.' },
+            { type: 'changed', text: 'Los proveedores de TRM se comparten con la Feria de Proyectos en vez de duplicarse.' },
+        ],
+        details: [
+            'La TRM es DIARIA: la Superintendencia Financiera publica un valor por día hábil, vigente de 00:00 a 23:59. No existe una TRM por hora, así que se usa la vigente ese día — fingir más precisión sería inventar.',
+            'El día se calcula en la zona horaria de Bogotá y no en la del servidor, que corre en UTC: un aporte de las 8 de la noche en Colombia es del día siguiente en UTC y le tocaría otra tasa.',
+            'Para una fecha pasada sólo sirve el proveedor oficial, que sabe consultarla. Los de respaldo devuelven la tasa de HOY, y usarla para un aporte de hace tres meses sería una cifra falsa presentada como histórica.',
+            'Si no hay TRM se usa la tasa que Stripe aplicó —que también es un dato real— y se dice cuál se usó. Sin ninguna de las dos la comisión NO se resta: un neto calculado restando otra moneda es peor que uno estimado.',
+            'La tasa se publica siempre en la misma dirección: cuántos pesos vale un dólar. Stripe la entrega al revés (0,000244), y mostrarla así al lado de una TRM de 4.100 haría imposible reconocer que son lo mismo.',
+            'npm run test:wallet pasa a 77 y test:wallet:ui a 41.',
+        ]
+    },
     {
         version: '4.845.0',
         title: 'El neto del club ahora sí es el neto 🧮',
