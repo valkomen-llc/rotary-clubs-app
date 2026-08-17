@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.841.0",
-  "cache_bust": "2026-08-17d (Bóveda de Fondos: saldos por moneda, la guardia del retiro vuelve a vivir.)",
+  "version": "4.842.0",
+  "cache_bust": "2026-08-17e (Bóveda: una moneda a la vez, en pestañas.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -51,7 +51,8 @@
     "test:creative": "node scripts/test-creative.mjs",
     "test:campaign-post": "node scripts/test-campaign-post.mjs",
     "test:currency": "node scripts/test-currency.mjs",
-    "test:wallet": "node scripts/test-wallet.mjs"
+    "test:wallet": "node scripts/test-wallet.mjs",
+    "test:wallet:ui": "node scripts/test-wallet-ui.mjs"
   },
   "engines": {
     "node": "22.x"

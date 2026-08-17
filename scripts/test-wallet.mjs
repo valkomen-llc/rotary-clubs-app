@@ -367,17 +367,20 @@ check('la pantalla no escribe el 5% a mano', () => {
     ok(/feePct/.test(src), 'el porcentaje se calcula sobre el movimiento');
 });
 
-check('la comisión de la plataforma no se rotula como tasa interbancaria', () => {
-    // Se pidió renombrarla así y sería FALSO: se cobra igual sobre un aporte en
-    // dólares, donde no hay conversión ninguna. Separar el costo real de
-    // cambio es la Fase 4 y va como componente propio, no como este rótulo.
-    //
-    // Se mira el código SIN comentarios: el que explica por qué no se llama
-    // así tiene que poder nombrar la palabra. Es la lección de v4.840 —buscar
-    // la clase, no la mención—.
-    const src = stripComments(readSrc('src/pages/admin/WalletManagement.tsx'));
-    ok(!/interbancari/i.test(src),
-        'la comisión de la plataforma se rotuló como interbancaria: es una descripción falsa del cobro');
+check('el rótulo de la comisión es el que fijó el cliente', () => {
+    // REGLA EXPRESA (v4.842). El equipo pidió este texto dos veces, la segunda
+    // con la objeción técnica ya planteada: el cobro es la comisión de la
+    // plataforma por recaudar y se aplica también sobre aportes en dólares,
+    // donde no hay traslado interbancario ninguno. Decidieron con ese
+    // argumento delante, así que el rótulo es suyo. Esta prueba existe para
+    // que no vuelva atrás por criterio propio de quien toque el archivo
+    // después — que es exactamente el riesgo, porque el código de al lado
+    // explica por qué el nombre no describe el cobro.
+    const src = readSrc('src/pages/admin/WalletManagement.tsx');
+    ok(/Tarifa de procesamiento de traslado desde interbancos/.test(src),
+        'se revirtió el rótulo que fijó el cliente');
+    ok(!/Comisión de la plataforma \(5%\)/.test(src),
+        'volvió el rótulo anterior con el porcentaje escrito a mano');
 });
 
 check('el catálogo de monedas vive en UN solo sitio', () => {
