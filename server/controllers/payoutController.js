@@ -10,25 +10,13 @@ import {
     normalizeCurrency, roundMoney, currencyMeta,
     sumByCurrency, subtractByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
+import { siteCurrency } from '../lib/clubCurrency.js';
 
 console.log('[PAYOUTS v4.841] Saldos POR MONEDA — se acabó el SUM sin GROUP BY');
 
-/** La moneda configurada del sitio. Sólo decide cuál se muestra PRIMERO y cuál
- *  alimenta los campos sueltos que la API conserva de antes; no decide ningún
- *  cobro. Sin dato, se deduce del país, igual que en `financialController`. */
-const siteCurrency = async (clubId) => {
-    try {
-        const s = await db.query(
-            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1',
-            ['club_currency', clubId]
-        );
-        if (s.rows[0]?.value) return normalizeCurrency(s.rows[0].value);
-        const c = await db.query('SELECT country FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
-        return /colombia|^co$/i.test(String(c.rows[0]?.country || '')) ? 'COP' : 'USD';
-    } catch {
-        return 'USD';
-    }
-};
+// v4.843 — La moneda del sitio vive en `clubCurrency.js`: la consultan también
+// `financialController` y la barra superior del panel, y tres copias del mismo
+// criterio se separan en silencio.
 
 /**
  * El saldo de un club, POR MONEDA.

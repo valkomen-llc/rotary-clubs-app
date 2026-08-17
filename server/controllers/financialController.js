@@ -10,6 +10,7 @@ import {
     normalizeCurrency, currencyMeta, roundMoney,
     sumByCurrency, groupByCurrency, currenciesOf, primaryCurrency,
 } from '../lib/money.js';
+import { siteCurrency } from '../lib/clubCurrency.js';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
@@ -117,17 +118,12 @@ const resolveDonationCurrencyFor = async (clubId, req, lang) => {
 };
 
 // Moneda del club: setting club_currency, o por país (Colombia → COP), o USD.
-const resolveClubCurrency = async (clubId) => {
-    try {
-        const s = await db.query('SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1', ['club_currency', clubId]);
-        if (s.rows[0]?.value) return String(s.rows[0].value).toUpperCase();
-        const c = await db.query('SELECT country FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
-        const country = String(c.rows[0]?.country || '').toLowerCase();
-        return /colombia|^co$/.test(country) ? 'COP' : 'USD';
-    } catch {
-        return 'USD';
-    }
-};
+//
+// v4.843 — El criterio vive en `clubCurrency.js`. Estaba escrito acá y otra vez
+// en `payoutController`, y al necesitarlo la barra superior habrían sido tres.
+// El nombre local se conserva: lo usan `resolveDonationCurrencyFor` y el cobro
+// de la membresía, y renombrarlo ahí no aporta nada.
+const resolveClubCurrency = siteCurrency;
 
 const resolveOrigin = (req, returnUrl) => {
     if (returnUrl && /^https?:\/\//.test(returnUrl)) return returnUrl.replace(/\/$/, '');

@@ -34,9 +34,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.842.0 | 2026-08-17 (Bóveda: una moneda a la vez, en pestañas)
-// Cache bust: 2026-08-17e
+// UI V4.843.0 | 2026-08-17 (La barra superior también separa las monedas)
+// Cache bust: 2026-08-17f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.843.0',
+        title: 'La barra superior también separa las monedas 🧮',
+        description: 'Los dos indicadores de dinero del encabezado del panel —aportes y fondos disponibles— seguían mostrando un solo número que era la suma de monedas distintas: «$50.010» eran 10 dólares más 50.000 pesos, y «$47.507,75», 8,91 más 47.498,84. La Bóveda ya se había corregido, pero esa barra consulta otro endpoint y quedó fuera. Ahora cada indicador muestra una línea por moneda, con el código a la vista: «COP 50.000» y «USD 10,00». Con una sola moneda —el caso de casi todos los sitios— se ve exactamente igual que antes. Se escribe el código y no el símbolo porque en Colombia el peso se formatea con «$» y el dólar con «US$»: apilados en una barra pequeña, el primero se lee como dólares de un vistazo.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'pagos', 'monedas', 'panel'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Los indicadores del encabezado dejan de sumar monedas distintas.' },
+            { type: 'added', text: 'Una línea por moneda en cada indicador, con su código.' },
+            { type: 'changed', text: 'La moneda del sitio se resuelve en un solo sitio, no en tres.' },
+        ],
+        details: [
+            'server/routes/admin.js — las tres sumas de /admin/stats (Payment, PayoutRequest y Donation) llevan GROUP BY currency. La respuesta trae donationsByCurrency y availableFundsByCurrency; los campos sueltos se conservan sobre la moneda principal, nunca sobre la mezcla, para un navegador con el bundle anterior en caché.',
+            'server/lib/clubCurrency.js — la moneda del sitio estaba escrita dos veces (financialController y payoutController) con distinto nombre y la misma lógica. Al necesitarla también la barra habrían sido tres copias, y tres copias de un criterio se separan en silencio. Ahora vive en un módulo propio.',
+            'AdminLayout.tsx — el importe se pinta con MoneyByCurrency, un componente sin estado propio: se usa dos veces y dentro de un map, y un hook ahí depende del largo de la lista (el defecto que dejó una portada en blanco en v4.689).',
+            'npm run test:wallet:ui pasa a 27 comprobaciones: la prueba ya montaba AdminLayout junto con la Bóveda, así que ahora también verifica que la barra muestre las dos monedas y no su suma.',
+            'npm run test:wallet pasa a 48: comprueba sobre el archivo que las tres consultas de /admin/stats sigan agrupando por moneda y que nadie vuelva a copiarse la resolución de la moneda del sitio.',
+        ]
+    },
     {
         version: '4.842.0',
         title: 'La Bóveda se usa como la app de un banco 🏦',

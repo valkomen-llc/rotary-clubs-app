@@ -311,6 +311,34 @@ check('payoutController ya no suma sin GROUP BY', () => {
         'volvió el literal currency: \'USD\' — la moneda se resuelve, no se afirma');
 });
 
+check('la barra superior del panel tampoco suma monedas', () => {
+    // `/admin/stats` es OTRO endpoint que el de la Bóveda y seguía mezclando
+    // hasta v4.842: de ahí salían los «$50,010» y «$47,507.75» de la barra.
+    const src = stripComments(readSrc('server/routes/admin.js'));
+    for (const tabla of ['"Payment"', '"PayoutRequest"', '"Donation"']) {
+        const consulta = src.split('\n').find(l => l.includes('SUM(') && l.includes(tabla));
+        ok(consulta, `no se encontró la consulta de ${tabla}`);
+        ok(/GROUP BY currency/.test(consulta),
+            `la suma de ${tabla} volvió a hacerse sin GROUP BY currency`);
+    }
+});
+
+check('la moneda del sitio se resuelve en UN solo sitio', () => {
+    const lib = readSrc('server/lib/clubCurrency.js');
+    ok(/club_currency/.test(lib), 'clubCurrency.js debe leer el ajuste del sitio');
+    for (const archivo of [
+        'server/controllers/payoutController.js',
+        'server/controllers/financialController.js',
+        'server/routes/admin.js',
+    ]) {
+        const src = stripComments(readSrc(archivo));
+        ok(/from '\.\.\/lib\/clubCurrency\.js'/.test(src),
+            `${archivo} no importa clubCurrency.js`);
+        ok(!/SELECT value FROM "Setting" WHERE key = \$1 AND "clubId" = \$2 LIMIT 1'?,\s*\['club_currency'/.test(src),
+            `${archivo} volvió a tener su propia copia de la moneda del sitio`);
+    }
+});
+
 check('financialController ya no rotula la wallet como USD', () => {
     const src = stripComments(readSrc('server/controllers/financialController.js'));
     ok(!/currency:\s*'USD',\s*\n\s*buckets/.test(src),
