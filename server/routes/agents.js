@@ -343,6 +343,41 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // ── GET: Single agent ─────────────────────────────────────────────────────
+// ⚠️ VA ANTES QUE LA RUTA CON PARÁMETRO, y no es estilo: Express casa en
+// ORDEN, así que declarada debajo la capturaba la paramétrica y este
+// manejador NUNCA se ejecutaba. Lo comprueba `npm run test:routes`.
+// GET /agents/conversations — List recent conversations for the user
+router.get('/conversations', authMiddleware, async (req, res) => {
+    try {
+        await ensureConversationTable();
+        const userId = req.user.id;
+        const { agentId, limit } = req.query;
+
+        let query = `
+            SELECT c.id, c."agentId", c.title, c."messageCount", c."lastMessage",
+                   c."createdAt", c."updatedAt",
+                   a.name as "agentName", a."avatarSeed", a."avatarColor", a.role as "agentRole"
+            FROM "AgentConversation" c
+            LEFT JOIN "Agent" a ON a.id = c."agentId"
+            WHERE c."userId" = $1
+        `;
+        const params = [userId];
+
+        if (agentId) {
+            params.push(agentId);
+            query += ` AND c."agentId" = $${params.length}`;
+        }
+
+        query += ` ORDER BY c."updatedAt" DESC LIMIT ${parseInt(limit) || 20}`;
+
+        const result = await db.query(query, params);
+        res.json({ conversations: result.rows });
+    } catch (error) {
+        console.error('List conversations error:', error);
+        res.json({ conversations: [] });
+    }
+});
+
 router.get('/:id', authMiddleware, async (req, res) => {
     try {
         const result = await db.query('SELECT * FROM "Agent" WHERE id = $1', [req.params.id]);
@@ -529,37 +564,6 @@ const ensureConversationTable = async () => {
     }
 };
 
-// GET /agents/conversations — List recent conversations for the user
-router.get('/conversations', authMiddleware, async (req, res) => {
-    try {
-        await ensureConversationTable();
-        const userId = req.user.id;
-        const { agentId, limit } = req.query;
-
-        let query = `
-            SELECT c.id, c."agentId", c.title, c."messageCount", c."lastMessage",
-                   c."createdAt", c."updatedAt",
-                   a.name as "agentName", a."avatarSeed", a."avatarColor", a.role as "agentRole"
-            FROM "AgentConversation" c
-            LEFT JOIN "Agent" a ON a.id = c."agentId"
-            WHERE c."userId" = $1
-        `;
-        const params = [userId];
-
-        if (agentId) {
-            params.push(agentId);
-            query += ` AND c."agentId" = $${params.length}`;
-        }
-
-        query += ` ORDER BY c."updatedAt" DESC LIMIT ${parseInt(limit) || 20}`;
-
-        const result = await db.query(query, params);
-        res.json({ conversations: result.rows });
-    } catch (error) {
-        console.error('List conversations error:', error);
-        res.json({ conversations: [] });
-    }
-});
 
 // GET /agents/conversations/:id — Get a specific conversation with full messages
 router.get('/conversations/:id', authMiddleware, async (req, res) => {

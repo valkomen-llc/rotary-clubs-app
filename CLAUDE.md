@@ -5545,9 +5545,51 @@ ni `check:hooks`:
 - Va en paralelo: en serie son ~7 s sobre 225 archivos, y un paso de prebuild
   que cuesta siete segundos termina desactivándose. Con concurrencia, ~3 s.
 
+**Orden de las rutas: `npm run check:routes`.** Corre en `prebuild` y rompe el
+despliegue. Es la CUARTA causa de módulo roto, y no la ve ninguna de las otras:
+el typecheck no mira el servidor, `check:syntax` da el archivo por bueno —parsea
+perfectamente— y las pruebas de criterio pasan enteras, porque el criterio nunca
+estuvo mal.
+
+- **Express casa las rutas en ORDEN DE DECLARACIÓN.** Una literal declarada
+  DEBAJO de su paramétrica es INALCANZABLE: la petición cae en el manejador de
+  la paramétrica con el nombre de la ruta como parámetro.
+- **El fallo es MUDO Y ENGAÑOSO**: no da 404, da la respuesta del manejador
+  equivocado. En v4.859, guardar la tarifa de la plataforma
+  (`PUT /admin/fee-rules`) caía en `PUT /admin/:id` —el que actualiza un retiro—
+  y contestaba *«Estado inválido. Los admitidos son: pending, processing,
+  completed, rejected»*: un mensaje que no menciona ni tarifas ni comisiones y
+  manda a diagnosticar a otro sitio. Se reportó como «no me deja guardar».
+- **⚠️ EL AVISO YA ESTABA ESCRITO EN PROSA** dentro de `payouts.js` desde v4.847
+  —«al agregar un `GET /admin/:id`, éstas tienen que quedar ANTES»— y el defecto
+  entró igual, por la otra puerta: el comentario hablaba de un GET y llegó un
+  PUT. **Un comentario que depende de que alguien lo lea no protege nada.**
+- **Se compara por SEGMENTOS, no por prefijo.** Express exige la misma cantidad
+  de segmentos y que cada uno de la paramétrica sea igual o `:parametro`. Por
+  prefijo salían **48** casos, casi todos falsos —`/` es prefijo de todo—; por
+  segmentos son 3. Un guardián que grita en falso se termina desactivando, que
+  es peor que no tenerlo.
+- El barrido destapó otras dos rutas muertas desde que se escribieron:
+  `GET /conversations` en Agentes (consultaba un agente con id
+  `'conversations'`) y `POST /master/query` en Brains (buscaba un brain con id
+  `'master'`). Mover una literal por encima de su paramétrica **no puede romper
+  nada que hoy funcione**: sólo vuelve alcanzable algo que no lo era.
+- Al agregar una ruta con parámetro, declararla **al final** de su grupo.
+
 **Sigue sin cubrirse** el error de importación en tiempo de ejecución —importar
 un símbolo que el módulo no exporta— porque comprobarlo exigiría ejecutar los
 módulos, y eso arrastra la base de datos.
+
+**Y una sesión vencida se dice como tal.** El token de plataforma dura un día,
+así que en una pantalla que se abre y se deja abierta el GET del principio
+funciona y el PUT del final ya no. El servidor contesta `Invalid token` y el
+traductor del sitio lo pinta como «Token inválido», que no le dice a nadie que
+lo único que hace falta es volver a entrar. `mensajeDeFallo` en
+`FeeRulesPanel.tsx` distingue 401 —sesión vencida, con el aviso de que lo
+escrito sigue ahí—, 403 —no es tu permiso— y «no hubo respuesta» —la petición no
+llegó, que no es un rechazo—. **Al escribir un manejador de error de un panel,
+distinguir esos tres**: «no se pudo guardar» a secas obliga a diagnosticar a
+ciegas.
 
 **Variables de entorno del Motor de Composición:**
 

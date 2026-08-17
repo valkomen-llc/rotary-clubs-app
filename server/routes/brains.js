@@ -1337,23 +1337,9 @@ router.get('/:id/memories', authMiddleware, async (req, res) => {
 
 // ─── Búsqueda semántica ────────────────────────────────────────────────────
 
-router.post('/:id/query', authMiddleware, async (req, res) => {
-    try {
-        const { query, k = 8, kind } = req.body || {};
-        if (!query || !query.trim()) return res.status(400).json({ error: 'query required' });
-
-        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
-        if (!brain) return res.status(404).json({ error: 'Brain not found' });
-        if (!(await userCanReadBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
-
-        const results = await searchMemories({ brainId: brain.id, query, k, kind });
-        res.json({ brain: { id: brain.id, name: brain.name, kind: brain.kind, isMaster: brain.isMaster }, results });
-    } catch (err) {
-        console.error('[brains] query:', err);
-        res.status(500).json({ error: 'Error querying brain' });
-    }
-});
-
+// ⚠️ VA ANTES QUE LA RUTA CON PARÁMETRO, y no es estilo: Express casa en
+// ORDEN, así que declarada debajo la capturaba la paramétrica y este
+// manejador NUNCA se ejecutaba. Lo comprueba `npm run test:routes`.
 // Búsqueda global sobre el master (más k para agrupar por brain en el client).
 router.post('/master/query', authMiddleware, async (req, res) => {
     try {
@@ -1381,6 +1367,24 @@ router.post('/master/query', authMiddleware, async (req, res) => {
         res.status(500).json({ error: 'Error querying master brain' });
     }
 });
+
+router.post('/:id/query', authMiddleware, async (req, res) => {
+    try {
+        const { query, k = 8, kind } = req.body || {};
+        if (!query || !query.trim()) return res.status(400).json({ error: 'query required' });
+
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+        if (!(await userCanReadBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
+
+        const results = await searchMemories({ brainId: brain.id, query, k, kind });
+        res.json({ brain: { id: brain.id, name: brain.name, kind: brain.kind, isMaster: brain.isMaster }, results });
+    } catch (err) {
+        console.error('[brains] query:', err);
+        res.status(500).json({ error: 'Error querying brain' });
+    }
+});
+
 
 // ─── Relaciones ────────────────────────────────────────────────────────────
 

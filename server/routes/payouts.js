@@ -31,11 +31,26 @@ router.get('/history', requireSiteAdmin, getClubPayoutHistory);
 
 // Super Admin only routes (managing payouts across the platform)
 const superAdminRoles = ['administrator'];
-router.get('/admin', roleMiddleware(superAdminRoles), getAllPayoutRequests);
-router.put('/admin/:id', roleMiddleware(superAdminRoles), updatePayoutStatus);
 
-// v4.853 — La BÓVEDA CENTRAL: lo que recaudaron TODOS los sitios. Del operador
-// de la plataforma, porque es información de todas las organizaciones alojadas.
+// ═══════════════════════════════════════════════════════════════════
+// ⚠️ LAS RUTAS LITERALES VAN ANTES QUE LA PARAMÉTRICA. NO REORDENAR.
+// ═══════════════════════════════════════════════════════════════════
+//
+// Express casa en ORDEN de declaración, así que `/admin/:id` se traga
+// «fee-rules», «overview» y «ledger» si va primero. No es hipotético: hasta
+// v4.859 `PUT /admin/:id` estaba declarado ANTES que `PUT /admin/fee-rules`, y
+// guardar la tarifa desde el panel caía en `updatePayoutStatus` con
+// `id = 'fee-rules'` — respondía «Estado inválido. Los admitidos son: pending,
+// processing…» y la tarifa NO se guardaba nunca. Se reportó como «intento
+// cambiar el porcentaje a 2,1 y no me deja guardar».
+//
+// Lo más instructivo es que el aviso YA ESTABA ESCRITO en este archivo desde
+// v4.847 —«al agregar un GET /admin/:id, éstas tienen que quedar ANTES»— y el
+// defecto entró igual, por la otra puerta: con un PUT. Un comentario que
+// depende de que alguien lo lea no protege nada. Por eso ahora lo comprueba una
+// prueba (`test:fee-rules:route`), que lee este archivo y falla si una ruta
+// literal queda por debajo de la paramétrica del mismo método.
+
 router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOverview);
 
 // v4.854 — Las reglas de comisión. La tarifa es de la INFRAESTRUCTURA
@@ -48,14 +63,13 @@ router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesCo
 // es una herramienta de migración sobre infraestructura compartida, y lo que
 // muestra —cuánto historial le falta al libro nuevo— se lee como un descuadre
 // si no se sabe qué se está mirando.
-//
-// Hoy no choca con `/admin/:id` porque aquélla es un PUT y `/admin` es exacta.
-// Al agregar un `GET /admin/:id`, éstas tienen que quedar ANTES o «overview» y
-// «ledger» caerían en el parámetro — es lo que ya pasó con `/site/*` en las
-// campañas.
 router.get('/admin/ledger/:clubId', roleMiddleware(superAdminRoles), getLedgerReconciliation);
 
 // v4.848 — Carga el historial en el libro. De ENSAYO salvo `{"apply": true}`.
 router.post('/admin/ledger/:clubId/backfill', roleMiddleware(superAdminRoles), backfillLedger);
+
+// ── Y AL FINAL, las que llevan parámetro ────────────────────────────
+router.get('/admin', roleMiddleware(superAdminRoles), getAllPayoutRequests);
+router.put('/admin/:id', roleMiddleware(superAdminRoles), updatePayoutStatus);
 
 export default router;
