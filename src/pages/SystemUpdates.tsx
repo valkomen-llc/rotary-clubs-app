@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.838.0 | 2026-08-17 (Director Creativo F2-3: referencias, Design DNA e indicadores)
-// Cache bust: 2026-08-17a
+// UI V4.839.0 | 2026-08-17 (Design DNA: contexto narrado, prompt de estilo y el fondo de marca)
+// Cache bust: 2026-08-17b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.839.0',
+        title: 'El estilo ahora se explica y se puede llevar a un generador de imágenes ✍️',
+        description: 'Al analizar las piezas de referencia, además de la paleta y las formas, el estudio escribe dos cosas: un CONTEXTO en español que dice a qué se parecen esas piezas y qué las hace reconocibles, y un PROMPT listo para copiar a cualquier generador de imágenes. El prompt lo arma el código a partir de lo medido —no lo redacta un modelo— para que sea el mismo siempre y para que lleve incorporadas las reglas que no se negocian: nada de texto ni de logotipos dentro de la imagen generada, porque esos se componen encima. Junto a él va la lista de lo que el generador no debe dibujar. Y se corrigió un defecto que aparecía justamente con las piezas reales del Distrito: como son volantes de fondo blanco, el color más presente era el papel, y tomarlo como fondo dejaba el título blanco sobre un fondo casi blanco. Ahora se toma el color de marca y se avisa.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'campanas', 'diseno', 'ia'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Contexto en español que describe el estilo de las referencias.' },
+            { type: 'added', text: 'Prompt de estilo copiable, con su lista de lo que no debe dibujar.' },
+            { type: 'fixed', text: 'Una referencia de fondo claro ya no deja la pieza con el texto ilegible.' },
+        ]
+    },
     {
         version: '4.838.0',
         title: 'Subí tus piezas y las nuevas siguen su estilo 🧬',

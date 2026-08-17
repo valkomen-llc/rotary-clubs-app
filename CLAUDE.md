@@ -2927,8 +2927,51 @@ la parte de medición usa sharp y se salta si no está).
 - **`profileId` va en las dependencias del manejador**, por el mismo motivo que
   `conQr` en v4.836: sin él, elegir un estilo no llegaría nunca a la petición.
 
+### El contexto narrado y el prompt de estilo (v4.839)
+
+Pedido literal: *«que cuando analice las imágenes, genere una descripción como
+un contexto y a la vez un prompt para que se pueda aplicar estos patrones en la
+generación de imágenes»*.
+
+- **EL FONDO ES EL COLOR DE MARCA, NO EL PAPEL**, y lo destapó la primera
+  prueba con las referencias REALES del Distrito. Son volantes BLANCOS con
+  cabecera y pie azules, así que el color de mayor cobertura es `#F2F1F1` con
+  el **80 %**. Tomado como fondo, las composiciones —que declaran su texto en
+  BLANCO— salían con el título blanco sobre un fondo casi blanco: ilegible, y
+  sin que nada avisara. El color de mayor cobertura de una pieza clara es su
+  PAPEL, no su identidad (`BRAND_MIN_CHROMA`, deliberadamente MÁS BAJO que el
+  del acento: un azul marino institucional tiene saturación 0,32).
+- **Y la consecuencia se DICE**: un referente de fondo claro no se traslada tal
+  cual, porque estas composiciones son de fondo oscuro. Honrar su claridad
+  exigiría rediseñarlas —texto oscuro, otra jerarquía—, que es bastante más que
+  modular.
+- **Con un color de marca CLARO tampoco se aplica la paleta**
+  (`GROUND_MIN_CONTRAST`). Antes que entregar una pieza ilegible, se conserva el
+  color de la campaña y se explica; el resto del estilo sí se aplica.
+- **EL PROMPT LO ESCRIBE EL CÓDIGO, NO EL MODELO.** Un prompt redactado por un
+  modelo cambia entre dos análisis de las mismas referencias, y éste tiene que
+  ser REPRODUCIBLE: es lo que va a componer todas las piezas de una campaña.
+  Además carga las reglas que no se negocian —sin texto dentro de la imagen, sin
+  logotipos dibujados, sin personas inventadas— y ésas no pueden depender de que
+  un modelo se acuerde de incluirlas. Lo comprueba una prueba leyendo el archivo.
+- **Lo que sí aporta el modelo es el CONTEXTO narrado**, que se cita como la
+  parte descriptiva del prompt. Es la única parte del análisis que NO pasa por
+  un catálogo cerrado, y se puede permitir porque no decide nada: se LEE.
+- **El prompt va en INGLÉS y el contexto en ESPAÑOL.** Los motores de imagen
+  responden mejor en inglés; el contexto lo lee una persona. La pantalla lo dice,
+  o quien copie el prompt lo lee como un descuido.
+- **Al recortar el prompt se sacrifica lo descriptivo; la paleta y la cláusula
+  de lo que no se dibuja NO se tocan.** La paleta es lo que hace reconocible el
+  estilo y la cláusula es lo que hace publicable la pieza.
+- **Los dos viven DENTRO del DNA**, no se calculan al pedirlos: así quedan
+  guardados con la versión del perfil y una pieza generada hace un mes se explica
+  con el mismo texto que la generó.
+
 **Pendiente de la fase siguiente:** la previsualización comparativa
-(referencia | pieza) y la regeneración guiada por los indicadores. No hay
+(referencia | pieza) y la regeneración guiada por los indicadores. El prompt de
+estilo está listo para alimentar el `masterPrompt` del Motor de Composición de
+Plantillas IA —que es el campo que ya existe para la dirección de arte— pero ese
+cableado no está hecho: hoy el prompt se copia a mano. No hay
 espejo de `creativeDNA.js` en el navegador a propósito: el criterio se aplica
 ENTERO en el servidor y la pantalla sólo muestra el resultado, así que un espejo
 sería una copia sin consumidor — y las copias se separan en silencio.
