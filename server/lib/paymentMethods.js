@@ -50,7 +50,7 @@ export const PAYMENT_METHODS = [
         id: 'paypal',
         label: 'PayPal',
         provider: 'paypal',
-        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP): un aporte en pesos se cobra convertido, con la tasa configurada abajo.',
+        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP): un aporte en pesos se cobra convertido con la TRM del día.',
         env: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
         optionalEnv: ['PAYPAL_WEBHOOK_ID', 'PAYPAL_CURRENCY'],
         // Apagado hasta que alguien lo encienda a propósito, aunque las
@@ -107,7 +107,7 @@ export const methodLimits = (metodo, env = {}) => {
             out.push({
                 kind: 'currency',
                 value: moneda,
-                text: `La cuenta cobra en ${moneda}. Un aporte en otra moneda se convierte con la tasa configurada más abajo, y al visitante se le muestra el importe convertido ANTES de cobrarle. Sin tasa para ese par, el botón no aparece — nunca se inventa una.`,
+                text: `La cuenta cobra en ${moneda}. Un aporte en otra moneda se convierte con la tasa del día —la TRM se resuelve sola, y lo escrito abajo es el respaldo—, y al visitante se le muestra el importe convertido ANTES de cobrarle. Sin ninguna tasa para ese par, el botón no aparece: nunca se inventa una.`,
             });
         }
 

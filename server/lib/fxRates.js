@@ -119,6 +119,23 @@ export const convertAmount = (amount, from, to, rates, ahora = new Date()) => {
     };
 };
 
+/**
+ * Junta las tasas AUTOMÁTICAS con las escritas a mano.
+ *
+ * ⚠️ LA AUTOMÁTICA MANDA, y es lo contrario de la regla habitual del sitio
+ * —«la preferencia explícita del usuario manda sobre lo que decide el
+ * sistema»—. Acá no aplica: una tasa de cambio no es una preferencia, es un
+ * HECHO que cambia todos los días, y el fallo característico de la escrita a
+ * mano es quedarse vieja — que es exactamente lo que la automática resuelve.
+ * La manual queda de RESPALDO y como única vía para un par que la fuente
+ * automática no cubre.
+ *
+ * Es una función aparte y pura a propósito: el orden de precedencia es la
+ * decisión que gobierna cuánto se le cobra a alguien, y dentro de la capa de
+ * I/O no se podría probar.
+ */
+export const mergeRates = (manual, auto) => ({ ...(manual || {}), ...(auto || {}) });
+
 export const MOTIVOS_FX = {
     sin_moneda: 'No se resolvió la moneda del aporte.',
     sin_importe: 'No hay un importe que convertir.',
@@ -203,5 +220,5 @@ export const parseRates = (raw) => {
 
 export default {
     FX_RATES_KEY, STALE_DAYS, MOTIVOS_FX,
-    pairKey, rateFor, rateAgeDays, convertAmount, validateRates, parseRates,
+    pairKey, rateFor, rateAgeDays, convertAmount, mergeRates, validateRates, parseRates,
 };

@@ -118,8 +118,8 @@ const ACTIVO = { paypal: { enabled: true } };
 const acotado = methodLimits(elPaypal, { ...CON_TODO, PAYPAL_CURRENCY: 'USD', PAYPAL_ENV: 'live' });
 ok('con PAYPAL_CURRENCY hay un límite de moneda', acotado.some(l => l.kind === 'currency'));
 ok('y nombra la moneda concreta', /USD/.test(acotado.find(l => l.kind === 'currency')?.text || ''));
-ok('y dice que se convierte con la tasa configurada, no inventada',
-    /tasa configurada/i.test(acotado.find(l => l.kind === 'currency')?.text || '')
+ok('y dice que se convierte con la tasa del día, no con una inventada',
+    /TRM se resuelve sola/i.test(acotado.find(l => l.kind === 'currency')?.text || '')
     && /nunca se inventa/i.test(acotado.find(l => l.kind === 'currency')?.text || ''),
     'la regla es «no se inventa una tasa», no «no se convierte»');
 

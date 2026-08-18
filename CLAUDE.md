@@ -6555,11 +6555,11 @@ automáticamente a dólares; es muy importante que aparezca el botón de PayPal�
 |---|---|
 | `server/lib/fxRates.js` | El CRITERIO. **Puro**: llave del par, conversión, edad de la tasa y validación |
 | `src/lib/fxRates.ts` | Espejo MÍNIMO: convertir con una tasa ya conocida, para poder DECIRLO |
-| `server/lib/fxRatesStore.js` | La I/O: `PlatformConfig`, caché e invalidación |
+| `server/lib/fxRatesStore.js` | La I/O: `PlatformConfig`, caché, y la mezcla con la TRM automática de `trm.js` |
 | `resolvePaypalCharge` en `paypalSpec.js` | Qué se le va a cobrar a ESTE visitante |
 | `src/components/admin/FxRatesPanel.tsx` | El editor, dentro de Métodos de pago |
 
-Pruebas: `npm run test:fx` (67 casos, **sin base, credenciales ni red**;
+Pruebas: `npm run test:fx` (80 casos, **sin base, credenciales ni red**;
 incluye la paridad de los dos espejos y se salta ese bloque si falta `esbuild`).
 
 **Reglas durables:**
@@ -6570,6 +6570,27 @@ incluye la paridad de los dos espejos y se salta ese bloque si falta `esbuild`).
   de salir hacia PayPal. Convertir en SILENCIO sería cambiarle el trato a mitad
   de camino; convertir A LA VISTA es otra cosa. Lo comprueba una prueba sobre el
   archivo del modal.
+- **⚠️ LA TRM SE RESUELVE SOLA, Y NO SE ESCRIBE UNA SEGUNDA CADENA** (v4.871,
+  `getEffectiveRates`). `trm.js` ya la resolvía desde v4.846 —Superintendencia
+  Financiera vía `datos.gov.co`, cinco respaldos de mercado, caché por fecha y
+  consulta histórica— y es la que la Bóveda usa para expresar en pesos la
+  comisión que Stripe cobra en dólares. Otra cadena daría dos fuentes que se
+  separan en silencio; lo comprueba una prueba sobre el archivo.
+- **⚠️ LA AUTOMÁTICA MANDA SOBRE LA ESCRITA A MANO** (`mergeRates`), que es lo
+  contrario de la regla habitual del sitio —«la preferencia explícita del
+  usuario manda»—. Acá no aplica: **una tasa de cambio no es una preferencia,
+  es un hecho que cambia todos los días**, y el fallo característico de la
+  manual es quedarse vieja — justo lo que la automática resuelve. La manual
+  queda de RESPALDO (la fuente no contesta) y como única vía para un par que la
+  TRM no cubre. El orden vive en el criterio PURO y está probado: dentro de la
+  capa que habla con la red no se podría, y es la decisión que gobierna cuánto
+  se le cobra a alguien.
+- **La automática se muestra de SÓLO LECTURA.** Editable invitaría a cambiar un
+  número que se vuelve a resolver solo en la consulta siguiente, y el cambio se
+  leería como que no se guardó.
+- **La TRM es DIARIA y su día es el de BOGOTÁ**, no el del servidor —que corre
+  en UTC—. La fuente que se guarda con el aporte dice de qué día es la tasa: sin
+  eso no se sabe cuál se usó.
 - **La tasa se guarda COMO LA DICE UNA PERSONA**: «4.032 pesos por dólar»
   (`perUnit`), no «0,00025 dólares por peso». Un número con cuatro ceros a la
   derecha de la coma se teclea mal y el error no se ve — y acá el error es
