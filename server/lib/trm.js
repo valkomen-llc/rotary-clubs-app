@@ -18,6 +18,33 @@
 
 import db from './db.js';
 
+// ═════════════════════════════════════════════════════════════════════
+// ⚠️ TODA CONSULTA A UN TERCERO LLEVA TOPE DE TIEMPO
+// ═════════════════════════════════════════════════════════════════════
+//
+// `fetch` sin `signal` espera lo que el otro extremo quiera: si la fuente
+// tarda —o no contesta y deja la conexión abierta— la petición que la disparó
+// se queda esperando con ella. Desde v4.871 esto corre en el camino de un
+// VISITANTE (al abrir el modal de aportes y al crear el pedido de PayPal), así
+// que una fuente lenta se traduce en un botón que gira sin fin y en tiempo de
+// función gastado en no hacer nada.
+//
+// Y hay SEIS proveedores en cadena: sin un presupuesto TOTAL, seis tiempos de
+// espera se suman. `trmForDate` deja de intentar en cuanto se agota, así que
+// el peor caso queda acotado al presupuesto más el proveedor en curso.
+const FETCH_MS = 3000;
+const BUDGET_MS = 5000;
+
+const conTope = async (url, opts = {}, ms = FETCH_MS) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), Math.max(250, ms));
+    try {
+        return await fetch(url, { ...opts, signal: ctrl.signal });
+    } finally {
+        clearTimeout(t);
+    }
+};
+
 // ── Proveedores ──────────────────────────────────────────────────────
 //
 // La fuente oficial es la Superintendencia Financiera de Colombia, publicada
@@ -30,7 +57,7 @@ export const TRM_PROVIDERS = {
         official: true,
         fetch: async () => {
             const url = 'https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciadesde%20DESC';
-            const r = await fetch(url, { headers: { Accept: 'application/json' } });
+            const r = await conTope(url, { headers: { Accept: 'application/json' } });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const rows = await r.json();
             const row = Array.isArray(rows) ? rows[0] : null;
@@ -45,7 +72,7 @@ export const TRM_PROVIDERS = {
                 `vigenciadesde <= '${date}T00:00:00.000' AND vigenciahasta >= '${date}T00:00:00.000'`
             );
             const url = `https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$where=${where}`;
-            const r = await fetch(url, { headers: { Accept: 'application/json' } });
+            const r = await conTope(url, { headers: { Accept: 'application/json' } });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const rows = await r.json();
             const row = Array.isArray(rows) ? rows[0] : null;
@@ -57,7 +84,7 @@ export const TRM_PROVIDERS = {
     open_er_api: {
         label: 'open.er-api.com',
         fetch: async () => {
-            const r = await fetch('https://open.er-api.com/v6/latest/USD');
+            const r = await conTope('https://open.er-api.com/v6/latest/USD');
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
             const rate = Number(data?.rates?.COP);
@@ -72,7 +99,7 @@ export const TRM_PROVIDERS = {
             const url = key
                 ? `https://api.exchangerate.host/live?access_key=${encodeURIComponent(key)}&source=USD&currencies=COP`
                 : 'https://api.exchangerate.host/latest?base=USD&symbols=COP';
-            const r = await fetch(url);
+            const r = await conTope(url);
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
             const rate = Number(data?.quotes?.USDCOP ?? data?.rates?.COP);
@@ -85,7 +112,7 @@ export const TRM_PROVIDERS = {
         fetch: async () => {
             const appId = process.env.OPENEXCHANGERATES_APP_ID;
             if (!appId) throw new Error('Falta OPENEXCHANGERATES_APP_ID');
-            const r = await fetch(`https://openexchangerates.org/api/latest.json?app_id=${encodeURIComponent(appId)}&symbols=COP`);
+            const r = await conTope(`https://openexchangerates.org/api/latest.json?app_id=${encodeURIComponent(appId)}&symbols=COP`);
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
             const rate = Number(data?.rates?.COP);
@@ -98,7 +125,7 @@ export const TRM_PROVIDERS = {
         fetch: async () => {
             const key = process.env.CURRENCY_API_KEY;
             if (!key) throw new Error('Falta CURRENCY_API_KEY');
-            const r = await fetch(`https://api.currencyapi.com/v3/latest?apikey=${encodeURIComponent(key)}&base_currency=USD&currencies=COP`);
+            const r = await conTope(`https://api.currencyapi.com/v3/latest?apikey=${encodeURIComponent(key)}&base_currency=USD&currencies=COP`);
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
             const rate = Number(data?.data?.COP?.value);
@@ -111,7 +138,7 @@ export const TRM_PROVIDERS = {
         fetch: async () => {
             const key = process.env.APILAYER_KEY;
             if (!key) throw new Error('Falta APILAYER_KEY');
-            const r = await fetch('https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols=COP', {
+            const r = await conTope('https://api.apilayer.com/exchangerates_data/latest?base=USD&symbols=COP', {
                 headers: { apikey: key },
             });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -175,9 +202,10 @@ const toDb = async (date, rate, source) => {
  *
  * @returns { rate, source, date, official } | null
  */
-export const trmForDate = async (when) => {
+export const trmForDate = async (when, { budgetMs = BUDGET_MS } = {}) => {
     const date = bogotaDay(when);
     if (!date) return null;
+    const hasta = Date.now() + Math.max(0, budgetMs);
 
     if (memo.has(date)) return memo.get(date);
 
@@ -200,6 +228,13 @@ export const trmForDate = async (when) => {
         const esPasado = date !== hoy;
         const fn = esPasado ? provider.fetchForDate : provider.fetch;
         if (!fn) continue;
+        // Agotado el presupuesto se deja de intentar: seguir con el siguiente
+        // proveedor sólo suma espera a quien está mirando la pantalla. Sin tasa
+        // NO se inventa ninguna —se devuelve null— y quien llama decide.
+        if (Date.now() >= hasta) {
+            console.warn(`[TRM] presupuesto agotado antes de "${name}" para ${date}`);
+            break;
+        }
         try {
             const { rate } = await fn(date);
             const rounded = Math.round(Number(rate) * 10000) / 10000;
@@ -217,4 +252,4 @@ export const trmForDate = async (when) => {
     return null;
 };
 
-export default { TRM_PROVIDERS, trmForDate, bogotaDay };
+export default { TRM_PROVIDERS, trmForDate, bogotaDay, BUDGET_MS, FETCH_MS };

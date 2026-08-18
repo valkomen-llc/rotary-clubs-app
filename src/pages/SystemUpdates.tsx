@@ -34,9 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.874.0 | 2026-08-18 (Probar las credenciales de un método de pago)
-// Cache bust: 2026-08-18h
+// UI V4.875.0 | 2026-08-18 (Ninguna consulta a un tercero sin tope)
+// Cache bust: 2026-08-18i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.875.0',
+        title: 'Ninguna consulta a un tercero sin tope de tiempo ⏱️',
+        description: 'La consulta de la TRM no tenía límite de espera, y desde v4.871 corre en el camino de un visitante: al abrir el modal de aportes y al crear el pedido de PayPal. Una fuente lenta se traducía en un botón girando sin fin y en tiempo de función gastado en no hacer nada.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'rendimiento', 'trm'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Los seis proveedores de TRM llevan tope de espera (3 s cada uno).' },
+            { type: 'added', text: 'Presupuesto TOTAL de la cadena: agotado, se deja de intentar.' },
+            { type: 'changed', text: 'El camino del visitante usa un presupuesto corto (2,5 s).' },
+            { type: 'added', text: 'Una prueba cuenta las llamadas sin envolver y falla si reaparece alguna.' },
+        ],
+        details: [
+            'UN FETCH SIN SEÑAL DE ABORTO ESPERA LO QUE EL OTRO EXTREMO QUIERA. Si la fuente tarda —o no contesta y deja la conexión abierta— la petición que la disparó se queda esperando con ella. Mientras eso vivía sólo en la Bóveda y en la Feria era tolerable; desde que corre al abrir el modal de aportes, no.',
+            'SEIS PROVEEDORES EN CADENA SUMAN SEIS TIEMPOS DE ESPERA. Por eso no alcanza con el tope por consulta: hay un presupuesto total y, agotado, se deja de intentar. Seguir con el siguiente proveedor sólo suma espera a quien está mirando la pantalla.',
+            'La primera consulta del día paga la red; las demás salen de la caché en base, que ya existía. Así que el caso lento ocurre una vez por día y por instancia, no en cada aporte.',
+            'Si la TRM no llega a tiempo se usa la tasa escrita a mano, y si tampoco hay, no se convierte y el botón no aparece. La regla no cambia: nunca se inventa una tasa.',
+            'La prueba cuenta las llamadas a fetch sin envolver en el archivo y falla si aparece una nueva. Un comentario que depende de que alguien lo lea no protege nada.',
+        ]
+    },
     {
         version: '4.874.0',
         title: 'Se pueden probar las credenciales de un método de pago 🔌',

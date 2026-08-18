@@ -223,6 +223,21 @@ ok('el cobro usa las tasas efectivas, no sólo las escritas',
 ok('y la TRM sale del módulo que ya existía',
     /from '\.\/trm\.js'/.test(store),
     'escribir una segunda cadena de proveedores daría dos fuentes que se separan');
+
+// ⚠️ NINGUNA CONSULTA A UN TERCERO SIN TOPE DE TIEMPO. Esto corre en el camino
+// de un VISITANTE desde v4.871: una fuente que no contesta se traduce en un
+// botón que gira sin fin y en tiempo de función gastado en no hacer nada.
+const trm = read('server/lib/trm.js');
+const sinTope = (trm.match(/await fetch\(/g) || []).length;
+ok('todos los proveedores de TRM llevan tope', sinTope === 1,
+    `hay ${sinTope} llamadas a fetch sin envolver (sólo la de conTope puede quedar)`);
+ok('el tope se arma con AbortController', /AbortController/.test(trm) && /ctrl\.abort\(\)/.test(trm));
+ok('y la cadena tiene presupuesto TOTAL',
+    /presupuesto agotado/.test(trm),
+    'seis proveedores en cadena suman seis tiempos de espera');
+ok('el camino del visitante usa un presupuesto corto',
+    /budgetMs = 2500/.test(store),
+    'la primera consulta del día paga la red; las demás salen de la caché');
 // Sólo lectura de verdad: lo que se guarda sale de la lista MANUAL y nunca de
 // las automáticas. Editable invitaría a cambiar un número que se vuelve a
 // resolver solo, y el cambio se leería como que no se guardó.

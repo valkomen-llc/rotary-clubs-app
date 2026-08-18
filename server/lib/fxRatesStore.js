@@ -67,13 +67,20 @@ export const invalidateFxRates = () => { cache = null; cacheAt = 0; };
 //
 // NUNCA lanza y NUNCA inventa: si la TRM no se pudo consultar, se usa lo que
 // haya escrito; si no hay nada, no se convierte y el método no se ofrece.
-export const getEffectiveRates = async (when = new Date()) => {
+export const getEffectiveRates = async (when = new Date(), { budgetMs = 2500 } = {}) => {
     const manual = await getFxRates();
     const auto = {};
 
     try {
         // La TRM es COP por USD y es diaria: la del día en que se cobra.
-        const trm = await trmForDate(when);
+        //
+        // ⚠️ CON PRESUPUESTO CORTO: esto corre en el camino de un VISITANTE —al
+        // abrir el modal de aportes y al crear el pedido—, y una fuente lenta
+        // ahí es un botón que gira. La primera consulta del día paga la red;
+        // las demás salen de la caché en base, así que el caso lento ocurre una
+        // vez. Si no llega a tiempo se usa la tasa escrita a mano, y si tampoco
+        // hay, no se convierte: nunca se inventa una.
+        const trm = await trmForDate(when, { budgetMs });
         if (trm && Number(trm.rate) > 0) {
             auto[pairKey('COP', 'USD')] = {
                 perUnit: Number(trm.rate),

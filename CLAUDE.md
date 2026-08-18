@@ -6631,6 +6631,14 @@ incluye la paridad de los dos espejos y se salta ese bloque si falta `esbuild`).
   de salir hacia PayPal. Convertir en SILENCIO sería cambiarle el trato a mitad
   de camino; convertir A LA VISTA es otra cosa. Lo comprueba una prueba sobre el
   archivo del modal.
+- **⚠️ NINGUNA CONSULTA A UN TERCERO SIN TOPE DE TIEMPO** (v4.875). `fetch`
+  sin `signal` espera lo que el otro extremo quiera, y desde v4.871 la TRM corre
+  en el camino de un VISITANTE —al abrir el modal de aportes y al crear el
+  pedido—: una fuente lenta es un botón que gira sin fin y tiempo de función
+  gastado en no hacer nada. Cada proveedor lleva 3 s y la CADENA un presupuesto
+  total, porque seis proveedores suman seis tiempos de espera. La primera
+  consulta del día paga la red; las demás salen de la caché en base. Lo comprueba
+  una prueba que cuenta las llamadas sin envolver.
 - **⚠️ LA TRM SE RESUELVE SOLA, Y NO SE ESCRIBE UNA SEGUNDA CADENA** (v4.871,
   `getEffectiveRates`). `trm.js` ya la resolvía desde v4.846 —Superintendencia
   Financiera vía `datos.gov.co`, cinco respaldos de mercado, caché por fecha y
