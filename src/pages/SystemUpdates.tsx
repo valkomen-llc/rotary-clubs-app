@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.867.0 | 2026-08-18 (Integraciones no revienta por un contador)
-// Cache bust: 2026-08-18a
+// UI V4.868.0 | 2026-08-18 (Métodos de pago: verlos y activarlos)
+// Cache bust: 2026-08-18b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.868.0',
+        title: 'Los métodos de pago se ven y se activan desde el panel ⚙️',
+        description: 'Integraciones abre ahora con «Métodos de pago»: qué vías de cobro existen, si cada una tiene sus credenciales cargadas, y un interruptor para activarla. Hasta ahora saber si PayPal estaba configurado exigía entrar a Vercel.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'integraciones', 'plataforma'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Panel de métodos de pago en Integraciones, con el estado de cada proveedor.' },
+            { type: 'added', text: 'Interruptor de activación por método: se habilita a propósito, aunque las credenciales ya estén.' },
+            { type: 'added', text: 'npm run test:payment-methods — 36 comprobaciones.' },
+        ],
+        details: [
+            'CONFIGURADO Y ACTIVADO SON DOS COSAS DISTINTAS. Configurado lo dice el entorno y no se edita desde el panel; activado lo decide el operador. Un método se ofrece sólo si las dos son ciertas — eso es lo que permite dejar las credenciales cargadas y el método todavía apagado mientras se prueba en sandbox.',
+            'LAS CREDENCIALES SIGUEN EN LAS VARIABLES DE ENTORNO, a propósito y con dos motivos concretos: un respaldo de la base no se lleva la llave de cobro, y Vercel separa las variables por entorno, así que preview puede usar una cuenta de pruebas mientras producción usa la real. Con las credenciales en la base, las dos ramas leerían la misma fila y una prueba podría cobrar de verdad.',
+            'El panel NUNCA muestra el secreto, ni recortado: los últimos cuatro caracteres de una llave de cobro no ayudan a diagnosticar nada y sí filtran. Sólo dice si está o no está — y qué variable falta, con su nombre exacto.',
+            'La tarjeta viene ACTIVADA por defecto y todo lo demás apagado. Es la comprobación que autoriza el despliegue: era la única vía de cobro que existía, y si naciera apagada, desplegar dejaría a toda la plataforma sin poder recibir aportes.',
+            'Activar un método sin sus credenciales no es un error —se puede dejar listo— pero se DICE, o alguien lo enciende y se queda esperando un botón que no va a aparecer. Y si se apagan todos, se avisa: quedarse sin ninguno no se descubre hasta que alguien intenta donar.',
+            'El interruptor se comprueba EN EL SERVIDOR, no sólo al pintar el botón: esconder un control en la pantalla no protege el endpoint de quien lo conoce.',
+            'El dinero sigue entrando a la cuenta de la plataforma en todos los métodos. Esto activa dónde se ofrece cada uno, no a qué cuenta entra.',
+        ]
+    },
     {
         version: '4.867.0',
         title: 'La pantalla de Integraciones ya no se cae 🩹',

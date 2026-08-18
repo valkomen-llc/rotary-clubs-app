@@ -18,6 +18,8 @@ import {
 import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
 import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
+import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO } from '../lib/paymentMethods.js';
+import { getPaymentMethods, savePaymentMethods } from '../lib/paymentMethodsStore.js';
 
 console.log('[PAYOUTS v4.861] Recálculo deliberado de la retención + reglas de comisión configurables');
 
@@ -684,6 +686,50 @@ export const recalcFees = async (req, res) => {
     } catch (error) {
         console.error('[FEE-RECALC] Error recalculando:', error);
         res.status(500).json({ error: 'No se pudo recalcular la retención.' });
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// LOS MÉTODOS DE PAGO (v4.868)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Del OPERADOR: qué vías de cobro ofrece la plataforma es infraestructura
+// compartida, no de una organización.
+
+/** Qué métodos hay, si están configurados y si están activados. */
+export const getPaymentMethodsConfig = async (req, res) => {
+    try {
+        const config = await getPaymentMethods();
+        // ⚠️ El estado sale del ENTORNO y NUNCA incluye el secreto, ni
+        // recortado: lo único que hace falta saber es si está o no está.
+        const methods = resolveMethods(config, process.env);
+        res.json({
+            methods,
+            motivos: MOTIVOS_METODO,
+            // Dónde se cargan las credenciales. Sin esto, el panel dice «faltan
+            // variables» y no dice dónde ponerlas.
+            donde: 'Variables de entorno del proyecto en Vercel (Settings → Environment Variables). Después de cargarlas hay que redeployar.',
+        });
+    } catch (error) {
+        console.error('[PAYMENT-METHODS] Error leyendo:', error);
+        res.status(500).json({ error: 'No se pudieron leer los métodos de pago.' });
+    }
+};
+
+/** Activa o desactiva. El operador escribe; el CÓDIGO decide si es válido. */
+export const updatePaymentMethodsConfig = async (req, res) => {
+    try {
+        const { methods, errors, warnings } = validateMethods(req.body?.methods, process.env);
+        if (errors.length) return res.status(422).json({ error: 'La configuración tiene errores.', errors });
+        const guardado = await savePaymentMethods(mergeMethods(methods));
+        res.json({
+            methods: resolveMethods(guardado, process.env),
+            warnings,
+            aviso: 'Los cambios rigen para los aportes que empiecen de ahora en adelante.',
+        });
+    } catch (error) {
+        console.error('[PAYMENT-METHODS] Error guardando:', error);
+        res.status(500).json({ error: 'No se pudieron guardar los métodos de pago.' });
     }
 };
 
