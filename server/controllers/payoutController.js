@@ -20,6 +20,8 @@ import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
 import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO } from '../lib/paymentMethods.js';
 import { getPaymentMethods, savePaymentMethods } from '../lib/paymentMethodsStore.js';
+import { getFxRates, saveFxRates } from '../lib/fxRatesStore.js';
+import { validateRates, STALE_DAYS as FX_STALE_DAYS, rateAgeDays } from '../lib/fxRates.js';
 
 console.log('[PAYOUTS v4.861] Recálculo deliberado de la retención + reglas de comisión configurables');
 
@@ -697,6 +699,62 @@ export const recalcFees = async (req, res) => {
 // compartida, no de una organización.
 
 /** Qué métodos hay, si están configurados y si están activados. */
+// ═══════════════════════════════════════════════════════════════════
+// LAS TASAS DE CAMBIO (v4.870)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Existen por una sola razón: PayPal no procesa pesos colombianos, así que sin
+// una tasa configurada el botón no aparece nunca en el sitio de un distrito
+// colombiano. La regla de siempre NO cambia —«no se inventa una tasa»—: si no
+// hay ninguna escrita acá, no se convierte y no se ofrece.
+//
+// Del OPERADOR de la plataforma: la cuenta de cobro es una sola y la tasa
+// decide cuánto se le cobra a alguien.
+
+export const getFxRatesConfig = async (req, res) => {
+    try {
+        const rates = await getFxRates();
+        const ahora = new Date();
+        // La EDAD de cada tasa viaja resuelta: la pantalla no rehace aritmética
+        // de fechas —misma regla que el período de la Bóveda—.
+        const detalle = Object.entries(rates).map(([pair, val]) => ({
+            pair,
+            perUnit: val.perUnit,
+            source: val.source || null,
+            updatedAt: val.updatedAt || null,
+            ageDays: rateAgeDays(val.updatedAt, ahora),
+        }));
+        res.json({
+            rates: detalle,
+            staleDays: FX_STALE_DAYS,
+            aviso: 'La conversión sólo ocurre cuando la cuenta del proveedor no cobra en la moneda del aporte. Sin tasa configurada, ese método no se ofrece.',
+        });
+    } catch (error) {
+        console.error('[FX] Error leyendo las tasas:', error);
+        res.status(500).json({ error: 'No se pudieron leer las tasas de cambio.' });
+    }
+};
+
+export const updateFxRatesConfig = async (req, res) => {
+    try {
+        const { rates, errors, warnings } = validateRates(req.body?.rates);
+        if (errors.length) return res.status(422).json({ error: 'Las tasas tienen errores.', errors });
+        await saveFxRates(rates);
+        const ahora = new Date();
+        res.json({
+            rates: Object.entries(rates).map(([pair, val]) => ({
+                pair, perUnit: val.perUnit, source: val.source || null,
+                updatedAt: val.updatedAt || null, ageDays: rateAgeDays(val.updatedAt, ahora),
+            })),
+            warnings,
+            aviso: 'Rige para los aportes que empiecen de ahora en adelante. Los ya cobrados conservan la tasa con la que se cobraron.',
+        });
+    } catch (error) {
+        console.error('[FX] Error guardando las tasas:', error);
+        res.status(500).json({ error: 'No se pudieron guardar las tasas de cambio.' });
+    }
+};
+
 export const getPaymentMethodsConfig = async (req, res) => {
     try {
         const config = await getPaymentMethods();

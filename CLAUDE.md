@@ -6485,12 +6485,19 @@ Pruebas: `npm run test:paypal` (43 casos, **sin base, credenciales ni red**).
   versiones y **no se usa**: con el dinero entrando directo al club, el 2,1 % no
   se podría retener y el saldo de la Bóveda dejaría de ser real. Queda declarado
   y sin implementar, que es distinto de olvidado.
-- **⚠️ NO SE CONVIERTE NINGÚN IMPORTE.** Si la cuenta de PayPal no cobra en la
-  moneda del aporte (`PAYPAL_CURRENCY`), el botón **no se muestra**, con su
-  motivo. El visitante ya vio una cifra concreta: cobrarle otra en otra moneda
-  sería cambiarle el trato. Misma regla que el `fx` de las inscripciones y la
-  moneda del aporte (v4.834). **`PAYPAL_CURRENCY` vacía significa «la que
-  venga»** y es el valor por defecto — así se comporta como Stripe.
+- **⚠️ NO SE INVENTA UNA TASA — pero convertir A LA VISTA sí se puede**
+  (v4.870, supera la forma de esta regla, no su fondo). Hasta v4.869 acá no se
+  convertía nunca y el botón no se mostraba. El motivo era bueno —«el visitante
+  ya vio una cifra concreta»— y la consecuencia, inaceptable: **PayPal no
+  procesa pesos colombianos**, así que en el sitio de un distrito colombiano el
+  botón no aparecía JAMÁS, que es donde vive la mayoría de los aportes. La regla
+  real del sitio nunca fue «no se convierte»: es la del `fx` de las
+  inscripciones a eventos —`currency` es lo que se PUBLICA,
+  `settlementCurrency` lo que COBRA la pasarela, y si difieren se convierte con
+  una tasa **configurada** guardando los TRES datos—. **Sin tasa configurada no
+  se convierte y el botón no se muestra**: eso no cambió.
+  **`PAYPAL_CURRENCY` vacía significa «la que venga»** y es el valor por
+  defecto — así se comporta como Stripe.
 - **La comisión viene MEDIDA en la captura** (`seller_receivable_breakdown`), no
   estimada; la Bóveda ya distingue las dos desde v4.850. **Si viniera en otra
   moneda NO se resta**: restar una moneda de otra es el defecto que costó la
@@ -6537,6 +6544,73 @@ Pruebas: `npm run test:paypal` (43 casos, **sin base, credenciales ni red**).
 | `PAYPAL_ENV` | `live` para producción. Cualquier otra cosa —incluido vacío— es sandbox |
 | `PAYPAL_WEBHOOK_ID` | Verifica la firma del webhook. Sin él la firma queda «sin comprobar», que no es «inválida» |
 | `PAYPAL_CURRENCY` | La moneda que la cuenta puede recibir. **Vacía = la que venga** |
+
+### Cobrar en una moneda y publicar en otra — v4.870
+
+Pedido literal: *«está bien que mapeen pesos colombianos para los rotarios de
+acá, pero cuando vaya a pagar a través de PayPal que lo convierta
+automáticamente a dólares; es muy importante que aparezca el botón de PayPal»*.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/fxRates.js` | El CRITERIO. **Puro**: llave del par, conversión, edad de la tasa y validación |
+| `src/lib/fxRates.ts` | Espejo MÍNIMO: convertir con una tasa ya conocida, para poder DECIRLO |
+| `server/lib/fxRatesStore.js` | La I/O: `PlatformConfig`, caché e invalidación |
+| `resolvePaypalCharge` en `paypalSpec.js` | Qué se le va a cobrar a ESTE visitante |
+| `src/components/admin/FxRatesPanel.tsx` | El editor, dentro de Métodos de pago |
+
+Pruebas: `npm run test:fx` (67 casos, **sin base, credenciales ni red**;
+incluye la paridad de los dos espejos y se salta ese bloque si falta `esbuild`).
+
+**Reglas durables:**
+
+- **⚠️ LA CONVERSIÓN SE DICE ANTES DE COBRAR.** Es la mitad que la hace
+  legítima y lo único que separa esto de lo que la regla anterior prohibía:
+  quien eligió «$ 100.000» tiene que leer «se te cobrarán US$ 24,80» **antes**
+  de salir hacia PayPal. Convertir en SILENCIO sería cambiarle el trato a mitad
+  de camino; convertir A LA VISTA es otra cosa. Lo comprueba una prueba sobre el
+  archivo del modal.
+- **La tasa se guarda COMO LA DICE UNA PERSONA**: «4.032 pesos por dólar»
+  (`perUnit`), no «0,00025 dólares por peso». Un número con cuatro ceros a la
+  derecha de la coma se teclea mal y el error no se ve — y acá el error es
+  cuánto se le cobra a alguien.
+- **Se guardan los TRES datos** —importe original con su moneda, importe
+  cobrado con la suya, y la tasa con su fuente y su fecha—, igual que el `fx`
+  de las inscripciones a eventos. Sin los tres, «¿por qué este aporte entró en
+  dólares?» no se puede contestar dos semanas después.
+- **El aporte se registra en la moneda que SE COBRÓ.** Es lo que de verdad
+  entró a la cuenta y lo que la Bóveda tiene que poder cuadrar; el importe en
+  pesos viaja como dato del aporte. Consecuencia aceptada: una campaña
+  colombiana puede tener aportes en las dos monedas, y la Bóveda ya las
+  presenta separadas — nunca sumadas.
+- **Un mismo criterio para pintar el botón y para cobrar** (`resolvePaypalCharge`,
+  usado por la disponibilidad y por la creación del pedido). Con dos, el modal
+  promete una cifra y el cobro sale por otra. Lo comprueba una prueba contando
+  las llamadas.
+- **El espejo del navegador existe para no pagar un viaje de red por
+  pulsación**, y lo que lo hace seguro es que la prueba compara las SALIDAS de
+  los dos módulos sobre una matriz de importes y pares, no que se parezcan. Al
+  tocar `fxRates.js`, tocar `fxRates.ts`.
+- **El redondeo es al de la moneda que SE COBRA**, con los decimales de
+  PRESENTACIÓN —no los de la unidad mínima del proveedor—: son las dos nociones
+  que `money.js` documenta y COP es justo donde difieren.
+- **Un importe que se redondea a CERO se rechaza con su motivo.** No es un cobro
+  raro: es una tasa mal escrita, y la pasarela lo rechazaría con un mensaje que
+  no explica nada.
+- **Una tasa vieja AVISA y sigue valiendo** (`STALE_DAYS`, 45). Dejar de cobrar
+  porque nadie actualizó un número sería peor que cobrar con uno de hace dos
+  meses. La fuente tampoco es obligatoria y se pide igual: sin ella, «¿de dónde
+  salió este 4.032?» no tiene dónde mirarse.
+- **El editor vive DENTRO de Métodos de pago**, no en una pantalla propia: la
+  conversión existe POR la restricción de un método, y la decisión se toma donde
+  ya se está trabajando — las pantallas que se olvidan son siempre las del
+  segundo lugar.
+- **Leer las tasas NUNCA lanza**: corre en el camino del cobro. Una
+  configuración ilegible degrada a «sin tasas», que es no ofrecer PayPal, no
+  tumbar el aporte.
+- **La MEMBRESÍA sigue sin convertirse** (v4.834): su importe es un PRECIO que
+  el club fijó y cobrarlo en otra moneda exige convertirlo. Esto convierte lo
+  que se le pide a un donante, no lo que un club puso como precio.
 
 **Pendiente conocido:** el reembolso por PayPal no está — hoy sólo se maneja el
 de Stripe (v4.859). Y `Checkout.tsx` conserva su selector Stripe/PayPal
@@ -6643,10 +6717,11 @@ Pruebas: `npm run test:payment-methods` (36 casos, **sin base ni red**).
   descuido—, pero entonces hay que decirlo: un aporte hecho en sandbox no es
   dinero y eso no se ve mirando el panel.
 - **PayPal no procesa pesos colombianos**, y está dicho en el `help` del
-  catálogo porque es el hecho del proveedor que más cuesta descubrir. La
-  consecuencia es deliberada: en un aporte en COP el botón no aparece y queda
-  sólo el de tarjeta. **No se convierte el importe** — el visitante ya vio una
-  cifra concreta. Misma regla que el `fx` de las inscripciones a eventos.
+  catálogo porque es el hecho del proveedor que más cuesta descubrir. Desde
+  v4.870 la consecuencia ya no es que el botón desaparezca: el aporte **se cobra
+  convertido** con la tasa configurada, y la conversión **se le dice al
+  visitante antes de cobrarle**. Sin tasa para ese par, el botón sigue sin
+  aparecer.
 
 **⚠️ Deuda conocida:** `PaymentProviderConfig.secretRef` guarda el secreto en
 TEXTO PLANO (`secretRef: stripeSecretKey`) y `paymentController` lo usa directo

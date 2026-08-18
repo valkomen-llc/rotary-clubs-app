@@ -26,8 +26,11 @@ import {
     resolveCampaignRef, resolveBlockPurpose, resolveDonationCurrencyFor,
 } from './financialController.js';
 import {
-    paypalCurrencyOk, MOTIVOS_MONEDA, parseCapture, paypalAvailability, paypalRef,
+    resolvePaypalCharge, MOTIVOS_MONEDA, parseCapture, paypalAvailability, paypalRef,
 } from '../lib/paypalSpec.js';
+// v4.870 — Las tasas de cambio. Sin tasa configurada no se convierte y el
+// botón no se muestra: la regla de siempre («no se inventa una tasa») sigue.
+import { getFxRates } from '../lib/fxRatesStore.js';
 import {
     paypalConfigured, createPaypalOrder, capturePaypalOrder, getPaypalOrder, verifyPaypalWebhook, paypalEnv,
 } from '../lib/paypalService.js';
@@ -75,14 +78,28 @@ export const paypalAvailabilityCheck = async (req, res) => {
         }
 
         const decision = await resolveDonationCurrencyFor(clubId, req, req.query.lang || '');
-        const moneda = paypalCurrencyOk(decision.currency, paypalCurrency());
+        // Sin importe todavía —el visitante aún no eligió—: alcanza con saber
+        // si se puede cobrar y, si hay que convertir, con qué tasa.
+        const plan = resolvePaypalCharge({
+            currency: decision.currency,
+            settlement: paypalCurrency(),
+            rates: await getFxRates(),
+        });
         return res.json({
-            available: moneda.ok,
-            currency: moneda.currency || decision.currency,
-            reason: moneda.reason,
+            available: plan.ok,
+            currency: plan.currency || decision.currency,
+            reason: plan.reason,
+            // ⚠️ LA CONVERSIÓN VIAJA PARA QUE EL MODAL LA DIGA. Convertir en
+            // silencio sería cambiarle el trato a quien ya vio una cifra; lo
+            // que la hace legítima es que se lea ANTES de salir hacia PayPal.
+            converted: !!plan.converted,
+            originalCurrency: plan.originalCurrency || decision.currency,
+            perUnit: plan.perUnit ?? null,
+            rateSource: plan.rateSource ?? null,
+            rateUpdatedAt: plan.rateUpdatedAt ?? null,
             // El motivo se DICE: un botón que desaparece sin explicación es
             // indistinguible de uno roto.
-            message: moneda.ok ? null : (MOTIVOS_MONEDA[moneda.reason] || null),
+            message: plan.ok ? null : (MOTIVOS_MONEDA[plan.reason] || null),
             env: paypalEnv(),
         });
     } catch (e) {
@@ -135,14 +152,24 @@ export const createPaypalDonation = async (req, res) => {
         // La moneda la decide el SERVIDOR, igual que en Stripe: la cifra que el
         // visitante vio es la que se le cobra.
         const decision = await resolveDonationCurrencyFor(clubId, req, lang);
-        const moneda = paypalCurrencyOk(decision.currency, paypalCurrency());
-        if (!moneda.ok) {
-            // ⚠️ NO SE CONVIERTE. El visitante ya vio una cifra concreta.
+        // ⚠️ EL MISMO CRITERIO QUE PINTÓ EL BOTÓN. Con dos, el modal podría
+        // prometer una cifra y el cobro salir por otra.
+        const cobro = resolvePaypalCharge({
+            amount: monto,
+            currency: decision.currency,
+            settlement: paypalCurrency(),
+            rates: await getFxRates(),
+        });
+        if (!cobro.ok) {
+            // Sin tasa configurada NO se inventa una: se dice el motivo.
             return res.status(409).json({
-                error: MOTIVOS_MONEDA[moneda.reason] || 'PayPal no puede cobrar en esta moneda.',
-                reason: moneda.reason,
+                error: MOTIVOS_MONEDA[cobro.reason] || 'PayPal no puede cobrar en esta moneda.',
+                reason: cobro.reason,
             });
         }
+        // Lo que de verdad se le va a cobrar. Puede no ser lo que eligió.
+        const aCobrar = cobro.amount;
+        const monedaDeCobro = cobro.currency;
 
         const campaign = await resolveCampaignRef(campaignId, clubId);
         const block = await resolveBlockPurpose(blockId, clubId);
@@ -154,8 +181,8 @@ export const createPaypalDonation = async (req, res) => {
 
         const origin = resolveOrigin(req, returnUrl);
         const orden = await createPaypalOrder({
-            amount: monto,
-            currency: moneda.currency,
+            amount: aCobrar,
+            currency: monedaDeCobro,
             description: descripcion,
             returnUrl: `${origin}/donacion/paypal`,
             cancelUrl: project ? `${origin}/proyectos/${project.slug || project.id}` : `${origin}/donacion/cancelada`,
@@ -182,8 +209,8 @@ export const createPaypalDonation = async (req, res) => {
                 provider: 'paypal',
                 providerRef: `order:${orden.id}`,
                 status: 'pending',
-                amount: monto,
-                currency: moneda.currency,
+                amount: aCobrar,
+                currency: monedaDeCobro,
                 applicationFee: 0,
                 netAmount: 0,
                 isPlatformCollection: true,
@@ -201,6 +228,16 @@ export const createPaypalDonation = async (req, res) => {
                     blockId: block?.id || null,
                     currencyReason: decision.reason,
                     siteCurrency: decision.siteCurrency,
+                    // ⚠️ LOS TRES DATOS de la conversión, como el `fx` de las
+                    // inscripciones a eventos: qué eligió el visitante, qué se
+                    // le cobró y con qué tasa. Sin los tres, «¿por qué este
+                    // aporte entró en dólares?» no se puede contestar.
+                    converted: !!cobro.converted,
+                    originalAmount: cobro.originalAmount ?? monto,
+                    originalCurrency: cobro.originalCurrency || decision.currency,
+                    fxPerUnit: cobro.perUnit ?? null,
+                    fxSource: cobro.rateSource ?? null,
+                    fxUpdatedAt: cobro.rateUpdatedAt ?? null,
                 }),
             },
         }).catch(e => {
@@ -304,6 +341,14 @@ const registrarAporte = async ({ captura, intencion, clubId }) => {
                     purpose: intencion?.purpose || null,
                     blockId: intencion?.blockId || null,
                     currencyReason: intencion?.currencyReason || null,
+                    // La conversión viaja con el aporte: la ficha la muestra y
+                    // el recibo puede decir qué eligió el aportante.
+                    converted: !!intencion?.converted,
+                    originalAmount: intencion?.originalAmount ?? null,
+                    originalCurrency: intencion?.originalCurrency ?? null,
+                    fxPerUnit: intencion?.fxPerUnit ?? null,
+                    fxSource: intencion?.fxSource ?? null,
+                    fxUpdatedAt: intencion?.fxUpdatedAt ?? null,
                 }),
             },
         });

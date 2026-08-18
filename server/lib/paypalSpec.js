@@ -17,16 +17,28 @@
 // declarado y sin implementar, que es distinto de olvidado.
 //
 // ═════════════════════════════════════════════════════════════════════
-// NO SE CONVIERTE NINGÚN IMPORTE. NUNCA.
+// NO SE INVENTA UNA TASA. CONVERTIR A LA VISTA SÍ SE PUEDE (v4.870)
 // ═════════════════════════════════════════════════════════════════════
 //
-// Si la cuenta de PayPal no puede cobrar en la moneda que se le ofreció al
-// visitante, el botón NO SE MUESTRA. No se convierte: es la misma regla que
-// rige el `fx` de las inscripciones a eventos y la moneda del aporte (v4.834)
-// —«sin tasa configurada no se inventa una»—, y acá sería peor, porque el
-// visitante ya vio una cifra concreta en la pantalla.
+// Hasta v4.869 acá no se convertía NUNCA y el botón sencillamente no se
+// mostraba. El motivo era bueno —«el visitante ya vio una cifra concreta»— y la
+// consecuencia, inaceptable: PayPal no procesa pesos colombianos, así que en el
+// sitio de un distrito colombiano el botón no aparecía jamás, que es donde vive
+// la mayoría de los aportes.
+//
+// La regla real del sitio nunca fue «no se convierte»: es «NO SE INVENTA UNA
+// TASA». Es la del `fx` de las inscripciones a eventos —`currency` es lo que se
+// publica, `settlementCurrency` lo que cobra la pasarela, y si difieren se
+// convierte con una tasa CONFIGURADA guardando los tres datos—. Eso sigue
+// intacto: sin tasa configurada no se convierte y el botón no se muestra.
+//
+// ⚠️ Y LA CONVERSIÓN SE DICE ANTES DE COBRAR. Es la mitad que la hace legítima:
+// quien eligió «$ 100.000» tiene que leer «se te cobrarán US$ 24,80» antes de
+// salir hacia PayPal. Convertir EN SILENCIO sería cambiarle el trato a mitad de
+// camino; convertir A LA VISTA es otra cosa.
 
 import { normalizeCurrency, currencyMeta } from './money.js';
+import { convertAmount, rateFor, MOTIVOS_FX } from './fxRates.js';
 
 /** Las monedas que PayPal NO subdivide. El resto va con dos decimales.
  *
@@ -76,7 +88,67 @@ export const paypalCurrencyOk = (deseada, configurada) => {
 
 export const MOTIVOS_MONEDA = {
     sin_moneda: 'No se resolvió la moneda del aporte.',
-    moneda_distinta: 'La cuenta de PayPal no cobra en la moneda de este aporte, y los importes no se convierten.',
+    moneda_distinta: 'La cuenta de PayPal no cobra en la moneda de este aporte y no hay una tasa de cambio configurada para convertirlo.',
+    ...MOTIVOS_FX,
+};
+
+/**
+ * QUÉ SE LE VA A COBRAR A ESTE VISITANTE POR PAYPAL.
+ *
+ * Un solo punto de decisión, y por eso lo usan las DOS puntas: la consulta de
+ * disponibilidad —que pinta o no el botón— y la creación del pedido —que cobra—.
+ * Con dos criterios, el modal podría prometer una cifra y el cobro salir por
+ * otra, que es exactamente el defecto que no se puede tener acá.
+ *
+ * `amount` es OPCIONAL: al abrir el modal todavía no hay importe elegido y hace
+ * falta saber igual si el botón se puede pintar.
+ *
+ * Tres desenlaces:
+ *   - la cuenta cobra en esa moneda           → se cobra tal cual
+ *   - no la cobra y HAY tasa configurada      → se convierte, y se DICE
+ *   - no la cobra y no hay tasa               → no se ofrece, con su motivo
+ */
+export const resolvePaypalCharge = ({ amount = null, currency, settlement, rates, ahora = new Date() } = {}) => {
+    const base = paypalCurrencyOk(currency, settlement);
+
+    // Se cobra en la moneda que el visitante vio: no hay nada que convertir.
+    if (base.ok) {
+        return {
+            ok: true,
+            converted: false,
+            currency: base.currency,
+            originalCurrency: base.currency,
+            amount: amount === null ? null : Number(amount),
+            originalAmount: amount === null ? null : Number(amount),
+            reason: base.reason,
+        };
+    }
+    if (base.reason !== 'moneda_distinta') return { ...base, converted: false };
+
+    const destino = normalizeCurrency(settlement);
+    const origen = normalizeCurrency(currency);
+
+    // Sin importe todavía: alcanza con saber si existe la tasa.
+    if (amount === null) {
+        const tasa = rateFor(rates, origen, destino);
+        if (!tasa) return { ok: false, converted: false, reason: 'sin_tasa', puede: destino, quiere: origen };
+        return {
+            ok: true,
+            converted: true,
+            currency: destino,
+            originalCurrency: origen,
+            amount: null,
+            originalAmount: null,
+            perUnit: tasa.perUnit,
+            rateSource: tasa.source,
+            rateUpdatedAt: tasa.updatedAt,
+            reason: 'convertido',
+        };
+    }
+
+    const conv = convertAmount(amount, origen, destino, rates, ahora);
+    if (!conv.ok) return { ...conv, converted: false, puede: destino, quiere: origen };
+    return { ...conv, ok: true, converted: true, reason: 'convertido' };
 };
 
 /**
@@ -162,6 +234,6 @@ export const paypalRef = (captureId) => String(captureId || '').trim() || null;
 
 export default {
     PAYPAL_ZERO_DECIMAL, paypalDecimals, paypalAmount,
-    paypalCurrencyOk, MOTIVOS_MONEDA, parseCapture, paypalAvailability,
+    paypalCurrencyOk, resolvePaypalCharge, MOTIVOS_MONEDA, parseCapture, paypalAvailability,
     approvalUrl, paypalRef,
 };

@@ -3,6 +3,9 @@ import { Heart, X, Check, Loader2, ShieldCheck, Globe } from 'lucide-react';
 import { donationPresets } from '../lib/contributionSpec';
 import { blockAmountsApply, type CurrencyDecision } from '../lib/donationCurrency';
 import { useLang } from '../contexts/LanguageContext';
+// El espejo del criterio de conversión: se convierte acá para poder DECIRLE
+// al visitante qué se le va a cobrar antes de mandarlo a PayPal.
+import { convertWithRate, formatConverted } from '../lib/fxRates';
 
 // ════════════════════════════════════════════════════════════════════
 // El modal de donación — v4.804
@@ -54,6 +57,17 @@ export interface DonationModalProps {
 /** Las dos vías de cobro. */
 type Via = 'card' | 'paypal';
 
+/** Lo que el servidor contesta sobre PayPal para ESTE aporte. Incluye la
+ *  conversión cuando la cuenta no cobra en la moneda que se publicó. */
+interface PaypalInfo {
+    available: boolean;
+    message?: string | null;
+    currency?: string;
+    originalCurrency?: string;
+    converted?: boolean;
+    perUnit?: number | null;
+}
+
 const DonationModal: React.FC<DonationModalProps> = ({
     open, onClose, clubId, clubName, currency = 'USD',
     campaignId = null, blockId = null, title, subtitle, accentColor,
@@ -74,7 +88,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
     const [submitting, setSubmitting] = useState<Via | null>(null);
     // Si PayPal se puede ofrecer para ESTE aporte. Lo decide el servidor: la
     // moneda la resuelve él (v4.834) y las credenciales no viajan al navegador.
-    const [paypal, setPaypal] = useState<{ available: boolean; message?: string | null } | null>(null);
+    const [paypal, setPaypal] = useState<PaypalInfo | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     // La moneda se PREGUNTA: depende del país del visitante, que sólo el
@@ -122,6 +136,25 @@ const DonationModal: React.FC<DonationModalProps> = ({
         min: base.min,
     };
     const accent = /^#[0-9a-fA-F]{6}$/.test(accentColor || '') ? (accentColor as string) : '#9D2235';
+
+    // ⚠️ QUÉ SE LE VA A COBRAR POR PAYPAL, dicho ANTES de salir hacia allá.
+    //
+    // PayPal no procesa todas las monedas —los pesos colombianos, por ejemplo,
+    // no— así que cuando la cuenta cobra en otra, el importe se convierte con
+    // la tasa que el operador configuró. Eso sólo es legítimo si se LEE: quien
+    // eligió «$ 100.000» tiene que ver «se te cobrarán US$ 24,80» antes de
+    // pulsar. Convertir en silencio sería cambiarle el trato a mitad de camino.
+    //
+    // Se calcula acá y no se pide al servidor porque sería un viaje de red por
+    // pulsación; el criterio es el MISMO módulo, espejado y comparado por
+    // salidas en la prueba.
+    const conversionPaypal = (() => {
+        if (!paypal?.available || !paypal.converted || !paypal.perUnit) return null;
+        const n = parseFloat(amount);
+        if (!Number.isFinite(n) || n <= 0) return null;
+        const c = convertWithRate(n, paypal.originalCurrency || cur, paypal.currency || 'USD', paypal.perUnit);
+        return c.ok ? c : null;
+    })();
 
     // El monto sugerido sigue a la moneda: si llega la decisión y el visitante
     // no escribió nada, se repone con el de la moneda que de verdad se cobra.
@@ -345,9 +378,24 @@ const DonationModal: React.FC<DonationModalProps> = ({
                         </button>
 
                         {/* La vía de PAYPAL. Sólo si el servidor dijo que se puede:
-                            sin credenciales, o si la cuenta no cobra en esta
-                            moneda, no se pinta. NO se convierte el importe — el
-                            visitante ya vio una cifra concreta. */}
+                            sin credenciales, o sin una tasa configurada cuando
+                            la cuenta cobra en otra moneda, no se pinta. */}
+                        {paypal?.available && conversionPaypal && (
+                            <p className="text-[11px] leading-relaxed text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                                PayPal cobra en <b data-no-translate>{conversionPaypal.currency}</b>: se te cobrarán{' '}
+                                <b data-no-translate>
+                                    {formatConverted(conversionPaypal.amount!, conversionPaypal.currency!)}
+                                </b>
+                                , equivalentes a tu aporte de{' '}
+                                <span data-no-translate>
+                                    {formatConverted(conversionPaypal.originalAmount!, conversionPaypal.originalCurrency!)}
+                                </span>{' '}
+                                (<span data-no-translate>
+                                    {conversionPaypal.perUnit!.toLocaleString('es-CO')} {conversionPaypal.originalCurrency} por {conversionPaypal.currency}
+                                </span>). Con tarjeta se cobra en{' '}
+                                <span data-no-translate>{cur}</span>, sin conversión.
+                            </p>
+                        )}
                         {paypal?.available && (
                             <button
                                 onClick={() => handleDonate('paypal')}

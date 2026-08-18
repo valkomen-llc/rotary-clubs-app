@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.869.0",
-  "cache_bust": "2026-08-18c («Se está ofreciendo» no es «en todos los aportes»: el panel dice qué acota cada método.)",
+  "version": "4.870.0",
+  "cache_bust": "2026-08-18d (PayPal cobra en pesos convirtiendo a la vista, con tasa configurada.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -60,6 +60,7 @@
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
     "test:integrations:ui": "node scripts/test-integrations-ui.mjs",
+    "test:fx": "node scripts/test-fx.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
