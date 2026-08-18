@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.868.0 | 2026-08-18 (Métodos de pago: verlos y activarlos)
-// Cache bust: 2026-08-18b
+// UI V4.869.0 | 2026-08-18 («Se está ofreciendo» no es «en todos los aportes»)
+// Cache bust: 2026-08-18c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.869.0',
+        title: 'El panel dice qué acota cada método de pago 🎯',
+        description: 'Se reportó «ya aparece sincronizado PayPal pero no aparece el botón». No faltaba el botón: PayPal estaba acotado a una sola moneda por configuración, el sitio cobra en pesos, y el panel decía «Se está ofreciendo» sin decir dónde. Ahora lo dice.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'integraciones', 'paypal'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Cada método declara qué acota dónde se ofrece, y el panel lo pinta.' },
+            { type: 'added', text: 'Aviso cuando PayPal está en modo de pruebas: los pagos de sandbox no son dinero.' },
+            { type: 'changed', text: 'El catálogo dice que PayPal no procesa pesos colombianos, que es el hecho que más cuesta descubrir.' },
+            { type: 'added', text: 'npm run test:payment-methods pasa de 36 a 50 comprobaciones.' },
+        ],
+        details: [
+            '«SE ESTÁ OFRECIENDO» NO ES «EN TODOS LOS APORTES», y ésa es toda la corrección. Con las credenciales cargadas y el interruptor puesto, la insignia se pintaba y el botón no aparecía en la página, porque PAYPAL_CURRENCY acota PayPal a una sola moneda y el sitio cobra en otra. El estado era correcto; la afirmación, incompleta. Un estado que afirma de más manda a diagnosticar donde no está el problema, que es exactamente lo que este panel existe para evitar.',
+            'PAYPAL NO PROCESA PESOS COLOMBIANOS. No está en la lista de monedas con las que PayPal puede procesar una transacción, así que un aporte en COP no se puede cobrar por esa vía. La consecuencia es deliberada: en un aporte en pesos el botón no aparece y queda sólo el de tarjeta. NO se convierte el importe — el visitante ya vio una cifra concreta, y cobrarle otra en otra moneda sería cambiarle el trato a mitad de camino. Es la misma regla que rige el fx de las inscripciones a eventos.',
+            'EL MODO DE PRUEBAS SE AVISA. Sandbox es el valor por defecto a propósito: una variable mal escrita deja los cobros en pruebas, no en producción por descuido. Pero entonces hay que decirlo, porque un aporte hecho en sandbox no es dinero y eso no se ve mirando el panel.',
+            'El límite se pinta SÓLO cuando el método de verdad se está ofreciendo. Con el interruptor apagado, decir «sólo en USD» explicaría una restricción de algo que no está pasando.',
+            'Un límite ACOTA dónde se ofrece un método; no lo apaga. Sigue estando ofrecido, y lo comprueba una prueba: confundir las dos cosas dejaría PayPal desactivado por tener una moneda configurada.',
+            'El criterio vive en el mismo módulo puro que el resto del estado y sale del ENTORNO, no de la base — igual que «configurado». Al agregar un método con restricciones propias, se declaran ahí y el panel las pinta solo.',
+        ]
+    },
     {
         version: '4.868.0',
         title: 'Los métodos de pago se ven y se activan desde el panel ⚙️',

@@ -17,6 +17,14 @@
 //
 // ⚠️ NUNCA se muestra el secreto, ni recortado. Los últimos cuatro caracteres
 // de una llave de cobro no ayudan a diagnosticar nada y sí filtran.
+//
+// v4.869 — «SE ESTÁ OFRECIENDO» NO ES «EN TODOS LOS APORTES». Con las
+// credenciales cargadas y el interruptor puesto, la insignia se pintaba y el
+// botón no aparecía en la página: `PAYPAL_CURRENCY` acota PayPal a una sola
+// moneda y el sitio cobra en otra. Se reportó como «ya aparece sincronizado
+// pero no aparece el botón», y lo que faltaba no era el botón — era que el
+// panel dijera qué lo acota. Un estado que afirma de más manda a diagnosticar
+// donde no está el problema.
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -35,6 +43,7 @@ interface Metodo {
     enabled: boolean;
     offered: boolean;
     reason: string | null;
+    limits?: { kind: string; value?: string; text: string }[];
 }
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` } });
@@ -168,6 +177,28 @@ export default function PaymentMethodsPanel() {
                                 <span className="text-sm font-bold text-gray-700">Activado</span>
                             </label>
                         </div>
+
+                        {/* Lo que ACOTA dónde se ofrece. Va sólo cuando el método
+                            de verdad se está ofreciendo: con el interruptor
+                            apagado, decir «sólo en USD» sería explicar una
+                            restricción de algo que no está pasando. */}
+                        {m.offered && (m.limits || []).length > 0 && (
+                            <ul className="mt-3 space-y-2">
+                                {(m.limits || []).map((l, i) => (
+                                    <li
+                                        key={i}
+                                        className={`text-xs rounded-xl px-3 py-2 border flex items-start gap-2 ${
+                                            l.kind === 'sandbox'
+                                                ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                                : 'text-gray-600 bg-gray-50 border-gray-200'
+                                        }`}
+                                    >
+                                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" aria-hidden="true" />
+                                        <span>{l.text}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
 
                         {/* Activado pero sin credenciales: se puede dejar listo, y
                             hay que DECIRLO o alguien espera un botón que no va a

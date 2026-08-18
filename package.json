@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.868.0",
-  "cache_bust": "2026-08-18b (Los métodos de pago se ven y se activan desde el panel.)",
+  "version": "4.869.0",
+  "cache_bust": "2026-08-18c («Se está ofreciendo» no es «en todos los aportes»: el panel dice qué acota cada método.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
