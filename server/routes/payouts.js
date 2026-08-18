@@ -11,7 +11,9 @@ import {
     getCentralOverview,
     getFeeRulesConfig,
     updateFeeRulesConfig,
-    recalcFees
+    recalcFees,
+    getPaymentMethodsConfig,
+    updatePaymentMethodsConfig
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -57,6 +59,11 @@ router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOvervie
 // v4.854 — Las reglas de comisión. La tarifa es de la INFRAESTRUCTURA
 // compartida, no de una organización: un administrador de sitio no la ve ni la
 // cambia. Se comprueba acá, no sólo en la pantalla.
+// v4.868 — Los métodos de pago: qué vías de cobro ofrece la plataforma y
+// cuáles están activadas. Del operador, como la tarifa.
+router.get('/admin/payment-methods', roleMiddleware(superAdminRoles), getPaymentMethodsConfig);
+router.put('/admin/payment-methods', roleMiddleware(superAdminRoles), updatePaymentMethodsConfig);
+
 router.get('/admin/fee-rules', roleMiddleware(superAdminRoles), getFeeRulesConfig);
 router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesConfig);
 

@@ -31,6 +31,11 @@ import {
 import {
     paypalConfigured, createPaypalOrder, capturePaypalOrder, getPaypalOrder, verifyPaypalWebhook, paypalEnv,
 } from '../lib/paypalService.js';
+// v4.868 — El interruptor del operador. Tener las credenciales cargadas NO
+// alcanza: el método se activa a propósito desde el panel, que es el paso que
+// permite dejar todo listo y probarlo en sandbox antes de ofrecerlo.
+import { isMethodOffered } from '../lib/paymentMethods.js';
+import { getPaymentMethods } from '../lib/paymentMethodsStore.js';
 
 console.log('[PAYPAL v4.866] Aportes por PayPal a la cuenta de la plataforma');
 
@@ -64,6 +69,10 @@ export const paypalAvailabilityCheck = async (req, res) => {
         const clubId = String(req.query.clubId || '');
         if (!clubId) return res.json({ available: false, reason: 'sin_sitio' });
         if (!paypalConfigured()) return res.json({ available: false, reason: 'sin_credenciales' });
+        // Configurado y ACTIVADO son dos cosas distintas.
+        if (!isMethodOffered('paypal', await getPaymentMethods(), process.env)) {
+            return res.json({ available: false, reason: 'desactivado' });
+        }
 
         const decision = await resolveDonationCurrencyFor(clubId, req, req.query.lang || '');
         const moneda = paypalCurrencyOk(decision.currency, paypalCurrency());
@@ -97,6 +106,11 @@ export const createPaypalDonation = async (req, res) => {
 
         if (!paypalConfigured()) {
             return res.status(503).json({ error: 'PayPal no está configurado en esta instalación.' });
+        }
+        // Se comprueba también acá y no sólo al pintar el botón: esconder un
+        // control en la pantalla no protege el endpoint de quien lo conoce.
+        if (!isMethodOffered('paypal', await getPaymentMethods(), process.env)) {
+            return res.status(503).json({ error: 'PayPal no está activado en esta instalación.' });
         }
         if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
         const monto = parseFloat(amount);

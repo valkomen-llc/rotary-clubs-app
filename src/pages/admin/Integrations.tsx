@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PaymentMethodsPanel from '../../components/admin/PaymentMethodsPanel';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     ArrowRight, Save, Globe, MessageSquare, BarChart3, ShieldCheck,
@@ -338,6 +339,11 @@ const Integrations: React.FC = () => {
                     {saveSuccess ? 'Settings Saved!' : 'Save Changes'}
                 </button>
             </div>
+
+            {/* v4.868 — Los métodos de pago van PRIMERO: es lo que trae a
+                alguien a esta pantalla («¿dónde cargo las credenciales?»), y
+                hasta ahora la respuesta sólo estaba en Vercel. */}
+            <PaymentMethodsPanel />
 
             {/* Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">

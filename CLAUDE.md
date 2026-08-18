@@ -6570,6 +6570,66 @@ se podía llegar a cargar las credenciales**.
   interceptada usando la RESPUESTA REAL del endpoint). Verificada a la inversa:
   con el código anterior falla con el mismo mensaje del reporte.
 
+### Los métodos de pago se ven y se activan — v4.868
+
+Integraciones abre con «Métodos de pago»: qué vías de cobro existen, si cada una
+tiene sus credenciales, y un interruptor para activarla.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/paymentMethods.js` | El CRITERIO. **Puro**: catálogo, estado desde el entorno, validación |
+| `server/lib/paymentMethodsStore.js` | La I/O: `PlatformConfig`, caché e invalidación |
+| `src/components/admin/PaymentMethodsPanel.tsx` | El panel, dentro de Integraciones |
+
+Pruebas: `npm run test:payment-methods` (36 casos, **sin base ni red**).
+
+**Reglas durables:**
+
+- **CONFIGURADO y ACTIVADO son dos cosas distintas.** Configurado lo dice el
+  ENTORNO y no se edita desde el panel; activado lo decide el operador. Un
+  método se OFRECE sólo si las dos son ciertas — eso es lo que permite dejar las
+  credenciales cargadas y el método todavía apagado mientras se prueba en
+  sandbox.
+- **⚠️ LAS CREDENCIALES SIGUEN EN LAS VARIABLES DE ENTORNO**, y hay dos motivos
+  concretos: un respaldo de la base no se lleva la llave de cobro, y Vercel
+  separa las variables por entorno, así que preview puede usar una cuenta de
+  pruebas mientras producción usa la real. **Con las credenciales en la base las
+  dos ramas leerían la misma fila y una prueba podría cobrar de verdad.** Si
+  algún día hace falta guardarlas, `tokenCrypto.js` ya hace AES-256-GCM
+  versionado — la pieza difícil está resuelta y sólo falta decidir el riesgo.
+- **El panel NUNCA muestra el secreto, ni recortado.** Los últimos cuatro
+  caracteres de una llave de cobro no ayudan a diagnosticar nada y sí filtran.
+  Sólo dice si está o no está, y **qué variable falta con su nombre exacto**: un
+  «no configurado» a secas manda a adivinar.
+- **`card` viene ACTIVADO por defecto y todo lo demás apagado.** Es la
+  comprobación que autoriza el despliegue: era la única vía de cobro que
+  existía, y si naciera apagada, desplegar dejaría a TODA la plataforma sin
+  poder recibir aportes.
+- **Activar sin credenciales no es un error, pero se DICE.** Se puede dejar
+  listo; lo que no puede pasar es que alguien lo encienda y espere un botón que
+  no va a aparecer. Y si se apagan todos, se avisa: quedarse sin ninguno no se
+  descubre hasta que alguien intenta donar.
+- **El interruptor se comprueba EN EL SERVIDOR**, no sólo al pintar el botón —
+  en la disponibilidad y otra vez al crear el pedido. Esconder un control en la
+  pantalla no protege el endpoint de quien lo conoce.
+- **El catálogo es CERRADO.** Un método que no esté declarado no se puede
+  activar ni ofrecer, así que no puede aparecer una vía de cobro que nadie
+  declaró.
+- **Un guardado parcial no apaga nada** (`mergeMethods`), y una configuración
+  ilegible degrada a los valores por defecto: esto corre en el camino del cobro.
+- **El dinero sigue entrando a la cuenta de la PLATAFORMA en todos los
+  métodos.** Esto activa dónde se ofrece cada uno, no a qué cuenta entra.
+  `PaymentProviderConfig` modela cuentas por club y sigue sin usarse — con el
+  dinero yendo directo al club, la retención no se podría aplicar y el saldo de
+  la Bóveda dejaría de ser real.
+
+**⚠️ Deuda conocida:** `PaymentProviderConfig.secretRef` guarda el secreto en
+TEXTO PLANO (`secretRef: stripeSecretKey`) y `paymentController` lo usa directo
+(`new Stripe(config.secretRef)`). Hoy no lo llena ninguna pantalla —el endpoint
+existe y nadie lo consume— pero el camino está abierto. Antes de habilitar
+cuentas por sitio hay que cifrarlo con `tokenCrypto.js`, como los tokens de
+redes sociales.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:
