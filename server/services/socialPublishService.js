@@ -41,6 +41,22 @@ const buildAppsecretProof = (accessToken, appSecret) => {
     return crypto.createHmac('sha256', appSecret).update(accessToken).digest('hex');
 };
 
+// v4.864 — El error de Meta se lee ENTERO, no sólo su mensaje. `code` y
+// `error_subcode` son lo que permite distinguir un límite de un permiso y de un
+// bloqueo por política, y de esa distinción depende si la cola reintenta, pausa
+// la campaña o se detiene. Convertirlo en "no se pudo publicar" deja a quien
+// corrige sin saber cuál de las tres cosas pasó — la regla que el CRM ya
+// aprendió con metaCode / metaDetails.
+const readMetaError = (resp, data) => ({
+    ok: false,
+    error: data?.error?.message || `HTTP ${resp?.status ?? '???'}`,
+    code: data?.error?.code ?? null,
+    subcode: data?.error?.error_subcode ?? null,
+    httpStatus: resp?.status ?? null,
+    fbtrace: data?.error?.fbtrace_id || null,
+    raw: data,
+});
+
 // Compose the final caption from the AI-generated breakdown. Same shape we get
 // from gpt-4o: { copy, hashtags, cta }. Empty pieces are skipped so we don't
 // emit stray blank lines.
@@ -62,9 +78,7 @@ const publishToFacebookPage = async ({ pageId, pageAccessToken, imageUrl, captio
     });
     const resp = await fetch(url, { method: 'POST', body: params });
     const data = await resp.json();
-    if (!resp.ok || data.error) {
-        return { ok: false, error: data.error?.message || `HTTP ${resp.status}` };
-    }
+    if (!resp.ok || data.error) return readMetaError(resp, data);
     return {
         ok: true,
         externalId: data.id || data.post_id || null,
@@ -198,4 +212,185 @@ export const publishToAccount = async ({ account, decryptedToken, imageUrl, copi
         });
     }
     return { ok: false, error: `Plataforma '${account.platform}' aún no soportada por el publisher` };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.864 — Distribución multi-destino: texto, enlace y video.
+//
+// Hasta v4.863 este servicio publicaba UNA sola cosa: una foto con pie. Alcanza
+// para el Generador de Publicaciones y no para distribuir, donde el contenido
+// puede ser un enlace a la publicación original (carril «compartir»), un texto
+// suelto o un Reel ya montado.
+//
+// ⚠️ NO HAY NADA PARA GRUPOS ACÁ, y no es un pendiente. Meta retiró la Groups
+// API el 22 de abril de 2024 de todas las versiones: no existe endpoint al que
+// llamar. Un destino de tipo grupo nunca llega a este módulo — lo frena
+// `publishesViaApi` en distributionSpec.js.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const postToGraph = async (url, params) => {
+    const resp = await fetch(url, { method: 'POST', body: new URLSearchParams(params) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) return readMetaError(resp, data);
+    return { ok: true, data };
+};
+
+/** Texto suelto o texto + enlace en una Página. Los dos van por /feed. */
+const publishFeedToPage = async ({ pageId, pageAccessToken, message, link }) => {
+    const params = { access_token: pageAccessToken };
+    if (message) params.message = message;
+    if (link) params.link = link;
+    // Meta rechaza un /feed sin nada que publicar, y el mensaje que devuelve no
+    // lo explica. Se dice acá, que es donde se puede corregir.
+    if (!params.message && !params.link) {
+        return { ok: false, error: 'Una publicación de solo texto necesita texto.', code: null, subcode: null, httpStatus: null };
+    }
+    const r = await postToGraph(`${GRAPH_BASE}/${pageId}/feed`, params);
+    if (!r.ok) return r;
+    const id = r.data.id || null;
+    return {
+        ok: true,
+        externalId: id,
+        externalUrl: id ? `https://www.facebook.com/${id}` : null,
+        raw: r.data,
+    };
+};
+
+/**
+ * Video en una Página, por URL.
+ *
+ * Se manda `file_url` y lo descarga Meta: el archivo ya vive en S3 —todo el
+ * sitio sube por `uploadMediaFiles`— y subirlo por partes desde una función que
+ * corta a los 300 s sería pagar dos veces el mismo tránsito. La contrapartida
+ * es que la URL tiene que ser pública, que es la misma condición que ya cumple
+ * Instagram.
+ */
+const publishVideoToPage = async ({ pageId, pageAccessToken, videoUrl, message }) => {
+    const r = await postToGraph(`${GRAPH_BASE}/${pageId}/videos`, {
+        file_url: videoUrl,
+        description: message || '',
+        access_token: pageAccessToken,
+    });
+    if (!r.ok) return r;
+    const id = r.data.id || null;
+    return {
+        ok: true,
+        externalId: id,
+        // Un video devuelve el id del VIDEO, no el del post. El permalink real
+        // exige otra llamada; no se inventa una URL que puede no resolver.
+        externalUrl: id ? `https://www.facebook.com/${pageId}/videos/${id}` : null,
+        raw: r.data,
+    };
+};
+
+/** Video en Instagram: contenedor REELS y publicación, con la misma espera. */
+const publishVideoToInstagram = async ({ igUserId, pageAccessToken, videoUrl, caption }) => {
+    const create = await postToGraph(`${GRAPH_BASE}/${igUserId}/media`, {
+        media_type: 'REELS',
+        video_url: videoUrl,
+        caption: caption || '',
+        access_token: pageAccessToken,
+    });
+    if (!create.ok) return create;
+    const creationId = create.data.id;
+    if (!creationId) return { ok: false, error: 'Instagram no devolvió el contenedor del video.' };
+
+    // Un video tarda bastante más que una foto en quedar listo. El tope lo fija
+    // el presupuesto de la función, no el optimismo: agotado, se dice que sigue
+    // procesando en vez de afirmar que falló.
+    const deadline = Date.now() + 90_000;
+    let last = 'IN_PROGRESS';
+    while (Date.now() < deadline) {
+        const st = await fetch(`${GRAPH_BASE}/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(pageAccessToken)}`);
+        const sd = await st.json().catch(() => ({}));
+        last = sd.status_code || last;
+        if (last === 'FINISHED') break;
+        if (last === 'ERROR' || last === 'EXPIRED') {
+            return { ok: false, error: `Instagram no pudo preparar el video (${last}): ${sd.status || ''}` };
+        }
+        await new Promise(r => setTimeout(r, 3000));
+    }
+    if (last !== 'FINISHED') {
+        return { ok: false, error: 'Instagram sigue procesando el video. Se reintenta más tarde.', retryHint: true };
+    }
+
+    const pub = await postToGraph(`${GRAPH_BASE}/${igUserId}/media_publish`, {
+        creation_id: creationId,
+        access_token: pageAccessToken,
+    });
+    if (!pub.ok) return pub;
+    return { ok: true, externalId: pub.data.id || null, externalUrl: null, raw: pub.data };
+};
+
+/**
+ * El despacho de la Distribución.
+ *
+ * `content` = { kind, message, link, mediaUrl }. Devuelve la misma forma
+ * uniforme que `publishToAccount` para que la cola registre el resultado sin
+ * saber por qué proveedor pasó.
+ */
+export const publishContentToTarget = async ({ account, decryptedToken, content = {} }) => {
+    const kind = content.kind;
+    const message = (content.message || '').trim();
+
+    if (account?.platform === 'facebook') {
+        const pageId = account.platformId;
+        if (kind === 'image') {
+            return publishToFacebookPage({ pageId, pageAccessToken: decryptedToken, imageUrl: content.mediaUrl, caption: message });
+        }
+        if (kind === 'video') {
+            return publishVideoToPage({ pageId, pageAccessToken: decryptedToken, videoUrl: content.mediaUrl, message });
+        }
+        // texto y enlace comparten endpoint
+        return publishFeedToPage({ pageId, pageAccessToken: decryptedToken, message, link: kind === 'link' ? content.link : null });
+    }
+
+    if (account?.platform === 'instagram') {
+        // Instagram no admite enlaces en el pie, así que un contenido de tipo
+        // enlace nunca debería llegar acá: `targetSupports` lo deja fuera al
+        // armar la campaña. Si llega, se dice el motivo en vez de publicar un
+        // pie con una URL que nadie va a poder pulsar.
+        if (kind === 'link' || kind === 'text') {
+            return { ok: false, error: 'Instagram necesita una imagen o un video: no publica texto ni enlaces sueltos.' };
+        }
+        if (!content.mediaUrl) return { ok: false, error: 'Falta el archivo para Instagram.' };
+        const isDirectConnect = !!(account.metadata && account.metadata.directConnect);
+        if (kind === 'video') {
+            return publishVideoToInstagram({ igUserId: account.platformId, pageAccessToken: decryptedToken, videoUrl: content.mediaUrl, caption: message });
+        }
+        return publishToInstagramBusiness({
+            igUserId: account.platformId,
+            pageAccessToken: decryptedToken,
+            imageUrl: content.mediaUrl,
+            caption: message,
+            useInstagramGraph: isDirectConnect,
+        });
+    }
+
+    return { ok: false, error: `Plataforma '${account?.platform}' no soportada por la distribución` };
+};
+
+/**
+ * Publicaciones recientes de una Página — el carril «compartir».
+ *
+ * Meta no expone un share de API: la vía soportada es crear una publicación
+ * nueva con el enlace al original, que es lo que hace la cola con el permalink
+ * que devuelve esta consulta.
+ */
+export const listPagePosts = async ({ pageId, pageAccessToken, limit = 15 }) => {
+    const url = `${GRAPH_BASE}/${pageId}/posts?fields=id,message,created_time,permalink_url,full_picture,status_type&limit=${encodeURIComponent(limit)}&access_token=${encodeURIComponent(pageAccessToken)}`;
+    const resp = await fetch(url);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) return readMetaError(resp, data);
+    return {
+        ok: true,
+        posts: (data.data || []).map(p => ({
+            id: p.id,
+            message: p.message || '',
+            createdTime: p.created_time || null,
+            permalink: p.permalink_url || null,
+            picture: p.full_picture || null,
+            statusType: p.status_type || null,
+        })),
+    };
 };

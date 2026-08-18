@@ -40,6 +40,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/distribution-tick",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/notification-retries",
       "schedule": "*/5 * * * *"
     },

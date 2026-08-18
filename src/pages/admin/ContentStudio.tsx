@@ -10,7 +10,8 @@ import {
     Image as ImageIcon,
     Flag,
     Clapperboard,
-    Palette
+    Palette,
+    Megaphone
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
@@ -23,6 +24,7 @@ import PostGenerator from '../../components/admin/content-studio/PostGenerator';
 import BannerTemplateManager from '../../components/admin/content-studio/BannerTemplateManager';
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
+import DistributionPanel from '../../components/admin/content-studio/DistributionPanel';
 
 const ContentStudio: React.FC = () => {
     // v4.798: las pestañas vuelven a ser CONTROLADAS, y esta vez el estado sí
@@ -91,6 +93,10 @@ const ContentStudio: React.FC = () => {
                             <Share2 className="w-4 h-4" />
                             Cuentas Sociales
                         </TabsTrigger>
+                        <TabsTrigger value="distribution" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                            <Megaphone className="w-4 h-4" />
+                            Distribución
+                        </TabsTrigger>
                         <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Clock className="w-4 h-4" />
                             Cola de Envío
@@ -148,6 +154,13 @@ const ContentStudio: React.FC = () => {
 
                     <TabsContent value="accounts" className="mt-0 focus-visible:outline-none">
                         <AccountManager />
+                    </TabsContent>
+
+                    {/* v4.864 — Distribución multi-destino. Va junto a Cuentas
+                        Sociales porque de ahí salen los destinos, y antes de la
+                        Cola de Envío porque ésta muestra el resultado. */}
+                    <TabsContent value="distribution" className="mt-0 focus-visible:outline-none">
+                        <DistributionPanel />
                     </TabsContent>
 
                     <TabsContent value="queue" className="mt-0 focus-visible:outline-none">
