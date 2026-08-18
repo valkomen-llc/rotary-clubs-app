@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.871.0",
-  "cache_bust": "2026-08-18e (La TRM de PayPal se resuelve sola, con la fuente de la Bóveda.)",
+  "version": "4.872.0",
+  "cache_bust": "2026-08-18f (El formulario de aporte entra entero con las dos vías de pago.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -60,6 +60,7 @@
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
     "test:integrations:ui": "node scripts/test-integrations-ui.mjs",
+    "test:donation:ui": "node scripts/test-donation-modal-ui.mjs",
     "test:fx": "node scripts/test-fx.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",

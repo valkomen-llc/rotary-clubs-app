@@ -34,9 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.871.0 | 2026-08-18 (La TRM de PayPal se resuelve sola)
-// Cache bust: 2026-08-18e
+// UI V4.872.0 | 2026-08-18 (El formulario de aporte entra entero)
+// Cache bust: 2026-08-18f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.872.0',
+        title: 'El formulario de aporte entra entero 📐',
+        description: 'Al aparecer el segundo botón de pago, la ventana emergente se pasaba de alto: se recortaban la cruz de cerrar arriba y el «Pago seguro procesado por…» abajo. Se apretó el respiro, no el contenido: no se quitó ningún campo ni ningún dato de la conversión.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'interfaz', 'paypal'],
+        type: 'fixed',
+        impact: 'Medio',
+        changes: [
+            { type: 'fixed', text: 'La ventana ya no se recorta por arriba ni por abajo con las dos vías de pago.' },
+            { type: 'changed', text: 'Correo y nombre van a la par: dos campos cortos apilados costaban una fila entera.' },
+            { type: 'changed', text: 'El aviso de conversión dice lo mismo en dos líneas en vez de cuatro.' },
+            { type: 'added', text: 'npm run test:donation:ui — 15 comprobaciones midiendo en un navegador de verdad.' },
+        ],
+        details: [
+            'UN FLEX CENTRADO RECORTA POR ARRIBA. Cuando el panel es más alto que la ventana, el navegador no deja desplazarse hacia el margen negativo, así que se pierden la cabecera y la cruz de cerrar — y con ellas la forma de salir. Acotar el panel a la ventana y darle desplazamiento propio lo resuelve para siempre: en una pantalla normal entra entero y no aparece ninguna barra.',
+            'SE APRETÓ EL RESPIRO, NO EL CONTENIDO. Sigue estando el mismo formulario, con el mismo aviso de conversión y sus cuatro datos —moneda de cobro, importe convertido, importe original y tasa—. Quitar la tasa o el importe original dejaría la conversión sin poder comprobarse, que es justo lo que la hace legítima.',
+            'Correo y nombre ahora van lado a lado. Son dos campos cortos y apilados costaban unos 62 píxeles medidos, que era la fila que dejaba el pie fuera de la pantalla. Con el nombre oculto —cuando se dona en anónimo— el correo ocupa el ancho completo en vez de dejar media fila vacía.',
+            'SE MIDE EN UN NAVEGADOR, con el CSS compilado. Sin él la página se monta con todo en bloque y las medidas no son las de la maquetación real: la prueba pasaría por los motivos equivocados. Comprueba que la cabecera no quede por encima del borde, que el pie se vea, y que en una ventana corta se desplace en vez de recortarse.',
+            'Al escribir la prueba volvieron a morder dos trampas ya documentadas: el comodín de interceptación va PRIMERO —Playwright resuelve la última ruta registrada antes que las anteriores— y una comilla invertida dentro de un literal de plantilla lo cierra a mitad.',
+        ]
+    },
     {
         version: '4.871.0',
         title: 'La TRM de PayPal se resuelve sola 🔄',

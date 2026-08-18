@@ -6633,6 +6633,33 @@ incluye la paridad de los dos espejos y se salta ese bloque si falta `esbuild`).
   el club fijó y cobrarlo en otra moneda exige convertirlo. Esto convierte lo
   que se le pide a un donante, no lo que un club puso como precio.
 
+### El formulario de aporte tiene que ENTRAR (v4.872)
+
+Pruebas: `npm run test:donation:ui` (15 casos; pide `playwright` y `esbuild` y
+**se salta solo** si faltan, o si no hay `dist/` compilado).
+
+- **⚠️ UN FLEX CENTRADO RECORTA POR ARRIBA.** Con el panel más alto que la
+  ventana, el navegador **no** deja desplazarse hacia el margen negativo: se
+  pierden la cabecera y la cruz de cerrar, o sea la forma de salir. Se reportó
+  al aparecer el segundo botón de pago. Se acota el panel a la ventana
+  (`max-h-[calc(100vh-2rem)]`) con desplazamiento PROPIO: en una pantalla normal
+  entra entero y no aparece ninguna barra. **No volver a un panel sin tope de
+  alto** — el defecto reaparece en cuanto se agregue una línea.
+- **Se aprieta el RESPIRO, no el contenido.** No se quitó ningún campo ni
+  ninguno de los cuatro datos del aviso de conversión —moneda de cobro, importe
+  convertido, importe original y tasa—: quitar la tasa o el original dejaría la
+  conversión sin poder comprobarse, que es lo que la hace legítima.
+- **Correo y nombre van a la par.** Dos campos cortos apilados cuestan ~62 px
+  medidos, que era la fila que dejaba el pie fuera. Con el nombre oculto
+  —donación anónima— el correo ocupa el ancho completo en vez de dejar media
+  fila vacía.
+- **Se MIDE en un navegador y con el CSS compilado.** Sin él la página se monta
+  con todo en bloque y las medidas no son las de la maquetación real: la prueba
+  pasaría por los motivos equivocados (v4.851). Al agregar una fila al modal,
+  correrla.
+- **Por debajo de ~750 px de ventana el modal se desplaza**, y está bien: lo que
+  no puede pasar es que se recorte. Lo comprueba el caso de 560 px.
+
 **Pendiente conocido:** el reembolso por PayPal no está — hoy sólo se maneja el
 de Stripe (v4.859). Y `Checkout.tsx` conserva su selector Stripe/PayPal
 **decorativo**: la tienda sigue sin cobrar por ninguna de las dos vías, que es
