@@ -13,7 +13,9 @@ import {
     updateFeeRulesConfig,
     recalcFees,
     getPaymentMethodsConfig,
-    updatePaymentMethodsConfig
+    updatePaymentMethodsConfig,
+    getFxRatesConfig,
+    updateFxRatesConfig
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -63,6 +65,11 @@ router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOvervie
 // cuáles están activadas. Del operador, como la tarifa.
 router.get('/admin/payment-methods', roleMiddleware(superAdminRoles), getPaymentMethodsConfig);
 router.put('/admin/payment-methods', roleMiddleware(superAdminRoles), updatePaymentMethodsConfig);
+
+// v4.870 — Las tasas de cambio. Sólo se usan cuando la cuenta de un proveedor
+// no cobra en la moneda del aporte; sin tasa, ese método no se ofrece.
+router.get('/admin/fx-rates', roleMiddleware(superAdminRoles), getFxRatesConfig);
+router.put('/admin/fx-rates', roleMiddleware(superAdminRoles), updateFxRatesConfig);
 
 router.get('/admin/fee-rules', roleMiddleware(superAdminRoles), getFeeRulesConfig);
 router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesConfig);

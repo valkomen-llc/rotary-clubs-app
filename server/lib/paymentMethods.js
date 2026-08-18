@@ -50,7 +50,7 @@ export const PAYMENT_METHODS = [
         id: 'paypal',
         label: 'PayPal',
         provider: 'paypal',
-        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP).',
+        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP): un aporte en pesos se cobra convertido, con la tasa configurada abajo.',
         env: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
         optionalEnv: ['PAYPAL_WEBHOOK_ID', 'PAYPAL_CURRENCY'],
         // Apagado hasta que alguien lo encienda a propósito, aunque las
@@ -107,7 +107,7 @@ export const methodLimits = (metodo, env = {}) => {
             out.push({
                 kind: 'currency',
                 value: moneda,
-                text: `Sólo se ofrece en aportes en ${moneda}. En cualquier otra moneda el botón no aparece, porque los importes NO se convierten: el visitante ya vio una cifra concreta.`,
+                text: `La cuenta cobra en ${moneda}. Un aporte en otra moneda se convierte con la tasa configurada más abajo, y al visitante se le muestra el importe convertido ANTES de cobrarle. Sin tasa para ese par, el botón no aparece — nunca se inventa una.`,
             });
         }
 

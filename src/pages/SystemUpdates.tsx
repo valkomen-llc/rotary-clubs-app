@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.869.0 | 2026-08-18 («Se está ofreciendo» no es «en todos los aportes»)
-// Cache bust: 2026-08-18c
+// UI V4.870.0 | 2026-08-18 (PayPal cobra en pesos, convirtiendo a la vista)
+// Cache bust: 2026-08-18d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.870.0',
+        title: 'El botón de PayPal aparece también en pesos 💱',
+        description: 'PayPal no procesa pesos colombianos, así que el botón no aparecía nunca en el sitio de un distrito colombiano. Ahora el aporte se cobra convertido a la moneda de la cuenta, con una tasa que el operador configura — y al aportante se le muestra el importe convertido ANTES de cobrarle.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'paypal', 'aportes'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Tasas de cambio configurables desde Integraciones → Métodos de pago.' },
+            { type: 'added', text: 'El modal dice el importe que se va a cobrar, la moneda y la tasa usada.' },
+            { type: 'changed', text: 'Un aporte por PayPal se registra en la moneda que se cobró, con el importe original guardado.' },
+            { type: 'added', text: 'npm run test:fx — 67 comprobaciones, con la paridad de los dos espejos.' },
+        ],
+        details: [
+            'LA CONVERSIÓN SE DICE ANTES DE COBRAR, y ésa es la mitad que la hace legítima. Quien eligió «$ 100.000» lee «se te cobrarán US$ 24,80» antes de salir hacia PayPal, con la tasa a la vista. Convertir en silencio sería cambiarle el trato a mitad de camino; convertir a la vista es otra cosa.',
+            'NO SE INVENTA UNA TASA, y eso no cambió. La regla del sitio nunca fue «no se convierte»: es la del fx de las inscripciones a eventos — una moneda es la que se publica, otra la que cobra la pasarela, y si difieren se convierte con una tasa configurada guardando los tres datos. Sin tasa escrita para ese par, el botón sigue sin aparecer.',
+            'SE GUARDAN LOS TRES DATOS: el importe original con su moneda, el cobrado con la suya, y la tasa con su fuente y su fecha. Sin los tres, «¿por qué este aporte entró en dólares?» no se puede contestar dos semanas después.',
+            'El aporte se registra en la moneda que SE COBRÓ, que es lo que de verdad entró a la cuenta y lo que la Bóveda tiene que poder cuadrar. Consecuencia aceptada: una campaña colombiana puede tener aportes en las dos monedas, y la Bóveda ya las presenta separadas — nunca sumadas.',
+            'El mismo criterio pinta el botón y cobra. Con dos, el modal prometería una cifra y el cobro saldría por otra; lo comprueba una prueba contando las llamadas, y otra compara las salidas del criterio del servidor con su espejo del navegador sobre una matriz de importes y pares.',
+            'La tasa se escribe como la dice una persona —«4.032 pesos por dólar»—, no al revés: un número con cuatro ceros a la derecha de la coma se teclea mal y el error no se ve, y acá el error es cuánto se le cobra a alguien. Se pide además la fuente, y una tasa de más de 45 días avisa sin dejar de valer.',
+            'La MEMBRESÍA sigue sin convertirse: su importe es un precio que el club fijó. Esto convierte lo que se le pide a un donante, no lo que un club puso como precio.',
+        ]
+    },
     {
         version: '4.869.0',
         title: 'El panel dice qué acota cada método de pago 🎯',

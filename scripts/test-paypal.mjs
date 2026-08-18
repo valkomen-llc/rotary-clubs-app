@@ -4,7 +4,9 @@
 // v4.866.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED. Lo que protegen sobre todo es la regla
-// que no se negocia: NO SE CONVIERTE NINGÚN IMPORTE.
+// que no se negocia: NO SE INVENTA UNA TASA.
+// (Desde v4.870 sí se convierte, pero SÓLO con una tasa configurada y
+// diciéndoselo al visitante antes de cobrar — ver `npm run test:fx`.)
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
 import {
@@ -18,16 +20,19 @@ const eq = (n, a, b) => ok(n, JSON.stringify(a) === JSON.stringify(b), `esperaba
 const section = (t) => console.log(`\n${t}`);
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
-// ── 1. No se convierte nada ─────────────────────────────────────────
-section('1. NO SE CONVIERTE NINGÚN IMPORTE');
+// ── 1. La moneda ────────────────────────────────────────────────────
+section('1. NO SE INVENTA UNA TASA');
 
-// ⚠️ La regla que gobierna el módulo. El visitante ya vio «$ 100.000» en la
-// pantalla: cobrarle otra cifra en otra moneda sería cambiarle el trato. Misma
-// regla que el `fx` de las inscripciones y la moneda del aporte (v4.834).
+// ⚠️ `paypalCurrencyOk` es el criterio BASE y no cambió: dice si la cuenta
+// cobra o no en esa moneda. Lo que decide si el botón se pinta es
+// `resolvePaypalCharge`, que desde v4.870 mira además si hay una tasa
+// configurada — y sin ella sigue sin ofrecerse. Ver `npm run test:fx`.
 const distinta = paypalCurrencyOk('COP', 'USD');
-ok('con la cuenta en dólares, un aporte en pesos NO se ofrece', !distinta.ok);
+ok('la cuenta en dólares no cobra pesos por sí sola', !distinta.ok);
 eq('y se dice por qué', distinta.reason, 'moneda_distinta');
-ok('el motivo está redactado', /no se convierten/i.test(MOTIVOS_MONEDA.moneda_distinta));
+ok('el motivo está redactado y nombra la tasa',
+    /tasa de cambio/i.test(MOTIVOS_MONEDA.moneda_distinta),
+    'la regla es «no se inventa una tasa», no «no se convierte»');
 
 eq('si coinciden, se cobra', paypalCurrencyOk('USD', 'USD').ok, true);
 // Sin moneda configurada la cuenta cobra en la que venga: es el valor por
@@ -167,4 +172,4 @@ ok('el estado distingue QUÉ vía se está usando',
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);
 if (fail) process.exit(1);
-console.log('PayPal cobra a la cuenta de la plataforma y no convierte nada.');
+console.log('PayPal cobra a la cuenta de la plataforma y no inventa ninguna tasa.');

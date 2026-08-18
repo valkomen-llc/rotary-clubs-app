@@ -29,6 +29,10 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { CreditCard, CheckCircle2, AlertTriangle, Save, Info, XCircle } from 'lucide-react';
+// Las tasas viven acá y no en una pantalla propia: la conversión existe POR la
+// restricción de un método de pago, y la decisión se toma donde ya se trabaja
+// —las pantallas que se olvidan son siempre las del segundo lugar—.
+import FxRatesPanel from './FxRatesPanel';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -211,6 +215,8 @@ export default function PaymentMethodsPanel() {
                     </div>
                 ))}
             </div>
+
+            <FxRatesPanel />
 
             {avisos.map((a, i) => (
                 <p key={i} className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-2xl p-4 mt-4 flex items-start gap-2">
