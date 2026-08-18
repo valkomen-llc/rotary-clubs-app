@@ -113,7 +113,12 @@ const NewsSection = () => {
             {visibleArticles.map((article, index) => (
               <Link
                 key={`${currentSlide}-${article.id}-${index}`}
-                to={`/blog/${article.id}`}
+                // v4.873 — La dirección amigable manda. Acá se enlazaba SÓLO
+                // por id, así que entrar desde la portada llevaba a
+                // «/blog/1f6c8e2a-…» aunque el artículo tuviera slug — y era
+                // la vía por la que se reportaron los «caracteres muy raros».
+                // `Blog.tsx` y `BlogPost.tsx` ya lo hacían así; ésta faltaba.
+                to={`/blog/${(article as any).slug || article.id}`}
                 className="group relative block overflow-hidden rounded-lg"
                 style={{ aspectRatio: '4/3' }}
               >

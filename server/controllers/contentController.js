@@ -2,6 +2,11 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 import { ingestMemorySafe } from '../services/brainService.js';
 import { cloneOf } from '../lib/ecosystemClones.js';
+// v4.873 — La dirección del artículo. El criterio (slugify, palabras
+// reservadas, liberación por sufijo) vive aparte y es PURO: el choque de
+// unicidad decide a qué dirección responde una publicación, y dentro del
+// controlador no se podría probar.
+import { normalizeSlug, checkSlug, freeSlug, MOTIVOS_SLUG } from '../lib/postSlug.js';
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -209,15 +214,22 @@ export const createPost = async (req, res) => {
     const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
     const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
 
+    // ⚠️ EL OTRO CAMINO QUE ESCRIBE `Post.slug`, y es único en TODA la
+    // plataforma: una noticia de club puede chocar con una publicación
+    // centralizada. Sin resolverlo, el choque sale como un error del driver.
+    let slugResuelto = { slug: null, aviso: null };
+
     const runCreate = async () => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
         if (targets.length > 0) targetClubId = null; // Centralizada: se dirige por targetClubIds.
 
+        slugResuelto = await resolvePostSlug({ slug, title });
+
         return await prisma.post.create({
             data: {
                 title: title || '',
-                slug: slug || undefined,
+                slug: slugResuelto.slug || undefined,
                 content: stripInvisibleBreaks(content) || '',
                 image: image || null,
                 published: published || false,
@@ -299,6 +311,11 @@ export const updatePost = async (req, res) => {
     const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
     const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
 
+    // La dirección resuelta. Se declara acá porque `runUpdate` puede correr dos
+    // veces (el reintento tras crear la columna) y el aviso tiene que
+    // sobrevivir a la respuesta.
+    let slugResuelto = { slug: null, aviso: null };
+
     const runUpdate = async () => {
         const existing = await prisma.post.findUnique({ where: { id } });
         if (!existing) {
@@ -311,11 +328,15 @@ export const updatePost = async (req, res) => {
             return null;
         }
 
+        slugResuelto = slug !== undefined
+            ? await resolvePostSlug({ slug, title: title || existing.title, excludeId: id })
+            : { slug: existing.slug, aviso: null };
+
         return await prisma.post.update({
             where: { id },
             data: {
                 title: title || existing.title,
-                slug: slug || existing.slug,
+                slug: slugResuelto.slug || existing.slug,
                 content: content ? stripInvisibleBreaks(content) : existing.content,
                 image: image || existing.image,
                 published: published !== undefined ? published : existing.published,
@@ -431,6 +452,58 @@ const sanitizeTargetClubIds = (value) =>
     Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id.trim()))] : [];
 
 // Admin: listar publicaciones centralizadas (las que tienen clubes destino).
+/**
+ * A qué dirección va a responder esta publicación.
+ *
+ * ⚠️ `Post.slug` es ÚNICO EN TODA LA PLATAFORMA —no por sitio, como el de
+ * `CalendarEvent`—, así que dos publicaciones no pueden compartirlo aunque se
+ * muestren en sitios distintos. Sin liberar el choque antes de escribir, el
+ * error sale como un fallo del driver que no explica nada.
+ *
+ * NUNCA lanza y NUNCA deja la publicación sin guardar: si el slug no sirve, se
+ * devuelve `null` y el artículo se sigue abriendo por su id, que es como
+ * funcionaba antes. Lo que sí hace es DECIR qué pasó — un slug que cambia en
+ * silencio manda a buscar el artículo a una dirección que no es.
+ */
+const resolvePostSlug = async ({ slug, title, excludeId = null }) => {
+    // Lo que el usuario escribió manda; el título es el respaldo.
+    const pedido = String(slug || '').trim() || String(title || '');
+    const revision = checkSlug(pedido);
+
+    // Un slug inservible (reservado, sólo números, vacío) NO se sustituye por
+    // otro a la callada: se intenta con el título y, si tampoco, se avisa.
+    let base = revision.ok ? revision.slug : '';
+    let aviso = revision.ok ? null : (MOTIVOS_SLUG[revision.reason] || null);
+    if (!base && slug) {
+        const delTitulo = checkSlug(title);
+        if (delTitulo.ok) base = delTitulo.slug;
+    }
+    if (!base) return { slug: null, aviso };
+
+    try {
+        // Una sola consulta: los que empiezan igual. Traer de más es barato;
+        // preguntar uno por uno dentro de un bucle, no.
+        const parecidos = await prisma.post.findMany({
+            where: { slug: { startsWith: base }, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+            select: { slug: true },
+        });
+        const tomados = new Set(parecidos.map(p => p.slug).filter(Boolean));
+        const libre = freeSlug(base, tomados);
+        if (!libre) return { slug: null, aviso: 'No se pudo liberar una dirección para este título.' };
+        if (libre !== normalizeSlug(pedido)) {
+            aviso = tomados.has(base)
+                ? `La dirección «${base}» ya estaba usada por otra publicación; se guardó como «${libre}».`
+                : aviso;
+        }
+        return { slug: libre, aviso };
+    } catch (e) {
+        // Sin poder comprobar la unicidad NO se arriesga el choque: se guarda
+        // sin slug y se dice. Perder el artículo por una dirección sería peor.
+        console.warn('[POST-SLUG] no se pudo comprobar la unicidad:', e?.message);
+        return { slug: null, aviso: 'No se pudo comprobar si la dirección estaba libre; se guardó sin dirección amigable.' };
+    }
+};
+
 export const getPublications = async (req, res) => {
     const runQuery = () => db.query(
         `SELECT * FROM "Post" WHERE cardinality(COALESCE("targetClubIds", '{}'::text[])) > 0
@@ -470,10 +543,11 @@ export const createPublication = async (req, res) => {
     const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
 
     try {
+        const resuelto = await resolvePostSlug({ slug, title });
         const post = await prisma.post.create({
             data: {
                 title: title || '',
-                slug: slug || undefined,
+                slug: resuelto.slug || undefined,
                 content: stripInvisibleBreaks(content) || '',
                 image: image || null,
                 published: published || false,
@@ -508,7 +582,9 @@ export const createPublication = async (req, res) => {
             });
         }
 
-        res.status(201).json(post);
+        // El aviso viaja con la respuesta: la pantalla enseña la dirección
+        // final, que puede no ser la que se escribió.
+        res.status(201).json({ ...post, slugNotice: resuelto.aviso || null });
     } catch (error) {
         console.error('Create Publication Error:', error);
         res.status(500).json({ error: 'Error creating publication', details: error.message });
@@ -539,11 +615,18 @@ export const updatePublication = async (req, res) => {
             return res.status(400).json({ error: 'Debes seleccionar al menos un club destino.' });
         }
 
+        // La dirección se vuelve a resolver sólo si llegó en la petición: un
+        // guardado que no toca el slug no puede moverle la dirección a un
+        // artículo que ya está circulando.
+        const resuelto = slug !== undefined
+            ? await resolvePostSlug({ slug, title: title || existing.title, excludeId: id })
+            : { slug: existing.slug, aviso: null };
+
         const post = await prisma.post.update({
             where: { id },
             data: {
                 title: title || existing.title,
-                slug: slug || existing.slug,
+                slug: resuelto.slug || existing.slug,
                 content: content ? stripInvisibleBreaks(content) : existing.content,
                 image: image !== undefined ? image : existing.image,
                 published: published !== undefined ? published : existing.published,
@@ -577,7 +660,7 @@ export const updatePublication = async (req, res) => {
             });
         }
 
-        res.json(post);
+        res.json({ ...post, slugNotice: resuelto.aviso || null });
     } catch (error) {
         console.error('Update Publication Error:', error);
         res.status(500).json({ error: 'Error updating publication', details: error.message });
@@ -638,9 +721,16 @@ export const getTrashedProjects = async (req, res) => {
     }
 };
 
-// v4.417 — Normalizador de slug (mismo patrón que usa News). Si el slug
-// llega vacío pero hay título, generamos uno desde el título.
-const normalizeSlug = (raw, fallback = '') => {
+// v4.417 — Normalizador de slug de PROYECTOS. Si el slug llega vacío pero hay
+// título, se genera desde el título.
+//
+// ⚠️ Se renombró en v4.873 porque colisionaba con el `normalizeSlug` del
+// criterio compartido (`postSlug.js`), y son DOS cosas distintas hoy: éste
+// corta en 80 y aquél en 75 —el ancho que declara `seoSpec.LIMITS`—. No se
+// unificaron acá a propósito: cambiar el corte movería la dirección de
+// proyectos ya publicados, que es otra decisión y otra prueba. Al tocar los
+// slugs de proyecto, converger con `postSlug.js`.
+const normalizeProjectSlug = (raw, fallback = '') => {
     const source = String(raw || fallback || '').trim();
     if (!source) return null;
     return source
@@ -684,7 +774,7 @@ export const createProject = async (req, res) => {
                 seoDescription: seoDescription || null,
                 seoKeywords: seoKeywords || null,
                 seoImage: seoImage || null,
-                slug: normalizeSlug(slug, title),
+                slug: normalizeProjectSlug(slug, title),
                 socialCopy: socialCopy || null,
                 indexable: indexable === false ? false : true
             }
@@ -748,7 +838,7 @@ export const updateProject = async (req, res) => {
                 ...(seoDescription !== undefined && { seoDescription: seoDescription || null }),
                 ...(seoKeywords !== undefined && { seoKeywords: seoKeywords || null }),
                 ...(seoImage !== undefined && { seoImage: seoImage || null }),
-                ...(slug !== undefined && { slug: normalizeSlug(slug, title || existing.title) }),
+                ...(slug !== undefined && { slug: normalizeProjectSlug(slug, title || existing.title) }),
                 ...(socialCopy !== undefined && { socialCopy: socialCopy || null }),
                 ...(indexable !== undefined && { indexable: indexable === false ? false : true })
             }

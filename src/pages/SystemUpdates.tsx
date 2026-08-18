@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.872.0 | 2026-08-18 (El formulario de aporte entra entero)
-// Cache bust: 2026-08-18f
+// UI V4.873.0 | 2026-08-18 (Los artículos tienen dirección propia y SEO)
+// Cache bust: 2026-08-18g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.873.0',
+        title: 'Los artículos tienen dirección propia y SEO configurable 🔗',
+        description: 'El Difusor de Publicaciones no dejaba definir la dirección del artículo, así que se abría por su identificador —«/blog/1f6c8e2a-4b93-…»—. Ahora se define desde el mismo panel, se ve a dónde va a quedar en cada sitio destino, y el SEO se configura con los mismos anchos que usa la auditoría.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'seo', 'publicaciones'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Campo de dirección (slug) con generación desde el título.' },
+            { type: 'added', text: 'Vista previa de la dirección final en CADA sitio destino.' },
+            { type: 'added', text: 'Bloque de SEO con contadores y la tarjeta tal como se verá en el buscador.' },
+            { type: 'fixed', text: 'La portada enlazaba los artículos por identificador aunque tuvieran dirección.' },
+            { type: 'added', text: 'npm run test:post-slug — 49 comprobaciones, con la paridad de los dos espejos.' },
+        ],
+        details: [
+            'EL SLUG ES DEL ARTÍCULO; EL DOMINIO LO PONE CADA SITIO. Una publicación centralizada es UNA fila que se muestra en varios sitios, así que su dirección es una sola y cambia con el dominio de quien la muestra: rotary4281.org/blog/mi-nota y feria.org/blog/mi-nota son el MISMO artículo. Por eso la vista previa recorre los destinos elegidos en vez de suponer un dominio, y por eso el slug no se guarda por sitio.',
+            'LA DIRECCIÓN ES ÚNICA EN TODA LA PLATAFORMA, no por sitio como la de un evento. Dos publicaciones no pueden compartirla aunque se muestren en sitios distintos: al guardar se libera con un sufijo y SE AVISA. Un cambio silencioso mandaría a buscar el artículo a una dirección que no es.',
+            'LOS CUATRO CAMINOS QUE ESCRIBEN UNA DIRECCIÓN pasan por el mismo criterio: la noticia por club y la publicación centralizada, al crear y al editar. Antes se escribía tal como llegaba del navegador, así que una palabra reservada pasaba y un choque salía como un error del motor de base de datos que no explica nada.',
+            'NO SE ESCRIBIÓ UN SEGUNDO SLUGIFY. El módulo de SEO Inteligente ya sabía armar una dirección y ya declaraba con qué anchos recorta Google el título y la descripción; con dos catálogos, el panel avisaría de un límite que la auditoría no aplica. Lo nuevo es sólo lo que aquél no tenía: el choque de unicidad, las palabras reservadas y la dirección por sitio.',
+            'La portada enlazaba los artículos SÓLO por identificador, así que entrar desde ahí llevaba a la dirección larga aunque el artículo tuviera la suya. La lista de noticias y el artículo relacionado ya lo hacían bien; faltaba ésa, y era la vía por la que se veían los «caracteres raros».',
+            'Un sitio sin dominio propio ni subdominio no se puede nombrar y no se le inventa uno: se dice cuántos son. Y un título sin letras ni números no da dirección — el artículo se sigue abriendo por su identificador, que es como funcionaba antes.',
+        ]
+    },
     {
         version: '4.872.0',
         title: 'El formulario de aporte entra entero 📐',

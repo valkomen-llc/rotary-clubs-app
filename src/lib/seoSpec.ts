@@ -20,6 +20,9 @@ export const LIMITS = {
     ogTitle: { min: 20, max: 88, hardMax: 95 },
     ogDescription: { min: 50, max: 200, hardMax: 300 },
     altText: { min: 5, max: 125 },
+    // v4.873 — Faltaba en el espejo: el Difusor de Publicaciones lo necesita
+    // para acotar el slug con el MISMO número que usa la auditoría.
+    slug: { max: 75 },
 } as const;
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
