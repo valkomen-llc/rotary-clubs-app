@@ -1548,7 +1548,7 @@ sólo existe el de KIE); y el texto en pantalla **no tiene todavía una pantalla
 para editarlo a mano** — se escribe solo y se puede regenerar, pero corregir una
 palabra exige regenerar el rótulo entero.
 
-## Distribución multi-destino — v4.864
+## Distribución multi-destino — v4.864 (vista previa y grupos, v4.865)
 
 Una pieza sale hacia varias Páginas e Instagram del ecosistema, un destino por
 vez y con el intervalo que se elija. Pestaña propia en Estudio de Contenido.
@@ -1562,9 +1562,10 @@ vez y con el intervalo que se elija. Pestaña propia en Estudio de Contenido.
 | `src/lib/distributionSpec.ts` | Espejo MÍNIMO: rótulos y colores. **Sin aritmética de fechas** |
 | `src/components/admin/content-studio/DistributionPanel.tsx` | El asistente, la línea de tiempo y el historial |
 
-Pruebas: `npm run test:distribution` (92 casos) y
-`npm run test:distribution:queue` (67, con la base y `fetch` sustituidos).
-**Ninguna necesita base, credenciales ni red.**
+Pruebas: `npm run test:distribution` (110 casos) y
+`npm run test:distribution:queue` (67, con la base y `fetch` sustituidos) — **ninguna
+necesita base, credenciales ni red**— más `npm run test:distribution:ui` (16, en un
+navegador con la API interceptada; se salta sola si falta `playwright`).
 
 **Reglas durables:**
 
@@ -1661,9 +1662,30 @@ Pruebas: `npm run test:distribution` (92 casos) y
   sería falso.
 - **La cola NUNCA lanza.** Corre dentro de un cron y dentro del sondeo de una
   pantalla: toda función devuelve su resultado con el motivo escrito.
-- **Los grupos se declaran a mano y no se descubren**, porque Meta retiró
-  también la lectura de grupos. Viven en el `Setting` `distribution_groups` del
+- **⚠️ EN QUÉ GRUPOS ESTÁ UNA PÁGINA NO SE PUEDE CONSULTAR** (v4.865). Se pidió
+  que al elegir la fan page apareciera sola la lista de sus grupos, y no hay
+  forma: la Groups API se retiró ENTERA —también la parte de lectura— y la
+  referencia de `Page` ya no declara ninguna arista `groups`. No existe endpoint
+  que preguntar. Lo único implementable es que declararlos cueste UN gesto:
+  `parseGroupLines` interpreta lo pegado —«Nombre | enlace», el enlace solo o un
+  nombre suelto—, uno por línea. Viven en el `Setting` `distribution_groups` del
   sitio: no hacía falta una tabla para un nombre y un enlace.
+- **Lo que no se pudo interpretar se DICE, con su motivo.** Con veinte líneas
+  pegadas, un descarte silencioso deja sin saber cuáles entraron — la regla de
+  `skipped` en los centros de acopio. Y el enlace de una PUBLICACIÓN pegado
+  donde va un grupo se rechaza nombrando el error, en vez de guardarse como un
+  destino que no existe.
+- **La vista previa de la publicación a compartir NO es decorativa** (v4.865): el
+  enlace de la que se elige queda cargado en el campo que se distribuye, y
+  cambiar de publicación cambia las dos cosas a la vez. Decidir sobre dos líneas
+  recortadas es exactamente lo que se reportó. Se comprueba en un navegador
+  (`test:distribution:ui`), porque es lo que se pidió mirando la pantalla.
+- **El arnés del navegador necesita un ORIGEN real.** Sobre `about:blank` —que
+  es lo que deja `setContent`— una dirección relativa no tiene base contra la
+  que resolverse: la petición no sale y la prueba pasaría sin ejercitar nada. Es
+  la lección de v4.720 y volvió a costar una vuelta acá. Y el bloque de grupos
+  nace ABIERTO cuando no hay ninguno declarado, así que la prueba lo **asegura**
+  en vez de pulsarlo: pulsar a ciegas lo cerraba.
 - **Las tres tablas viven fuera de Prisma** y están en la lista del guardián de
   `db:push`.
 - **`socialPublishService.js` cubría SÓLO foto única.** v4.864 le agrega texto,

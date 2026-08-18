@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.864.0",
-  "cache_bust": "2026-08-18a (Distribución multi-destino: una pieza, muchos destinos, con cadencia controlada.)",
+  "version": "4.865.0",
+  "cache_bust": "2026-08-18b (Vista previa de la publicación a compartir y grupos pegados de una vez.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -65,6 +65,7 @@
     "test:wallet:central": "node scripts/test-wallet-central.mjs",
     "test:distribution": "node scripts/test-distribution.mjs",
     "test:distribution:queue": "node scripts/test-distribution-queue.mjs",
+    "test:distribution:ui": "node scripts/test-distribution-ui.mjs",
     "test:wallet:central:ui": "node scripts/test-wallet-central-ui.mjs",
     "test:wallet:empty": "node scripts/test-wallet-empty.mjs",
     "test:wallet:export": "node scripts/test-wallet-export.mjs",

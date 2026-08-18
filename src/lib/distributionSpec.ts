@@ -92,3 +92,74 @@ export const statusUI = (s: string) =>
 
 export const campaignUI = (s: string) =>
     CAMPAIGN_STATUS_UI[s as CampaignStatus] || { label: s, tone: 'off' as const };
+
+// ── Declarar grupos pegándolos de una vez ───────────────────────────────────
+//
+// ⚠️ META NO DICE EN QUÉ GRUPOS ESTÁ UNA PÁGINA. La Groups API se retiró
+// entera el 22 de abril de 2024 —también la parte de LECTURA— y la referencia
+// de Page ya no declara ninguna arista `groups`. No hay endpoint que consultar,
+// así que la lista no se puede descubrir: se declara.
+//
+// Lo que sí se puede es que declararla no cueste veinticinco gestos. Se pegan
+// todos los enlaces de una vez, uno por línea, y esto los interpreta.
+
+export type ParsedGroup = { name: string; url: string | null; id: string };
+
+const GROUP_URL = /https?:\/\/(?:www\.|m\.|web\.)?facebook\.com\/groups\/([^/?#\s]+)/i;
+
+/** Un identificador numérico no es un nombre. Se prefiere lo que escribió la persona. */
+const nameFromSlug = (slug: string): string => {
+    if (/^\d+$/.test(slug)) return `Grupo ${slug}`;
+    const limpio = slug.replace(/[-_]+/g, ' ').trim();
+    return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+};
+
+/**
+ * Interpreta lo pegado. Cada línea admite:
+ *
+ *   https://facebook.com/groups/123456
+ *   Rotary Colombia | https://facebook.com/groups/123456
+ *   Rotary Colombia — https://facebook.com/groups/123456
+ *   Rotary Colombia            (sin enlace: vale, pero no se puede abrir)
+ *
+ * Devuelve también lo DESCARTADO con su motivo: un descarte silencioso deja a
+ * quien pegó veinte líneas sin saber cuáles entraron.
+ */
+export const parseGroupLines = (texto: string): { groups: ParsedGroup[]; skipped: Array<{ line: string; reason: string }> } => {
+    const groups: ParsedGroup[] = [];
+    const skipped: Array<{ line: string; reason: string }> = [];
+    const vistos = new Set<string>();
+
+    for (const cruda of String(texto || '').split(/\r?\n/)) {
+        const linea = cruda.trim();
+        if (!linea) continue;
+
+        const m = GROUP_URL.exec(linea);
+        const url = m ? m[0] : null;
+        const slug = m ? m[1] : null;
+
+        // El nombre es lo que quede al quitar el enlace y los separadores.
+        let name = (m ? linea.replace(m[0], '') : linea)
+            .replace(/^[\s|—–\-:·]+|[\s|—–\-:·]+$/g, '')
+            .trim();
+
+        if (!name && slug) name = nameFromSlug(slug);
+
+        if (!name) { skipped.push({ line: linea, reason: 'no se le pudo dar un nombre' }); continue; }
+        if (!url && /^https?:\/\//i.test(linea)) {
+            // Un enlace de Facebook que no es de un grupo: casi seguro se pegó
+            // la publicación en vez del grupo. Se dice, en vez de guardarlo mal.
+            skipped.push({ line: linea, reason: 'no es el enlace de un grupo' });
+            continue;
+        }
+
+        const id = url || name;
+        if (vistos.has(id)) { skipped.push({ line: linea, reason: 'repetido' }); continue; }
+        vistos.add(id);
+        groups.push({ name, url, id });
+    }
+    return { groups, skipped };
+};
+
+/** Dónde ve una persona sus propios grupos. Meta no lo dice por API; el navegador sí. */
+export const MIS_GRUPOS_URL = 'https://www.facebook.com/groups/feed/';
