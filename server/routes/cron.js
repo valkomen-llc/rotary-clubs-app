@@ -38,6 +38,35 @@ router.get('/publish-scheduled', async (req, res) => {
     }
 });
 
+// ── Vercel Cron endpoint: /api/cron/distribution-tick ───────────────────────
+// v4.864 — Cada minuto. Toma los destinos que vencieron y los publica, uno por
+// uno, respetando el intervalo de su campaña.
+//
+// Es UNA de las tres vías que llaman al mismo `advance`: el cron (siempre), el
+// sondeo del navegador (el más rápido cuando alguien mira) y el reintento
+// manual. Los UPDATE condicionales de adentro impiden que dos hagan el mismo
+// trabajo. No quitar el cron: sin él, una campaña se queda parada en cuanto el
+// usuario cierra la pestaña.
+//
+// Presupuesto de tiempo porque la función corta: lo que no entra espera al
+// minuto siguiente y se devuelve en `pending`, en vez de perderse en silencio.
+router.get('/distribution-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON distribution-tick] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { advance } = await import('../lib/distributionQueue.js');
+        const summary = await advance({ now: new Date(), timeBudgetMs: 45_000 });
+        console.log(`[CRON distribution-tick] processed=${summary.processed} pending=${summary.pending ?? 0}`);
+        res.json({ ok: true, ...summary });
+    } catch (e) {
+        console.error('[CRON distribution-tick] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Vercel Cron endpoint: /api/cron/process-expirations
 // Se ejecuta diariamente para alertar sobre renovaciones de SaaS
 router.get('/process-expirations', async (req, res) => {

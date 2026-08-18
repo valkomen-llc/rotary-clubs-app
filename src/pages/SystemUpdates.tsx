@@ -34,9 +34,35 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.863.0 | 2026-08-17 (Lo que la plataforma comisionó, en la barra)
-// Cache bust: 2026-08-17y
+// UI V4.864.0 | 2026-08-18 (Distribución multi-destino)
+// Cache bust: 2026-08-18a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.864.0',
+        title: 'Distribución multi-destino: una pieza, muchos destinos, con cadencia 📣',
+        description: 'Una publicación sale hacia varias Páginas e Instagram del ecosistema, uno por uno y con el intervalo que elijas, en vez de a mano destino por destino. Cada destino es un trabajo independiente: se puede pausar, reanudar, reintentar sólo el que falló y ver en qué quedó cada uno. IMPORTANTE: los grupos de Facebook NO se publican solos — Meta retiró esa capacidad el 22 de abril de 2024 y la herramienta lo dice donde se decide.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'redes', 'distribucion'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Pestaña «Distribución» en Estudio de Contenido: contenido, destinos, programación, intervalo y vista previa.' },
+            { type: 'added', text: 'Compartir una publicación que ya está en una Página hacia las demás, con enlace a la original.' },
+            { type: 'added', text: 'Cola con un trabajo por destino: pausar, reanudar, cancelar y reintentar sólo el que falló.' },
+            { type: 'added', text: 'Intervalos de 5 minutos a 1 hora, inicio programado, franja horaria y tope de destinos por día.' },
+            { type: 'added', text: 'Historial de distribuciones con el estado de cada destino y el motivo de cada fallo.' },
+            { type: 'added', text: 'Modo asistido para grupos: deja el texto listo y registra quién publicó, sin publicar por su cuenta.' },
+            { type: 'added', text: 'npm run test:distribution (92) y npm run test:distribution:queue (67), sin base ni red.' },
+        ],
+        details: [
+            'META RETIRÓ LA API DE GRUPOS EL 22 DE ABRIL DE 2024, de todas las versiones, junto con los permisos publish_to_groups y groups_access_member_info. No hay endpoint, no hay permiso que solicitar y no hay revisión de app que aprobar. Publicar en varios grupos automáticamente no es algo que falte implementar: es algo que Meta dejó de permitir. Las herramientas que todavía lo hacen actúan dentro del navegador del usuario simulando pulsaciones, y eso pone en riesgo la cuenta de quien publica y la reputación del Distrito.',
+            'POR ESO EL MODO ASISTIDO NO PUBLICA, Y LA PANTALLA LO DICE JUNTO AL BOTÓN. La plataforma deja el texto y el archivo listos, abre el grupo y registra quién publicó y cuándo. Si la pantalla dijera «distribuir a 25 grupos» y en realidad dejara 25 tareas para hacer a mano, se leería como una función rota.',
+            'CADA DESTINO ES UN TRABAJO INDEPENDIENTE, con su propia fila. Es lo que permite reintentar sólo el que falló sin volver a publicar en los que ya salieron, y lo que impide que dos vueltas del sistema se pisen. El intervalo no es una espera: cada destino nace con su hora calculada, así que la cadencia sobrevive a que se cierre la pestaña.',
+            'CUANDO META PIDE FRENAR, SE FRENA. Un límite alcanzado pausa la campaña y la retoma más tarde; un bloqueo por política la detiene y NO reintenta —insistir ahí es lo que Meta interpreta como abuso—; un permiso insuficiente marca ese destino y deja correr los demás. El mensaje de Meta se guarda textual, para que quien corrige sepa si el problema es el token, el permiso o la política.',
+            'UNA CAMPAÑA CON DESTINOS FALLIDOS NUNCA SE MARCA COMO EXITOSA: queda «Completada con fallos», con los destinos nombrados. Y el mismo contenido no puede salir dos veces al mismo destino, aunque se envíe el formulario dos veces o se reintente una petición cortada.',
+            'La franja horaria se respeta en la hora del sitio, no en la del servidor: «las 8 de la mañana» no significa lo mismo en Bogotá que en Madrid, y hay clubes en varios países.',
+        ]
+    },
     {
         version: '4.863.0',
         title: 'La barra del panel central muestra lo que la plataforma comisionó 💰',
