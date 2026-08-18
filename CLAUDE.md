@@ -6623,6 +6623,31 @@ Pruebas: `npm run test:payment-methods` (36 casos, **sin base ni red**).
   dinero yendo directo al club, la retención no se podría aplicar y el saldo de
   la Bóveda dejaría de ser real.
 
+- **⚠️ «SE ESTÁ OFRECIENDO» NO ES «EN TODOS LOS APORTES»** (v4.869,
+  `methodLimits`). Con las credenciales cargadas y el interruptor puesto, la
+  insignia se pintaba y el botón **no aparecía en la página**: `PAYPAL_CURRENCY`
+  acota PayPal a una sola moneda y el sitio cobra en otra. Se reportó como «ya
+  aparece sincronizado pero no aparece el botón». El estado era correcto; la
+  afirmación, incompleta — y un estado que afirma de más manda a diagnosticar
+  donde no está el problema, que es lo que este panel existe para evitar. Al
+  agregar un método cuya disponibilidad dependa de algo más que las
+  credenciales, declararlo en `methodLimits`.
+- **El límite se pinta SÓLO cuando el método de verdad se ofrece.** Con el
+  interruptor apagado, «sólo en USD» explica una restricción de algo que no
+  está pasando.
+- **Un límite ACOTA dónde se ofrece; NO lo apaga.** `offered` sigue en `true` y
+  lo fija una prueba: confundirlos dejaría PayPal desactivado por el solo hecho
+  de tener una moneda configurada.
+- **El modo de PRUEBAS se avisa.** Sandbox es el valor por defecto a propósito
+  —una variable mal escrita deja los cobros en pruebas y no en producción por
+  descuido—, pero entonces hay que decirlo: un aporte hecho en sandbox no es
+  dinero y eso no se ve mirando el panel.
+- **PayPal no procesa pesos colombianos**, y está dicho en el `help` del
+  catálogo porque es el hecho del proveedor que más cuesta descubrir. La
+  consecuencia es deliberada: en un aporte en COP el botón no aparece y queda
+  sólo el de tarjeta. **No se convierte el importe** — el visitante ya vio una
+  cifra concreta. Misma regla que el `fx` de las inscripciones a eventos.
+
 **⚠️ Deuda conocida:** `PaymentProviderConfig.secretRef` guarda el secreto en
 TEXTO PLANO (`secretRef: stripeSecretKey`) y `paymentController` lo usa directo
 (`new Stripe(config.secretRef)`). Hoy no lo llena ninguna pantalla —el endpoint

@@ -50,7 +50,7 @@ export const PAYMENT_METHODS = [
         id: 'paypal',
         label: 'PayPal',
         provider: 'paypal',
-        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma.',
+        help: 'El donante paga con su cuenta de PayPal. El dinero entra a la cuenta de la plataforma. PayPal no procesa pesos colombianos (COP).',
         env: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
         optionalEnv: ['PAYPAL_WEBHOOK_ID', 'PAYPAL_CURRENCY'],
         // Apagado hasta que alguien lo encienda a propósito, aunque las
@@ -84,6 +84,48 @@ export const methodStatus = (metodo, env = {}) => {
 };
 
 /**
+ * Lo que ACOTA dónde se ofrece un método, leyendo el entorno.
+ *
+ * ⚠️ `offered: true` NO significa «en todos los aportes», y eso fue justo lo
+ * que costó una vuelta: con las credenciales cargadas y el interruptor puesto,
+ * el panel decía «Se está ofreciendo» y el botón no aparecía en la página —
+ * porque `PAYPAL_CURRENCY` lo acota a una sola moneda y el sitio cobra en otra.
+ * Se reportó como «ya aparece sincronizado pero no aparece el botón».
+ *
+ * Un estado que afirma de más manda a diagnosticar donde no está el problema,
+ * que es exactamente lo que este panel existe para evitar. Sale del ENTORNO,
+ * como el resto del estado, y por eso es una función pura que lo recibe.
+ */
+export const methodLimits = (metodo, env = {}) => {
+    const out = [];
+    if (!metodo) return out;
+
+    if (metodo.id === 'paypal') {
+        // La moneda que la cuenta puede recibir. VACÍA = la que venga.
+        const moneda = String(env.PAYPAL_CURRENCY || '').trim().toUpperCase();
+        if (moneda) {
+            out.push({
+                kind: 'currency',
+                value: moneda,
+                text: `Sólo se ofrece en aportes en ${moneda}. En cualquier otra moneda el botón no aparece, porque los importes NO se convierten: el visitante ya vio una cifra concreta.`,
+            });
+        }
+
+        // ⚠️ SANDBOX es el valor por defecto a propósito —una variable mal
+        // escrita deja los cobros en pruebas, no en producción por descuido—,
+        // así que hay que decirlo: un aporte hecho en sandbox no es dinero.
+        if (String(env.PAYPAL_ENV || '').trim().toLowerCase() !== 'live') {
+            out.push({
+                kind: 'sandbox',
+                text: 'Está en modo de PRUEBAS (sandbox): los pagos no son reales y no llega dinero. Para cobrar de verdad hacen falta las credenciales Live y PAYPAL_ENV=live.',
+            });
+        }
+    }
+
+    return out;
+};
+
+/**
  * Qué métodos hay, con su estado y si están activados.
  *
  * `config` es lo guardado: `{ [id]: { enabled: boolean } }`. Lo que no esté
@@ -109,6 +151,9 @@ export const resolveMethods = (config, env = {}) => PAYMENT_METHODS.map(m => {
         // El motivo por el que NO se ofrece. Un método que no aparece sin
         // explicación es indistinguible de uno roto.
         reason: !estado.configured ? 'sin_credenciales' : (!enabled ? 'desactivado' : null),
+        // Y lo que lo acota cuando SÍ se ofrece: «se está ofreciendo» no es
+        // «en todos los aportes».
+        limits: methodLimits(m, env),
     };
 });
 
@@ -192,6 +237,6 @@ export const parseMethods = (raw) => {
 
 export default {
     PAYMENT_METHODS, METHOD_IDS, PAYMENT_METHODS_KEY, MOTIVOS,
-    methodById, methodStatus, resolveMethods, isMethodOffered,
+    methodById, methodStatus, methodLimits, resolveMethods, isMethodOffered,
     validateMethods, defaultConfig, mergeMethods, parseMethods,
 };

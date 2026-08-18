@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // LOS MÉTODOS DE PAGO.  npm run test:payment-methods
-// v4.868.0
+// v4.869.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED.
 //
@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import {
     PAYMENT_METHODS, METHOD_IDS, PAYMENT_METHODS_KEY, MOTIVOS,
-    methodStatus, resolveMethods, isMethodOffered,
+    methodStatus, methodLimits, resolveMethods, isMethodOffered,
     validateMethods, defaultConfig, mergeMethods, parseMethods, methodById,
 } from '../server/lib/paymentMethods.js';
 
@@ -105,6 +105,50 @@ ok('mergeMethods no muta el catálogo', methodById('card').defaultEnabled === tr
 eq('isMethodOffered contesta lo mismo', isMethodOffered('paypal', { paypal: { enabled: true } }, CON_TODO), true);
 eq('y con un método inexistente, false', isMethodOffered('cripto', {}, CON_TODO), false);
 
+// ── 5b. «Se está ofreciendo» no es «en todos los aportes» ───────────
+section('5b. Lo que ACOTA dónde se ofrece un método (v4.869)');
+
+const elPaypal = methodById('paypal');
+const ACTIVO = { paypal: { enabled: true } };
+
+// ⚠️ EL DEFECTO REPORTADO. Credenciales cargadas, interruptor puesto, el panel
+// decía «Se está ofreciendo» — y el botón no aparecía en rotary4281.org,
+// porque el sitio cobra en COP y la cuenta está acotada a USD. El estado era
+// correcto y la afirmación, incompleta.
+const acotado = methodLimits(elPaypal, { ...CON_TODO, PAYPAL_CURRENCY: 'USD', PAYPAL_ENV: 'live' });
+ok('con PAYPAL_CURRENCY hay un límite de moneda', acotado.some(l => l.kind === 'currency'));
+ok('y nombra la moneda concreta', /USD/.test(acotado.find(l => l.kind === 'currency')?.text || ''));
+ok('y dice que NO se convierte',
+    /no se convierten/i.test(acotado.find(l => l.kind === 'currency')?.text || ''),
+    'sin eso, alguien esperaría que PayPal cobrara el equivalente');
+
+// Vacía es «la que venga»: no hay nada que acotar y no se inventa un límite.
+eq('sin PAYPAL_CURRENCY no hay límite de moneda',
+    methodLimits(elPaypal, { ...CON_TODO, PAYPAL_ENV: 'live' }).filter(l => l.kind === 'currency').length, 0);
+
+// ⚠️ Sandbox es el valor por defecto A PROPÓSITO, así que hay que decirlo: un
+// aporte hecho en sandbox no es dinero, y eso no se descubre mirando el panel.
+ok('sin PAYPAL_ENV=live se avisa que está en pruebas',
+    methodLimits(elPaypal, CON_TODO).some(l => l.kind === 'sandbox'));
+ok('y una variable mal escrita cuenta como pruebas',
+    methodLimits(elPaypal, { ...CON_TODO, PAYPAL_ENV: 'produccion' }).some(l => l.kind === 'sandbox'));
+eq('con PAYPAL_ENV=live no se avisa nada de pruebas',
+    methodLimits(elPaypal, { ...CON_TODO, PAYPAL_ENV: 'live' }).filter(l => l.kind === 'sandbox').length, 0);
+
+// La tarjeta no tiene límites declarados: no se inventan.
+eq('la tarjeta no declara límites', methodLimits(methodById('card'), CON_TODO).length, 0);
+eq('un método inexistente no revienta', methodLimits(null, CON_TODO).length, 0);
+
+// Los límites viajan CON el método: sin eso el panel no los puede pintar.
+const resuelto = resolveMethods(ACTIVO, { ...CON_TODO, PAYPAL_CURRENCY: 'USD' });
+const filaPaypal = resuelto.find(m => m.id === 'paypal');
+ok('los límites viajan en resolveMethods', Array.isArray(filaPaypal.limits) && filaPaypal.limits.length === 2);
+ok('y el método SIGUE ofreciéndose', filaPaypal.offered === true,
+    'un límite acota dónde se ofrece; no lo apaga');
+
+// El hecho del proveedor que más cuesta descubrir, dicho donde se configura.
+ok('el catálogo dice que PayPal no procesa COP', /COP/.test(elPaypal.help));
+
 // ── 6. Sobre los archivos ───────────────────────────────────────────
 section('6. Lo que no se ve mirando una pantalla');
 
@@ -130,6 +174,12 @@ ok('el panel NO muestra ni pide el secreto',
     !/secretRef|CLIENT_SECRET.*value=|type="password"/.test(panel));
 ok('y dice DÓNDE se cargan las credenciales',
     /entorno, no acá/i.test(panel));
+
+// ⚠️ Los límites tienen que PINTARSE, o volvemos al estado que afirma de más.
+ok('el panel pinta los límites del método', /m\.limits/.test(panel));
+ok('y sólo cuando el método de verdad se ofrece',
+    /m\.offered && \(m\.limits/.test(panel),
+    'con el interruptor apagado, «sólo en USD» explica una restricción de algo que no está pasando');
 
 // El motivo por el que un método no se ofrece está redactado.
 ok('los dos motivos están escritos',
