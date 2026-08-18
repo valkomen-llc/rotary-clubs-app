@@ -10,8 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { decryptToken } from '../lib/tokenCrypto.js';
 import { listPagePosts } from '../services/socialPublishService.js';
 import {
-    TARGET_TYPES, CONTENT_KINDS, JOB_STATES, CAMPAIGN_STATES,
-    INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, MANUAL_NOTICE, DEFAULT_LIMITS,
+    TARGET_TYPES, MANUAL_NOTICE,
     buildSchedule, groupScheduleByDay, validateCampaign, normalizeInterval,
 } from '../lib/distributionSpec.js';
 import {
@@ -30,24 +29,6 @@ const scopeOf = (req) => {
 };
 
 const fail = (res, code, msg) => res.status(code).json({ error: msg });
-
-// ── Catálogos ───────────────────────────────────────────────────────────────
-//
-// La pantalla no lleva su propia copia de los estados ni de los intervalos: los
-// pide. Con dos catálogos, uno se queda atrás y el panel ofrece un intervalo
-// que el servidor rechaza.
-export const getCatalog = async (_req, res) => {
-    res.json({
-        targetTypes: TARGET_TYPES,
-        contentKinds: CONTENT_KINDS,
-        jobStates: JOB_STATES,
-        campaignStates: CAMPAIGN_STATES,
-        intervalPresets: INTERVAL_PRESETS,
-        minIntervalMinutes: MIN_INTERVAL_MINUTES,
-        defaultLimits: DEFAULT_LIMITS,
-        manualNotice: MANUAL_NOTICE,
-    });
-};
 
 // ── Destinos disponibles ────────────────────────────────────────────────────
 
@@ -311,7 +292,7 @@ export const postManualDone = async (req, res) => {
 };
 
 export default {
-    getCatalog, listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
+    listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
     postCampaign, getCampaigns, getOneCampaign, postPause, postResume, postCancel,
     postAdvance, postRetryJob, postManualDone,
 };

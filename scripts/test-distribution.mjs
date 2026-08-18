@@ -248,6 +248,13 @@ chk('el espejo conoce todos los estados de destino', Object.keys(JOB_STATES).eve
 chk('el espejo conoce todos los estados de campaña', Object.keys(CAMPAIGN_STATES).every(s => espejo.includes(`${s}:`)));
 chk('el espejo declara que un grupo no publica solo', /group_manual[^\n]*viaApi: false/.test(espejo));
 
+// El aviso está escrito en los DOS lados: el servidor lo manda en las
+// respuestas y la pantalla lo pinta al instante, sin esperar una petición
+// —es un aviso de seguridad, no puede llegar tarde—. Que digan LO MISMO no
+// puede quedar librado a que alguien se acuerde.
+const avisoEspejo = /MANUAL_NOTICE\s*=\s*\n?\s*'([^']+)'/.exec(espejo)?.[1];
+eq('el aviso del modo asistido es idéntico en las dos puntas', avisoEspejo, MANUAL_NOTICE);
+
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);
 process.exit(malos.length ? 1 : 0);

@@ -12,15 +12,14 @@
 import express from 'express';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import {
-    getCatalog, listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
+    listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
     postCampaign, getCampaigns, getOneCampaign, postPause, postResume, postCancel,
     postAdvance, postRetryJob, postManualDone,
 } from '../controllers/distributionController.js';
 
 const router = express.Router();
 
-// ── Catálogos y destinos ─────────────────────────────────────────────────────
-router.get('/catalog', authMiddleware, getCatalog);
+// ── Destinos ─────────────────────────────────────────────────────
 router.get('/targets', authMiddleware, listTargets);
 router.get('/groups', authMiddleware, getGroups);
 router.get('/page-posts', authMiddleware, getPagePosts);
