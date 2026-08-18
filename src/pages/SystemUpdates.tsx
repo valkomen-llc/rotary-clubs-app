@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.864.0 | 2026-08-18 (Distribución multi-destino)
-// Cache bust: 2026-08-18a
+// UI V4.865.0 | 2026-08-18 (Vista previa de la publicación y grupos pegados)
+// Cache bust: 2026-08-18b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.865.0',
+        title: 'Ves la publicación antes de distribuirla, y los grupos se pegan todos juntos 👀',
+        description: 'Al elegir una publicación para compartir ya no se decide sobre dos líneas recortadas: aparece la vista previa con la imagen, el texto completo, la fecha y el enlace para abrirla en Facebook. Y los grupos se declaran pegándolos todos de una vez, uno por línea, en vez de cargarlos de a uno.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'redes', 'distribucion'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Vista previa de la publicación elegida: imagen, texto entero, fecha y enlace a la original.' },
+            { type: 'added', text: 'Miniatura en cada publicación de la lista, para reconocerla de un vistazo.' },
+            { type: 'changed', text: 'Los grupos se pegan todos de una vez: «Nombre | enlace» o el enlace solo, uno por línea.' },
+            { type: 'added', text: 'Enlace directo a «Mis grupos» de Facebook, que es donde están para copiarlos.' },
+            { type: 'added', text: 'npm run test:distribution:ui — 16 comprobaciones en un navegador real.' },
+        ],
+        details: [
+            'META NO DICE EN QUÉ GRUPOS ESTÁ UNA PÁGINA, y por eso la lista se declara en vez de aparecer sola. La API de Grupos se retiró entera el 22 de abril de 2024 —también la parte de LECTURA— y la referencia de Página ya no declara ninguna conexión con grupos: no hay nada que consultar. Lo que sí se puede es que declararlos cueste UN gesto en vez de veinticinco, y eso es lo que cambia acá.',
+            'Lo que se pega se interpreta: vale el enlace solo, «Nombre | enlace» o sólo un nombre. Al que va sin nombre se le da uno legible. Lo repetido entra una sola vez y lo que no se pudo interpretar SE DICE — con veinte líneas pegadas, un descarte en silencio deja sin saber cuáles entraron.',
+            'El enlace de una publicación pegado por error donde va un grupo se rechaza con su motivo, en vez de guardarse como si fuera un destino.',
+            'LA VISTA PREVIA NO ES DECORATIVA: el enlace de la publicación elegida queda cargado para distribuir, y cambiar de publicación cambia las dos cosas a la vez. Se comprueba en un navegador de verdad, porque es lo que se pidió mirando la pantalla.',
+            'La vista previa dice además qué le va a llegar a cada destino: el texto que se escriba abajo más el enlace a la publicación original — que sigue siendo la que acumula las reacciones.',
+        ]
+    },
     {
         version: '4.864.0',
         title: 'Distribución multi-destino: una pieza, muchos destinos, con cadencia 📣',

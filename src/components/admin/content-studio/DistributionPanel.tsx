@@ -24,6 +24,7 @@ import toast from 'react-hot-toast';
 import {
     statusUI, campaignUI, TONE_CLASS, CONTENT_KIND_UI, TARGET_TYPE_UI,
     INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, MANUAL_NOTICE,
+    parseGroupLines, MIS_GRUPOS_URL,
     type ContentKind,
 } from '../../../lib/distributionSpec';
 
@@ -97,13 +98,14 @@ const DistributionPanel: React.FC = () => {
     const [shareAccountId, setShareAccountId] = useState('');
     const [pagePosts, setPagePosts] = useState<Array<{ id: string; message: string; permalink: string | null; createdTime: string | null; picture: string | null }>>([]);
     const [cargandoPosts, setCargandoPosts] = useState(false);
+    const [postElegido, setPostElegido] = useState<string | null>(null);
 
     // Destinos
     const [accounts, setAccounts] = useState<Target[]>([]);
     const [groups, setGroups] = useState<Target[]>([]);
     const [elegidos, setElegidos] = useState<string[]>([]);
     const [busqueda, setBusqueda] = useState('');
-    const [nuevoGrupo, setNuevoGrupo] = useState({ name: '', url: '' });
+    const [pegado, setPegado] = useState('');
 
     // Programación
     const [arranque, setArranque] = useState<'ahora' | 'fecha'>('ahora');
@@ -131,6 +133,7 @@ const DistributionPanel: React.FC = () => {
         [kind, message, link, mediaUrl]
     );
 
+    const postSeleccionado = useMemo(() => pagePosts.find(p => p.id === postElegido) || null, [pagePosts, postElegido]);
     const todos = useMemo(() => [...accounts, ...groups], [accounts, groups]);
     const seleccionados = useMemo(() => todos.filter(t => elegidos.includes(t.key)), [todos, elegidos]);
     const visibles = useMemo(() => {
@@ -224,17 +227,41 @@ const DistributionPanel: React.FC = () => {
         }
     }, []);
 
-    const agregarGrupo = useCallback(() => {
-        const name = nuevoGrupo.name.trim();
-        if (!name) { toast.error('El grupo necesita un nombre para poder elegirlo en la lista.'); return; }
-        const nuevo: Target = {
-            key: `group:${nuevoGrupo.url || name}`, targetType: 'group_manual',
-            targetId: (nuevoGrupo.url || name).trim(), targetName: name,
-            targetUrl: /^https:\/\//i.test(nuevoGrupo.url) ? nuevoGrupo.url.trim() : null, tag: null,
-        };
-        guardarGrupos([...groups, nuevo]);
-        setNuevoGrupo({ name: '', url: '' });
-    }, [nuevoGrupo, groups, guardarGrupos]);
+    /**
+     * Pegar todos los grupos de una vez.
+     *
+     * Meta no dice en qué grupos está una Página —la Groups API se retiró
+     * entera, también la parte de lectura—, así que la lista no se puede
+     * descubrir. Lo que sí se puede es que declararla cueste UN gesto en vez
+     * de veinticinco.
+     */
+    const agregarPegados = useCallback(() => {
+        const { groups: nuevos, skipped } = parseGroupLines(pegado);
+        if (!nuevos.length) {
+            toast.error(skipped.length ? 'Ninguna línea se pudo interpretar.' : 'Pegá al menos un grupo.');
+            return;
+        }
+        const yaEstan = new Set(groups.map(g => g.targetId));
+        const entran = nuevos
+            .filter(n => !yaEstan.has(n.url || n.name))
+            .map<Target>(n => ({
+                key: `group:${n.url || n.name}`, targetType: 'group_manual',
+                targetId: n.url || n.name, targetName: n.name,
+                targetUrl: n.url, tag: null,
+            }));
+        const repetidos = nuevos.length - entran.length;
+        if (!entran.length) { toast('Esos grupos ya estaban en la lista.'); setPegado(''); return; }
+        guardarGrupos([...groups, ...entran]);
+        setPegado('');
+        // Lo descartado se DICE: con veinte líneas pegadas, un descarte
+        // silencioso deja sin saber cuáles entraron.
+        const notas = [
+            `${entran.length} ${entran.length === 1 ? 'grupo agregado' : 'grupos agregados'}`,
+            repetidos ? `${repetidos} ya estaban` : null,
+            skipped.length ? `${skipped.length} sin interpretar` : null,
+        ].filter(Boolean).join(' · ');
+        toast.success(notas);
+    }, [pegado, groups, guardarGrupos]);
 
     /**
      * El cuerpo de la petición, en UN solo sitio.
@@ -371,14 +398,53 @@ const DistributionPanel: React.FC = () => {
                                     {pagePosts.map(p => (
                                         <button
                                             key={p.id}
-                                            onClick={() => { setLink(p.permalink || ''); setKind('link'); }}
-                                            className={`w-full text-left p-3 rounded-lg border text-xs transition-colors ${link && link === p.permalink ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                                            onClick={() => { setPostElegido(p.id); setLink(p.permalink || ''); setKind('link'); }}
+                                            className={`w-full text-left p-3 rounded-lg border text-xs transition-colors flex gap-3 items-start ${postElegido === p.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                                         >
-                                            <span className="line-clamp-2 text-gray-700">{p.message || '(sin texto)'}</span>
-                                            {p.createdTime && <span className="block mt-1 text-[10px] text-gray-400">{new Date(p.createdTime).toLocaleString('es-CO')}</span>}
+                                            {p.picture
+                                                ? <img src={p.picture} alt="" loading="lazy"
+                                                       onError={e => { e.currentTarget.style.display = 'none'; }}
+                                                       className="w-12 h-12 rounded object-cover flex-none bg-gray-100" />
+                                                : <span className="w-12 h-12 rounded bg-gray-100 flex-none" aria-hidden="true" />}
+                                            <span className="min-w-0">
+                                                <span className="line-clamp-2 text-gray-700 block">{p.message || '(sin texto)'}</span>
+                                                {p.createdTime && <span className="block mt-1 text-[10px] text-gray-400">{new Date(p.createdTime).toLocaleString('es-CO')}</span>}
+                                            </span>
                                         </button>
                                     ))}
                                 </div>
+
+                                {/* La vista previa de lo que se eligió. Sin esto hay que
+                                    decidir sobre dos líneas recortadas — y lo que se
+                                    distribuye a veinte destinos conviene verlo entero. */}
+                                {postSeleccionado && (
+                                    <div className="rounded-xl border border-indigo-200 bg-white overflow-hidden">
+                                        <p className="px-4 pt-3 text-[10px] font-mono uppercase tracking-wider text-indigo-500">Vista previa de la publicación</p>
+                                        {postSeleccionado.picture && (
+                                            // La URL de `full_picture` va FIRMADA y caduca. Si no
+                                            // carga se esconde el nodo: una franja vacía de 288 px
+                                            // se lee como que la publicación no tiene nada.
+                                            <img src={postSeleccionado.picture} alt="" loading="lazy"
+                                                 onError={e => { e.currentTarget.style.display = 'none'; }}
+                                                 className="w-full max-h-72 object-contain bg-gray-50 mt-2" />
+                                        )}
+                                        <div className="p-4 space-y-2">
+                                            <p className="text-sm text-gray-800 whitespace-pre-line">{postSeleccionado.message || '(esta publicación no tiene texto)'}</p>
+                                            <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                                                {postSeleccionado.createdTime && <span>{new Date(postSeleccionado.createdTime).toLocaleString('es-CO')}</span>}
+                                                {postSeleccionado.permalink && (
+                                                    <a href={postSeleccionado.permalink} target="_blank" rel="noopener noreferrer"
+                                                       className="text-indigo-600 font-bold flex items-center gap-1">
+                                                        Ver en Facebook <ExternalLink className="w-3 h-3" />
+                                                    </a>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-gray-500 pt-2 border-t border-gray-100">
+                                                A cada destino le va a llegar el texto que escribas abajo más el enlace a esta publicación. Esta de acá sigue siendo la que acumula reacciones.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -439,20 +505,25 @@ const DistributionPanel: React.FC = () => {
                             {!visibles.length && <p className="text-sm text-gray-400 col-span-2 py-6 text-center">No hay destinos que coincidan.</p>}
                         </div>
 
-                        <details className="bg-gray-50 rounded-xl p-4">
-                            <summary className="cursor-pointer text-sm font-bold text-gray-700">Declarar un grupo de Facebook</summary>
-                            <p className="text-xs text-gray-500 mt-2 mb-3">
-                                Meta ya no permite consultar qué grupos administra alguien, así que la lista se escribe a mano. El enlace sirve para abrir el grupo al momento de publicar.
+                        <details className="bg-gray-50 rounded-xl p-4" open={!groups.length}>
+                            <summary className="cursor-pointer text-sm font-bold text-gray-700">Declarar los grupos de Facebook</summary>
+                            {/* Se explica el porqué, no sólo el cómo: sin el motivo, que
+                                la lista se escriba a mano se lee como una función a medias. */}
+                            <p className="text-xs text-gray-500 mt-2">
+                                <strong>Meta no dice en qué grupos está una Página.</strong> Retiró la API de Grupos el 22 de abril de 2024 —también la parte de lectura—, así que no hay forma de consultarlos y la lista se declara una vez.
                             </p>
-                            <div className="flex flex-col sm:flex-row gap-2">
-                                <input value={nuevoGrupo.name} onChange={e => setNuevoGrupo(g => ({ ...g, name: e.target.value }))}
-                                    placeholder="Nombre del grupo" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2" />
-                                <input value={nuevoGrupo.url} onChange={e => setNuevoGrupo(g => ({ ...g, url: e.target.value }))}
-                                    placeholder="https://facebook.com/groups/…" className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2" />
-                                <button onClick={agregarGrupo} className="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-bold flex items-center gap-1.5">
-                                    <Plus className="w-4 h-4" /> Agregar
-                                </button>
-                            </div>
+                            <p className="text-xs text-gray-500 mt-1 mb-3">
+                                Pegalos todos de una vez, uno por línea. Vale el enlace solo, o <code className="bg-white px-1 rounded">Nombre | enlace</code>.{' '}
+                                <a href={MIS_GRUPOS_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold">Ver mis grupos en Facebook</a> para copiarlos.
+                            </p>
+                            <textarea
+                                value={pegado} onChange={e => setPegado(e.target.value)} rows={4}
+                                placeholder={'Rotary Colombia | https://facebook.com/groups/123456\nhttps://facebook.com/groups/rotary-4281\nClubes Rotarios | https://facebook.com/groups/987654'}
+                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs"
+                            />
+                            <button onClick={agregarPegados} className="mt-2 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-bold flex items-center gap-1.5">
+                                <Plus className="w-4 h-4" /> Agregar los grupos pegados
+                            </button>
                             {groups.length > 0 && (
                                 <ul className="mt-3 space-y-1">
                                     {groups.map(g => (

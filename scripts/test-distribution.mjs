@@ -255,6 +255,65 @@ chk('el espejo declara que un grupo no publica solo', /group_manual[^\n]*viaApi:
 const avisoEspejo = /MANUAL_NOTICE\s*=\s*\n?\s*'([^']+)'/.exec(espejo)?.[1];
 eq('el aviso del modo asistido es idéntico en las dos puntas', avisoEspejo, MANUAL_NOTICE);
 
+// ── 11. Pegar los grupos de una vez ─────────────────────────────────
+grupo('11. Los grupos se pegan todos juntos, porque Meta no los dice');
+
+// ⚠️ La Groups API se retiró ENTERA —también la parte de lectura— y la
+// referencia de Page ya no declara ninguna arista `groups`. No hay endpoint
+// que consultar: en qué grupos está una Página no se puede descubrir. Lo
+// único que se puede hacer es que declararlo cueste un gesto, no veinticinco.
+let paridad = true;
+try {
+    const { build } = await import('esbuild');
+    const r = await build({
+        entryPoints: ['src/lib/distributionSpec.ts'], bundle: true, write: false,
+        format: 'esm', platform: 'neutral', target: 'es2022', logLevel: 'silent',
+    });
+    const esp = await import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString('base64')}`);
+    const P = esp.parseGroupLines;
+
+    const uno = P('https://facebook.com/groups/123456');
+    eq('un enlace suelto entra', uno.groups.length, 1);
+    eq('y se le da un nombre legible', uno.groups[0].name, 'Grupo 123456');
+
+    const conNombre = P('Rotary Colombia | https://facebook.com/groups/123456');
+    eq('«Nombre | enlace» conserva el nombre', conNombre.groups[0].name, 'Rotary Colombia');
+    eq('y el enlace', conNombre.groups[0].url, 'https://facebook.com/groups/123456');
+
+    eq('la raya larga también separa', P('Distrito 4281 — https://facebook.com/groups/9').groups[0].name, 'Distrito 4281');
+    eq('un slug con guiones se lee como nombre', P('https://facebook.com/groups/rotary-colombia').groups[0].name, 'Rotary colombia');
+    eq('www y m. valen igual', P('https://m.facebook.com/groups/77').groups.length, 1);
+
+    const varias = P(`
+Rotary Colombia | https://facebook.com/groups/1
+https://facebook.com/groups/2
+
+Clubes Rotarios | https://facebook.com/groups/3
+`);
+    eq('varias líneas de una vez, y las vacías se saltan', varias.groups.length, 3);
+
+    // Un descarte silencioso deja a quien pegó veinte líneas sin saber cuáles
+    // entraron — es la regla del sitio con `skipped` en los centros de acopio.
+    const repes = P('https://facebook.com/groups/1\nhttps://facebook.com/groups/1');
+    eq('un grupo repetido entra UNA vez', repes.groups.length, 1);
+    eq('y el repetido se REPORTA', repes.skipped.length, 1);
+
+    const mala = P('https://facebook.com/rotary4281/posts/123');
+    eq('el enlace de una publicación no es un grupo', mala.groups.length, 0);
+    chk('y se dice por qué', /no es el enlace de un grupo/.test(mala.skipped[0]?.reason || ''));
+
+    eq('un nombre suelto vale, aunque no se pueda abrir', P('Grupo sin enlace').groups.length, 1);
+    eq('y queda sin enlace, no con uno inventado', P('Grupo sin enlace').groups[0].url, null);
+    eq('texto vacío no rompe', P('').groups.length, 0);
+    eq('null no rompe', P(null).groups.length, 0);
+
+    chk('el espejo publica a dónde va la persona a ver sus grupos', /facebook\.com\/groups\/feed/.test(esp.MIS_GRUPOS_URL));
+} catch (e) {
+    paridad = false;
+    console.log(`  · bloque del espejo omitido (${e.message.slice(0, 60)})`);
+}
+
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
+if (!paridad) console.log('  (el bloque del espejo no corrió: instalá esbuild con `npm i --no-save esbuild`)');
 for (const m of malos) console.log(`  ✗ ${m}`);
 process.exit(malos.length ? 1 : 0);
