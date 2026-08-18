@@ -228,10 +228,18 @@ const DonationModal: React.FC<DonationModalProps> = ({
     };
 
     const isPreset = presets.amounts.includes(Number(amount));
+    const mostrarNombre = showAnonymous && !isAnonymous;
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative my-8">
+            {/* ⚠️ `max-h` + desplazamiento PROPIO. Con el panel más alto que la
+                ventana, un flex centrado RECORTA POR ARRIBA —el navegador no
+                deja desplazarse hacia el margen negativo— y se pierden la cruz
+                de cerrar y la cabecera. Es lo que se reportó al aparecer el
+                segundo botón. Acotado a la ventana, el panel nunca se recorta;
+                en una pantalla normal entra entero y no aparece ninguna barra,
+                que es lo que se pidió. */}
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <button
                     onClick={() => !submitting && onClose()}
                     disabled={!!submitting}
@@ -241,16 +249,20 @@ const DonationModal: React.FC<DonationModalProps> = ({
                     <X className="w-6 h-6" />
                 </button>
 
-                <div className="p-8">
-                    <div className="text-center mb-6">
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${accent}1A` }}>
-                            <Heart className="w-8 h-8" style={{ color: accent }} />
+                {/* Compactado en v4.872: con las dos vías de pago el formulario
+                    no entraba en una pantalla de portátil. Se aprieta el
+                    respiro, no el contenido — no se quitó ningún campo ni
+                    ningún dato de la conversión. */}
+                <div className="px-6 py-5 sm:px-8">
+                    <div className="text-center mb-4">
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2" style={{ backgroundColor: `${accent}1A` }}>
+                            <Heart className="w-5 h-5" style={{ color: accent }} />
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900">{title || 'Haz tu Donación'}</h2>
-                        <p className="text-gray-500 mt-2">{subtitle || `Apoya nuestras causas en el club ${clubName}`}</p>
+                        <h2 className="text-xl font-bold text-gray-900">{title || 'Haz tu Donación'}</h2>
+                        <p className="text-[13px] leading-snug text-gray-500 mt-1.5">{subtitle || `Apoya nuestras causas en el club ${clubName}`}</p>
                     </div>
 
-                    <div className="space-y-5">
+                    <div className="space-y-3.5">
                         {/* Por qué se cobra en dólares. Sin esta línea, un
                             rotario colombiano de viaje —o cualquiera con el
                             sitio en inglés— ve «USD» donde esperaba pesos y no
@@ -267,13 +279,13 @@ const DonationModal: React.FC<DonationModalProps> = ({
                             </p>
                         )}
                         <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto ({cur})</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Selecciona el monto ({cur})</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                                 {presets.amounts.map((amt) => (
                                     <button
                                         key={amt}
                                         onClick={() => setAmount(String(amt))}
-                                        className="py-3 px-1 rounded-lg font-bold transition-all border-2 text-sm"
+                                        className="py-2.5 px-1 rounded-lg font-bold transition-all border-2 text-sm"
                                         style={Number(amount) === amt
                                             ? { borderColor: accent, backgroundColor: `${accent}0D`, color: accent }
                                             : { borderColor: '#E5E7EB', color: '#4B5563' }}
@@ -291,40 +303,48 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                     placeholder="Otro monto"
                                     value={isPreset ? '' : amount}
                                     onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-lg outline-none transition-all font-semibold focus:border-gray-400"
+                                    className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-200 rounded-lg outline-none transition-all font-semibold focus:border-gray-400"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-3 pt-1">
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tu email (para el recibo)</label>
-                                <input
-                                    type="email"
-                                    placeholder="tu@correo.com"
-                                    value={donorEmail}
-                                    onChange={(e) => setDonorEmail(e.target.value)}
-                                    required
-                                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg outline-none transition-all text-sm focus:border-gray-400"
-                                />
-                            </div>
-
-                            {showAnonymous && !isAnonymous && (
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Nombre (opcional)</label>
+                        <div className="space-y-2.5">
+                            {/* Dos campos cortos apilados cuestan una fila
+                                entera —~62 px medidos—, y era la que dejaba el
+                                pie fuera de la pantalla. Van a la par cuando
+                                los dos se muestran; con el nombre oculto, el
+                                correo ocupa el ancho completo en vez de dejar
+                                media fila vacía. */}
+                            <div className="grid gap-2.5 sm:grid-cols-2">
+                                <div className={mostrarNombre ? '' : 'sm:col-span-2'}>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Tu email (para el recibo)</label>
                                     <input
-                                        type="text"
-                                        placeholder="Tu nombre"
-                                        value={donorName}
-                                        onChange={(e) => setDonorName(e.target.value)}
+                                        type="email"
+                                        placeholder="tu@correo.com"
+                                        value={donorEmail}
+                                        onChange={(e) => setDonorEmail(e.target.value)}
+                                        required
                                         className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg outline-none transition-all text-sm focus:border-gray-400"
                                     />
                                 </div>
-                            )}
+
+                                {mostrarNombre && (
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Nombre (opcional)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Tu nombre"
+                                            value={donorName}
+                                            onChange={(e) => setDonorName(e.target.value)}
+                                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg outline-none transition-all text-sm focus:border-gray-400"
+                                        />
+                                    </div>
+                                )}
+                            </div>
 
                             {showMessage && (
                             <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Mensaje (opcional)</label>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Mensaje (opcional)</label>
                                 <textarea
                                     placeholder="¿Quieres dejar un mensaje?"
                                     value={donorMessage}
@@ -361,7 +381,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                         <button
                             onClick={() => handleDonate('card')}
                             disabled={!!submitting}
-                            className="w-full disabled:bg-gray-400 disabled:cursor-wait text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2 hover:brightness-90"
+                            className="w-full disabled:bg-gray-400 disabled:cursor-wait text-white font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 hover:brightness-90"
                             style={{ backgroundColor: submitting ? undefined : accent }}
                         >
                             {submitting === 'card' ? (
@@ -380,27 +400,32 @@ const DonationModal: React.FC<DonationModalProps> = ({
                         {/* La vía de PAYPAL. Sólo si el servidor dijo que se puede:
                             sin credenciales, o sin una tasa configurada cuando
                             la cuenta cobra en otra moneda, no se pinta. */}
+                        {/* Los MISMOS cuatro datos que antes —moneda de cobro,
+                            importe convertido, importe original y tasa— en dos
+                            líneas en vez de cuatro. Se acorta la redacción, no
+                            lo que se dice: quitar la tasa o el importe original
+                            dejaría la conversión sin poder comprobarse. */}
                         {paypal?.available && conversionPaypal && (
-                            <p className="text-[11px] leading-relaxed text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-                                PayPal cobra en <b data-no-translate>{conversionPaypal.currency}</b>: se te cobrarán{' '}
+                            <p className="text-[11px] leading-snug text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                                PayPal cobra en <b data-no-translate>{conversionPaypal.currency}</b>:{' '}
                                 <b data-no-translate>
                                     {formatConverted(conversionPaypal.amount!, conversionPaypal.currency!)}
-                                </b>
-                                , equivalentes a tu aporte de{' '}
+                                </b>{' '}
+                                por tus{' '}
                                 <span data-no-translate>
                                     {formatConverted(conversionPaypal.originalAmount!, conversionPaypal.originalCurrency!)}
                                 </span>{' '}
                                 (<span data-no-translate>
-                                    {conversionPaypal.perUnit!.toLocaleString('es-CO')} {conversionPaypal.originalCurrency} por {conversionPaypal.currency}
+                                    {conversionPaypal.perUnit!.toLocaleString('es-CO')} por {conversionPaypal.currency}
                                 </span>). Con tarjeta se cobra en{' '}
-                                <span data-no-translate>{cur}</span>, sin conversión.
+                                <span data-no-translate>{cur}</span>.
                             </p>
                         )}
                         {paypal?.available && (
                             <button
                                 onClick={() => handleDonate('paypal')}
                                 disabled={!!submitting}
-                                className="w-full disabled:opacity-60 disabled:cursor-wait bg-[#FFC439] hover:bg-[#F0B72C] text-[#003087] font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                                className="w-full disabled:opacity-60 disabled:cursor-wait bg-[#FFC439] hover:bg-[#F0B72C] text-[#003087] font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
                             >
                                 {submitting === 'paypal' ? (
                                     <>
