@@ -34,9 +34,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.865.0 | 2026-08-18 (Vista previa de la publicación y grupos pegados)
-// Cache bust: 2026-08-18b
+// UI V4.866.0 | 2026-08-17 (Aportes por PayPal)
+// Cache bust: 2026-08-17z
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.866.0',
+        title: 'Ahora se puede aportar por PayPal 💳',
+        description: 'El modal de aportes tiene dos botones: «Donar ahora con tarjeta de débito o crédito» (Stripe, como siempre) y «Donar a través de PayPal». El dinero de PayPal entra a la cuenta de Club Platform, igual que el de Stripe, así que la retención, el saldo de la Bóveda y el retiro del club siguen funcionando exactamente igual.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'aportes', 'boveda'],
+        type: 'added',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Botón de PayPal en el modal de aportes, con su pantalla de retorno.' },
+            { type: 'changed', text: 'El botón de siempre ahora dice con qué se paga: tarjeta de débito o crédito.' },
+            { type: 'added', text: 'Webhook de PayPal como confirmación de verdad, con verificación de firma.' },
+            { type: 'added', text: 'npm run test:paypal — 43 comprobaciones.' },
+        ],
+        details: [
+            'MISMA TRAZABILIDAD QUE STRIPE: el aporte crea su Payment y su Donation, se ata al libro mayor, dispara la confirmación por correo y cuenta la conversión de la campaña. Se ve en la Bóveda y en la ficha del aportante como cualquier otro.',
+            '⚠️ NO SE CONVIERTE NINGÚN IMPORTE. Si la cuenta de PayPal no cobra en la moneda del aporte, el botón NO se muestra — con su motivo. El visitante ya vio una cifra concreta en la pantalla y cobrarle otra en otra moneda sería cambiarle el trato: es la misma regla que rige el fx de las inscripciones y la moneda del aporte.',
+            'La comisión de PayPal viene MEDIDA en la respuesta de la captura, no estimada — igual que el balance transaction de Stripe. Y si viniera en otra moneda no se resta: restar una moneda de otra es el defecto que costó la v4.845.',
+            'PayPal separa aprobar de cobrar, así que hay una pantalla de retorno que dispara la captura. Pero LA CONFIRMACIÓN DE VERDAD ES EL WEBHOOK: si el donante cierra la pestaña, el aporte queda registrado igual. Las dos vías convergen en el mismo registro y la protección es el índice único (provider, providerRef), que ya distinguía proveedores.',
+            'La retención de la plataforma sale de las MISMAS reglas configurables. Un segundo porcentaje escrito acá es cómo se llega a que dos vías de cobro retengan distinto por el mismo concepto.',
+            'La campaña, el bloque y la moneda los resuelven las MISMAS funciones que usa Stripe: copiarlas daría dos criterios sobre el mismo aporte según por dónde entró.',
+            'Sandbox es el valor por DEFECTO: una variable mal escrita deja los cobros en pruebas, no en producción. Y sin credenciales el botón no se pinta.',
+        ]
+    },
     {
         version: '4.865.0',
         title: 'Ves la publicación antes de distribuirla, y los grupos se pegan todos juntos 👀',

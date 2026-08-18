@@ -6462,6 +6462,87 @@ dónde se mire**, y por eso cambia de icono y de rótulo.
   sobre el endpoint REAL — el criterio puede estar bien y el defecto vivir en el
   camino (v4.744).
 
+## Aportes por PayPal — v4.866
+
+Segunda vía de cobro en el modal de aportes, espejo del camino de Stripe.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/paypalSpec.js` | El CRITERIO. **Puro**: moneda, formato del importe, lectura de la captura, disponibilidad |
+| `server/lib/paypalService.js` | La I/O: token OAuth cacheado, crear pedido, capturar, verificar la firma del webhook |
+| `server/controllers/paypalController.js` | Disponibilidad, creación, captura y webhook |
+| `src/pages/DonacionPaypal.tsx` | El retorno del donante, donde se COBRA |
+
+Pruebas: `npm run test:paypal` (43 casos, **sin base, credenciales ni red**).
+
+**Reglas durables:**
+
+- **EL DINERO ENTRA A LA CUENTA DE LA PLATAFORMA** (`isPlatformCollection: true`),
+  igual que con Stripe. Es la decisión del cliente y es lo que hace que todo lo
+  demás siga funcionando: la retención se aplica igual, el saldo de la Bóveda
+  sigue siendo la verdad y el club retira por donde retira hoy.
+  `PaymentProviderConfig` modela una cuenta de PayPal POR CLUB desde hace
+  versiones y **no se usa**: con el dinero entrando directo al club, el 2,1 % no
+  se podría retener y el saldo de la Bóveda dejaría de ser real. Queda declarado
+  y sin implementar, que es distinto de olvidado.
+- **⚠️ NO SE CONVIERTE NINGÚN IMPORTE.** Si la cuenta de PayPal no cobra en la
+  moneda del aporte (`PAYPAL_CURRENCY`), el botón **no se muestra**, con su
+  motivo. El visitante ya vio una cifra concreta: cobrarle otra en otra moneda
+  sería cambiarle el trato. Misma regla que el `fx` de las inscripciones y la
+  moneda del aporte (v4.834). **`PAYPAL_CURRENCY` vacía significa «la que
+  venga»** y es el valor por defecto — así se comporta como Stripe.
+- **La comisión viene MEDIDA en la captura** (`seller_receivable_breakdown`), no
+  estimada; la Bóveda ya distingue las dos desde v4.850. **Si viniera en otra
+  moneda NO se resta**: restar una moneda de otra es el defecto que costó la
+  v4.845 con Stripe. Y `null` es «no se sabe», no cero.
+- **LA CONFIRMACIÓN LA DA EL WEBHOOK, no el retorno del navegador.** PayPal
+  separa aprobar de cobrar, así que hay una pantalla que dispara la captura —
+  pero el donante puede cerrar la pestaña. Las dos vías convergen en
+  `registrarAporte`, que es idempotente: la protección es el índice único
+  `(provider, providerRef)`, que ya distinguía proveedores, más el
+  `PayPal-Request-Id` del lado de PayPal. Son dos barreras y las dos hacen falta.
+- **LA INTENCIÓN SE GUARDA ANTES de mandar al donante a PayPal.** PayPal no
+  acepta metadata arbitraria como Stripe: `custom_id` es UN campo de 127
+  caracteres donde no entran la campaña, el bloque, el proyecto, el nombre y el
+  mensaje. Sin esa fila `pending`, al volver no se sabría a qué campaña atribuir
+  el aporte ni a nombre de quién emitir el recibo.
+- **Campaña, bloque y moneda se IMPORTAN de `financialController`**, no se
+  copian. Dos criterios sobre el mismo aporte dirían cosas distintas según por
+  dónde entró — el problema que `sendCampaign` arrastra en el CRM.
+- **La retención sale de `feeRules`**, sin porcentaje escrito acá. Un segundo
+  número es cómo se llega a que dos vías retengan distinto por el mismo concepto
+  (la lección de v4.854).
+- **PayPal NO tiene tránsito del proveedor.** Al capturar, el dinero ya está en
+  el saldo: `availableOn` es el momento de la captura y sólo corre el margen
+  operativo de la plataforma, **el mismo que con Stripe**. Dos aportes del mismo
+  día no pueden tener reglas de disponibilidad distintas según por dónde
+  entraron.
+- **Las columnas se siguen llamando `stripe*` y se usan igual.** Renombrarlas
+  toca Prisma y es el riesgo de despliegue de `logo_intl` (v4.699). Guardan el
+  estado y la fecha que `bucketOf` lee.
+- **`verifyPaypalWebhook` devuelve `null` cuando no se puede comprobar**, que es
+  DISTINTO de `false`. Decir «firma inválida» sin haberla verificado manda a
+  buscar un problema de seguridad inexistente — la regla que el CRM dejó escrita.
+- **SANDBOX es el valor por defecto** (`PAYPAL_ENV=live` para producción): una
+  variable mal escrita deja los cobros en pruebas, no en producción por
+  descuido. Y sin credenciales el botón no se pinta (v4.650).
+- **El estado del modal guarda QUÉ vía se está usando**, no un booleano: con dos
+  botones, `true` no dice cuál girar y los dos quedarían en «Conectando…».
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | Credenciales de la cuenta de la plataforma. Sin las dos, el botón no aparece |
+| `PAYPAL_ENV` | `live` para producción. Cualquier otra cosa —incluido vacío— es sandbox |
+| `PAYPAL_WEBHOOK_ID` | Verifica la firma del webhook. Sin él la firma queda «sin comprobar», que no es «inválida» |
+| `PAYPAL_CURRENCY` | La moneda que la cuenta puede recibir. **Vacía = la que venga** |
+
+**Pendiente conocido:** el reembolso por PayPal no está — hoy sólo se maneja el
+de Stripe (v4.859). Y `Checkout.tsx` conserva su selector Stripe/PayPal
+**decorativo**: la tienda sigue sin cobrar por ninguna de las dos vías, que es
+el pendiente declarado desde v4.808.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:
