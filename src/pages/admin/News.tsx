@@ -1623,7 +1623,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <SEOPreview
                                                         title={formData.seoTitle || formData.title}
                                                         description={formData.seoDescription}
-                                                        url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
+                                                        url={`https://${(club as any)?.domain || 'tusitio.org'}/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
                                                         image={formData.seoImage || formData.image}
                                                     />
                                                 </div>

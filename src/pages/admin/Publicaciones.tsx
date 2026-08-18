@@ -2,13 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Megaphone, X, Upload, Image as ImageIcon,
-    Loader2, CheckCircle, Globe, Users, Building2, Check
+    Loader2, CheckCircle, Globe, Users, Building2, Check, Link as LinkIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import {
+    slugify, checkSlug, articleUrl, siteHost, lengthState,
+    SEO_LIMITS, SLUG_MAX, MOTIVOS_SLUG,
+} from '../../lib/postSlug';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -33,6 +37,7 @@ interface Publication {
     tags?: string[];
     seoTitle?: string;
     seoDescription?: string;
+    keywords?: string;
     targetClubIds?: string[];
     createdAt: string;
 }
@@ -47,13 +52,24 @@ const emptyForm = {
     tags: '' as string,
     seoTitle: '',
     seoDescription: '',
+    keywords: '',
     published: true,
     targetClubIds: [] as string[],
 };
 
-const slugify = (s: string) =>
-    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+// ⚠️ EL SLUGIFY SALE DEL CRITERIO COMPARTIDO, no se escribe acá. El que había
+// dejaba «-» para un título sin letras y no acotaba el largo; y sobre todo, un
+// segundo slugify da direcciones distintas según qué pantalla las genere. El
+// del módulo es el mismo que usa el servidor, comparado por salidas en la
+// prueba.
+
+// Vacío no es «corto»: es que todavía no se escribió. Se pinta neutro para no
+// gritarle a alguien que no empezó — y el campo dice que se cae al título.
+const TONO_LARGO: Record<string, string> = {
+    short: 'text-amber-600',
+    ok: 'text-emerald-600',
+    long: 'text-red-600',
+};
 
 const CATEGORY_LABELS: Record<string, string> = {
     club: 'Club', association: 'Asociación', exchange_program: 'Prog. Intercambio',
@@ -118,6 +134,7 @@ const Publicaciones: React.FC = () => {
             tags: (p.tags || []).join(', '),
             seoTitle: p.seoTitle || '',
             seoDescription: p.seoDescription || '',
+            keywords: (p as any).keywords || '',
             published: !!p.published,
             targetClubIds: p.targetClubIds || [],
         });
@@ -169,6 +186,33 @@ const Publicaciones: React.FC = () => {
     }, [clubs, clubSearch]);
 
     const allFilteredSelected = filteredClubs.length > 0 && filteredClubs.every((c) => form.targetClubIds.includes(c.id));
+
+    // ── La dirección y el SEO ───────────────────────────────────────
+    //
+    // El slug es UNO y el dominio lo pone cada sitio: la misma publicación se
+    // muestra en varios (`targetClubIds`), así que `rotary4281.org/blog/x` y
+    // `feria.org/blog/x` son el MISMO artículo. Por eso la vista previa recorre
+    // los destinos elegidos en vez de suponer un dominio.
+    const slugEfectivo = form.slug || slugify(form.title);
+    const revisionSlug = useMemo(
+        () => (slugEfectivo ? checkSlug(slugEfectivo) : null),
+        [slugEfectivo]
+    );
+    const destinos = useMemo(
+        () => form.targetClubIds.map((id) => clubs.find((c) => c.id === id)).filter(Boolean) as ClubLite[],
+        [form.targetClubIds, clubs]
+    );
+    const vistaPreviaUrls = useMemo(() => destinos
+        .map((c) => ({ id: c.id, host: siteHost(c) }))
+        .filter((x) => !!x.host)
+        .map((x) => ({ id: x.id, url: articleUrl(x.host, slugEfectivo) as string }))
+        .filter((x) => !!x.url), [destinos, slugEfectivo]);
+    // Un sitio sin dominio ni subdominio no se puede nombrar, y no se inventa
+    // uno: se DICE cuántos son.
+    const sitiosSinDominio = destinos.length - vistaPreviaUrls.length;
+
+    const estadoTitulo = lengthState(form.seoTitle.length, SEO_LIMITS.title);
+    const estadoDescripcion = lengthState(form.seoDescription.length, SEO_LIMITS.description);
     const toggleAllFiltered = () =>
         setForm((f) => {
             if (allFilteredSelected) {
@@ -193,6 +237,7 @@ const Publicaciones: React.FC = () => {
                 tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
                 seoTitle: form.seoTitle,
                 seoDescription: form.seoDescription,
+                keywords: form.keywords,
                 targetClubIds: form.targetClubIds,
             };
             const url = form.id ? `${API}/admin/publications/${form.id}` : `${API}/admin/publications`;
@@ -205,6 +250,11 @@ const Publicaciones: React.FC = () => {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.error || 'Error al guardar');
             }
+            // ⚠️ LA DIRECCIÓN FINAL LA DECIDE EL SERVIDOR: el slug es único en
+            // toda la plataforma, así que puede haber salido con sufijo. Un
+            // cambio silencioso manda a buscar el artículo donde no está.
+            const guardado = await res.json().catch(() => ({}));
+            if (guardado?.slugNotice) toast(guardado.slugNotice, { duration: 6000, icon: 'ℹ️' });
             toast.success(form.id ? 'Publicación actualizada' : `Publicación difundida a ${form.targetClubIds.length} club(es)`);
             setIsModalOpen(false);
             fetchAll();
@@ -348,6 +398,64 @@ const Publicaciones: React.FC = () => {
                                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue/30"
                                     />
                                 </div>
+                                {/* LA DIRECCIÓN DEL ARTÍCULO. Sin esto se abría
+                                    por el id —«/blog/1f6c8e2a-4b93-…»— que es lo
+                                    que se reportó como «caracteres muy raros».
+                                    El slug es UNO y el dominio lo pone cada
+                                    sitio: la misma publicación vive en varios. */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                            <LinkIcon className="w-3.5 h-3.5" /> Dirección del artículo (slug)
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm((f) => ({ ...f, slug: slugify(f.title) }))}
+                                            className="text-[10px] uppercase font-bold text-rotary-blue hover:underline px-2 py-1 bg-blue-50 rounded-lg"
+                                        >
+                                            Generar del título
+                                        </button>
+                                    </div>
+                                    <input
+                                        value={form.slug}
+                                        onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+                                        onBlur={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
+                                        placeholder="mi-articulo"
+                                        maxLength={SLUG_MAX + 20}
+                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-rotary-blue/30"
+                                    />
+                                    {revisionSlug && !revisionSlug.ok && (
+                                        <p className="text-[11px] text-amber-700 mt-1">
+                                            {MOTIVOS_SLUG[revisionSlug.reason || ''] || 'Esa dirección no sirve.'} Se guardará con la del título.
+                                        </p>
+                                    )}
+                                    {/* A DÓNDE VA A QUEDAR EN CADA SITIO. Es lo
+                                        que se pidió: el slug es del artículo y
+                                        el dominio lo pone quien lo muestra. */}
+                                    {vistaPreviaUrls.length > 0 && (
+                                        <div className="mt-2 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                                                Quedará en
+                                            </p>
+                                            <ul className="space-y-0.5">
+                                                {vistaPreviaUrls.map((u) => (
+                                                    <li key={u.id} className="text-[11px] text-gray-600 truncate" data-no-translate>
+                                                        {u.url}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            {sitiosSinDominio > 0 && (
+                                                <p className="text-[11px] text-gray-400 mt-1">
+                                                    {sitiosSinDominio} sitio(s) sin dominio propio todavía: el artículo se abre igual desde su panel.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                    <p className="text-[11px] text-gray-400 mt-1">
+                                        Se comprueba al guardar: la dirección es única en toda la plataforma y, si ya estaba usada, se guarda con un sufijo y se avisa.
+                                    </p>
+                                </div>
+
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Contenido</label>
                                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -366,16 +474,61 @@ const Publicaciones: React.FC = () => {
                                             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue/30" />
                                     </div>
                                 </div>
-                                <div className="grid sm:grid-cols-2 gap-4">
+                                {/* SEO. Los anchos NO son gustos: son con los que
+                                    Google recorta el resultado, y salen de la
+                                    MISMA fuente que usa la auditoría de SEO
+                                    Inteligente — con dos catálogos, el panel
+                                    avisaría de un límite que el auditor no
+                                    aplica. Vacío se cae al título y al primer
+                                    párrafo, así que se avisa sin bloquear. */}
+                                <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+                                    <p className="text-xs font-black uppercase tracking-widest text-gray-400">
+                                        SEO — cómo se ve en el buscador
+                                    </p>
+
                                     <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">SEO — Título</label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-xs font-semibold text-gray-600">Título SEO</label>
+                                            <span className={`text-[11px] font-mono ${TONO_LARGO[estadoTitulo]}`} data-no-translate>
+                                                {form.seoTitle.length}/{SEO_LIMITS.title.max}
+                                            </span>
+                                        </div>
                                         <input value={form.seoTitle} onChange={(e) => setForm((f) => ({ ...f, seoTitle: e.target.value }))}
+                                            placeholder={form.title || 'Se usa el título del artículo si se deja vacío'}
                                             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue/30" />
                                     </div>
+
                                     <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">SEO — Descripción</label>
-                                        <input value={form.seoDescription} onChange={(e) => setForm((f) => ({ ...f, seoDescription: e.target.value }))}
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-xs font-semibold text-gray-600">Descripción SEO</label>
+                                            <span className={`text-[11px] font-mono ${TONO_LARGO[estadoDescripcion]}`} data-no-translate>
+                                                {form.seoDescription.length}/{SEO_LIMITS.description.max}
+                                            </span>
+                                        </div>
+                                        <textarea value={form.seoDescription} onChange={(e) => setForm((f) => ({ ...f, seoDescription: e.target.value }))}
+                                            rows={2}
+                                            placeholder="Una o dos frases que resuman el artículo. Es lo que se lee debajo del título en el buscador."
+                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-rotary-blue/30" />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1">Palabras clave</label>
+                                        <input value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))}
+                                            placeholder="rotary, distrito 4281, servicio"
                                             className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue/30" />
+                                    </div>
+
+                                    {/* La tarjeta que va a ver alguien. Vale más
+                                        que los tres contadores juntos. */}
+                                    <div className="rounded-xl bg-white border border-gray-200 px-3 py-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Vista previa</p>
+                                        <p className="text-[13px] text-[#1a0dab] truncate">{form.seoTitle || form.title || 'Título del artículo'}</p>
+                                        <p className="text-[11px] text-[#006621] truncate" data-no-translate>
+                                            {vistaPreviaUrls[0]?.url || articleUrl(null, form.slug || slugify(form.title)) || '/blog/…'}
+                                        </p>
+                                        <p className="text-[11px] text-gray-600 line-clamp-2">
+                                            {form.seoDescription || 'Sin descripción SEO, el buscador toma un fragmento del contenido — que casi nunca es el que conviene.'}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
