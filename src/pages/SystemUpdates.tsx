@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.866.0 | 2026-08-17 (Aportes por PayPal)
-// Cache bust: 2026-08-17z
+// UI V4.867.0 | 2026-08-18 (Integraciones no revienta por un contador)
+// Cache bust: 2026-08-18a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.867.0',
+        title: 'La pantalla de Integraciones ya no se cae 🩹',
+        description: 'Se reportó que /admin/integraciones quedaba en «Esta pantalla no se pudo mostrar» con «Cannot read properties of undefined (reading toLocaleString)», y por eso no se podía llegar a cargar las credenciales. La causa: la pantalla leía cinco cifras que el servidor dejó de mandar cuando el módulo de traducción se reescribió en v4.662.',
+        date: new Date().toISOString(),
+        tags: ['integraciones', 'traduccion'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Se llega a Integraciones y a la carga de credenciales.' },
+            { type: 'changed', text: 'Los contadores de traducción muestran lo que sí se mide: caché, actividad de 30 días y proveedor activo.' },
+            { type: 'removed', text: 'Las tarjetas de tokens y costo en dólares, que medían un modelo único que ya no existe.' },
+            { type: 'added', text: 'npm run test:integrations:ui — la regresión, reproducida en un navegador.' },
+        ],
+        details: [
+            'La pantalla declaraba «estimatedTokensInput», «estimatedTokensOutput», «estimatedCostUSD», «model» y «pricingNote», y GET /translate/usage NO devuelve ninguno: al pasar de un solo modelo a una CADENA de proveedores esas cifras dejaron de existir. El comentario del endpoint seguía diciendo «compatibilidad con la pantalla de Integraciones» sin serlo.',
+            'UN ERROR DE RENDER SUBE AL LÍMITE DE ERROR, QUE DESMONTA EL SUBÁRBOL ENTERO. Por eso no se perdía un número: se perdía la pantalla, y con ella el acceso a las credenciales. Es la misma forma del defecto que dejó la Bóveda en blanco en v4.852.',
+            'Las tres tarjetas rotas se reemplazaron por datos que el servidor SÍ manda: entradas en la caché de memoria, textos traducidos en los últimos 30 días con sus llamadas fallidas, y el proveedor activo con su respaldo.',
+            'NO se estiman los tokens ni el costo. DeepL, Google y Azure ni siquiera cobran por tokens: afirmar un costo que no se calcula es peor que no mostrarlo.',
+            'Y un contador ausente se pinta «—», no «0». Un cero es una afirmación —«no hubo ninguna»— y un hueco es la verdad; acá además evita que un dato que falta tumbe la pantalla.',
+            'Al consumir un endpoint, declarar lo que MANDA y no lo que uno espera. El typecheck no lo ve: el tipo estaba escrito y era el equivocado.',
+        ]
+    },
     {
         version: '4.866.0',
         title: 'Ahora se puede aportar por PayPal 💳',

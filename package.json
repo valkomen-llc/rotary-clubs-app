@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.866.0",
-  "cache_bust": "2026-08-17z (Aportes por PayPal, con la misma trazabilidad que Stripe.)",
+  "version": "4.867.0",
+  "cache_bust": "2026-08-18a (La pantalla de Integraciones ya no revienta por un contador que el servidor no manda.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -59,6 +59,7 @@
     "test:ledger:write": "node scripts/test-ledger-write.mjs",
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
+    "test:integrations:ui": "node scripts/test-integrations-ui.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
