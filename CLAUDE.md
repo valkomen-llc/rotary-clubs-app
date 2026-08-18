@@ -6832,6 +6832,29 @@ Pruebas: `npm run test:payment-methods` (36 casos, **sin base ni red**).
   visitante antes de cobrarle**. Sin tasa para ese par, el botón sigue sin
   aparecer.
 
+### Probar las credenciales de un método (v4.874)
+
+- **⚠️ «CLIENT AUTHENTICATION FAILED» TIENE DOS CAUSAS y el mensaje del
+  proveedor no distingue entre ellas**: las credenciales son del OTRO entorno
+  —Sandbox contra el servidor Live, o al revés— o al pegar el secreto se coló un
+  espacio. Se reportó tal cual («PayPal rechazó las credenciales: fallo en la
+  autenticación del cliente») y sin más datos no hay por dónde empezar.
+- **EL ENTORNO ES EL DATO QUE PARTE EL DIAGNÓSTICO EN DOS**, y no estaba en el
+  mensaje. Ahora el error lo nombra y `credentialHints` da vuelta las pistas
+  según cuál esté activo.
+- **Las credenciales se leen con `.trim()`** (`paypalCredentials`). No es
+  cosmético: un salto de línea arrastrado al copiar el secreto produce
+  exactamente este error, y es la única de las dos causas que se corrige desde
+  el código.
+- **La prueba es de SÓLO LECTURA**: pide un token, no crea ningún pedido ni
+  cobra nada. Y **vacía la caché del token antes de probar** — con el guardado
+  se comprobaría la credencial anterior, no la que se acaba de cargar.
+- **Qué se puede probar se DECLARA** (`METHOD_TESTABLE`), no se deduce: el botón
+  sólo aparece donde de verdad hace algo (v4.650). Al agregar la prueba de otro
+  proveedor, agregarlo ahí.
+- **El panel NUNCA muestra la credencial**, ni recortada: dice si sirve, en qué
+  entorno se probó y qué mirar.
+
 **⚠️ Deuda conocida:** `PaymentProviderConfig.secretRef` guarda el secreto en
 TEXTO PLANO (`secretRef: stripeSecretKey`) y `paymentController` lo usa directo
 (`new Stripe(config.secretRef)`). Hoy no lo llena ninguna pantalla —el endpoint

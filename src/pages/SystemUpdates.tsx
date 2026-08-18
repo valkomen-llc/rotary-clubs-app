@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.873.0 | 2026-08-18 (Los artículos tienen dirección propia y SEO)
-// Cache bust: 2026-08-18g
+// UI V4.874.0 | 2026-08-18 (Probar las credenciales de un método de pago)
+// Cache bust: 2026-08-18h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.874.0',
+        title: 'Se pueden probar las credenciales de un método de pago 🔌',
+        description: 'Al intentar aportar por PayPal salía «rechazó las credenciales: fallo en la autenticación del cliente». Ese mensaje del proveedor tiene dos causas y no distingue entre ellas: ahora se puede comprobar desde el panel, sin cobrarle a nadie, y se dice qué mirar.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'paypal', 'integraciones'],
+        type: 'added',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'Botón «Probar credenciales» en cada método que lo admite.' },
+            { type: 'fixed', text: 'Las credenciales se leen sin espacios ni saltos de línea.' },
+            { type: 'changed', text: 'El error de PayPal dice ahora en qué entorno se intentó.' },
+            { type: 'added', text: 'npm run test:payment-methods pasa de 50 a 66 comprobaciones.' },
+        ],
+        details: [
+            '«CLIENT AUTHENTICATION FAILED» TIENE DOS CAUSAS FRECUENTES y el mensaje del proveedor no distingue entre ellas: las credenciales son del otro entorno —Sandbox contra el servidor Live, o al revés—, o al pegar el secreto se coló un espacio. Sin decirlo, quien lo recibe no tiene por dónde empezar.',
+            'EL ENTORNO ES EL DATO QUE PARTE EL DIAGNÓSTICO EN DOS, y no estaba en el mensaje. Ahora el error lo nombra, y las pistas se dan vuelta según cuál esté activo: en sandbox se pide la credencial de Sandbox y se nombra la de Live para descartarla.',
+            'EL ESPACIO AL PEGAR EL SECRETO NO ES COSMÉTICO. Al copiarlo en el panel de variables de entorno es fácil arrastrar un salto de línea, y PayPal responde con este mismo error sin decir que sobra un carácter. Se recorta al leerlo, que es la única de las dos causas que se puede corregir desde el código.',
+            'La prueba es de SÓLO LECTURA: pide un token y no crea ningún pedido ni cobra nada. Y vacía la caché del token antes de probar — con el guardado se comprobaría la credencial anterior, no la que se acaba de cargar.',
+            'Qué método se puede probar se DECLARA, no se deduce: hoy PayPal sí y la tarjeta todavía no, y el botón sólo aparece donde de verdad hace algo. Un control que no controla nada es peor que ninguno.',
+            'El panel NUNCA muestra la credencial, ni recortada. Dice si sirve, en qué entorno se probó y, si falló, qué mirar.',
+        ]
+    },
     {
         version: '4.873.0',
         title: 'Los artículos tienen dirección propia y SEO configurable 🔗',

@@ -19,10 +19,26 @@ export const paypalEnv = () =>
 
 export const paypalBase = () => (paypalEnv() === 'live' ? LIVE : SANDBOX);
 
+/**
+ * Las credenciales, SIN espacios ni saltos de línea.
+ *
+ * ⚠️ El `.trim()` no es cosmético: al pegar el secreto en el panel de variables
+ * de entorno es fácil arrastrar un salto de línea o un espacio final, y PayPal
+ * responde `invalid_client` —«Client Authentication failed»— sin decir que
+ * sobra un carácter. Es una de las dos causas habituales de ese error y la
+ * única que se puede corregir desde acá.
+ */
+export const paypalCredentials = () => ({
+    id: String(process.env.PAYPAL_CLIENT_ID || '').trim(),
+    secret: String(process.env.PAYPAL_CLIENT_SECRET || '').trim(),
+});
+
 /** ¿Está configurado? Sin las dos credenciales el botón NO se muestra: uno que
  *  lleva a un error del proveedor es peor que ninguno (v4.650). */
-export const paypalConfigured = () =>
-    !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
+export const paypalConfigured = () => {
+    const { id, secret } = paypalCredentials();
+    return !!(id && secret);
+};
 
 // El token dura horas y esto corre en el camino del cobro: pedirlo en cada
 // aporte sería un viaje de red de más antes de poder cobrar. Se guarda con su
@@ -34,7 +50,8 @@ export const paypalToken = async () => {
     if (token && Date.now() < tokenExp) return token;
     if (!paypalConfigured()) throw new Error('PayPal no está configurado (falta PAYPAL_CLIENT_ID o PAYPAL_CLIENT_SECRET).');
 
-    const basic = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+    const { id, secret } = paypalCredentials();
+    const basic = Buffer.from(`${id}:${secret}`).toString('base64');
     const r = await fetch(`${paypalBase()}/v1/oauth2/token`, {
         method: 'POST',
         headers: {
@@ -48,7 +65,17 @@ export const paypalToken = async () => {
         // El error del proveedor se propaga TEXTUAL: convertirlo en «no se pudo
         // conectar» deja a quien corrige sin saber si es la credencial, el
         // entorno o el permiso. Es la regla que el CRM aprendió con `metaCode`.
-        throw new Error(`PayPal rechazó las credenciales: ${data?.error_description || data?.error || r.status}`);
+        //
+        // ⚠️ Y SE DICE EL ENTORNO. «Client Authentication failed» a secas no
+        // distingue la causa más frecuente —credenciales de Sandbox contra el
+        // servidor Live, o al revés— de un secreto mal pegado. El entorno es el
+        // dato que parte el diagnóstico en dos, y no estaba.
+        const motivo = data?.error_description || data?.error || `HTTP ${r.status}`;
+        const err = new Error(`PayPal rechazó las credenciales (entorno ${paypalEnv()}): ${motivo}`);
+        err.paypalEnv = paypalEnv();
+        err.paypalError = data?.error || null;
+        err.status = r.status;
+        throw err;
     }
     token = data.access_token;
     // Margen de 60 s: un token que vence entre que se lee y se usa da un 401

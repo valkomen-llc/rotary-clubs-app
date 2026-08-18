@@ -18,8 +18,11 @@ import {
 import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
 import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
-import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO } from '../lib/paymentMethods.js';
+import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO, METHOD_TESTABLE, credentialHints, methodById, methodStatus} from '../lib/paymentMethods.js';
 import { getPaymentMethods, savePaymentMethods } from '../lib/paymentMethodsStore.js';
+// v4.874 — Probar las credenciales sin cobrarle a nadie. El módulo de PayPal se
+// importa de forma PEREZOSA dentro del manejador: es I/O contra un tercero y no
+// tiene por qué cargarse al leer la Bóveda.
 import { getFxRates, saveFxRates, getAutoRates } from '../lib/fxRatesStore.js';
 import { validateRates, STALE_DAYS as FX_STALE_DAYS, rateAgeDays } from '../lib/fxRates.js';
 
@@ -710,6 +713,64 @@ export const recalcFees = async (req, res) => {
 //
 // Del OPERADOR de la plataforma: la cuenta de cobro es una sola y la tasa
 // decide cuánto se le cobra a alguien.
+
+// ═══════════════════════════════════════════════════════════════════
+// PROBAR LAS CREDENCIALES DE UN MÉTODO (v4.874)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Sin esto, la única forma de saber si PayPal está bien configurado era
+// intentar un aporte de verdad y leer el error en el modal — que es como se
+// reportó «PayPal rechazó las credenciales». Esto pide un token y no cobra
+// nada: es de SÓLO LECTURA contra el proveedor.
+//
+// ⚠️ NUNCA devuelve la credencial, ni recortada. Devuelve si sirve, en qué
+// entorno se probó y, si falló, qué mirar.
+
+export const testPaymentMethod = async (req, res) => {
+    const id = String(req.params.id || '');
+    const metodo = methodById(id);
+    if (!metodo) return res.status(404).json({ error: 'Ese método de pago no existe.' });
+    if (!METHOD_TESTABLE.has(id)) {
+        // Un método sin prueba lo DICE, en vez de contestar «bien» sin haber
+        // comprobado nada: «no se pudo comprobar» no es un tipo de «bien».
+        return res.status(400).json({ error: `Todavía no hay una prueba de credenciales para ${metodo.label}.` });
+    }
+
+    const { configured, missing } = methodStatus(metodo, process.env);
+    if (!configured) {
+        return res.json({
+            ok: false,
+            configured: false,
+            error: `Faltan en el entorno: ${missing.join(', ')}.`,
+            hints: [],
+        });
+    }
+
+    try {
+        const { paypalToken, paypalEnv, resetPaypalToken } = await import('../lib/paypalService.js');
+        // Se vacía la caché: probar con el token que ya estaba guardado no
+        // comprobaría las credenciales que se acaban de cargar.
+        resetPaypalToken();
+        await paypalToken();
+        res.json({
+            ok: true,
+            configured: true,
+            env: paypalEnv(),
+            aviso: paypalEnv() === 'live'
+                ? 'Las credenciales funcionan. Está en modo LIVE: los cobros son reales.'
+                : 'Las credenciales funcionan. Está en modo de PRUEBAS (sandbox): los cobros no son reales.',
+        });
+    } catch (e) {
+        // El error del proveedor va TEXTUAL, con el entorno y con qué mirar.
+        res.json({
+            ok: false,
+            configured: true,
+            env: e?.paypalEnv || null,
+            error: e?.message || 'PayPal no aceptó las credenciales.',
+            hints: credentialHints(id, { providerError: e?.paypalError, env: e?.paypalEnv }),
+        });
+    }
+};
 
 export const getFxRatesConfig = async (req, res) => {
     try {

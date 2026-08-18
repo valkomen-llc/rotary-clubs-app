@@ -154,8 +154,40 @@ export const resolveMethods = (config, env = {}) => PAYMENT_METHODS.map(m => {
         // Y lo que lo acota cuando SÍ se ofrece: «se está ofreciendo» no es
         // «en todos los aportes».
         limits: methodLimits(m, env),
+        // Si se puede comprobar sin cobrarle a nadie. Se DECLARA: un botón que
+        // no hace nada es peor que ninguno.
+        testable: METHOD_TESTABLE.has(m.id),
     };
 });
+
+/**
+ * Qué método se puede PROBAR sin cobrarle a nadie.
+ *
+ * Se declara en vez de deducirse: un método sin prueba tiene que decir que no
+ * la tiene, no ofrecer un botón que no hace nada (v4.650).
+ */
+export const METHOD_TESTABLE = new Set(['paypal']);
+
+/**
+ * Qué significa un rechazo de credenciales, en palabras que se puedan seguir.
+ *
+ * ⚠️ «Client Authentication failed» —el `invalid_client` de PayPal— tiene DOS
+ * causas frecuentes y el mensaje del proveedor no distingue entre ellas: las
+ * credenciales son del otro entorno, o al pegar el secreto se coló un espacio.
+ * Sin decirlo, quien lo recibe no tiene por dónde empezar; es lo que se
+ * reportó como «aparece un mensaje que dice fallo en la autenticación».
+ */
+export const credentialHints = (id, { providerError, env } = {}) => {
+    if (id !== 'paypal') return [];
+    if (providerError && providerError !== 'invalid_client') return [];
+    const otro = env === 'live' ? 'Sandbox' : 'Live';
+    const esperado = env === 'live' ? 'Live' : 'Sandbox';
+    return [
+        `Las credenciales tienen que ser las de **${esperado}**, que es el entorno activo. Las de ${otro} son distintas y PayPal las rechaza con este mismo mensaje.`,
+        'Revisá que al pegar PAYPAL_CLIENT_SECRET no se haya colado un espacio o un salto de línea al final.',
+        'Y que las dos —id y secreto— sean de la MISMA aplicación de PayPal.',
+    ];
+};
 
 export const MOTIVOS = {
     sin_credenciales: 'Faltan las credenciales del proveedor en las variables de entorno.',
@@ -238,5 +270,6 @@ export const parseMethods = (raw) => {
 export default {
     PAYMENT_METHODS, METHOD_IDS, PAYMENT_METHODS_KEY, MOTIVOS,
     methodById, methodStatus, methodLimits, resolveMethods, isMethodOffered,
+    METHOD_TESTABLE, credentialHints,
     validateMethods, defaultConfig, mergeMethods, parseMethods,
 };
