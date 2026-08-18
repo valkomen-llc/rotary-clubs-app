@@ -1,4 +1,7 @@
 import express from 'express';
+import {
+    paypalAvailabilityCheck, createPaypalDonation, capturePaypalDonation,
+} from '../controllers/paypalController.js';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
@@ -27,6 +30,16 @@ const router = express.Router();
 
 // PÚBLICO — cualquier visitante puede iniciar una donación
 router.post('/donate', createDonationCheckout);
+
+// v4.866 — PAYPAL, segunda vía de cobro. Públicas como `/donate`: el visitante
+// no tiene sesión. La moneda y el destino los resuelve el SERVIDOR, así que del
+// cuerpo sólo entran el monto y los datos del donante.
+//
+// ⚠️ Van ANTES de cualquier ruta con parámetro de este grupo — Express casa en
+// orden y `check:routes` rompe el despliegue si una literal queda tapada.
+router.get('/paypal/available', paypalAvailabilityCheck);
+router.post('/paypal/create', createPaypalDonation);
+router.post('/paypal/capture', capturePaypalDonation);
 // v4.834 — en qué moneda se le cobra a quien pregunta. Público y sin caché:
 // la respuesta depende del país del visitante.
 router.get('/currency', getDonationCurrency);

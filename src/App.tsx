@@ -101,6 +101,7 @@ const NuestrasCausas = lazyWithRetry(() => import('./pages/NuestrasCausas'), 'Nu
 const ManerasDeContribuir = lazyWithRetry(() => import('./pages/ManerasDeContribuir'), 'ManerasDeContribuir');
 const DonacionExito = lazyWithRetry(() => import('./pages/DonacionExito'), 'DonacionExito');
 const DonacionCancelada = lazyWithRetry(() => import('./pages/DonacionCancelada'), 'DonacionCancelada');
+const DonacionPaypal = lazyWithRetry(() => import('./pages/DonacionPaypal'));
 const Rotaract = lazyWithRetry(() => import('./pages/Rotaract'), 'Rotaract');
 const Interact = lazyWithRetry(() => import('./pages/Interact'), 'Interact');
 const Rotex = lazyWithRetry(() => import('./pages/Rotex'), 'Rotex');
@@ -550,6 +551,8 @@ function App() {
                 <Route path="/maneras-de-contribuir" element={<ManerasDeContribuir />} />
                 <Route path="/donacion/exito" element={<DonacionExito />} />
                 <Route path="/donacion/cancelada" element={<DonacionCancelada />} />
+                {/* v4.866 — El retorno de PayPal, donde se COBRA. */}
+                <Route path="/donacion/paypal" element={<DonacionPaypal />} />
                 <Route path="/nuestra-historia" element={<NuestraHistoria />} />
                 <Route path="/nuestros-socios" element={<NuestrosSocios />} />
                 <Route path="/nuestra-junta-directiva" element={<NuestraJuntaDirectiva />} />

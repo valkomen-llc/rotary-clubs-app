@@ -40,7 +40,10 @@ console.log('[FINANCIAL v4.849] Bóveda por MONEDA + filtro de período y destin
 // del club, igual que `createSubscriptionCheckout` hace con el monto. Un
 // texto libre del cliente terminaría impreso en la pantalla de Stripe y en
 // el recibo, que son documentos de una institución.
-const resolveBlockPurpose = async (blockId, clubId) => {
+// v4.866 — EXPORTADOS para que el camino de PayPal los use. Duplicarlos daría
+// dos criterios de destino sobre el mismo aporte, que es el problema que
+// `sendCampaign` arrastra en el CRM.
+export const resolveBlockPurpose = async (blockId, clubId) => {
     if (!blockId) return null;
     try {
         const row = await db.query(
@@ -68,7 +71,7 @@ const resolveBlockPurpose = async (blockId, clubId) => {
 // el formulario estaba abierto, o no alcanza a este club): una campaña
 // vencida no es motivo para rechazar un aporte legítimo — se cobra igual y
 // sólo se pierde la atribución.
-const resolveCampaignRef = async (campaignId, clubId) => {
+export const resolveCampaignRef = async (campaignId, clubId) => {
     if (!campaignId) return null;
     try {
         await ensureContributionSchema();
@@ -120,7 +123,7 @@ const visitorCountry = (req) => {
 };
 
 /** La moneda del aporte, resuelta con los datos del sitio y del visitante. */
-const resolveDonationCurrencyFor = async (clubId, req, lang) => {
+export const resolveDonationCurrencyFor = async (clubId, req, lang) => {
     const clubCurrency = await resolveClubCurrency(clubId);
     let clubCountry = '';
     try {

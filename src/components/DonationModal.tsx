@@ -51,6 +51,9 @@ export interface DonationModalProps {
     showAnonymous?: boolean;
 }
 
+/** Las dos vías de cobro. */
+type Via = 'card' | 'paypal';
+
 const DonationModal: React.FC<DonationModalProps> = ({
     open, onClose, clubId, clubName, currency = 'USD',
     campaignId = null, blockId = null, title, subtitle, accentColor,
@@ -66,7 +69,12 @@ const DonationModal: React.FC<DonationModalProps> = ({
     const [donorName, setDonorName] = useState('');
     const [donorMessage, setDonorMessage] = useState('');
     const [isAnonymous, setIsAnonymous] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
+    // ⚠️ QUÉ VÍA se está usando, no un booleano: con dos botones, `true` no
+    // dice cuál girar y los dos quedarían en «Conectando…» a la vez.
+    const [submitting, setSubmitting] = useState<Via | null>(null);
+    // Si PayPal se puede ofrecer para ESTE aporte. Lo decide el servidor: la
+    // moneda la resuelve él (v4.834) y las credenciales no viajan al navegador.
+    const [paypal, setPaypal] = useState<{ available: boolean; message?: string | null } | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     // La moneda se PREGUNTA: depende del país del visitante, que sólo el
@@ -81,6 +89,13 @@ const DonationModal: React.FC<DonationModalProps> = ({
         const siteCur = String(currency || 'USD').toUpperCase();
         (async () => {
             try {
+                // Se pregunta si PayPal se puede ofrecer para este aporte. El
+                // botón NO se pinta hasta saberlo: uno que lleva a un error del
+                // proveedor es peor que ninguno (v4.650).
+                fetch(`${API_BASE}/financial/paypal/available?clubId=${encodeURIComponent(clubId)}&lang=${encodeURIComponent(lang || '')}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => d && setPaypal(d))
+                    .catch(() => setPaypal({ available: false }));
                 const r = await fetch(`${API_BASE}/financial/currency?clubId=${encodeURIComponent(clubId)}&lang=${encodeURIComponent(lang || '')}`);
                 const d = await r.json();
                 if (!vivo) return;
@@ -131,7 +146,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
         }
     };
 
-    const handleDonate = async () => {
+    const handleDonate = async (via: Via = 'card') => {
         setErrorMsg(null);
         const numericAmount = parseFloat(amount);
         if (!numericAmount || numericAmount < presets.min) {
@@ -143,9 +158,9 @@ const DonationModal: React.FC<DonationModalProps> = ({
             return;
         }
 
-        setSubmitting(true);
+        setSubmitting(via);
         try {
-            const res = await fetch(`${API_BASE}/financial/donate`, {
+            const res = await fetch(`${API_BASE}${via === 'paypal' ? '/financial/paypal/create' : '/financial/donate'}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -175,7 +190,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
             console.error('[Donate] Error:', err);
             const message = err instanceof Error ? err.message : 'Error inesperado iniciando el pago.';
             setErrorMsg(message);
-            setSubmitting(false);
+            setSubmitting(null);
         }
     };
 
@@ -186,7 +201,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative my-8">
                 <button
                     onClick={() => !submitting && onClose()}
-                    disabled={submitting}
+                    disabled={!!submitting}
                     aria-label="Cerrar"
                     className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10 disabled:opacity-50"
                 >
@@ -308,28 +323,53 @@ const DonationModal: React.FC<DonationModalProps> = ({
                             </div>
                         )}
 
+                        {/* La vía de la TARJETA. El rótulo dice con qué se paga:
+                            con dos botones, «Donar ahora» a secas no distingue. */}
                         <button
-                            onClick={handleDonate}
-                            disabled={submitting}
+                            onClick={() => handleDonate('card')}
+                            disabled={!!submitting}
                             className="w-full disabled:bg-gray-400 disabled:cursor-wait text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2 hover:brightness-90"
                             style={{ backgroundColor: submitting ? undefined : accent }}
                         >
-                            {submitting ? (
+                            {submitting === 'card' ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                     Conectando con Stripe…
                                 </>
                             ) : (
                                 <>
-                                    Donar Ahora
+                                    Donar ahora con tarjeta de débito o crédito
                                     <Check className="w-5 h-5" />
                                 </>
                             )}
                         </button>
 
+                        {/* La vía de PAYPAL. Sólo si el servidor dijo que se puede:
+                            sin credenciales, o si la cuenta no cobra en esta
+                            moneda, no se pinta. NO se convierte el importe — el
+                            visitante ya vio una cifra concreta. */}
+                        {paypal?.available && (
+                            <button
+                                onClick={() => handleDonate('paypal')}
+                                disabled={!!submitting}
+                                className="w-full disabled:opacity-60 disabled:cursor-wait bg-[#FFC439] hover:bg-[#F0B72C] text-[#003087] font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                            >
+                                {submitting === 'paypal' ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Conectando con PayPal…
+                                    </>
+                                ) : (
+                                    <span data-no-translate>Donar a través de PayPal</span>
+                                )}
+                            </button>
+                        )}
+
                         <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
                             <ShieldCheck className="w-3.5 h-3.5" />
-                            Pago seguro procesado por Stripe
+                            {paypal?.available
+                                ? 'Pago seguro procesado por Stripe o PayPal'
+                                : 'Pago seguro procesado por Stripe'}
                         </div>
                     </div>
                 </div>
