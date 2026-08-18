@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.870.0 | 2026-08-18 (PayPal cobra en pesos, convirtiendo a la vista)
-// Cache bust: 2026-08-18d
+// UI V4.871.0 | 2026-08-18 (La TRM de PayPal se resuelve sola)
+// Cache bust: 2026-08-18e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.871.0',
+        title: 'La TRM de PayPal se resuelve sola 🔄',
+        description: 'La tasa con la que se convierte un aporte en pesos ya no hay que escribirla: sale de la misma cadena de proveedores que la Bóveda usa desde v4.846 para expresar en pesos la comisión de Stripe, con la Superintendencia Financiera como fuente oficial.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'paypal', 'trm'],
+        type: 'improved',
+        impact: 'Medio',
+        changes: [
+            { type: 'added', text: 'La TRM del día se resuelve sola en cada cobro por PayPal.' },
+            { type: 'changed', text: 'La tasa escrita a mano pasa a ser el respaldo, y la única vía para un par que la TRM no cubre.' },
+            { type: 'added', text: 'El panel muestra la tasa automática con su fuente y su fecha, de sólo lectura.' },
+            { type: 'added', text: 'npm run test:fx pasa de 67 a 80 comprobaciones.' },
+        ],
+        details: [
+            'NO SE ESCRIBE UNA SEGUNDA CADENA DE PROVEEDORES. La TRM ya se resolvía sola desde v4.846 —Superintendencia Financiera vía datos.gov.co, con cinco respaldos de mercado, caché por fecha y consulta histórica— y es la que la Bóveda usa para expresar en pesos la comisión que Stripe cobra en dólares. Escribir otra habría dado dos fuentes que se separan en silencio; lo comprueba una prueba sobre el archivo.',
+            'LA AUTOMÁTICA MANDA SOBRE LA ESCRITA A MANO, y es lo contrario de la regla habitual del sitio. Acá no aplica: una tasa de cambio no es una preferencia, es un hecho que cambia todos los días, y el fallo característico de la escrita a mano es quedarse vieja — que es exactamente lo que la automática resuelve. La manual queda de respaldo, para cuando la fuente no contesta.',
+            'La TRM es DIARIA: la Superintendencia publica un valor por día hábil y su día es el de Bogotá, no el del servidor —que corre en UTC—. La fuente que se guarda con el aporte dice de qué día es la tasa, porque sin eso no se sabe cuál se usó.',
+            'La automática se muestra de SÓLO LECTURA. Editable invitaría a cambiar un número que se vuelve a resolver solo en la siguiente consulta, y el cambio se leería como que no se guardó.',
+            'Si la fuente no contesta se usa la escrita a mano; si tampoco hay, no se convierte y el botón de PayPal no aparece. La regla de siempre no se toca: nunca se inventa una tasa.',
+            'El orden de precedencia vive en el criterio puro y está probado, no dentro de la capa que habla con la red: es la decisión que gobierna cuánto se le cobra a alguien.',
+        ]
+    },
     {
         version: '4.870.0',
         title: 'El botón de PayPal aparece también en pesos 💱',

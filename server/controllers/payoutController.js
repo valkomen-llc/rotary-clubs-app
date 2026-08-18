@@ -20,7 +20,7 @@ import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
 import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO } from '../lib/paymentMethods.js';
 import { getPaymentMethods, savePaymentMethods } from '../lib/paymentMethodsStore.js';
-import { getFxRates, saveFxRates } from '../lib/fxRatesStore.js';
+import { getFxRates, saveFxRates, getAutoRates } from '../lib/fxRatesStore.js';
 import { validateRates, STALE_DAYS as FX_STALE_DAYS, rateAgeDays } from '../lib/fxRates.js';
 
 console.log('[PAYOUTS v4.861] Recálculo deliberado de la retención + reglas de comisión configurables');
@@ -724,10 +724,23 @@ export const getFxRatesConfig = async (req, res) => {
             updatedAt: val.updatedAt || null,
             ageDays: rateAgeDays(val.updatedAt, ahora),
         }));
+        // ⚠️ LAS AUTOMÁTICAS VAN APARTE Y DE SÓLO LECTURA. Mezclarlas con las
+        // escritas a mano invitaría a editar un número que se vuelve a resolver
+        // solo en la siguiente consulta, y el cambio se leería como que no se
+        // guardó. Salen de la MISMA cadena de TRM que usa la Bóveda (v4.846).
+        const auto = Object.entries(await getAutoRates()).map(([pair, val]) => ({
+            pair,
+            perUnit: val.perUnit,
+            source: val.source || null,
+            updatedAt: val.updatedAt || null,
+            ageDays: rateAgeDays(val.updatedAt, ahora),
+            official: !!val.official,
+        }));
         res.json({
             rates: detalle,
+            auto,
             staleDays: FX_STALE_DAYS,
-            aviso: 'La conversión sólo ocurre cuando la cuenta del proveedor no cobra en la moneda del aporte. Sin tasa configurada, ese método no se ofrece.',
+            aviso: 'La conversión sólo ocurre cuando la cuenta del proveedor no cobra en la moneda del aporte. Sin ninguna tasa —ni automática ni escrita—, ese método no se ofrece.',
         });
     } catch (error) {
         console.error('[FX] Error leyendo las tasas:', error);
@@ -747,7 +760,7 @@ export const updateFxRatesConfig = async (req, res) => {
                 updatedAt: val.updatedAt || null, ageDays: rateAgeDays(val.updatedAt, ahora),
             })),
             warnings,
-            aviso: 'Rige para los aportes que empiecen de ahora en adelante. Los ya cobrados conservan la tasa con la que se cobraron.',
+            aviso: 'Rige para los aportes que empiecen de ahora en adelante, y sólo cuando la tasa automática no esté disponible. Los ya cobrados conservan la tasa con la que se cobraron.',
         });
     } catch (error) {
         console.error('[FX] Error guardando las tasas:', error);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // LAS TASAS DE CAMBIO Y EL COBRO POR PAYPAL.  npm run test:fx
-// v4.870.0
+// v4.871.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED.
 //
@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import {
     FX_RATES_KEY, STALE_DAYS, MOTIVOS_FX,
-    pairKey, rateFor, rateAgeDays, convertAmount, validateRates, parseRates,
+    pairKey, rateFor, rateAgeDays, convertAmount, mergeRates, validateRates, parseRates,
 } from '../server/lib/fxRates.js';
 import { resolvePaypalCharge, paypalCurrencyOk } from '../server/lib/paypalSpec.js';
 
@@ -141,6 +141,40 @@ ok('y se guarda igual', !!vieja.rates.COP_USD);
 eq('la edad se calcula en días', rateAgeDays('2026-08-08T00:00:00.000Z', HOY), 10);
 eq('sin fecha, la edad es desconocida, no cero', rateAgeDays(null, HOY), null);
 
+// ── 5b. La TRM se resuelve sola ──────────────────────────────────────
+section('5b. La automática manda sobre la escrita a mano (v4.871)');
+
+const MANUAL = { COP_USD: { perUnit: 4032, source: 'a mano', updatedAt: '2026-01-01T00:00:00.000Z' } };
+const AUTO = { COP_USD: { perUnit: 3128.65, source: 'Superintendencia Financiera de Colombia (datos.gov.co) · TRM del 2026-08-16', updatedAt: '2026-08-16T00:00:00.000Z', automatic: true, official: true } };
+
+// ⚠️ Lo contrario de la regla habitual del sitio, y a propósito: una tasa de
+// cambio no es una preferencia, es un hecho que cambia todos los días. El fallo
+// característico de la manual es quedarse vieja — justo lo que la automática
+// resuelve. Con 4.032 a mano y 3.128,65 de TRM, $100.000 son US$ 31,96, no
+// US$ 24,80.
+eq('la automática pisa a la manual', mergeRates(MANUAL, AUTO).COP_USD.perUnit, 3128.65);
+eq('y el importe sale con la del día',
+    convertAmount(100000, 'COP', 'USD', mergeRates(MANUAL, AUTO), HOY).amount, 31.96);
+
+// Sin automática, la manual sostiene el cobro: es su función de respaldo.
+eq('sin automática se usa la manual', mergeRates(MANUAL, {}).COP_USD.perUnit, 4032);
+eq('y sin ninguna de las dos no hay tasa', Object.keys(mergeRates({}, {})).length, 0);
+
+// Un par que la TRM no cubre sobrevive a la mezcla.
+const OTRO = { ...MANUAL, EUR_USD: { perUnit: 0.92 } };
+eq('un par sólo manual se conserva', mergeRates(OTRO, AUTO).EUR_USD.perUnit, 0.92);
+ok('y la automática sigue mandando en el suyo', mergeRates(OTRO, AUTO).COP_USD.perUnit === 3128.65);
+
+// La fuente viaja con la tasa: es lo que la ficha del aporte va a mostrar.
+ok('la fuente automática nombra a la Superintendencia',
+    /Superintendencia/.test(mergeRates(MANUAL, AUTO).COP_USD.source));
+ok('y dice de qué día es la TRM',
+    /TRM del 2026-08-16/.test(mergeRates(MANUAL, AUTO).COP_USD.source),
+    'la TRM es DIARIA: sin la fecha, la fuente no dice cuál se usó');
+
+ok('mergeRates no muta lo que recibe',
+    (() => { const m = { ...MANUAL }; mergeRates(m, AUTO); return m.COP_USD.perUnit === 4032; })());
+
 // ── 6. Leer lo guardado nunca lanza ──────────────────────────────────
 section('6. Leer nunca lanza: esto corre en el camino del cobro');
 
@@ -179,6 +213,23 @@ ok('y la tasa con la que se calculó', /perUnit/.test(modal));
 // Los TRES datos quedan guardados con el aporte.
 ok('el aporte guarda el importe original y la tasa',
     /originalAmount/.test(ctrl) && /fxPerUnit/.test(ctrl) && /fxSource/.test(ctrl));
+
+// ⚠️ LA TRM SE RESUELVE SOLA, con la MISMA cadena que usa la Bóveda desde
+// v4.846. Una segunda cadena daría dos fuentes que se separan en silencio.
+const store = read('server/lib/fxRatesStore.js');
+const panel = read('src/components/admin/FxRatesPanel.tsx');
+ok('el cobro usa las tasas efectivas, no sólo las escritas',
+    /getEffectiveRates\(\)/.test(ctrl) && !/rates: await getFxRates\(\)/.test(ctrl));
+ok('y la TRM sale del módulo que ya existía',
+    /from '\.\/trm\.js'/.test(store),
+    'escribir una segunda cadena de proveedores daría dos fuentes que se separan');
+// Sólo lectura de verdad: lo que se guarda sale de la lista MANUAL y nunca de
+// las automáticas. Editable invitaría a cambiar un número que se vuelve a
+// resolver solo, y el cambio se leería como que no se guardó.
+ok('la automática se muestra pero no se guarda',
+    /Object\.fromEntries\(lista\.map/.test(panel) && !/auto\.map\([^)]*=> \[/.test(panel));
+ok('y el panel dice que manda sobre lo escrito',
+    /[Mm]anda sobre/.test(panel));
 
 // ── 8. Paridad de los dos espejos ────────────────────────────────────
 section('8. El navegador y el servidor dan lo MISMO');

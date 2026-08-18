@@ -4,14 +4,20 @@
 // que sin una tasa configurada el botón no aparece nunca en el sitio de un
 // distrito colombiano — que es donde vive la mayoría de los aportes.
 //
-// ⚠️ LA REGLA DE SIEMPRE NO CAMBIA: «no se inventa una tasa». Si acá no hay
-// ninguna escrita, no se convierte y el método no se ofrece. Lo que cambia es
-// que ahora se puede escribir una, y que la conversión se le DICE al visitante
-// antes de cobrarle.
+// ⚠️ LA REGLA DE SIEMPRE NO CAMBIA: «no se inventa una tasa». Si no hay
+// ninguna —ni automática ni escrita—, no se convierte y el método no se ofrece.
+// Lo que cambia es que ahora hay una, y que la conversión se le DICE al
+// visitante antes de cobrarle.
+//
+// v4.871 — LA TRM SE RESUELVE SOLA, con la misma cadena de proveedores que usa
+// la Bóveda desde v4.846 para expresar en pesos la comisión de Stripe. Se
+// muestra de SÓLO LECTURA: es un hecho que cambia todos los días, no una
+// preferencia. Lo escrito a mano queda de RESPALDO —cuando la fuente no
+// contesta— y como única vía para un par que la TRM no cubre.
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { ArrowLeftRight, Save, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeftRight, Save, Plus, Trash2, AlertTriangle, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -21,6 +27,7 @@ interface Tasa {
     source: string | null;
     updatedAt: string | null;
     ageDays: number | null;
+    official?: boolean;
 }
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` } });
@@ -41,6 +48,7 @@ const partes = (pair: string) => {
 
 export default function FxRatesPanel() {
     const [tasas, setTasas] = useState<Tasa[] | null>(null);
+    const [auto, setAuto] = useState<Tasa[]>([]);
     const [staleDays, setStaleDays] = useState(45);
     const [avisos, setAvisos] = useState<string[]>([]);
     const [guardando, setGuardando] = useState(false);
@@ -52,6 +60,7 @@ export default function FxRatesPanel() {
         try {
             const { data } = await axios.get(`${API_URL}/payouts/admin/fx-rates`, auth());
             setTasas(data.rates || []);
+            setAuto(data.auto || []);
             setStaleDays(data.staleDays ?? 45);
         } catch (e: any) {
             setError(mensajeDeFallo(e));
@@ -104,13 +113,56 @@ export default function FxRatesPanel() {
             </div>
             <p className="text-xs text-gray-500 mb-3">
                 Sólo se usan cuando la cuenta de un proveedor <b>no</b> cobra en la moneda del aporte.
-                Sin una tasa escrita acá no se convierte nada y ese método no se ofrece — nunca se inventa una.
+                Sin ninguna tasa no se convierte nada y ese método no se ofrece — nunca se inventa una.
                 Al visitante se le muestra el importe convertido <b>antes</b> de cobrarle.
+            </p>
+
+            {/* ⚠️ LO AUTOMÁTICO VA PRIMERO Y DE SÓLO LECTURA. Es lo que de
+                verdad se usa; lo de abajo es el respaldo. Editable invitaría a
+                cambiar un número que se vuelve a resolver solo, y el cambio se
+                leería como que no se guardó. */}
+            {auto.length > 0 && (
+                <div className="rounded-xl bg-emerald-50/60 border border-emerald-100 p-3 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <RefreshCw className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                        <span className="text-xs font-black uppercase tracking-widest text-emerald-700">
+                            Automáticas
+                        </span>
+                    </div>
+                    {auto.map(t => {
+                        const { from, to } = partes(t.pair);
+                        return (
+                            <div key={t.pair} className="flex items-baseline gap-2 flex-wrap text-sm">
+                                <span className="font-bold text-gray-800" data-no-translate>{from} → {to}</span>
+                                <span className="font-mono text-gray-900" data-no-translate>
+                                    {t.perUnit.toLocaleString('es-CO', { maximumFractionDigits: 4 })}
+                                </span>
+                                <span className="text-xs text-gray-500" data-no-translate>{from} por {to}</span>
+                                {t.official && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                                        <CheckCircle2 className="w-3 h-3" /> Oficial
+                                    </span>
+                                )}
+                                <span className="text-[11px] text-gray-500 basis-full" data-no-translate>{t.source}</span>
+                            </div>
+                        );
+                    })}
+                    <p className="text-[11px] text-gray-500 mt-2">
+                        Se resuelve sola en cada cobro, con la misma fuente que usa la Bóveda para las comisiones
+                        de Stripe. <b>Manda sobre lo escrito abajo</b>: una tasa de cambio no es una preferencia,
+                        es un dato que cambia todos los días.
+                    </p>
+                </div>
+            )}
+
+            <p className="text-xs text-gray-500 mb-2">
+                <b>De respaldo</b>, escritas a mano: se usan cuando la fuente automática no contesta,
+                y son la única vía para un par que la TRM no cubre.
             </p>
 
             {tasas.length === 0 && (
                 <p className="text-xs text-gray-400 mb-3">
-                    No hay ninguna tasa configurada todavía.
+                    No hay ninguna tasa de respaldo escrita.
                 </p>
             )}
 

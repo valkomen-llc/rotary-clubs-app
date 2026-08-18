@@ -28,9 +28,11 @@ import {
 import {
     resolvePaypalCharge, MOTIVOS_MONEDA, parseCapture, paypalAvailability, paypalRef,
 } from '../lib/paypalSpec.js';
-// v4.870 — Las tasas de cambio. Sin tasa configurada no se convierte y el
-// botón no se muestra: la regla de siempre («no se inventa una tasa») sigue.
-import { getFxRates } from '../lib/fxRatesStore.js';
+// v4.870 — Las tasas de cambio. Sin tasa no se convierte y el botón no se
+// muestra: la regla de siempre («no se inventa una tasa») sigue.
+// v4.871 — `getEffectiveRates` resuelve la TRM SOLA (la misma cadena que usa la
+// Bóveda desde v4.846) y lo escrito a mano queda de respaldo.
+import { getEffectiveRates } from '../lib/fxRatesStore.js';
 import {
     paypalConfigured, createPaypalOrder, capturePaypalOrder, getPaypalOrder, verifyPaypalWebhook, paypalEnv,
 } from '../lib/paypalService.js';
@@ -83,7 +85,7 @@ export const paypalAvailabilityCheck = async (req, res) => {
         const plan = resolvePaypalCharge({
             currency: decision.currency,
             settlement: paypalCurrency(),
-            rates: await getFxRates(),
+            rates: await getEffectiveRates(),
         });
         return res.json({
             available: plan.ok,
@@ -158,7 +160,7 @@ export const createPaypalDonation = async (req, res) => {
             amount: monto,
             currency: decision.currency,
             settlement: paypalCurrency(),
-            rates: await getFxRates(),
+            rates: await getEffectiveRates(),
         });
         if (!cobro.ok) {
             // Sin tasa configurada NO se inventa una: se dice el motivo.
