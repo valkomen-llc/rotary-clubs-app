@@ -6543,6 +6543,33 @@ de Stripe (v4.859). Y `Checkout.tsx` conserva su selector Stripe/PayPal
 **decorativo**: la tienda sigue sin cobrar por ninguna de las dos vías, que es
 el pendiente declarado desde v4.808.
 
+### Declarar lo que el servidor MANDA, no lo que uno espera (v4.867)
+
+`/admin/integraciones` quedaba en «Esta pantalla no se pudo mostrar» con
+«Cannot read properties of undefined (reading 'toLocaleString')», y por eso **no
+se podía llegar a cargar las credenciales**.
+
+- **La pantalla leía CINCO campos que el endpoint no manda**
+  —`estimatedTokensInput`, `estimatedTokensOutput`, `estimatedCostUSD`, `model`
+  y `pricingNote`—. Al reescribirse el módulo de traducción en v4.662 —de un
+  modelo único a una CADENA de proveedores— esas cifras dejaron de existir, y el
+  comentario de `GET /translate/usage` sigue diciendo «compatibilidad con la
+  pantalla de Integraciones» sin serlo. **El typecheck no lo ve**: la interfaz
+  estaba escrita, y era la equivocada.
+- **UN ERROR DE RENDER DESMONTA EL SUBÁRBOL ENTERO.** No se perdía un número: se
+  perdía la pantalla, y con ella el acceso a las credenciales. Misma forma que el
+  defecto que dejó la Bóveda en blanco en v4.852.
+- **Un contador ausente se pinta «—», NO «0».** Un cero es una afirmación —«no
+  hubo ninguna»— y un hueco es la verdad. Acá además evita que un dato que falta
+  tumbe la pantalla.
+- **No se estiman los tokens ni el costo.** DeepL, Google y Azure ni siquiera
+  cobran por tokens: afirmar un costo que no se calcula es peor que no
+  mostrarlo. Las tres tarjetas rotas se reemplazaron por lo que el servidor SÍ
+  manda —caché en memoria, actividad de 30 días, proveedor activo—.
+- Pruebas: `npm run test:integrations:ui` (9 casos, navegador con la API
+  interceptada usando la RESPUESTA REAL del endpoint). Verificada a la inversa:
+  con el código anterior falla con el mismo mensaje del reporte.
+
 ## Base de datos y despliegue — CAUSA DEL INCIDENTE DEL 2026-07-13
 
 **El `build` NO debe ejecutar `prisma db push`.** Hasta v4.622 el script de build corría:

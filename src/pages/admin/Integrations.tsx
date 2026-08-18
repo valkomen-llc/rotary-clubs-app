@@ -38,18 +38,34 @@ interface LangRow {
     chars: number;
     domains: DomainEntry[];
 }
+// ⚠️ ESTA FORMA ES LA QUE EL SERVIDOR MANDA DE VERDAD, no la que la pantalla
+// esperaba. Hasta v4.866 declaraba `estimatedTokensInput`,
+// `estimatedTokensOutput`, `estimatedCostUSD`, `model` y `pricingNote`, y
+// `GET /translate/usage` NO devuelve ninguno: al reescribirse el módulo de
+// traducción en v4.662 —de un solo modelo a una cadena de proveedores— esas
+// cifras dejaron de existir, y el comentario del endpoint sigue diciendo
+// «compatibilidad con la pantalla de Integraciones» sin serlo.
+//
+// El resultado era que `fmt(undefined)` lanzaba y el límite de error se llevaba
+// la PANTALLA ENTERA: no se podía llegar a las credenciales por un contador.
+// Al consumir un endpoint, declarar lo que manda — no lo que uno espera.
 interface UsageData {
     totalCachedTranslations: number;
     memCacheEntries: number;
     byLanguage: LangRow[];
-    estimatedTokensInput: number;
-    estimatedTokensOutput: number;
-    estimatedCostUSD: number;
-    model: string;
-    pricingNote: string;
+    provider?: { active?: string | null; configured?: string | null; fallback?: string | null };
+    activity30d?: {
+        ok?: { calls: number; texts: number; chars: number; avgMs: number | null };
+        error?: { calls: number; texts: number; chars: number; avgMs: number | null };
+        edits?: number;
+    };
 }
 
-const fmt = (n: number) => n.toLocaleString('es-CO');
+// `—` y no `0` cuando el dato no vino: un cero es una AFIRMACIÓN —«no hubo
+// ninguna»— y un hueco es la verdad. Es la regla del sitio y acá además evita
+// que un contador ausente tumbe la pantalla.
+const fmt = (n?: number | null) =>
+    (typeof n === 'number' && Number.isFinite(n)) ? n.toLocaleString('es-CO') : '—';
 const timeAgo = (iso: string | null) => {
     if (!iso) return 'nunca';
     const diff = Date.now() - new Date(iso).getTime();
@@ -556,30 +572,44 @@ const Integrations: React.FC = () => {
                                             <p className="text-2xl font-black text-gray-900">{fmt(usage.totalCachedTranslations)}</p>
                                             <p className="text-[10px] text-gray-400 font-medium mt-1">textos únicos traducidos</p>
                                         </div>
+                                        {/* ⚠️ Las tres tarjetas que había acá —«Tokens
+                                            Entrada», «Tokens Salida» y «Costo Total
+                                            USD»— medían un modelo único que el módulo
+                                            dejó de tener en v4.662: hoy la traducción
+                                            va por una CADENA de proveedores y DeepL,
+                                            Google y Azure ni siquiera cobran por
+                                            tokens. El servidor no manda esas cifras y
+                                            la pantalla las leía igual, así que
+                                            reventaba.
+                                            No se estiman: se muestran las que sí se
+                                            miden. Afirmar un costo que no se calcula
+                                            es peor que no mostrarlo. */}
                                         <div className="bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100 rounded-2xl p-5">
-                                            <div className="flex items-center gap-2 mb-3"><Cpu className="w-4 h-4 text-sky-500" /><span className="text-[10px] font-black text-sky-600 uppercase tracking-widest">Tokens Entrada</span></div>
-                                            <p className="text-2xl font-black text-gray-900">{fmt(usage.estimatedTokensInput)}</p>
-                                            <p className="text-[10px] text-gray-400 font-medium mt-1">~30 tokens/solicitud</p>
+                                            <div className="flex items-center gap-2 mb-3"><Cpu className="w-4 h-4 text-sky-500" /><span className="text-[10px] font-black text-sky-600 uppercase tracking-widest">Caché en memoria</span></div>
+                                            <p className="text-2xl font-black text-gray-900">{fmt(usage.memCacheEntries)}</p>
+                                            <p className="text-[10px] text-gray-400 font-medium mt-1">entradas en esta instancia</p>
                                         </div>
                                         <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-5">
-                                            <div className="flex items-center gap-2 mb-3"><Cpu className="w-4 h-4 text-emerald-500" /><span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Tokens Salida</span></div>
-                                            <p className="text-2xl font-black text-gray-900">{fmt(usage.estimatedTokensOutput)}</p>
-                                            <p className="text-[10px] text-gray-400 font-medium mt-1">~35 tokens/respuesta</p>
+                                            <div className="flex items-center gap-2 mb-3"><Languages className="w-4 h-4 text-emerald-500" /><span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Textos · 30 días</span></div>
+                                            <p className="text-2xl font-black text-gray-900">{fmt(usage.activity30d?.ok?.texts)}</p>
+                                            <p className="text-[10px] text-gray-400 font-medium mt-1">
+                                                {fmt(usage.activity30d?.error?.calls)} llamadas con error
+                                            </p>
                                         </div>
                                         <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5">
-                                            <div className="flex items-center gap-2 mb-3"><DollarSign className="w-4 h-4 text-amber-600" /><span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Costo Total USD</span></div>
-                                            <p className="text-2xl font-black text-gray-900">
-                                                ${usage.estimatedCostUSD < 0.01 ? usage.estimatedCostUSD.toFixed(6) : usage.estimatedCostUSD.toFixed(4)}
+                                            <div className="flex items-center gap-2 mb-3"><DollarSign className="w-4 h-4 text-amber-600" /><span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Proveedor activo</span></div>
+                                            <p className="text-2xl font-black text-gray-900 truncate" data-no-translate>{usage.provider?.active || '—'}</p>
+                                            <p className="text-[10px] text-gray-400 font-medium mt-1">
+                                                {usage.provider?.fallback ? <>respaldo: <span data-no-translate>{usage.provider.fallback}</span></> : 'sin respaldo configurado'}
                                             </p>
-                                            <p className="text-[10px] text-gray-400 font-medium mt-1">acumulado histórico</p>
                                         </div>
                                     </div>
 
                                     {/* Per-Language + Per-Domain */}
-                                    {usage.byLanguage.length > 0 && (
+                                    {(usage.byLanguage?.length || 0) > 0 && (
                                         <div className="space-y-3">
                                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Desglose por idioma y dominio</p>
-                                            {usage.byLanguage.map(row => {
+                                            {(usage.byLanguage || []).map(row => {
                                                 const pct = Math.round((row.count / usage.totalCachedTranslations) * 100) || 0;
                                                 const isExpanded = expandedLang === row.lang;
                                                 return (
@@ -676,7 +706,6 @@ const Integrations: React.FC = () => {
                                                     </div>
                                                 );
                                             })}
-                                            <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">{usage.pricingNote}</p>
                                         </div>
                                     )}
 
