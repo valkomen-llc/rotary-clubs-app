@@ -28,7 +28,7 @@
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { CreditCard, CheckCircle2, AlertTriangle, Save, Info, XCircle } from 'lucide-react';
+import { CreditCard, CheckCircle2, AlertTriangle, Save, Info, XCircle, Plug, Loader2 } from 'lucide-react';
 // Las tasas viven acá y no en una pantalla propia: la conversión existe POR la
 // restricción de un método de pago, y la decisión se toma donde ya se trabaja
 // —las pantallas que se olvidan son siempre las del segundo lugar—.
@@ -48,7 +48,10 @@ interface Metodo {
     offered: boolean;
     reason: string | null;
     limits?: { kind: string; value?: string; text: string }[];
+    testable?: boolean;
 }
+
+interface Prueba { ok: boolean; env?: string | null; aviso?: string; error?: string; hints?: string[] }
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` } });
 
@@ -71,6 +74,24 @@ export default function PaymentMethodsPanel() {
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [ok, setOk] = useState<string | null>(null);
+    // El resultado de probar las credenciales, por método. Sin esto, la única
+    // forma de saber si PayPal está bien configurado era intentar un aporte de
+    // verdad y leer el error en el modal.
+    const [pruebas, setPruebas] = useState<Record<string, Prueba>>({});
+    const [probando, setProbando] = useState<string | null>(null);
+
+    const probar = async (id: string) => {
+        setProbando(id);
+        setPruebas((p) => { const q = { ...p }; delete q[id]; return q; });
+        try {
+            const { data } = await axios.post(`${API_URL}/payouts/admin/payment-methods/${id}/test`, {}, auth());
+            setPruebas((p) => ({ ...p, [id]: data }));
+        } catch (e: any) {
+            setPruebas((p) => ({ ...p, [id]: { ok: false, error: mensajeDeFallo(e) } }));
+        } finally {
+            setProbando(null);
+        }
+    };
 
     const cargar = async () => {
         try {
@@ -202,6 +223,47 @@ export default function PaymentMethodsPanel() {
                                     </li>
                                 ))}
                             </ul>
+                        )}
+
+                        {/* PROBAR LAS CREDENCIALES sin cobrarle a nadie. Sólo si
+                            el método declara que se puede: un botón que no hace
+                            nada es peor que ninguno. */}
+                        {m.testable && m.configured && (
+                            <div className="mt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => probar(m.id)}
+                                    disabled={probando === m.id}
+                                    className="inline-flex items-center gap-1.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                                >
+                                    {probando === m.id
+                                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        : <Plug className="w-3.5 h-3.5" />}
+                                    {probando === m.id ? 'Probando…' : 'Probar credenciales'}
+                                </button>
+
+                                {pruebas[m.id] && (
+                                    <div className={`mt-2 text-xs rounded-xl px-3 py-2 border ${
+                                        pruebas[m.id].ok
+                                            ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                                            : 'text-red-800 bg-red-50 border-red-200'
+                                    }`}>
+                                        <p className="font-bold">
+                                            {pruebas[m.id].ok ? pruebas[m.id].aviso : pruebas[m.id].error}
+                                        </p>
+                                        {/* Qué mirar. «Client Authentication failed» a
+                                            secas no distingue entre el entorno
+                                            equivocado y un secreto mal pegado. */}
+                                        {(pruebas[m.id].hints || []).length > 0 && (
+                                            <ul className="mt-1.5 space-y-1 list-disc pl-4">
+                                                {(pruebas[m.id].hints || []).map((h, i) => (
+                                                    <li key={i}>{h.replace(/\*\*/g, '')}</li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
 
                         {/* Activado pero sin credenciales: se puede dejar listo, y

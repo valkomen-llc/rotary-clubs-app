@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.873.0",
-  "cache_bust": "2026-08-18g (Los artículos tienen dirección propia y SEO configurable.)",
+  "version": "4.874.0",
+  "cache_bust": "2026-08-18h (Se pueden probar las credenciales de un método de pago.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

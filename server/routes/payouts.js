@@ -15,7 +15,8 @@ import {
     getPaymentMethodsConfig,
     updatePaymentMethodsConfig,
     getFxRatesConfig,
-    updateFxRatesConfig
+    updateFxRatesConfig,
+    testPaymentMethod
 } from '../controllers/payoutController.js';
 
 const router = express.Router();
@@ -63,6 +64,10 @@ router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOvervie
 // cambia. Se comprueba acá, no sólo en la pantalla.
 // v4.868 — Los métodos de pago: qué vías de cobro ofrece la plataforma y
 // cuáles están activadas. Del operador, como la tarifa.
+// v4.874 — Probar las credenciales sin cobrarle a nadie. Sólo lectura contra
+// el proveedor; NUNCA devuelve la credencial.
+router.post('/admin/payment-methods/:id/test', roleMiddleware(superAdminRoles), testPaymentMethod);
+
 router.get('/admin/payment-methods', roleMiddleware(superAdminRoles), getPaymentMethodsConfig);
 router.put('/admin/payment-methods', roleMiddleware(superAdminRoles), updatePaymentMethodsConfig);
 

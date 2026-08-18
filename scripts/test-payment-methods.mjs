@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // LOS MÉTODOS DE PAGO.  npm run test:payment-methods
-// v4.869.0
+// v4.874.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED.
 //
@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import {
     PAYMENT_METHODS, METHOD_IDS, PAYMENT_METHODS_KEY, MOTIVOS,
     methodStatus, methodLimits, resolveMethods, isMethodOffered,
+    METHOD_TESTABLE, credentialHints,
     validateMethods, defaultConfig, mergeMethods, parseMethods, methodById,
 } from '../server/lib/paymentMethods.js';
 
@@ -150,6 +151,36 @@ ok('y el método SIGUE ofreciéndose', filaPaypal.offered === true,
 // El hecho del proveedor que más cuesta descubrir, dicho donde se configura.
 ok('el catálogo dice que PayPal no procesa COP', /COP/.test(elPaypal.help));
 
+// ── 5c. Probar las credenciales ─────────────────────────────────────
+section('5c. «Client Authentication failed» tiene DOS causas (v4.874)');
+
+// ⚠️ El mensaje del proveedor no distingue entre ellas, y sin decirlo quien lo
+// recibe no tiene por dónde empezar. Se reportó tal cual: «aparece un mensaje
+// que dice fallo en la autenticación del cliente».
+const pistas = credentialHints('paypal', { providerError: 'invalid_client', env: 'sandbox' });
+ok('se dan pistas ante invalid_client', pistas.length >= 2);
+ok('la primera nombra el entorno activo', /Sandbox/.test(pistas[0]), pistas[0]);
+ok('y nombra el otro para descartarlo', /Live/.test(pistas[0]), pistas[0]);
+ok('alguna habla del espacio al pegar el secreto',
+    pistas.some(p => /espacio|salto de línea/i.test(p)));
+
+// Con el entorno al revés, las pistas se dan vuelta: son el dato que parte el
+// diagnóstico en dos.
+const enLive = credentialHints('paypal', { providerError: 'invalid_client', env: 'live' });
+ok('en live se pide la credencial Live', /\*\*Live\*\*/.test(enLive[0]), enLive[0]);
+
+// Un error que NO es de credenciales no recibe pistas de credenciales: mandar
+// a revisar el secreto cuando el problema es otro es peor que no decir nada.
+eq('otro error no recibe estas pistas',
+    credentialHints('paypal', { providerError: 'RATE_LIMIT_REACHED', env: 'sandbox' }).length, 0);
+eq('y otro método tampoco', credentialHints('card', { providerError: 'invalid_client' }).length, 0);
+
+// Qué se puede probar se DECLARA: un botón que no hace nada es peor que ninguno.
+ok('PayPal es probable', METHOD_TESTABLE.has('paypal'));
+ok('la tarjeta todavía no', !METHOD_TESTABLE.has('card'));
+ok('y el método lo publica', resolveMethods({}, CON_TODO).find(m => m.id === 'paypal').testable === true);
+ok('la tarjeta lo publica en false', resolveMethods({}, CON_TODO).find(m => m.id === 'card').testable === false);
+
 // ── 6. Sobre los archivos ───────────────────────────────────────────
 section('6. Lo que no se ve mirando una pantalla');
 
@@ -185,6 +216,23 @@ ok('y sólo cuando el método de verdad se ofrece',
 // El motivo por el que un método no se ofrece está redactado.
 ok('los dos motivos están escritos',
     /credenciales/i.test(MOTIVOS.sin_credenciales) && /activ/i.test(MOTIVOS.desactivado));
+
+// ⚠️ LAS CREDENCIALES SE LEEN SIN ESPACIOS. Al pegar el secreto en el panel de
+// variables es fácil arrastrar un salto de línea, y PayPal contesta
+// `invalid_client` sin decir que sobra un carácter.
+const servicio = read('server/lib/paypalService.js');
+ok('las credenciales se recortan antes de usarlas', /paypalCredentials/.test(servicio) && /\.trim\(\)/.test(servicio));
+ok('y el error dice en qué ENTORNO se probó',
+    /entorno \$\{paypalEnv\(\)\}/.test(servicio),
+    'es el dato que distingue credenciales del otro entorno de un secreto mal pegado');
+
+// La prueba de credenciales es de SÓLO LECTURA y no devuelve el secreto.
+const ctrl = read('server/controllers/payoutController.js');
+ok('probar las credenciales no cobra nada', /paypalToken\(\)/.test(ctrl) && !/createPaypalOrder/.test(ctrl));
+ok('y vacía la caché antes de probar',
+    /resetPaypalToken\(\)/.test(ctrl),
+    'con el token guardado se comprobaría la credencial anterior, no la que se acaba de cargar');
+ok('el panel ofrece probar sólo lo probable', /m\.testable && m\.configured/.test(panel));
 
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);
