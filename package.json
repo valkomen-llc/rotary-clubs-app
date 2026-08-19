@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.875.0",
-  "cache_bust": "2026-08-18i (Ninguna consulta a un tercero sin tope de tiempo.)",
+  "version": "4.876.0",
+  "cache_bust": "2026-08-18j (Panel de grupos: cuenta, verificación, listas, importar y exportar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

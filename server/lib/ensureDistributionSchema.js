@@ -15,6 +15,7 @@
  *   DistributionJob       UN DESTINO, UNA FILA. Es la pieza que hace posible
  *                         pausar, reintentar y consultar estado por destino.
  *   DistributionEvent     la traza, append-only.
+ *   DistributionGroup     los grupos declarados (v4.876).
  *
  * ⚠️ POR QUÉ LOS JOBS NO VIVEN EN UN JSON DE LA CAMPAÑA. SocialPublication
  * guarda el resultado por cuenta dentro de targetAccounts (un array JSON), y
@@ -137,6 +138,52 @@ CREATE TABLE IF NOT EXISTS "DistributionEvent" (
 
 CREATE INDEX IF NOT EXISTS "DistributionEvent_campaign_idx"
     ON "DistributionEvent"("campaignId", "createdAt" DESC);
+
+-- v4.876 — Los grupos declarados. Salen del Setting distribution_groups y pasan
+-- a tabla propia por el mismo motivo que separó DistributionJob de la campaña:
+-- ahora cada grupo tiene ESTADO —verificación, favorito, etiquetas, última
+-- publicación— y un JSON no se consulta, no se indexa y se pisa cuando dos
+-- pantallas escriben a la vez.
+--
+-- ⚠️ NO hay columna de ROL, y su ausencia es deliberada: no existe API que
+-- devuelva el rol de nadie en un grupo. Una columna "role" invitaría a llenarla
+-- con un dato inventado que después alguien usa para decidir dónde publicar.
+CREATE TABLE IF NOT EXISTS "DistributionGroup" (
+    id                TEXT PRIMARY KEY,
+    "clubId"          TEXT NOT NULL,
+    -- A qué cuenta conectada pertenece. NULL es legítimo: los grupos
+    -- declarados antes de que existiera esta columna no la tienen, y
+    -- asignarles una en silencio sería inventar una relación.
+    "socialAccountId" TEXT,
+    "groupId"         TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    url               TEXT,
+    avatar            TEXT,
+    source            TEXT NOT NULL DEFAULT 'manual',
+    status            TEXT NOT NULL DEFAULT 'sin_verificar',
+    -- Quién dijo que se puede publicar ahí, y cuándo. Sin nombre, la
+    -- verificación no sirve para lo único que puede servir: rendir cuentas.
+    "verifiedAt"      TIMESTAMPTZ,
+    "verifiedBy"      TEXT,
+    "lastPublishedAt" TIMESTAMPTZ,
+    "lastJobId"       TEXT,
+    favorite          BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Las listas de distribución. Una lista es «los grupos con esta etiqueta»:
+    -- seleccionarla es un filtro y renombrarla es un UPDATE.
+    tags              TEXT[] NOT NULL DEFAULT '{}',
+    notes             TEXT,
+    "createdAt"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updatedAt"       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Un grupo, una fila por sitio. Las dos columnas son NOT NULL, así que el
+-- índice no es parcial y su ON CONFLICT no repite predicado (v4.648).
+CREATE UNIQUE INDEX IF NOT EXISTS "DistributionGroup_club_group_key"
+    ON "DistributionGroup"("clubId", "groupId");
+CREATE INDEX IF NOT EXISTS "DistributionGroup_club_idx"
+    ON "DistributionGroup"("clubId", name);
+CREATE INDEX IF NOT EXISTS "DistributionGroup_tags_idx"
+    ON "DistributionGroup" USING GIN (tags);
 `;
 
 /**
@@ -151,7 +198,10 @@ export const ensureDistributionSchema = async () => {
     ensured = (async () => {
         try {
             const { rows } = await db.query(
-                `SELECT to_regclass('public."DistributionJob"') IS NOT NULL AS ok`
+                // Se pregunta por la tabla MÁS NUEVA: con la vieja, una base
+                // que ya tiene las tres de v4.864 daría el esquema por completo
+                // y DistributionGroup no se crearía nunca.
+                `SELECT to_regclass('public."DistributionGroup"') IS NOT NULL AS ok`
             );
             if (rows?.[0]?.ok) return true;
             await db.query(SQL);

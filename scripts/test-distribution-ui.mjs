@@ -76,15 +76,41 @@ await page.route('**/api/distribution/page-posts*', r => r.fulfill({ json: { pos
     },
     { id: 'p2', message: '', createdTime: '2026-08-13T10:30:45.000Z', permalink: null, picture: null },
 ] } }));
-await page.route('**/api/distribution/groups', async (r) => {
-    if (r.request().method() === 'PUT') {
-        guardado = JSON.parse(r.request().postData() || '{}');
-        return r.fulfill({ json: { ok: true, groups: (guardado.groups || []).map(g => ({
-            key: `group:${g.id}`, targetType: 'group_manual', targetId: g.id,
-            targetName: g.name, targetUrl: g.url, tag: null,
-        })), descartados: 0 } });
-    }
-    return r.fulfill({ json: { groups: [], notice: 'x' } });
+// El panel de grupos filtra y pagina EN EL SERVIDOR: el doble replica eso para
+// poder comprobar que «elegir los de esta página» opere sobre lo filtrado.
+const TODOS = [
+    { rowId: 'r1', key: 'group:g1', targetType: 'group_manual', targetId: 'g1', targetName: 'Rotary Colombia',
+      targetUrl: 'https://facebook.com/groups/g1', socialAccountId: 'a1', status: 'verificado', canPublish: true,
+      favorite: true, tags: ['Emergencias'], lastPublishedAt: '2026-08-10T12:00:00.000Z' },
+    { rowId: 'r2', key: 'group:g2', targetType: 'group_manual', targetId: 'g2', targetName: 'Distrito 4281',
+      targetUrl: null, socialAccountId: 'a1', status: 'verificado', canPublish: true,
+      favorite: false, tags: ['Distrito'], lastPublishedAt: null },
+    { rowId: 'r3', key: 'group:g3', targetType: 'group_manual', targetId: 'g3', targetName: 'Clubes Rotarios',
+      targetUrl: null, socialAccountId: null, status: 'sin_verificar', canPublish: false,
+      favorite: false, tags: [], lastPublishedAt: null },
+];
+const ESTADOS = {
+    sin_verificar: { label: 'Sin verificar', tone: 'warn', canPublish: false, reason: 'Nadie confirmó todavía que se pueda publicar en este grupo.' },
+    verificado: { label: 'Verificado', tone: 'ok', canPublish: true, reason: null },
+    sin_permiso: { label: 'Sin permiso', tone: 'fail', canPublish: false, reason: 'x' },
+    retirado: { label: 'Retirado', tone: 'off', canPublish: false, reason: 'x' },
+};
+let ultimaConsulta = null;
+await page.route('**/api/distribution/groups?**', async (r) => {
+    const url = new URL(r.request().url());
+    ultimaConsulta = Object.fromEntries(url.searchParams);
+    const q = (url.searchParams.get('q') || '').toLowerCase();
+    const filtrados = q ? TODOS.filter(g => g.targetName.toLowerCase().includes(q)) : TODOS;
+    return r.fulfill({ json: {
+        groups: filtrados, items: filtrados, page: 1, pages: 1, total: filtrados.length,
+        totalAll: TODOS.length, verificados: TODOS.filter(g => g.canPublish).length,
+        lists: [{ tag: 'Emergencias', count: 1 }, { tag: 'Distrito', count: 1 }],
+        states: ESTADOS, providers: {}, notice: 'x',
+    } });
+});
+await page.route('**/api/distribution/groups/import', async (r) => {
+    guardado = JSON.parse(r.request().postData() || '{}');
+    return r.fulfill({ json: { ok: true, creados: 3, actualizados: 0, format: 'lines', skipped: [] } });
 });
 
 // ⚠️ EL ARNÉS NECESITA UN ORIGEN REAL. Sobre `about:blank` —que es lo que deja
@@ -114,7 +140,10 @@ await page.waitForSelector('text=Nueva distribución', { timeout: 15000 });
 grupo('1. Elegir una publicación muestra su vista previa');
 
 await page.getByRole('button', { name: 'Compartir una publicación' }).click();
-await page.selectOption('select', { label: 'Distrito 4281 de RI' });
+// ⚠️ Ahora hay DOS selectores: el de CUENTA (paso 0) y el del origen de la
+// publicación a compartir. `page.selectOption('select')` tomaba el primero.
+const selectorOrigen = page.locator('select').nth(1);
+await selectorOrigen.selectOption({ label: 'Distrito 4281 de RI' });
 await page.waitForSelector('text=COLOMBIA NOS NECESITA', { timeout: 10000 });
 
 chk('sin elegir nada todavía no hay vista previa',
@@ -146,38 +175,83 @@ await page.waitForTimeout(300);
 chk('elegir otra publicación cambia la vista previa',
     (await page.locator('text=esta publicación no tiene texto').count()) > 0);
 
-// ── 2. Pegar los grupos de una vez ──────────────────────────────────
-grupo('2. Los grupos se pegan todos juntos');
+// ── 2. El panel de grupos ───────────────────────────────────────────
+grupo('2. El panel de grupos: estado, filtro y selección');
 
-// Sin grupos declarados el bloque NACE abierto —es lo que hay que hacer
-// primero—, así que no se pulsa: se asegura, que es determinista en los dos
-// casos. Pulsar a ciegas lo cerraba.
-await page.locator('details').last().evaluate(d => { d.open = true; });
+// Un ancla estable: filtrar divs por su contenido resuelve al MÁS INTERNO que
+// lo contiene —el de la cabecera—, no al panel entero, y la prueba falla por
+// una razón que no tiene que ver con lo que se está probando.
+const panel = page.getByTestId('group-picker');
+await page.waitForSelector('text=Rotary Colombia', { timeout: 10000 });
+
+const resumen = await panel.innerText();
+chk('dice cuántos hay y cuántos están verificados', /3 declarados/.test(resumen) && /2 verificados/.test(resumen));
+chk('y cuántos faltan por verificar', /1 sin verificar/.test(resumen));
+chk('las listas de distribución se ofrecen', /Emergencias/.test(resumen) && /Distrito/.test(resumen));
+chk('se ve cuándo salió lo último de un grupo', /Última publicación/.test(resumen));
+
+// ⚠️ La casilla de un grupo sin verificar está DESHABILITADA: la puerta se
+// aplica en el servidor, pero la pantalla no debe invitar a chocarse con ella.
+const casillaVetada = page.getByRole('checkbox', { name: 'Elegir: Clubes Rotarios' });
+chk('un grupo sin verificar no se puede elegir', await casillaVetada.isDisabled());
+chk('y se dice por qué', /Nadie confirmó todavía/.test(resumen));
+
+await page.getByRole('checkbox', { name: 'Elegir: Rotary Colombia' }).check();
 await page.waitForTimeout(200);
+chk('elegir un grupo lo cuenta en los destinos',
+    /1 destinos en total/.test(await page.locator('body').innerText())
+    || /1 elegidos/.test(await panel.innerText()));
 
-const cuerpo = await page.locator('body').innerText();
-chk('se explica que Meta no dice en qué grupos está una Página',
-    cuerpo.includes('Meta no dice en qué grupos está una Página'));
-chk('y se ofrece dónde verlos en Facebook',
-    (await page.locator('a[href="https://www.facebook.com/groups/feed/"]').count()) > 0);
+// «Elegir los de esta página» opera sobre lo FILTRADO y sólo sobre los que
+// pueden publicar: seleccionar a ciegas es cómo se publica donde no se quería.
+await page.getByRole('button', { name: /Elegir los 2 de esta página/ }).click();
+await page.waitForTimeout(200);
+chk('«elegir los de esta página» toma sólo los verificados',
+    /2 destinos en total|2 elegidos/.test(await page.locator('body').innerText()));
 
-await page.locator('textarea').last().fill(
+// El filtro viaja al SERVIDOR, no se aplica en la pantalla.
+await panel.locator('input[placeholder*="Buscar"]').fill('distrito');
+await page.waitForTimeout(600);
+chk('la búsqueda viaja al servidor', ultimaConsulta?.q === 'distrito', JSON.stringify(ultimaConsulta));
+// Se busca DENTRO del panel: «Distrito 4281» también es el nombre de una
+// cuenta en el selector de arriba, y el localizador global resolvía a esa.
+await panel.getByText('Distrito 4281', { exact: true }).first().waitFor({ timeout: 5000 });
+chk('y la lista se reduce', (await panel.getByText('Rotary Colombia').count()) === 0);
+await panel.locator('input[placeholder*="Buscar"]').fill('');
+await page.waitForTimeout(600);
+
+// ── 3. Declarar grupos ──────────────────────────────────────────────
+grupo('3. Declarar grupos de a muchos');
+
+chk('se advierte que importar NO autoriza',
+    /Importar no autoriza nada/.test(await panel.innerText()));
+
+// Con grupos ya declarados el bloque nace CERRADO, y `innerText` no ve lo que
+// hay dentro de un <details> plegado: se abre antes de mirar.
+await panel.locator('details').first().evaluate(d => { d.open = true; });
+await page.waitForTimeout(150);
+chk('y se explica que Meta no dice en qué grupos está una cuenta',
+    /Meta no dice en qué grupos está una cuenta/.test(await panel.innerText()));
+await panel.locator('textarea').last().fill(
     'Rotary Colombia | https://facebook.com/groups/111\n' +
     'https://facebook.com/groups/222\n' +
     'Clubes Rotarios | https://facebook.com/groups/333'
 );
-await page.getByRole('button', { name: /Agregar los grupos pegados/ }).click();
-await page.waitForTimeout(600);
+await panel.getByRole('button', { name: /Agregar/ }).click();
+await page.waitForTimeout(500);
+chk('lo pegado viaja al servidor en UNA petición', typeof guardado?.text === 'string', JSON.stringify(guardado));
+chk('con las tres líneas', (guardado?.text || '').split('\n').length === 3);
 
-chk('los tres viajaron al servidor en UNA sola petición', guardado?.groups?.length === 3,
-    JSON.stringify(guardado));
-chk('con el nombre que se escribió', guardado?.groups?.[0]?.name === 'Rotary Colombia');
-chk('y al que iba sin nombre se le dio uno', guardado?.groups?.[1]?.name === 'Grupo 222');
-chk('los tres quedan disponibles como destino',
-    (await page.locator('text=Clubes Rotarios').count()) > 0);
+// ── 4. Dos columnas y la cuenta ─────────────────────────────────────
+grupo('4. La disposición y el selector de cuenta');
 
-// ── 3. Sin errores de consola ───────────────────────────────────────
-grupo('3. La pantalla no tira errores');
+const cuerpoTexto = await page.locator('body').innerText();
+chk('hay un selector de cuenta de Facebook', /Cuenta de Facebook/.test(cuerpoTexto));
+chk('el tope por vuelta dice a qué NO se aplica',
+    /un grupo lo publica una persona/i.test(cuerpoTexto));
+
+// ── 5. Sin errores de consola ───────────────────────────────────────
+grupo('5. La pantalla no tira errores');
 chk('ningún error de página', errores.length === 0, errores.slice(0, 3).join(' | '));
 
 // Una captura, cuando se pide: es más rápido mirar la pantalla que leerla.

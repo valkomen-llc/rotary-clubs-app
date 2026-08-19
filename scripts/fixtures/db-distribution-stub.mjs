@@ -11,14 +11,23 @@
 // Lo que este doble NO demuestra es que el SQL sea válido para Postgres. Eso
 // exige una base y se comprueba al desplegar; se dice acá para no afirmar de más.
 
-export let tablas = { DistributionCampaign: [], DistributionJob: [], DistributionEvent: [] };
+export let tablas = { DistributionCampaign: [], DistributionJob: [], DistributionEvent: [], DistributionGroup: [] };
 export let cuentas = [];
 export let log = [];
 
 export const reset = () => {
-    tablas = { DistributionCampaign: [], DistributionJob: [], DistributionEvent: [] };
+    tablas = { DistributionCampaign: [], DistributionJob: [], DistributionEvent: [], DistributionGroup: [] };
     cuentas = [];
     log = [];
+};
+
+/** Siembra un grupo declarado, con el estado que se quiera probar. */
+export const sembrarGrupo = (g) => {
+    tablas.DistributionGroup.push({
+        id: `row-${tablas.DistributionGroup.length + 1}`, clubId: 'club-4281',
+        socialAccountId: null, url: null, source: 'manual', status: 'sin_verificar',
+        favorite: false, tags: [], notes: null, lastPublishedAt: null, ...g,
+    });
 };
 
 export const sembrarCuenta = (c) => {
@@ -41,6 +50,21 @@ const query = async (text, params = []) => {
     log.push(sql.slice(0, 70));
 
     if (/to_regclass/.test(sql)) return { rows: [{ ok: true }] };
+
+    // ── Grupos declarados ───────────────────────────────────────────────
+    if (/^SELECT \* FROM "DistributionGroup" WHERE "clubId" = \$1 AND "groupId" = ANY/.test(sql)) {
+        const [clubId, ids] = params;
+        return { rows: tablas.DistributionGroup.filter(g => g.clubId === clubId && ids.includes(g.groupId)).map(g => ({ ...g })) };
+    }
+    if (/^SELECT \* FROM "DistributionGroup"/.test(sql)) {
+        return { rows: tablas.DistributionGroup.filter(g => g.clubId === params[0]).map(g => ({ ...g })) };
+    }
+    if (/^UPDATE "DistributionGroup"/.test(sql)) {
+        const [clubId, groupId, at, jobId] = params;
+        const g = tablas.DistributionGroup.find(x => x.clubId === clubId && x.groupId === groupId);
+        if (g) { g.lastPublishedAt = at; g.lastJobId = jobId; }
+        return { rows: [] };
+    }
 
     if (/^INSERT INTO "DistributionCampaign"/.test(sql)) {
         const [id, clubId, userId, name, sourceType, sourceId, content, contentHash, copyMode,

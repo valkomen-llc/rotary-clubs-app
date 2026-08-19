@@ -18,15 +18,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Send, Users, CalendarDays, AlertTriangle, XCircle,
-    Pause, Play, RotateCcw, Plus, Trash2, Search, Info, Hand, Loader2, ExternalLink,
+    Pause, Play, RotateCcw, Info, Hand, Loader2, ExternalLink, Gauge,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
     statusUI, campaignUI, TONE_CLASS, CONTENT_KIND_UI, TARGET_TYPE_UI,
-    INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, MANUAL_NOTICE,
-    parseGroupLines, MIS_GRUPOS_URL,
+    INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, MANUAL_NOTICE, CONCURRENCY_OPTIONS,
     type ContentKind,
 } from '../../../lib/distributionSpec';
+import GroupPicker, { type GroupRow } from './GroupPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -102,15 +102,18 @@ const DistributionPanel: React.FC = () => {
 
     // Destinos
     const [accounts, setAccounts] = useState<Target[]>([]);
-    const [groups, setGroups] = useState<Target[]>([]);
-    const [elegidos, setElegidos] = useState<string[]>([]);
-    const [busqueda, setBusqueda] = useState('');
-    const [pegado, setPegado] = useState('');
+    const [cuentaId, setCuentaId] = useState('');            // la cuenta activa
+    const [elegidasCuentas, setElegidasCuentas] = useState<string[]>([]);
+    // Los grupos elegidos se guardan ENTEROS, no por id: el panel de la derecha
+    // pagina y filtra, así que un id elegido en la página 2 tiene que sobrevivir
+    // a que la lista visible cambie.
+    const [elegidosGrupos, setElegidosGrupos] = useState<GroupRow[]>([]);
 
     // Programación
     const [arranque, setArranque] = useState<'ahora' | 'fecha'>('ahora');
     const [startAt, setStartAt] = useState('');
     const [intervalo, setIntervalo] = useState(15);
+    const [concurrencia, setConcurrencia] = useState(1);
     const [conVentana, setConVentana] = useState(false);
     const [ventanaDesde, setVentanaDesde] = useState('08:00');
     const [ventanaHasta, setVentanaHasta] = useState('18:00');
@@ -134,14 +137,15 @@ const DistributionPanel: React.FC = () => {
     );
 
     const postSeleccionado = useMemo(() => pagePosts.find(p => p.id === postElegido) || null, [pagePosts, postElegido]);
-    const todos = useMemo(() => [...accounts, ...groups], [accounts, groups]);
-    const seleccionados = useMemo(() => todos.filter(t => elegidos.includes(t.key)), [todos, elegidos]);
-    const visibles = useMemo(() => {
-        const q = busqueda.trim().toLowerCase();
-        if (!q) return todos;
-        return todos.filter(t => t.targetName.toLowerCase().includes(q) || (t.tag || '').toLowerCase().includes(q));
-    }, [todos, busqueda]);
-    const manuales = useMemo(() => seleccionados.filter(t => !TARGET_TYPE_UI[t.targetType as keyof typeof TARGET_TYPE_UI]?.viaApi).length, [seleccionados]);
+    const cuentaActiva = useMemo(() => accounts.find(a => a.socialAccountId === cuentaId) || null, [accounts, cuentaId]);
+    const seleccionados = useMemo(() => [
+        ...accounts.filter(a => elegidasCuentas.includes(a.key)),
+        ...elegidosGrupos.map<Target>(g => ({
+            key: g.key, targetType: g.targetType, targetId: g.targetId,
+            targetName: g.targetName, targetUrl: g.targetUrl, socialAccountId: g.socialAccountId,
+        })),
+    ], [accounts, elegidasCuentas, elegidosGrupos]);
+    const manuales = elegidosGrupos.length;
 
     // ── Carga ───────────────────────────────────────────────────────────────
     const cargarDestinos = useCallback(async () => {
@@ -149,8 +153,10 @@ const DistributionPanel: React.FC = () => {
             const r = await fetch(`${API}/distribution/targets`, { headers: authHeaders() });
             if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'No se pudieron cargar los destinos');
             const d = await r.json();
+            // Los grupos ya NO se cargan acá: los trae `GroupPicker`, que es
+            // quien los filtra y pagina. Dos fuentes para la misma lista se
+            // separarían en cuanto una se actualice y la otra no.
             setAccounts(d.accounts || []);
-            setGroups(d.groups || []);
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Error al cargar destinos');
         }
@@ -212,57 +218,6 @@ const DistributionPanel: React.FC = () => {
         } finally { setCargandoPosts(false); }
     }, []);
 
-    const guardarGrupos = useCallback(async (lista: Target[]) => {
-        try {
-            const r = await fetch(`${API}/distribution/groups`, {
-                method: 'PUT', headers: jsonHeaders(),
-                body: JSON.stringify({ groups: lista.map(g => ({ id: g.targetId, name: g.targetName, url: g.targetUrl, tag: g.tag })) }),
-            });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(d.error || 'No se pudo guardar');
-            setGroups(d.groups || []);
-            if (d.descartados) toast(`${d.descartados} sin nombre o sin enlace: no se guardaron.`);
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'Error al guardar los grupos');
-        }
-    }, []);
-
-    /**
-     * Pegar todos los grupos de una vez.
-     *
-     * Meta no dice en qué grupos está una Página —la Groups API se retiró
-     * entera, también la parte de lectura—, así que la lista no se puede
-     * descubrir. Lo que sí se puede es que declararla cueste UN gesto en vez
-     * de veinticinco.
-     */
-    const agregarPegados = useCallback(() => {
-        const { groups: nuevos, skipped } = parseGroupLines(pegado);
-        if (!nuevos.length) {
-            toast.error(skipped.length ? 'Ninguna línea se pudo interpretar.' : 'Pegá al menos un grupo.');
-            return;
-        }
-        const yaEstan = new Set(groups.map(g => g.targetId));
-        const entran = nuevos
-            .filter(n => !yaEstan.has(n.url || n.name))
-            .map<Target>(n => ({
-                key: `group:${n.url || n.name}`, targetType: 'group_manual',
-                targetId: n.url || n.name, targetName: n.name,
-                targetUrl: n.url, tag: null,
-            }));
-        const repetidos = nuevos.length - entran.length;
-        if (!entran.length) { toast('Esos grupos ya estaban en la lista.'); setPegado(''); return; }
-        guardarGrupos([...groups, ...entran]);
-        setPegado('');
-        // Lo descartado se DICE: con veinte líneas pegadas, un descarte
-        // silencioso deja sin saber cuáles entraron.
-        const notas = [
-            `${entran.length} ${entran.length === 1 ? 'grupo agregado' : 'grupos agregados'}`,
-            repetidos ? `${repetidos} ya estaban` : null,
-            skipped.length ? `${skipped.length} sin interpretar` : null,
-        ].filter(Boolean).join(' · ');
-        toast.success(notas);
-    }, [pegado, groups, guardarGrupos]);
-
     /**
      * El cuerpo de la petición, en UN solo sitio.
      *
@@ -279,11 +234,12 @@ const DistributionPanel: React.FC = () => {
             socialAccountId: t.socialAccountId || null, targetUrl: t.targetUrl || null,
         })),
         intervalMinutes: intervalo,
+        concurrency: concurrencia,
         startAt: arranque === 'fecha' && startAt ? new Date(startAt).toISOString() : null,
         timezone: tz,
         scheduleWindow: conVentana ? { from: ventanaDesde, to: ventanaHasta } : null,
         perDay: porDia ? Number(porDia) : null,
-    }), [message, sourceType, contenido, seleccionados, intervalo, arranque, startAt, tz, conVentana, ventanaDesde, ventanaHasta, porDia]);
+    }), [message, sourceType, contenido, seleccionados, intervalo, concurrencia, arranque, startAt, tz, conVentana, ventanaDesde, ventanaHasta, porDia]);
 
     const calcular = useCallback(async () => {
         if (!seleccionados.length) { toast.error('Elegí al menos un destino.'); return; }
@@ -306,7 +262,8 @@ const DistributionPanel: React.FC = () => {
             if (!r.ok) throw new Error(d.error || (d.errors || []).join(' ') || 'No se pudo programar');
             toast.success(`${d.created} destinos programados cada ${d.interval} min.`);
             setPreview(null);
-            setElegidos([]);
+            setElegidasCuentas([]);
+            setElegidosGrupos([]);
             await cargarCampanas();
             setVista('historial');
             await abrirCampana(d.campaignId);
@@ -344,8 +301,21 @@ const DistributionPanel: React.FC = () => {
         }
     }, [abierta, abrirCampana]);
 
-    const alternar = (key: string) =>
-        setElegidos(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    const alternarCuenta = (key: string) =>
+        setElegidasCuentas(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+    const alternarGrupo = useCallback((g: GroupRow) => {
+        setElegidosGrupos(prev => prev.some(x => x.targetId === g.targetId)
+            ? prev.filter(x => x.targetId !== g.targetId)
+            : [...prev, g]);
+    }, []);
+
+    const agregarGrupos = useCallback((gs: GroupRow[]) => {
+        setElegidosGrupos(prev => {
+            const ya = new Set(prev.map(x => x.targetId));
+            return [...prev, ...gs.filter(g => !ya.has(g.targetId))];
+        });
+    }, []);
 
     // ── Pintado ─────────────────────────────────────────────────────────────
     return (
@@ -371,11 +341,31 @@ const DistributionPanel: React.FC = () => {
             </div>
 
             {vista === 'nuevo' && (
-                <div className="space-y-5">
+                <div className="grid xl:grid-cols-[minmax(0,1fr)_400px] gap-5 items-start">
+                  <div className="space-y-5 min-w-0">
+                    {/* La cuenta manda: al cambiarla se recargan los grupos de esa
+                        cuenta en la columna de la derecha. */}
+                    <Paso n={0} titulo="Cuenta de Facebook" hint="De acá salen las publicaciones que se pueden compartir y los grupos asociados.">
+                        <select value={cuentaId} onChange={e => setCuentaId(e.target.value)}
+                            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
+                            <option value="">Todas las cuentas conectadas</option>
+                            {accounts.filter(a => a.targetType === 'page').map(a => (
+                                <option key={a.key} value={a.socialAccountId || ''}>
+                                    {a.targetName}{a.needsReconnect ? ' — requiere reconexión' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        {cuentaActiva?.needsReconnect && (
+                            <p className="text-xs text-red-600 font-bold mt-2">
+                                Esta cuenta usa una conexión antigua: hay que reconectarla en Cuentas Sociales antes de publicar.
+                            </p>
+                        )}
+                    </Paso>
+
                     <Paso n={1} titulo="Contenido" hint="Qué se va a distribuir. Podés escribirlo acá o compartir una publicación que ya está en una de tus Páginas.">
                         <div className="flex gap-2 mb-4">
                             <button onClick={() => setSourceType('manual')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${sourceType === 'manual' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>Contenido nuevo</button>
-                            <button onClick={() => { setSourceType('share'); setKind('link'); }} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${sourceType === 'share' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>Compartir una publicación</button>
+                            <button onClick={() => { setSourceType('share'); setKind('link'); if (cuentaId && !shareAccountId) { setShareAccountId(cuentaId); cargarPosts(cuentaId); } }} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${sourceType === 'share' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>Compartir una publicación</button>
                         </div>
 
                         {sourceType === 'share' && (
@@ -475,72 +465,25 @@ const DistributionPanel: React.FC = () => {
                         )}
                     </Paso>
 
-                    <Paso n={2} titulo="Destinos" hint="Sólo aparecen las cuentas conectadas en Cuentas Sociales. Los grupos se declaran a mano porque Meta ya no permite consultarlos.">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="relative flex-1">
-                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar destino…"
-                                    className="w-full text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2" />
-                            </div>
-                            <button onClick={() => setElegidos(visibles.map(t => t.key))} className="text-xs font-bold text-indigo-600 hover:text-indigo-700 whitespace-nowrap px-2">Todos</button>
-                            <button onClick={() => setElegidos([])} className="text-xs font-bold text-gray-500 hover:text-gray-700 whitespace-nowrap px-2">Ninguno</button>
-                        </div>
-
-                        <div className="grid sm:grid-cols-2 gap-2 mb-4 max-h-80 overflow-y-auto">
-                            {visibles.map(t => {
+                    <Paso n={2} titulo="Páginas e Instagram" hint="Estos destinos los publica la plataforma sola. Los grupos se eligen en la columna de la derecha.">
+                        <div className="grid sm:grid-cols-2 gap-2">
+                            {accounts.map(t => {
                                 const ui = TARGET_TYPE_UI[t.targetType as keyof typeof TARGET_TYPE_UI];
-                                const on = elegidos.includes(t.key);
+                                const on = elegidasCuentas.includes(t.key);
                                 return (
-                                    <button key={t.key} onClick={() => alternar(t.key)}
+                                    <button key={t.key} onClick={() => alternarCuenta(t.key)}
                                         className={`text-left p-3 rounded-xl border transition-colors ${on ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="font-bold text-sm text-gray-800 truncate">{t.targetName}</span>
-                                            {!ui?.viaApi && <Chip tone="warn">A mano</Chip>}
-                                        </div>
+                                        <span className="font-bold text-sm text-gray-800 truncate block">{t.targetName}</span>
                                         <span className="text-[11px] text-gray-500">{ui?.label || t.targetType}</span>
                                         {t.needsReconnect && <span className="block text-[11px] text-red-600 font-bold mt-1">Requiere reconexión</span>}
                                     </button>
                                 );
                             })}
-                            {!visibles.length && <p className="text-sm text-gray-400 col-span-2 py-6 text-center">No hay destinos que coincidan.</p>}
+                            {!accounts.length && <p className="text-sm text-gray-400 col-span-2 py-4">No hay cuentas conectadas. Se conectan en Cuentas Sociales.</p>}
                         </div>
-
-                        <details className="bg-gray-50 rounded-xl p-4" open={!groups.length}>
-                            <summary className="cursor-pointer text-sm font-bold text-gray-700">Declarar los grupos de Facebook</summary>
-                            {/* Se explica el porqué, no sólo el cómo: sin el motivo, que
-                                la lista se escriba a mano se lee como una función a medias. */}
-                            <p className="text-xs text-gray-500 mt-2">
-                                <strong>Meta no dice en qué grupos está una Página.</strong> Retiró la API de Grupos el 22 de abril de 2024 —también la parte de lectura—, así que no hay forma de consultarlos y la lista se declara una vez.
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1 mb-3">
-                                Pegalos todos de una vez, uno por línea. Vale el enlace solo, o <code className="bg-white px-1 rounded">Nombre | enlace</code>.{' '}
-                                <a href={MIS_GRUPOS_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold">Ver mis grupos en Facebook</a> para copiarlos.
-                            </p>
-                            <textarea
-                                value={pegado} onChange={e => setPegado(e.target.value)} rows={4}
-                                placeholder={'Rotary Colombia | https://facebook.com/groups/123456\nhttps://facebook.com/groups/rotary-4281\nClubes Rotarios | https://facebook.com/groups/987654'}
-                                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs"
-                            />
-                            <button onClick={agregarPegados} className="mt-2 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-bold flex items-center gap-1.5">
-                                <Plus className="w-4 h-4" /> Agregar los grupos pegados
-                            </button>
-                            {groups.length > 0 && (
-                                <ul className="mt-3 space-y-1">
-                                    {groups.map(g => (
-                                        <li key={g.key} className="flex items-center justify-between text-xs bg-white rounded-lg px-3 py-2 border border-gray-100">
-                                            <span className="font-semibold text-gray-700">{g.targetName}</span>
-                                            <button onClick={() => guardarGrupos(groups.filter(x => x.key !== g.key))} className="text-gray-400 hover:text-red-600" aria-label={`Quitar ${g.targetName}`}>
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </details>
-
                         <p className="text-xs text-gray-500 mt-3">
                             <Users className="w-3.5 h-3.5 inline mr-1" />
-                            {seleccionados.length} destinos elegidos{manuales > 0 && `, ${manuales} de ellos a mano`}.
+                            {seleccionados.length} destinos en total{manuales > 0 && `, ${manuales} de ellos grupos que publica una persona`}.
                         </p>
                     </Paso>
 
@@ -584,6 +527,24 @@ const DistributionPanel: React.FC = () => {
                         <label className="block text-xs font-bold text-gray-600 mb-1">Máximo de destinos por día</label>
                         <input type="number" min={1} value={porDia} onChange={e => setPorDia(e.target.value)} placeholder="sin tope"
                             className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-2" />
+
+                        <label className="block text-xs font-bold text-gray-600 mt-4 mb-2">
+                            <Gauge className="w-3.5 h-3.5 inline mr-1" />Publicaciones por vuelta de la cola
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            {CONCURRENCY_OPTIONS.map(n => (
+                                <button key={n} onClick={() => setConcurrencia(n)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold ${concurrencia === n ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                    {n}{n === 1 ? ' (recomendado)' : ''}
+                                </button>
+                            ))}
+                        </div>
+                        {/* El control tiene que decir a qué NO se aplica, o miente
+                            sobre lo que hace: en un grupo no hay ninguna llamada
+                            que paralelizar, el trabajo es de una persona. */}
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            Cuántos destinos de esta campaña salen en cada pasada. Con 1, de a uno. Actúa sobre todo al drenar un atraso; sólo afecta a Páginas e Instagram, porque un grupo lo publica una persona.
+                        </p>
                     </Paso>
 
                     <Paso n={4} titulo="Vista previa" hint="El calendario lo calcula el servidor: es exactamente el que se va a guardar.">
@@ -631,6 +592,17 @@ const DistributionPanel: React.FC = () => {
                             </div>
                         )}
                     </Paso>
+                  </div>
+
+                  <div className="xl:sticky xl:top-4">
+                    <GroupPicker
+                        accountId={cuentaId}
+                        selected={elegidosGrupos.map(g => g.targetId)}
+                        onToggle={alternarGrupo}
+                        onSelectMany={agregarGrupos}
+                        onClear={() => setElegidosGrupos([])}
+                    />
+                  </div>
                 </div>
             )}
 

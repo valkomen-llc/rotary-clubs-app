@@ -143,6 +143,25 @@ export const normalizeInterval = (minutes) => {
     return { minutes: n, adjusted: false, reason: null };
 };
 
+// ── Concurrencia ────────────────────────────────────────────────────────────
+//
+// ⚠️ ES UN TOPE POR VUELTA DEL BARRIDO, NO PARALELISMO REAL, y por eso la
+// pantalla lo llama «publicaciones por vuelta» y no «simultáneas». Lo que
+// controla es cuántos destinos de la misma campaña salen en cada pasada de la
+// cola: con 1, de a uno; con 3, hasta tres y el resto espera al minuto
+// siguiente. En operación normal casi nunca actúa —el intervalo mínimo son 5
+// minutos, así que dos destinos de la misma campaña rara vez vencen juntos—;
+// donde sí actúa es al drenar un atraso, después de una pausa o de un límite de
+// Meta. Llamarlo «simultáneas» sería describir algo que no ocurre.
+export const CONCURRENCY_OPTIONS = [1, 2, 3];
+export const DEFAULT_CONCURRENCY = 1;
+
+export const normalizeConcurrency = (n) => {
+    const v = Math.round(Number(n));
+    if (!Number.isFinite(v)) return DEFAULT_CONCURRENCY;
+    return Math.min(Math.max(1, v), CONCURRENCY_OPTIONS[CONCURRENCY_OPTIONS.length - 1]);
+};
+
 // ── Límites de seguridad ────────────────────────────────────────────────────
 export const DEFAULT_LIMITS = {
     maxTargets: 40,      // destinos por campaña
@@ -503,6 +522,7 @@ export default {
     CONTENT_KINDS, CONTENT_KIND_IDS, isContentKind,
     JOB_STATES, JOB_STATE_IDS, isJobState, CAMPAIGN_STATES, CAMPAIGN_STATE_IDS,
     MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, INTERVAL_PRESETS, normalizeInterval,
+    CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, normalizeConcurrency,
     DEFAULT_LIMITS, normalizeLimits,
     zoneOffsetMinutes, zonedParts, instantFromZoned, parseClock,
     buildSchedule, groupScheduleByDay,

@@ -23,10 +23,12 @@ import db from './db.js';
 import { decryptToken } from './tokenCrypto.js';
 import { ensureDistributionSchema } from './ensureDistributionSchema.js';
 import { publishContentToTarget } from '../services/socialPublishService.js';
+import { findGroupsByIds, markPublished } from './distributionGroups.js';
+import { splitByPublishability } from './groupSpec.js';
 import {
     publishesViaApi, normalizeLimits, buildSchedule,
     classifyMetaError, retryDelayMinutes, shouldRetry,
-    contentHash, summarizeJobs, foldCampaignStatus, validateCampaign,
+    contentHash, summarizeJobs, foldCampaignStatus, validateCampaign, normalizeConcurrency,
 } from './distributionSpec.js';
 
 const uid = () => crypto.randomUUID();
@@ -58,7 +60,7 @@ export const createCampaign = async ({
     clubId = null, userId = null, name, sourceType = 'manual', sourceId = null,
     content = {}, targets = [], intervalMinutes = 15, startAt = null,
     timezone = 'UTC', scheduleWindow = null, perDay = null, limits = {},
-    copyMode = 'same', now = new Date(),
+    copyMode = 'same', concurrency = 1, now = new Date(),
 }) => {
     const ready = await ensureDistributionSchema();
     if (!ready) return { ok: false, reason: 'No se pudo preparar el almacenamiento de la distribución.' };
@@ -66,9 +68,40 @@ export const createCampaign = async ({
     const check = validateCampaign({ content, targets, intervalMinutes, limits });
     if (!check.ok) return { ok: false, reason: check.errors.join(' '), errors: check.errors, warnings: check.warnings };
 
-    const eligible = check.eligible;
+    let eligible = check.eligible;
+    const warnings = [...check.warnings];
+
+    // ⚠️ LA PUERTA DE VERIFICACIÓN, y va acá y no en la pantalla.
+    //
+    // Un grupo sólo recibe trabajo si alguien confirmó que se puede publicar en
+    // él. El estado se lee de la BASE, no del cuerpo de la petición: confiar en
+    // lo que mande el navegador dejaría la puerta abierta a quien conozca el
+    // endpoint, y el pedido dice expresamente «no permitir publicar en un grupo
+    // no autorizado».
+    const pedidosGrupo = eligible.filter(t => !publishesViaApi(t.targetType));
+    if (pedidosGrupo.length) {
+        const guardados = await findGroupsByIds({ clubId, groupIds: pedidosGrupo.map(t => t.targetId) });
+        const porId = new Map(guardados.map(g => [g.groupId, g]));
+        const { blocked } = splitByPublishability(
+            pedidosGrupo.map(t => porId.get(t.targetId) || { ...t, status: 'sin_verificar' })
+        );
+        const vetados = new Set(blocked.map(b => b.group.groupId || b.group.targetId));
+        if (vetados.size) {
+            eligible = eligible.filter(t => publishesViaApi(t.targetType) || !vetados.has(t.targetId));
+            // Se NOMBRAN los que quedaron fuera y por qué. «Algunos grupos no se
+            // pudieron usar» obliga a adivinar cuáles.
+            for (const b of blocked) {
+                const nombre = b.group.name || b.group.targetName || b.group.groupId || b.group.targetId;
+                warnings.push(`${nombre}: ${b.reason} No se le programó nada.`);
+            }
+        }
+    }
+
     if (!eligible.length) {
-        return { ok: false, reason: 'Ningún destino admite este tipo de contenido.', errors: ['Ningún destino admite este tipo de contenido.'], warnings: check.warnings };
+        const motivo = pedidosGrupo.length
+            ? 'Ningún destino quedó disponible: los grupos elegidos todavía no están verificados.'
+            : 'Ningún destino admite este tipo de contenido.';
+        return { ok: false, reason: motivo, errors: [motivo], warnings };
     }
 
     const hash = contentHash(content);
@@ -94,8 +127,8 @@ export const createCampaign = async ({
             [campaignId, clubId, userId, name || 'Distribución', sourceType, sourceId,
              JSON.stringify(content), hash, copyMode, interval, slots[0]?.at || start, timezone,
              scheduleWindow ? JSON.stringify(scheduleWindow) : null, perDay || null,
-             JSON.stringify(lim), 'scheduled',
-             check.warnings.length ? JSON.stringify({ warnings: check.warnings }) : null]
+             JSON.stringify({ ...lim, concurrency: normalizeConcurrency(concurrency) }), 'scheduled',
+             warnings.length ? JSON.stringify({ warnings }) : null]
         );
     } catch (e) {
         console.error('[distribution] no se pudo crear la campaña:', e.message);
@@ -135,10 +168,10 @@ export const createCampaign = async ({
     await logEvent({
         campaignId, kind: 'created', userId,
         message: `${created} destinos programados cada ${interval} min`,
-        detail: { created, duplicated, warnings: check.warnings },
+        detail: { created, duplicated, warnings },
     });
 
-    return { ok: true, campaignId, created, duplicated, interval, warnings: check.warnings, schedule: slots };
+    return { ok: true, campaignId, created, duplicated, interval, warnings, schedule: slots };
 };
 
 // ── Lectura ─────────────────────────────────────────────────────────────────
@@ -424,11 +457,17 @@ export const advance = async ({ now = new Date(), timeBudgetMs = 45_000, campaig
     // El conteo por hora es la misma pregunta para todos los jobs de una
     // campaña: se hace una vez por vuelta y se lleva en memoria mientras dura.
     const enLaHoraPorCampana = new Map();
+    // El tope de concurrencia: cuántos destinos de la MISMA campaña salen en
+    // esta pasada. Lo que no entra espera al minuto siguiente, no se pierde.
+    const enEstaVuelta = new Map();
 
     for (const row of due) {
         if (Date.now() - started > timeBudgetMs) { pending = due.length - processed; break; }
 
-        const limits = normalizeLimits(parseJson(row.campaignLimits));
+        const limitsRaw = parseJson(row.campaignLimits) || {};
+        const limits = normalizeLimits(limitsRaw);
+        const tope = normalizeConcurrency(limitsRaw.concurrency);
+        if ((enEstaVuelta.get(row.campaignId) || 0) >= tope) { pending++; continue; }
         // El freno por hora se comprueba contra lo que de verdad salió. Si se
         // llegó al tope, el job se corre en el tiempo — no se descarta.
         if (publishesViaApi(row.targetType)) {
@@ -477,6 +516,7 @@ export const advance = async ({ now = new Date(), timeBudgetMs = 45_000, campaig
         if (publishesViaApi(row.targetType)) {
             enLaHoraPorCampana.set(row.campaignId, (enLaHoraPorCampana.get(row.campaignId) || 0) + 1);
         }
+        enEstaVuelta.set(row.campaignId, (enEstaVuelta.get(row.campaignId) || 0) + 1);
         processed++;
         touched.add(row.campaignId);
     }
@@ -569,6 +609,9 @@ export const markManualPublished = async ({ jobId, clubId = null, isPlatform = f
         });
         await logEvent({ campaignId: job.campaignId, jobId, kind: 'published_manual',
             message: `${job.targetName || job.targetId}: publicado a mano por ${userName || userId || 'alguien'}.`, userId });
+        // El grupo recuerda cuándo salió lo último: es la columna que el panel
+        // muestra para saber a cuál no se le manda nada hace tiempo.
+        await markPublished({ clubId: job.clubId, groupId: job.targetId, jobId });
         await refreshCampaignStatus(job.campaignId);
         return { ok: true };
     } catch (e) {

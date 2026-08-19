@@ -12,7 +12,8 @@
 import express from 'express';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import {
-    listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
+    listTargets, getGroups, postImportGroups, getExportGroups,
+    postGroupStatus, patchGroupRow, deleteGroupRow, getPagePosts, previewSchedule,
     postCampaign, getCampaigns, getOneCampaign, postPause, postResume, postCancel,
     postAdvance, postRetryJob, postManualDone,
 } from '../controllers/distributionController.js';
@@ -22,11 +23,19 @@ const router = express.Router();
 // ── Destinos ─────────────────────────────────────────────────────
 router.get('/targets', authMiddleware, listTargets);
 router.get('/groups', authMiddleware, getGroups);
+router.get('/groups/export', authMiddleware, getExportGroups);
 router.get('/page-posts', authMiddleware, getPagePosts);
 
-// Declarar los grupos y crear campañas son acciones administrativas del sitio:
+// Declarar, verificar y editar grupos son acciones administrativas del sitio:
 // no es leer, es decidir a dónde se manda contenido institucional.
-router.put('/groups', authMiddleware, requireSiteAdmin, saveGroups);
+//
+// ⚠️ Las literales van ANTES que las paramétricas de su grupo: `/groups/export`
+// por encima de `/groups/:id`, o Express le pasaría «export» como id
+// (npm run check:routes).
+router.post('/groups/import', authMiddleware, requireSiteAdmin, postImportGroups);
+router.post('/groups/:id/status', authMiddleware, requireSiteAdmin, postGroupStatus);
+router.patch('/groups/:id', authMiddleware, requireSiteAdmin, patchGroupRow);
+router.delete('/groups/:id', authMiddleware, requireSiteAdmin, deleteGroupRow);
 
 // ── Vista previa del calendario ──────────────────────────────────────────────
 router.post('/preview', authMiddleware, previewSchedule);

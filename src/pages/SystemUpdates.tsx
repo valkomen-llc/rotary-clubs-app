@@ -34,9 +34,37 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.875.0 | 2026-08-18 (Ninguna consulta a un tercero sin tope)
-// Cache bust: 2026-08-18i
+// UI V4.876.0 | 2026-08-18 (Panel de grupos)
+// Cache bust: 2026-08-18j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.876.0',
+        title: 'El panel de grupos: elegí la cuenta, verificá y distribuí 👥',
+        description: 'La Distribución pasa a dos columnas: a la izquierda la cuenta y el contenido, a la derecha el panel de grupos con buscador, casillas, listas, favoritos y paginación. Los grupos ahora tienen estado: sólo los VERIFICADOS reciben trabajo. Se pueden importar y exportar en CSV o JSON.',
+        date: new Date().toISOString(),
+        tags: ['contenido', 'redes', 'distribucion'],
+        type: 'improved',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'Selector de cuenta de Facebook: al cambiarla se recargan sus grupos.' },
+            { type: 'added', text: 'Panel de grupos a la derecha: buscar, filtrar, favoritos, listas y paginación.' },
+            { type: 'added', text: 'Estado por grupo: sin verificar, verificado, sin permiso o retirado.' },
+            { type: 'added', text: 'Sólo un grupo verificado recibe trabajo, y la comprobación está en el servidor.' },
+            { type: 'added', text: 'Listas de distribución (Emergencias, Distrito, Clubes…) con selección por lista.' },
+            { type: 'added', text: 'Importar y exportar grupos en CSV o JSON, con las columnas del pedido.' },
+            { type: 'added', text: 'Se ve cuándo salió la última publicación de cada grupo.' },
+            { type: 'changed', text: 'Tope de publicaciones por vuelta de la cola (1 por omisión).' },
+            { type: 'added', text: 'npm run test:distribution:ui pasa a 26 comprobaciones en un navegador real.' },
+        ],
+        details: [
+            'META NO DICE EN QUÉ GRUPOS ESTÁ UNA CUENTA, y por eso no hay detección automática. Retiró la API de Grupos el 22 de abril de 2024, incluida la parte de LECTURA, y la referencia de Página ya no declara ninguna conexión con grupos: no existe endpoint que consultar. Las herramientas que sí los listan son extensiones de navegador que trabajan con las cookies de sesión de una persona — eso no es la API de Meta y pone en riesgo la cuenta de quien publica.',
+            'LOS GRUPOS AHORA TIENEN ESTADO, Y SÓLO EL VERIFICADO RECIBE TRABAJO. Verificar significa exactamente «una persona con nombre confirmó que puede publicar ahí», y queda registrado quién y cuándo. NO hay estados de rol —Administrador, Moderador— y su ausencia es deliberada: no existe API que devuelva el rol de nadie en un grupo, así que pintarlo sería inventar un dato que después alguien usa para decidir dónde publicar.',
+            'LA PUERTA ESTÁ EN EL SERVIDOR, no en la pantalla: un grupo sin verificar no genera trabajo aunque la petición lo pida, y los que quedan fuera se NOMBRAN con su motivo en vez de desaparecer en silencio.',
+            'IMPORTAR NO AUTORIZA. Un archivo puede traer un grupo marcado como verificado y no se respeta: entra sin verificar igual. La verificación es un acto sobre esta plataforma, no un campo de un CSV.',
+            'EL FILTRO Y LA PAGINACIÓN LOS RESUELVE EL SERVIDOR, y no es un detalle: es lo que hace que «elegir los de esta página» tome exactamente lo que se está viendo. Con el filtro implementado también en la pantalla, marcar todos elegiría grupos fuera de la vista — la forma más cara de equivocarse en este módulo.',
+            'El tope por vuelta es eso y no «publicaciones simultáneas»: acota cuántos destinos de la misma campaña salen en cada pasada de la cola. Donde de verdad actúa es al drenar un atraso después de una pausa; en operación normal el intervalo mínimo de 5 minutos hace que dos destinos rara vez venzan juntos. Con 1 —el valor por omisión— salen de a uno.',
+        ]
+    },
     {
         version: '4.875.0',
         title: 'Ninguna consulta a un tercero sin tope de tiempo ⏱️',

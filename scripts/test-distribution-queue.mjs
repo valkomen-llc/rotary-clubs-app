@@ -114,8 +114,16 @@ chk('con el id que devolvió Meta', pub[0].externalId === '123_456');
 chk('se llamó a /feed de una PÁGINA', llamadas.some(l => /\/t-1\/feed$/.test(l.url) && l.method === 'POST'));
 eq('los otros dos siguen programados', stub.tablas.DistributionJob.filter(j => j.status === 'scheduled').length, 2);
 
+// ⚠️ CAMBIO DE COMPORTAMIENTO DELIBERADO (v4.876). Antes, una vuelta con dos
+// destinos atrasados los sacaba a los DOS de golpe — ignorando el intervalo
+// justo cuando más importa, que es al drenar un atraso después de una pausa.
+// Con el tope por vuelta en 1 (el valor por omisión), salen de a uno por
+// pasada del cron. No es una regresión: es lo que el control existe para hacer.
 const a2 = await cola.advance({ now: new Date('2026-08-18T12:20:00Z') });
-eq('más tarde salen los otros dos', a2.processed, 2);
+eq('un atraso drena de a UNO por vuelta', a2.processed, 1);
+eq('y lo que no entró queda pendiente, no perdido', a2.pending, 1);
+const a3 = await cola.advance({ now: new Date('2026-08-18T12:21:00Z') });
+eq('la vuelta siguiente saca el que faltaba', a3.processed, 1);
 eq('la campaña queda completada', stub.tablas.DistributionCampaign[0].status, 'done');
 
 // ── 4. El reclamo es exclusivo ──────────────────────────────────────
@@ -200,6 +208,9 @@ eq('y son TRES intentos, no dos', stub.tablas.DistributionJob[0].attempts, 3);
 grupo('9. Un grupo de Facebook no se publica solo, y el código lo respeta');
 
 stub.reset(); llamadas = []; metaResponde({ ok: true, body: { id: 'x' } });
+// Desde v4.876 un grupo necesita estar VERIFICADO para recibir trabajo — lo
+// prueba la sección 18. Acá se siembra verificado para ejercitar el despacho.
+stub.sembrarGrupo({ groupId: 'grupo-1', name: 'Rotary Colombia', status: 'verificado' });
 const cg = await cola.createCampaign({
     clubId: 'club-4281', userId: 'u1', name: 'Emergencia',
     content: CONTENIDO,
@@ -300,6 +311,92 @@ try {
     await cola.markManualPublished({ jobId: 'no-existe', clubId: 'x' });
 } catch { lanzo = true; }
 chk('ninguna operación sobre algo inexistente lanza', !lanzo);
+
+// ── 18. La puerta de verificación ───────────────────────────────────
+grupo('18. Un grupo sin verificar NO recibe trabajo');
+
+const campanaConGrupo = (grupos) => {
+    stub.reset(); llamadas = []; metaResponde({ ok: true, body: { id: 'x' } });
+    for (const g of grupos) stub.sembrarGrupo(g);
+    return cola.createCampaign({
+        clubId: 'club-4281', userId: 'u1', name: 'Emergencia', content: CONTENIDO,
+        targets: grupos.map(g => ({
+            targetType: 'group_manual', targetId: g.groupId, targetName: g.name,
+            targetUrl: 'https://facebook.com/groups/' + g.groupId,
+        })),
+        intervalMinutes: 5, timezone: 'UTC',
+        now: new Date('2026-08-18T12:00:00Z'), startAt: new Date('2026-08-18T12:00:00Z'),
+    });
+};
+
+// El estado se lee de la BASE, no del cuerpo de la petición: confiar en lo que
+// mande el navegador dejaría la puerta abierta a quien conozca el endpoint.
+const soloSinVerificar = await campanaConGrupo([{ groupId: 'g1', name: 'Rotary Colombia', status: 'sin_verificar' }]);
+chk('con todos sin verificar, la campaña NO se crea', !soloSinVerificar.ok, JSON.stringify(soloSinVerificar));
+chk('y el motivo lo dice', /no están verificados/i.test(soloSinVerificar.reason || ''));
+eq('no quedó ningún trabajo', stub.tablas.DistributionJob.length, 0);
+
+const mixta = await campanaConGrupo([
+    { groupId: 'g1', name: 'Rotary Colombia', status: 'verificado' },
+    { groupId: 'g2', name: 'Sin verificar aún', status: 'sin_verificar' },
+    { groupId: 'g3', name: 'Vetado', status: 'sin_permiso' },
+]);
+chk('con uno verificado, la campaña sí se crea', mixta.ok, JSON.stringify(mixta));
+eq('pero SÓLO ese genera trabajo', stub.tablas.DistributionJob.length, 1);
+eq('y es el verificado', stub.tablas.DistributionJob[0].targetId, 'g1');
+// Se NOMBRAN los que quedaron fuera: «algunos grupos no se pudieron usar»
+// obliga a adivinar cuáles.
+chk('los excluidos se nombran', mixta.warnings.some(w => /Sin verificar aún/.test(w)));
+chk('y el vetado también', mixta.warnings.some(w => /Vetado/.test(w)));
+
+// Un grupo que la campaña pide pero que NO está declarado se trata como sin
+// verificar: nadie confirmó nada sobre él.
+stub.reset(); llamadas = [];
+const fantasma = await cola.createCampaign({
+    clubId: 'club-4281', userId: 'u1', name: 'X', content: CONTENIDO,
+    targets: [{ targetType: 'group_manual', targetId: 'no-declarado', targetName: 'Fantasma' }],
+    intervalMinutes: 5, timezone: 'UTC', now: new Date('2026-08-18T12:00:00Z'),
+});
+chk('un grupo que no está declarado no pasa la puerta', !fantasma.ok);
+
+// Una Página no pasa por esta puerta: la verificación es cosa de los grupos.
+stub.reset(); llamadas = [];
+stub.sembrarCuenta({ id: 'acct-1', platformId: 't-1' });
+const soloPagina = await cola.createCampaign({
+    clubId: 'club-4281', userId: 'u1', name: 'X', content: CONTENIDO,
+    targets: [{ targetType: 'page', targetId: 't-1', targetName: 'Página', socialAccountId: 'acct-1' }],
+    intervalMinutes: 5, timezone: 'UTC', now: new Date('2026-08-18T12:00:00Z'), startAt: new Date('2026-08-18T12:00:00Z'),
+});
+chk('una Página no necesita verificación', soloPagina.ok && stub.tablas.DistributionJob.length === 1);
+
+// ── 19. El grupo recuerda cuándo salió lo último ────────────────────
+grupo('19. Publicar a mano sella la última publicación del grupo');
+
+await campanaConGrupo([{ groupId: 'g1', name: 'Rotary Colombia', status: 'verificado' }]);
+await cola.advance({ now: new Date('2026-08-18T12:00:00Z') });
+eq('el destino queda esperando a una persona', stub.tablas.DistributionJob[0].status, 'awaiting_manual');
+await cola.markManualPublished({ jobId: stub.tablas.DistributionJob[0].id, clubId: 'club-4281', userName: 'Ana' });
+chk('y el grupo recuerda cuándo fue', !!stub.tablas.DistributionGroup[0].lastPublishedAt);
+
+// ── 20. El tope por vuelta ──────────────────────────────────────────
+grupo('20. La concurrencia acota cuántos salen en cada pasada');
+
+const conTope = async (concurrency) => {
+    stub.reset(); llamadas = []; metaResponde({ ok: true, body: { id: 'ok' } });
+    for (let i = 1; i <= 3; i++) stub.sembrarCuenta({ id: `acct-${i}`, platformId: `t-${i}` });
+    await cola.createCampaign({
+        clubId: 'club-4281', userId: 'u1', name: 'X', content: CONTENIDO,
+        targets: [1, 2, 3].map(i => ({ targetType: 'page', targetId: `t-${i}`, targetName: `P${i}`, socialAccountId: `acct-${i}` })),
+        // Todos vencidos a la vez: es el caso en que el tope de verdad actúa,
+        // como al drenar un atraso después de una pausa.
+        intervalMinutes: 5, timezone: 'UTC', concurrency,
+        now: new Date('2026-08-18T12:00:00Z'), startAt: new Date('2026-08-18T11:00:00Z'),
+    });
+    return cola.advance({ now: new Date('2026-08-18T13:00:00Z') });
+};
+eq('con 1, sale uno por vuelta', (await conTope(1)).processed, 1);
+eq('con 3, salen los tres', (await conTope(3)).processed, 3);
+eq('un valor absurdo se acota', (await conTope(99)).processed, 3);
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 for (const m of malos) console.log(`  ✗ ${m}`);
