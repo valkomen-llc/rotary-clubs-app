@@ -14,13 +14,17 @@ import {
     buildSchedule, groupScheduleByDay, validateCampaign, normalizeInterval,
 } from '../lib/distributionSpec.js';
 import {
+    GROUP_STATES, GROUP_PROVIDERS, filterGroups, paginate, listsOf, toCsv, toJson, PER_PAGE,
+} from '../lib/groupSpec.js';
+import {
+    listGroups, importGroups, setGroupStatus, patchGroup, removeGroup,
+} from '../lib/distributionGroups.js';
+import {
     createCampaign, getCampaign, listCampaigns, advance,
     pauseCampaign, resumeCampaign, cancelCampaign, retryJob, markManualPublished,
 } from '../lib/distributionQueue.js';
 
 const prisma = new PrismaClient();
-
-const GROUPS_SETTING = 'distribution_groups';
 
 /** Quién pregunta y qué alcance tiene. Único punto que lo decide. */
 const scopeOf = (req) => {
@@ -71,51 +75,140 @@ export const listTargets = async (req, res) => {
     }
 };
 
+/**
+ * Los grupos, en la forma que consume el selector de destinos.
+ *
+ * v4.876: salen de `DistributionGroup`, no del `Setting`. La migración desde el
+ * Setting ocurre sola en la primera lectura de cada sitio.
+ */
 const readGroups = async (clubId) => {
-    if (!clubId) return [];
-    try {
-        const row = await prisma.setting.findFirst({ where: { key: GROUPS_SETTING, clubId } });
-        const parsed = row ? JSON.parse(row.value) : [];
-        return Array.isArray(parsed) ? parsed : [];
-    } catch { return []; }
+    const filas = await listGroups(clubId);
+    return filas.map(g => ({
+        key: `group:${g.groupId}`,
+        targetType: 'group_manual',
+        targetId: g.groupId,
+        targetName: g.name,
+        targetUrl: g.url,
+        socialAccountId: g.socialAccountId,
+        status: g.status,
+        canPublish: g.canPublish,
+        favorite: g.favorite,
+        tags: g.tags,
+        lastPublishedAt: g.lastPublishedAt,
+        rowId: g.id,
+    }));
 };
 
+/**
+ * El panel de grupos: filtrado, ordenado y paginado EN EL SERVIDOR.
+ *
+ * Filtrar acá y no en la pantalla es lo que hace que «seleccionar todos» opere
+ * exactamente sobre lo que se está viendo. Con dos implementaciones, marcar
+ * todos seleccionaría grupos fuera de la vista — la forma más cara de
+ * equivocarse en este módulo.
+ */
 export const getGroups = async (req, res) => {
-    const { isPlatform, clubId } = scopeOf(req);
-    const target = isPlatform && req.query.clubId ? req.query.clubId : clubId;
-    res.json({ groups: await readGroups(target), notice: MANUAL_NOTICE });
+    try {
+        const { isPlatform, clubId } = scopeOf(req);
+        const target = isPlatform && req.query.clubId ? req.query.clubId : clubId;
+        const todos = await listGroups(target);
+        const filtrados = filterGroups(todos, {
+            q: req.query.q || '',
+            tag: req.query.tag || '',
+            status: req.query.status || '',
+            accountId: req.query.accountId || '',
+            onlyFavorites: req.query.favorites === '1',
+        });
+        const pagina = paginate(filtrados, {
+            page: parseInt(req.query.page || '1', 10),
+            perPage: parseInt(req.query.perPage || String(PER_PAGE), 10),
+        });
+        res.json({
+            ...pagina,
+            groups: pagina.items,
+            // Los catálogos viajan con la respuesta: la pantalla no lleva su
+            // propia copia de los estados ni de las listas.
+            lists: listsOf(todos),
+            states: GROUP_STATES,
+            providers: GROUP_PROVIDERS,
+            totalAll: todos.length,
+            verificados: todos.filter(g => g.canPublish).length,
+            notice: MANUAL_NOTICE,
+        });
+    } catch (e) {
+        console.error('[distribution] getGroups:', e);
+        fail(res, 500, e.message);
+    }
 };
 
-/** Guarda la lista de grupos declarados. Sólo nombre y enlace: no hay más que guardar. */
-export const saveGroups = async (req, res) => {
+/** Alta e importación: JSON, CSV o líneas pegadas. El formato se detecta. */
+export const postImportGroups = async (req, res) => {
     try {
         const { clubId } = scopeOf(req);
         if (!clubId) return fail(res, 400, 'No hay sitio en la sesión.');
-        const entrada = Array.isArray(req.body?.groups) ? req.body.groups : [];
-        const limpio = entrada
-            .map(g => ({
-                key: `group:${String(g.id || g.url || g.name || '').trim()}`,
-                targetType: 'group_manual',
-                targetId: String(g.id || g.url || g.name || '').trim(),
-                targetName: String(g.name || '').trim(),
-                targetUrl: /^https:\/\//i.test(String(g.url || '')) ? String(g.url).trim() : null,
-                tag: String(g.tag || '').trim() || null,
-            }))
-            // Un grupo sin nombre no se puede elegir en una lista, y uno sin
-            // identificador no se puede distinguir de otro. Se descarta con
-            // criterio, no en silencio: el conteo vuelve en la respuesta.
-            .filter(g => g.targetName && g.targetId);
-
-        await prisma.setting.upsert({
-            where: { key_clubId: { key: GROUPS_SETTING, clubId } },
-            update: { value: JSON.stringify(limpio) },
-            create: { key: GROUPS_SETTING, clubId, value: JSON.stringify(limpio) },
-        });
-        res.json({ ok: true, groups: limpio, descartados: entrada.length - limpio.length });
+        const texto = String(req.body?.text || '');
+        if (!texto.trim()) return fail(res, 400, 'No llegó nada que importar.');
+        const r = await importGroups({ clubId, text: texto, accountId: req.body?.accountId || null });
+        if (!r.ok) return res.status(422).json({ error: r.reason, format: r.format, skipped: r.skipped || [] });
+        res.json({ ...r, groups: await readGroups(clubId) });
     } catch (e) {
-        console.error('[distribution] saveGroups:', e);
+        console.error('[distribution] postImportGroups:', e);
         fail(res, 500, e.message);
     }
+};
+
+/** Exportar lo declarado. `?format=csv|json`. */
+export const getExportGroups = async (req, res) => {
+    try {
+        const { isPlatform, clubId } = scopeOf(req);
+        const target = isPlatform && req.query.clubId ? req.query.clubId : clubId;
+        const grupos = await listGroups(target);
+        const formato = req.query.format === 'json' ? 'json' : 'csv';
+        const sello = new Date().toISOString().slice(0, 10);
+        if (formato === 'json') {
+            // `toJson` es puro y deja el sello en null a propósito: la fecha la
+            // pone quien exporta, no el criterio.
+            const cuerpo = JSON.parse(toJson(grupos));
+            cuerpo.exportedAt = new Date().toISOString();
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="grupos-${sello}.json"`);
+            return res.send(JSON.stringify(cuerpo, null, 2));
+        }
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="grupos-${sello}.csv"`);
+        // BOM: sin él, Excel abre los acentos como «RodrÃ­go» (regla de la
+        // exportación de la Bóveda, v4.850).
+        res.send('\uFEFF' + toCsv(grupos));
+    } catch (e) {
+        console.error('[distribution] getExportGroups:', e);
+        fail(res, 500, e.message);
+    }
+};
+
+/** Verificar, marcar sin permiso o retirar. */
+export const postGroupStatus = async (req, res) => {
+    const { clubId } = scopeOf(req);
+    const r = await setGroupStatus({
+        clubId, groupRowId: req.params.id, status: req.body?.status,
+        userName: req.user?.name || req.user?.email || null,
+    });
+    if (!r.ok) return fail(res, 409, r.reason);
+    res.json(r);
+};
+
+/** Favorito, etiquetas, cuenta y notas. */
+export const patchGroupRow = async (req, res) => {
+    const { clubId } = scopeOf(req);
+    const r = await patchGroup({ clubId, groupRowId: req.params.id, ...req.body });
+    if (!r.ok) return fail(res, 409, r.reason);
+    res.json(r);
+};
+
+export const deleteGroupRow = async (req, res) => {
+    const { clubId } = scopeOf(req);
+    const r = await removeGroup({ clubId, groupRowId: req.params.id });
+    if (!r.ok) return fail(res, 409, r.reason);
+    res.json(r);
 };
 
 // ── Publicaciones recientes de una Página (carril «compartir») ───────────────
@@ -200,6 +293,7 @@ export const postCampaign = async (req, res) => {
             perDay: body.perDay || null,
             limits: body.limits || {},
             copyMode: body.copyMode || 'same',
+            concurrency: body.concurrency,
         });
         if (!r.ok) return res.status(422).json({ error: r.reason, errors: r.errors || [], warnings: r.warnings || [] });
 
@@ -292,7 +386,8 @@ export const postManualDone = async (req, res) => {
 };
 
 export default {
-    listTargets, getGroups, saveGroups, getPagePosts, previewSchedule,
+    listTargets, getGroups, postImportGroups, getExportGroups,
+    postGroupStatus, patchGroupRow, deleteGroupRow, getPagePosts, previewSchedule,
     postCampaign, getCampaigns, getOneCampaign, postPause, postResume, postCancel,
     postAdvance, postRetryJob, postManualDone,
 };

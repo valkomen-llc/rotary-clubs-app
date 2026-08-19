@@ -11,6 +11,11 @@
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
 import {
+    GROUP_STATES, GROUP_PROVIDERS, canTransition, canPublishTo, splitByPublishability,
+    normalizeGroup, parseCsv, parseImport, toCsv, toJson,
+    filterGroups, paginate, listsOf, DEFAULT_GROUP_STATE,
+} from '../server/lib/groupSpec.js';
+import {
     TARGET_TYPES, publishesViaApi, targetSupports, MANUAL_NOTICE,
     JOB_STATES, CAMPAIGN_STATES, isContentKind,
     MIN_INTERVAL_MINUTES, normalizeInterval, normalizeLimits, DEFAULT_LIMITS,
@@ -312,6 +317,131 @@ Clubes Rotarios | https://facebook.com/groups/3
     paridad = false;
     console.log(`  · bloque del espejo omitido (${e.message.slice(0, 60)})`);
 }
+
+// ── 12. Los estados de un grupo ─────────────────────────────────────
+grupo('12. Un grupo sólo recibe trabajo si alguien lo verificó');
+
+eq('un grupo nace sin verificar', DEFAULT_GROUP_STATE, 'sin_verificar');
+chk('y sin verificar NO puede recibir trabajo', !canPublishTo({ status: 'sin_verificar' }));
+chk('verificado sí', canPublishTo({ status: 'verificado' }));
+chk('sin permiso no', !canPublishTo({ status: 'sin_permiso' }));
+chk('retirado tampoco', !canPublishTo({ status: 'retirado' }));
+
+// ⚠️ NO HAY ESTADOS DE ROL, y su ausencia es la decisión: no existe API que
+// devuelva el rol de nadie en un grupo. Pintar «Administrador» sería inventar
+// un dato y presentarlo como verificado — y alguien lo usaría para decidir
+// dónde publicar.
+chk('NO existe un estado «administrador»', !GROUP_STATES.administrador && !GROUP_STATES.admin);
+chk('ni «moderador»', !GROUP_STATES.moderador);
+chk('el criterio no menciona roles', !/administrador|moderador/i.test(read('server/lib/groupSpec.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
+
+chk('un retirado se puede reactivar', canTransition('retirado', 'sin_verificar'));
+chk('pero un retirado NO salta directo a verificado', !canTransition('retirado', 'verificado'));
+
+const partido = splitByPublishability([
+    { groupId: 'a', status: 'verificado' },
+    { groupId: 'b', status: 'sin_verificar' },
+    { groupId: 'c', status: 'sin_permiso' },
+]);
+eq('sólo pasa el verificado', partido.allowed.length, 1);
+eq('los otros dos quedan fuera', partido.blocked.length, 2);
+chk('y cada rechazo trae su motivo', partido.blocked.every(b => !!b.reason));
+
+chk('la detección automática está DECLARADA y no disponible',
+    GROUP_PROVIDERS.api && GROUP_PROVIDERS.api.available === false);
+chk('con el motivo escrito', /22 de abril de 2024/.test(GROUP_PROVIDERS.api.reason || ''));
+
+// ── 13. Importar ────────────────────────────────────────────────────
+grupo('13. Se importa lo que llegue, y lo descartado se dice');
+
+const csvBasico = 'group_id,group_name,group_url,tags\n111,Rotary Colombia,https://facebook.com/groups/111,Emergencias';
+eq('CSV se reconoce', parseImport(csvBasico).format, 'csv');
+eq('y entra la fila', parseImport(csvBasico).groups.length, 1);
+eq('con sus etiquetas', parseImport(csvBasico).groups[0].tags, ['Emergencias']);
+
+// Una coma DENTRO de comillas no parte el campo; si lo partiera, el nombre se
+// cortaría y el resto de las columnas se correría una posición.
+const conComa = 'group_name,group_url\n"Rotary, Colombia",https://facebook.com/groups/9';
+eq('una coma entrecomillada no parte el campo', parseImport(conComa).groups[0].name, 'Rotary, Colombia');
+eq('comillas escapadas', parseCsv('a,"di ""hola""",c')[0][1], 'di "hola"');
+eq('el punto y coma también separa', parseCsv('a;b;c')[0].length, 3);
+
+eq('los encabezados en otro orden dan igual',
+    parseImport('group_url,group_name\nhttps://facebook.com/groups/7,Siete').groups[0].name, 'Siete');
+eq('los encabezados en español también',
+    parseImport('nombre,enlace\nOcho,https://facebook.com/groups/8').groups[0].name, 'Ocho');
+
+eq('JSON en array', parseImport('[{"group_id":"1","group_name":"Uno"}]').format, 'json');
+eq('JSON con la envoltura que exportamos',
+    parseImport('{"groups":[{"group_id":"1","group_name":"Uno"}]}').groups.length, 1);
+
+eq('líneas sueltas', parseImport('Rotary | https://facebook.com/groups/5').format, 'lines');
+eq('y el nombre se conserva', parseImport('Rotary | https://facebook.com/groups/5').groups[0].name, 'Rotary');
+
+// ⚠️ IMPORTAR NO AUTORIZA. Un archivo puede traer «verificado» y no se respeta:
+// la verificación es un acto de una persona sobre esta plataforma.
+eq('un archivo NO puede traer un grupo ya verificado',
+    parseImport('[{"group_id":"1","group_name":"X","status":"verificado"}]').groups[0].status, 'sin_verificar');
+eq('pero sí puede traerlo sin permiso',
+    parseImport('[{"group_id":"1","group_name":"X","status":"sin_permiso"}]').groups[0].status, 'sin_permiso');
+
+const repes = parseImport('https://facebook.com/groups/1\nhttps://facebook.com/groups/1');
+eq('el repetido entra una vez', repes.groups.length, 1);
+eq('y se reporta', repes.skipped.length, 1);
+const mala = parseImport('https://facebook.com/rotary/posts/123');
+eq('el enlace de una publicación no es un grupo', mala.groups.length, 0);
+chk('y se dice por qué', /no es de un grupo/.test(mala.skipped[0]?.reason || ''));
+eq('texto vacío no rompe', parseImport('').groups.length, 0);
+eq('null no rompe', parseImport(null).groups.length, 0);
+
+const sinNombre = normalizeGroup({ group_url: 'https://facebook.com/groups/rotary-4281' });
+eq('un enlace sin nombre recibe uno legible', sinNombre.group.name, 'Rotary 4281');
+eq('y el id sale del enlace, que es lo estable', sinNombre.group.groupId, 'rotary-4281');
+
+// ── 14. Exportar ────────────────────────────────────────────────────
+grupo('14. Exportar e importar de vuelta da lo mismo');
+
+const original = [
+    { groupId: '111', name: 'Rotary, Colombia', url: 'https://facebook.com/groups/111', socialAccountId: 'a1', status: 'verificado', tags: ['Emergencias', 'Distrito'], notes: 'con "comillas"' },
+    { groupId: '222', name: 'Otro', url: null, socialAccountId: null, status: 'sin_verificar', tags: [], notes: null },
+];
+const ida = parseImport(toCsv(original));
+eq('vuelven los dos', ida.groups.length, 2);
+eq('el nombre con coma sobrevive', ida.groups[0].name, 'Rotary, Colombia');
+eq('las etiquetas sobreviven', ida.groups[0].tags, ['Emergencias', 'Distrito']);
+eq('las comillas de las notas sobreviven', ida.groups[0].notes, 'con "comillas"');
+// Y el verificado del archivo NO vuelve verificado: es la misma regla, ahora
+// sobre nuestro propio formato de exportación.
+eq('ni siquiera nuestro propio export re-verifica', ida.groups[0].status, 'sin_verificar');
+eq('el JSON también da la vuelta', parseImport(toJson(original)).groups.length, 2);
+
+// ── 15. Filtro, listas y paginación ─────────────────────────────────
+grupo('15. El filtro decide qué se ve, y «todos» opera sobre eso');
+
+const lista = [
+    { groupId: '1', name: 'Rotary Colombia', status: 'verificado', favorite: true, tags: ['Emergencias'], socialAccountId: 'a1' },
+    { groupId: '2', name: 'Distrito 4281', status: 'sin_verificar', favorite: false, tags: ['Distrito'], socialAccountId: 'a1' },
+    { groupId: '3', name: 'Clubes', status: 'verificado', favorite: false, tags: ['Distrito', 'Clubes'], socialAccountId: null },
+];
+eq('buscar por nombre', filterGroups(lista, { q: 'rotary' }).length, 1);
+eq('buscar por etiqueta', filterGroups(lista, { q: 'clubes' }).length, 1);
+eq('filtrar por lista', filterGroups(lista, { tag: 'Distrito' }).length, 2);
+eq('filtrar por estado', filterGroups(lista, { status: 'verificado' }).length, 2);
+eq('sólo favoritos', filterGroups(lista, { onlyFavorites: true }).length, 1);
+eq('por cuenta', filterGroups(lista, { accountId: 'a1' }).length, 2);
+// '' y 'none' son cosas DISTINTAS: los grupos declarados antes de que existiera
+// la columna no tienen cuenta y hay que poder encontrarlos.
+eq('«sin cuenta» es un filtro propio', filterGroups(lista, { accountId: 'none' }).length, 1);
+eq('sin filtro, todos', filterGroups(lista, {}).length, 3);
+
+const pag = paginate([1, 2, 3, 4, 5], { page: 2, perPage: 2 });
+eq('la página 2 de 2 en 2', pag.items, [3, 4]);
+eq('y son tres páginas', pag.pages, 3);
+eq('una página fuera de rango se acota', paginate([1, 2], { page: 99, perPage: 2 }).page, 1);
+eq('una lista vacía tiene una página', paginate([], {}).pages, 1);
+
+eq('las listas salen de las etiquetas', listsOf(lista).map(l => l.tag).sort(), ['Clubes', 'Distrito', 'Emergencias']);
+eq('con su conteo', listsOf(lista).find(l => l.tag === 'Distrito').count, 2);
 
 console.log(`\n${ok} comprobaciones pasaron${malos.length ? `, ${malos.length} FALLARON:` : '.'}`);
 if (!paridad) console.log('  (el bloque del espejo no corrió: instalá esbuild con `npm i --no-save esbuild`)');

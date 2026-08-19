@@ -7,7 +7,7 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 51 tablas en tiempo de ejecución que no están en el
+// La aplicación crea 52 tablas en tiempo de ejecución que no están en el
 // schema (las once ProjectFair*, BannerTemplate, DesignProject,
 // DesignPublicTemplate, EcosystemClone, FAQ, MediaFolder, OutroProject,
 // las dos de la auditoría del CRM: CrmWebhookEvent y CrmOutboundLog, las seis del módulo
@@ -27,7 +27,8 @@
 // las cinco de Notificaciones de Contribuciones: NotificationDelivery,
 // NotificationBeneficiary, NotificationProfile, NotificationTemplate y
 // NotificationDomain, y las tres de la Distribución multi-destino:
-// DistributionCampaign, DistributionJob y DistributionEvent).
+// DistributionCampaign, DistributionJob, DistributionEvent y
+// DistributionGroup).
 // Sin esta barrera, un `db push` las borra sin preguntar.
 //
 // La lista de arriba es DOCUMENTACIÓN: el guardián no la lee, deriva los

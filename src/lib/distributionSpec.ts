@@ -81,6 +81,17 @@ export const INTERVAL_PRESETS = [5, 10, 15, 30, 60];
 export const MIN_INTERVAL_MINUTES = 5;
 
 /**
+ * Cuántos destinos de la misma campaña salen en cada vuelta de la cola.
+ *
+ * ⚠️ NO es paralelismo: es un tope por pasada. Con 1, de a uno. Donde de verdad
+ * actúa es al drenar un atraso —después de una pausa o de un límite de Meta—,
+ * no en la operación normal, donde el intervalo mínimo de 5 minutos hace que
+ * dos destinos rara vez venzan juntos.
+ */
+export const CONCURRENCY_OPTIONS = [1, 2, 3];
+export const DEFAULT_CONCURRENCY = 1;
+
+/**
  * El aviso del modo asistido. Se pinta junto al botón de programar, no sólo en
  * la lista de grupos: quien va a gastar el gesto es quien tiene que leerlo.
  */
