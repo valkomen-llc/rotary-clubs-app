@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import DistrictPicker from '../../components/admin/DistrictPicker';
 import RegistrarPoolPicker from '../../components/admin/RegistrarPoolPicker';
+import { bannerLockNotice } from '../../lib/siteExpiration';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, 
     MessageSquare, Mail, FileText, Download, RefreshCw, Send, AlertTriangle, 
@@ -642,6 +643,15 @@ const EventosManagement: React.FC = () => {
                                             <span className="text-[10px] text-red-500">Muestra una alerta global sobre el vencimiento del servicio.</span>
                                         </div>
                                     </label>
+
+                                    {/* ⚠️ Con el sitio vencido la barra se ve aunque la casilla esté
+                                        sin marcar: el estado manda. Sin este aviso, la pantalla
+                                        contradice a la portada y no hay dónde leer por qué. */}
+                                    {bannerLockNotice(formData) && (
+                                        <p className="text-[10px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                            {bannerLockNotice(formData)}
+                                        </p>
+                                    )}
                                     
                                     {formData.expirationBannerActive && (
                                         <div className="animate-in slide-in-from-top-2 duration-200">
