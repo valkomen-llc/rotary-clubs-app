@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import RegistrarPoolPicker from '../../components/admin/RegistrarPoolPicker';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
     Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock,
@@ -57,7 +58,6 @@ const ClubsManagement: React.FC = () => {
         content: ''
     });
     const [templates, setTemplates] = useState<any[]>([]);
-    const [pools, setPools] = useState<any[]>([]);
     const [districts, setDistricts] = useState<{ id: string; name: string; number?: number | null }[]>([]);
 
     // Pipeline de Activación
@@ -95,29 +95,19 @@ const ClubsManagement: React.FC = () => {
         expirationBannerMessage: '',
         developmentBannerActive: false,
         developmentBannerMessage: '',
-        registrarPoolId: '',
+        // '' = sin asignar (un sitio nuevo no tiene pool todavía).
+        // undefined = todavía no se sabe; ver `src/lib/registrarPools.ts`.
+        registrarPoolId: '' as string | undefined,
+        // Lo escribe el desplegable de tipo. Nace SIN valor a propósito: con
+        // '' el servidor lo guardaría como null en cada guardado que no tocara
+        // ese desplegable, y borraría el tipo de organización del sitio.
+        organizationType: undefined as string | undefined,
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
     useEffect(() => {
         fetchClubs();
-        fetchPools();
     }, []);
-
-    const fetchPools = async () => {
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/crowdfund/pools`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setPools(data.pools || []);
-            }
-        } catch {
-            /* opcional: si no hay pools, el selector queda en "Sin asignar" */
-        }
-    };
 
     const fetchClubs = async () => {
         try {
@@ -173,7 +163,14 @@ const ClubsManagement: React.FC = () => {
                 expirationBannerMessage: club.expirationBannerMessage || '',
                 developmentBannerActive: club.developmentBannerActive || false,
                 developmentBannerMessage: club.developmentBannerMessage || '',
-                registrarPoolId: club.registrarPoolId || '',
+                // ⚠️ `GET /admin/clubs` devuelve `SELECT c.*` y esto no es una
+                // columna de `Club` —se deriva de la activación—, así que la fila
+                // del listado NUNCA lo trae: darlo por «sin asignar» convertía un
+                // detalle fallido en un borrado silencioso de la activación.
+                registrarPoolId: undefined,
+                // Igual que arriba: sin valor hasta que el desplegable de tipo
+                // lo escriba, para no reescribirlo en cada guardado.
+                organizationType: undefined,
             });
             setIsFetchingDetails(true);
             try {
@@ -226,7 +223,12 @@ const ClubsManagement: React.FC = () => {
                 expirationBannerMessage: '',
                 developmentBannerActive: false,
                 developmentBannerMessage: '',
+                subscriptionStatus: 'inactive',
+                expirationDate: '',
+                billingContactEmail: '',
+                billingContactPhone: '',
                 registrarPoolId: '',
+                organizationType: undefined,
             });
         }
     };
@@ -869,22 +871,12 @@ const ClubsManagement: React.FC = () => {
                                 </div>
 
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Pool Registrador del Dominio (Opcional)</label>
-                                    <select
-                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-white font-mono text-sm"
+                                    <RegistrarPoolPicker
                                         value={formData.registrarPoolId}
-                                        onChange={(e) => setFormData({ ...formData, registrarPoolId: e.target.value })}
-                                    >
-                                        <option value="">— Sin asignar —</option>
-                                        {pools.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                                POOL #{p.id.slice(0, 8)} · {p.registrarName} ({p.activeUnits}/{p.totalUnits} dominios)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[10px] text-gray-400 mt-1">
-                                        Asigna a qué pool pertenece el registro de este dominio. Queda como una activación en la billetera del pool (cuenta como dominio activo y genera su comisión recurrente). Dejar en "Sin asignar" elimina la activación.
-                                    </p>
+                                        onChange={(registrarPoolId) => setFormData({ ...formData, registrarPoolId })}
+                                        loading={isFetchingDetails}
+                                        domain={formData.domain}
+                                    />
                                 </div>
 
                                 <div className="md:col-span-1">
