@@ -34,9 +34,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.876.0 | 2026-08-18 (Panel de grupos)
-// Cache bust: 2026-08-18j
+// UI V4.877.0 | 2026-08-19 (Pool registrador del dominio)
+// Cache bust: 2026-08-19a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.877.0',
+        title: 'El pool del dominio se asigna desde la ficha de cualquier sitio 🌐',
+        description: 'El selector «Pool Registrador del Dominio» existía SÓLO en la Gestión Global de Clubes. Se reportó con el RYE 4281: su ficha no tenía por dónde recibir el pool. Ahora está en las seis pantallas de sitios —Clubes, Programas de Intercambio, Asociaciones, Ferias, Zonas y Eventos— y es UN solo componente compartido, no seis copias.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'dominios', 'facturacion'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'added', text: 'El pool del dominio se asigna desde la ficha de un RYE, una Feria, una Zona, un Evento o una Asociación.' },
+            { type: 'added', text: 'El selector avisa cuando el pool elegido no tiene cupo libre, sin impedir la asignación.' },
+            { type: 'added', text: 'Un pool que ya no está en el catálogo se conserva y se dice, en vez de desaparecer del desplegable.' },
+            { type: 'fixed', text: 'Los distritos ya se ven marcados al abrir la ficha de un sitio: aparecían todos en blanco aunque el sitio los tuviera.' },
+            { type: 'fixed', text: 'Guardar una ficha cuyo detalle no cargó ya no borra la activación del pool.' },
+            { type: 'fixed', text: 'Asignar un pool quedó restringido al operador de la plataforma, comprobado en el servidor.' },
+            { type: 'added', text: 'npm run test:registrar-pools — 91 comprobaciones, sin base ni red.' },
+        ],
+        details: [
+            'POR QUÉ NO SE COPIÓ EL SELECTOR UNA SEXTA VEZ. La casilla de distritos ya pasó por esto: estaba escrita cinco veces en estas mismas pantallas, las copias se separaron en silencio y hubo que unificarlas. Acá el precio de que se separen es más alto, porque lo que se toca es una activación de facturación. El criterio vive aparte y probado; las pantallas sólo lo montan.',
+            '⚠️ EL BORRADO SILENCIOSO QUE SE CERRÓ DE PASO. El pool no es una columna del sitio: se deriva de la activación, así que el listado nunca lo trae y sólo lo sabe el detalle. Al abrir una ficha, el formulario daba el valor ausente por «sin asignar», de modo que si el detalle fallaba, el primer guardado BORRABA la activación sin que nadie se enterara. Ahora, mientras no se sepa cuál es, el campo ni siquiera viaja en el guardado y el servidor no lo toca; el selector lo dice con esas palabras en vez de mostrarse en blanco.',
+            'SIN CUPO SE AVISA, NO SE BLOQUEA. Un pool lleno es un dato para decidir, no una prohibición: quien administra puede saber que se amplió, y bloquearlo lo dejaría sin salida. Lo mismo con un pool que ya no figura en el catálogo: se conserva tal cual y se explica qué pasa si se cambia.',
+            'ASIGNAR UN POOL ES DEL OPERADOR. La ruta que guarda un sitio la pueden usar también los administradores de club y de distrito para el suyo, así que sin una comprobación en el servidor cualquiera de ellos podía crear una activación en la billetera de un pool ajeno mandando el campo a mano. Esconder el control en la pantalla no protege el endpoint de quien lo conoce.',
+            'DE PASO, LOS DISTRITOS. En las cinco pantallas de asociaciones el distrito estaba en el formulario y en la pantalla, pero no se cargaba al abrir la ficha: los distritos aparecían todos sin marcar aunque el sitio los tuviera, que es como se veía en el RYE 4281. Eso no borraba nada —el campo no viajaba—, pero hacía imposible saber a qué distrito estaba vinculado un sitio sin consultarlo por otra vía.',
+        ],
+    },
     {
         version: '4.876.0',
         title: 'El panel de grupos: elegí la cuenta, verificá y distribuí 👥',

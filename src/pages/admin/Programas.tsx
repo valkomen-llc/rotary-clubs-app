@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import DistrictPicker from '../../components/admin/DistrictPicker';
+import RegistrarPoolPicker from '../../components/admin/RegistrarPoolPicker';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, 
     MessageSquare, Mail, FileText, Download, RefreshCw, Send, AlertTriangle, 
@@ -79,6 +80,9 @@ const ProgramasManagement: React.FC = () => {
         billingContactEmail: '',
         billingContactPhone: '',
         district: '',
+        // '' = sin asignar (un sitio nuevo no tiene pool todavía).
+        // undefined = todavía no se sabe; ver `src/lib/registrarPools.ts`.
+        registrarPoolId: '' as string | undefined,
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
@@ -148,6 +152,13 @@ const ProgramasManagement: React.FC = () => {
                 expirationDate: club.expirationDate ? new Date(club.expirationDate).toISOString().split('T')[0] : '',
                 billingContactEmail: club.billingContactEmail || '',
                 billingContactPhone: club.billingContactPhone || '',
+                district: club.district || '',
+                // ⚠️ El pool no viaja en el listado —no es columna de `Club`, se
+                // deriva de la activación—, así que hasta que llegue el detalle
+                // NO se sabe cuál es. `undefined` deja la clave fuera del
+                // guardado y el servidor no toca la activación; darlo por
+                // «sin asignar» la borraría.
+                registrarPoolId: undefined,
             });
             setIsFetchingDetails(true);
             try {
@@ -177,6 +188,7 @@ const ProgramasManagement: React.FC = () => {
                         expirationDate: fullData.expirationDate ? new Date(fullData.expirationDate).toISOString().split('T')[0] : '',
                         billingContactEmail: fullData.billingContactEmail || '',
                         billingContactPhone: fullData.billingContactPhone || '',
+                        registrarPoolId: fullData.registrarPoolId || '',
                     }));
                 }
             } catch (error) {
@@ -206,6 +218,8 @@ const ProgramasManagement: React.FC = () => {
                 expirationDate: '',
                 billingContactEmail: '',
                 billingContactPhone: '',
+                district: '',
+                registrarPoolId: '',
             });
         }
     };
@@ -560,6 +574,15 @@ const ProgramasManagement: React.FC = () => {
                                             </div>
                                         </div>
                                     )}
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <RegistrarPoolPicker
+                                        value={formData.registrarPoolId}
+                                        onChange={(registrarPoolId) => setFormData({ ...formData, registrarPoolId })}
+                                        loading={isFetchingDetails}
+                                        domain={formData.domain}
+                                    />
                                 </div>
 
                                 <div className="md:col-span-2">

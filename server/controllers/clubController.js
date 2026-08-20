@@ -302,7 +302,20 @@ export const updateClub = async (req, res) => {
             // Crea/actualiza una activación en la billetera del pool seleccionado,
             // o la elimina si se deja "Sin asignar". Fire-and-forget defensivo:
             // un poolId inválido no debe tumbar el guardado del club.
-            if (tableName === 'Club' && registrarPoolId !== undefined) {
+            // ⚠️ La asignación del pool es SÓLO del operador de la plataforma.
+            // Esta ruta la pueden usar `club_admin`, `district_admin` y
+            // `crowdfunder` para su propio sitio, así que sin esta condición
+            // cualquiera de ellos podía crear una activación de facturación en
+            // la billetera de un pool ajeno mandando el campo a mano — la
+            // pantalla no lo ofrece, y esconder un control no protege el
+            // endpoint de quien lo conoce. Se DESCARTA en silencio, como
+            // `stripProtected`, para no romper un guardado legítimo que
+            // arrastre el campo.
+            const puedeAsignarPool = req.user.role === 'administrator';
+            if (tableName === 'Club' && registrarPoolId !== undefined && !puedeAsignarPool) {
+                console.warn(`[updateClub] se ignoró registrarPoolId: el rol ${req.user.role} no puede asignar pools.`);
+            }
+            if (tableName === 'Club' && registrarPoolId !== undefined && puedeAsignarPool) {
                 try {
                     const finalDomain = result.rows?.[0]?.domain || entity.domain || null;
                     const existing = await prisma.crowdfundActivation.findFirst({ where: { targetClubId: id } });
