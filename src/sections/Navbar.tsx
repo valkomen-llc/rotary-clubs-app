@@ -6,6 +6,7 @@ import { useClub } from '../contexts/ClubContext';
 import { useCart } from '../contexts/CartContext';
 import { useLang, SUPPORTED_LANGUAGES, orderLanguages } from '../contexts/LanguageContext';
 import { pickLocalizedAsset } from '../lib/audienceAssets';
+import { showsExpirationBanner } from '../lib/siteExpiration';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
 import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
@@ -527,7 +528,10 @@ const Navbar = () => {
       : <Link key={`cm-${idx}`} to={item.href || '/'} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</Link>
   );
 
-  const showBannerOffset = club?.expirationBannerActive && bannerVisible;
+  // La barra es `sticky`, así que esto tiene que dar lo MISMO que
+  // `ExpirationBanner`: con dos condiciones escritas por separado, el menú se
+  // monta encima del aviso y no lo nota nadie.
+  const showBannerOffset = showsExpirationBanner(club) && bannerVisible;
 
   return (
     <>

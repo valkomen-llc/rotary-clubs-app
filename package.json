@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.877.0",
-  "cache_bust": "2026-08-19a (Pool registrador del dominio en las seis pantallas de sitios.)",
+  "version": "4.878.0",
+  "cache_bust": "2026-08-20a (La barra de vencimiento se deriva del estado del sitio.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -66,6 +66,7 @@
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
     "test:registrar-pools": "node scripts/test-registrar-pools.mjs",
+    "test:expiration": "node scripts/test-site-expiration.mjs",
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
     "test:fee-rules:route": "node scripts/test-fee-rules-route.mjs",

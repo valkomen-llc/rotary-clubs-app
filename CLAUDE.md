@@ -7530,6 +7530,68 @@ red**: la base se sustituye en memoria con un hook de resolución de módulos.
 - **Una consulta fallida devuelve `[]`, no una excepción.** Esto corre en el
   catch-all: si lanzara, se caería la página pública entera.
 
+## La barra de vencimiento de un sitio — v4.878
+
+| Archivo | Qué es |
+|---|---|
+| `src/lib/siteExpiration.ts` | El CRITERIO. **Puro**: qué estado enciende la barra y por qué |
+| `src/components/ExpirationBanner.tsx` | La barra roja de la portada |
+| `Navbar.tsx` (`showBannerOffset`) | El desplazamiento del menú, que tiene que coincidir |
+
+Pruebas: `npm run test:expiration` (51 casos; el bloque de navegador monta el
+componente REAL y pide `playwright`, y se salta solo si falta).
+
+**Reglas durables:**
+
+- **EL ESTADO MANDA; LA CASILLA SUMA.** Se reportó con dos sitios delante:
+  `rotarypasto.org` mostraba la barra y `rotarynuevocali.org` no, estando los
+  dos en «Expirado / Vencido». La barra **nunca miró** `subscriptionStatus`:
+  dependía sólo de `expirationBannerActive`, una casilla aparte que alguien
+  había marcado a mano en uno y no en el otro. O sea que poner un sitio en
+  «Expirado» no hacía **nada visible**, y no había forma de notarlo salvo
+  comparando dos sitios. Ahora el estado enciende la barra siempre y la casilla
+  queda para lo único que el estado no cubre: avisar ANTES del vencimiento, con
+  el sitio todavía activo.
+- **⚠️ NO SE DERIVA DE `expirationDate`.** Sería lo aparentemente natural —«si
+  la fecha pasó, está vencido»— y es justo lo que no se puede hacer sin mirar
+  la base de producción primero: hay sitios con una fecha vieja y la
+  suscripción al día, y la consecuencia de equivocarse es una barra ROJA de
+  impago en la portada de un club que sí pagó. La fecha es un dato de
+  facturación; el estado es la decisión. Se lee la decisión, y una prueba lee
+  el archivo y falla si `expirationDate` reaparece en el criterio.
+- **El catálogo de estados es CERRADO** (`EXPIRED_SUBSCRIPTION_STATUSES`).
+  `inactive` es un prospecto que nunca contrató y `pending` es un cobro en
+  curso: en ninguno de los dos «Sitio en periodo de renovación» sería cierto.
+- **⚠️ LA BARRA Y EL MENÚ DECIDEN CON LA MISMA FUNCIÓN.** La barra es `sticky`
+  y `Navbar` se desplaza para dejarle sitio (`showBannerOffset`). Con la
+  condición escrita en los dos lados —que es como estaba— alcanza con tocar uno
+  para que el menú se monte encima del aviso, y eso no lo ve ninguna otra
+  comprobación.
+- **Un sitio vencido no puede apagar la barra desde la casilla, y la ficha lo
+  DICE** (`bannerLockNotice`). Sin ese aviso, el panel muestra una casilla sin
+  marcar mientras la portada muestra la barra: es pintar el indicador en contra
+  del veredicto, el defecto que este archivo ya prohibió una vez (v4.787).
+- **El estado ya viajaba al navegador y nadie lo leía.** `by-domain` arma la
+  respuesta con `{ ...activeClub }` —la fila entera de Prisma—, así que no hizo
+  falta tocar el servidor. Si algún día esa respuesta pasa a una lista de
+  campos, `subscriptionStatus` tiene que estar en ella; lo comprueba una prueba
+  sobre el archivo.
+- **⚠️ ALCANZA A LOS SITIOS QUE EL SISTEMA MARCA SOLO.** `/api/cron/…` pasa a
+  `status: 'inactive'` y `subscriptionStatus: 'expired'` todo sitio cuya fecha
+  de expiración tenga más de cinco días. Esos sitios pasan a mostrar la barra,
+  que es lo correcto —están suspendidos— pero es un cambio visible en varias
+  portadas a la vez, no sólo en la que se reportó. Si un sitio no debía
+  mostrarla, lo que se corrige es su estado de suscripción.
+- **Pagar sigue apagándola.** El webhook de cobro ya dejaba `subscriptionStatus:
+  'active'` y `expirationBannerActive: false` en la misma escritura, así que al
+  renovar la barra desaparece sola. La derivación no cambia eso.
+
+**Pendiente conocido:** `expirationBannerMessage` se guarda desde el panel y la
+barra **no lo lee** — el texto está escrito en el componente. Cablearlo cambiaría
+lo que hoy se ve en los sitios que ya tienen un mensaje guardado, así que no se
+tocó en esta versión.
+
+
 ## Recursos que cambian con el idioma — v4.699
 
 Algunas piezas gráficas están **rotuladas** y por tanto tienen idioma: el logo

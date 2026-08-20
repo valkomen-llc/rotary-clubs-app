@@ -2,14 +2,18 @@ import React, { useState } from 'react';
 import { AlertTriangle, X, ArrowRight, CreditCard, Lock } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useAuth } from '../hooks/useAuth';
-import { toast } from 'sonner';
+import { showsExpirationBanner } from '../lib/siteExpiration';
 
 const ExpirationBanner: React.FC = () => {
     const { club, bannerVisible, setBannerVisible } = useClub();
     const { user } = useAuth();
     const [loading, setLoading] = useState(false);
 
-    if (!club || !club.expirationBannerActive || !bannerVisible) return null;
+    // ⚠️ La decisión NO se escribe acá: vive en `showsExpirationBanner` y la
+    // comparte el desplazamiento del menú. Hasta v4.877 esta línea miraba sólo
+    // `expirationBannerActive`, así que poner un sitio en «Expirado» no
+    // mostraba nada — es el defecto reportado con Nuevo Cali frente a Pasto.
+    if (!club || !showsExpirationBanner(club) || !bannerVisible) return null;
 
     const currentYear = new Date().getFullYear();
     const nextYear = currentYear + 1;

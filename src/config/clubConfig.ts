@@ -65,6 +65,13 @@ export interface ClubConfig {
     members?: any[];
     expirationBannerActive?: boolean;
     expirationBannerMessage?: string;
+    /**
+     * Estado de la suscripción del sitio: 'active' | 'expired' | 'inactive' | 'pending'.
+     * Viaja desde v4.878 porque la barra de vencimiento se DERIVA de él — hasta
+     * entonces dependía sólo de la casilla, y marcar un sitio como «Expirado»
+     * no mostraba nada. Ver `src/lib/siteExpiration.ts`.
+     */
+    subscriptionStatus?: string;
     developmentBannerActive?: boolean;
     developmentBannerMessage?: string;
     /** Idioma por defecto del sitio (código: 'es', 'en', …). Va de primero en el selector. */

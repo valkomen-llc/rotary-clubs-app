@@ -34,9 +34,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.877.0 | 2026-08-19 (Pool registrador del dominio)
-// Cache bust: 2026-08-19a
+// UI V4.878.0 | 2026-08-20 (La barra de vencimiento sigue al estado)
+// Cache bust: 2026-08-20a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.878.0',
+        title: 'Marcar un sitio como vencido ya muestra la barra en su portada ⚠️',
+        description: 'Se reportó con dos sitios delante: rotarypasto.org mostraba la barra roja de vencimiento y rotarynuevocali.org no, estando los dos marcados como «Expirado / Vencido». La barra nunca miró el estado de la suscripción: dependía sólo de la casilla «Activar Banner de Vencimiento», que alguien había marcado a mano en uno y no en el otro. Ahora el estado manda.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'facturacion', 'portada'],
+        type: 'fixed',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Un sitio en «Expirado / Vencido» muestra la barra en su portada, sin tener que marcar nada más.' },
+            { type: 'changed', text: 'La casilla se conserva y ahora sirve para avisar ANTES del vencimiento, con el sitio todavía activo.' },
+            { type: 'fixed', text: 'El menú se desplaza con el mismo criterio que la barra: antes podían discrepar y montarse uno encima del otro.' },
+            { type: 'added', text: 'Con el sitio vencido, la ficha explica que la casilla ya no manda.' },
+            { type: 'added', text: 'npm run test:expiration — 51 comprobaciones, una de ellas montando la barra en un navegador real.' },
+        ],
+        details: [
+            'QUÉ CAMBIA EN LA PRÁCTICA. Todo sitio cuyo estado de suscripción sea «Expirado / Vencido» pasa a mostrar la barra, no sólo el que se reportó. Es exactamente lo pedido, y conviene saber que alcanza también a los sitios que el sistema marca solo: hay una tarea automática que, cinco días después de la fecha de expiración, los pasa a inactivos y vencidos. Si algún sitio no debía mostrarla, lo que hay que corregir es su estado de suscripción, que es donde está la decisión.',
+            'POR QUÉ NO SE USA LA FECHA DE EXPIRACIÓN. Sería lo aparentemente natural —«si la fecha pasó, está vencido»— y es justo lo que no se puede hacer sin revisar antes los datos reales: hay sitios con una fecha vieja y la suscripción al día, y la consecuencia de equivocarse es una barra ROJA de impago en la portada de un club que sí pagó. La fecha es un dato de facturación; el estado es la decisión, y se lee la decisión.',
+            'QUÉ ESTADOS LA ENCIENDEN. Sólo «Expirado / Vencido». «Inactivo (Prospecto)» es un sitio que nunca contrató y «Pendiente» es un cobro en curso: en ninguno de los dos la frase «Sitio en periodo de renovación» sería cierta.',
+            'LA CASILLA NO DESAPARECE. Sigue sirviendo para mostrar la barra en un sitio que todavía está activo — un aviso anticipado antes de que venza. Lo que ya no puede es apagarla en un sitio vencido, y la ficha lo dice con todas las letras para que la pantalla no contradiga a la portada.',
+            'PAGAR SIGUE APAGÁNDOLA. El webhook de cobro ya dejaba el sitio en «activo» y bajaba la casilla a la vez, así que al renovar la barra desaparece sola, igual que antes.',
+        ],
+    },
     {
         version: '4.877.0',
         title: 'El pool del dominio se asigna desde la ficha de cualquier sitio 🌐',
