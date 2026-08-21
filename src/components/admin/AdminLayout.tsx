@@ -56,7 +56,11 @@ import {
     Languages,
     // Se usa en el ítem "Mi Proyecto" y faltaba: sin él, el panel de cualquier
     // administrador que además tenga un proyecto postulado quedaba en blanco.
-    ClipboardList
+    ClipboardList,
+    // Ítem «Slider Global». Un icono que se nombra y no se importa NO lo ve el
+    // typecheck de este archivo si el símbolo existe en otro alcance: revienta
+    // al PINTAR y deja el panel en blanco. Es lo que pasó con ClipboardList.
+    LayoutTemplate
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -490,6 +494,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
+                { icon: LayoutTemplate, label: 'Slider Global / Llamados a la Acción', path: '/admin/slider-global', category: 'Management', keywords: ['slider', 'slide', 'carrusel', 'llamado', 'accion', 'destacado', 'bloque destacado', 'polio', 'end polio', 'banner', 'portada', 'global', 'spotlight'] },
                 { icon: Mail, label: 'Notificaciones de Aportes', path: '/admin/notificaciones-aportes', category: 'Management', keywords: ['notificacion', 'notificaciones', 'correo', 'email', 'recibo', 'confirmacion', 'aporte', 'aportes', 'donacion', 'colrotarios', 'remitente', 'plantilla'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },

@@ -149,6 +149,7 @@ const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagemen
 const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
 const ManerasContribuirEditor = lazyWithRetry(() => import('./pages/admin/ManerasContribuirEditor'), 'ManerasContribuirEditor');
 const ContributionCampaigns = lazyWithRetry(() => import('./pages/admin/ContributionCampaigns'), 'ContributionCampaigns');
+const SpotlightSlides = lazyWithRetry(() => import('./pages/admin/SpotlightSlides'), 'SpotlightSlides');
 const ContributionNotifications = lazyWithRetry(() => import('./pages/admin/ContributionNotifications'), 'ContributionNotifications');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
 const WalletManagement = lazyWithRetry(() => import('./pages/admin/WalletManagement'), 'WalletManagement');
@@ -836,6 +837,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ContributionCampaigns />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/slider-global"
+                  element={
+                    <PrivateRoute>
+                      <SpotlightSlides />
                     </PrivateRoute>
                   }
                 />

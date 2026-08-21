@@ -210,10 +210,23 @@ check('cierra la portada, entre las áreas de interés y el pie', () => {
     assert.ok(i >= 0, 'no se encontró CausesHexSection');
     assert.equal(orden[i + 1], 'SpotlightSection');
 });
-check('nace VACÍO: sin imagen ni texto no pinta nada', () =>
+check('nace VACÍO: sin imagen ni texto no pinta nada', () => {
     // La portada la comparten todos los sitios; un contenido escrito en el
     // código aparecería en cada club (lección de v4.737).
-    assert.match(SPOT, /if \(!imgUrl && !title && !text\) return null;/));
+    //
+    // Desde v4.879 el bloque también puede recibir llamados globales, así que
+    // la condición dejó de ser sobre el contenido del sitio y pasó a ser sobre
+    // la LISTA final: `total === 0` cubre las dos fuentes. La regla no se
+    // aflojó —lo comprueba `npm run test:spotlight:ui` en un navegador, midiendo
+    // que el hueco no ocupe ni un píxel—, y lo que se comprueba acá es que el
+    // corte siga existiendo y siga siendo un `return null`, no un contenedor
+    // vacío ni algo escondido por CSS.
+    assert.match(SPOT, /if \(total === 0\) return null;/);
+    // El contenido local sigue decidiéndose con las tres cosas, no sólo con la
+    // imagen: quien escriba el texto antes de subir la pieza tiene que ver lo
+    // que lleva escrito.
+    assert.match(SPOT, /if \(!image && !title && !text\) return null;/);
+});
 check('NO está acotado a Evento/Convención', () =>
     // Se pidió para un distrito: acotarlo con `hasEditableHome`, como los otros
     // bloques de contenido, lo dejaría sin poder llenarse.

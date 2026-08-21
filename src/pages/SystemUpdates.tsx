@@ -34,9 +34,35 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.878.0 | 2026-08-20 (La barra de vencimiento sigue al estado)
-// Cache bust: 2026-08-20a
+// UI V4.879.0 | 2026-08-21 (Slider Global / Llamados a la Acción)
+// Cache bust: 2026-08-21a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.879.0',
+        title: 'El Bloque Destacado de la portada se publica desde Club Platform 📣',
+        description: 'El último contenedor de la portada —END POLIO NOW en el Distrito 4281— dejó de ser una pieza que cada sitio carga por su cuenta. Ahora también se publica UNA vez desde Club Platform y alcanza a los sitios que se elijan: todos, los de unos distritos, o unos sitios concretos, con exclusiones. Con un solo llamado activo el sitio lo muestra exactamente como siempre; con varios, el mismo contenedor se convierte solo en un carrusel.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'club platform', 'campanas', 'multi-sitio'],
+        type: 'feature',
+        impact: 'Ningún sitio cambia hasta que alguien publique un llamado: un slide nuevo nace apagado y, sin llamados globales, la portada se ve igual que antes.',
+        changes: [
+            { type: 'added', text: 'Pantalla «Slider Global / Llamados a la Acción» en el panel del operador: crear, editar, duplicar, activar, ordenar arrastrando y programar.' },
+            { type: 'added', text: 'Destinos por slide: todos los sitios, por distrito o sitios concretos, con una lista de exclusión que gana siempre.' },
+            { type: 'added', text: 'Programación con fecha y hora de inicio y de fin. Sin fechas, la publicación es permanente; el vencimiento se evalúa solo, sin nada que apagar a mano.' },
+            { type: 'added', text: 'Vínculo con Maneras de Contribuir: se elige la campaña y el botón lleva a la página de contribución de CADA sitio. Si la campaña deja de estar activa —o no alcanza a un sitio— el llamado no se muestra ahí, en vez de dejar un botón que no lleva a ninguna parte.' },
+            { type: 'added', text: 'Imagen propia para móvil, opcional. La elige el navegador antes de descargar, así que un teléfono no se baja la panorámica de escritorio.' },
+            { type: 'added', text: 'Carrusel accesible: flechas, puntos, teclado, swipe, y pausa con el cursor encima. Quien pidió menos movimiento en su sistema no recibe rotación automática.' },
+            { type: 'added', text: 'Vista previa en escritorio y en móvil antes de publicar, con el componente REAL de la portada — lo que se ve es lo que se publica.' },
+            { type: 'changed', text: 'El Bloque Destacado propio de cada sitio no se tocó: se sigue cargando donde siempre y ahora convive con los llamados globales, sin duplicarse.' },
+        ],
+        details: [
+            'Un llamado global es UNA fila que cada sitio resuelve al leer, no una copia por sitio: corregir una cifra o retirar una emergencia se refleja en todos al instante.',
+            'El alcance se calcula con el mismo criterio que las Campañas de Contribución, así que un llamado no puede alcanzar a un sitio que la campaña que anuncia no alcanza.',
+            'El velo que hace legible el texto sobre cualquier fotografía lo pone el sistema y no se configura: el contraste no es una decisión editorial.',
+            'La arquitectura queda lista para que un sitio publique además sus propios llamados, sin duplicar ni uno solo de los globales.',
+            '93 comprobaciones automáticas nuevas (npm run test:spotlight), sin base ni red.',
+        ],
+    },
     {
         version: '4.878.0',
         title: 'Marcar un sitio como vencido ya muestra la barra en su portada ⚠️',

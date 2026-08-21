@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.878.0",
-  "cache_bust": "2026-08-20a (La barra de vencimiento se deriva del estado del sitio.)",
+  "version": "4.879.0",
+  "cache_bust": "2026-08-21a (Slider Global: el Bloque Destacado se publica desde Club Platform.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -68,6 +68,8 @@
     "test:registrar-pools": "node scripts/test-registrar-pools.mjs",
     "test:expiration": "node scripts/test-site-expiration.mjs",
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
+    "test:spotlight": "node scripts/test-spotlight.mjs",
+    "test:spotlight:ui": "node scripts/test-spotlight-ui.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
     "test:fee-rules:route": "node scripts/test-fee-rules-route.mjs",
     "test:wallet:central": "node scripts/test-wallet-central.mjs",
