@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.880.0 | 2026-08-21 (El panel abre sin descargar el changelog)
-// Cache bust: 2026-08-21b
+// UI V4.881.0 | 2026-08-21 (El Bloque Destacado va en las cuatro portadas)
+// Cache bust: 2026-08-21c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.881.0',
+        title: 'El Bloque Destacado llega ahora a todos los sitios',
+        description: 'La portada no se arma igual en todos los sitios: una fundación, una asociación y un club tienen cada uno su propia composición. El Bloque Destacado estaba montado sólo en la del sitio de club, así que un llamado global publicado para «todos los sitios» no aparecía en COLROTARIOS, ni en LATIR o EMAR, ni en los sitios de Programas de Intercambio. El servidor lo resolvía y lo enviaba; esas portadas simplemente no lo dibujaban, y nada avisaba.',
+        date: new Date().toISOString(),
+        tags: ['portada', 'slider global', 'llamados a la accion'],
+        type: 'fix',
+        impact: 'Un llamado global marcado «todos los sitios» ahora sí llega a todos. También aparece en la vista previa del panel, que antes mostraba una portada sin él.',
+        changes: [
+            { type: 'fixed', text: 'El contenedor se monta en las cuatro portadas: sitio de fundación, asociación / Programa de Intercambio, sitio de club y la vista previa del administrador.' },
+            { type: 'fixed', text: 'La vista previa del panel enseña ahora lo mismo que se publica.' },
+            { type: 'added', text: 'Una prueba comprueba que TODA portada monte el contenedor: una composición nueva que se olvide falla en vez de perder los llamados en silencio.' },
+        ],
+        details: [
+            'Nada cambia en un sitio que no tenga contenido: el contenedor sigue sin dibujarse —ni siquiera el espacio— cuando no hay ningún llamado que mostrar.',
+            'La comprobación anterior fijaba justamente el error: exigía que el contenedor se montara UNA sola vez. La regla es sobre el componente —no hay una segunda sección— y no sobre en cuántas portadas se usa el mismo.',
+        ],
+    },
     {
         version: '4.880.0',
         title: 'El panel abre a la mitad de peso ⚡',
