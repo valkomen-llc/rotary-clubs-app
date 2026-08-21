@@ -1,7 +1,7 @@
 import React, { useEffect, Suspense } from 'react';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
-import { publicAccessAllowed } from './lib/siteStatus';
+import { publicAccessAllowed } from './lib/sitePublication';
 import { useSiteSessions } from './lib/siteSession';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 

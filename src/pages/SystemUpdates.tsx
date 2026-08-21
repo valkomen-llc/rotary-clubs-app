@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.883.0 | 2026-08-21 (Estado «En construcción»)
-// Cache bust: 2026-08-21e
+// UI V4.884.0 | 2026-08-21 (Corrección urgente del 500 general)
+// Cache bust: 2026-08-21f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.884.0',
+        title: 'Corrección urgente: la plataforma volvió a responder',
+        description: 'La versión anterior dejó toda la plataforma respondiendo error 500, incluido el panel de administración. La causa: un archivo nuevo se escribió encima de otro que ya existía y tenía el mismo nombre, así que el módulo de Capacitaciones quedó pidiendo funciones que habían desaparecido y el servidor no llegaba a arrancar.',
+        date: new Date().toISOString(),
+        tags: ['correccion', 'urgente', 'plataforma'],
+        type: 'fix',
+        impact: 'El acceso quedó restablecido. El estado «En construcción» que estrenó la versión anterior sigue funcionando igual.',
+        changes: [
+            { type: 'fixed', text: 'Se restauró el archivo que se había sobrescrito y el nuevo pasó a un nombre propio.' },
+            { type: 'fixed', text: 'La pantalla «Solicitudes Técnicas» vuelve a funcionar: llevaba tiempo rota por un fallo de la misma clase, que salió a la luz al revisar.' },
+            { type: 'added', text: 'Una barrera nueva impide desplegar si un archivo pide una función que otro ya no tiene. Era la única causa de caída total que no estaba cubierta.' },
+        ],
+        details: [
+            'Ninguna de las comprobaciones anteriores podía ver este fallo: el código es válido, está bien escrito y sólo revienta al arrancar el servidor.',
+            'La barrera nueva revisa las 590 conexiones entre archivos del servidor en cada despliegue.',
+        ],
+    },
     {
         version: '4.883.0',
         title: 'Un sitio se puede armar entero antes de hacerlo público 🚧',

@@ -1,4 +1,4 @@
-import { SITE_STATUSES, normalizeSiteStatus, statusInfo } from '../../lib/siteStatus';
+import { SITE_STATUSES, normalizeSiteStatus, statusInfo } from '../../lib/sitePublication';
 
 /**
  * El selector de estado de un sitio, COMPARTIDO por las siete pantallas que
