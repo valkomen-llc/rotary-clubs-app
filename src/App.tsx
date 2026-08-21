@@ -1,6 +1,8 @@
 import React, { useEffect, Suspense } from 'react';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
+import { publicAccessAllowed } from './lib/siteStatus';
+import { useSiteSessions } from './lib/siteSession';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 // Componente para manejar redirecciones de enlaces antiguos con hash (/#/blog...)
@@ -120,7 +122,6 @@ const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'), 'LandingP
 const RegistroPage = lazyWithRetry(() => import('./pages/RegistroPage'), 'RegistroPage');
 const VerifyEmail = lazyWithRetry(() => import('./pages/VerifyEmail'), 'VerifyEmail');
 const AppLogin = lazyWithRetry(() => import('./pages/AppLogin'), 'AppLogin');
-const ComingSoon = lazyWithRetry(() => import('./pages/ComingSoon'), 'ComingSoon');
 
 const GeneradorPendones = lazyWithRetry(() => import('./pages/GeneradorPendones'), 'GeneradorPendones');
 // v4.721 — Portal público de Plantillas IA. Perezosa como el resto de las
@@ -170,6 +171,7 @@ const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
 const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
+const SiteUnderConstruction = lazyWithRetry(() => import('./pages/SiteUnderConstruction'), 'SiteUnderConstruction');
 const ImageDistribution = lazyWithRetry(() => import('./pages/admin/ImageDistribution'), 'ImageDistribution');
 const OnboardingFlow = lazyWithRetry(() => import('./pages/admin/OnboardingFlow'), 'OnboardingFlow');
 const MembersPage = lazyWithRetry(() => import('./pages/admin/MembersPage'), 'MembersPage');
@@ -291,7 +293,51 @@ const OnboardingGate = () => {
 };
 
 // Smart Home: shows LandingPage on www.clubplatform.org,
-// AppLogin on app.clubplatform.org, ComingSoon for draft clubs, club site otherwise
+// AppLogin en app.clubplatform.org, y el sitio del club en cualquier otro caso.
+// El corte por «en construcción» ya no vive acá: lo hace `ConstructionGate`.
+/**
+ * La puerta del sitio en construcción — v4.883.
+ *
+ * ⚠️ VA EN UN SOLO SITIO, envolviendo a `<Routes>`. El sitio tiene más de cien
+ * rutas: protegerlas de a una significa que la ruta ciento uno se olvida, y el
+ * fallo es MUDO —esa página quedaría pública sin que nada avise—. Acá dentro,
+ * una ruta nueva nace protegida sola.
+ *
+ * Deja pasar tres casos, y `publicAccessAllowed` es quien lo decide:
+ *   · el sitio no está en construcción (lo normal, y por eso es lo primero);
+ *   · la ruta es de las que se sirven siempre — el inicio de sesión y el panel,
+ *     porque si no, la puerta se cierra con la llave adentro;
+ *   · hay una sesión abierta: el equipo navega el sitio COMPLETO y lo ve como
+ *     va a quedar, no en una vista previa.
+ *
+ * ⚠️ ESTO RESTRINGE LO QUE SE PINTA, NO LO QUE SE SIRVE. La API sigue
+ * respondiendo a quien la llame directamente: es una puerta de PUBLICACIÓN
+ * —«este sitio todavía no se anuncia»— y no un control de acceso a los datos.
+ * Decirlo importa: creer que protege más de lo que protege es peor que saber
+ * exactamente qué hace.
+ */
+const ConstructionGate = ({ children }: { children: React.ReactNode }) => {
+  const { club, isLoading } = useClub();
+  const { pathname } = useLocation();
+  // Las TRES identidades del sitio, no sólo la del panel: el pedido dice
+  // «usuarios autenticados y administradores», y quién sabe leerlas es
+  // `siteSession` desde v4.693.
+  const sessions = useSiteSessions();
+
+  // Mientras no se sabe qué sitio es, no se decide: dar por «en construcción»
+  // un sitio cuyo estado todavía no llegó lo taparía por un instante en cada
+  // visita, y eso se ve como un parpadeo raro en un sitio que está publicado.
+  if (isLoading) return <>{children}</>;
+
+  const { allowed } = publicAccessAllowed({
+    status: club?.status,
+    path: pathname,
+    hasSession: sessions.length > 0,
+  });
+
+  return allowed ? <>{children}</> : <SiteUnderConstruction />;
+};
+
 function SmartHome() {
   const { isMainPlatform, isAppPortal, isDraft, club } = useClub();
   const { isAuthenticated, user } = useAuth();
@@ -327,7 +373,10 @@ function SmartHome() {
     return <AppLogin />;
   }
   if (isMainPlatform) return <LandingPage />;
-  if (isDraft) return <ComingSoon clubName={club?.name} logo={club?.logo} primaryColor={club?.colors?.primary} />;
+  // El corte por «en construcción» ya NO vive acá: lo hace `ConstructionGate`,
+  // que envuelve a todas las rutas. Dejarlo también en la portada tendría dos
+  // criterios para lo mismo —y sólo cubría `/`, así que entrar directo a
+  // `/proyectos` se saltaba la restricción entera (v4.883).
 
   // Un DISTRITO no tiene portada propia: cae en el sitio estándar de más abajo y se
   // arma con su configuración, como cualquier otro (v4.737).
@@ -558,6 +607,7 @@ function App() {
                 que en una conexión normal no llega a verse.
               */}
               <ChunkErrorBoundary>
+              <ConstructionGate>
               <Suspense fallback={
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', background: '#fff' }}>
                   <div style={{ width: 34, height: 34, border: '3px solid #e2e8f0', borderTopColor: '#17458F', borderRadius: '50%', animation: 'spin 0.8s linear infinite', opacity: 0, animationName: 'spin, fadeInLoader', animationDuration: '0.8s, 0.2s', animationDelay: '0s, 0.25s', animationFillMode: 'none, forwards' }} />
@@ -1166,6 +1216,7 @@ function App() {
                 <Route path="/informe/:token" element={<SharedReport />} />
               </Routes>
               </Suspense>
+              </ConstructionGate>
               </ChunkErrorBoundary>
             </Router>
             <ChatBot />

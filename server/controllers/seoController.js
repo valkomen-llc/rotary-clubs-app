@@ -26,6 +26,7 @@
 import { resolveClubByHost, siteOrigin, listSitePages } from '../lib/seoEntities.js';
 import { readSiteConfig, listPageMeta } from '../lib/seoStore.js';
 import { PRIVATE_PREFIXES } from '../lib/seoSpec.js';
+import { isUnderConstruction } from '../lib/siteStatus.js';
 
 function originFrom(req, club) {
     const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
@@ -51,6 +52,23 @@ export const getRobotsTxt = async (req, res) => {
         // que empiece así, mientras que `Disallow: /login/` deja fuera
         // justamente `/login`, que es la dirección que existe. Es el error de
         // bulto que hace que una regla parezca puesta y no proteja nada.
+        // ⚠️ UN SITIO EN CONSTRUCCIÓN NO SE INDEXA, Y ESTO NO ES UN EXTRA.
+        // La puerta del navegador tapa lo que se PINTA; un rastreador no pide
+        // páginas, pide direcciones, y sin esta regla Google indexaría el
+        // sitio que todavía no se quiere anunciar. Cuando pase a «Activo», la
+        // regla desaparece sola en la petición siguiente: `robots.txt` se
+        // compone en cada visita, no se guarda.
+        if (isUnderConstruction(club?.status)) {
+            body = [
+                `# ${club?.name || 'Club Platform'} — sitio en construcción`,
+                '# Todavía no es público: no se ofrece nada al rastreo.',
+                '',
+                'User-agent: *',
+                'Disallow: /',
+                '',
+            ].join('\n');
+        } else {
+
         const disallow = ['/api/', ...PRIVATE_PREFIXES];
 
         const lines = [
@@ -86,6 +104,7 @@ export const getRobotsTxt = async (req, res) => {
             lines.push('', '# Reglas añadidas desde el panel', String(config.robotsExtra).trim());
         }
         body = lines.join('\n') + '\n';
+        }
     } catch (e) {
         console.error('[seo] robots.txt:', e.message);
         // Ante un fallo se sirve el archivo PERMISIVO, nunca `Disallow: /`.
@@ -117,7 +136,16 @@ export const getSitemap = async (req, res) => {
         const club = await resolveClubByHost(hostHeader);
         const { origin } = originFrom(req, club);
 
-        const { pages, notes, truncated } = await listSitePages(club);
+        // ⚠️ UN SITIO EN CONSTRUCCIÓN PUBLICA UN SITEMAP VACÍO, no un 404.
+        // El archivo tiene que existir —`robots.txt` lo referencia y un 404 en
+        // esa referencia es un error de configuración a ojos del buscador—,
+        // pero no puede enumerar las páginas que el sitio todavía no muestra:
+        // sería darle a Google el índice completo de lo que la puerta tapa.
+        const enConstruccion = isUnderConstruction(club?.status);
+
+        const { pages, notes, truncated } = enConstruccion
+            ? { pages: [], notes: ['El sitio está en construcción: todavía no se publica ninguna dirección.'], truncated: false }
+            : await listSitePages(club);
 
         // Los ajustes por página pueden marcar una dirección como no indexable o
         // cambiarle la prioridad. El sitemap TIENE que respetarlo: publicar una

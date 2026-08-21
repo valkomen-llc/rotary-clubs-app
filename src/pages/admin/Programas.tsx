@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import SiteStatusPicker from '../../components/admin/SiteStatusPicker';
 
 interface Club {
     id: string;
@@ -598,17 +599,10 @@ const ProgramasManagement: React.FC = () => {
                                     <p className="text-[10px] text-gray-400 mt-1">Este será el prefijo que usará la plataforma si no configuras un Dominio Propio (ej: tunombre.clubplatform.org).</p>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Estado</label>
-                                    <select
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
-                                        value={formData.status}
-                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="active">Activo</option>
-                                        <option value="inactive">Inactivo</option>
-                                    </select>
-                                </div>
+                                <SiteStatusPicker
+                                    value={formData.status}
+                                    onChange={v => setFormData({ ...formData, status: v })}
+                                />
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Skin de Arquitectura (Footer)</label>

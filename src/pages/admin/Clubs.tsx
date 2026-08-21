@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { ENTITY_TYPES, organizationTypeFor } from '../../lib/entityTypes';
 import { bannerLockNotice } from '../../lib/siteExpiration';
+import SiteStatusPicker from '../../components/admin/SiteStatusPicker';
 
 interface Club {
     id: string;
@@ -880,17 +881,12 @@ const ClubsManagement: React.FC = () => {
                                     />
                                 </div>
 
-                                <div className="md:col-span-1">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Estado del Sitio</label>
-                                    <select
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
-                                        value={formData.status}
-                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="active">Activo</option>
-                                        <option value="inactive">Inactivo</option>
-                                    </select>
-                                </div>
+                                <SiteStatusPicker
+                                    className="md:col-span-1"
+                                    label="Estado del Sitio"
+                                    value={formData.status}
+                                    onChange={v => setFormData({ ...formData, status: v })}
+                                />
 
                                 <div className="md:col-span-1">
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Tipo de Entidad / Clasificación</label>
