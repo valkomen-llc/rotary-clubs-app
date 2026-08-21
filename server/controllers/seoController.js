@@ -26,7 +26,7 @@
 import { resolveClubByHost, siteOrigin, listSitePages } from '../lib/seoEntities.js';
 import { readSiteConfig, listPageMeta } from '../lib/seoStore.js';
 import { PRIVATE_PREFIXES } from '../lib/seoSpec.js';
-import { isUnderConstruction } from '../lib/siteStatus.js';
+import { isUnderConstruction } from '../lib/sitePublication.js';
 
 function originFrom(req, club) {
     const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();

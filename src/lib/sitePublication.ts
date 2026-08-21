@@ -1,9 +1,15 @@
 // ════════════════════════════════════════════════════════════════════
 // El estado de un sitio, y qué puede ver un visitante — v4.883
 //
+// ⚠️ SE LLAMA `sitePublication`, NO `siteStatus`: en el servidor ese nombre YA
+// ESTABA OCUPADO desde v4.828 por la validación de suscripción del módulo de
+// Capacitaciones, y escribir encima de aquél tumbó la plataforma entera en la
+// primera versión de este módulo. Los dos espejos comparten nombre a
+// propósito, para que se reconozcan como par.
+//
 // PURO: sin base, sin red, sin DOM. Lo consumen la puerta central del router,
 // las siete pantallas de sitios del panel y —espejado en `server/lib/
-// siteStatus.js`— el SEO, que tiene que dejar de indexar un sitio que todavía
+// sitePublication.js`— el SEO, que tiene que dejar de indexar un sitio que todavía
 // no es público.
 //
 // TRES estados, y la distinción que define el módulo:

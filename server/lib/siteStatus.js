@@ -1,22 +1,46 @@
-// El estado de un sitio — espejo MÍNIMO del criterio del navegador.
-//
-// Acá vive SÓLO lo que el servidor necesita: saber si un sitio está en
-// construcción, para no indexarlo. La decisión de qué se PINTA es del
-// navegador (`src/lib/siteStatus.ts`), y este espejo se compara con aquél por
-// SALIDAS en `npm run test:site-status` — si divergen, un sitio podría estar
-// tapado para los visitantes y a la vez ofrecido a Google.
-//
-// Al tocar `normalizeSiteStatus` en un lado, tocarlo en el otro.
+// Validación centralizada de "sitio activo / suscripción vigente".
+// No existía un helper compartido: el cron replicaba el predicado. Este es el
+// único lugar del módulo de capacitaciones que decide si un sitio puede reservar
+// gratis o debe pasar por el checkout de Stripe.
+import prisma from './prisma.js';
 
-export function normalizeSiteStatus(raw) {
-    const v = String(raw ?? '').trim().toLowerCase();
-    if (v === 'draft' || v === 'construction' || v === 'under_construction') return 'draft';
-    if (v === 'inactive' || v === 'suspended' || v === 'disabled') return 'inactive';
-    // Ante la duda, ACTIVO: lo contrario convertiría un dato desconocido en un
-    // sitio caído — y acá además en un sitio desindexado.
-    return 'active';
+// Resuelve la entidad reservante (Club o Distrito) a partir de ids.
+// Prioriza clubId; si no hay, intenta districtId.
+export async function resolveSiteEntity({ clubId, districtId }) {
+  if (clubId) {
+    const club = await prisma.club.findUnique({ where: { id: clubId } });
+    if (club) return { entity: club, type: 'club' };
+  }
+  if (districtId) {
+    const district = await prisma.district.findUnique({ where: { id: districtId } });
+    if (district) return { entity: district, type: 'district' };
+  }
+  return { entity: null, type: null };
 }
 
-export const isUnderConstruction = raw => normalizeSiteStatus(raw) === 'draft';
+// ¿El sitio está activo y con suscripción vigente?
+// Un sitio es elegible para reservar cuando:
+//   - status !== 'inactive' (no suspendido), y
+//   - subscriptionStatus !== 'expired', y
+//   - si tiene expirationDate, que sea futura.
+// Devuelve { active, reason }.
+export function evaluateSiteStatus(entity) {
+  if (!entity) return { active: false, reason: 'not_found' };
 
-export default { normalizeSiteStatus, isUnderConstruction };
+  const status = entity.status || 'active';
+  const sub = entity.subscriptionStatus || 'active';
+  const exp = entity.expirationDate ? new Date(entity.expirationDate) : null;
+
+  if (status === 'inactive') return { active: false, reason: 'suspended' };
+  if (sub === 'expired') return { active: false, reason: 'expired' };
+  if (exp && exp.getTime() < Date.now()) return { active: false, reason: 'expired' };
+
+  return { active: true, reason: 'active' };
+}
+
+// Combinación conveniente: resuelve entidad + evalúa estado.
+export async function getSiteStatus({ clubId, districtId }) {
+  const { entity, type } = await resolveSiteEntity({ clubId, districtId });
+  const status = evaluateSiteStatus(entity);
+  return { ...status, entity, type };
+}

@@ -23,7 +23,7 @@ import { resolveClubByHost, siteOrigin, resolvePage } from './seoEntities.js';
 import { readSiteConfig, readPageMeta } from './seoStore.js';
 import { renderHead } from './seoRender.js';
 import { normalizePath } from './seoSpec.js';
-import { isUnderConstruction } from './siteStatus.js';
+import { isUnderConstruction } from './sitePublication.js';
 
 /**
  * Resuelve el documento de una dirección pública.

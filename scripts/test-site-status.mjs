@@ -27,7 +27,7 @@ let S = null;
 try {
     const { build } = await import('esbuild');
     const out = await build({
-        entryPoints: ['src/lib/siteStatus.ts'], bundle: true, write: false,
+        entryPoints: ['src/lib/sitePublication.ts'], bundle: true, write: false,
         format: 'esm', platform: 'neutral', logLevel: 'silent',
     });
     S = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
@@ -96,7 +96,7 @@ check('el ancla tampoco', ver('draft', '/login#x').allowed);
 // ════════════════════════════════════════════════════════════════════
 grupo('── El espejo del servidor da LO MISMO ────────────────────');
 
-const V = await import('../server/lib/siteStatus.js');
+const V = await import('../server/lib/sitePublication.js');
 const casos = ['active', 'draft', 'inactive', 'published', 'suspended', 'under_construction',
     'construction', 'disabled', 'production', '', null, undefined, '  DRAFT ', 'loquesea', 0, false];
 const distintos = casos.filter(c => S.normalizeSiteStatus(c) !== V.normalizeSiteStatus(c));
