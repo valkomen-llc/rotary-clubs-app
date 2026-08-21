@@ -17,6 +17,7 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import {
     getActiveSlides, listSlides, getSlide, createSlide, updateSlide,
     duplicateSlide, reorderSlides, deleteSlide, slideReach,
+    listImportable, importLocalBlock,
 } from '../controllers/spotlightSlideController.js';
 
 const router = express.Router();
@@ -25,8 +26,11 @@ const superAdminOnly = roleMiddleware(['administrator']);
 // Pública — sin sesión, degrada a lista vacía ante cualquier fallo.
 router.get('/active', getActiveSlides);
 
-// Gestión — operador de la plataforma. `/order` antes que `/:id`.
+// Gestión — operador de la plataforma. Las LITERALES van antes que `/:id`.
 router.put('/order', authMiddleware, superAdminOnly, reorderSlides);
+// Traer el Bloque Destacado que un sitio ya tiene configurado.
+router.get('/importable', authMiddleware, superAdminOnly, listImportable);
+router.post('/import', authMiddleware, superAdminOnly, importLocalBlock);
 router.get('/', authMiddleware, superAdminOnly, listSlides);
 router.post('/', authMiddleware, superAdminOnly, createSlide);
 router.get('/:id/reach', authMiddleware, superAdminOnly, slideReach);

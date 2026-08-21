@@ -335,8 +335,26 @@ check('la comprobación rápida enumera las columnas que el archivo crea',
 const ctrl = readFileSync('server/controllers/spotlightSlideController.js', 'utf8');
 check('la lectura pública degrada a lista vacía, nunca a 500',
     /degrada a lista vacía/.test(ctrl) && /res\.json\(\{ slides: \[\] \}\)/.test(ctrl));
-check('toda escritura invalida la caché',
-    (ctrl.match(/invalidateCache\(\)/g) || []).length >= 5);
+// ⚠️ NO se cuentan las llamadas: un número mágico se rompe en cuanto dos vías
+// comparten la inserción —que es lo correcto— y no demuestra nada. Se
+// comprueba POR FUNCIÓN: todo manejador que escriba tiene que invalidar, o
+// pasar por `insertSlide`, que invalida.
+const cuerposDe = fuente => {
+    // ⚠️ Se parte por TODA función de módulo, no sólo las exportadas: entre
+    // dos manejadores hay ayudantes internos (`insertSlide`), y sin contarlos
+    // el cuerpo de uno absorbe al siguiente — la comprobación acabaría
+    // mirando la función equivocada (`getSlide` figuraba como escritora).
+    const partes = fuente.split(/\n(?:export )?const (\w+) = async/).slice(1);
+    const out = [];
+    for (let i = 0; i < partes.length; i += 2) out.push({ nombre: partes[i], cuerpo: partes[i + 1] || '' });
+    return out;
+};
+const escriben = cuerposDe(ctrl)
+    .filter(f => /INSERT INTO|UPDATE "|DELETE FROM/.test(f.cuerpo));
+check('se encontraron los manejadores que escriben', escriben.length >= 4,
+    `encontrados: ${escriben.map(f => f.nombre).join(', ')}`);
+escriben.forEach(f => check(`${f.nombre} invalida la caché al escribir`,
+    /invalidateCache\(\)|insertSlide\(/.test(f.cuerpo)));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('── El espejo del navegador da LO MISMO ───────────────────');

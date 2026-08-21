@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import {
     LayoutTemplate, Plus, Save, ArrowLeft, Eye, Trash2, Copy, GripVertical,
     Image as ImageIcon, Upload, Monitor, Smartphone, AlertTriangle, Info,
-    Power, PowerOff, Link2, Target, X, Loader2,
+    Power, PowerOff, Link2, Target, X, Loader2, Download,
 } from 'lucide-react';
 import {
     SLIDE_TYPES, slideTypeLabel, LINK_KINDS, OPEN_MODES, OPEN_MODE_LABELS,
@@ -307,6 +307,65 @@ const SpotlightSlides: React.FC = () => {
         </div>
     );
 
+    // ── Traer el Bloque Destacado que un sitio ya tiene ──────────────
+    //
+    // Un sitio puede llevar años con el suyo configurado (el END POLIO NOW del
+    // Distrito 4281 es el caso que originó esto), repartido entre dos
+    // pantallas: el texto en Configuración / Identidad y la imagen en
+    // Imágenes del Sitio. Copiarlo a mano es la forma segura de equivocarse en
+    // una URL o de perder el icono.
+    const [importOpen, setImportOpen] = useState(false);
+    const [importables, setImportables] = useState<any[] | null>(null);
+    const [importando, setImportando] = useState('');
+    // Marcada por omisión porque es el PROPÓSITO de importar: dejar de
+    // administrar ese llamado en el sitio y pasarlo acá. Y hace las dos cosas
+    // a la vez —publicar y vaciar— justamente para que el sitio no quede ni
+    // duplicado ni vacío en ningún momento intermedio.
+    const [reemplazar, setReemplazar] = useState(true);
+
+    const abrirImportar = async () => {
+        setImportOpen(true);
+        setImportables(null);
+        try {
+            const r = await fetch(`${API}/spotlight-slides/importable`, { headers: authHeaders() });
+            const d = await r.json();
+            setImportables(Array.isArray(d?.sites) ? d.sites : []);
+        } catch {
+            setImportables([]);
+        }
+    };
+
+    const importar = async (clubId: string) => {
+        setImportando(clubId);
+        try {
+            const r = await fetch(`${API}/spotlight-slides/import`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ clubId, replace: reemplazar }),
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                // El motivo se dice TEXTUAL —y el primer error concreto como
+                // descripción—: «no se pudo importar» a secas manda a adivinar
+                // qué le falta al bloque de ese sitio.
+                toast.error(mensajeDeFallo(r.status, d?.error), { description: d?.errors?.[0] });
+                return;
+            }
+            setImportOpen(false);
+            await cargar();
+            toast.success(
+                d?.bloqueLocalVaciado
+                    ? 'Importado y publicado. El sitio ya no administra ese llamado por su cuenta.'
+                    : 'Importado. Nació apagado: revisá el alcance y encendelo cuando quieras.',
+                { description: d?.warnings?.[0] }
+            );
+        } catch {
+            toast.error(mensajeDeFallo(null));
+        } finally {
+            setImportando('');
+        }
+    };
+
     // ════════════════════════════════════════════════════════════════
     // LISTA
     // ════════════════════════════════════════════════════════════════
@@ -326,10 +385,16 @@ const SpotlightSlides: React.FC = () => {
                                 como siempre; con varios, el contenedor se convierte solo en un carrusel.
                             </p>
                         </div>
-                        <button onClick={() => { setDraft(nuevoSlide()); setEditId(null); setReach(null); }}
-                            className="px-5 py-3 rounded-xl bg-rotary-blue text-white font-bold inline-flex items-center gap-2 hover:bg-rotary-navy transition">
-                            <Plus className="w-5 h-5" /> Nuevo slide
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button onClick={abrirImportar}
+                                className="px-5 py-3 rounded-xl border border-gray-200 text-gray-700 font-bold inline-flex items-center gap-2 hover:bg-gray-50 transition">
+                                <Download className="w-5 h-5" /> Traer el de un sitio
+                            </button>
+                            <button onClick={() => { setDraft(nuevoSlide()); setEditId(null); setReach(null); }}
+                                className="px-5 py-3 rounded-xl bg-rotary-blue text-white font-bold inline-flex items-center gap-2 hover:bg-rotary-navy transition">
+                                <Plus className="w-5 h-5" /> Nuevo slide
+                            </button>
+                        </div>
                     </div>
 
                     <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 flex gap-3 text-sm text-sky-900">
@@ -450,6 +515,91 @@ const SpotlightSlides: React.FC = () => {
                 {previewRow && (
                     <VistaPrevia slide={previewRow} viewport={viewport} setViewport={setViewport}
                         onClose={() => setPreviewRow(null)} />
+                )}
+
+                {/* ── Traer el Bloque Destacado de un sitio ────────────────── */}
+                {importOpen && (
+                    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+                        role="dialog" aria-modal="true" aria-label="Traer el Bloque Destacado de un sitio">
+                        <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+                            <div className="p-6 border-b border-gray-100 flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-900">Traer el Bloque Destacado de un sitio</h2>
+                                    <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                                        Estos sitios ya muestran un llamado propio, configurado en su panel.
+                                        Traerlo acá lo convierte en un slide administrable desde Club Platform,
+                                        sin copiar nada a mano.
+                                    </p>
+                                </div>
+                                <button onClick={() => setImportOpen(false)} aria-label="Cerrar"
+                                    className="p-2 rounded-lg hover:bg-gray-100 shrink-0"><X className="w-5 h-5" /></button>
+                            </div>
+
+                            <label className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex gap-3 items-start cursor-pointer">
+                                <input type="checkbox" checked={reemplazar} className="mt-1"
+                                    onChange={e => setReemplazar(e.target.checked)} />
+                                <span className="text-sm text-amber-900">
+                                    <strong>Publicarlo y quitar el bloque propio del sitio.</strong>{' '}
+                                    Es lo que hace que ese sitio pase de administrarlo por su cuenta a recibirlo
+                                    desde acá, sin verse duplicado ni quedarse sin nada en el medio. El slide nace
+                                    apuntando <strong>sólo a ese sitio</strong>: no se publica en toda la red por
+                                    importarlo — para eso hay que ampliar el alcance a propósito.
+                                    <br />
+                                    Sin marcar, el slide se crea <strong>apagado</strong> y el sitio sigue mostrando el suyo.
+                                </span>
+                            </label>
+
+                            <div className="p-6 overflow-y-auto space-y-3">
+                                {importables === null ? (
+                                    <div className="py-12 text-center text-gray-400 inline-flex items-center gap-2 justify-center w-full">
+                                        <Loader2 className="w-4 h-4 animate-spin" /> Buscando sitios…
+                                    </div>
+                                ) : importables.length === 0 ? (
+                                    <div className="py-12 text-center">
+                                        <LayoutTemplate className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                                        <p className="text-gray-500 font-semibold">Ningún sitio tiene un Bloque Destacado configurado.</p>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            Se busca lo que cada sitio cargó en Configuración / Identidad e Imágenes del Sitio.
+                                        </p>
+                                    </div>
+                                ) : importables.map(site => (
+                                    <div key={site.clubId}
+                                        className="rounded-xl border border-gray-200 overflow-hidden flex flex-col sm:flex-row">
+                                        {site.image ? (
+                                            <img src={site.image} alt="" className="w-full sm:w-40 h-28 object-cover shrink-0" />
+                                        ) : (
+                                            <div className="w-full sm:w-40 h-28 bg-gray-100 shrink-0 flex items-center justify-center">
+                                                <ImageIcon className="w-6 h-6 text-gray-300" />
+                                            </div>
+                                        )}
+                                        <div className="p-4 flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-bold text-gray-900" data-no-translate>{site.clubName}</span>
+                                                {site.domain && (
+                                                    <span className="text-xs text-gray-400" data-no-translate>{site.domain}</span>
+                                                )}
+                                                {site.yaTieneSlide && (
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700">
+                                                        ya tiene un llamado
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-sm font-semibold text-gray-700 mt-1 line-clamp-1">{site.title || '(sin título)'}</p>
+                                            <p className="text-xs text-gray-500 line-clamp-2">{site.text}</p>
+                                        </div>
+                                        <div className="p-4 flex items-center shrink-0">
+                                            <button onClick={() => importar(site.clubId)} disabled={!!importando}
+                                                className="px-4 py-2 rounded-lg bg-rotary-blue text-white font-bold text-sm inline-flex items-center gap-2 hover:bg-rotary-navy transition disabled:opacity-50">
+                                                {importando === site.clubId
+                                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Trayendo…</>
+                                                    : <><Download className="w-4 h-4" /> Traer</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 )}
             </AdminLayout>
         );

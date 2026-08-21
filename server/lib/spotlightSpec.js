@@ -282,6 +282,61 @@ export function validateSlide(raw = {}) {
     return { ok: errors.length === 0, errors, warnings, slide: s };
 }
 
+// ─── Traer el Bloque Destacado de un sitio al Slider Global ─────────────
+//
+// Un sitio puede llevar años con su Bloque Destacado propio —el END POLIO NOW
+// del Distrito 4281 es el caso que originó esto— configurado en dos pantallas
+// distintas: el texto en Configuración / Identidad y la imagen en Imágenes del
+// Sitio. Para administrarlo desde acá hay que convertirlo en un slide, y
+// copiarlo a mano es la forma segura de equivocarse en una URL o perder el
+// icono.
+//
+// PURA a propósito: recibe lo que ya se leyó de la base y devuelve el slide.
+// La I/O vive en el controlador.
+
+/**
+ * El slide equivalente al Bloque Destacado de un sitio.
+ *
+ * ⚠️ NACE APUNTANDO SÓLO A ESE SITIO (`mode: 'clubs'`), no a todos. Es lo que
+ * reproduce EXACTAMENTE lo que ese sitio muestra hoy: importar no puede ser
+ * una forma de publicar en toda la red sin haberlo pedido. Ampliarlo a «todos
+ * los sitios» es una decisión posterior y explícita —y es justo lo que se
+ * querrá con una campaña como END POLIO NOW—, pero se toma mirando el alcance,
+ * no como efecto secundario de una importación.
+ *
+ * `local` es el JSON de `spotlight_section_content`; `image`, el hueco
+ * `spotlight` de las imágenes del sitio.
+ */
+export function slideFromLocalBlock({ clubId, clubName, local = {}, image = {} } = {}) {
+    const txt = v => String(v ?? '').trim();
+    const nombre = txt(clubName) || 'un sitio';
+    return normalizeSlide({
+        // El nombre interno dice de dónde vino: dentro de un mes, «Importado
+        // de Distrito 4281» contesta solo por qué existe este slide.
+        name: `${txt(local.title).slice(0, 40) || 'Bloque Destacado'} — ${nombre}`,
+        slideType: DEFAULT_SLIDE_TYPE,
+        title: txt(local.title),
+        text: txt(local.text),
+        image: txt(image.url),
+        imageAlt: txt(image.alt),
+        buttonText: txt(local.buttonText),
+        buttonUrl: txt(local.buttonUrl),
+        icon: txt(local.icon) || 'star',
+        linkKind: 'url',
+        targeting: { mode: 'clubs', clubIds: [String(clubId ?? '')].filter(Boolean) },
+    });
+}
+
+/**
+ * ¿El Bloque Destacado de este sitio tiene algo que importar?
+ *
+ * El MISMO criterio con el que `SpotlightSection` decide si se dibuja: sin
+ * imagen, sin título y sin texto no hay bloque. Ofrecer en la lista un sitio
+ * cuyo bloque no se ve sería ofrecer un slide vacío.
+ */
+export const hasLocalBlock = ({ local = {}, image = {} } = {}) =>
+    !!(String(image.url ?? '').trim() || String(local.title ?? '').trim() || String(local.text ?? '').trim());
+
 // ─── A dónde lleva el botón ─────────────────────────────────────────────
 //
 // Devuelve `{ url, reason }`. `url` vacía = este slide NO tiene botón, y
@@ -361,6 +416,7 @@ export function slidesForSite(slides, site, now, campaigns = {}) {
 }
 
 export default {
+    slideFromLocalBlock, hasLocalBlock,
     SLIDE_TYPES, SLIDE_TYPE_IDS, DEFAULT_SLIDE_TYPE, slideTypeLabel,
     LINK_KINDS, OPEN_MODES, CONTRIBUTION_PATH,
     MAX_SLIDES_PER_SITE, DEFAULT_AUTOPLAY_MS, MIN_AUTOPLAY_MS, MAX_AUTOPLAY_MS,
