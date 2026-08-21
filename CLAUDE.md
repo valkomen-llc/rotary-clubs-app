@@ -2719,6 +2719,26 @@ solo si faltan o si no hay `dist/`).
   se habría separado del primero y la portada tendría dos bloques que se ven
   casi igual y se configuran en sitios distintos. Lo comprueba una prueba
   contando los `<SpotlightSection />` de `App.tsx`.
+- **⚠️ EL CONTENEDOR VA EN LAS CUATRO PORTADAS, NO SÓLO EN LA DEL SITIO DE
+  CLUB** (v4.881). `SmartHome` no arma una portada, arma TRES —sitio de
+  fundación (COLROTARIOS), asociación / Programa de Intercambio (LATIR, EMAR,
+  RYE) y sitio de club— y `ClubPreview` es la cuarta. v4.879 montó
+  `<SpotlightSection />` sólo en la última, así que un llamado global marcado
+  «todos los sitios» **no llegaba** a los tres primeros tipos: el servidor lo
+  resolvía y lo mandaba, y esas portadas no lo pintaban. El panel afirmaba un
+  alcance de N sitios y algunos de esos N no lo mostraban — la clase de fallo
+  que este archivo documenta una y otra vez: no falla ruidosamente, entrega
+  otra cosa. Al agregar una rama de portada, montar el contenedor en ella.
+- **La comprobación de v4.879 CODIFICABA el defecto**, y conviene no repetir el
+  error de lectura: exigía que hubiera UN solo `<SpotlightSection />` en
+  `App.tsx`. «No quiero crear una segunda sección» es una regla sobre el
+  COMPONENTE —no hay un segundo carrusel con su propia maquetación— y no sobre
+  en cuántas portadas se monta el mismo. Ahora la prueba recorre cada `<main>`
+  de `App.tsx` y de `ClubPreview.tsx` y exige que TODOS lo monten; verificada a
+  la inversa, quitándolo de una rama.
+- **La vista previa del panel monta el MISMO componente que la portada.** Si le
+  falta una sección, el administrador aprueba algo distinto de lo que se
+  publica — el defecto que Plantillas IA existe para no tener.
 - **CON UN SOLO SLIDE SE PINTA EXACTAMENTE COMO ANTES.** Sin flechas, sin
   puntos y sin nada que se mueva — unos controles que no controlan nada son
   peor que no tenerlos (v4.650). Es además lo que hace que desplegar esto no
@@ -2851,6 +2871,15 @@ solo si faltan o si no hay `dist/`).
 - **`/order` se declara ANTES que `/:id`.** Express casa por orden y una
   literal debajo de su paramétrica es inalcanzable, con un fallo mudo (v4.859).
   Lo comprueba `npm run check:routes`.
+
+**Observación con la misma forma, sin resolver:** `HomeBannerSection` —la banda
+configurable de la portada, que también nace vacía— está montada en **1 de las 3**
+portadas de `SmartHome`, así que un sitio de fundación o de asociación no puede
+usarla aunque la llene. No se tocó en v4.881 porque nadie lo reportó y cambiaría
+portadas que hoy funcionan; el arreglo es idéntico al de esta sección.
+(`ActionSection` y `FoundationSection` también están en 1 de 3, pero ahí es
+DELIBERADO: la portada de una fundación tiene `ServiciosSection`,
+`DistritosSection` y `SubvencionesSection` en su lugar.)
 
 **Pendientes conocidos:** el control LOCAL —que un sitio publique sus propios
 slides y decida dónde va el suyo en el orden— tiene la arquitectura lista y la

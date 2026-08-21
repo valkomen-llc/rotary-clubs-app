@@ -252,11 +252,37 @@ const rutas = readFileSync('server/routes/spotlight-slides.js', 'utf8');
 const prisma = readFileSync('server/prisma/schema.prisma', 'utf8');
 const app = readFileSync('src/App.tsx', 'utf8');
 
-// «No quiero crear una segunda sección»: el contenedor sigue siendo UNO.
-check('la portada monta UNA sola sección destacada',
-    (app.match(/<SpotlightSection\s*\/>/g) || []).length === 1);
+// ⚠️ «No quiero crear una segunda sección» es una regla sobre el COMPONENTE,
+// no sobre cuántas veces se monta. v4.879 la leyó mal y comprobaba que hubiera
+// UN solo `<SpotlightSection />` en App.tsx — y eso codificaba el defecto:
+// `SmartHome` tiene TRES portadas (sitio de fundación, asociación/RYE y sitio
+// de club) y el contenedor estaba sólo en la última, así que un llamado global
+// marcado «todos los sitios» no llegaba ni a COLROTARIOS ni a LATIR ni a los
+// RYE. El servidor lo resolvía y lo mandaba; la portada no lo pintaba, EN
+// SILENCIO. Lo que hay que fijar es que el componente sea uno y que TODA
+// portada lo monte.
 check('no apareció un segundo componente de bloque destacado',
     !/SpotlightCarousel|GlobalSliderSection/.test(app));
+
+// Cada portada es un `<main>`. Una rama nueva que se olvide del contenedor
+// falla acá en vez de perder los llamados globales sin avisar.
+const portadasDe = (archivo, fuente) =>
+    [...fuente.matchAll(/<main[^>]*>([\s\S]*?)<\/main>/g)].map((m, i) => ({
+        nombre: `${archivo} · portada ${i + 1}`,
+        monta: /<SpotlightSection[\s/>]/.test(m[1]),
+    }));
+
+const preview = readFileSync('src/pages/ClubPreview.tsx', 'utf8');
+const portadas = [...portadasDe('App.tsx', app), ...portadasDe('ClubPreview.tsx', preview)];
+
+check('se encontraron las cuatro portadas del sitio', portadas.length === 4,
+    `encontradas: ${portadas.length}`);
+portadas.forEach(p => check(`${p.nombre} monta el Bloque Destacado`, p.monta));
+
+// La vista previa del panel tiene que enseñar lo MISMO que se publica: si le
+// falta una sección, el administrador aprueba algo distinto de lo que se ve.
+check('la vista previa del panel monta el mismo componente, no una copia',
+    /from '\.\.\/sections\/SpotlightSection'/.test(preview));
 
 // El contraste no es una decisión editorial: si el velo se pudiera
 // configurar, un administrador podría publicar una pieza ilegible.

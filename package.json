@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.880.0",
-  "cache_bust": "2026-08-21b (El panel deja de descargar el changelog para abrirse.)",
+  "version": "4.881.0",
+  "cache_bust": "2026-08-21c (El Bloque Destacado va en las CUATRO portadas.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

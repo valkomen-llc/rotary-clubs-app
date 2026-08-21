@@ -353,6 +353,15 @@ function SmartHome() {
           <JoinSection />
           <CausesHexSection />
           <NewsSection />
+          {/* Bloque Destacado. Va en TODAS las portadas, no sólo en la del
+              sitio de club: un llamado global marcado «todos los sitios» se
+              resuelve en el servidor y se manda igual, así que la rama que no
+              lo monte lo pierde EN SILENCIO — el panel diría que alcanza a N
+              sitios y algunos de esos N no lo pintarían. No pinta nada si no
+              hay contenido, así que montarlo acá no cambia ningún sitio que no
+              lo use (v4.881). */
+          }
+          <SpotlightSection />
         </main>
         <Footer />
       </div>
@@ -379,6 +388,15 @@ function SmartHome() {
           {/* For associations we show their involved districts/capabilities instead of a local club action section */}
           <CausesHexSection />
           <NewsSection />
+          {/* Bloque Destacado. Va en TODAS las portadas, no sólo en la del
+              sitio de club: un llamado global marcado «todos los sitios» se
+              resuelve en el servidor y se manda igual, así que la rama que no
+              lo monte lo pierde EN SILENCIO — el panel diría que alcanza a N
+              sitios y algunos de esos N no lo pintarían. No pinta nada si no
+              hay contenido, así que montarlo acá no cambia ningún sitio que no
+              lo use (v4.881). */
+          }
+          <SpotlightSection />
         </main>
         <Footer />
       </div>
@@ -408,9 +426,14 @@ function SmartHome() {
         <StatsSection />
         <FoundationSection />
         <CausesHexSection />
-        {/* Bloque Destacado: cierra la portada, entre las áreas de interés y el
-            pie. No pinta nada si el sitio no lo llenó, así que los que no lo
-            usan se ven igual que antes. */}
+        {/* Bloque Destacado. Va en TODAS las portadas, no sólo en la del
+            sitio de club: un llamado global marcado «todos los sitios» se
+            resuelve en el servidor y se manda igual, así que la rama que no
+            lo monte lo pierde EN SILENCIO — el panel diría que alcanza a N
+            sitios y algunos de esos N no lo pintarían. No pinta nada si no
+            hay contenido, así que montarlo acá no cambia ningún sitio que no
+            lo use (v4.881). */
+        }
         <SpotlightSection />
       </main>
       <Footer />

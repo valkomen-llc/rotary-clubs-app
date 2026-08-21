@@ -12,6 +12,10 @@ import JoinSection from '../sections/JoinSection';
 import FoundationSection from '../sections/FoundationSection';
 import CausesHexSection from '../sections/CausesHexSection';
 import NewsSection from '../sections/NewsSection';
+// La vista previa monta las MISMAS secciones que la portada publicada. Si le
+// falta una, el administrador aprueba algo distinto de lo que se ve — el
+// defecto de «la vista previa no es lo que se publicó» (v4.881).
+import SpotlightSection from '../sections/SpotlightSection';
 import Footer from '../sections/Footer';
 import ServiciosSection from '../sections/ServiciosSection';
 import DistritosSection from '../sections/DistritosSection';
@@ -142,6 +146,9 @@ const ClubPreview: React.FC = () => {
                             {((club as any)?.eventSections?.news !== false) && <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>}
                         </>
                     )}
+                    {/* Fuera del ternario: cierra la portada en los dos tipos
+                        de sitio, igual que en SmartHome. */}
+                    <SectionErrorBoundary name="Spotlight"><SpotlightSection /></SectionErrorBoundary>
                 </main>
                 <SectionErrorBoundary name="Footer"><Footer /></SectionErrorBoundary>
             </div>
