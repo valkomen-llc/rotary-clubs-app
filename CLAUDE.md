@@ -2872,6 +2872,36 @@ solo si faltan o si no hay `dist/`).
   literal debajo de su paramétrica es inalcanzable, con un fallo mudo (v4.859).
   Lo comprueba `npm run check:routes`.
 
+- **⚠️ EL BLOQUE PROPIO DE UN SITIO SE TRAE, NO SE COPIA A MANO** (v4.882,
+  `slideFromLocalBlock` + `POST /import`). El contenido de ese bloque vive
+  repartido en DOS pantallas por historia —el texto en `Setting`
+  (`spotlight_section_content`, Configuración / Identidad) y la imagen dentro
+  del documento de imágenes del sitio (`ContentSection` page=home
+  section=images, clave `spotlight`)—, así que pasarlo al Slider Global a mano
+  es la forma segura de equivocarse en una URL o de perder el icono.
+- **El slide importado NACE APUNTANDO SÓLO A ESE SITIO** (`mode: 'clubs'`), no
+  a todos. Reproduce EXACTAMENTE lo que ese sitio muestra hoy: importar no
+  puede ser una vía de publicar en toda la red sin haberlo pedido. Ampliarlo es
+  una decisión posterior que se toma mirando el alcance.
+- **`replace` hace las DOS cosas o ninguna**, y ése es todo su sentido. Sin él,
+  la secuencia natural —crear, encender, vaciar el bloque propio— deja al sitio
+  mostrando el llamado DOS veces entre el segundo paso y el tercero, o sin nada
+  entre el primero y el segundo. Y si el bloque no se puede publicar, NO se
+  vacía nada: dejar una portada sin su llamado porque falló una validación
+  sería cambiar un problema de administración por uno de contenido.
+- **La imagen no se borra de la Biblioteca Multimedia**, sólo sale del hueco:
+  sigue siendo un archivo del sitio y puede estar en uso en otra parte. Es
+  reversible — el sitio puede volver a llenarlo.
+- **UNA sola inserción de slides en el controlador** (`insertSlide`). Son TRES
+  las vías que crean uno —el alta, el duplicado y la importación— y con un
+  INSERT por vía, el día que se agregue una columna alguna se queda sin ella y
+  el fallo es mudo. Lo comprueba una prueba contando.
+- **La caché se comprueba POR FUNCIÓN, no contando llamadas.** El conteo
+  (`>= 5`) se rompió en cuanto tres vías pasaron a compartir la inserción —que
+  es lo correcto— y además no demostraba nada. Ojo al partir el archivo en
+  funciones: hay que contar también las NO exportadas, o el cuerpo de un
+  manejador absorbe al siguiente y se acaba comprobando la función equivocada.
+
 **Observación con la misma forma, sin resolver:** `HomeBannerSection` —la banda
 configurable de la portada, que también nace vacía— está montada en **1 de las 3**
 portadas de `SmartHome`, así que un sitio de fundación o de asociación no puede

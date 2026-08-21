@@ -34,9 +34,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.881.0 | 2026-08-21 (El Bloque Destacado va en las cuatro portadas)
-// Cache bust: 2026-08-21c
+// UI V4.882.0 | 2026-08-21 (Traer el Bloque Destacado de un sitio al Slider Global)
+// Cache bust: 2026-08-21d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.882.0',
+        title: 'El llamado que ya tiene un sitio se trae al Slider Global',
+        description: 'Un sitio puede llevar tiempo con su propio Bloque Destacado configurado —el END POLIO NOW del Distrito 4281 es el caso— y ese contenido vive repartido entre dos pantallas: el texto en Configuración / Identidad y la imagen en Imágenes del Sitio. Para pasarlo al Slider Global había que copiarlo a mano, que es la forma segura de equivocarse en una dirección o de perder el icono. Ahora hay un botón que lo trae.',
+        date: new Date().toISOString(),
+        tags: ['slider global', 'llamados a la accion', 'portada'],
+        type: 'feature',
+        impact: 'El llamado de cualquier sitio se administra desde Club Platform con un clic, sin copiar nada y sin que ese sitio se vea duplicado ni se quede sin nada.',
+        changes: [
+            { type: 'added', text: 'Botón «Traer el de un sitio» en el Slider Global: lista los sitios que hoy muestran un llamado propio, con su imagen y su texto.' },
+            { type: 'added', text: 'La opción de publicarlo y quitar el bloque propio del sitio en un solo paso, para que no haya un momento intermedio con el llamado repetido o ausente.' },
+        ],
+        details: [
+            'El llamado importado nace apuntando SÓLO al sitio del que vino: traerlo no lo publica en toda la red. Ampliarlo a más sitios es una decisión posterior que se toma mirando el alcance.',
+            'Si el bloque de ese sitio no se puede publicar tal cual, no se toca nada y se dice qué le falta: dejar una portada sin su llamado porque falló una validación sería cambiar un problema de administración por uno de contenido.',
+            'La imagen no se borra de la Biblioteca Multimedia: sólo deja de estar en el hueco del bloque, y el sitio puede volver a llenarlo cuando quiera.',
+        ],
+    },
     {
         version: '4.881.0',
         title: 'El Bloque Destacado llega ahora a todos los sitios',
