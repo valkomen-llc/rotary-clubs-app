@@ -34,9 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.882.0 | 2026-08-21 (Traer el Bloque Destacado de un sitio al Slider Global)
-// Cache bust: 2026-08-21d
+// UI V4.883.0 | 2026-08-21 (Estado «En construcción»)
+// Cache bust: 2026-08-21e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.883.0',
+        title: 'Un sitio se puede armar entero antes de hacerlo público 🚧',
+        description: 'Cada sitio tiene ahora tres estados en vez de dos: Activo, En construcción e Inactivo. «En construcción» es un estado real, no un aviso: el sitio y todos sus módulos siguen funcionando y quien tenga sesión lo navega completo —cargando contenido y viendo cómo va a quedar en el sitio de verdad—, mientras que un visitante sin sesión encuentra una pantalla que dice que todavía se está preparando.',
+        date: new Date().toISOString(),
+        tags: ['sitios', 'publicacion', 'estados'],
+        type: 'feature',
+        impact: 'Un sitio nuevo se construye, se configura y se prueba en privado. Cuando está listo, se cambia «En construcción» por «Activo» y queda público en el acto, sin migraciones ni pasos adicionales.',
+        changes: [
+            { type: 'added', text: 'Estado «En construcción» en la ficha de todos los sitios: clubes, asociaciones, zonas, programas de intercambio, ferias y eventos.' },
+            { type: 'added', text: 'Pantalla pública «Estamos preparando algo especial», con el logotipo y los colores del propio sitio, y con el inicio de sesión siempre a mano.' },
+            { type: 'added', text: 'Un sitio en construcción deja de ofrecerse a los buscadores mientras lo esté.' },
+        ],
+        details: [
+            'La restricción es una sola puerta que cubre todas las páginas del sitio, así que una página nueva queda protegida sola. Antes el corte existía sólo en la portada: entrar directo a una dirección interna se lo saltaba entero.',
+            'El inicio de sesión y el panel se sirven siempre. Sin eso, un sitio en construcción no se podría desbloquear desde el navegador.',
+            'No se borra, oculta ni modifica ningún contenido: sólo se restringe quién puede verlo mientras dure el estado.',
+            'El «Banner de Desarrollo» sigue existiendo y es independiente: aquél es un aviso que se pinta encima del sitio, éste controla de verdad el acceso público.',
+        ],
+    },
     {
         version: '4.882.0',
         title: 'El llamado que ya tiene un sitio se trae al Slider Global',

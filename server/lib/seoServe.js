@@ -23,6 +23,7 @@ import { resolveClubByHost, siteOrigin, resolvePage } from './seoEntities.js';
 import { readSiteConfig, readPageMeta } from './seoStore.js';
 import { renderHead } from './seoRender.js';
 import { normalizePath } from './seoSpec.js';
+import { isUnderConstruction } from './siteStatus.js';
 
 /**
  * Resuelve el documento de una dirección pública.
@@ -88,6 +89,18 @@ export async function renderPublicDocument({ html, host, path, protocol = 'https
             // Esto corre en el catch-all de toda página pública: degradar.
         }
     }
+
+    // ⚠️ UN SITIO EN CONSTRUCCIÓN NO SE INDEXA, Y ACÁ EL ESTADO MANDA SOBRE
+    // LO ESCRITO A MANO — al revés que todo lo demás de este archivo.
+    //
+    // El motivo es que no son la misma clase de decisión: marcar una página
+    // como indexable es una preferencia de SEO, y «este sitio todavía no es
+    // público» es un hecho sobre el sitio entero. Dejar que la preferencia
+    // ganara ofrecería a Google justo la página que el equipo está armando.
+    //
+    // `robots.txt` ya pide no rastrear; esto es la otra mitad: sin `noindex`,
+    // una dirección enlazada desde fuera se indexa igual.
+    if (isUnderConstruction(club?.status)) overrides.indexable = false;
 
     const { html: out, meta, jsonLd } = renderHead({
         html, page, club, origin, config, overrides,
