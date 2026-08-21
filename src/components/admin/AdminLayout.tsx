@@ -69,7 +69,12 @@ import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney } from '../../lib/locale';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
-import { SYSTEM_UPDATES } from '../../pages/SystemUpdates';
+// ⚠️ El número de versión sale de un módulo MINÚSCULO, no del changelog.
+// `SYSTEM_UPDATES` vive en `pages/SystemUpdates.tsx` —el historial entero de
+// la plataforma, 1,1 MB— y AdminLayout lo usa TODO el panel: importarlo acá
+// hacía que cada pantalla descargara el changelog para escribir «Release
+// 4.879.0» en la barra. Y crecía con cada despliegue. No reintroducirlo.
+import { APP_VERSION } from '../../lib/appVersion';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -682,7 +687,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <>
                         <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
                         <Link to="/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
-                            <span>Release {SYSTEM_UPDATES[0].version}</span>
+                            <span>Release {APP_VERSION}</span>
                             <FileText className="w-3 h-3" />
                         </Link>
                     </>
@@ -909,7 +914,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             {isSuperAdmin && (
                                 <div className="flex justify-center mt-2">
                                     <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
-                                        Release {SYSTEM_UPDATES[0].version}
+                                        Release {APP_VERSION}
                                     </span>
                                 </div>
                             )}

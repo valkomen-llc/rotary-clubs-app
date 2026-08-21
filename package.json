@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.879.0",
-  "cache_bust": "2026-08-21a (Slider Global: el Bloque Destacado se publica desde Club Platform.)",
+  "version": "4.880.0",
+  "cache_bust": "2026-08-21b (El panel deja de descargar el changelog para abrirse.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -70,6 +70,7 @@
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",
     "test:spotlight": "node scripts/test-spotlight.mjs",
     "test:spotlight:ui": "node scripts/test-spotlight-ui.mjs",
+    "test:admin-weight": "node scripts/test-admin-weight.mjs",
     "test:fee-rules": "node scripts/test-fee-rules.mjs",
     "test:fee-rules:route": "node scripts/test-fee-rules-route.mjs",
     "test:wallet:central": "node scripts/test-wallet-central.mjs",
