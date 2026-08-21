@@ -34,9 +34,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.879.0 | 2026-08-21 (Slider Global / Llamados a la Acción)
-// Cache bust: 2026-08-21a
+// UI V4.880.0 | 2026-08-21 (El panel abre sin descargar el changelog)
+// Cache bust: 2026-08-21b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.880.0',
+        title: 'El panel abre a la mitad de peso ⚡',
+        description: 'Se reportó que la Configuración a veces se queda en blanco, no carga, o se demora mucho. No era una pantalla rota: era el peso. Abrir Configuración descargaba 2.481 kB, y 1.096 de ellos eran el historial completo de novedades de la plataforma — que se traía entero sólo para escribir «Release 4.879.0» en la barra lateral. Como AdminLayout lo usa todo el panel, esa descarga la pagaba cada pantalla. Y crecía con cada versión publicada.',
+        date: new Date().toISOString(),
+        tags: ['rendimiento', 'panel', 'administrador'],
+        type: 'fix',
+        impact: 'Abrir Configuración pasó de 2.481 kB a 1.155 kB (−53 %). En una conexión 4G floja, de 22,4 s a 13,3 s. El ahorro del changelog alcanza a TODAS las pantallas del panel.',
+        changes: [
+            { type: 'fixed', text: 'El número de versión de la barra lateral sale ahora de un módulo de una línea, no del changelog entero (−1.096 kB en cada pantalla del panel).' },
+            { type: 'fixed', text: 'El editor de texto enriquecido (206 kB) se carga sólo cuando se abre la pestaña donde vive. Antes se descargaba al entrar a Configuración, cuya pestaña de inicio es «Estado».' },
+            { type: 'added', text: 'Una prueba automática mide lo que el panel descarga de verdad en un navegador y falla si alguien vuelve a colgarle un megabyte.' },
+        ],
+        details: [
+            'Las tres causas de pantalla en blanco que el proyecto ya tenía documentadas se descartaron una por una: los hooks están en su sitio, no hay ningún identificador inexistente, y el fallo de carga de módulos se resolvió en v4.879.',
+            'El número de versión no puede separarse en silencio del changelog: la prueba comprueba que package.json, el módulo de versión y la primera entrada de novedades digan lo mismo.',
+            'La hoja de estilos del editor viaja con el editor. Importada aparte, la herramienta de compilación volvía a arrastrar los 206 kB aunque la carga fuera perezosa — comprobado midiendo quién pide cada archivo en el navegador.',
+        ],
+    },
     {
         version: '4.879.0',
         title: 'El Bloque Destacado de la portada se publica desde Club Platform 📣',

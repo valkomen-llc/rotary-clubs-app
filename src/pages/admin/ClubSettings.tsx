@@ -27,8 +27,10 @@ import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUt
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
 import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
-import ReactQuill from 'react-quill-new';
-import 'react-quill-new/dist/quill.snow.css';
+// El editor se carga SÓLO cuando se va a pintar: son 206 kB y el único campo
+// que lo usa vive en la pestaña «identidad», mientras que la de entrada es
+// «estado». Importado de forma estática se descargaba siempre (v4.880).
+import RichTextEditor from '../../components/admin/RichTextEditor';
 
 // Secciones/páginas del sistema que se pueden añadir al menú principal.
 const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
@@ -949,8 +951,7 @@ const ClubSettings: React.FC = () => {
                                 <div className="md:col-span-2 space-y-1">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción / Misión</label>
                                     <div className="bg-white rounded-xl overflow-hidden border border-gray-200">
-                                        <ReactQuill
-                                            theme="snow"
+                                        <RichTextEditor
                                             value={formData.description}
                                             onChange={val => setFormData({...formData, description: val})}
                                             className="h-40"
