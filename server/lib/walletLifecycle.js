@@ -637,8 +637,17 @@ export const validateDisbursement = (raw, { balance, now = new Date() } = {}) =>
         errores.push('La referencia es demasiado larga (máximo 120 caracteres).');
     }
 
+    // v4.888 — Los destinatarios los sanea `disbursementNotice.js`, que es quien
+    // sabe partir lo pegado y validar un teléfono con el criterio del CRM. Acá
+    // sólo se comprueba lo que este archivo puede comprobar sin él: que si se
+    // pidió avisar, haya a quién.
+    const destinatarios = Number(raw?.recipientCount);
+    if (raw?.notify && Number.isFinite(destinatarios) && destinatarios === 0) {
+        errores.push('Se pidió notificar al beneficiario pero no quedó ningún destinatario válido.');
+    }
+    // Respaldo para el camino viejo, que manda una sola dirección suelta.
     const correo = String(raw?.notifyEmail || '').trim();
-    if (raw?.notify && !correo) {
+    if (raw?.notify && !destinatarios && !correo) {
         errores.push('Se pidió notificar al beneficiario pero no hay a qué dirección escribirle.');
     }
     if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
@@ -666,6 +675,13 @@ export const disbursementShape = (raw) => ({
     reference: String(raw?.reference || '').trim().slice(0, 120) || null,
     notes: String(raw?.notes || '').trim().slice(0, 2000) || null,
     notifyEmail: String(raw?.notifyEmail || '').trim().toLowerCase().slice(0, 200) || null,
+    // v4.888 — Los destinatarios ya saneados por `disbursementNotice.js`. Este
+    // archivo NO los vuelve a validar: hacerlo daría dos criterios sobre el
+    // mismo dato —uno que sabe partir lo pegado y validar un teléfono con las
+    // reglas del CRM, y otro escrito acá— y entonces el aviso saldría a un
+    // destino y el registro diría otro.
+    notifyEmails: Array.isArray(raw?.notifyEmails) ? raw.notifyEmails : [],
+    notifyPhones: Array.isArray(raw?.notifyPhones) ? raw.notifyPhones : [],
     notify: raw?.notify === true,
 });
 

@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.887.0 | 2026-08-24 (Comprobante del giro en el desembolso en bloque)
-// Cache bust: 2026-08-24c
+// UI V4.888.0 | 2026-08-24 (Destinatarios múltiples y aviso por WhatsApp)
+// Cache bust: 2026-08-24d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.888.0',
+        title: 'El aviso del desembolso: varios destinatarios y WhatsApp',
+        description: 'Al registrar un desembolso ya se pueden escribir varios correos y varios números de WhatsApp, uno por línea. El mensaje de WhatsApp usa una plantilla estandarizada y aprobada por Meta —igual para toda la plataforma— en la que cambian el beneficiario, el monto, la fecha, el medio, la referencia y el nombre del sitio. El correo sí se puede personalizar por sitio. La ficha muestra el resultado de cada aviso por separado: a quién llegó, a quién no y por qué.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'whatsapp', 'notificaciones'],
+        type: 'feature',
+        impact: 'WhatsApp necesita que la plantilla esté aprobada por Meta antes de poder mandar nada; mientras no lo esté, el campo aparece desactivado y dice exactamente qué falta y dónde resolverlo, en vez de fallar en silencio.',
+    },
     {
         version: '4.887.0',
         title: 'El comprobante del giro, en el desembolso de varios aportes',
