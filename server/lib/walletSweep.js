@@ -125,10 +125,26 @@ export const findCalendarCandidates = async ({ clubId = null, limit = 300, venta
     if (clubId) { args.push(clubId); cond.push(`p."clubId" = $${args.length}`); }
     args.push(limit);
 
+    // ⚠️ EL `SELECT` TIENE QUE PEDIR TODO LO QUE EL LLAMADOR VA A LEER.
+    //
+    // v4.886 — Acá faltaban `providerRef`, `applicationFee`, `rawPayload` y
+    // `stripeBalanceTxId`, y el fallo era MUDO Y TOTAL: la reconciliación
+    // pregunta `if (necesitaStripe && p.providerRef)`, así que con la columna
+    // sin pedir —`undefined`— **NINGÚN** aporte llegaba a consultarse contra
+    // Stripe y todos caían en «sin referencia del proveedor». El informe decía
+    // «5: no_provider_reference» sobre cinco pagos que sí tenían su referencia
+    // guardada.
+    //
+    // Es exactamente el error que este proyecto ya documentó en v4.847 con
+    // `clubId` y el asiento de liberación: un `select` que no pide una columna
+    // la devuelve `undefined` y la condición que la mira falla en TODOS los
+    // pagos, sin que nada avise. Al agregar una lectura a `reconcileOne` o a
+    // `anotarAvance`, agregar su columna acá.
     const { rows } = await db.query(
-        `SELECT p.id, p."clubId", p.amount, p.currency, p."netAmount",
+        `SELECT p.id, p."clubId", p."providerRef", p.amount, p.currency,
+                p."applicationFee", p."netAmount", p."stripeBalanceTxId",
                 p."stripeStatus", p."availableOn", p."clubAvailableOn",
-                p."createdAt", p.status
+                p."rawPayload", p."createdAt", p.status
            FROM "Payment" p
           WHERE ${cond.join(' AND ')}
           ORDER BY p."createdAt" DESC

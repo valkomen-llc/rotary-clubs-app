@@ -8,7 +8,7 @@ import Stripe from 'stripe';
 // v4.885 — El criterio del ciclo de vida, puro y probado. Un segundo
 // `bucketOf` escrito a mano acá volvería a separarse en silencio.
 import { bucketOf as bucketOfPuro, scheduleOf } from '../lib/walletLifecycle.js';
-import { listDisbursementsFor } from '../lib/disbursements.js';
+import { listDisbursementsFor, disbursedTotals } from '../lib/disbursements.js';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import {
     normalizeCurrency, currencyMeta, roundMoney, fromStripeAmount,
@@ -820,7 +820,20 @@ export const getClubWallet = async (req, res) => {
 
         const preferred = await resolveClubCurrency(clubId);
         const grossTotals = sumByCurrency(items, it => it.grossAmount, it => it.currency);
-        const codes = currenciesOf(grossTotals, preferred);
+
+        // v4.886 — Lo DESEMBOLSADO, agregado en la base y por moneda. Una sola
+        // consulta para todo el sitio: dentro del map de monedas sería una por
+        // cada una, y con `await` dentro de `.map` además no se esperarían.
+        const desembolsado = await disbursedTotals(clubId);
+
+        // ⚠️ Las monedas salen de los aportes Y de lo desembolsado. Si sólo
+        // salieran de los aportes, un sitio que desembolsó en una moneda cuyos
+        // cobros ya se archivaron perdería esa tarjeta entera — y con ella la
+        // única cifra que dice a dónde fue ese dinero.
+        const codes = currenciesOf(
+            { ...Object.fromEntries(Object.keys(desembolsado).map(c => [c, 0])), ...grossTotals },
+            preferred
+        );
 
         // Una wallet por moneda. Ninguna cifra de acá cruza con la de al lado.
         const wallets = codes.filter(Boolean).map(code => {
@@ -845,6 +858,14 @@ export const getClubWallet = async (req, res) => {
                 ownPayouts.filter(p => ['pending', 'processing'].includes(p.status))
                     .reduce((a, p) => a + parseFloat(p.amount || 0), 0), code);
 
+            // ⚠️ DESEMBOLSADO no es TRANSFERIDO, y por eso son dos cifras.
+            // «Transferido» son los payouts al banco del club —dinero que sale
+            // de la plataforma hacia el club—; «desembolsado» es el traslado al
+            // BENEFICIARIO final, que el club registra a mano y puede ocurrir
+            // por fuera de un payout. Fundirlas contaría dos veces el mismo
+            // dinero en unos sitios y ninguna en otros.
+            const disbursed = desembolsado[code] || { total: 0, cuantos: 0, ultimo: null };
+
             return {
                 currency: code,
                 decimals: currencyMeta(code).decimals,
@@ -853,6 +874,9 @@ export const getClubWallet = async (req, res) => {
                     grossTotal: roundMoney(own.reduce((a, it) => a + it.grossAmount, 0), code),
                     netTotal: roundMoney(own.reduce((a, it) => a + it.amount, 0), code),
                     feesTotal: roundMoney(own.reduce((a, it) => a + it.fee, 0), code),
+                    disbursed: roundMoney(disbursed.total, code),
+                    disbursedCount: disbursed.cuantos,
+                    disbursedLast: disbursed.ultimo,
                     inTransit: roundMoney(buckets.in_transit.total + buckets.processing.total, code),
                     availableSoon: buckets.available_soon.total,
                     availableForWithdrawal: Math.max(0, roundMoney(buckets.available.total - transferred - requested, code)),

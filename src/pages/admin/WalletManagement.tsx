@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft } from 'lucide-react';
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft, Landmark, CheckSquare, Square } from 'lucide-react';
 // v4.885 — El ciclo de vida del aporte: calendario de liberación, línea de
 // tiempo y desembolsos. Vive aparte porque este archivo ya son 1.700 líneas
 // y porque sus hooks no pueden quedar detrás de un return de `DonorCard`.
 import DisbursementSection from '../../components/admin/wallet/DisbursementSection';
+// v4.886 — Marcar varios aportes como desembolsados de una vez.
+import BulkDisbursementBar, { type Elegible } from '../../components/admin/wallet/BulkDisbursementBar';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -70,6 +72,15 @@ interface Delivery {
  * `noCorregidos` y `hallazgos` se agrupan POR MOTIVO con ejemplos, no como una
  * lista plana: un listado de doscientas filas no lo lee nadie, y lo que hace
  * falta saber es qué CLASE de problema hay y cuántos aportes alcanza. */
+/** v4.886 — Lo mínimo de un desembolso que la LISTA necesita: cuánto y si
+ *  sigue contando. La ficha completa la pide su propio endpoint. */
+interface DesembolsoResumen {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+}
+
 interface ReconcileReport {
     modo: 'ensayo' | 'aplicado';
     revisados: number;
@@ -184,6 +195,19 @@ interface WalletSummary {
     inTransit: number;
     availableSoon: number;
     availableForWithdrawal: number;
+    /** v4.886 — Lo trasladado al BENEFICIARIO final, por moneda. No es lo
+
+     *  mismo que `transferred`, que son los payouts al banco del club: uno
+
+     *  sale de la plataforma hacia el club y el otro del club hacia quien
+
+     *  recibe la ayuda. Fundirlos contaría dos veces el mismo dinero. */
+
+    disbursed?: number;
+
+    disbursedCount?: number;
+
+    disbursedLast?: string | null;
     transferred: number;
     requested: number;
     refunded: number;
@@ -297,6 +321,10 @@ export default function WalletManagement() {
     // viaje que los aportes: con una consulta por aporte serían decenas por
     // pantalla.
     const [notificaciones, setNotificaciones] = useState<Record<string, Delivery[]>>({});
+    // v4.886 — Los desembolsos de cada aporte, indexados por el id del PAGO
+    // (no del aporte): el desembolso cuelga del movimiento, que es donde vive
+    // el dinero. Llegan en el mismo viaje que los aportes.
+    const [desembolsos, setDesembolsos] = useState<Record<string, DesembolsoResumen[]>>({});
     const [donationTotals, setDonationTotals] = useState<{ currency: string; totalAmount: number; totalCount: number }[]>([]);
     const [wallet, setWallet] = useState<WalletData | null>(null); // v4.421 — Stripe sync
     const [isLoading, setIsLoading] = useState(true);
@@ -307,6 +335,11 @@ export default function WalletManagement() {
     // v4.885 — La reconciliación histórica y su informe. Van aquí arriba,
     // con el resto de los hooks y antes de cualquier return: React
     // identifica cada hook por su ORDEN de llamada (v4.689).
+    // v4.886 — Los aportes elegidos para desembolsar en bloque. Se guardan
+    // ENTEROS y no por id: la lista se filtra por período y por destino, y un
+    // aporte elegido antes de filtrar tiene que sobrevivir a que la vista
+    // cambie — es la regla del panel de grupos (v4.876).
+    const [elegidos, setElegidos] = useState<Record<string, Elegible>>({});
     const [isReconciling, setIsReconciling] = useState(false);
     const [informeReconcile, setInformeReconcile] = useState<ReconcileReport | null>(null);
 
@@ -457,6 +490,7 @@ export default function WalletManagement() {
         if (donationsRes.status === 'fulfilled' && Array.isArray(donationsRes.value.data?.donations)) {
             setDonations(donationsRes.value.data.donations);
             setNotificaciones(donationsRes.value.data.notifications || {});
+            setDesembolsos(donationsRes.value.data.disbursements || {});
             setDonationTotals(donationsRes.value.data.byCurrency || []);
             setOrphanMovements(donationsRes.value.data.orphanMovements || []);
             // El catálogo de destinos y el período RESUELTO los manda el
@@ -467,6 +501,7 @@ export default function WalletManagement() {
         } else {
             setDonations([]);
             setNotificaciones({});
+            setDesembolsos({});
             setDonationTotals([]);
             setOrphanMovements([]);
             console.error('[Wallet] donations fetch failed:', donationsRes);
@@ -507,6 +542,23 @@ export default function WalletManagement() {
             setIsSyncing(false);
         }
     };
+
+    /**
+     * v4.886 — Elegir o desmarcar un aporte para el desembolso en bloque.
+     *
+     * Se guarda el objeto ENTERO y no el id: la lista se filtra por período y
+     * por destino, así que un aporte elegido antes de cambiar el filtro tiene
+     * que sobrevivir a que la vista cambie. Es la regla del panel de grupos
+     * (v4.876), y acá el precio de perderlo sería registrar de menos.
+     */
+    const cambiarEleccion = useCallback((e: Elegible, marcado: boolean) => {
+        setElegidos(prev => {
+            const siguiente = { ...prev };
+            if (marcado) siguiente[e.paymentId] = e;
+            else delete siguiente[e.paymentId];
+            return siguiente;
+        });
+    }, []);
 
     /**
      * v4.885 — RECONCILIAR los aportes históricos.
@@ -1075,7 +1127,7 @@ export default function WalletManagement() {
                                         {isReconciling ? 'Revisando…' : 'Revisar estados'}
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                     <WalletBucketCard
                                         color="amber"
                                         icon={<Hourglass className="w-5 h-5" />}
@@ -1111,6 +1163,30 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activePayouts.filter(p => p.status === 'completed').length}
                                         hint="Payouts completados al banco"
+                                    />
+                                    {/* ── DESEMBOLSADO (v4.886) ───────────────
+                                        ⚠️ NO es lo mismo que «Transferido».
+                                        Aquél son los payouts al banco del club
+                                        —dinero que sale de la plataforma hacia
+                                        el club—; éste es el traslado al
+                                        BENEFICIARIO final, que el club registra
+                                        y puede ocurrir por fuera de un payout.
+                                        Fundirlos contaría dos veces el mismo
+                                        dinero en unos sitios y ninguna en otros.
+
+                                        Se pinta SIEMPRE, aunque esté en cero: es
+                                        la cifra que se lleva a un informe, y una
+                                        tarjeta que aparece y desaparece según si
+                                        hubo movimiento hace pensar que el módulo
+                                        se rompió. */}
+                                    <WalletBucketCard
+                                        color="violet"
+                                        icon={<Landmark className="w-5 h-5" />}
+                                        label="Desembolsado"
+                                        total={activeWallet.summary.disbursed ?? 0}
+                                        currency={activeWallet.currency}
+                                        count={activeWallet.summary.disbursedCount ?? 0}
+                                        hint="Trasladado al beneficiario"
                                     />
                                 </div>
 
@@ -1166,7 +1242,15 @@ export default function WalletManagement() {
                                                 <ul className="text-xs text-amber-800 space-y-0.5">
                                                     {Object.entries(informeReconcile.noCorregidos).map(([motivo, d]) => (
                                                         <li key={motivo}>
-                                                            <span data-no-translate>{d.cuantos}</span>: {motivo}
+                                                            <span data-no-translate>{d.cuantos}</span>
+                                                            {': '}
+                                                            {NO_CORREGIDO_LABEL[motivo]
+                                                                ? NO_CORREGIDO_LABEL[motivo]
+                                                                /* Un motivo que llega del proveedor —o una clave
+                                                                   que nadie rotuló— se pinta tal cual y como DATO:
+                                                                   el error de Stripe se propaga textual, y
+                                                                   traducirlo lo volvería irreconocible. */
+                                                                : <span data-no-translate>{motivo}</span>}
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -1312,8 +1396,22 @@ export default function WalletManagement() {
                                             <DonorCard key={donation.id} donation={donation} holdingDays={wallet?.platformHoldingDays ?? 6}
                                                 deliveries={notificaciones[donation.id] || []}
                                                 onResent={(d) => setNotificaciones(prev => ({ ...prev, [donation.id]: d }))}
-                                                clubId={clubIdActivo} />
+                                                clubId={clubIdActivo}
+                                                elegido={!!elegidos[donation.movement?.id || '']}
+                                                onElegir={cambiarEleccion}
+                                                desembolsos={desembolsos[donation.movement?.id || ''] || []} />
                                         ))}
+
+                                        {/* v4.886 — La barra de acción en bloque. Va PEGADA
+                                            ABAJO: con una lista larga, un botón al final obliga
+                                            a desplazarse hasta el fondo para actuar sobre algo
+                                            que se eligió arriba. */}
+                                        <BulkDisbursementBar
+                                            elegidos={Object.values(elegidos)}
+                                            clubId={clubIdActivo}
+                                            onLimpiar={() => setElegidos({})}
+                                            onHecho={() => { setElegidos({}); fetchWalletData(true); }}
+                                        />
 
                                         {/* Cobros que no nacieron de una donación —una compra
                                             de la tienda, una membresía, una inscripción—. Son
@@ -1557,6 +1655,19 @@ const HALLAZGO_LABEL: Record<string, string> = {
     fechas_incoherentes: '⚠️ Fechas incoherentes: revisar a mano',
 };
 
+/** v4.886 — Y los motivos de lo que NO se pudo corregir, que se estaban
+ *  pintando en CRUDO. En la captura del reporte se leía «5:
+ *  no_provider_reference»: una clave interna, en inglés porque el traductor del
+ *  sitio la trató como una frase, delante de alguien que sólo quiere saber qué
+ *  le pasa a su dinero. Lo que no esté en esta tabla se pinta tal cual y
+ *  marcado como dato, para que al menos no se traduzca. */
+const NO_CORREGIDO_LABEL: Record<string, string> = {
+    sin_referencia_del_proveedor: 'Sin referencia del proveedor: no hay a quién consultarle',
+    sin_balance_transaction: 'El proveedor todavía no generó su transacción de balance',
+    sesion_sin_payment_intent: 'La sesión de pago no tiene un cobro asociado',
+    sin_cambio: 'Se consultó al proveedor y no había nada que corregir',
+};
+
 const ENTREGA: Record<string, { label: string; cls: string }> = {
     pending: { label: 'Pendiente', cls: 'bg-gray-100 text-gray-600' },
     sent: { label: 'Enviado', cls: 'bg-sky-100 text-sky-700' },
@@ -1567,7 +1678,8 @@ const ENTREGA: Record<string, { label: string; cls: string }> = {
     blocked: { label: 'Bloqueado', cls: 'bg-amber-100 text-amber-800' },
 };
 
-function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onResent, clubId }: {
+function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onResent, clubId,
+    elegido, onElegir, desembolsos = [] }: {
     donation?: DonationRecord;
     movementOnly?: Movement;
     holdingDays: number;
@@ -1576,6 +1688,13 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     deliveries?: Delivery[];
     onResent?: (d: Delivery[]) => void;
     clubId?: string;
+    /** v4.886 — La selección para el desembolso en bloque. `onElegir` ausente
+     *  significa que esta tarjeta no participa —los cobros sin aportante— y
+     *  entonces no se pinta ninguna casilla: un control que no controla nada es
+     *  peor que no tenerlo (v4.650). */
+    elegido?: boolean;
+    onElegir?: (e: Elegible, marcado: boolean) => void;
+    desembolsos?: DesembolsoResumen[];
 }) {
     const [abierta, setAbierta] = useState(false);
     const [reenviando, setReenviando] = useState(false);
@@ -1587,6 +1706,24 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     const estado = mov ? ESTADOS[mov.bucket] : null;
     const ref = (donation?.id || mov?.id || '').slice(-8).toUpperCase();
 
+    // v4.886 — Cuánto le falta por desembolsar y si se puede elegir.
+    //
+    // ⚠️ Los REVERSADOS no descuentan: un desembolso corregido no trasladó
+    // nada. Es el mismo criterio que `disbursementBalance` en el servidor —el
+    // que manda—; acá se repite sólo para decidir qué se PINTA, y por eso el
+    // servidor vuelve a comprobarlo y puede saltarse un aporte con su motivo.
+    const yaDesembolsado = desembolsos
+        .filter(d => d.status !== 'reversado')
+        .reduce((a, d) => a + (Number(d.amount) || 0), 0);
+    const restante = Math.max(0, (mov?.amount ?? 0) - yaDesembolsado);
+    // «En tránsito» con fecha futura es lo único que de verdad bloquea: ahí el
+    // proveedor todavía retiene el dinero. Sin fecha no sabemos, y el servidor
+    // lo deja registrar con un aviso — ver `canDisburse`.
+    const retenidoPorStripe = !!(mov?.availableOn && new Date(mov.availableOn) > new Date());
+    const elegible = !!(mov && onElegir && restante > 0.005 && !retenidoPorStripe
+        && mov.status !== 'refunded' && mov.status !== 'failed' && mov.status !== 'pending');
+    const completamenteDesembolsado = !!(mov && (mov.amount ?? 0) > 0 && restante <= 0.005);
+
     const titulo = donation
         ? (donation.isAnonymous
             ? <span className="text-gray-500 italic">Donante Anónimo</span>
@@ -1595,6 +1732,28 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
 
     return (
         <div className="rounded-2xl border border-gray-100 bg-gradient-to-r from-gray-50 to-white hover:shadow-sm transition-all overflow-hidden">
+            {/* La casilla va FUERA del botón que despliega: anidar un control
+                dentro de otro hace que marcar el aporte abra también la ficha, y
+                elegir veinte aportes dejaría veinte fichas abiertas. */}
+            <div className="flex items-start">
+            {elegible && (
+                <button
+                    type="button"
+                    onClick={() => onElegir!({
+                        paymentId: mov!.id,
+                        restante,
+                        currency: mov!.currency,
+                        titulo: titulo as string,
+                    }, !elegido)}
+                    aria-pressed={!!elegido}
+                    aria-label={`Elegir el aporte #${ref} para desembolsar`}
+                    className="pl-4 pt-5 text-gray-400 hover:text-emerald-600 flex-shrink-0"
+                >
+                    {elegido
+                        ? <CheckSquare className="w-5 h-5 text-emerald-600" />
+                        : <Square className="w-5 h-5" />}
+                </button>
+            )}
             <button
                 type="button"
                 onClick={() => setAbierta(v => !v)}
@@ -1640,6 +1799,20 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
 
                             Sólo cuando faltan: un «0 días» al lado de un estado
                             que ya dice «Disponible» es ruido. */}
+                        {/* v4.886 — Se DICE si ya se trasladó, y en qué grado.
+                            «Disponible para retiro» no distingue un aporte que
+                            ya se giró de uno que no, que es exactamente la
+                            pregunta que hay que poder contestar de un vistazo
+                            para un informe. */}
+                        {completamenteDesembolsado ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] bg-violet-100 text-violet-800">
+                                <Landmark className="w-3 h-3" />Desembolsado
+                            </span>
+                        ) : yaDesembolsado > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] bg-violet-50 text-violet-700">
+                                <Landmark className="w-3 h-3" />Desembolso parcial
+                            </span>
+                        ) : null}
                         {mov?.lifecycle?.diasRestantes ? (
                             <span className="inline-flex items-center gap-1 text-sky-700 font-semibold">
                                 <Clock className="w-3 h-3" />
@@ -1659,6 +1832,7 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                     )}
                 </div>
             </button>
+            </div>
 
             {abierta && (
                 <div className="px-4 pb-4 border-t border-gray-100 bg-white/60">
@@ -1889,7 +2063,7 @@ function Dato({ termino, valor, dato, mono }: { termino: string; valor: string; 
 }
 
 // v4.421 — Tarjeta de bucket en el header de la Bóveda.
-type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red';
+type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red' | 'violet';
 function WalletBucketCard({ color, icon, label, total, currency, count, hint }: {
     color: BucketColor;
     icon: React.ReactNode;
@@ -1905,6 +2079,11 @@ function WalletBucketCard({ color, icon, label, total, currency, count, hint }: 
         emerald: { bg: 'bg-emerald-50', text: 'text-emerald-900', accent: 'text-emerald-600' },
         indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-900',  accent: 'text-indigo-600' },
         red:     { bg: 'bg-red-50',     text: 'text-red-900',     accent: 'text-red-600' },
+        // v4.886 — El desembolso. Violeta y no verde a propósito: el verde ya es
+        // «Disponible para retiro», y dos tarjetas verdes seguidas se leen como
+        // la misma cosa contada dos veces — que es justo la confusión que este
+        // indicador existe para deshacer.
+        violet:  { bg: 'bg-violet-50',  text: 'text-violet-900',  accent: 'text-violet-600' },
     };
     const p = palette[color];
     return (
