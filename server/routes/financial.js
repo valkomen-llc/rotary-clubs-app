@@ -22,6 +22,7 @@ import {
 // `financialController.js`, que ya son 1.900 líneas, lo haría inencontrable.
 import {
     getLifecycle, createDisbursement, createBulkDisbursements, reverse as reverseDisbursement,
+    getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
 } from '../controllers/disbursementController.js';
 
@@ -126,6 +127,13 @@ router.post('/wallet/reconcile', authMiddleware, requireSiteAdmin, reconcileWall
 // v4.887 — Lleva `comprobanteOpcional`: un giro que cubre varios aportes tiene
 // UN soporte, y se sube una sola vez para las N filas.
 router.post('/wallet/disbursements/bulk', authMiddleware, requireSiteAdmin, comprobanteOpcional, createBulkDisbursements);
+
+// v4.888 — El estado de la plantilla estándar de WhatsApp, y sembrarla.
+// Consultarla la puede cualquier administrador de sitio —necesita saber por qué
+// su aviso no salió—; crearla, sólo el operador: vive en el WABA de la
+// plataforma, que es infraestructura compartida y el controlador lo comprueba.
+router.get('/wallet/whatsapp-template', authMiddleware, requireSiteAdmin, getWhatsappTemplate);
+router.post('/wallet/whatsapp-template', authMiddleware, requireSiteAdmin, seedWhatsappTemplate);
 
 // Lo que la ficha de un aporte necesita: calendario, línea de tiempo,
 // desembolsos y cuánto queda por desembolsar.

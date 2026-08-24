@@ -26,9 +26,12 @@ import {
     listDisbursements, listDisbursementsFor, balanceFor,
     uploadReceipt, signedReceiptUrl, receiptKeyOf,
     registerDisbursement, reverseDisbursement, retryDisbursementNotice,
+    seedWhatsAppTemplate, whatsappTemplateStatus,
 } from '../lib/disbursements.js';
 import { timelineFor } from '../lib/paymentLifecycle.js';
 import { scheduleOf, canDisburse, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
+import { resolveRecipients, NOTICE_CHANNELS, WA_TEMPLATE_NAME, MAX_POR_CANAL } from '../lib/disbursementNotice.js';
+import { validateForMeta } from '../lib/phone.js';
 import { sweepWallet } from '../lib/walletSweep.js';
 import { reconcileHistory } from '../lib/walletReconcile.js';
 
@@ -93,6 +96,11 @@ export const getLifecycle = async (req, res) => {
             // dos listas de medios de traslado se separan en silencio.
             methods: DISBURSEMENT_METHODS,
             receipt: { mimes: RECEIPT_MIMES, maxBytes: RECEIPT_MAX_BYTES },
+            // v4.888 — Los canales de aviso y su tope. Van en la respuesta para
+            // que la pantalla no los repita: dos catálogos se separan en
+            // silencio, y aquí uno de los dos ofrecería un canal que el
+            // servidor no sabe mandar.
+            notice: { channels: NOTICE_CHANNELS, maxPerChannel: MAX_POR_CANAL, waTemplate: WA_TEMPLATE_NAME },
         });
     } catch (e) {
         console.error('[DISB] getLifecycle:', e);
@@ -160,10 +168,26 @@ export const createDisbursement = async (req, res) => {
             comprobante = subida;
         }
 
+        // ⚠️ LOS DESTINATARIOS SE SANEAN EN EL SERVIDOR, con el criterio de
+        // `disbursementNotice.js` —el mismo que sabe partir lo pegado y validar
+        // un teléfono con las reglas del CRM—. Lo que no se pudo interpretar se
+        // DEVUELVE con su motivo: un descarte silencioso deja a quien pegó
+        // cinco números sin saber cuál no entró, y lo que se pierde es que
+        // alguien no se entere de que le giraron.
+        const destinatarios = resolveRecipients({
+            emails: cuerpo.notifyEmails ?? cuerpo.notifyEmail,
+            phones: cuerpo.notifyPhones,
+        }, validateForMeta);
+
         const normalizado = {
             ...cuerpo,
             amount: Number(cuerpo.amount),
             notify: cuerpo.notify === true || cuerpo.notify === 'true',
+            notifyEmails: destinatarios.email,
+            notifyPhones: destinatarios.whatsapp,
+            // Lo consume `validateDisbursement`: pedir avisar sin ningún
+            // destinatario válido es un error, no un aviso.
+            recipientCount: destinatarios.total,
         };
 
         const r = await registerDisbursement({
@@ -176,13 +200,62 @@ export const createDisbursement = async (req, res) => {
             disbursement: r.disbursement,
             balance: r.balance,
             estado: r.estado,
-            avisos: [...(r.avisos || []), ...(permiso.aviso ? [permiso.aviso] : [])],
+            avisos: [
+                ...(r.avisos || []),
+                ...(permiso.aviso ? [permiso.aviso] : []),
+                ...destinatarios.descartados.map(d =>
+                    `No se pudo usar «${d.valor}» como destinatario de ${d.canal === 'whatsapp' ? 'WhatsApp' : 'correo'}: ${d.motivo}`),
+            ],
             notificacion: r.notificacion,
             timeline: await timelineFor(pago.id),
         });
     } catch (e) {
         console.error('[DISB] createDisbursement:', e);
         return res.status(500).json({ error: 'No se pudo registrar el desembolso', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET/POST /financial/wallet/whatsapp-template ───────────────────
+ *
+ * v4.888 — El estado de la plantilla estándar de WhatsApp, y sembrarla.
+ *
+ * ⚠️ ES DEL OPERADOR DE LA PLATAFORMA. La plantilla vive en el WABA de la
+ * plataforma —no hay uno por sitio (regla del CRM, v4.701)— así que crearla es
+ * una decisión de infraestructura compartida, no de un club. Un administrador
+ * de sitio SÍ puede consultar su estado: necesita saber por qué su aviso no
+ * salió por WhatsApp.
+ */
+export const getWhatsappTemplate = async (req, res) => {
+    try {
+        return res.json(await whatsappTemplateStatus());
+    } catch (e) {
+        console.error('[DISB] getWhatsappTemplate:', e);
+        return res.status(500).json({ error: 'No se pudo consultar el estado de WhatsApp' });
+    }
+};
+
+export const seedWhatsappTemplate = async (req, res) => {
+    try {
+        if (req.user?.role !== 'administrator') {
+            return res.status(403).json({
+                error: 'Sólo el operador de la plataforma puede crear la plantilla',
+                detail: 'La plantilla vive en el WABA de la plataforma y se aprueba una vez para todos los sitios.',
+            });
+        }
+        const r = await seedWhatsAppTemplate();
+        if (!r.ok) return res.status(409).json({ error: r.reason });
+        return res.json({
+            ...r,
+            // El siguiente paso se DICE: crear el borrador no manda nada, y sin
+            // esta frase alguien lo daría por listo y el aviso no saldría.
+            siguiente: r.created
+                ? 'La plantilla quedó como borrador. Enviala a Meta desde Comunicaciones CRM → Plantillas; '
+                    + 'la revisión suele tardar entre unos minutos y 24 horas.'
+                : 'Ya existía. Revisá su estado en Comunicaciones CRM → Plantillas.',
+        });
+    } catch (e) {
+        console.error('[DISB] seedWhatsappTemplate:', e);
+        return res.status(500).json({ error: 'No se pudo crear la plantilla' });
     }
 };
 
@@ -302,6 +375,9 @@ export const createBulkDisbursements = async (req, res) => {
                     notes: req.body?.notes,
                     notify: req.body?.notify === true || req.body?.notify === 'true',
                     notifyEmail: req.body?.notifyEmail,
+                    notifyEmails: destinatarios.email,
+                    notifyPhones: destinatarios.whatsapp,
+                    recipientCount: destinatarios.total,
                 },
                 actor,
                 receipt: comprobante,
@@ -328,6 +404,9 @@ export const createBulkDisbursements = async (req, res) => {
         return res.json({
             ok: hechos.length > 0,
             registrados: hechos.length,
+            // Lo que no se pudo interpretar como destinatario, con su motivo.
+            avisos: destinatarios.descartados.map(d =>
+                `No se pudo usar «${d.valor}» como destinatario de ${d.canal === 'whatsapp' ? 'WhatsApp' : 'correo'}: ${d.motivo}`),
             batchId: loteId,
             comprobante: comprobante ? { name: comprobante.name, bytes: comprobante.bytes } : null,
             // Lo que NO entró y POR QUÉ. Sin esto, «se registraron 3 de 5» deja
@@ -475,5 +554,6 @@ export const refresh = async (req, res) => {
 
 export default {
     getLifecycle, createDisbursement, createBulkDisbursements,
+    getWhatsappTemplate, seedWhatsappTemplate,
     reverse, getReceipt, retryNotice, reconcile, refresh,
 };

@@ -350,8 +350,11 @@ ok('la clave de S3 NO viaja al navegador: sólo `hasReceipt`',
     /hasReceipt: !!r\.receiptKey/.test(disb) && !/receiptKey: r\.receiptKey/.test(disb));
 ok('el `ON CONFLICT` del índice PARCIAL repite su predicado',
     /ON CONFLICT \("paymentId", reference\)[\s\S]{0,120}WHERE reference IS NOT NULL AND status = 'confirmado'/.test(disb));
-ok('⚠️ si el correo falla el desembolso NO se revierte: se devuelve el fallo, no se lanza',
-    /NO se lanza: el desembolso ya está escrito/.test(disb));
+// v4.888 — La regla no cambió; cambió el texto al reescribir el envío para
+// varios canales. Se comprueba por la afirmación, no por una frase exacta.
+ok('⚠️ si el aviso falla el desembolso NO se revierte: se devuelve el fallo, no se lanza',
+    /nunca se lanza: el desembolso ya está\s*\n?\s*\/\/ escrito y no se revierte/.test(disb)
+    || /no se revierte porque un aviso no saliera/.test(disb));
 ok('no se escribe un segundo sistema de correo: se reutiliza EmailService y la bitácora',
     disb.includes('EmailService.sendPlatformEmail') && disb.includes('claimDelivery'));
 

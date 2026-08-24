@@ -19,10 +19,12 @@
  * después es peor que no tener la función. Si lo que se giró fue otra cosa, se
  * registran de a uno.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { CheckCircle2, Loader2, Send, X, AlertTriangle } from 'lucide-react';
+// v4.888 — Los destinatarios, COMPARTIDOS con el modal de un aporte.
+import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -144,7 +146,9 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
     const [notas, setNotas] = useState('');
     const [archivo, setArchivo] = useState<File | null>(null);
     const [notificar, setNotificar] = useState(false);
-    const [correo, setCorreo] = useState('');
+    const [correos, setCorreos] = useState('');
+    const [telefonos, setTelefonos] = useState('');
+    const [estadoWa, setEstadoWa] = useState<EstadoWhatsapp | null>(null);
     const [confirmando, setConfirmando] = useState(false);
     const [guardando, setGuardando] = useState(false);
     const [resultado, setResultado] = useState<{
@@ -152,6 +156,24 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
         saltados: Array<{ id: string; motivo: string }>;
         totalesPorMoneda: Record<string, number>;
     } | null>(null);
+
+    // ⚠️ El hook va ARRIBA, antes de cualquier return: React identifica cada
+    // hook por su ORDEN de llamada (v4.689).
+    useEffect(() => {
+        let vivo = true;
+        axios.get(`${API_BASE}/financial/wallet/whatsapp-template`, {
+            params: clubId ? { clubId } : undefined,
+            headers: { Authorization: `Bearer ${token()}` },
+        })
+            .then(r => { if (vivo) setEstadoWa(r.data); })
+            .catch(() => {
+                if (vivo) setEstadoWa({
+                    configurado: false, listo: false, plantilla: null,
+                    motivo: 'No se pudo comprobar si WhatsApp está disponible.',
+                });
+            });
+        return () => { vivo = false; };
+    }, [clubId]);
 
     const enviar = async () => {
         setGuardando(true);
@@ -352,25 +374,13 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                 </p>
                             </label>
 
-                            <label className="flex items-start gap-2 text-sm text-gray-700">
-                                <input type="checkbox" checked={notificar} onChange={e => setNotificar(e.target.checked)} className="mt-0.5" />
-                                <span>Notificar al beneficiario por correo electrónico</span>
-                            </label>
-                            {notificar && (
-                                <>
-                                    <input
-                                        type="email" value={correo} onChange={e => setCorreo(e.target.value)}
-                                        placeholder="beneficiario@ejemplo.com"
-                                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm"
-                                    />
-                                    {/* Un aviso por aporte puede ser varios correos
-                                        seguidos a la misma persona: hay que decirlo
-                                        antes, no después. */}
-                                    <p className="text-[11px] text-amber-700">
-                                        Se enviará un aviso por cada aporte: {elegidos.length} correo(s) a esa dirección.
-                                    </p>
-                                </>
-                            )}
+                            <NoticeRecipients
+                                notificar={notificar} onNotificar={setNotificar}
+                                correos={correos} onCorreos={setCorreos}
+                                telefonos={telefonos} onTelefonos={setTelefonos}
+                                estadoWa={estadoWa}
+                                cuantosAvisos={elegidos.length}
+                            />
                         </div>
 
                         <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">

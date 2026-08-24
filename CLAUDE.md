@@ -7281,6 +7281,82 @@ había trasladado.
   tal cual y **marcado como dato**, para que al menos no se traduzca — el error
   del proveedor se propaga textual y traducirlo lo vuelve irreconocible.
 
+### El aviso del desembolso: varios destinatarios y WhatsApp (v4.888)
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/disbursementNotice.js` | El CRITERIO. **Puro**: canales, saneado de correos y teléfonos, plantilla canónica de WhatsApp y las variables |
+| `src/components/admin/wallet/NoticeRecipients.tsx` | Los destinatarios, COMPARTIDOS por los dos modales |
+
+Pruebas: `npm run test:disbursement:notice` (71 casos, **sin base, credenciales
+ni red**).
+
+- **⚠️ WHATSAPP NO ADMITE TEXTO LIBRE HACIA UN DESCONOCIDO, y eso decide todo
+  el diseño.** Fuera de la ventana de 24 horas desde el último mensaje
+  entrante, Meta SÓLO entrega plantillas previamente aprobadas — y un
+  beneficiario al que le vamos a avisar de un giro casi nunca nos escribió
+  antes. Por eso el texto de WhatsApp está ESTANDARIZADO y es una constante del
+  código, no algo que se redacte por sitio: lo que cambia son las variables. El
+  CORREO no tiene esa restricción y sigue componiéndose con los bloques de
+  `notificationTemplate.js`. Son dos canales con dos reglas y unificarlos sería
+  inventar una limitación donde no la hay, o saltarse una donde sí.
+- **⚠️ LAS VARIABLES DE META SON POSICIONALES, y el orden es el contrato.**
+  `{{1}}`, `{{2}}`… no tienen nombre: reordenar `WA_VARIABLES` sin volver a
+  someter la plantilla pone el nombre del beneficiario donde va el monto, y Meta
+  **no da ningún error** — entrega el mensaje mal armado. Por eso el orden se
+  declara UNA vez y de ahí salen tanto el cuerpo como los valores
+  (`buildWaParameters`). Al agregar una variable, agregarla AL FINAL y volver a
+  enviar la plantilla a revisión. Lo comprueba una prueba que cuenta los
+  marcadores del cuerpo contra la lista.
+- **La plantilla se SIEMBRA como borrador; NO se envía a Meta.** Someterla es un
+  acto con consecuencia —un rechazo baja la calificación de calidad de la cuenta
+  y puede limitar el volumen diario (v4.701)— y se hace desde Comunicaciones CRM
+  → Plantillas, donde además se ve el estado de la revisión. La siembra es
+  **aditiva e idempotente**: si ya existe no se pisa, porque a esa altura es del
+  operador y puede haberla ajustado.
+- **⚠️ SALE DEL WABA DE LA PLATAFORMA, no del sitio.** Es la regla del CRM desde
+  v4.701 —«la plataforma es el único remitente; no hay un WABA por club»— y es
+  justamente lo que hace posible una plantilla estandarizada: se aprueba UNA vez
+  para todos los sitios y el nombre del sitio viaja como variable. Sin él, un
+  beneficiario recibiría un WhatsApp de un número que no reconoce hablándole de
+  un dinero, que es exactamente lo que parece una estafa.
+- **`omitido` NO es `fallido`.** Fallido es que se intentó y el proveedor lo
+  rechazó; omitido es que no se intentó porque falta un paso — y el paso se
+  NOMBRA. Confundirlos manda a diagnosticar un problema de entrega donde lo que
+  hay es una plantilla sin aprobar.
+- **La pantalla DICE por qué WhatsApp no está disponible**, en vez de sólo
+  apagar el campo. «No disponible» a secas obliga a adivinar entre la
+  configuración, la plantilla y su aprobación, que se corrigen en tres sitios
+  distintos.
+- **⚠️ LOS TELÉFONOS LOS VALIDA `phone.js`, NO ESTE MÓDULO.** Aquél ya sabe
+  distinguir un móvil colombiano de un fijo, cuándo anteponer el código de país
+  y cuándo NO adivinar, y es el mismo que usa el CRM para todo lo que sale hacia
+  Meta. Un segundo criterio daría dos formas de normalizar el mismo número, y
+  entonces el aviso saldría a un destino y el registro diría otro. Se recibe
+  como PARÁMETRO para que el criterio siga siendo puro.
+- **Los correos se normalizan a minúsculas ANTES de deduplicar.**
+  `Ana@Club.org` y `ana@club.org` son la misma persona, y con dos entradas
+  recibiría el aviso dos veces. Es la misma normalización que `deliveryKey`
+  (v4.855) y tiene que serlo, o la llave de idempotencia no coincidiría.
+- **Lo que no se pudo interpretar se DEVUELVE con su motivo y su canal.** Un
+  descarte silencioso deja a quien pegó cinco números sin saber cuál no entró, y
+  lo que se pierde acá es que alguien no se entere de que le giraron.
+- **Un resultado POR CANAL Y POR DESTINATARIO** (`notifyResults`). Con un solo
+  estado, un aviso que llegó a dos de tres direcciones se vería como «enviado» y
+  nadie sabría cuál falló. `parcial` es un estado real y presentarlo como
+  «enviado» o como «fallido» sería mentir en las dos direcciones.
+- **Las tres columnas son ADITIVAS y `notifyEmail` se conserva**: las filas
+  escritas antes tienen ahí su única dirección, y borrarla las dejaría sin saber
+  a quién se avisó. JSONB y no una tabla aparte porque NADIE consulta por
+  destinatario: se leen siempre con su desembolso.
+- **`NoticeRecipients` es UN componente compartido** por el modal de un aporte y
+  el del bloque. Escrito dos veces, el día que se agregue un canal uno se queda
+  atrás — el defecto que ya se pagó con la casilla de distritos (v4.748) y el
+  selector de pools (v4.877).
+- **Con varios aportes, cada destinatario recibe un aviso POR APORTE, y se dice
+  ANTES de confirmar.** Cinco mensajes seguidos a la misma persona es algo que
+  hay que saber antes, no después.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 

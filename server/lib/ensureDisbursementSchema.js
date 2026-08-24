@@ -188,6 +188,25 @@ const ALTERS = `
 ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "batchId" TEXT;
 CREATE INDEX IF NOT EXISTS "Disbursement_batch_idx"
     ON "Disbursement"("batchId") WHERE "batchId" IS NOT NULL;
+
+-- v4.888 — VARIOS destinatarios y VARIOS canales.
+--
+-- Las tres columnas son ADITIVAS y "notifyEmail" se conserva: las filas
+-- escritas antes tienen su unica direccion ahi, y borrarla las dejaria sin
+-- saber a quien se le aviso. Es la regla aditiva del proyecto.
+--
+-- JSONB y no una tabla aparte porque NADIE consulta por destinatario: se leen
+-- siempre con su desembolso. Una tabla puente daria un JOIN por ficha para no
+-- ganar ninguna consulta — el mismo criterio por el que las etiquetas de los
+-- grupos de distribucion son un array y no una tabla con su puente.
+ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "notifyEmails" JSONB;
+ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "notifyPhones" JSONB;
+
+-- El resultado POR CANAL Y POR DESTINATARIO. Con un solo estado, un aviso que
+-- llego a dos de tres direcciones se veria como enviado y nadie sabria cual
+-- fallo. "notifyState" se conserva como el resumen de una linea que la ficha
+-- ya pinta.
+ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "notifyResults" JSONB;
 `;
 
 /**

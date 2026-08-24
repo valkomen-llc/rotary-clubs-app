@@ -23,8 +23,12 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
     CheckCircle2, Circle, Clock, Loader2, Paperclip, Send, Plus,
-    AlertTriangle, RotateCcw, X, Mail,
+    AlertTriangle, RotateCcw, X, Mail, MessageCircle,
 } from 'lucide-react';
+// v4.888 — Los destinatarios del aviso, COMPARTIDOS con el modal del bloque:
+// dos copias se separan en silencio y el panel se comportaría distinto según
+// por dónde se entre.
+import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -74,6 +78,14 @@ export interface Desembolso {
     batchId?: string | null;
     batchSize?: number | null;
     notifyEmail: string | null;
+    /** v4.888 — El resultado POR CANAL Y POR DESTINATARIO. Con un solo estado,
+     *  un aviso que llegó a dos de tres direcciones se vería como «enviado» y
+     *  nadie sabría cuál falló. */
+    notifyEmails?: string[];
+    notifyPhones?: string[];
+    notifyResults?: Array<{
+        channel: string; target: string; state: string; error: string | null; at: string;
+    }>;
     notifyState: string | null;
     notifyError: string | null;
     createdByName: string | null;
@@ -124,6 +136,10 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
     const [balance, setBalance] = useState<Balance | null>(null);
     const [metodos, setMetodos] = useState<Metodo[]>([]);
     const [modalAbierto, setModalAbierto] = useState(false);
+    // v4.888 — Si WhatsApp puede mandar y, si no, POR QUÉ. Se consulta una
+    // vez con la ficha, no al abrir el modal: el motivo hay que verlo antes
+    // de escribir un número que no va a servir.
+    const [estadoWa, setEstadoWa] = useState<EstadoWhatsapp | null>(null);
     const [abriendoComprobante, setAbriendoComprobante] = useState<string | null>(null);
 
     const cargar = useCallback(async () => {
@@ -139,6 +155,17 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
             setDesembolsos(r.data?.disbursements || []);
             setBalance(r.data?.balance || null);
             setMetodos(r.data?.methods || []);
+            // Degrada a «no listo» con su motivo: que no se pueda comprobar
+            // WhatsApp no puede impedir registrar el desembolso.
+            axios.get(`${API_BASE}/financial/wallet/whatsapp-template`, {
+                params: clubId ? { clubId } : undefined,
+                headers: { Authorization: `Bearer ${token()}` },
+            })
+                .then(w => setEstadoWa(w.data))
+                .catch(() => setEstadoWa({
+                    configurado: false, listo: false, plantilla: null,
+                    motivo: 'No se pudo comprobar si WhatsApp está disponible.',
+                }));
         } catch (e: any) {
             // Se DICE el motivo. «No se pudo cargar» a secas manda a
             // diagnosticar a ciegas — la lección de `FeeRulesPanel` (v4.859).
@@ -376,21 +403,39 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                                     : 'Ver comprobante'}
                                         </button>
                                     )}
-                                    {/* El resultado del aviso, con su motivo TEXTUAL.
-                                        Un desembolso válido con el correo fallido es
-                                        un caso normal y hay que poder verlo. */}
-                                    {d.notifyEmail && (
-                                        <span className={`inline-flex items-center gap-1 ${
-                                            d.notifyState === 'enviado' ? 'text-emerald-700'
-                                                : d.notifyState === 'fallido' ? 'text-red-600' : 'text-gray-500'
-                                        }`}>
-                                            <Mail className="w-3 h-3" />
-                                            <span data-no-translate>{d.notifyEmail}</span>
-                                            {d.notifyState === 'enviado' ? ' · avisado'
-                                                : d.notifyState === 'fallido' ? ' · el aviso falló'
-                                                    : ' · sin avisar'}
+                                    {/* v4.888 — El resultado POR DESTINATARIO, con su
+                                        motivo TEXTUAL. Un desembolso válido con un
+                                        aviso fallido es un caso normal y hay que
+                                        poder ver CUÁL falló, no sólo que algo falló.
+
+                                        `omitido` NO es `fallido`: no se intentó
+                                        porque falta un paso, y el paso se nombra. */}
+                                    {(d.notifyResults?.length
+                                        ? d.notifyResults
+                                        : d.notifyEmail
+                                            ? [{ channel: 'email', target: d.notifyEmail, state: d.notifyState || 'pendiente', error: d.notifyError, at: '' }]
+                                            : []
+                                    ).map((r, i) => (
+                                        <span
+                                            key={`${r.channel}-${r.target}-${i}`}
+                                            title={r.error || undefined}
+                                            className={`inline-flex items-center gap-1 ${
+                                                r.state === 'enviado' ? 'text-emerald-700'
+                                                    : r.state === 'fallido' ? 'text-red-600'
+                                                        : r.state === 'omitido' ? 'text-amber-700' : 'text-gray-500'
+                                            }`}
+                                        >
+                                            {r.channel === 'whatsapp'
+                                                ? <MessageCircle className="w-3 h-3" />
+                                                : <Mail className="w-3 h-3" />}
+                                            <span data-no-translate>{r.target}</span>
+                                            {r.state === 'enviado' ? ' · avisado'
+                                                : r.state === 'fallido' ? ' · falló'
+                                                    : r.state === 'omitido' ? ' · no se intentó'
+                                                        : r.state === 'duplicado' ? ' · ya se había avisado'
+                                                            : ' · sin avisar'}
                                         </span>
-                                    )}
+                                    ))}
                                     {d.notifyState === 'fallido' && (
                                         <button
                                             type="button"
@@ -441,6 +486,7 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                     currency={currency}
                     maximo={balance?.restante ?? netAmount}
                     metodos={metodos}
+                    estadoWa={estadoWa}
                     onCerrar={() => setModalAbierto(false)}
                     onHecho={() => { setModalAbierto(false); cargar(); }}
                 />
@@ -466,12 +512,13 @@ function Par({ t, v, destacado }: { t: string; v: string; destacado?: boolean })
  * la exige además por su cuenta (428): esconder el paso en la pantalla no
  * protegería al endpoint de quien lo conoce.
  */
-function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, onCerrar, onHecho }: {
+function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estadoWa, onCerrar, onHecho }: {
     paymentId: string;
     clubId?: string;
     currency: string;
     maximo: number;
     metodos: Metodo[];
+    estadoWa: EstadoWhatsapp | null;
     onCerrar: () => void;
     onHecho: () => void;
 }) {
@@ -483,7 +530,8 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, onCer
     const [notas, setNotas] = useState('');
     const [archivo, setArchivo] = useState<File | null>(null);
     const [notificar, setNotificar] = useState(false);
-    const [correo, setCorreo] = useState('');
+    const [correos, setCorreos] = useState('');
+    const [telefonos, setTelefonos] = useState('');
     const [confirmando, setConfirmando] = useState(false);
     const [guardando, setGuardando] = useState(false);
     const [errores, setErrores] = useState<string[]>([]);
@@ -502,7 +550,8 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, onCer
             fd.append('reference', referencia);
             fd.append('notes', notas);
             fd.append('notify', String(notificar));
-            fd.append('notifyEmail', correo);
+            fd.append('notifyEmails', correos);
+            fd.append('notifyPhones', telefonos);
             fd.append('confirm', 'true');
             if (clubId) fd.append('clubId', clubId);
             if (archivo) fd.append('receipt', archivo);
@@ -630,23 +679,12 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, onCer
                         </p>
                     </Campo>
 
-                    <label className="flex items-start gap-2 text-sm text-gray-700">
-                        <input
-                            type="checkbox" checked={notificar}
-                            onChange={e => setNotificar(e.target.checked)}
-                            className="mt-0.5"
-                        />
-                        <span>Notificar al beneficiario por correo electrónico</span>
-                    </label>
-                    {notificar && (
-                        <Campo label="Correo del beneficiario">
-                            <input
-                                type="email" value={correo} onChange={e => setCorreo(e.target.value)}
-                                placeholder="beneficiario@ejemplo.com"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm"
-                            />
-                        </Campo>
-                    )}
+                    <NoticeRecipients
+                        notificar={notificar} onNotificar={setNotificar}
+                        correos={correos} onCorreos={setCorreos}
+                        telefonos={telefonos} onTelefonos={setTelefonos}
+                        estadoWa={estadoWa}
+                    />
                 </div>
 
                 <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
@@ -671,7 +709,9 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, onCer
                             <p className="text-xs text-gray-700">
                                 Se registrará un desembolso de <strong data-no-translate>{money(Number(monto) || 0, currency)}</strong>
                                 {' a '}<strong data-no-translate>{beneficiario || '—'}</strong>
-                                {notificar && correo ? <> y se le avisará a <strong data-no-translate>{correo}</strong></> : null}.
+                                {notificar && (correos || telefonos)
+                                    ? <> y se avisará a <strong data-no-translate>{[correos, telefonos].filter(Boolean).join(', ')}</strong></>
+                                    : null}.
                                 {' '}Una vez confirmado no se borra: si hay que corregirlo, se reversa y el reverso queda a la vista.
                             </p>
                             <div className="flex justify-end gap-2">
