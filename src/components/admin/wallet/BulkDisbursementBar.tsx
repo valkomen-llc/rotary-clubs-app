@@ -191,7 +191,21 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                 reference: referencia,
                 notes: notas,
                 notify: notificar,
-                notifyEmail: correo,
+                // ⚠️ v4.889 — Acá estaba el defecto que dejaba el botón sin hacer
+                // nada. v4.888 renombró el estado de `correo` a `correos` y
+                // agregó `telefonos`, y ESTA línea se quedó con el nombre viejo:
+                // un `ReferenceError` dentro del `try`, que caía en el `catch`,
+                // mostraba un toast genérico y devolvía al formulario. Se
+                // reportó como «confirmo y no aparece nada».
+                //
+                // No lo atrapó el typecheck porque en el entorno de desarrollo
+                // no había dependencias instaladas y `tsc` abortaba antes de
+                // mirar los archivos, devolviendo exit 0 con dos errores de
+                // configuración. Un typecheck que no comprueba nada y sale en
+                // verde es peor que no correrlo: da por verificado lo que no se
+                // miró. Ver la regla en CLAUDE.md.
+                notifyEmails: correos,
+                notifyPhones: telefonos,
                 confirm: true,
             };
 
@@ -308,12 +322,22 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                             </label>
 
                             <label className="block">
-                                <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Beneficiario / prestatario</span>
+                                <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                                    Beneficiario / prestatario <span className="text-red-500">*</span>
+                                </span>
                                 <input
                                     type="text" value={beneficiario} onChange={e => setBeneficiario(e.target.value)}
                                     placeholder="Quién recibió el dinero"
                                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm"
                                 />
+                                {/* El motivo va A LA VISTA, no sólo el botón apagado: un
+                                    control deshabilitado sin explicación se lee como
+                                    que el módulo está roto. */}
+                                {!beneficiario.trim() && (
+                                    <p className="text-[11px] text-amber-700 mt-1">
+                                        Hace falta para poder confirmar: es quién recibió el dinero.
+                                    </p>
+                                )}
                             </label>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -389,9 +413,20 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                     <button type="button" onClick={onCerrar} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
                                         Cancelar
                                     </button>
+                                    {/* ⚠️ v4.889 — NO se deja pasar a la confirmación sin
+                                        beneficiario. El servidor ya lo rechazaba —y lo
+                                        sigue rechazando, que es donde manda— pero
+                                        dejaba llegar a una pantalla que decía «se
+                                        registrarán 5 desembolsos a —» y gastaba la
+                                        petición para volver con cinco errores iguales.
+                                        Un control que se puede satisfacer antes de
+                                        gastar el gesto se comprueba antes. */}
                                     <button
-                                        type="button" onClick={() => setConfirmando(true)}
-                                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
+                                        type="button"
+                                        onClick={() => setConfirmando(true)}
+                                        disabled={!beneficiario.trim()}
+                                        title={!beneficiario.trim() ? 'Falta decir quién recibió el dinero' : undefined}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         <Send className="w-4 h-4" /> Confirmar
                                     </button>

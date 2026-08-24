@@ -7357,6 +7357,41 @@ ni red**).
   ANTES de confirmar.** Cinco mensajes seguidos a la misma persona es algo que
   hay que saber antes, no después.
 
+### ⚠️ Un typecheck que no comprueba nada sale en VERDE (v4.889)
+
+Reporte: «después de marcar como registrado y confirmar, no aparece nada». El
+botón del desembolso en bloque no producía ningún efecto.
+
+- **La causa fue un RENOMBRADO A MEDIAS.** v4.888 cambió el estado del modal de
+  `correo` a `correos` y agregó `telefonos`; la línea que arma el cuerpo de la
+  petición se quedó con `notifyEmail: correo`. Es un `ReferenceError` DENTRO del
+  `try`, así que caía en el `catch`, mostraba un toast genérico y devolvía al
+  formulario — que se ve exactamente como «no pasa nada».
+- **⚠️ Y EL TYPECHECK LO HABRÍA ATRAPADO, PERO NO ESTABA COMPROBANDO NADA.** Sin
+  `node_modules`, `tsc -p tsconfig.app.json` falla al resolver `vite/client`
+  (`TS2688`), **aborta antes de mirar `src`** y sale con **exit 0** y dos errores
+  de configuración. Parece que pasó. En v4.885-v4.888 se dio por «cero errores
+  propios» un typecheck que no había leído ni un `.tsx`.
+- **LA SEÑAL ERA VISIBLE Y NO SE LEYÓ**: este archivo dice que el proyecto
+  arrastra cientos de errores heredados, y el comando devolvía DOS. Un proyecto
+  que de pronto está limpio no está limpio: es que no se miró.
+- **`npm run check:typecheck` es la barrera** (`scripts/check-typecheck-real.mjs`).
+  Falla si no hay `node_modules`, si aparece `TS2688` —sin sus tipos base `tsc`
+  no comprueba nada— o si hay menos de 50 errores en `src`. **Correr `npm ci`
+  antes de dar por verificado un cambio de frontend.** Verificado a la inversa:
+  con el defecto reintroducido, `tsc` dice
+  `TS2552: Cannot find name 'correo'. Did you mean 'correos'?`.
+- **Y hay una SEGUNDA barrera que no depende de las dependencias**
+  (`test:disbursement:notice`): comprueba sobre el archivo que los modales
+  manden `notifyEmails`/`notifyPhones`, que el servidor lea esos mismos nombres
+  y que no quede ningún `correo` suelto. Un renombrado a medias entre la
+  pantalla y el servidor no lo ve ninguna prueba de criterio.
+- **Sin beneficiario no se llega a la confirmación.** El servidor ya lo exigía
+  —y sigue siendo quien decide— pero dejaba pasar a una pantalla que decía «se
+  registrarán 5 desembolsos a —» y gastaba la petición para volver con cinco
+  errores iguales. El motivo va A LA VISTA junto al campo: un botón apagado sin
+  explicación se lee como que el módulo está roto.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 

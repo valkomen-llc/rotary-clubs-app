@@ -261,6 +261,42 @@ ok('y dice por qué WhatsApp no está disponible, en vez de sólo apagarlo',
 ok('el texto de WhatsApp NO se redacta en la pantalla, y se explica',
     /usa la plantilla aprobada por Meta/.test(ui));
 
+// ── 10. Lo que se MANDA de verdad ───────────────────────────────────
+section('10. ⚠️ El cuerpo que sale de la pantalla, campo por campo');
+
+// El defecto de v4.888 fue un renombrado a medias: el estado pasó de `correo`
+// a `correos` y la línea que armaba el cuerpo se quedó con el nombre viejo. Un
+// `ReferenceError` dentro del `try`, que caía en el `catch`, mostraba un toast
+// genérico y devolvía al formulario — «confirmo y no aparece nada».
+//
+// El typecheck REAL lo atrapa (`TS2552: Cannot find name 'correo'`), pero en un
+// entorno sin `node_modules` sale en verde sin mirar nada: por eso existe
+// `scripts/check-typecheck-real.mjs`. Esto es la segunda barrera, y comprueba
+// lo que de verdad importa — que los nombres del cuerpo coincidan con los que
+// el servidor lee.
+const bulk = read('src/components/admin/wallet/BulkDisbursementBar.tsx');
+const seccion = read('src/components/admin/wallet/DisbursementSection.tsx');
+const ctrl2 = read('server/controllers/disbursementController.js');
+
+for (const [archivo, fuente] of [['el modal del bloque', bulk], ['el modal de un aporte', seccion]]) {
+    ok(`${archivo} manda \`notifyEmails\``, /notifyEmails/.test(fuente));
+    ok(`${archivo} manda \`notifyPhones\``, /notifyPhones/.test(fuente));
+    ok(`${archivo} ya NO usa el estado viejo \`correo\` suelto`,
+        !/\bcorreo\b(?!s)/.test(fuente.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')));
+}
+
+ok('y el servidor LEE esos mismos nombres',
+    /notifyEmails/.test(ctrl2) && /notifyPhones/.test(ctrl2));
+
+// El beneficiario es obligatorio en el servidor: la pantalla no puede dejar
+// llegar a la confirmación sin él y gastar la petición para volver con N
+// errores iguales.
+ok('⚠️ no se puede confirmar sin beneficiario, en los DOS modales',
+    /disabled=\{!beneficiario\.trim\(\)\}/.test(bulk)
+    && /disabled=\{!beneficiario\.trim\(\)\}/.test(seccion));
+ok('y el motivo va a la vista, no sólo el botón apagado',
+    /Hace falta para poder confirmar/.test(bulk) && /Hace falta para poder confirmar/.test(seccion));
+
 // ── Cierre ──────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);
