@@ -2676,6 +2676,62 @@ hook de resolución de módulos). **Ninguna necesita base, credenciales ni red.*
   middleware de autenticación, así que `req.user` no existe: leer el nombre del
   sitio va dentro de un `try` y sin él se redacta igual.
 
+### Una avería en un proveedor no puede tumbar toda la IA (v4.892)
+
+Segundo reporte, con el asistente ya corregido: **«Lightning dunning decision is
+deny for project: projects/746648100373»**. El mensaje es de Google y llegó
+entero a la pantalla, que es exactamente lo que v4.891 vino a conseguir — el
+motivo real en vez del genérico.
+
+- **⚠️ ESO NO SE ARREGLA DESDE LA PLATAFORMA, Y DECIRLO ES LA MITAD DEL
+  ARREGLO.** *Dunning* es el proceso de cobro de una deuda: Google devuelve un
+  **403** cuando la cuenta de facturación del proyecto tiene un pago pendiente o
+  rechazado. No es la clave, no es el modelo y no es el prompt. Ninguna
+  corrección de código lo levanta. Lo que sí se corrige es todo lo demás.
+- **⚠️ UN FALLO DE CUENTA NO SE REINTENTA CON LA MISMA CLAVE**
+  (`isAccountLevelFailure`). Los cinco candidatos de `callGemini` comparten la
+  MISMA credencial y la MISMA cuenta, así que un 403 de facturación gastaba
+  cinco viajes para recibir cinco veces el mismo rechazo. Un 404 de «modelo no
+  encontrado» sí vale reintentarlo con otro modelo — la distinción es esa y por
+  eso no basta con mirar el estado HTTP.
+- **⚠️ HAY RESPALDO ENTRE PROVEEDORES, NO SÓLO ENTRE MODELOS.** Hasta v4.891
+  `routeToModel` elegía UN proveedor y si fallaba se acababa ahí: un pago
+  rechazado en Google dejaba sin asistente de redacción, sin sugerencias de SEO
+  y sin copys **teniendo `OPENAI_API_KEY` cargada** —la usan Content Studio y los
+  Reels—. `buildFallbackChain` cae al siguiente proveedor CON CREDENCIAL: uno sin
+  clave no es un respaldo, es un viaje garantizado a un 401.
+- **Un modelo pedido A MANO no tiene respaldo** (`options.explicit`): quien lo
+  eligió eligió, y silenciarlo con otro motor sería desobedecerlo. Es la misma
+  regla que el montaje y la música del Creador de Reels. El modelo por DEFECTO sí
+  lo tiene — un valor por omisión no es una elección para esta petición.
+- **El orden de respaldo está DECLARADO** (`PROVIDER_FALLBACK_ORDER`), no
+  deducido de las claves disponibles: con la lista implícita, agregar un
+  proveedor lo metería en medio de la cadena sin que nadie lo hubiera decidido.
+- **Cuando responde un respaldo se DICE** (`options.notes` → aviso en pantalla).
+  Sin eso, el modelo principal se queda caído y nadie se entera hasta que alguien
+  mire los registros: la plataforma «funciona» y la factura la paga otro
+  proveedor.
+- **Agotada la cadena, se propaga el motivo de CADA proveedor.** Con un mensaje
+  único no se distingue una credencial ausente de una deuda ni de una caída
+  general, y son tres cosas que se corrigen en sitios distintos.
+- **El rechazo del proveedor se TRADUCE conservando su texto**
+  (`describeProviderFailure`). Se propaga textual —regla del sitio— pero
+  «Lightning dunning decision is deny» no le dice a nadie que su cuenta tiene un
+  pago rechazado: el diagnóstico va delante, en español y con qué hacer, y el
+  original entre paréntesis, que es lo que se busca en el soporte del proveedor.
+  Vale para los CUATRO proveedores, no sólo Google.
+- **⚠️ HABILITAR EL RESPALDO DESTAPÓ UN DEFECTO LATENTE: `callOpenAI` forzaba
+  `response_format: json_object` A TODOS.** No se notaba porque el modelo por
+  defecto es Gemini y nada caía en OpenAI; con respaldo entre proveedores, un
+  endpoint de CONVERSACIÓN aterrizaría ahí y recibiría JSON donde espera prosa
+  —y OpenAI además RECHAZA ese modo si el prompt no nombra «json»—. Ahora es
+  condicional (`wantsJson`), y se mira el PROMPT y no una bandera de quien llama:
+  son quince puntos de llamada y una bandera nueva la olvida el siguiente, con un
+  fallo mudo. **Al abrir un camino que antes nunca se recorría, revisar qué había
+  al final de ese camino.**
+- **Una respuesta vacía tampoco es un éxito en OpenAI**, igual que en Gemini
+  (v4.891). La misma clase de defecto vivía en los dos sitios.
+
 **Pendiente conocido:** la auditoría marca `h1_missing` en todo artículo cuyo
 cuerpo tenga `<h2>` y ningún `<h1>` —`seoRules.js` mira sólo el cuerpo guardado y
 no ve el `<h1>` que pinta la plantilla—. Es un **falso positivo preexistente**

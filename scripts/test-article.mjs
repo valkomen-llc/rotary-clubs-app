@@ -21,6 +21,10 @@ import {
     parseArticle, closeTruncated, normalizeArticle,
     analyzeArticleBody, validateArticle, repairArticle,
 } from '../server/lib/articleSpec.js';
+import {
+    isAccountLevelFailure, describeProviderFailure,
+    buildFallbackChain, PROVIDER_FALLBACK_ORDER,
+} from '../server/lib/ai-router.js';
 import { LIMITS } from '../server/lib/seoSpec.js';
 
 let pass = 0, fail = 0;
@@ -274,6 +278,76 @@ eq('las categorías se deduplican y se acotan', n.categories, ['Agua', 'Salud', 
 ok('las categorías respetan su tope', n.categories.length <= MAX_CATEGORIES);
 eq('las keywords se acotan', n.keywords.split(', ').length, MAX_KEYWORDS);
 eq('un campo ausente queda vacío, no inventado', n.socialCopy, '');
+
+// ── 12. Un fallo de proveedor no tumba toda la IA ────────────────────
+section('12. La avería de un proveedor tiene respaldo');
+
+// El mensaje REAL del segundo reporte, tal como lo devolvió Google.
+const DUNNING = 'Lightning dunning decision is deny for project: projects/746648100373';
+
+ok('un 403 es fallo de cuenta', isAccountLevelFailure(403, DUNNING));
+ok('un 401 también', isAccountLevelFailure(401, ''));
+ok('una deuda se reconoce por el texto aunque el estado no lo diga',
+    isAccountLevelFailure(500, DUNNING));
+// ⚠️ Un modelo que no existe NO es un fallo de cuenta: ahí sí vale probar el
+// siguiente candidato con la misma clave.
+ok('un modelo inexistente no es fallo de cuenta',
+    !isAccountLevelFailure(404, 'models/gemini-9 is not found'));
+
+const dicho = describeProviderFailure('google', 403, DUNNING);
+ok('el diagnóstico nombra la FACTURACIÓN', /facturaci[óo]n/i.test(dicho));
+ok('y el proyecto concreto', dicho.includes('746648100373'));
+ok('y dice que no se arregla desde la plataforma', /no desde la plataforma/i.test(dicho));
+// El texto original se conserva: es lo que se busca en el soporte del proveedor.
+ok('el mensaje original viaja entre paréntesis', dicho.includes(DUNNING));
+
+ok('una credencial inválida se dice distinto',
+    /no es v[áa]lida/i.test(describeProviderFailure('openai', 401, 'Incorrect API key provided')));
+ok('y una cuota agotada también',
+    /cuota/i.test(describeProviderFailure('openai', 429, 'insufficient_quota')));
+ok('la API deshabilitada se distingue de la deuda',
+    /deshabilitada/i.test(describeProviderFailure('google', 403, 'SERVICE_DISABLED')));
+
+// La cadena de respaldo: sólo proveedores CON credencial y nunca el que falló.
+const conOpenAI = { GEMINI_API_KEY: 'g', OPENAI_API_KEY: 'o' };
+eq('con Gemini caído se cae a OpenAI', buildFallbackChain('gemini-2.5-flash', { env: conOpenAI }), ['gpt-4o']);
+eq('un proveedor sin credencial no es respaldo',
+    buildFallbackChain('gemini-2.5-flash', { env: { GEMINI_API_KEY: 'g' } }), []);
+ok('el proveedor que falló no se reintenta',
+    !buildFallbackChain('gemini-2.5-flash', { env: conOpenAI }).some(s2 => s2.startsWith('gemini')));
+eq('el orden de respaldo está declarado, no deducido',
+    PROVIDER_FALLBACK_ORDER, ['google', 'openai', 'anthropic', 'mistral']);
+
+const router2 = readFileSync(new URL('../server/lib/ai-router.js', import.meta.url), 'utf8');
+// ⚠️ Un modelo pedido a mano NO tiene respaldo: quien lo eligió eligió. Misma
+// regla que el montaje y la música del Creador de Reels.
+ok('un modelo pedido a mano no tiene respaldo', /options\.explicit \? \[slug\]/.test(router2));
+ok('lo que se intentó queda escrito', /options\.notes/.test(router2));
+ok('un fallo de cuenta corta la cadena de modelos', /isAccountLevelFailure\(res\.status/.test(router2));
+
+
+// ── 13. Habilitar el respaldo no puede romper los chats ──────────────
+section('13. El modo JSON sólo se pide cuando se pide JSON');
+
+// ⚠️ Defecto LATENTE que el respaldo activaría: `callOpenAI` forzaba
+// `response_format: json_object` a TODOS los que llaman. No se notaba porque el
+// modelo por defecto es Gemini y nada caía en OpenAI; con respaldo entre
+// proveedores, un endpoint de conversación aterrizaría ahí y recibiría JSON
+// donde espera prosa —y OpenAI RECHAZA el modo si el prompt no nombra «json»—.
+ok('el modo JSON es condicional', /wantsJson\(systemPrompt\)/.test(router2));
+ok('y no está forzado para todos',
+    !/temperature: 0\.7,\s*\n\s*response_format/.test(router2));
+
+// Una respuesta vacía tampoco es un éxito en OpenAI, igual que en Gemini.
+ok('OpenAI tampoco da por buena una respuesta vacía',
+    /OpenAI devolvió una respuesta vacía/.test(router2));
+
+// El diagnóstico accionable vale para los cuatro proveedores, no sólo Google:
+// una credencial vencida de OpenAI merece el mismo mensaje que una de Google.
+for (const p of ['openai', 'anthropic', 'mistral']) {
+    ok(`${p} propaga el diagnóstico`, new RegExp(`describeProviderFailure\\('${p}'`).test(router2));
+}
+
 
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);

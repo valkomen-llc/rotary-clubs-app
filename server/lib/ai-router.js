@@ -8,6 +8,88 @@ import db from './db.js';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
+/**
+ * Un fallo de CUENTA es el que no depende del modelo ni del prompt: la
+ * credencial, el permiso o la facturación. Se distingue del resto porque cambiar
+ * de modelo con la misma clave no lo arregla — sólo gasta viajes.
+ */
+export function isAccountLevelFailure(status, message = '') {
+    if (status === 401 || status === 403) return true;
+    return /\b(dunning|billing|BILLING_DISABLED|SERVICE_DISABLED|quota exceeded|insufficient_quota|payment|suspended|deactivated|API key not valid)\b/i.test(message);
+}
+
+/**
+ * Traduce el rechazo de un proveedor a un diagnóstico con SU CAUSA y QUÉ HACER,
+ * conservando el texto original entre paréntesis.
+ *
+ * El motivo se propaga textual —regla del sitio— pero un texto como «Lightning
+ * dunning decision is deny for project: projects/746648100373» no le dice a
+ * nadie que su cuenta de Google tiene un pago rechazado. Las tres causas se
+ * corrigen en sitios distintos: la consola de facturación, el panel de claves y
+ * la cuota del proveedor.
+ */
+export function describeProviderFailure(provider, status, message = '') {
+    const nombre = { google: 'Google (Gemini)', openai: 'OpenAI', anthropic: 'Anthropic', mistral: 'Mistral' }[provider] || provider;
+    const original = message ? ` (${message})` : '';
+
+    // «dunning» es el proceso de cobro de una deuda: Google lo devuelve cuando
+    // la cuenta de facturación tiene un pago pendiente o rechazado.
+    if (/\bdunning\b/i.test(message) || /BILLING_DISABLED|billing account/i.test(message)) {
+        const proyecto = /projects\/(\d+)/.exec(message)?.[1];
+        return `${nombre} rechazó la petición por un problema de FACTURACIÓN${proyecto ? ` en el proyecto ${proyecto}` : ''}: hay un pago pendiente o rechazado. Se corrige en la consola de facturación del proveedor, no desde la plataforma.${original}`;
+    }
+    if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(message)) {
+        return `${nombre} tiene la API deshabilitada en el proyecto. Hay que habilitarla en la consola del proveedor.${original}`;
+    }
+    if (/API key not valid|invalid.*api key|incorrect api key/i.test(message)) {
+        return `La credencial de ${nombre} no es válida. Revísala en Integraciones → Modelos IA.${original}`;
+    }
+    if (/quota|insufficient_quota|rate.?limit/i.test(message) || status === 429) {
+        return `${nombre} agotó su cuota o está limitando las peticiones. Espera unos minutos o revisa el plan del proveedor.${original}`;
+    }
+    if (status === 401) return `${nombre} no aceptó la credencial (401). Revísala en Integraciones → Modelos IA.${original}`;
+    if (status === 403) return `${nombre} denegó el acceso (403). Suele ser facturación, permisos del proyecto o la API sin habilitar.${original}`;
+    return message || `${nombre} rechazó la petición (${status}).`;
+}
+
+/** Qué proveedores tienen credencial en el entorno. Un proveedor sin clave no
+ *  es un respaldo: sería un viaje garantizado a un 401. */
+export function providersWithCredentials(env = process.env) {
+    return {
+        google: Boolean(env.GEMINI_API_KEY),
+        openai: Boolean(env.OPENAI_API_KEY),
+        anthropic: Boolean(env.ANTHROPIC_API_KEY),
+        mistral: Boolean(env.MISTRAL_API_KEY),
+    };
+}
+
+// Orden de respaldo entre proveedores. Está DECLARADO y no se deduce: con la
+// lista implícita, agregar un proveedor lo metería en medio de la cadena sin
+// que nadie lo hubiera decidido.
+export const PROVIDER_FALLBACK_ORDER = ['google', 'openai', 'anthropic', 'mistral'];
+
+/**
+ * Los modelos a los que caer cuando el proveedor principal no responde, uno por
+ * proveedor y sólo de los que tienen credencial.
+ */
+export function buildFallbackChain(primarySlug, { env = process.env } = {}) {
+    const disponibles = providersWithCredentials(env);
+    const primario = BUILTIN_MODELS.find(m => m.slug === primarySlug);
+    const yaUsado = primario?.provider;
+
+    return PROVIDER_FALLBACK_ORDER
+        .filter(p => p !== yaUsado && disponibles[p])
+        .map(p => BUILTIN_MODELS.find(m => m.provider === p)?.slug)
+        .filter(Boolean);
+}
+
+/** Si el prompt del sistema pide un JSON. Se mira el prompt y no una bandera de
+ *  quien llama porque son quince puntos de llamada: una bandera nueva la olvida
+ *  el siguiente, y el fallo sería mudo — prosa donde se espera JSON. */
+function wantsJson(systemPrompt = '') {
+    return /\bjson\b/i.test(String(systemPrompt));
+}
+
 /** Los modelos con cadena de razonamiento son los únicos que declaran
  *  `thinkingConfig`. Se reconocen por familia y no por una lista escrita a mano,
  *  que se quedaría vieja con el siguiente modelo. */
@@ -120,8 +202,16 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, 
                 lastError = describeEmpty(id, finishReason, data);
                 continue;
             }
-            if (res.status === 404 || res.status === 400) { lastError = data.error?.message || `${id} not found`; continue; }
-            throw new Error(data.error?.message || 'Error Gemini API');
+            const apiMessage = data.error?.message || '';
+            // ⚠️ UN FALLO DE CUENTA NO MEJORA PROBANDO OTRO MODELO: los cinco
+            // candidatos comparten la MISMA clave y la MISMA cuenta de
+            // facturación, así que se gastarían cinco viajes para recibir cinco
+            // veces el mismo rechazo. Se corta aquí y se dice qué pasa.
+            if (isAccountLevelFailure(res.status, apiMessage)) {
+                throw new Error(describeProviderFailure('google', res.status, apiMessage));
+            }
+            if (res.status === 404 || res.status === 400) { lastError = apiMessage || `${id} not found`; continue; }
+            throw new Error(apiMessage || 'Error Gemini API');
         } catch (e) {
             if (e.message && (e.message.includes('not found') || e.message.includes('no longer') || e.message.includes('not supported'))) {
                 lastError = e.message; continue;
@@ -148,12 +238,24 @@ async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, history, 
             messages,
             max_tokens: maxTokens || 4096,
             temperature: 0.7,
-            response_format: { type: 'json_object' }
+            // ⚠️ EL MODO JSON SÓLO SE PIDE SI QUIEN LLAMA PIDE JSON. Estaba
+            // forzado para TODOS: hasta v4.891 no se notaba porque el modelo por
+            // defecto es Gemini y nada caía aquí, pero con respaldo entre
+            // proveedores un endpoint de conversación aterrizaría en OpenAI y
+            // recibiría JSON donde espera prosa. Además OpenAI RECHAZA la
+            // petición si se pide este modo y el prompt no nombra «json».
+            ...(wantsJson(systemPrompt) ? { response_format: { type: 'json_object' } } : {})
         })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Error OpenAI API');
-    return data.choices?.[0]?.message?.content || '';
+    if (!res.ok) {
+        throw new Error(describeProviderFailure('openai', res.status, data.error?.message || ''));
+    }
+    const texto = data.choices?.[0]?.message?.content || '';
+    // Una respuesta vacía no es un éxito, igual que en Gemini: quien llama
+    // fallaría después al leer algo que nunca existió.
+    if (!texto.trim()) throw new Error(`OpenAI devolvió una respuesta vacía (finishReason=${data.choices?.[0]?.finish_reason || 'desconocido'}).`);
+    return texto;
 }
 
 async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
@@ -179,7 +281,7 @@ async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, histor
         })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Error Anthropic API');
+    if (!res.ok) throw new Error(describeProviderFailure('anthropic', res.status, data.error?.message || ''));
     return data.content?.[0]?.text || '';
 }
 
@@ -202,7 +304,7 @@ async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, history,
         })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Error Mistral API');
+    if (!res.ok) throw new Error(describeProviderFailure('mistral', res.status, data.error?.message || ''));
     return data.choices?.[0]?.message?.content || '';
 }
 
@@ -284,10 +386,52 @@ Montos en COP. Datos realistas y conservadores.`;
  * @param {string} systemPrompt - Instrucciones del sistema
  * @param {string} userPrompt - Mensaje del usuario
  * @param {Array}  history - Turnos previos, si los hay
- * @param {{maxTokens?: number}} options - Presupuesto de salida para esta llamada
+ * @param {{maxTokens?: number, explicit?: boolean, notes?: string[]}} options
+ *        maxTokens: presupuesto de salida para esta llamada.
+ *        explicit: el modelo lo eligió una persona — sin respaldo automático.
+ *        notes: se rellena con lo que se intentó, para poder decirlo en pantalla.
  * @returns {Promise<string>} - Texto de salida del modelo
  */
 export async function routeToModel(slug, systemPrompt, userPrompt, history = [], options = {}) {
+    // ⚠️ UNA AVERÍA EN UN PROVEEDOR NO PUEDE TUMBAR TODA LA IA DE LA PLATAFORMA.
+    // Hasta v4.891 se elegía UN proveedor y si fallaba se acababa ahí: un pago
+    // rechazado en la cuenta de Google dejaba sin asistente de redacción, sin
+    // sugerencias de SEO y sin copys, teniendo credencial de OpenAI cargada.
+    //
+    // Un modelo pedido A MANO no tiene respaldo: quien lo eligió eligió, y
+    // silenciarlo con otro motor sería desobedecerlo. Es la misma regla que el
+    // montaje y la música del Creador de Reels.
+    const cadena = options.explicit ? [slug] : [slug, ...buildFallbackChain(slug)];
+    const notas = Array.isArray(options.notes) ? options.notes : [];
+    const fallos = [];
+
+    for (const candidato of cadena) {
+        try {
+            const salida = await callModel(candidato, systemPrompt, userPrompt, history, options);
+            if (candidato !== slug) {
+                const nota = `${slug} no respondió; se usó ${candidato}. Motivo: ${fallos[0]?.motivo || 'desconocido'}`;
+                notas.push(nota);
+                console.warn(`[ai-router] ${nota}`);
+            }
+            return salida;
+        } catch (e) {
+            fallos.push({ slug: candidato, motivo: e.message });
+            console.warn(`[ai-router] ${candidato} falló: ${e.message}`);
+        }
+    }
+
+    // Agotada la cadena, el motivo de CADA proveedor se propaga textual: con un
+    // mensaje único no se sabe si falta una credencial, si hay una deuda o si
+    // todos están caídos, y son tres cosas que se corrigen en sitios distintos.
+    const detalle = fallos.map(f => `${f.slug}: ${f.motivo}`).join(' | ');
+    throw new Error(fallos.length > 1
+        ? `Ningún proveedor de IA pudo responder. ${detalle}`
+        : (fallos[0]?.motivo || 'Ningún proveedor de IA pudo responder.'));
+}
+
+/** Una sola llamada a un modelo concreto. Separado de la cadena de respaldo
+ *  para que ésta no tenga que saber cómo se resuelve una configuración. */
+async function callModel(slug, systemPrompt, userPrompt, history, options) {
     let config = null;
 
     // 1. Buscar en BD (configuración con API key personalizada)

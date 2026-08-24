@@ -1481,7 +1481,11 @@ router.post('/generate-article', async (req, res) => {
         }
     } catch (_) { /* la marca es un extra: sin ella se redacta igual */ }
 
+    // Un modelo pedido a mano no tiene respaldo automático: el usuario eligió.
+    // El de por defecto sí, para que una avería en un proveedor no deje sin
+    // asistente de redacción a toda la plataforma.
     const slug = modelSlug || (await getDefaultModel()) || 'gemini-2.5-flash';
+    const notasDelRouter = [];
 
     let brokenRules = [];
     let best = null;      // lo mejor que se consiguió, por si se agotan los intentos
@@ -1499,7 +1503,7 @@ router.post('/generate-article', async (req, res) => {
                 // Un artículo de ~900 palabras en HTML más los campos de SEO no
                 // cabe en el presupuesto por defecto: la respuesta se corta a
                 // mitad del JSON y no queda nada aprovechable.
-                { maxTokens: ARTICLE_MAX_TOKENS }
+                { maxTokens: ARTICLE_MAX_TOKENS, explicit: Boolean(modelSlug), notes: notasDelRouter }
             );
 
             const { data, truncated } = parseArticle(raw);
@@ -1516,7 +1520,15 @@ router.post('/generate-article', async (req, res) => {
             if (!errors.length) {
                 return res.json({
                     ...article,
-                    _meta: { model: slug, attempts: attempt, warnings, wordCount: body.wordCount, readingMinutes: body.readingMinutes },
+                    // Si respondió un proveedor de respaldo se DICE: quien
+                    // redacta tiene que saber que su modelo principal está
+                    // caído, o la avería se queda invisible hasta que alguien
+                    // mire los registros.
+                    _meta: {
+                        model: slug, attempts: attempt,
+                        warnings: [...notasDelRouter, ...warnings],
+                        wordCount: body.wordCount, readingMinutes: body.readingMinutes,
+                    },
                 });
             }
 
@@ -1543,7 +1555,7 @@ router.post('/generate-article', async (req, res) => {
                 ...article,
                 _meta: {
                     model: slug, attempts: MAX_ARTICLE_ATTEMPTS, repaired,
-                    warnings: [...avisoReparado, ...errors, ...warnings],
+                    warnings: [...notasDelRouter, ...avisoReparado, ...errors, ...warnings],
                     wordCount: body.wordCount, readingMinutes: body.readingMinutes,
                 },
             });
