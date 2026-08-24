@@ -7234,9 +7234,36 @@ había trasladado.
   movió— y el informe **nombra cuáles no entraron y por qué**. Envolverlo en
   una transacción sería peor: un fallo tiraría abajo registros de traslados que
   sí ocurrieron.
-- **El comprobante NO se ofrece en el bloque**, y se explica en la pantalla: un
-  mismo archivo repetido en cinco filas afirmaría que respalda a cada una por
-  separado. Se adjunta desde la ficha de cada aporte.
+- **⚠️ EL COMPROBANTE DEL GIRO SÍ SE OFRECE EN EL BLOQUE** (v4.887, corrige
+  v4.886). Aquélla no lo ofrecía con el argumento de que un mismo archivo en
+  cinco filas afirmaría respaldar a cada una por separado. **El argumento era
+  demasiado purista y el caso real lo desmiente**: si los cinco aportes
+  salieron en UNA transferencia, hay un solo soporte y ése SÍ los respalda a
+  los cinco. Lo que no se puede es presentarlo como el comprobante de un
+  aporte suelto — y de eso se encarga el LOTE.
+- **El archivo se sube UNA vez, fuera del bucle**, y las N filas comparten la
+  clave: subirlo por aporte serían N objetos idénticos en S3 y N veces el mismo
+  gasto de red. Su clave lleva el id del LOTE, no el de un aporte: el archivo
+  no es de ninguno en particular. Lo comprueba una prueba mirando que la subida
+  esté ANTES del bucle.
+- **`batchId` agrupa los movimientos de un mismo giro y existe SIEMPRE**,
+  también sin comprobante: sirve para un informe aunque no haya archivo. De él
+  se DERIVA que el soporte es compartido —`batchSize` sale de la misma consulta
+  que trae los desembolsos— en vez de guardar una segunda verdad que pueda
+  contradecirse.
+- **Y se DICE en la ficha**: «Ver comprobante del giro (5 aportes)» y «Salió
+  dentro de un giro conjunto de 5 aportes». Rotularlo «Ver comprobante» a secas
+  sería exactamente la afirmación que no se puede hacer.
+- **⚠️ `batchId` se agrega con `ADD COLUMN IF NOT EXISTS` Y EL `ALTER` CORRE
+  TAMBIÉN CUANDO LA TABLA YA EXISTÍA.** `CREATE TABLE IF NOT EXISTS` no amplía
+  nada: una base que estrenó el módulo en v4.885 tiene la tabla sin la columna,
+  y el `INSERT` fallaría con «column does not exist» —en silencio, porque este
+  módulo degrada—. Es la regla de `EventRegistration` (v4.648): se AMPLÍA,
+  jamás se recrea. Lo comprueba una prueba sobre el archivo.
+- **Al añadir un segundo SQL en template literal, la prueba de las comillas
+  invertidas se comprueba POR BLOQUE.** Buscar «del primer backtick al último»
+  abarca el hueco entre los dos literales y da un falso positivo. Verificada a
+  la inversa metiendo una comilla en un comentario del SQL.
 - **El aviso por correo en bloque DICE cuántos correos son** antes de
   confirmar. Un desembolso por aporte es un aviso por aporte, y cinco correos
   seguidos a la misma dirección es algo que hay que saber antes, no después.

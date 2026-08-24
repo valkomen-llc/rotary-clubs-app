@@ -68,6 +68,11 @@ export interface Desembolso {
     reversedReason: string | null;
     hasReceipt: boolean;
     receiptName: string | null;
+    /** v4.887 — El lote. Con `batchId`, el comprobante es el de un GIRO que
+     *  cubrió varios aportes: se dice con esas palabras en vez de dejar que se
+     *  lea como el soporte de este aporte suelto. */
+    batchId?: string | null;
+    batchSize?: number | null;
     notifyEmail: string | null;
     notifyState: string | null;
     notifyError: string | null;
@@ -338,6 +343,11 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                     {d.reference && <span data-no-translate> · ref. {d.reference}</span>}
                                 </div>
                                 {d.notes && <div className="text-gray-500 mt-1 italic">{d.notes}</div>}
+                                {d.batchId && (d.batchSize ?? 0) > 1 && (
+                                    <div className="text-gray-500 mt-0.5">
+                                        Salió dentro de un giro conjunto de <span data-no-translate>{d.batchSize}</span> aportes.
+                                    </div>
+                                )}
                                 {d.status === 'reversado' && (
                                     <div className="mt-1 text-amber-700 font-semibold">
                                         Reversado{d.reversedReason ? `: ${d.reversedReason}` : ''}
@@ -349,10 +359,21 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                             type="button"
                                             onClick={() => verComprobante(d.id)}
                                             disabled={abriendoComprobante === d.id}
+                                            title={d.batchId && (d.batchSize ?? 0) > 1
+                                                ? `Soporte de la transferencia que cubrió ${d.batchSize} aportes`
+                                                : undefined}
                                             className="inline-flex items-center gap-1 font-bold text-rotary-blue hover:underline disabled:opacity-50"
                                         >
                                             <Paperclip className="w-3 h-3" />
-                                            {abriendoComprobante === d.id ? 'Abriendo…' : 'Ver comprobante'}
+                                            {abriendoComprobante === d.id
+                                                ? 'Abriendo…'
+                                                : (d.batchId && (d.batchSize ?? 0) > 1)
+                                                    /* ⚠️ Se DICE que es del giro, no de este aporte.
+                                                       Un mismo archivo enlazado a cinco filas
+                                                       rotulado «Ver comprobante» a secas afirmaría
+                                                       que respalda a cada una por separado. */
+                                                    ? `Ver comprobante del giro (${d.batchSize} aportes)`
+                                                    : 'Ver comprobante'}
                                         </button>
                                     )}
                                     {/* El resultado del aviso, con su motivo TEXTUAL.

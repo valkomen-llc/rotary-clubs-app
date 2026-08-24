@@ -142,6 +142,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
     const [metodo, setMetodo] = useState('transferencia');
     const [referencia, setReferencia] = useState('');
     const [notas, setNotas] = useState('');
+    const [archivo, setArchivo] = useState<File | null>(null);
     const [notificar, setNotificar] = useState(false);
     const [correo, setCorreo] = useState('');
     const [confirmando, setConfirmando] = useState(false);
@@ -155,20 +156,39 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
     const enviar = async () => {
         setGuardando(true);
         try {
+            // Con adjunto va como multipart; sin él, como JSON. El servidor
+            // admite las dos formas para la lista de ids a propósito: obligar a
+            // multipart siempre metería la serialización del array en el camino
+            // del caso más común, que es el que NO lleva archivo.
+            const cuerpo = {
+                clubId,
+                paymentIds: elegidos.map(e => e.paymentId),
+                disbursedAt: new Date(`${fechaDes}T12:00:00`).toISOString(),
+                beneficiary: beneficiario,
+                method: metodo,
+                reference: referencia,
+                notes: notas,
+                notify: notificar,
+                notifyEmail: correo,
+                confirm: true,
+            };
+
+            let payload: FormData | typeof cuerpo = cuerpo;
+            if (archivo) {
+                const fd = new FormData();
+                Object.entries(cuerpo).forEach(([k, v]) => {
+                    // El array viaja como JSON en un solo campo: `append` por
+                    // elemento lo entrega como texto repetido y el servidor
+                    // tendría que adivinar cuál de las dos formas es.
+                    fd.append(k, k === 'paymentIds' ? JSON.stringify(v) : String(v));
+                });
+                fd.append('receipt', archivo);
+                payload = fd;
+            }
+
             const r = await axios.post(
                 `${API_BASE}/financial/wallet/disbursements/bulk`,
-                {
-                    clubId,
-                    paymentIds: elegidos.map(e => e.paymentId),
-                    disbursedAt: new Date(`${fechaDes}T12:00:00`).toISOString(),
-                    beneficiary: beneficiario,
-                    method: metodo,
-                    reference: referencia,
-                    notes: notas,
-                    notify: notificar,
-                    notifyEmail: correo,
-                    confirm: true,
-                },
+                payload,
                 { headers: { Authorization: `Bearer ${token()}` } }
             );
             setResultado(r.data);
@@ -302,14 +322,35 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                 />
                             </label>
 
-                            {/* El comprobante NO se ofrece acá, y se dice por qué:
-                                un archivo por aporte no se puede subir una vez, y
-                                subir el MISMO a cinco filas afirmaría que ese
-                                papel respalda cada una por separado. */}
-                            <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                                El comprobante se adjunta desde la ficha de cada aporte. Acá no se ofrece porque un
-                                mismo archivo repetido en cinco filas afirmaría que respalda a cada una por separado.
-                            </p>
+                            {/* ── EL COMPROBANTE DEL GIRO (v4.887) ────────────
+                                v4.886 no lo ofrecía, con el argumento de que un
+                                mismo archivo en cinco filas afirmaría respaldar
+                                a cada una por separado. El argumento era
+                                demasiado purista y el caso real lo desmiente: si
+                                los cinco aportes salieron en UNA transferencia,
+                                hay un solo soporte y ése SÍ los respalda a los
+                                cinco.
+
+                                Lo que no se puede es presentarlo como el
+                                comprobante de un aporte suelto — y de eso se
+                                encarga el lote: la ficha de cada aporte dice
+                                «comprobante del giro que cubrió N aportes». */}
+                            <label className="block">
+                                <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                                    Comprobante del giro (PDF, JPG o PNG)
+                                </span>
+                                <input
+                                    type="file"
+                                    accept="application/pdf,image/jpeg,image/png"
+                                    onChange={e => setArchivo(e.target.files?.[0] || null)}
+                                    className="w-full text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-xs file:font-bold"
+                                />
+                                <p className="text-[11px] text-gray-500 mt-1">
+                                    Es el soporte de la transferencia COMPLETA, no de un aporte suelto: se guarda una
+                                    vez y queda enlazado a los {elegidos.length} como comprobante del giro. Si cada
+                                    aporte salió por separado, adjuntá el suyo desde su ficha.
+                                </p>
+                            </label>
 
                             <label className="flex items-start gap-2 text-sm text-gray-700">
                                 <input type="checkbox" checked={notificar} onChange={e => setNotificar(e.target.checked)} className="mt-0.5" />
@@ -349,7 +390,8 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                 <div className="space-y-2">
                                     <p className="text-xs text-gray-700">
                                         Se registrarán <strong data-no-translate>{elegidos.length}</strong> desembolsos
-                                        a <strong data-no-translate>{beneficiario || '—'}</strong>.
+                                        a <strong data-no-translate>{beneficiario || '—'}</strong>
+                                        {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro</> : null}.
                                         Una vez confirmados no se borran: si hay que corregir alguno, se reversa desde su ficha.
                                     </p>
                                     <div className="flex justify-end gap-2">

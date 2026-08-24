@@ -57,8 +57,19 @@ const metodoLabel = (id) => DISBURSEMENT_METHODS.find(m => m.id === id)?.label |
 export const listDisbursements = async (paymentId) => {
     try {
         if (!paymentId || !(await listo())) return [];
+        // Se trae de paso CUÁNTOS aportes cubre el lote de cada desembolso. Es
+        // lo que permite decir «comprobante del giro que cubrió 5 aportes» en
+        // vez de dejar que se lea como el soporte de éste solo. Sale de la
+        // misma consulta: preguntarlo aparte sería un viaje por ficha.
         const { rows } = await db.query(
-            `SELECT * FROM "Disbursement" WHERE "paymentId" = $1 ORDER BY "disbursedAt" ASC`,
+            `SELECT d.*,
+                    CASE WHEN d."batchId" IS NULL THEN NULL ELSE (
+                        SELECT COUNT(*)::int FROM "Disbursement" b
+                         WHERE b."batchId" = d."batchId" AND b.status = 'confirmado'
+                    ) END AS "batchSize"
+               FROM "Disbursement" d
+              WHERE d."paymentId" = $1
+              ORDER BY d."disbursedAt" ASC`,
             [paymentId]
         );
         return rows.map(publico);
@@ -111,6 +122,11 @@ const publico = (r) => ({
     hasReceipt: !!r.receiptKey,
     receiptName: r.receiptName,
     receiptMime: r.receiptMime,
+    // v4.887 — El LOTE. Con `batchId` el comprobante es el del GIRO que cubrió
+    // varios aportes, no el de éste suelto: la ficha lo dice con esas palabras
+    // en vez de afirmar que un mismo archivo respalda a cada uno por separado.
+    batchId: r.batchId || null,
+    batchSize: r.batchSize ?? null,
     notifyEmail: r.notifyEmail,
     notifyState: r.notifyState,
     notifyAt: r.notifyAt,
@@ -297,7 +313,7 @@ export const receiptKeyOf = async (disbursementId, clubId) => {
  * queda fallida y reintentable.
  */
 export const registerDisbursement = async ({
-    payment, body, actor, receipt = null,
+    payment, body, actor, receipt = null, batchId = null,
 }) => {
     if (!(await listo())) {
         return { ok: false, status: 503, errores: ['El registro de desembolsos todavía no está disponible en esta base.'] };
@@ -324,8 +340,8 @@ export const registerDisbursement = async ({
                  (id, "paymentId", "clubId", "donationId", amount, currency, "disbursedAt",
                   beneficiary, method, reference, notes, status,
                   "receiptKey", "receiptName", "receiptMime", "receiptBytes",
-                  "notifyEmail", "createdBy", "createdByName")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmado',$12,$13,$14,$15,$16,$17,$18)
+                  "notifyEmail", "createdBy", "createdByName", "batchId")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmado',$12,$13,$14,$15,$16,$17,$18,$19)
              ON CONFLICT ("paymentId", reference)
                  WHERE reference IS NOT NULL AND status = 'confirmado'
                  DO NOTHING
@@ -336,6 +352,7 @@ export const registerDisbursement = async ({
                 datos.beneficiary, datos.method, datos.reference, datos.notes,
                 receipt?.key || null, receipt?.name || null, receipt?.mime || null, receipt?.bytes || null,
                 datos.notifyEmail, actor?.id || null, actor?.name || null,
+                batchId || null,
             ]
         );
 
