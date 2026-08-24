@@ -20,6 +20,7 @@
 // (v4.868). Las rutas llevan `requireSiteAdmin` y además cada método vuelve a
 // resolver el club desde el token.
 
+import { randomUUID } from 'crypto';
 import db from '../lib/db.js';
 import {
     listDisbursements, listDisbursementsFor, balanceFor,
@@ -220,7 +221,15 @@ export const createBulkDisbursements = async (req, res) => {
             });
         }
 
-        const ids = Array.isArray(req.body?.paymentIds) ? req.body.paymentIds.filter(Boolean) : [];
+        // Multipart manda los arrays como texto repetido o como JSON: se admiten
+        // las dos formas o el adjunto obligaría a cambiar cómo viaja la lista.
+        const crudos = req.body?.paymentIds;
+        const ids = (Array.isArray(crudos)
+            ? crudos
+            : typeof crudos === 'string'
+                ? (() => { try { const v = JSON.parse(crudos); return Array.isArray(v) ? v : [crudos]; } catch { return [crudos]; } })()
+                : []
+        ).filter(Boolean);
         if (!ids.length) return res.status(422).json({ error: 'No se eligió ningún aporte' });
         // Un tope por vuelta: el registro es una escritura por aporte y la
         // función corta a los 300 s. Lo que no entra se pide en otra tanda.
@@ -230,8 +239,39 @@ export const createBulkDisbursements = async (req, res) => {
 
         const actor = actorDe(req);
         const ahora = new Date();
+        // El identificador del LOTE. Existe siempre —también sin comprobante—
+        // porque agrupa los N movimientos de un mismo giro, que es útil para
+        // un informe aunque no haya archivo.
+        const loteId = randomUUID();
         const hechos = [];
         const saltados = [];
+
+        // ⚠️ v4.887 — EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ.
+        //
+        // v4.886 no lo ofrecía, con el argumento de que un mismo archivo
+        // repetido en cinco filas afirmaría respaldar a cada una por separado.
+        // El argumento era demasiado purista y el caso real lo desmiente: si
+        // los cinco aportes se giraron en UNA transferencia, hay un solo
+        // soporte y ése SÍ los respalda a los cinco. Lo que no se puede es
+        // presentarlo como si fuera de un aporte suelto — y para eso está el
+        // `batchId`, que hace que la ficha lo diga con esas palabras.
+        //
+        // Se sube una vez y las N filas comparten la clave: subirlo N veces
+        // serían N objetos idénticos en S3 y N veces el mismo gasto de red.
+        let comprobante = null;
+        if (req.file?.buffer) {
+            const subida = await uploadReceipt({
+                clubId,
+                // La clave lleva el id del LOTE, no el de un aporte: el archivo
+                // no es de ninguno en particular.
+                paymentId: `lote-${loteId}`,
+                buffer: req.file.buffer,
+                mime: req.file.mimetype,
+                filename: req.file.originalname,
+            });
+            if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
+            comprobante = subida;
+        }
 
         for (const id of ids) {
             const pago = await pagoDe(id, clubId);
@@ -264,7 +304,8 @@ export const createBulkDisbursements = async (req, res) => {
                     notifyEmail: req.body?.notifyEmail,
                 },
                 actor,
-                receipt: null,
+                receipt: comprobante,
+                batchId: loteId,
             });
 
             if (!r.ok) { saltados.push({ id, motivo: r.errores?.[0] || 'No se pudo registrar.' }); continue; }
@@ -287,6 +328,8 @@ export const createBulkDisbursements = async (req, res) => {
         return res.json({
             ok: hechos.length > 0,
             registrados: hechos.length,
+            batchId: loteId,
+            comprobante: comprobante ? { name: comprobante.name, bytes: comprobante.bytes } : null,
             // Lo que NO entró y POR QUÉ. Sin esto, «se registraron 3 de 5» deja
             // adivinando cuáles dos y qué hacer con ellos.
             saltados,

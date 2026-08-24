@@ -123,7 +123,9 @@ router.post('/wallet/reconcile', authMiddleware, requireSiteAdmin, reconcileWall
 // v4.886 — Marcar VARIOS aportes como desembolsados de una vez. Literal y con
 // prefijo `/wallet/`, así que va con sus hermanas y por encima de cualquier
 // paramétrica de `/payments/`.
-router.post('/wallet/disbursements/bulk', authMiddleware, requireSiteAdmin, createBulkDisbursements);
+// v4.887 — Lleva `comprobanteOpcional`: un giro que cubre varios aportes tiene
+// UN soporte, y se sube una sola vez para las N filas.
+router.post('/wallet/disbursements/bulk', authMiddleware, requireSiteAdmin, comprobanteOpcional, createBulkDisbursements);
 
 // Lo que la ficha de un aporte necesita: calendario, línea de tiempo,
 // desembolsos y cuánto queda por desembolsar.

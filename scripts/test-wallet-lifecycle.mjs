@@ -415,6 +415,44 @@ ok('lo que no entró en el bloque se devuelve con su motivo',
     /saltados\.push\(\{ id, motivo/.test(ctrl));
 ok('y el total del bloque va POR MONEDA, nunca sumado',
     /El total se devuelve POR MONEDA/.test(ctrl));
+
+// ── v4.887 — El comprobante del giro ────────────────────────────────
+section('10c. Un giro que cubre N aportes tiene UN comprobante');
+
+ok('⚠️ el comprobante del bloque se sube UNA sola vez, fuera del bucle',
+    ctrl.indexOf('EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ') > 0
+    && ctrl.indexOf('let comprobante = null;') < ctrl.indexOf('for (const id of ids)'),
+    'la subida tiene que estar antes del bucle, o serían N objetos idénticos en S3');
+ok('y su clave lleva el id del LOTE, no el de un aporte',
+    /paymentId: `lote-\$\{loteId\}`/.test(ctrl));
+ok('las N filas comparten el mismo `batchId`',
+    /batchId: loteId/.test(ctrl) && /const loteId = randomUUID\(\)/.test(ctrl));
+ok('el lote existe SIEMPRE, también sin comprobante: agrupa los movimientos de un giro',
+    /Existe siempre —también sin comprobante—/.test(ctrl));
+
+ok('el `batchId` NO viaja como columna de Prisma',
+    !/batchId/.test(read('server/prisma/schema.prisma')));
+// `esquema` se declara más abajo en este archivo; acá se lee aparte para no
+// depender del orden de las secciones.
+const esquemaDisb = read('server/lib/ensureDisbursementSchema.js');
+ok('se agrega con ADD COLUMN IF NOT EXISTS: la tabla puede existir ya sin la columna',
+    /ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "batchId"/.test(esquemaDisb));
+ok('⚠️ y el ALTER se ejecuta también cuando la tabla YA existía',
+    /if \(rows\?\.\[0\]\?\.ok\) \{[\s\S]{0,600}await db\.query\(ALTERS\);/.test(esquemaDisb),
+    'sin esto, una base que estrenó el módulo en v4.885 no tendría la columna y el INSERT fallaría');
+
+ok('la ficha DICE que el comprobante es del giro, no del aporte suelto',
+    /Ver comprobante del giro/.test(read('src/components/admin/wallet/DisbursementSection.tsx')));
+ok('y que ese aporte salió dentro de un giro conjunto',
+    /giro conjunto de/.test(read('src/components/admin/wallet/DisbursementSection.tsx')));
+
+const barra = read('src/components/admin/wallet/BulkDisbursementBar.tsx');
+ok('el modal del bloque ofrece el adjunto',
+    /type="file"/.test(barra) && /application\/pdf,image\/jpeg,image\/png/.test(barra));
+ok('y explica que es el soporte de la transferencia COMPLETA',
+    /transferencia COMPLETA, no de un aporte suelto/.test(barra));
+ok('los ids viajan como JSON en un solo campo cuando hay adjunto',
+    /JSON\.stringify\(v\)/.test(barra));
 ok('el comprobante se devuelve como enlace firmado con caducidad dicha',
     /expiresInSeconds/.test(ctrl));
 
@@ -430,8 +468,18 @@ const esquema = read('server/lib/ensureDisbursementSchema.js');
 ok('⚠️ las tablas viven FUERA de Prisma y el motivo está escrito',
     /POR QUÉ NO SE LE AGREGA NI UNA COLUMNA A `Payment`/.test(esquema));
 ok('sin clave foránea a Payment', !/REFERENCES "Payment"/.test(esquema));
-ok('el SQL no lleva ninguna comilla invertida dentro',
-    !esquema.slice(esquema.indexOf('const SQL = `'), esquema.lastIndexOf('`;')).includes('`', 13));
+// ⚠️ Ninguna comilla invertida dentro de un SQL en template literal, ni en un
+// comentario: cierra el literal a mitad y el módulo entero deja de parsear.
+// Ya pasó en `ensureDesignSchema.js` (v4.721.1). Se comprueba CADA bloque por
+// separado: con dos literales en el archivo, buscar «del primero al último
+// backtick» abarcaría el hueco entre ellos y daría un falso positivo.
+for (const nombre of ['SQL', 'ALTERS']) {
+    const abre = esquema.indexOf(`const ${nombre} = \``);
+    const cuerpo = esquema.slice(abre + `const ${nombre} = \``.length);
+    const cierra = cuerpo.indexOf('\`;');
+    ok(`el bloque ${nombre} no lleva ninguna comilla invertida dentro`,
+        abre > 0 && cierra > 0 && !cuerpo.slice(0, cierra).includes('\`'));
+}
 
 const prisma = read('server/prisma/schema.prisma');
 ok('⚠️ `Payment` NO ganó ninguna columna del ciclo de vida',

@@ -137,6 +137,14 @@ CREATE TABLE IF NOT EXISTS "Disbursement" (
     "notifyAt"     TIMESTAMPTZ,
     "notifyError"  TEXT,
     "notifyDeliveryId" TEXT,
+    -- v4.887 — EL LOTE. Un giro que cubre varios aportes deja UNA fila por
+    -- aporte —eso no cambia— pero las N comparten este identificador, y de ahi
+    -- se DERIVA que su comprobante es el del giro completo y no el de ese
+    -- aporte suelto. Sin el, la ficha tendria que afirmar que un mismo archivo
+    -- respalda a cada aporte por separado, que es lo que no se puede decir.
+    -- NULL significa "desembolso suelto", que es lo que son todos los
+    -- anteriores a v4.887.
+    "batchId"      TEXT,
     -- Quien lo registro. Una operacion financiera sin autor no rinde cuentas.
     "createdBy"    TEXT,
     "createdByName" TEXT,
@@ -150,6 +158,9 @@ CREATE INDEX IF NOT EXISTS "Disbursement_payment_idx"
 CREATE INDEX IF NOT EXISTS "Disbursement_club_idx"
     ON "Disbursement"("clubId", "disbursedAt" DESC);
 
+CREATE INDEX IF NOT EXISTS "Disbursement_batch_idx"
+    ON "Disbursement"("batchId") WHERE "batchId" IS NOT NULL;
+
 -- La proteccion contra el doble registro por doble clic o por reintento de red.
 -- No es la referencia bancaria a secas —dos aportes distintos pueden salir en
 -- la misma transferencia— sino la referencia DENTRO del mismo pago.
@@ -162,6 +173,21 @@ CREATE INDEX IF NOT EXISTS "Disbursement_club_idx"
 CREATE UNIQUE INDEX IF NOT EXISTS "Disbursement_payment_reference_key"
     ON "Disbursement"("paymentId", reference)
     WHERE reference IS NOT NULL AND status = 'confirmado';
+`;
+
+/**
+ * Lo que se AGREGA a una tabla que ya existe.
+ *
+ * Idempotente y barato: `ADD COLUMN IF NOT EXISTS` no hace nada cuando la
+ * columna está. Va aparte del `CREATE` porque aquél no amplía: una base que
+ * estrenó el módulo en v4.885 tiene la tabla sin `batchId`, y sin esto el
+ * `INSERT` fallaría con «column does not exist» — en silencio, porque este
+ * módulo degrada.
+ */
+const ALTERS = `
+ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "batchId" TEXT;
+CREATE INDEX IF NOT EXISTS "Disbursement_batch_idx"
+    ON "Disbursement"("batchId") WHERE "batchId" IS NOT NULL;
 `;
 
 /**
@@ -182,7 +208,16 @@ export const ensureDisbursementSchema = async () => {
                 `SELECT to_regclass('public."Disbursement"') IS NOT NULL
                         AND to_regclass('public."PaymentLifecycleEvent"') IS NOT NULL AS ok`
             );
-            if (rows?.[0]?.ok) return { ok: true, created: false };
+            if (rows?.[0]?.ok) {
+                // ⚠️ LA TABLA PUEDE EXISTIR YA Y SIN LA COLUMNA NUEVA. `CREATE
+                // TABLE IF NOT EXISTS` no amplía nada, así que un despliegue
+                // posterior que agregue una columna tiene que pedirla aparte —
+                // es la regla de `EventRegistration` (v4.648): se AMPLÍA con
+                // `ADD COLUMN IF NOT EXISTS`, jamás se recrea, porque tiene
+                // datos de producción.
+                await db.query(ALTERS);
+                return { ok: true, created: false };
+            }
 
             await db.query(SQL);
             console.log('[WALLET] Tablas del ciclo de vida creadas: PaymentLifecycleEvent, Disbursement');

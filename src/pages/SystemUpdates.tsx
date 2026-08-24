@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.886.0 | 2026-08-24 (Indicador de desembolsado, selección múltiple y el SELECT incompleto)
-// Cache bust: 2026-08-24b
+// UI V4.887.0 | 2026-08-24 (Comprobante del giro en el desembolso en bloque)
+// Cache bust: 2026-08-24c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.887.0',
+        title: 'El comprobante del giro, en el desembolso de varios aportes',
+        description: 'Al marcar varios aportes como desembolsados ya se puede adjuntar el comprobante de la transferencia. La versión anterior no lo ofrecía por un motivo que resultó equivocado: si los aportes salieron en un solo giro, hay un solo soporte y ése sí los respalda a todos. El archivo se guarda una vez y queda enlazado a cada aporte, y la ficha de cada uno dice que es el comprobante del giro conjunto, no de ese aporte suelto.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'comprobantes'],
+        type: 'feature',
+        impact: 'Un giro que cubre varios aportes queda soportado sin subir el mismo archivo una vez por aporte, y sin que el sistema afirme que respalda a cada uno por separado.',
+    },
     {
         version: '4.886.0',
         title: 'Bóveda: cuánto se desembolsó, y marcar varios aportes de una vez',
