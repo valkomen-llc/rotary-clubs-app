@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.888.0 | 2026-08-24 (Destinatarios múltiples y aviso por WhatsApp)
-// Cache bust: 2026-08-24d
+// UI V4.889.0 | 2026-08-24 (Corrige el botón de confirmar el desembolso en bloque)
+// Cache bust: 2026-08-24e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.889.0',
+        title: 'Corrección: confirmar el desembolso en bloque no hacía nada',
+        description: 'Al marcar varios aportes como desembolsados y confirmar, el botón no producía ningún efecto: la versión anterior renombró un campo del formulario y una línea se quedó con el nombre viejo, así que el envío fallaba antes de salir. Además, ahora no se puede llegar a la confirmación sin escribir el beneficiario —el servidor ya lo exigía, pero se gastaba el intento para volver con el mismo error— y se agrega una barrera que impide dar por verificada una comprobación de tipos que en realidad no revisó ningún archivo.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'correccion'],
+        type: 'fix',
+        impact: 'El desembolso en bloque vuelve a funcionar y los destinatarios de correo y WhatsApp llegan al servidor. El beneficiario queda marcado como obligatorio antes de confirmar.',
+    },
     {
         version: '4.888.0',
         title: 'El aviso del desembolso: varios destinatarios y WhatsApp',

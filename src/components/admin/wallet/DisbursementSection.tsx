@@ -634,12 +634,17 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estad
                         </p>
                     )}
 
-                    <Campo label="Beneficiario / prestatario">
+                    <Campo label="Beneficiario / prestatario *">
                         <input
                             type="text" value={beneficiario} onChange={e => setBeneficiario(e.target.value)}
                             placeholder="Nombre de la persona u organización que recibió el dinero"
                             className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm"
                         />
+                        {!beneficiario.trim() && (
+                            <p className="text-[11px] text-amber-700 mt-1">
+                                Hace falta para poder confirmar: es quién recibió el dinero.
+                            </p>
+                        )}
                     </Campo>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -693,10 +698,17 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estad
                             <button type="button" onClick={onCerrar} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
                                 Cancelar
                             </button>
+                            {/* ⚠️ v4.889 — Sin beneficiario no se pasa a confirmar. El
+                                servidor sigue siendo quien decide, pero llegar a una
+                                confirmación que dice «a —» y gastar la petición para
+                                volver con el mismo error es hacerle perder el gesto a
+                                quien lo dio. Misma guarda que en el modal del bloque. */}
                             <button
                                 type="button"
                                 onClick={() => setConfirmando(true)}
-                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
+                                disabled={!beneficiario.trim()}
+                                title={!beneficiario.trim() ? 'Falta decir quién recibió el dinero' : undefined}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 <Send className="w-4 h-4" /> Confirmar desembolso
                             </button>
