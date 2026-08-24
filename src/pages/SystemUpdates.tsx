@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.890.0 | 2026-08-24 (El estado de un aporte conoce su desembolso)
-// Cache bust: 2026-08-24e
+// UI V4.891.0 | 2026-08-24 (El asistente de redacción dice qué falló y escribe para posicionar)
+// Cache bust: 2026-08-24g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.891.0',
+        title: 'Corrección: el asistente de redacción de Noticias fallaba sin decir por qué',
+        description: 'Al pedir un artículo con IA salía siempre «Intenta de nuevo en unos segundos», un mensaje que no distingue una credencial ausente de un modelo retirado. La causa era doble: el modelo por defecto razona antes de responder y esos tokens salían del mismo presupuesto que el texto, así que con un artículo largo se quedaba sin espacio y devolvía una respuesta vacía o cortada a mitad del JSON; y esa respuesta vacía se daba por buena, de modo que ni siquiera se probaba el modelo de respaldo. Ahora el razonamiento se acota, el presupuesto alcanza para un artículo completo, una respuesta cortada se aprovecha en vez de tirarse, y el motivo del proveedor llega textual a la pantalla.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'ia', 'seo', 'correccion'],
+        type: 'fix',
+        impact: 'El artículo generado ya no nace señalado por el propio informe de SEO del sitio: se pide un cuerpo de entre 300 y 1.400 palabras con secciones, párrafos cortos y una lista, y los límites del titular y la meta descripción salen del catálogo que usa la auditoría, no de números escritos aparte. Lo que no cumple se dice en pantalla en vez de publicarse en silencio.',
+    },
     {
         version: '4.890.0',
         title: 'Corrección: marcar como desembolsado no cambiaba el estado',

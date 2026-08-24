@@ -1,5 +1,19 @@
 import db from '../lib/db.js';
 import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
+import {
+    buildArticleSystemPrompt, buildArticleUserPrompt,
+    parseArticle, normalizeArticle, validateArticle, repairArticle,
+} from '../lib/articleSpec.js';
+
+// Cuántas veces se le devuelven al modelo las reglas que rompió. Dos: la
+// primera corrección resuelve casi siempre y una tercera pasada cuesta latencia
+// en una pantalla donde alguien está esperando.
+const MAX_ARTICLE_ATTEMPTS = 2;
+// Presupuesto de salida de un artículo completo. No es un número redondo por
+// gusto: ~900 palabras en HTML más los ocho campos de SEO no entran en los 4096
+// por defecto, y en un modelo con razonamiento los tokens de pensamiento salen
+// del mismo presupuesto.
+const ARTICLE_MAX_TOKENS = 8192;
 import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
 import { ingestMemorySafe } from '../services/brainService.js';
 
@@ -1445,54 +1459,115 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
 });
 
 // POST /api/ai/generate-article — Genera un artículo completo desde contexto
+//
+// El modelo ESCRIBE y el código DECIDE: `validateArticle` comprueba las reglas
+// (longitudes de `seoSpec.LIMITS`, extensión y estructura del cuerpo) y se
+// reintenta devolviéndole al modelo LA REGLA CONCRETA que rompió. Pedirle
+// "revisá el formato" no corrige nada.
 router.post('/generate-article', async (req, res) => {
     const { context, modelSlug } = req.body;
     if (!context || context.trim().length < 5) {
         return res.status(400).json({ error: 'El contexto es demasiado corto.' });
     }
 
-    const systemPrompt = `Eres ArticulIA, el redactor jefe experto del club Rotario. Tu misión es transformar un contexto breve en un artículo de blog profesional, inspirador y optimizado para SEO.
-    IMPORTANTE:
-    1. Usa un tono institucional, empoderador y alineado con los valores de Rotary (Gente de Acción).
-    2. El artículo debe ser estructurado y fácil de leer.
-    3. Responde ÚNICAMENTE con un JSON válido. No incluyas explicaciones fuera del JSON.
-    
-    ESTRUCTURA DEL JSON (OBLIGATORIA - REGLAS DE LONGITUD REQUERIDAS):
-    {
-      "noticia_titulo": " Titular (máx 70 car)",
-      "noticia_cuerpo": " HTML con <p>, <h2>. Mínimo 3 parrafos.",
-      "noticia_categorias": "Categoría1, Categoría2",
-      "seo_titulo": "Título SEO (STRICT MAX 60 CHARACTERS - NUNCA TE PASES)",
-      "seo_descripcion": "Meta descripción (STRICT MAX 155 CHARACTERS)",
-      "slug": "url-amigable",
-      "keywords": "palabras, clave",
-      "copys_redes": "Texto para redes sociales"
-    }`;
+    // El nombre del sitio sirve para dos cosas: darle marca al artículo y evitar
+    // que el modelo lo meta dentro del seo_titulo, donde saldría repetido porque
+    // el compositor del <head> ya lo añade.
+    let siteName = '';
+    try {
+        if (req.user?.clubId) {
+            const r = await db.query('SELECT name FROM "Club" WHERE id = $1 LIMIT 1', [req.user.clubId]);
+            siteName = r.rows[0]?.name || '';
+        }
+    } catch (_) { /* la marca es un extra: sin ella se redacta igual */ }
+
+    const slug = modelSlug || (await getDefaultModel()) || 'gemini-2.5-flash';
+
+    let brokenRules = [];
+    let best = null;      // lo mejor que se consiguió, por si se agotan los intentos
+    let bestErrors = null;
+    let lastFailure = '';
+    let truncatedOnce = false;
 
     try {
-        const userPrompt = `Analiza este contexto y genera un artículo completo con SEO y redes sociales para Rotary:
-        Contexto real del evento: ${context.trim()}`;
+        for (let attempt = 1; attempt <= MAX_ARTICLE_ATTEMPTS; attempt++) {
+            const raw = await routeToModel(
+                slug,
+                buildArticleSystemPrompt({ siteName }),
+                buildArticleUserPrompt({ context, brokenRules }),
+                [],
+                // Un artículo de ~900 palabras en HTML más los campos de SEO no
+                // cabe en el presupuesto por defecto: la respuesta se corta a
+                // mitad del JSON y no queda nada aprovechable.
+                { maxTokens: ARTICLE_MAX_TOKENS }
+            );
 
-        // Usar la lógica de enrutamiento dinámico (idéntico al SEO)
-        const defaultSlug = await getDefaultModel();
-        const raw = await routeToModel(defaultSlug || 'gemini-2.5-flash', systemPrompt, userPrompt);
-        
-        // Limpieza de formato (Fórmula del SEO)
-        let cleaned = raw.replace(/```json|```/gi, '').trim();
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        
-        if (!jsonMatch) {
-            throw new Error('La IA no devolvió un formato JSON válido.');
+            const { data, truncated } = parseArticle(raw);
+            if (truncated) truncatedOnce = true;
+            if (!data) {
+                lastFailure = 'El modelo no devolvió un JSON que se pueda leer.';
+                brokenRules = ['Responde ÚNICAMENTE con el objeto JSON, sin texto alrededor y sin markdown.'];
+                continue;
+            }
+
+            const article = normalizeArticle(data);
+            const { errors, warnings, body } = validateArticle(article, { siteName });
+
+            if (!errors.length) {
+                return res.json({
+                    ...article,
+                    _meta: { model: slug, attempts: attempt, warnings, wordCount: body.wordCount, readingMinutes: body.readingMinutes },
+                });
+            }
+
+            // Se guarda el intento con menos reglas rotas: si se agotan los
+            // intentos se entrega ése reparado, no el último por ser el último.
+            if (!best || errors.length < bestErrors.length) { best = article; bestErrors = errors; }
+            brokenRules = errors;
+            lastFailure = errors.join(' ');
         }
 
-        const article = JSON.parse(jsonMatch[0]);
-        res.json(article);
+        // Agotados los intentos, el trabajo NO se tira: se ajusta lo ajustable
+        // por código y se entrega CON SUS AVISOS. Un titular dos caracteres
+        // largo es mejor que ningún artículo, y quien redacta lo ve y lo corrige.
+        if (best) {
+            const { article, repaired } = repairArticle(best);
+            const { errors, warnings, body } = validateArticle(article, { siteName });
+            // Lo REPARADO viaja como aviso, no sólo en el diagnóstico. Un titular
+            // que se recorta en silencio se publica con puntos suspensivos y
+            // quien lo escribió se entera al verlo en línea; dicho, lo reescribe.
+            const avisoReparado = repaired.length
+                ? [`Se ajustó automáticamente: ${repaired.join(', ')}. Revísalo antes de publicar.`]
+                : [];
+            return res.json({
+                ...article,
+                _meta: {
+                    model: slug, attempts: MAX_ARTICLE_ATTEMPTS, repaired,
+                    warnings: [...avisoReparado, ...errors, ...warnings],
+                    wordCount: body.wordCount, readingMinutes: body.readingMinutes,
+                },
+            });
+        }
+
+        // Ni un intento devolvió algo legible. El motivo se dice TEXTUAL: "no se
+        // pudo generar" a secas deja a quien corrige sin saber si el problema es
+        // la credencial, el modelo o el presupuesto de tokens.
+        return res.status(502).json({
+            error: truncatedOnce
+                ? 'El modelo se quedó sin espacio antes de terminar el artículo. Prueba con un contexto más breve o cambia de modelo en Integraciones → Modelos IA.'
+                : `No se pudo generar el artículo. ${lastFailure}`.trim(),
+            model: slug,
+        });
 
     } catch (error) {
         console.error('[ArticulIA] Error en motor central:', error);
-        res.status(200).json({ 
-            error: 'Intenta de nuevo en unos segundos', 
-            details: error.message 
+        // El error del proveedor se propaga TEXTUAL y con un estado HTTP real.
+        // Hasta v4.890 esto respondía 200 con "Intenta de nuevo en unos
+        // segundos" y el motivo se perdía: una credencial ausente, un modelo
+        // retirado y un presupuesto agotado se veían exactamente igual.
+        return res.status(502).json({
+            error: error.message || 'No se pudo contactar con el proveedor de IA.',
+            model: slug,
         });
     }
 });
