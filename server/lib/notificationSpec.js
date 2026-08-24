@@ -57,6 +57,23 @@ export const NOTIFICATION_EVENTS = [
         available: false,
     },
     {
+        // v4.885 — El evento que cierra el ciclo operativo. «Disponible» dice
+        // que el dinero se puede usar; «desembolsado» dice que se trasladó de
+        // verdad, y hasta ahora la plataforma no tenía dónde registrar la
+        // segunda cosa ni a quién avisarle de ella.
+        //
+        // `available: true` porque su fuente NO es un webhook de un tercero
+        // sino un acto administrativo con nombre y comprobante: lo dispara
+        // `registerDisbursement`, y de ese hecho no hay ninguna duda. Es la
+        // diferencia con `in_transit`, que sigue en false porque nadie nos
+        // avisa cuando Stripe libera — hay que ir a preguntárselo.
+        id: 'disbursed',
+        label: 'Aporte desembolsado',
+        help: 'Un administrador registró el traslado efectivo del dinero al beneficiario, con su comprobante.',
+        source: 'registerDisbursement (acto administrativo)',
+        available: true,
+    },
+    {
         id: 'refunded',
         label: 'Aporte reembolsado',
         help: 'Stripe confirmó la devolución del dinero. El aporte deja de contar como ingreso.',

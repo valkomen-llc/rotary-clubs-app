@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.884.0",
-  "cache_bust": "2026-08-21f (Corrige el 500 de toda la plataforma.)",
+  "version": "4.885.0",
+  "cache_bust": "2026-08-24a (Ciclo de vida del aporte: liberacion automatica y desembolsos.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -83,6 +83,7 @@
     "test:wallet:central:ui": "node scripts/test-wallet-central-ui.mjs",
     "test:wallet:empty": "node scripts/test-wallet-empty.mjs",
     "test:wallet:export": "node scripts/test-wallet-export.mjs",
+    "test:wallet:lifecycle": "node scripts/test-wallet-lifecycle.mjs",
     "test:wallet:filters": "node scripts/test-wallet-filters.mjs",
     "test:wallet:ui": "node scripts/test-wallet-ui.mjs"
   },

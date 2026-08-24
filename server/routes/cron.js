@@ -507,6 +507,46 @@ router.get('/notification-retries', async (req, res) => {
     }
 });
 
+// ── Vercel Cron: /api/cron/wallet-tick ──────────────────────────────────────
+//
+// v4.885 — Pone al día el estado del dinero de la Bóveda SIN que nadie abra la
+// plataforma. Es la mitad que faltaba del ciclo de vida de un aporte.
+//
+// Hasta v4.884 el único proceso que consultaba a Stripe por un aporte ya
+// registrado era el botón «Sincronizar con Stripe», que es manual. Si nadie
+// entraba a la Bóveda, la columna `stripeStatus` se quedaba en «pending» para
+// siempre y el aporte se veía «En tránsito» aunque hubieran pasado seis días o
+// seis meses. Se reportó con aportes del 19 de agosto todavía en tránsito el 24.
+//
+// Cada QUINCE minutos y no cada uno: `available_on` es una fecha de Stripe con
+// resolución de día, así que mirarla sesenta veces por hora no la adelanta ni un
+// segundo. Cada vuelta gasta una llamada a Stripe por aporte desactualizado, y
+// un aporte corregido deja de ser candidato solo — así que en régimen la
+// mayoría de las vueltas no hacen nada, que es lo ESPERADO. Por eso sólo se
+// registra en consola cuando hubo algo.
+router.get('/wallet-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON wallet-tick] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepWallet } = await import('../lib/walletSweep.js');
+        const resumen = await sweepWallet({ limit: 40, timeBudgetMs: 90000 });
+        if (resumen.actualizados > 0 || resumen.avanzados > 0 || resumen.fallidos > 0) {
+            console.log(
+                `[CRON wallet-tick] stripe=${resumen.consultadosAStripe} actualizados=${resumen.actualizados} ` +
+                `avanzaron=${resumen.avanzados} fallaron=${resumen.fallidos} pendientes=${resumen.pendientes} ` +
+                `en ${resumen.elapsedMs}ms`
+            );
+        }
+        res.json({ ok: true, ...resumen });
+    } catch (e) {
+        console.error('[CRON wallet-tick] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Vercel Cron: /api/cron/emergency-feed ───────────────────────────────────
 //
 // Lee las fuentes del «Panorama de la emergencia» de cada campaña de

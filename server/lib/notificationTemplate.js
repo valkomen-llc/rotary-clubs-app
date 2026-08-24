@@ -48,6 +48,16 @@ export const TEMPLATE_VARIABLES = [
     { id: 'contribution_date', label: 'Fecha del aporte', sample: '17 de agosto de 2026', available: true },
     { id: 'donor_message', label: 'Mensaje del aportante', sample: 'Con cariño para las familias del Chocó.', available: true },
     { id: 'receipt_url', label: 'Recibo del procesador', sample: 'https://pay.stripe.com/receipts/…', available: true },
+    // v4.885 — Las del desembolso. Sólo tienen valor en el correo del evento
+    // `disbursed`; en cualquier otro quedan sin resolver y el marcador se ve,
+    // que es exactamente lo que corresponde: una plantilla que hable de un
+    // desembolso en el correo de un aporte recién cobrado está mal armada y
+    // tiene que notarse.
+    { id: 'disbursement_amount', label: 'Monto desembolsado', sample: '1.484.437', available: true },
+    { id: 'disbursement_date', label: 'Fecha del desembolso', sample: '26 de agosto de 2026', available: true },
+    { id: 'disbursement_method', label: 'Medio del traslado', sample: 'Transferencia bancaria', available: true },
+    { id: 'disbursement_reference', label: 'Referencia de la transferencia', sample: 'TRF-908124', available: true },
+    { id: 'beneficiary_display', label: 'Beneficiario del desembolso', sample: 'Fundación Colombiana de Rotarios', available: true },
 ];
 
 export const VARIABLE_IDS = TEMPLATE_VARIABLES.map(v => v.id);
@@ -468,12 +478,47 @@ export const defaultRefundTemplate = () => ({
     ],
 });
 
+/**
+ * v4.885 — El correo del DESEMBOLSO.
+ *
+ * ⚠️ NO ES EL RECIBO DEL APORTE, y por eso es una plantilla propia. Con una
+ * sola, avisar de un desembolso saldría diciendo «gracias por tu aporte» a
+ * alguien que no aportó: el destinatario acá es el BENEFICIARIO, que recibe
+ * dinero, no quien lo dio. Es la misma distinción que obligó a separar
+ * `defaultRefundTemplate` en v4.859.
+ *
+ * ⚠️ NO SE PROMETE UNA FECHA DE ACREDITACIÓN. La plataforma sabe cuándo se
+ * ordenó el traslado, no cuándo lo abona el banco del beneficiario: afirmarlo
+ * sería inventar, y es de las cosas que alguien planifica leyendo un correo.
+ */
+export const defaultDisbursementTemplate = () => ({
+    subject: 'Tu aporte ha sido desembolsado',
+    preheader: 'Se completó el traslado de {{disbursement_amount}} {{currency}}.',
+    blocks: [
+        { type: 'logo', align: 'left' },
+        { type: 'heading', text: 'El desembolso se completó', align: 'left' },
+        { type: 'paragraph', text: 'Hola {{beneficiary_display}}: te confirmamos que el traslado de los fondos se realizó.', align: 'left' },
+        { type: 'summary', title: 'Detalle del desembolso' },
+        { type: 'paragraph', text: 'Monto desembolsado: {{disbursement_amount}} {{currency}}. Fecha: {{disbursement_date}}. Medio: {{disbursement_method}}. Referencia: {{disbursement_reference}}.', align: 'left' },
+        { type: 'paragraph', text: 'Según la entidad financiera, la acreditación puede tardar algunos días hábiles en verse reflejada.', align: 'left' },
+        { type: 'paragraph', text: 'Si algo no coincide con lo que esperabas, respondé a este correo y lo revisamos.', align: 'left' },
+        { type: 'signature', text: '{{beneficiary_name}}' },
+        { type: 'legal', text: 'Referencia del aporte: {{contribution_id}}.' },
+    ],
+});
+
 /** La plantilla de fábrica que le toca a cada combinación.
  *
  * El PAPEL decide el tono —el aportante recibe el correo dirigido a él, los
  * demás el aviso interno— y el EVENTO decide qué dice. Con sólo el papel, un
  * reembolso saldría agradeciendo el aporte que se acaba de devolver. */
 export const defaultTemplateFor = (recipientKind, event = 'payment_confirmed') => {
+    // v4.885 — El desembolso va SIEMPRE con su plantilla, sea quien sea el
+    // destinatario. Es la excepción a la regla de arriba y tiene motivo: acá el
+    // papel «beneficiary» no es un observador interno al que se le informa de
+    // un movimiento ajeno, es el destinatario del dinero. Mandarle el aviso
+    // interno le hablaría de sí mismo en tercera persona.
+    if (event === 'disbursed') return defaultDisbursementTemplate();
     if (recipientKind && recipientKind !== 'donor') return defaultInternalTemplate(event);
     return event === 'refunded' ? defaultRefundTemplate() : defaultTemplate();
 };
@@ -483,6 +528,6 @@ export default {
     BLOCK_TYPES, BLOCK_IDS, blockById, blockShape, safeUrl,
     templateShape, validateTemplate, variablesIn,
     escapeHtml, applyVariables, renderTemplate, defaultTemplate,
-    defaultInternalTemplate, defaultRefundTemplate, defaultTemplateFor,
+    defaultInternalTemplate, defaultRefundTemplate, defaultDisbursementTemplate, defaultTemplateFor,
     TEXT_MAX, BLOCKS_MAX,
 };

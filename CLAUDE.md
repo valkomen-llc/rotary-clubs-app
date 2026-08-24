@@ -6984,6 +6984,207 @@ dónde se mire**, y por eso cambia de icono y de rótulo.
   sobre el endpoint REAL — el criterio puede estar bien y el defecto vivir en el
   camino (v4.744).
 
+## El ciclo de vida de un aporte — v4.885
+
+Reporte con captura: aportes del 19, 20 y 21 de agosto todavía «En tránsito» el
+24, y ninguna forma de registrar que el dinero se trasladó al beneficiario.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/walletLifecycle.js` | El CRITERIO. **Puro**: estados, `bucketOf`, calendario de liberación, transiciones legales, validación del desembolso y la línea de tiempo |
+| `server/lib/ensureDisbursementSchema.js` | Crea `PaymentLifecycleEvent` y `Disbursement` en runtime |
+| `server/lib/paymentLifecycle.js` | La I/O de la traza: escribir eventos y leerlos |
+| `server/lib/disbursements.js` | La I/O del desembolso: registrar, reversar, comprobante y aviso |
+| `server/lib/walletSweep.js` | El barrido: reconcilia con Stripe y avanza estados |
+| `server/lib/walletReconcile.js` | La pasada histórica, de ensayo por defecto |
+| `server/controllers/disbursementController.js` | La API |
+| `src/components/admin/wallet/DisbursementSection.tsx` | Calendario, línea de tiempo, desembolsos y el modal |
+
+Pruebas: `npm run test:wallet:lifecycle` (119 casos, **sin base, credenciales ni
+red**). Verificadas a la inversa: reintroduciendo el defecto, seis fallan.
+
+**Reglas durables:**
+
+- **⚠️ «PENDING» NO ES UNA FECHA, y ésa era la causa raíz.** `bucketOf` decía
+  `if (p.stripeStatus === 'pending' || (p.availableOn && availableOn > now))
+  return 'in_transit'`, y **la primera mitad de esa condición no dependía del
+  tiempo**. `stripeStatus` lo escribe el webhook con lo que Stripe contesta EN
+  EL MOMENTO DEL COBRO, y en ese momento una balance transaction está SIEMPRE
+  en `pending`: el dinero acaba de entrar. Así que **todo aporte nacía en
+  «pending» y se quedaba «En tránsito» para siempre**, hubieran pasado seis días
+  o seis meses. Ahora una **fecha vencida gana sobre una columna sin
+  actualizar**: una fecha vencida es un hecho, una columna vieja es una opinión
+  desactualizada.
+- **⚠️ Y LO ÚNICO QUE ACTUALIZABA ESA COLUMNA ERA UN BOTÓN MANUAL** que, por
+  defecto, **excluía de sus candidatos a los pagos que ya tenían
+  `availableOn`** (v4.846 lo acotó a los que les faltara `stripeFeeRate`). O
+  sea: el aporte que más necesitaba corregirse era justo el que el botón no
+  miraba. Hacen falta las DOS mitades —el criterio corregido y el barrido
+  automático—: sin la primera, la pantalla mentiría hasta que corriera el cron;
+  sin la segunda, la columna mentiría para siempre y el libro mayor nunca se
+  enteraría de la liberación.
+- **LA REGLA DE LOS 6 DÍAS SE AUDITÓ Y NO SE CAMBIÓ.** Son DOS esperas
+  encadenadas con orígenes distintos: `availableOn` es la fecha **oficial** de
+  Stripe (`balance_transaction.available_on`) —no la calculamos, la leemos— y
+  `clubAvailableOn` es ésa **más 6 días CALENDARIO**, que es el margen operativo
+  de la plataforma. Que sean calendario y no hábiles está **medido**, no
+  supuesto: el código vigente suma `6 * 24 * 60 * 60 * 1000`, o sea 144 horas
+  corridas. Cambiarlo a días hábiles movería la fecha de todos los aportes
+  vivos, y eso es una decisión de negocio, no la corrección de un defecto.
+- **⚠️ NO SE INVENTA UNA FECHA DE STRIPE QUE STRIPE NO DIO.** Cuando
+  `availableOn` falta —la balance transaction no existía cuando el webhook la
+  buscó, que es el caso común— se puede ESTIMAR para pintar un contador, pero
+  esa estimación viaja **marcada** (`estimado: true`), se dice en la pantalla y
+  **nunca decide un bucket ni dispara un asiento**. Presentar un promedio propio
+  como si fuera el calendario del proveedor es lo que hace que alguien
+  planifique un pago contra una fecha que no existe.
+- **⚠️ `Payment` NO GANÓ NI UNA COLUMNA, y es la decisión más cara de la lista.**
+  Era el camino corto —un `lifecycleState` y listo— y no se hace: `Payment` y
+  `Donation` se consultan con `findMany` **sin `select`** en media plataforma,
+  así que Prisma pide TODAS las columnas del esquema y una declarada y todavía
+  inexistente deja esas consultas en **500** (regla de `logo_intl`, v4.699). El
+  `build` no ejecuta `db push` desde el incidente del 2026-07-13, así que ese
+  «hasta que alguien lo corra» no tiene fecha. Y lo que caería en 500 acá es
+  **el webhook del cobro**. Las dos tablas nuevas viven fuera de Prisma, sin
+  clave foránea a `Payment`, y están en la lista del guardián de `db:push`.
+- **EL BARRIDO ES IDEMPOTENTE POR LA FORMA DE LA CONSULTA, no por un candado.**
+  Los candidatos se eligen por CRITERIO —«a éste le falta la fecha», «a éste la
+  columna se le quedó atrás»—, nunca por «a éste no lo he mirado», así que un
+  pago corregido **deja de ser candidato solo** y correr el barrido diez veces
+  hace trabajo la primera. Es el patrón que estrenó v4.846. Y no hay dinero que
+  duplicar: el barrido **no crea ni un movimiento** —escribe fechas que vienen
+  de Stripe, el mismo valor cada vez— y el único asiento que dispara lo protege
+  el índice único de `LedgerTransaction`.
+- **Cada 15 minutos y no cada uno.** `available_on` es una fecha con resolución
+  de DÍA: mirarla sesenta veces por hora no la adelanta un segundo, y cada
+  vuelta gasta una llamada a Stripe por aporte desactualizado. En régimen la
+  mayoría de las vueltas no hacen nada, que es lo ESPERADO — por eso sólo se
+  registra en consola cuando hubo algo.
+- **La ventana del barrido son 120 días.** Un aporte sin resolver de hace cuatro
+  meses no es un cobro lento, es uno roto, y gastar una llamada por él en cada
+  vuelta deja sin atender a los vivos. Lo que queda fuera **no se pierde**: lo
+  alcanza la reconciliación histórica, y el barrido lo dice.
+- **⚠️ EL BARRIDO NO RECALCULA LA RETENCIÓN CON LA TARIFA DE HOY.** Es la regla
+  de v4.854 y acá pesa más que en el botón: esto corre solo cada quince minutos,
+  así que un recálculo silencioso movería el neto de todos los aportes vivos sin
+  que nadie lo pidiera. Lo que sí se completa es la comisión del PROCESADOR
+  cuando nunca se pudo leer — ahí no se corrige una decisión nuestra, se rellena
+  un dato que Stripe no había dado.
+- **EL CAMINO DEL DINERO NO RETROCEDE**, y no es estética: impide que un aporte
+  ya desembolsado vuelva a «disponible» porque una consulta llegó tarde. Es la
+  lección de `mergeDeliveryState` —los eventos de un proveedor llegan sin orden
+  garantizado— aplicada a dinero, donde el precio de equivocarse es pagar dos
+  veces. Las dos excepciones (reembolso y fallo) son HECHOS NUEVOS, no
+  correcciones, y terminan el camino desde donde estén.
+- **⚠️ DISPONIBLE NO ES DESEMBOLSADO.** «Disponible» contesta «¿se puede usar
+  este dinero?»; «desembolsado» contesta «¿se trasladó?». La Bóveda contestaba
+  la primera y no tenía dónde registrar la segunda, así que el traslado ocurría
+  fuera de la plataforma y la única forma de saber si un aporte ya se había
+  girado era preguntárselo a alguien.
+- **SE ADMITEN PARCIALES y no se marca completo hasta que la suma llega.**
+  Marcarlo con el primer giro afirmaría que el beneficiario recibió todo cuando
+  recibió la mitad. Un desembolso **reversado no suma**: no trasladó nada. La
+  tolerancia es media unidad mínima de la moneda, contra el punto flotante — sin
+  ella, 1.484.437 pesos en tres giros exactos no cerraría nunca.
+- **⚠️ UNA OPERACIÓN FINANCIERA CONFIRMADA NO SE BORRA.** No hay `DELETE` en
+  `disbursements.js` ni ruta `DELETE` en la API, y su ausencia es deliberada.
+  Corregir es REVERSAR: la fila se queda, se marca, se anota quién y **por qué**
+  —un reverso sin motivo es un borrado con otro nombre— y deja de contar. Lo
+  comprueban dos pruebas sobre los archivos.
+- **⚠️ EL COMPROBANTE NO SE SIRVE DESDE UNA DIRECCIÓN PÚBLICA.** Se guarda la
+  CLAVE de S3 —bajo `private/disbursements/`, aparte del resto de la Biblioteca
+  para poder ponerle su propia política— y el enlace **se firma al pedirlo y
+  caduca a los 5 minutos**. La clave **no viaja al navegador**: sólo
+  `hasReceipt` y el nombre. Si viajara, bastaría abrir la consola para componer
+  la URL del bucket. A diferencia de una foto, acá el contenido es un documento
+  financiero con nombres y números de cuenta.
+- **NO SE ESCRIBE UN SEGUNDO SISTEMA DE CORREO.** El aviso reutiliza
+  `EmailService.sendPlatformEmail`, `renderTemplate` con sus bloques,
+  `resolveSenderPlan` —que no envía jamás desde un dominio sin verificar— y
+  `NotificationDelivery` para la traza. Un envío propio bifurcaría en silencio
+  cómo escribe la plataforma y dejaría este correo fuera del panel de entregas,
+  que es justo donde alguien lo va a buscar cuando digan que no llegó. Lo único
+  propio es el DESTINATARIO: sale del formulario, no del perfil, porque quién
+  recibe el dinero lo sabe el administrador que registró el traslado.
+- **⚠️ SI EL CORREO FALLA, EL DESEMBOLSO NO SE REVIERTE.** El dinero se movió de
+  verdad: deshacer el registro de un hecho financiero porque no salió un aviso
+  sería cambiar un problema de comunicación por uno de contabilidad. Queda
+  desembolsado y la notificación queda fallida y **reintentable**, con su motivo
+  TEXTUAL a la vista.
+- **`disbursed` entra al catálogo de notificaciones con `available: true`**, y
+  la diferencia con `in_transit` —que sigue en `false`— es la fuente: aquél
+  necesitaría que alguien nos avisara cuando Stripe libera y no hay quien lo
+  haga, mientras que un desembolso es un **acto administrativo con nombre y
+  comprobante** del que no hay ninguna duda.
+- **EL DESEMBOLSO TIENE SU PROPIA PLANTILLA.** Con una sola, avisar de un
+  desembolso saldría diciendo «gracias por tu aporte» a alguien que no aportó:
+  el destinatario acá **recibe** dinero. Y `defaultTemplateFor` la devuelve para
+  cualquier papel, invirtiendo a propósito la regla de arriba —ahí
+  «beneficiary» no es un observador interno al que se informa de un movimiento
+  ajeno—. **No se promete una fecha de acreditación**: sabemos cuándo se ordenó
+  el traslado, no cuándo lo abona el banco.
+- **⚠️ LA LÍNEA DE TIEMPO SALE DE LA BASE, NUNCA SE FABRICA EN LA PANTALLA.**
+  Componerla en el navegador a partir de fechas sueltas afirmaría que algo
+  ocurrió sin que nadie lo haya registrado, y entonces deja de servir para
+  auditar — que es lo único para lo que sirve. Cada evento guarda estado
+  anterior, estado nuevo, cuándo, **quién** (`system` / `user` / `provider`),
+  referencia y observaciones.
+- **UN EVENTO SE ANOTA CON LA FECHA EN QUE OCURRIÓ, no con la de hoy.** Un
+  aporte que venció hace tres días venció hace tres días aunque lo descubramos
+  ahora; anotarlo con la fecha del descubrimiento falsearía el historial. Por
+  eso `occurredAt` y `createdAt` son dos columnas.
+- **La idempotencia de la traza es un índice único** sobre `(paymentId, kind,
+  toState)`. Sin él, un aporte acumularía un evento idéntico por cada vuelta del
+  cron y la línea de tiempo sería ilegible en un día. Lo que SÍ puede repetirse
+  —una notificación, un desembolso parcial tras otro— se escribe con
+  `recordFact`, sin `toState`: en Postgres NULL es distinto de NULL, así que no
+  se funden. **Son dos hechos, no dos anotaciones del mismo.**
+- **⚠️ LA RECONCILIACIÓN NO INVENTA NADA PARA QUE LA PANTALLA SE VEA BIEN.** Lo
+  que hace es PREGUNTARLE A STRIPE y escribir lo que Stripe conteste; si Stripe
+  no contesta, o el pago no tiene referencia del proveedor, el aporte queda como
+  está y **se reporta por qué**. Una Bóveda que se ve bien y miente es peor que
+  una que enseña el problema.
+- **De ENSAYO por defecto**, como `ledgerBackfill` (v4.848). Sin `apply: true`
+  no escribe y devuelve lo que haría. Y **lo que no se pudo corregir es la mitad
+  del informe**, agrupado por MOTIVO con ejemplos: un listado de doscientas
+  filas no lo lee nadie, y sin esa parte «no pasó nada» es indistinguible de «no
+  se pudo».
+- **Registrar o reversar EXIGE confirmación explícita** (`confirm: true`, 428 si
+  falta). No es ceremonia: la acción mueve el estado financiero de un aporte y
+  puede mandar un correo a un tercero, y ninguna de las dos cosas se deshace
+  pulsando «atrás». La confirmación **dice lo que va a pasar** —importe,
+  beneficiario, a quién se avisa— en vez de preguntar «¿estás seguro?»: lo que
+  hay que poder revisar es el hecho, no la certeza.
+- **NO SE DESEMBOLSA LO QUE TODAVÍA NO ESTÁ DISPONIBLE.** Registrar el traslado
+  de un dinero que el proveedor aún retiene sería anotar un hecho que no pudo
+  ocurrir; se rechaza diciendo el estado y los días que faltan.
+- **El aislamiento va en el `WHERE`, no en una comprobación posterior.** Ningún
+  endpoint lee un pago por su id y mira después de quién es: el `clubId` del
+  token entra en la consulta, así que para quien pregunta por un aporte ajeno
+  **ese aporte no existe** — confirmar que existe ya es filtrar que existe. Y el
+  permiso se comprueba en el SERVIDOR: esconder un botón no protege un endpoint
+  de quien lo conoce (v4.868).
+- **Los días restantes se redondean HACIA ARRIBA** y se ven en la fila **sin
+  desplegar la ficha**. Es lo que se pidió eliminar: hasta ahora la única forma
+  de saber cuándo se liberaba un aporte era abrirlo, mirar «Stripe libera» y
+  sumarle seis días de cabeza. Prometer que algo está listo medio día antes es
+  peor que decir un día de más.
+- **`bucketOf` ya no vive en `financialController.js`**: aquél importa el puro.
+  Un segundo criterio escrito a mano volvería a separarse en silencio, y lo
+  comprueba una prueba sobre el archivo.
+- **Las dos tablas están en la lista del guardián de `db:push`.**
+
+**Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
+`/api/cron/wallet-tick` como al resto de los crons.
+
+**Pendientes conocidos:** el desembolso **no asienta contrapartida en el libro
+mayor** —hoy sólo el aporte y la liberación tienen asiento—; el evento
+`in_transit` sigue declarado y sin implementar porque nadie nos avisa cuando
+Stripe libera (hay que ir a preguntárselo, que es lo que hace el barrido); y la
+plantilla del desembolso **no tiene todavía una pantalla en el panel de
+Notificaciones** — se lee de `NotificationTemplate` si alguien la crea, y si no
+sale la de fábrica.
+
 ## Aportes por PayPal — v4.866
 
 Segunda vía de cobro en el modal de aportes, espejo del camino de Stripe.

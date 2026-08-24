@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft } from 'lucide-react';
+// v4.885 — El ciclo de vida del aporte: calendario de liberación, línea de
+// tiempo y desembolsos. Vive aparte porque este archivo ya son 1.700 líneas
+// y porque sus hooks no pueden quedar detrás de un return de `DonorCard`.
+import DisbursementSection from '../../components/admin/wallet/DisbursementSection';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -61,6 +65,26 @@ interface Delivery {
     errorMessage: string | null; sentAt: string | null; createdAt: string;
 }
 
+/** v4.885 — El informe de la reconciliación histórica.
+ *
+ * `noCorregidos` y `hallazgos` se agrupan POR MOTIVO con ejemplos, no como una
+ * lista plana: un listado de doscientas filas no lo lee nadie, y lo que hace
+ * falta saber es qué CLASE de problema hay y cuántos aportes alcanza. */
+interface ReconcileReport {
+    modo: 'ensayo' | 'aplicado';
+    revisados: number;
+    consultadosAStripe: number;
+    corregidos: number;
+    anotados: number;
+    sinCambio: number;
+    pendientes: number;
+    elapsedMs: number;
+    nota?: string;
+    hallazgos: Record<string, { cuantos: number; ejemplos: string[] }>;
+    noCorregidos: Record<string, { cuantos: number; ejemplos: string[] }>;
+    detalle: Array<{ id?: string; accion?: string; antes?: string; despues?: string; error?: string; motivo?: string }>;
+}
+
 interface Movement {
     id: string;
     providerRef: string | null;
@@ -79,6 +103,17 @@ interface Movement {
     stripeBalanceTxId: string | null;
     origin: { kind: string; label: string; id: string | null } | null;
     method: { label: string; brand: string; last4: string; wallet: string } | null;
+    /** v4.885 — El calendario del aporte, DERIVADO en el servidor de sus
+     *  fechas: cuándo lo libera el proveedor, cuándo lo puede usar el club y
+     *  cuántos días faltan. Opcional porque un navegador con el bundle nuevo
+     *  puede hablar con una API todavía sin desplegar — y entonces la fila se
+     *  pinta como antes en vez de reventar. */
+    lifecycle?: {
+        recibidoEl: string | null; stripeLiberaEl: string | null;
+        disponibleEl: string | null; estimado: boolean; fuente: string | null;
+        diasRestantes: number | null; liberadoEl: string | null;
+        estado: string; estadoLabel: string; holdingDays: number;
+    } | null;
     receiptUrl: string | null;
     receiptNumber: string | null;
     /** El importe ORIGINAL de la comisión de Stripe y la tasa con que se
@@ -268,7 +303,12 @@ export default function WalletManagement() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isRequesting, setIsRequesting] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [isSyncing, setIsSyncing] = useState(false); // v4.422 — sync retroactivo
+    const [isSyncing, setIsSyncing] = useState(false);
+    // v4.885 — La reconciliación histórica y su informe. Van aquí arriba,
+    // con el resto de los hooks y antes de cualquier return: React
+    // identifica cada hook por su ORDEN de llamada (v4.689).
+    const [isReconciling, setIsReconciling] = useState(false);
+    const [informeReconcile, setInformeReconcile] = useState<ReconcileReport | null>(null);
 
     // v4.842 — La moneda que se está mirando. Es el contexto de TODA la
     // pantalla: las tarjetas de estado, los movimientos, los aportes, el
@@ -465,6 +505,44 @@ export default function WalletManagement() {
             toast.error(message);
         } finally {
             setIsSyncing(false);
+        }
+    };
+
+    /**
+     * v4.885 — RECONCILIAR los aportes históricos.
+     *
+     * De ENSAYO primero, siempre: la primera pulsación mira y no escribe nada,
+     * y sólo se aplica cuando quien lo pidió vio el informe. Es el patrón de la
+     * carga hacia atrás del libro mayor (v4.848) y lo valioso es lo mismo —
+     * mirar antes de tocar dinero.
+     *
+     * ⚠️ NO es lo mismo que «Sincronizar con Stripe»: aquél enriquece los datos
+     * de un aporte, éste corrige su ESTADO y deja constancia de cada corrección.
+     */
+    const handleReconcile = async (aplicar: boolean) => {
+        if (!token || !clubIdActivo) return;
+        setIsReconciling(true);
+        try {
+            const res = await axios.post(`${API_URL}/financial/wallet/reconcile`,
+                { clubId: clubIdActivo, apply: aplicar },
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            setInformeReconcile(res.data);
+            if (!aplicar) {
+                const porHacer = (res.data?.detalle || []).filter((d: { accion?: string }) => d.accion).length;
+                toast.success(porHacer
+                    ? `Ensayo: ${porHacer} aporte(s) se corregirían. Revisá el informe y aplicá.`
+                    : 'Ensayo: no hay nada que corregir. Todos los aportes están al día.');
+            } else {
+                toast.success(`Reconciliados: ${res.data?.corregidos || 0} corregidos contra Stripe, ${res.data?.anotados || 0} estados anotados.`);
+                await fetchWalletData(true);
+            }
+        } catch (err) {
+            const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+                || 'No se pudo reconciliar';
+            toast.error(message, { duration: 10000 });
+        } finally {
+            setIsReconciling(false);
         }
     };
 
@@ -979,6 +1057,23 @@ export default function WalletManagement() {
                                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                                         {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
                                     </button>
+                                    {/* ── RECONCILIAR (v4.885) ────────────────
+                                        Corrige el ESTADO de los aportes
+                                        históricos contra Stripe. NO es lo mismo
+                                        que sincronizar: aquél enriquece datos,
+                                        éste arregla en qué cubeta está el
+                                        dinero y deja constancia de cada cambio.
+
+                                        De ENSAYO primero, siempre. */}
+                                    <button
+                                        onClick={() => handleReconcile(false)}
+                                        disabled={isReconciling}
+                                        title="Revisa los aportes históricos y dice cuáles tienen el estado desactualizado. No escribe nada."
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg border border-sky-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                    >
+                                        <Info className={`w-3.5 h-3.5 ${isReconciling ? 'animate-pulse' : ''}`} />
+                                        {isReconciling ? 'Revisando…' : 'Revisar estados'}
+                                    </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <WalletBucketCard
@@ -1018,6 +1113,83 @@ export default function WalletManagement() {
                                         hint="Payouts completados al banco"
                                     />
                                 </div>
+
+                                {/* ── EL INFORME DE LA RECONCILIACIÓN ─────────
+                                    Se pinta donde se pulsó el botón, no en otra
+                                    pantalla: al hacer visible un diagnóstico,
+                                    ponerlo donde se mira primero (v4.790).
+
+                                    Lo que NO se pudo corregir y POR QUÉ es la
+                                    mitad del informe: sin eso, «no pasó nada» es
+                                    indistinguible de «no se pudo». */}
+                                {informeReconcile && (
+                                    <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4 text-sm">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                            <h4 className="font-bold text-sky-900">
+                                                {informeReconcile.modo === 'ensayo' ? 'Ensayo de reconciliación' : 'Reconciliación aplicada'}
+                                            </h4>
+                                            <button
+                                                onClick={() => setInformeReconcile(null)}
+                                                className="text-xs text-sky-700 underline underline-offset-4"
+                                            >
+                                                Cerrar
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-700">
+                                            <span data-no-translate>{informeReconcile.revisados}</span> aporte(s) revisados
+                                            {informeReconcile.modo === 'aplicado' && (
+                                                <> · <span data-no-translate>{informeReconcile.corregidos}</span> corregidos contra Stripe
+                                                    {' · '}<span data-no-translate>{informeReconcile.anotados}</span> estados anotados</>
+                                            )}
+                                            {informeReconcile.pendientes > 0 && (
+                                                <> · <span data-no-translate>{informeReconcile.pendientes}</span> quedaron para la próxima vuelta</>
+                                            )}
+                                        </p>
+
+                                        {Object.keys(informeReconcile.hallazgos || {}).length > 0 && (
+                                            <div className="mt-3">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">Qué se encontró</div>
+                                                <ul className="text-xs text-gray-700 space-y-0.5">
+                                                    {Object.entries(informeReconcile.hallazgos).map(([clase, d]) => (
+                                                        <li key={clase}>
+                                                            <span className="font-semibold">{HALLAZGO_LABEL[clase] || clase}</span>
+                                                            {': '}<span data-no-translate>{d.cuantos}</span> aporte(s)
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {Object.keys(informeReconcile.noCorregidos || {}).length > 0 && (
+                                            <div className="mt-3">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1">Lo que NO se pudo corregir</div>
+                                                <ul className="text-xs text-amber-800 space-y-0.5">
+                                                    {Object.entries(informeReconcile.noCorregidos).map(([motivo, d]) => (
+                                                        <li key={motivo}>
+                                                            <span data-no-translate>{d.cuantos}</span>: {motivo}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {informeReconcile.modo === 'ensayo' && (
+                                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                <button
+                                                    onClick={() => handleReconcile(true)}
+                                                    disabled={isReconciling}
+                                                    className="px-3 py-1.5 rounded-lg bg-sky-700 text-white text-[11px] font-black uppercase tracking-wider hover:bg-sky-800 disabled:opacity-50"
+                                                >
+                                                    Aplicar las correcciones
+                                                </button>
+                                                <span className="text-[11px] text-gray-500">
+                                                    No se modifican saldos ni se inventan movimientos: se consulta a Stripe y se
+                                                    escribe lo que Stripe conteste.
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1154,7 +1326,7 @@ export default function WalletManagement() {
                                                 </p>
                                                 <div className="space-y-3">
                                                     {huerfanos.map(m => (
-                                                        <DonorCard key={m.id} movementOnly={m} holdingDays={wallet?.platformHoldingDays ?? 6} />
+                                                        <DonorCard key={m.id} movementOnly={m} holdingDays={wallet?.platformHoldingDays ?? 6} clubId={clubIdActivo} />
                                                     ))}
                                                 </div>
                                             </div>
@@ -1370,8 +1542,21 @@ const ORIGEN_LABEL: Record<string, string> = {
  *  llamar. No se toca la de arriba — funciona y la usan veinte llamadas. */
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+
 /** Cómo se pinta cada estado de entrega. `sent` va en gris y no en verde a
  *  propósito: el proveedor lo aceptó, que NO es que haya llegado. */
+/** v4.885 — Los hallazgos de la reconciliación, en español. La clave cruda
+ *  («columna_desactualizada») es del servidor y no le dice nada a quien lee el
+ *  informe: es el mismo motivo por el que `RETIRED_LABELS` existe en el registro
+ *  de eventos. Al agregar un hallazgo en `walletReconcile.js`, agregarlo acá. */
+const HALLAZGO_LABEL: Record<string, string> = {
+    sin_fecha_de_stripe: 'Sin fecha de liberación del proveedor',
+    columna_desactualizada: 'La fecha ya venció y el estado seguía en «pendiente»',
+    estado_local_atrasado: 'El estado registrado se quedó atrás del calendario',
+    sin_traza: 'Sin historial: anterior al seguimiento del ciclo de vida',
+    fechas_incoherentes: '⚠️ Fechas incoherentes: revisar a mano',
+};
+
 const ENTREGA: Record<string, { label: string; cls: string }> = {
     pending: { label: 'Pendiente', cls: 'bg-gray-100 text-gray-600' },
     sent: { label: 'Enviado', cls: 'bg-sky-100 text-sky-700' },
@@ -1447,6 +1632,23 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                                 {estado.icon}{estado.label}
                             </span>
                         )}
+                        {/* v4.885 — LOS DÍAS QUE FALTAN, sin tener que desplegar
+                            la ficha ni contarlos a mano. Es lo que se pidió
+                            eliminar: hasta ahora la única forma de saber cuándo
+                            se liberaba un aporte era abrir la tarjeta, mirar
+                            «Stripe libera» y sumarle seis días de cabeza.
+
+                            Sólo cuando faltan: un «0 días» al lado de un estado
+                            que ya dice «Disponible» es ruido. */}
+                        {mov?.lifecycle?.diasRestantes ? (
+                            <span className="inline-flex items-center gap-1 text-sky-700 font-semibold">
+                                <Clock className="w-3 h-3" />
+                                <span data-no-translate>
+                                    {mov.lifecycle.diasRestantes} día{mov.lifecycle.diasRestantes === 1 ? '' : 's'}
+                                </span>
+                                {mov.lifecycle.estimado && <span className="text-amber-600" title="Stripe todavía no dio su fecha: es una estimación.">≈</span>}
+                            </span>
+                        ) : null}
                         <span className="text-gray-300 font-mono">#{ref}</span>
                     </div>
                     {donation?.message && (
@@ -1646,6 +1848,22 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                                     </a>
                                 </div>
                             )}
+
+                            {/* ── EL CICLO DE VIDA (v4.885) ───────────────────
+                                Cuándo se libera, qué le pasó y a dónde se
+                                trasladó. Se monta sólo con la ficha abierta:
+                                pide su propio viaje al servidor y hacerlo por
+                                cada aporte de la lista sería una consulta por
+                                tarjeta. Los eventos vienen de la BASE, nunca se
+                                componen acá. */}
+                            <div className="border-t border-gray-100">
+                                <DisbursementSection
+                                    paymentId={mov.id}
+                                    clubId={clubId}
+                                    netAmount={mov.amount}
+                                    currency={mov.currency}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>

@@ -5,6 +5,10 @@
 // Payment + Donation. El balance del club queda disponible automáticamente
 // vía /api/payouts/balance porque Payment.isPlatformCollection = true.
 import Stripe from 'stripe';
+// v4.885 — El criterio del ciclo de vida, puro y probado. Un segundo
+// `bucketOf` escrito a mano acá volvería a separarse en silencio.
+import { bucketOf as bucketOfPuro, scheduleOf } from '../lib/walletLifecycle.js';
+import { listDisbursementsFor } from '../lib/disbursements.js';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import {
     normalizeCurrency, currencyMeta, roundMoney, fromStripeAmount,
@@ -572,6 +576,16 @@ export const listClubDonations = async (req, res) => {
             // la bitácora no está disponible: que falte el diagnóstico no puede
             // impedir ver el dinero.
             notifications: await listDeliveriesFor(donations.map(d => d.id)),
+            // v4.885 — Los DESEMBOLSOS de cada aporte, en el mismo viaje y por
+            // el mismo motivo que las notificaciones: con una consulta por
+            // aporte serían decenas por pantalla. La clave es el `paymentId`
+            // —no el id del aporte— porque el desembolso cuelga del MOVIMIENTO,
+            // que es donde vive el dinero. `{}` cuando la tabla todavía no
+            // existe: que falte el registro de desembolsos no puede impedir ver
+            // los aportes.
+            disbursements: await listDisbursementsFor(
+                donations.map(d => d.movement?.id).filter(Boolean)
+            ),
             // Cobros REALES que no nacieron de una donación —una compra de la
             // tienda, una membresía, una inscripción—. Se devuelven aparte
             // para que no desaparezcan de la pantalla al unificar la lista:
@@ -610,18 +624,33 @@ export const listClubDonations = async (req, res) => {
     }
 };
 
-// En qué cubeta del dinero cae un pago. Vive en el módulo y no dentro de
-// `getClubWallet` porque lo consultan DOS caminos —la Bóveda y la traza de la
-// ficha del aportante—, y dos criterios sobre el mismo pago dirían cosas
-// distintas en dos pantallas del mismo módulo.
-const bucketOf = (p, now) => {
-    if (p.status === 'refunded') return 'refunded';
-    if (p.status === 'failed') return 'failed';
-    if (p.status === 'pending') return 'processing';
-    if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) return 'in_transit';
-    if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) return 'available_soon';
-    return 'available';
-};
+// En qué cubeta del dinero cae un pago.
+//
+// ⚠️ v4.885 — YA NO SE DECIDE ACÁ. El criterio se mudó entero a
+// `walletLifecycle.js`, que es PURO y está probado, y este módulo lo importa.
+// La versión que vivía aquí tenía el defecto que hizo falta corregir:
+//
+//     if (p.stripeStatus === 'pending' || (p.availableOn && availableOn > now))
+//         return 'in_transit';
+//
+// La primera mitad de esa condición NO DEPENDÍA DEL TIEMPO. `stripeStatus` lo
+// escribe el webhook con lo que Stripe contesta EN EL MOMENTO DEL COBRO, y en
+// ese momento una balance transaction está SIEMPRE en «pending»: el dinero
+// acaba de entrar. Así que todo aporte nacía en «pending» y se quedaba «En
+// tránsito» PARA SIEMPRE, hubieran pasado seis días o seis meses, porque nada
+// volvía a mirar esa fila salvo el botón manual de sincronizar — que además,
+// por defecto, EXCLUÍA de sus candidatos a los pagos que ya tenían
+// `availableOn`. El aporte que más necesitaba corregirse era justo el que el
+// botón no miraba.
+//
+// Ahora una FECHA VENCIDA gana sobre una columna sin actualizar, y el barrido
+// (`walletSweep.js`) pone la columna al día solo. Se necesitan las dos mitades:
+// sin la primera, la pantalla mentiría hasta que corriera el cron; sin la
+// segunda, la columna mentiría para siempre y el libro mayor nunca se enteraría
+// de la liberación.
+//
+// Se conserva el nombre para no tocar los dos llamadores.
+const bucketOf = (p, now) => bucketOfPuro(p, now);
 
 // v4.844 — El MOVIMIENTO de un aporte, con la forma que la ficha necesita.
 // Es lo mismo que `getClubWallet` arma para cada pago, y por eso el estado se
@@ -645,6 +674,13 @@ const movementOf = (p, now) => {
         status: p.status,
         stripeStatus: p.stripeStatus,
         bucket: bucketOf(p, now),
+        // v4.885 — El CALENDARIO del aporte: cuándo se recibió, cuándo lo
+        // libera el proveedor, cuándo lo puede usar el club y cuántos días
+        // faltan. Todo DERIVADO de las fechas guardadas, así que no hay ninguna
+        // columna nueva que pueda quedar desincronizada. Va en el movimiento y
+        // no en un endpoint aparte porque la pantalla lo pinta junto al estado:
+        // pedirlo por separado sería una consulta por aporte.
+        lifecycle: scheduleOf(p, now),
         availableOn: p.availableOn,
         clubAvailableOn: p.clubAvailableOn,
         createdAt: p.createdAt,
@@ -771,6 +807,10 @@ export const getClubWallet = async (req, res) => {
                 stripeBalanceTxId: p.stripeBalanceTxId,
                 createdAt: p.createdAt,
                 bucket: bucketOf(p, now),
+                // El mismo calendario que lleva el movimiento en la ficha. Sale
+                // de la MISMA función: dos criterios sobre las mismas fechas
+                // dirían cosas distintas en dos pantallas del mismo módulo.
+                lifecycle: scheduleOf(p, now),
             };
         });
 
