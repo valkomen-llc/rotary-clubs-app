@@ -386,6 +386,87 @@ export const planFor = (p, now = new Date()) => {
     return { accion: 'ninguna', estado, motivo: 'Al día.' };
 };
 
+/* ─── ¿SE PUEDE REGISTRAR UN DESEMBOLSO DE ESTE APORTE? ──────────────
+ *
+ * v4.886 — «En tránsito» significa DOS cosas distintas y confundirlas deja
+ * dinero atrapado para siempre:
+ *
+ *   · EL PROVEEDOR LO RETIENE — hay una `availableOn` futura, o sea Stripe nos
+ *     dijo la fecha. Ahí registrar un traslado sería anotar un hecho que no
+ *     pudo ocurrir: el dinero todavía no salió de Stripe. Se bloquea.
+ *
+ *   · NO SABEMOS — no hay fecha porque nunca se pudo leer la balance
+ *     transaction, o el cobro no tiene referencia del proveedor y no hay a
+ *     quién preguntarle. El aporte se pinta «en tránsito» porque es el lado
+ *     seguro para MOSTRAR, no porque sepamos que Stripe lo retiene.
+ *
+ * Bloquear el segundo caso fue el defecto reportado: los cinco aportes del
+ * Sistema Central no tenían fecha, así que el botón de desembolsar no aparecía
+ * NUNCA y no había forma de registrar un traslado que en el banco ya había
+ * ocurrido. Un control que no se puede satisfacer por ninguna vía no protege
+ * nada: obliga a llevar la contabilidad fuera de la plataforma, que es
+ * exactamente lo que este módulo existe para evitar.
+ *
+ * Se permite, y se AVISA con la consecuencia — no se deja pasar en silencio.
+ */
+export const canDisburse = (p, now = new Date()) => {
+    const ahora = now instanceof Date ? now : new Date(now);
+    const estado = bucketOf(p, ahora);
+
+    if (estado === 'refunded') {
+        return { ok: false, motivo: 'Este aporte se reembolsó: el dinero se le devolvió al aportante.' };
+    }
+    if (estado === 'failed') {
+        return { ok: false, motivo: 'Este cobro no llegó a completarse.' };
+    }
+    if (p?.status === 'pending') {
+        return { ok: false, motivo: 'El cobro todavía no está confirmado por el proveedor.' };
+    }
+    if (estado === 'disbursed') {
+        return { ok: false, motivo: 'Este aporte ya está completamente desembolsado.' };
+    }
+
+    // El camino normal: el dinero está disponible o ya se empezó a girar.
+    if (estado === 'available' || estado === 'disbursing') {
+        return { ok: true, motivo: null, aviso: null };
+    }
+
+    // ── En tránsito. ¿Lo dice Stripe, o es que no sabemos? ───────────
+    const liberacion = fechaValida(p?.availableOn);
+    if (liberacion && liberacion > ahora) {
+        const dias = Math.max(1, Math.ceil((liberacion.getTime() - ahora.getTime()) / DIA_MS));
+        return {
+            ok: false,
+            motivo: `El proveedor todavía retiene este dinero: lo libera en ${dias} día(s), `
+                + `el ${liberacion.toISOString().slice(0, 10)}. Registrar el traslado ahora sería `
+                + `anotar un hecho que no pudo ocurrir.`,
+        };
+    }
+
+    // Liberado por Stripe pero dentro del margen de la plataforma. Se permite
+    // con aviso: el dinero YA salió del proveedor, lo que corre es una espera
+    // nuestra, y si la tesorería ya giró hay que poder anotarlo.
+    if (liberacion) {
+        return {
+            ok: true,
+            motivo: null,
+            aviso: 'El proveedor ya liberó este dinero, pero todavía corre el margen operativo de la '
+                + 'plataforma. Se puede registrar el traslado si de verdad ocurrió.',
+        };
+    }
+
+    // Sin fecha: no sabemos. Se permite y se dice POR QUÉ, con la consecuencia.
+    return {
+        ok: true,
+        motivo: null,
+        aviso: p?.providerRef
+            ? 'Este aporte no tiene fecha de liberación del proveedor, así que su estado es una '
+                + 'suposición prudente y no un dato. Comprobá en tu banco que el dinero salió antes de registrarlo.'
+            : 'Este cobro no tiene referencia del proveedor: la plataforma no puede consultarlo y su '
+                + 'estado nunca se va a resolver solo. Comprobá en tu banco que el dinero salió antes de registrarlo.',
+    };
+};
+
 /* ─── DESEMBOLSOS ────────────────────────────────────────────────────
  *
  * ⚠️ DISPONIBLE NO ES DESEMBOLSADO, y la distinción es el motivo de que esta
@@ -648,7 +729,7 @@ export const buildTimeline = (events = []) => {
 export default {
     PLATFORM_HOLDING_DAYS, STRIPE_TYPICAL_HOLD_DAYS,
     LIFECYCLE_STATES, STATE_IDS, isState, stateLabel,
-    canTransition, mergeState, bucketOf, scheduleOf, planFor,
+    canTransition, mergeState, bucketOf, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod, DISBURSEMENT_STATES,
     RECEIPT_TYPES, RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
     disbursementBalance, stateFromDisbursements, validateDisbursement, disbursementShape,

@@ -27,7 +27,7 @@ import {
     registerDisbursement, reverseDisbursement, retryDisbursementNotice,
 } from '../lib/disbursements.js';
 import { timelineFor } from '../lib/paymentLifecycle.js';
-import { scheduleOf, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
+import { scheduleOf, canDisburse, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
 import { sweepWallet } from '../lib/walletSweep.js';
 import { reconcileHistory } from '../lib/walletReconcile.js';
 
@@ -80,6 +80,11 @@ export const getLifecycle = async (req, res) => {
         return res.json({
             paymentId: pago.id,
             calendario: scheduleOf(pago, new Date()),
+            // v4.886 — Si se puede desembolsar y, cuando se puede pero con
+            // reparos, POR QUÉ. La pantalla no lo deduce del estado: con dos
+            // criterios, el botón aparecería donde el servidor va a rechazar
+            // —o al revés, que es peor—.
+            permiso: canDisburse(pago, new Date()),
             timeline,
             disbursements: desembolsos,
             balance,
@@ -122,15 +127,22 @@ export const createDisbursement = async (req, res) => {
         const pago = await pagoDe(req.params.id, clubId);
         if (!pago) return res.status(404).json({ error: 'El aporte no existe en este sitio' });
 
-        // ⚠️ No se desembolsa lo que todavía no está disponible. Registrar el
-        // traslado de un dinero que el proveedor aún retiene sería anotar un
-        // hecho que no pudo ocurrir.
+        // ⚠️ v4.886 — LO QUE SE BLOQUEA ES LO QUE EL PROVEEDOR RETIENE, no todo
+        // lo que no esté «disponible». La primera versión exigía
+        // `estado === 'available'`, y con eso un aporte sin fecha de Stripe
+        // —que nunca la va a tener— no se podía desembolsar por ninguna vía:
+        // el botón no aparecía jamás. Un control que no se puede satisfacer
+        // obliga a llevar la contabilidad fuera de la plataforma.
+        //
+        // `canDisburse` distingue «Stripe lo retiene» de «no sabemos» y
+        // devuelve el AVISO para el segundo caso. Ver su nota en
+        // `walletLifecycle.js`.
         const cal = scheduleOf(pago, new Date());
-        if (cal.estado !== 'available' && cal.estado !== 'disbursing') {
+        const permiso = canDisburse(pago, new Date());
+        if (!permiso.ok) {
             return res.status(409).json({
-                error: 'El aporte todavía no está disponible para desembolsar',
-                detail: `Estado actual: ${cal.estadoLabel}.`
-                    + (cal.diasRestantes ? ` Faltan ${cal.diasRestantes} día(s).` : ''),
+                error: 'No se puede registrar un desembolso de este aporte',
+                detail: permiso.motivo,
                 calendario: cal,
             });
         }
@@ -163,13 +175,127 @@ export const createDisbursement = async (req, res) => {
             disbursement: r.disbursement,
             balance: r.balance,
             estado: r.estado,
-            avisos: r.avisos,
+            avisos: [...(r.avisos || []), ...(permiso.aviso ? [permiso.aviso] : [])],
             notificacion: r.notificacion,
             timeline: await timelineFor(pago.id),
         });
     } catch (e) {
         console.error('[DISB] createDisbursement:', e);
         return res.status(500).json({ error: 'No se pudo registrar el desembolso', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/disbursements/bulk ──────────────────────
+ *
+ * v4.886 — Marcar VARIOS aportes como desembolsados de una vez.
+ *
+ * ⚠️ UNA FILA POR APORTE, NUNCA UN REGISTRO AGREGADO. Es la misma regla que
+ * separó `DistributionJob` de la campaña (v4.864) y `ReelScene` de
+ * `ReelProject`: un movimiento que cubre cinco aportes no se puede reversar
+ * parcialmente, no se puede atribuir a su campaña y no cuadra contra un
+ * extracto por aporte. Lo que se comparte es el FORMULARIO —beneficiario,
+ * fecha, medio, referencia—, no el registro.
+ *
+ * ⚠️ EL MONTO NO SE RECIBE: se calcula por aporte como lo que le falta a cada
+ * uno. Dejarlo entrar del cuerpo permitiría repartir un total entre cinco
+ * aportes con criterios que nadie puede reconstruir después. Un desembolso en
+ * bloque es «giré lo que quedaba de estos cinco», y si lo que se giró fue otra
+ * cosa, se registran de a uno.
+ *
+ * ⚠️ NO ES ATÓMICO Y SE DICE. Cada aporte se registra por su cuenta: si el
+ * tercero falla, los dos primeros quedan registrados —el dinero se movió— y el
+ * informe nombra cuáles no entraron. Envolverlo en una transacción sería peor:
+ * un fallo tiraría abajo registros de traslados que sí ocurrieron.
+ */
+export const createBulkDisbursements = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        const confirmado = req.body?.confirm === true || req.body?.confirm === 'true';
+        if (!confirmado) {
+            return res.status(428).json({
+                error: 'Falta la confirmación explícita',
+                detail: 'Registrar varios desembolsos a la vez mueve el estado financiero de cada aporte.',
+            });
+        }
+
+        const ids = Array.isArray(req.body?.paymentIds) ? req.body.paymentIds.filter(Boolean) : [];
+        if (!ids.length) return res.status(422).json({ error: 'No se eligió ningún aporte' });
+        // Un tope por vuelta: el registro es una escritura por aporte y la
+        // función corta a los 300 s. Lo que no entra se pide en otra tanda.
+        if (ids.length > 50) {
+            return res.status(422).json({ error: 'Máximo 50 aportes por vez. Elegí menos y repetí.' });
+        }
+
+        const actor = actorDe(req);
+        const ahora = new Date();
+        const hechos = [];
+        const saltados = [];
+
+        for (const id of ids) {
+            const pago = await pagoDe(id, clubId);
+            if (!pago) { saltados.push({ id, motivo: 'No existe en este sitio.' }); continue; }
+
+            const permiso = canDisburse(pago, ahora);
+            if (!permiso.ok) { saltados.push({ id, motivo: permiso.motivo }); continue; }
+
+            const saldo = await balanceFor(pago);
+            if (saldo.completo || saldo.restante <= 0) {
+                saltados.push({ id, motivo: 'Ya estaba completamente desembolsado.' });
+                continue;
+            }
+
+            // ⚠️ La referencia lleva el id del aporte: el índice único es
+            // `(paymentId, reference)`, así que una referencia compartida por
+            // cinco aportes NO choca entre ellos —son pagos distintos— pero sí
+            // protege contra el doble clic sobre el mismo. Se conserva la que
+            // escribió el usuario tal cual: es la que va a buscar en su banco.
+            const r = await registerDisbursement({
+                payment: pago,
+                body: {
+                    amount: saldo.restante,
+                    disbursedAt: req.body?.disbursedAt,
+                    beneficiary: req.body?.beneficiary,
+                    method: req.body?.method,
+                    reference: req.body?.reference,
+                    notes: req.body?.notes,
+                    notify: req.body?.notify === true || req.body?.notify === 'true',
+                    notifyEmail: req.body?.notifyEmail,
+                },
+                actor,
+                receipt: null,
+            });
+
+            if (!r.ok) { saltados.push({ id, motivo: r.errores?.[0] || 'No se pudo registrar.' }); continue; }
+            hechos.push({
+                id,
+                disbursementId: r.disbursement.id,
+                amount: r.disbursement.amount,
+                currency: r.disbursement.currency,
+                notificacion: r.notificacion?.estado || null,
+            });
+        }
+
+        // ⚠️ El total se devuelve POR MONEDA. Un bloque puede mezclar aportes en
+        // pesos y en dólares, y un total único sería el «$47.507,75» otra vez.
+        const porMoneda = {};
+        for (const h of hechos) {
+            porMoneda[h.currency] = (porMoneda[h.currency] || 0) + h.amount;
+        }
+
+        return res.json({
+            ok: hechos.length > 0,
+            registrados: hechos.length,
+            // Lo que NO entró y POR QUÉ. Sin esto, «se registraron 3 de 5» deja
+            // adivinando cuáles dos y qué hacer con ellos.
+            saltados,
+            totalesPorMoneda: porMoneda,
+            hechos,
+        });
+    } catch (e) {
+        console.error('[DISB] createBulkDisbursements:', e);
+        return res.status(500).json({ error: 'No se pudieron registrar los desembolsos', detail: e.message?.slice(0, 200) });
     }
 };
 
@@ -305,5 +431,6 @@ export const refresh = async (req, res) => {
 };
 
 export default {
-    getLifecycle, createDisbursement, reverse, getReceipt, retryNotice, reconcile, refresh,
+    getLifecycle, createDisbursement, createBulkDisbursements,
+    reverse, getReceipt, retryNotice, reconcile, refresh,
 };

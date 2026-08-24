@@ -119,6 +119,50 @@ const publico = (r) => ({
     createdAt: r.createdAt,
 });
 
+/**
+ * v4.886 — LO DESEMBOLSADO DE UN SITIO, POR MONEDA.
+ *
+ * ⚠️ SE AGRUPA POR MONEDA Y NUNCA SE SUMA ENTRE ELLAS. Es la regla que gobierna
+ * todo este módulo desde v4.841 —de ahí salió el «$47.507,75» que eran dólares
+ * más pesos— y acá pesa igual: el indicador de la Bóveda se pinta al lado del
+ * de los aportes, que ya está separado por moneda.
+ *
+ * Los REVERSADOS no cuentan: un desembolso corregido no trasladó nada.
+ *
+ * Se agrega EN LA BASE (`GROUP BY currency`) y no trayendo las filas para
+ * sumarlas fuera: con un club grande serían cientos de filas por visita para
+ * calcular dos números. Es el criterio de `getCentralOverview` (v4.853).
+ */
+export const disbursedTotals = async (clubId) => {
+    try {
+        if (!clubId || !(await listo())) return {};
+        const { rows } = await db.query(
+            `SELECT currency,
+                    COALESCE(SUM(amount), 0)::float8 AS total,
+                    COUNT(*)::int AS cuantos,
+                    MAX("disbursedAt") AS ultimo
+               FROM "Disbursement"
+              WHERE "clubId" = $1 AND status = 'confirmado'
+              GROUP BY currency`,
+            [clubId]
+        );
+        const salida = {};
+        for (const r of rows) {
+            salida[normalizeCurrency(r.currency)] = {
+                total: Number(r.total) || 0,
+                cuantos: r.cuantos,
+                ultimo: r.ultimo,
+            };
+        }
+        return salida;
+    } catch (e) {
+        // Degrada a vacío: que falte el indicador no puede impedir ver el
+        // dinero. La tarjeta simplemente se pinta en cero y lo dice.
+        console.warn('[DISB] disbursedTotals falló:', e?.message);
+        return {};
+    }
+};
+
 /** El saldo de un aporte: cuánto se desembolsó, cuánto falta, si está completo. */
 export const balanceFor = async (payment) => {
     const desembolsos = await listDisbursements(payment.id);
@@ -610,7 +654,7 @@ export const retryDisbursementNotice = async ({ disbursementId, clubId, payment,
 };
 
 export default {
-    listDisbursements, listDisbursementsFor, balanceFor,
+    listDisbursements, listDisbursementsFor, balanceFor, disbursedTotals,
     uploadReceipt, signedReceiptUrl, receiptKeyOf,
     registerDisbursement, reverseDisbursement,
     notifyDisbursement, retryDisbursementNotice,

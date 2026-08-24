@@ -21,7 +21,7 @@ import {
 // pasa DESPUÉS de que el dinero está disponible— y meterlo en
 // `financialController.js`, que ya son 1.900 líneas, lo haría inencontrable.
 import {
-    getLifecycle, createDisbursement, reverse as reverseDisbursement,
+    getLifecycle, createDisbursement, createBulkDisbursements, reverse as reverseDisbursement,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
 } from '../controllers/disbursementController.js';
 
@@ -120,6 +120,10 @@ router.post('/wallet/sync-stripe', authMiddleware, requireSiteAdmin, syncPayment
 // El barrido a mano y la reconciliación histórica. Literales, van primero.
 router.post('/wallet/refresh', authMiddleware, requireSiteAdmin, refreshWallet);
 router.post('/wallet/reconcile', authMiddleware, requireSiteAdmin, reconcileWallet);
+// v4.886 — Marcar VARIOS aportes como desembolsados de una vez. Literal y con
+// prefijo `/wallet/`, así que va con sus hermanas y por encima de cualquier
+// paramétrica de `/payments/`.
+router.post('/wallet/disbursements/bulk', authMiddleware, requireSiteAdmin, createBulkDisbursements);
 
 // Lo que la ficha de un aporte necesita: calendario, línea de tiempo,
 // desembolsos y cuánto queda por desembolsar.

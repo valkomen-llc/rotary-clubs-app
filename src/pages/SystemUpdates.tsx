@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.885.0 | 2026-08-24 (Ciclo de vida del aporte: liberación automática y desembolsos)
-// Cache bust: 2026-08-24a
+// UI V4.886.0 | 2026-08-24 (Indicador de desembolsado, selección múltiple y el SELECT incompleto)
+// Cache bust: 2026-08-24b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.886.0',
+        title: 'Bóveda: cuánto se desembolsó, y marcar varios aportes de una vez',
+        description: 'Se agrega un quinto indicador —«Desembolsado»— junto a los que ya estaban, separado por moneda como el resto, para saber cuánto se trasladó al beneficiario sin abrir ninguna ficha. Ahora se pueden elegir varios aportes con una casilla y marcarlos como desembolsados en un solo gesto. Y se corrige un defecto de la versión anterior: la revisión de estados no consultaba a Stripe por NINGÚN aporte —le faltaba una columna a una consulta— y contestaba «sin referencia del proveedor» sobre pagos que sí la tenían.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'informes', 'correccion'],
+        type: 'feature',
+        impact: 'El indicador de desembolsado se puede llevar a un informe. Un aporte cuyo estado la plataforma no puede resolver ya se puede marcar a mano, con el aviso de que hay que comprobarlo en el banco: antes el botón no aparecía nunca.',
+    },
     {
         version: '4.885.0',
         title: 'La Bóveda cierra el ciclo: liberación automática y desembolsos',

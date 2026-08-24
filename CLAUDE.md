@@ -7174,6 +7174,86 @@ red**). Verificadas a la inversa: reintroduciendo el defecto, seis fallan.
   comprueba una prueba sobre el archivo.
 - **Las dos tablas están en la lista del guardián de `db:push`.**
 
+### Lo desembolsado se ve y se marca en bloque (v4.886)
+
+Segundo reporte, con la Bóveda del Sistema Central delante: **no aparecía la
+opción de marcar un aporte como desembolsado**, el informe decía «5:
+no_provider_reference» sobre cinco pagos, y faltaba un indicador de cuánto se
+había trasladado.
+
+- **⚠️ EL `SELECT` NO PEDÍA `providerRef`, Y EL FALLO ERA MUDO Y TOTAL.**
+  `findCalendarCandidates` seleccionaba nueve columnas y la reconciliación
+  pregunta `if (necesitaStripe && p.providerRef)`: con la columna sin pedir
+  —`undefined`— **NINGÚN** aporte llegaba a consultarse contra Stripe y todos
+  caían en «sin referencia del proveedor». Es exactamente el error que este
+  archivo ya documentó en v4.847 con `clubId` y el asiento de liberación. Al
+  agregar una lectura a `reconcileOne` o a `anotarAvance`, **agregar su columna
+  al SELECT**; lo comprueba una prueba columna por columna, porque el código es
+  válido, los tipos están bien y la condición simplemente nunca se cumple.
+- **⚠️ «EN TRÁNSITO» SIGNIFICA DOS COSAS Y SÓLO UNA BLOQUEA** (`canDisburse`).
+  Una es «el proveedor lo retiene» —hay una `availableOn` futura, o sea Stripe
+  nos dio la fecha— y ahí registrar un traslado sería anotar un hecho que no
+  pudo ocurrir. La otra es «no sabemos»: sin fecha, el aporte se pinta en
+  tránsito porque es el lado seguro para MOSTRAR, no porque sepamos nada.
+  v4.885 exigía `estado === 'available'` y con eso los cinco aportes sin fecha
+  **no se podían desembolsar por ninguna vía**. Un control que no se puede
+  satisfacer no protege: obliga a llevar la contabilidad fuera de la
+  plataforma, que es lo que este módulo existe para evitar. Se permite y **se
+  avisa con la consecuencia** («comprobá en tu banco que el dinero salió»).
+- **⚠️ DESEMBOLSADO NO ES TRANSFERIDO, y por eso son dos tarjetas.**
+  «Transferido» son los payouts al banco del CLUB —dinero que sale de la
+  plataforma hacia él—; «Desembolsado» es el traslado al BENEFICIARIO final,
+  que el club registra y puede ocurrir por fuera de un payout. Fundirlas
+  contaría dos veces el mismo dinero en unos sitios y ninguna en otros.
+- **La tarifa de la tarjeta va en VIOLETA, no en verde.** El verde ya es
+  «Disponible para retiro», y dos tarjetas verdes seguidas se leen como la
+  misma cosa contada dos veces — justo la confusión que este indicador existe
+  para deshacer.
+- **Se pinta SIEMPRE, aunque esté en cero.** Es la cifra que se lleva a un
+  informe, y una tarjeta que aparece y desaparece según si hubo movimiento hace
+  pensar que el módulo se rompió.
+- **Las monedas de la Bóveda salen de los aportes Y de lo desembolsado.** Si
+  sólo salieran de los aportes, un sitio que desembolsó en una moneda cuyos
+  cobros ya se archivaron perdería esa tarjeta entera, y con ella la única
+  cifra que dice a dónde fue ese dinero.
+- **`disbursedTotals` agrega EN LA BASE** (`GROUP BY currency`), no trayendo
+  las filas para sumarlas fuera: con un club grande serían cientos de filas por
+  visita para calcular dos números. Criterio de `getCentralOverview` (v4.853).
+- **⚠️ EL BLOQUE COMPARTE EL FORMULARIO, NO EL REGISTRO.** El servidor escribe
+  **una fila por aporte**. Un movimiento agregado que cubriera cinco aportes no
+  se podría reversar parcialmente, no se podría atribuir a su campaña y no
+  cuadraría contra un extracto aporte por aporte — es la regla que separó
+  `DistributionJob` de la campaña (v4.864) y `ReelScene` de `ReelProject`.
+- **⚠️ Y EL MONTO NO SE RECIBE: se calcula por aporte como lo que le falta.**
+  Dejarlo entrar del cuerpo permitiría repartir un total entre cinco aportes
+  con un criterio que nadie puede reconstruir después. Un desembolso en bloque
+  es «giré lo que quedaba de estos cinco»; si fue otra cosa, se registran de a
+  uno.
+- **El bloque NO es atómico y se dice.** Cada aporte se registra por su cuenta:
+  si el tercero falla, los dos primeros quedan registrados —el dinero se
+  movió— y el informe **nombra cuáles no entraron y por qué**. Envolverlo en
+  una transacción sería peor: un fallo tiraría abajo registros de traslados que
+  sí ocurrieron.
+- **El comprobante NO se ofrece en el bloque**, y se explica en la pantalla: un
+  mismo archivo repetido en cinco filas afirmaría que respalda a cada una por
+  separado. Se adjunta desde la ficha de cada aporte.
+- **El aviso por correo en bloque DICE cuántos correos son** antes de
+  confirmar. Un desembolso por aporte es un aviso por aporte, y cinco correos
+  seguidos a la misma dirección es algo que hay que saber antes, no después.
+- **Los aportes elegidos se guardan ENTEROS, no por id.** La lista se filtra
+  por período y por destino: uno elegido antes de cambiar el filtro tiene que
+  sobrevivir a que la vista cambie — regla del panel de grupos (v4.876), y acá
+  el precio de perderlo sería registrar de menos.
+- **La casilla va FUERA del botón que despliega la ficha.** Anidar un control
+  dentro de otro haría que marcar el aporte abriera también su ficha, y elegir
+  veinte dejaría veinte fichas abiertas.
+- **Un motivo técnico no se pinta en crudo** (`NO_CORREGIDO_LABEL`). En la
+  captura se leía «5: no_provider_reference»: una clave interna, en inglés
+  porque el traductor del sitio la trató como una frase, delante de alguien que
+  sólo quiere saber qué le pasa a su dinero. Lo que no esté rotulado se pinta
+  tal cual y **marcado como dato**, para que al menos no se traduzca — el error
+  del proveedor se propaga textual y traducirlo lo vuelve irreconocible.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 

@@ -19,7 +19,7 @@
 import { readFileSync } from 'node:fs';
 import {
     PLATFORM_HOLDING_DAYS, LIFECYCLE_STATES, STATE_IDS, isState, stateLabel,
-    canTransition, mergeState, bucketOf, scheduleOf, planFor,
+    canTransition, mergeState, bucketOf, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod,
     RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
     disbursementBalance, stateFromDisbursements, validateDisbursement,
@@ -190,6 +190,39 @@ ok('el plan SIEMPRE dice el motivo',
     && typeof planFor(pago(), AHORA).motivo === 'string'
     && planFor(pago(), AHORA).motivo.length > 5);
 
+// ── 5b. ¿Se puede desembolsar? ──────────────────────────────────────
+section('5b. ⚠️ «En tránsito» significa DOS cosas y sólo una bloquea');
+
+ok('un aporte disponible se puede desembolsar',
+    canDisburse(pago({ availableOn: hace(9), clubAvailableOn: hace(3) }), AHORA).ok === true);
+
+const retenido = canDisburse(pago({ availableOn: dentro(3), clubAvailableOn: dentro(9) }), AHORA);
+ok('⚠️ con fecha FUTURA de Stripe se bloquea: el dinero todavía no salió del proveedor',
+    retenido.ok === false);
+ok('y el motivo dice cuántos días faltan y desde cuándo',
+    /libera en 3 día\(s\)/.test(retenido.motivo), retenido.motivo);
+
+const sinFecha = canDisburse(pago({ availableOn: null, providerRef: null }), AHORA);
+ok('⚠️ SIN fecha se PERMITE: el estado es una suposición prudente, no un dato',
+    sinFecha.ok === true);
+ok('y se avisa que la plataforma nunca lo va a resolver sola',
+    /nunca se va a resolver solo/.test(sinFecha.aviso), sinFecha.aviso);
+ok('con referencia del proveedor pero sin fecha, el aviso es otro',
+    /suposición prudente/.test(canDisburse(pago({ availableOn: null, providerRef: 'pi_1' }), AHORA).aviso));
+
+const enMargen = canDisburse(pago({ availableOn: hace(2), clubAvailableOn: dentro(4) }), AHORA);
+ok('liberado por Stripe pero dentro del margen propio: se permite con aviso',
+    enMargen.ok === true && /margen operativo/.test(enMargen.aviso));
+
+ok('un reembolsado no se desembolsa',
+    canDisburse(pago({ status: 'refunded' }), AHORA).ok === false);
+ok('ni un cobro fallido',
+    canDisburse(pago({ status: 'failed' }), AHORA).ok === false);
+ok('ni uno todavía sin confirmar',
+    canDisburse(pago({ status: 'pending' }), AHORA).ok === false);
+ok('un aporte disponible no lleva aviso: es el camino normal',
+    canDisburse(pago({ availableOn: hace(9), clubAvailableOn: hace(3) }), AHORA).aviso === null);
+
 // ── 6. Desembolsos parciales ────────────────────────────────────────
 section('6. Un aporte no se marca desembolsado hasta que la suma llega');
 
@@ -332,6 +365,31 @@ ok('y el error de Stripe se propaga TEXTUAL',
 ok('lo que no entra en el presupuesto se DICE, no se corta en silencio',
     /resumen\.pendientes = candidatos\.length/.test(sweep));
 
+// ⚠️ v4.886 — LA REGRESIÓN QUE COSTÓ LA PRIMERA VUELTA.
+//
+// `findCalendarCandidates` no pedía `providerRef`, así que la reconciliación
+// —que pregunta `if (necesitaStripe && p.providerRef)`— lo leía como
+// `undefined` y NINGÚN aporte llegaba a consultarse contra Stripe: todos caían
+// en «sin referencia del proveedor». Se vio en producción como
+// «5: no_provider_reference» sobre cinco pagos que sí la tenían.
+//
+// Es el mismo error que v4.847 con `clubId`. Se comprueba columna por columna
+// porque el fallo es MUDO: el código es válido, los tipos están bien y la
+// condición simplemente nunca se cumple.
+section('10b. El SELECT pide todo lo que sus llamadores leen');
+const selCalendario = sweep.slice(
+    sweep.indexOf('export const findCalendarCandidates'),
+    sweep.indexOf('/* ─── PREGUNTARLE A STRIPE'));
+for (const col of ['providerRef', 'applicationFee', 'rawPayload', 'stripeBalanceTxId', 'netAmount', 'clubId']) {
+    ok(`findCalendarCandidates pide "${col}"`, selCalendario.includes(`p."${col}"`));
+}
+const selStripe = sweep.slice(
+    sweep.indexOf('export const findStripeCandidates'),
+    sweep.indexOf('export const findCalendarCandidates'));
+for (const col of ['providerRef', 'applicationFee', 'rawPayload', 'clubId']) {
+    ok(`findStripeCandidates pide "${col}"`, selStripe.includes(`p."${col}"`));
+}
+
 const rec = read('server/lib/walletReconcile.js');
 ok('⚠️ la reconciliación es de ENSAYO por defecto',
     /apply = false/.test(rec) && /Ensayo: no se escribió nada/.test(rec));
@@ -346,8 +404,17 @@ ok('⚠️ registrar un desembolso EXIGE confirmación explícita',
 ok('el reverso también', /Falta la confirmación explícita para reversar/.test(ctrl));
 ok('el aislamiento va en el WHERE, no en una comprobación posterior',
     /WHERE id = \$1 AND "clubId" = \$2/.test(ctrl));
-ok('no se desembolsa lo que todavía no está disponible',
-    /todavía no está disponible para desembolsar/.test(ctrl));
+ok('lo que se bloquea es lo que el PROVEEDOR retiene, no todo lo no disponible',
+    /canDisburse\(pago, new Date\(\)\)/.test(ctrl)
+    && /No se puede registrar un desembolso de este aporte/.test(ctrl));
+ok('el desembolso en bloque escribe UNA FILA POR APORTE, no un registro agregado',
+    /UNA FILA POR APORTE, NUNCA UN REGISTRO AGREGADO/.test(ctrl));
+ok('y el monto NO se recibe del cuerpo: se calcula por aporte',
+    /EL MONTO NO SE RECIBE/.test(ctrl) && /amount: saldo\.restante/.test(ctrl));
+ok('lo que no entró en el bloque se devuelve con su motivo',
+    /saltados\.push\(\{ id, motivo/.test(ctrl));
+ok('y el total del bloque va POR MONEDA, nunca sumado',
+    /El total se devuelve POR MONEDA/.test(ctrl));
 ok('el comprobante se devuelve como enlace firmado con caducidad dicha',
     /expiresInSeconds/.test(ctrl));
 
