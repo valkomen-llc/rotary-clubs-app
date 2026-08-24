@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.890.0",
-  "cache_bust": "2026-08-24f (El estado de un aporte conoce su desembolso.)",
+  "version": "4.891.0",
+  "cache_bust": "2026-08-24g (El asistente de redacción dice qué falló y escribe para posicionar.)",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -62,6 +62,8 @@
     "test:wallet": "node scripts/test-wallet.mjs",
     "test:fee-recalc": "node scripts/test-fee-recalc.mjs",
     "test:integrations:ui": "node scripts/test-integrations-ui.mjs",
+    "test:article": "node scripts/test-article.mjs",
+    "test:article:route": "node scripts/test-article-route.mjs",
     "test:post-slug": "node scripts/test-post-slug.mjs",
     "test:donation:ui": "node scripts/test-donation-modal-ui.mjs",
     "test:fx": "node scripts/test-fx.mjs",

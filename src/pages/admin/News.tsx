@@ -84,6 +84,20 @@ interface Post {
     isStatic?: boolean;
 }
 
+/**
+ * Qué decirle a quien redacta cuando el servidor no manda un motivo propio.
+ * Los tres casos se corrigen en sitios distintos —volver a entrar, pedirle el
+ * permiso a un administrador, o esperar— así que se dicen distinto: "no se pudo
+ * generar" a secas obliga a diagnosticar a ciegas.
+ */
+const mensajeDeFalloIA = (status: number): string => {
+    if (status === 401) return 'Tu sesión venció. Vuelve a entrar; lo que escribiste sigue aquí.';
+    if (status === 403) return 'Tu usuario no tiene permiso para usar el asistente de redacción.';
+    if (status === 429) return 'El proveedor de IA está limitando las peticiones. Espera unos segundos y reintenta.';
+    if (status === 502 || status === 503) return 'El proveedor de IA no respondió. Revisa Integraciones → Modelos IA.';
+    return `El servidor respondió ${status} sin explicar el motivo.`;
+};
+
 const NewsManagement: React.FC = () => {
     const { club } = useClub();
     const { user } = useAuth();
@@ -622,7 +636,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            // Llamamos al motor central (Fórmula SEO verificada)
             const response = await fetch(`${apiUrl}/ai/generate-article`, {
                 method: 'POST',
                 headers: {
@@ -632,99 +645,56 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 body: JSON.stringify({ context: aiContext })
             });
 
-            if (response.ok) {
-                const articleRaw = await response.json();
-                
-                // Si el servidor nos mandó un error camuflado (JSON con error)
-                if (articleRaw.error) {
-                    toast.error(`La IA dice: ${articleRaw.error}`);
-                    console.error('IA Error payload:', articleRaw);
-                    return;
-                }
+            const data = await response.json().catch(() => null);
 
-                console.log('IA ArticulIA Raw Data Received:', articleRaw);
-                
-                const responseData = Array.isArray(articleRaw) ? articleRaw[0] : articleRaw;
-
-                const captureValue = (fields: string[]): string => {
-                    for (const f of fields) {
-                        const val = responseData[f] || (responseData.article && responseData.article[f]) || (responseData.data && responseData.data[f]);
-                        if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
-                        if (val && typeof val === 'number') return String(val);
-                    }
-                    return '';
-                };
-
-                const captureList = (fields: string[]): string[] => {
-                    for (const f of fields) {
-                        const val = responseData[f] || (responseData.article && responseData.article[f]) || (responseData.data && responseData.data[f]);
-                        if (val) {
-                            if (Array.isArray(val)) return val;
-                            if (typeof val === 'string') return val.split(',').map(c => c.trim()).filter(c => c.length > 0);
-                        }
-                    }
-                    return ['Rotary', 'Comunidad', 'Acción']; // Fallback de categorías
-                };
-
-                const newsTitle = captureValue(['noticia_titulo', 'title', 'headline', 'titulo', 'titular']);
-                const newsBody = captureValue(['noticia_cuerpo', 'content', 'cuerpo', 'html', 'body', 'text']);
-                const newsTags = captureList(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
-                const firstCat = newsTags.length > 0 ? newsTags[0] : 'General';
-                const seoT = captureValue(['seo_titulo', 'seoTitle', 'tituloSeo']);
-                const seoD = captureValue(['seo_descripcion', 'seoDescription', 'descripcionSeo']);
-                const itemSlug = captureValue(['slug', 'url', 'post_slug']);
-                const itemKeys = captureValue(['keywords', 'palabrasClave']);
-                const itemSocial = captureValue(['copys_redes', 'socialCopy', 'postSocial', 'copy']);
-
-                // EMERGENCIA DE TÍTULO
-                let finalTitle = newsTitle;
-                if (!finalTitle && newsBody) {
-                    const textOnly = newsBody.replace(/<[^>]*>/g, '').trim();
-                    finalTitle = textOnly.split(/\s+/).slice(0, 8).join(' ') + '...';
-                }
-
-                if (!finalTitle && !newsBody) {
-                    toast.error('No se pudo extraer contenido de la respuesta.');
-                    return;
-                }
-
-                // RECORTE DE SEGURIDAD SEO (v4.35.0)
-                const safeTrim = (text: string, limit: number) => {
-                    if (!text || text.length <= limit) return text;
-                    const truncated = text.substring(0, limit - 3);
-                    const lastSpace = truncated.lastIndexOf(' ');
-                    return (lastSpace > limit / 2 ? truncated.substring(0, lastSpace) : truncated) + '...';
-                };
-
-                const finalSeoTitle = safeTrim(seoT, 60);
-                const finalSeoDesc = safeTrim(seoD, 160);
-
-                // ACTUALIZACIÓN FUNCIONAL (v4.35.0 SEO Precision)
-                setFormData((prev: any) => ({
-                    ...prev,
-                    title: finalTitle || prev.title,
-                    content: newsBody || prev.content,
-                    category: firstCat || prev.category,
-                    tags: newsTags.length > 0 ? newsTags : prev.tags,
-                    seoTitle: finalSeoTitle || prev.seoTitle,
-                    seoDescription: finalSeoDesc || prev.seoDescription,
-                    slug: itemSlug || prev.slug,
-                    keywords: itemKeys || prev.keywords,
-                    socialCopy: itemSocial || prev.socialCopy
-                }));
-
-                toast.success(`¡Misión v4.35.0 Completada! ⚖️`);
-                
-                if (!finalTitle) toast.warning('Título generado desde el cuerpo.');
-            } else {
-                const errData = await response.json();
-                console.error('IA ArticulIA Server Error:', errData);
-                toast.error(`Error del servidor: ${errData.details || errData.error || 'Sin respuesta'}`);
+            if (!response.ok || !data) {
+                // El motivo se muestra TAL CUAL lo dio el servidor. Hasta v4.890
+                // aquí salía siempre "Intenta de nuevo en unos segundos", así que
+                // una credencial ausente, un modelo retirado y un presupuesto de
+                // tokens agotado se veían exactamente igual y no había por dónde
+                // empezar a corregir.
+                const motivo = data?.error || mensajeDeFalloIA(response.status);
+                console.error('[ArticulIA] Fallo al generar:', response.status, data);
+                toast.error(motivo);
+                return;
             }
+
+            // El servidor ya normalizó y validó los campos: aquí no se vuelve a
+            // recortar ni a adivinar. Con dos criterios de longitud, la pantalla
+            // recortaría a un límite y la auditoría de SEO aplicaría otro.
+            const meta = data._meta || {};
+            const categorias: string[] = Array.isArray(data.categories) ? data.categories : [];
+
+            setFormData((prev: any) => ({
+                ...prev,
+                title: data.title || prev.title,
+                content: data.body || prev.content,
+                category: categorias[0] || prev.category,
+                tags: categorias.length > 0 ? categorias : prev.tags,
+                seoTitle: data.seoTitle || prev.seoTitle,
+                seoDescription: data.seoDescription || prev.seoDescription,
+                slug: data.slug || prev.slug,
+                keywords: data.keywords || prev.keywords,
+                socialCopy: data.socialCopy || prev.socialCopy
+            }));
+
+            const palabras = typeof meta.wordCount === 'number' ? meta.wordCount : null;
+            toast.success(
+                palabras !== null
+                    ? `Artículo redactado: ${palabras} palabras, ${meta.readingMinutes || 1} min de lectura.`
+                    : 'Artículo redactado.'
+            );
+
+            // Lo que no cumplió se DICE. Un artículo entregado con una regla de
+            // SEO rota y sin avisar se publica tal cual y el informe lo señala
+            // después, cuando ya está en línea.
+            const avisos: string[] = Array.isArray(meta.warnings) ? meta.warnings : [];
+            avisos.slice(0, 3).forEach(a => toast.warning(a));
+            if (avisos.length > 3) toast.warning(`…y ${avisos.length - 3} observación(es) más. Revísalas en la pestaña SEO & Tráfico.`);
+
         } catch (error: any) {
-            console.error('IA ArticulIA Connection Error:', error);
-            // Mensaje más detallado para diagnosticar
-            toast.error(`Error de conexión: ${error.message}. Verifica que las API Keys de IA estén en Vercel.`);
+            console.error('[ArticulIA] Error de conexión:', error);
+            toast.error(`No se pudo contactar con el servidor: ${error.message}`);
         } finally {
             setIsGeneratingArticle(false);
         }

@@ -8,6 +8,29 @@ import db from './db.js';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
+/** Los modelos con cadena de razonamiento son los únicos que declaran
+ *  `thinkingConfig`. Se reconocen por familia y no por una lista escrita a mano,
+ *  que se quedaría vieja con el siguiente modelo. */
+function supportsThinking(modelId = '') {
+    return /gemini-(2\.5|3)/i.test(modelId) || /gemini-(flash|pro)-latest/i.test(modelId);
+}
+
+/** Por qué un modelo contestó sin texto. Son causas distintas y se corrigen en
+ *  sitios distintos, así que se nombran: presupuesto agotado, filtro de
+ *  seguridad o una respuesta que no trae candidatos. */
+function describeEmpty(modelId, finishReason, data) {
+    if (finishReason === 'MAX_TOKENS') {
+        return `${modelId} agotó su presupuesto de salida antes de escribir nada (finishReason=MAX_TOKENS).`;
+    }
+    if (finishReason === 'SAFETY' || finishReason === 'PROHIBITED_CONTENT') {
+        return `${modelId} bloqueó la respuesta por su filtro de contenido (finishReason=${finishReason}).`;
+    }
+    if (data?.promptFeedback?.blockReason) {
+        return `${modelId} rechazó la petición (blockReason=${data.promptFeedback.blockReason}).`;
+    }
+    return `${modelId} devolvió una respuesta vacía (finishReason=${finishReason || 'desconocido'}).`;
+}
+
 async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
@@ -57,22 +80,46 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, 
     };
 
     let lastError = '';
+    // El registro de lo ya intentado vive FUERA del bucle. Declarado dentro
+    // nacía vacío en cada vuelta y no deduplicaba nada: con el modelo por
+    // defecto —que además encabeza la lista de respaldos— se hacían dos
+    // llamadas idénticas al proveedor, con su latencia y su costo.
+    const seen = new Set();
     for (const { version, id } of candidates) {
-        // Evitar intentar el mismo modelo dos veces
-        const seen = new Set();
-        if (seen.has(id)) continue;
+        if (!id || seen.has(id)) continue;
         seen.add(id);
 
         const url = `https://generativelanguage.googleapis.com/${version}/models/${id}:generateContent?key=${key}`;
+        // Los modelos 2.5 RAZONAN por defecto y esos tokens de pensamiento salen
+        // del MISMO presupuesto que la respuesta: con una salida larga —un
+        // artículo completo— el modelo agota el presupuesto pensando y devuelve
+        // texto vacío o un JSON cortado a mitad, con finishReason=MAX_TOKENS.
+        // Para redactar no hace falta cadena de razonamiento, así que se acota.
+        // El campo sólo existe en 2.5+: mandarlo a un modelo que no lo declara
+        // lo rechazaría con un 400 y el candidato se saltearía en silencio.
+        const payload = supportsThinking(id)
+            ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { thinkingBudget: 0 } } }
+            : body;
         try {
-            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             // Log detallado de la respuesta para debugging en produccion
             const candidate = data.candidates?.[0];
             const finishReason = candidate?.finishReason;
-            const rawText = candidate?.content?.parts?.[0]?.text || '';
+            // La respuesta puede venir partida en varias `parts`; quedarse con
+            // la primera pierde el resto del texto.
+            const rawText = (candidate?.content?.parts || []).map(p => p?.text || '').join('') || '';
             console.log(`[Gemini] model=${id} status=${res.status} finishReason=${finishReason} chars=${rawText.length} raw100=${rawText.slice(0,100)}`);
-            if (res.ok) return rawText;
+            if (res.ok && rawText.trim()) return rawText;
+            if (res.ok) {
+                // UNA RESPUESTA VACÍA NO ES UN ÉXITO. Hasta v4.890 se devolvía
+                // el texto vacío como si fuera la respuesta del modelo: la
+                // cadena de candidatos se cortaba en el primero y quien llamaba
+                // fallaba después, al intentar leer un JSON que nunca existió.
+                // El motivo va en el mensaje porque es el diagnóstico entero.
+                lastError = describeEmpty(id, finishReason, data);
+                continue;
+            }
             if (res.status === 404 || res.status === 400) { lastError = data.error?.message || `${id} not found`; continue; }
             throw new Error(data.error?.message || 'Error Gemini API');
         } catch (e) {
@@ -236,9 +283,11 @@ Montos en COP. Datos realistas y conservadores.`;
  * @param {string} slug - Slug del modelo (ej: 'gemini-2.0-flash')
  * @param {string} systemPrompt - Instrucciones del sistema
  * @param {string} userPrompt - Mensaje del usuario
+ * @param {Array}  history - Turnos previos, si los hay
+ * @param {{maxTokens?: number}} options - Presupuesto de salida para esta llamada
  * @returns {Promise<string>} - Texto de salida del modelo
  */
-export async function routeToModel(slug, systemPrompt, userPrompt, history = []) {
+export async function routeToModel(slug, systemPrompt, userPrompt, history = [], options = {}) {
     let config = null;
 
     // 1. Buscar en BD (configuración con API key personalizada)
@@ -272,7 +321,10 @@ export async function routeToModel(slug, systemPrompt, userPrompt, history = [])
         systemPrompt,
         userPrompt,
         history,
-        maxTokens: config.max_tokens || 4096,
+        // El presupuesto de salida lo puede subir quien llama: una respuesta
+        // corta (un titular, un icono) no necesita lo mismo que un artículo
+        // completo. Sin este parámetro todo salía con los 4096 por defecto.
+        maxTokens: options.maxTokens || config.max_tokens || 4096,
     });
 }
 
