@@ -191,6 +191,49 @@ export const disbursedTotals = async (clubId) => {
     }
 };
 
+/**
+ * Lo desembolsado POR APORTE, agregado en la base (v4.890).
+ *
+ * Es lo que permite que el estado que se muestra conozca el giro sin traer una
+ * fila por desembolso: `GROUP BY "paymentId"` devuelve un renglón por aporte y
+ * la pantalla los pinta todos con esa única consulta. Traer las filas y sumar
+ * fuera sería una consulta por aporte —decenas por visita— para calcular un
+ * número que la base ya sabe sumar. Mismo criterio que `disbursedTotals`.
+ *
+ * Los REVERSADOS no cuentan: un desembolso corregido no trasladó nada, así que
+ * el aporte vuelve a estar donde estaba.
+ *
+ * `paymentIds` acota cuando ya se sabe cuáles interesan (la lista de aportes);
+ * sin él se devuelve todo el sitio, que es lo que necesita la Bóveda.
+ */
+export const disbursedByPayment = async (clubId, paymentIds = null) => {
+    try {
+        if (!clubId || !(await listo())) return {};
+        const acotar = Array.isArray(paymentIds);
+        if (acotar && paymentIds.length === 0) return {};
+        const { rows } = await db.query(
+            `SELECT "paymentId",
+                    COALESCE(SUM(amount), 0)::float8 AS cubierto,
+                    COUNT(*)::int AS cuantos
+               FROM "Disbursement"
+              WHERE "clubId" = $1 AND status = 'confirmado'
+                    ${acotar ? 'AND "paymentId" = ANY($2::text[])' : ''}
+              GROUP BY "paymentId"`,
+            acotar ? [clubId, paymentIds] : [clubId]
+        );
+        const salida = {};
+        for (const r of rows) {
+            salida[r.paymentId] = { cubierto: Number(r.cubierto) || 0, cuantos: r.cuantos };
+        }
+        return salida;
+    } catch (e) {
+        // Degrada a vacío, como todo lo de este archivo: sin el dato el estado
+        // se pinta como antes de v4.890, no se cae la pantalla del dinero.
+        console.warn('[DISB] disbursedByPayment falló:', e?.message);
+        return {};
+    }
+};
+
 /** El saldo de un aporte: cuánto se desembolsó, cuánto falta, si está completo. */
 export const balanceFor = async (payment) => {
     const desembolsos = await listDisbursements(payment.id);

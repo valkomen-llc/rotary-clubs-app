@@ -576,6 +576,41 @@ export const disbursementBalance = ({ net, disbursements = [], currency = 'USD' 
 /** El estado que le corresponde a un aporte según lo que se le haya
  *  desembolsado. `null` significa «los desembolsos no tienen nada que decir»:
  *  no hay ninguno, y entonces manda el calendario. */
+/**
+ * ⚠️ EL ESTADO QUE SE MUESTRA TIENE QUE CONOCER EL DESEMBOLSO (v4.890).
+ *
+ * `bucketOf` mira SÓLO las fechas del pago, así que un aporte enteramente
+ * girado al beneficiario seguía informándose como `available` y la tarjeta
+ * pintaba «DISPONIBLE PARA RETIRO» en verde encima de un giro ya registrado.
+ * Se reportó tal cual: «le doy marcar como transferido y el estado sigue
+ * siendo disponible para retiro».
+ *
+ * Y la salida NO podía ser una segunda insignia al lado: un indicador que
+ * contradice a la cabecera es el defecto que este sitio ya se prohibió dos
+ * veces (v4.787 y v4.799). Hay UN veredicto y el desembolso es el hecho MÁS
+ * TARDÍO del camino del dinero —`order` 50 y 60, después de `available`—, así
+ * que manda.
+ *
+ * Las dos excepciones son `refunded` y `failed`: no son etapas anteriores del
+ * camino sino HECHOS NUEVOS sobre el dinero mismo, y taparlos con «desembolsado»
+ * escondería justo lo que hay que ver.
+ *
+ * Es PURA y recibe lo cubierto ya sumado: quien la llama tiene ese número de
+ * una consulta agregada, no de traer las filas.
+ */
+export const bucketWithDisbursement = (bucket, { net, cubierto = 0, cuantos = 0, currency = 'USD' } = {}) => {
+    if (!Number(cuantos)) return bucket;
+    if (bucket === 'refunded' || bucket === 'failed') return bucket;
+    const saldo = disbursementBalance({
+        net,
+        currency,
+        // Una entrada sintética con el total ya sumado: de este saldo sólo se
+        // lee `completo`, que es lo único que decide entre los dos estados.
+        disbursements: [{ amount: Number(cubierto) || 0 }],
+    });
+    return saldo.completo ? 'disbursed' : 'disbursing';
+};
+
 export const stateFromDisbursements = (balance) => {
     if (!balance || balance.cuantos === 0) return null;
     return balance.completo ? 'disbursed' : 'disbursing';
@@ -748,6 +783,7 @@ export default {
     canTransition, mergeState, bucketOf, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod, DISBURSEMENT_STATES,
     RECEIPT_TYPES, RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
-    disbursementBalance, stateFromDisbursements, validateDisbursement, disbursementShape,
+    disbursementBalance, stateFromDisbursements, bucketWithDisbursement,
+    validateDisbursement, disbursementShape,
     EVENT_LABELS, eventLabel, buildTimeline,
 };

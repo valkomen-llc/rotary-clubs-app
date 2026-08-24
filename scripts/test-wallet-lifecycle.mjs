@@ -19,7 +19,7 @@
 import { readFileSync } from 'node:fs';
 import {
     PLATFORM_HOLDING_DAYS, LIFECYCLE_STATES, STATE_IDS, isState, stateLabel,
-    canTransition, mergeState, bucketOf, scheduleOf, planFor, canDisburse,
+    canTransition, mergeState, bucketOf, bucketWithDisbursement, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod,
     RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
     disbursementBalance, stateFromDisbursements, validateDisbursement,
@@ -483,6 +483,79 @@ for (const nombre of ['SQL', 'ALTERS']) {
     ok(`el bloque ${nombre} no lleva ninguna comilla invertida dentro`,
         abre > 0 && cierra > 0 && !cuerpo.slice(0, cierra).includes('\`'));
 }
+
+// ── EL ESTADO CONOCE EL DESEMBOLSO (v4.890) ─────────────────────────
+//
+// El defecto reportado: se marcaban cinco aportes como girados y la lista los
+// seguía mostrando «DISPONIBLE PARA RETIRO» en verde.
+console.log('\n── El estado plegado con el desembolso ──');
+
+ok('sin desembolsos el estado no cambia',
+    bucketWithDisbursement('available', { net: 100, currency: 'USD' }) === 'available');
+
+ok('girado ENTERO → desembolsado',
+    bucketWithDisbursement('available', { net: 100, cubierto: 100, cuantos: 1, currency: 'USD' }) === 'disbursed');
+
+ok('girado a medias → desembolso parcial',
+    bucketWithDisbursement('available', { net: 100, cubierto: 40, cuantos: 1, currency: 'USD' }) === 'disbursing');
+
+ok('el redondeo de un céntimo no impide dar por completo',
+    bucketWithDisbursement('available', { net: 100, cubierto: 99.998, cuantos: 1, currency: 'USD' }) === 'disbursed');
+
+ok('en pesos la tolerancia es de medio peso, no de medio céntimo',
+    bucketWithDisbursement('available', { net: 50000, cubierto: 49999.7, cuantos: 1, currency: 'COP' }) === 'disbursed');
+
+// El giro puede registrarse sobre un aporte sin fecha de Stripe (`canDisburse`
+// lo permite avisando), así que el plegado tiene que valer desde cualquier
+// etapa anterior — no sólo desde «disponible».
+ok('un aporte en tránsito que se giró entero también queda desembolsado',
+    bucketWithDisbursement('in_transit', { net: 100, cubierto: 100, cuantos: 1, currency: 'USD' }) === 'disbursed');
+
+// ⚠️ Las dos excepciones: son HECHOS NUEVOS sobre el dinero, no etapas
+// anteriores del camino, y taparlos escondería justo lo que hay que ver.
+ok('⚠️ un reembolso NO se tapa con «desembolsado»',
+    bucketWithDisbursement('refunded', { net: 100, cubierto: 100, cuantos: 1, currency: 'USD' }) === 'refunded');
+ok('⚠️ un cobro fallido tampoco',
+    bucketWithDisbursement('failed', { net: 100, cubierto: 100, cuantos: 1, currency: 'USD' }) === 'failed');
+
+ok('con todos los desembolsos reversados vuelve a su estado',
+    bucketWithDisbursement('available', { net: 100, cubierto: 0, cuantos: 0, currency: 'USD' }) === 'available');
+
+// ── Y el camino: los dos endpoints lo aplican ───────────────────────
+const fin = read('server/controllers/financialController.js');
+ok('`movementOf` pliega el desembolso en el estado',
+    /bucket: bucketWithDisbursement\(bucketOf\(p, now\)/.test(fin));
+ok('la Bóveda usa la MISMA función, no un criterio propio',
+    (fin.match(/bucketWithDisbursement\(/g) || []).length >= 2);
+ok('los dos estados del giro entran en la lista de grupos',
+    /'disbursing', 'disbursed'/.test(fin));
+ok('⚠️ el disponible para retiro descuenta lo ya girado',
+    /disponibleBruto - giradoDeLoDisponible - transferred - requested/.test(fin));
+ok('el disponible se calcula sobre el estado FINANCIERO, no sobre el plegado',
+    /financialBucket === 'available'/.test(fin));
+ok('lo desembolsado por aporte se pide en UNA consulta agregada, no dentro de un map',
+    /disbursedByPayment\(clubId/.test(fin) && !/\.map\([^)]*await disbursedByPayment/.test(fin));
+
+const disbLib = read('server/lib/disbursements.js');
+ok('`disbursedByPayment` agrega en la base con GROUP BY',
+    /GROUP BY "paymentId"/.test(disbLib));
+ok('y no cuenta los reversados',
+    /disbursedByPayment[\s\S]{0,900}status = 'confirmado'/.test(disbLib));
+
+// ⚠️ El defecto de v4.888: la línea que MANDA los destinatarios se copió al
+// bloque sin la que los CALCULA, y el desembolso en bloque contestaba 500.
+const ctrlDisb = read('server/controllers/disbursementController.js');
+const bloque = ctrlDisb.slice(ctrlDisb.indexOf('export const createBulkDisbursements'));
+ok('⚠️ el desembolso en bloque DECLARA sus destinatarios antes de usarlos',
+    bloque.indexOf('const destinatarios = resolveRecipients(') > 0 &&
+    bloque.indexOf('const destinatarios = resolveRecipients(') < bloque.indexOf('notifyEmails: destinatarios.email'));
+
+// ⚠️ Y la insignia: UN veredicto, no dos que se contradicen.
+const uiWallet = read('src/pages/admin/WalletManagement.tsx');
+ok('⚠️ la tarjeta NO pinta una segunda insignia de «Desembolsado»',
+    !/rounded-full[^`]*bg-violet-100 text-violet-800">\s*<Landmark/.test(uiWallet));
+ok('los dos estados del giro tienen rótulo en la pantalla',
+    /disbursing: \{ label:/.test(uiWallet) && /disbursed: \{ label:/.test(uiWallet));
 
 const prisma = read('server/prisma/schema.prisma');
 ok('⚠️ `Payment` NO ganó ninguna columna del ciclo de vida',

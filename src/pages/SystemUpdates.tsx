@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.889.0 | 2026-08-24 (Corrige el botón de confirmar el desembolso en bloque)
+// UI V4.890.0 | 2026-08-24 (El estado de un aporte conoce su desembolso)
 // Cache bust: 2026-08-24e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.890.0',
+        title: 'Corrección: marcar como desembolsado no cambiaba el estado',
+        description: 'Al marcar varios aportes como desembolsados no ocurría nada: la petición fallaba antes de escribir, porque la versión que agregó los destinatarios copió al bloque las líneas que los envían y no la que los calcula. Corregido eso, aparecía el segundo defecto: el estado de un aporte se calculaba sólo con las fechas del cobro, así que uno ya girado seguía mostrándose «Disponible para retiro». Ahora el estado conoce el giro y dice «Desembolsado» o «Desembolso parcial», el disponible para retiro descuenta lo ya trasladado, y la insignia es una sola —antes convivían la verde y la violeta diciendo cosas distintas del mismo aporte—.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'correccion'],
+        type: 'fix',
+        impact: 'Se agrega una barrera que revisa el servidor entero en busca de identificadores inexistentes: es la causa de este defecto y la única parte del proyecto que no pasaba por ninguna comprobación de ese tipo.',
+    },
     {
         version: '4.889.0',
         title: 'Corrección: confirmar el desembolso en bloque no hacía nada',

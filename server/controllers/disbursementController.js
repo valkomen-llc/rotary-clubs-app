@@ -310,6 +310,22 @@ export const createBulkDisbursements = async (req, res) => {
             return res.status(422).json({ error: 'Máximo 50 aportes por vez. Elegí menos y repetí.' });
         }
 
+        // ⚠️ LOS DESTINATARIOS SE RESUELVEN ACÁ, UNA VEZ PARA TODO EL LOTE.
+        //
+        // v4.888 los agregó al desembolso de a uno y copió las líneas que los
+        // MANDAN dentro de este bucle sin traer la línea que los CALCULA: el
+        // bloque entero reventaba con un ReferenceError dentro del `try`, así
+        // que la petición contestaba 500 y NINGÚN aporte se registraba. Se
+        // reportó como «le doy completar y no aparece nada, siguen apareciendo
+        // ahí». Es el mismo renombrado a medias de v4.889, por la otra puerta —
+        // y tampoco lo ve nada: el servidor es `.js` fuera de `src`, así que el
+        // typecheck no lo mira, y `check:syntax` da el archivo por bueno porque
+        // parsea perfectamente.
+        const destinatarios = resolveRecipients({
+            emails: req.body?.notifyEmails ?? req.body?.notifyEmail,
+            phones: req.body?.notifyPhones,
+        }, validateForMeta);
+
         const actor = actorDe(req);
         const ahora = new Date();
         // El identificador del LOTE. Existe siempre —también sin comprobante—
