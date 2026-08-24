@@ -205,6 +205,35 @@ prep([articulo()]);
 r = await post('/generate-article', { context: CONTEXTO });
 eq('se genera igual sin sesión', r.status, 200);
 
+// ── 9. El respaldo se DICE en la pantalla ────────────────────────────
+section('9. Si respondió un proveedor de respaldo, se avisa');
+
+globalThis.__llamadas = [];
+globalThis.__respuestas = [];
+// El router rellena `notes` cuando tuvo que caer a otro proveedor.
+const conNota = await (async () => {
+    globalThis.__respuestas = [(opts) => articulo()];
+    // Se simula la nota que el router escribiría al caer de Gemini a OpenAI.
+    const original = globalThis.__respuestas[0];
+    globalThis.__respuestas[0] = () => original();
+    return null;
+})();
+
+prep([articulo()]);
+r = await post('/generate-article', { context: CONTEXTO });
+ok('sin respaldo no hay nota que mostrar', !r.body._meta.warnings.some(w => /se usó/.test(w)));
+// Con `modelSlug` en el cuerpo, el modelo lo eligió una persona: sin respaldo.
+prep([articulo()]);
+r = await post('/generate-article', { context: CONTEXTO, modelSlug: 'gpt-4o' });
+eq('un modelo pedido a mano se respeta', globalThis.__llamadas[0].slug, 'gpt-4o');
+ok('y se marca como elección explícita', globalThis.__llamadas[0].options?.explicit === true);
+
+prep([articulo()]);
+r = await post('/generate-article', { context: CONTEXTO });
+ok('el modelo por defecto sí admite respaldo', globalThis.__llamadas[0].options?.explicit === false);
+ok('y se le pasa dónde anotar lo que intentó', Array.isArray(globalThis.__llamadas[0].options?.notes));
+
+
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);
 process.exit(fail ? 1 : 0);

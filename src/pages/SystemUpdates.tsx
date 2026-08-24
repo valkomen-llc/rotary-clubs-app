@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.891.0 | 2026-08-24 (El asistente de redacción dice qué falló y escribe para posicionar)
-// Cache bust: 2026-08-24g
+// UI V4.892.0 | 2026-08-24 (Una avería en un proveedor de IA ya no tumba toda la plataforma)
+// Cache bust: 2026-08-24h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.892.0',
+        title: 'La IA sigue funcionando aunque falle un proveedor',
+        description: 'Al generar un artículo aparecía «Lightning dunning decision is deny for project…»: es Google diciendo que la cuenta de facturación asociada a la clave tiene un pago pendiente. Ese rechazo no se arregla desde la plataforma —se corrige en la consola de facturación del proveedor— pero sí se arregla que dejara sin IA a todo el sitio: hasta ahora se usaba un solo proveedor y, si fallaba, se acababa ahí, teniendo credenciales de otros cargadas. Ahora hay respaldo automático entre proveedores y el aviso dice en español cuál es la causa y dónde se corrige, en vez del texto técnico en inglés.',
+        date: new Date().toISOString(),
+        tags: ['ia', 'infraestructura', 'correccion'],
+        type: 'fix',
+        impact: 'Alcanza a todas las funciones con IA —artículos, sugerencias de SEO, copys para redes y los asistentes—, no sólo al generador de noticias. Un modelo elegido a mano se sigue respetando sin respaldo, y cuando responde un motor de reemplazo se avisa en pantalla para que la avería no quede invisible.',
+    },
     {
         version: '4.891.0',
         title: 'Corrección: el asistente de redacción de Noticias fallaba sin decir por qué',
