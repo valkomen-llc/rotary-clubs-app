@@ -7,8 +7,8 @@
 import Stripe from 'stripe';
 // v4.885 — El criterio del ciclo de vida, puro y probado. Un segundo
 // `bucketOf` escrito a mano acá volvería a separarse en silencio.
-import { bucketOf as bucketOfPuro, scheduleOf } from '../lib/walletLifecycle.js';
-import { listDisbursementsFor, disbursedTotals } from '../lib/disbursements.js';
+import { bucketOf as bucketOfPuro, scheduleOf, bucketWithDisbursement } from '../lib/walletLifecycle.js';
+import { listDisbursementsFor, disbursedTotals, disbursedByPayment } from '../lib/disbursements.js';
 import { resolveDonationCurrency, blockAmountsApply } from '../lib/donationCurrency.js';
 import {
     normalizeCurrency, currencyMeta, roundMoney, fromStripeAmount,
@@ -656,7 +656,7 @@ const bucketOf = (p, now) => bucketOfPuro(p, now);
 // Es lo mismo que `getClubWallet` arma para cada pago, y por eso el estado se
 // decide con `bucketOf`: dos criterios distintos sobre el mismo pago dirían
 // cosas distintas en dos pantallas del mismo módulo.
-const movementOf = (p, now) => {
+const movementOf = (p, now, desembolso = null) => {
     const payload = parsePayload(p.rawPayload);
     const currency = normalizeCurrency(p.currency);
     const grossAmount = parseFloat(p.amount || 0);
@@ -673,7 +673,18 @@ const movementOf = (p, now) => {
         amount: netClub,
         status: p.status,
         stripeStatus: p.stripeStatus,
-        bucket: bucketOf(p, now),
+        // v4.890 — El estado CONOCE el desembolso. Sin esto, un aporte girado
+        // entero al beneficiario seguía informándose «Disponible para retiro»,
+        // que es lo que se reportó. Hay UN veredicto: el desembolso es el hecho
+        // más tardío del camino del dinero y manda sobre la disponibilidad.
+        bucket: bucketWithDisbursement(bucketOf(p, now), {
+            net: netClub, currency, ...(desembolso || {}),
+        }),
+        // El estado FINANCIERO sin plegar, que es otra pregunta: «¿la plataforma
+        // todavía retiene este dinero?». Se declara aparte en vez de deducirlo
+        // de nuevo en la pantalla — dos criterios sobre el mismo pago dirían
+        // cosas distintas en dos sitios del mismo módulo.
+        financialBucket: bucketOf(p, now),
         // v4.885 — El CALENDARIO del aporte: cuándo se recibió, cuándo lo
         // libera el proveedor, cuándo lo puede usar el club y cuántos días
         // faltan. Todo DERIVADO de las fechas guardadas, así que no hay ninguna
@@ -721,12 +732,17 @@ const attachTraces = async (clubId, donations) => {
 
         const { links, orphans } = linkDonationsToPayments(donations, rows);
 
+        // v4.890 — Lo desembolsado por aporte, en UNA consulta agregada. Va acá
+        // y no dentro del map porque un `await` por aporte serían decenas de
+        // consultas por visita — y dentro de `.map` ni siquiera se esperarían.
+        const girado = await disbursedByPayment(clubId, rows.map(r => r.id));
+
         return {
             donations: donations.map(d => {
                 const enlace = links.get(d.id);
                 return {
                     ...d,
-                    movement: enlace ? movementOf(enlace.payment, now) : null,
+                    movement: enlace ? movementOf(enlace.payment, now, girado[enlace.payment.id]) : null,
                     // Se DECLARA cómo se ató. Una coincidencia deducida no
                     // puede presentarse como un hecho: los aportes anteriores
                     // a v4.844 no tienen vínculo y se emparejan por club,
@@ -734,7 +750,7 @@ const attachTraces = async (clubId, donations) => {
                     movementMatch: enlace?.match || null,
                 };
             }),
-            orphans: orphans.map(p => movementOf(p, now)),
+            orphans: orphans.map(p => movementOf(p, now, girado[p.id])),
         };
     } catch (e) {
         // Sin traza la lista se sigue mostrando: es una mejora de la ficha, no
@@ -778,6 +794,10 @@ export const getClubWallet = async (req, res) => {
             [clubId]
         );
 
+        // v4.890 — Lo desembolsado por aporte, en UNA consulta agregada, antes
+        // de armar los items: el estado que se informa tiene que conocerlo.
+        const giradoPorPago = await disbursedByPayment(clubId, paymentsResult.rows.map(p => p.id));
+
         const items = paymentsResult.rows.map(p => {
             const currency = normalizeCurrency(p.currency);
             const grossAmount = parseFloat(p.amount || 0);
@@ -806,7 +826,19 @@ export const getClubWallet = async (req, res) => {
                 paymentMethod: p.paymentMethod || 'card',
                 stripeBalanceTxId: p.stripeBalanceTxId,
                 createdAt: p.createdAt,
-                bucket: bucketOf(p, now),
+                // v4.890 — Plegado con el desembolso, igual que en la ficha y
+                // con la MISMA función: dos criterios sobre el mismo pago
+                // dirían cosas distintas en dos pantallas del mismo módulo.
+                bucket: bucketWithDisbursement(bucketOf(p, now), {
+                    net: netClub, currency, ...(giradoPorPago[p.id] || {}),
+                }),
+                financialBucket: bucketOf(p, now),
+                // Cuánto de ESTE aporte ya se giró. Se declara por aporte
+                // —no sólo el total del sitio— porque el disponible se calcula
+                // restando lo girado de los aportes que de verdad están
+                // disponibles: el total por moneda incluye giros de aportes que
+                // nunca estuvieron en ese grupo y restaría de más.
+                disbursedAmount: Number(giradoPorPago[p.id]?.cubierto) || 0,
                 // El mismo calendario que lleva el movimiento en la ficha. Sale
                 // de la MISMA función: dos criterios sobre las mismas fechas
                 // dirían cosas distintas en dos pantallas del mismo módulo.
@@ -814,7 +846,12 @@ export const getClubWallet = async (req, res) => {
             };
         });
 
-        const BUCKETS = ['processing', 'in_transit', 'available_soon', 'available', 'refunded', 'failed'];
+        // v4.890 — `disbursing` y `disbursed` entran a la lista. Estaban
+        // declarados en `LIFECYCLE_STATES` desde v4.885 y ningún agrupador los
+        // contemplaba, así que un aporte plegado a esos estados habría
+        // desaparecido de todos los grupos —y de los totales— en silencio.
+        const BUCKETS = ['processing', 'in_transit', 'available_soon', 'available',
+            'disbursing', 'disbursed', 'refunded', 'failed'];
         const byCurrencyItems = groupByCurrency(items, it => it.currency);
         const payoutsByCurrency = groupByCurrency(payoutsResult.rows, p => p.currency);
 
@@ -866,6 +903,22 @@ export const getClubWallet = async (req, res) => {
             // dinero en unos sitios y ninguna en otros.
             const disbursed = desembolsado[code] || { total: 0, cuantos: 0, ultimo: null };
 
+            // ⚠️ EL DISPONIBLE PARA RETIRO DESCUENTA LO YA GIRADO (v4.890).
+            //
+            // Se calcula sobre `financialBucket` —lo que el proveedor liberó de
+            // verdad— y no sobre el estado plegado, y se resta EXACTAMENTE lo
+            // desembolsado de esos aportes. Sobre el estado plegado, un aporte
+            // girado a medias saldría entero del disponible y la cifra quedaría
+            // corta; con el total por moneda se restarían giros de aportes que
+            // nunca estuvieron disponibles y quedaría corta por el otro lado.
+            //
+            // Lo que NO se toca es `computeBalances` en el módulo de retiros:
+            // ése es el cálculo autorizado de un payout y esta cifra es la de
+            // esta pantalla. Al cambiar una, mirar la otra.
+            const disponibles = own.filter(it => it.financialBucket === 'available');
+            const disponibleBruto = disponibles.reduce((a, it) => a + it.amount, 0);
+            const giradoDeLoDisponible = disponibles.reduce((a, it) => a + (it.disbursedAmount || 0), 0);
+
             return {
                 currency: code,
                 decimals: currencyMeta(code).decimals,
@@ -879,7 +932,7 @@ export const getClubWallet = async (req, res) => {
                     disbursedLast: disbursed.ultimo,
                     inTransit: roundMoney(buckets.in_transit.total + buckets.processing.total, code),
                     availableSoon: buckets.available_soon.total,
-                    availableForWithdrawal: Math.max(0, roundMoney(buckets.available.total - transferred - requested, code)),
+                    availableForWithdrawal: Math.max(0, roundMoney(disponibleBruto - giradoDeLoDisponible - transferred - requested, code)),
                     transferred,
                     requested,
                     refunded: buckets.refunded.total,

@@ -1613,6 +1613,11 @@ const ESTADOS: Record<string, { label: string; bg: string; text: string; icon: R
     in_transit: { label: 'En tránsito', bg: 'bg-amber-100', text: 'text-amber-800', icon: <Plane className="w-3 h-3" /> },
     available_soon: { label: 'Disponible próximamente', bg: 'bg-sky-100', text: 'text-sky-800', icon: <Clock className="w-3 h-3" /> },
     available: { label: 'Disponible para retiro', bg: 'bg-emerald-100', text: 'text-emerald-800', icon: <CheckCircle2 className="w-3 h-3" /> },
+    // v4.890 — Los dos estados del giro. Estaban declarados en el servidor
+    // desde v4.885 y no tenían rótulo acá, así que un aporte desembolsado se
+    // quedaba SIN insignia o —peor— con la verde de «disponible».
+    disbursing: { label: 'Desembolso parcial', bg: 'bg-violet-50', text: 'text-violet-700', icon: <Landmark className="w-3 h-3" /> },
+    disbursed: { label: 'Desembolsado', bg: 'bg-violet-100', text: 'text-violet-800', icon: <Landmark className="w-3 h-3" /> },
     refunded: { label: 'Reembolsado', bg: 'bg-red-50', text: 'text-red-700', icon: <Ban className="w-3 h-3" /> },
     failed: { label: 'Fallido', bg: 'bg-red-100', text: 'text-red-800', icon: <XCircle className="w-3 h-3" /> },
 };
@@ -1722,7 +1727,6 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     const retenidoPorStripe = !!(mov?.availableOn && new Date(mov.availableOn) > new Date());
     const elegible = !!(mov && onElegir && restante > 0.005 && !retenidoPorStripe
         && mov.status !== 'refunded' && mov.status !== 'failed' && mov.status !== 'pending');
-    const completamenteDesembolsado = !!(mov && (mov.amount ?? 0) > 0 && restante <= 0.005);
 
     const titulo = donation
         ? (donation.isAnonymous
@@ -1799,20 +1803,21 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
 
                             Sólo cuando faltan: un «0 días» al lado de un estado
                             que ya dice «Disponible» es ruido. */}
-                        {/* v4.886 — Se DICE si ya se trasladó, y en qué grado.
-                            «Disponible para retiro» no distingue un aporte que
-                            ya se giró de uno que no, que es exactamente la
-                            pregunta que hay que poder contestar de un vistazo
-                            para un informe. */}
-                        {completamenteDesembolsado ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] bg-violet-100 text-violet-800">
-                                <Landmark className="w-3 h-3" />Desembolsado
+                        {/* ⚠️ v4.890 — ACÁ NO VA UNA SEGUNDA INSIGNIA.
+                            v4.886 pintaba «Desembolsado» en violeta AL LADO de
+                            la cabecera verde «Disponible para retiro», y las dos
+                            hablaban del mismo aporte diciendo cosas distintas.
+                            Es la contradicción que este sitio ya se prohibió dos
+                            veces (v4.787 y v4.799). Hay UN veredicto y lo da el
+                            servidor: desde v4.890 `bucket` conoce el giro, así
+                            que la insignia de arriba ya dice «Desembolsado».
+                            Lo que queda acá es cuánto falta cuando el giro fue
+                            parcial, en texto llano y sin competir con ella. */}
+                        {yaDesembolsado > 0 && restante > 0.005 && (
+                            <span className="text-[10px] font-semibold text-violet-700" data-no-translate>
+                                {money(yaDesembolsado, mov?.currency || 'USD')} girado · falta {money(restante, mov?.currency || 'USD')}
                             </span>
-                        ) : yaDesembolsado > 0 ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] bg-violet-50 text-violet-700">
-                                <Landmark className="w-3 h-3" />Desembolso parcial
-                            </span>
-                        ) : null}
+                        )}
                         {mov?.lifecycle?.diasRestantes ? (
                             <span className="inline-flex items-center gap-1 text-sky-700 font-semibold">
                                 <Clock className="w-3 h-3" />

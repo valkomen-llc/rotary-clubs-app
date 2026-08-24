@@ -7392,6 +7392,63 @@ botón del desembolso en bloque no producía ningún efecto.
   errores iguales. El motivo va A LA VISTA junto al campo: un botón apagado sin
   explicación se lee como que el módulo está roto.
 
+### El estado de un aporte conoce su desembolso (v4.890)
+
+Reporte con la lista delante: se marcan cinco aportes como girados, «no aparece
+nada, siguen apareciendo ahí y el estado es todavía disponibles para retiro».
+Eran DOS defectos encadenados y el primero tapaba al segundo.
+
+- **⚠️ `createBulkDisbursements` USABA `destinatarios` SIN DECLARARLO.** v4.888
+  agregó los destinatarios al desembolso de a uno y copió al bloque las líneas
+  que los MANDAN sin traer la que los CALCULA: `ReferenceError` dentro del
+  `try` → 500 → **ningún aporte se registraba**. Mismo renombrado a medias que
+  v4.889, por la otra puerta.
+- **⚠️ Y NADA LO VEÍA: EL SERVIDOR NO PASABA POR NINGÚN COMPROBADOR DE
+  IDENTIFICADORES.** `npm run typecheck` mira `src` y esto es `.js` fuera de
+  ese alcance; `check:syntax` da el archivo por bueno porque **parsea
+  perfectamente** —es un error de EJECUCIÓN—; `check:hooks` corre ESLint sólo
+  sobre `**/*.{ts,tsx}`; y las pruebas importan el criterio PURO y simulan la
+  API, así que el cuerpo del manejador puede no ejecutarse nunca. Lo cierra
+  `npm run check:server-undef` (en `prebuild`), que corre **una sola regla**,
+  `no-undef`, por el mismo motivo que `check:hooks` corre una sola: con el juego
+  completo el aviso que importa se pierde entre cientos heredados y el guardián
+  se termina desactivando. Verificado a la inversa: reintroduciendo el defecto,
+  señala las cuatro líneas.
+- **⚠️ `bucketOf` NO SABÍA NADA DEL DESEMBOLSO**, y ése era el segundo defecto.
+  Mira sólo las fechas del pago, así que un aporte girado entero al beneficiario
+  seguía informándose `available` y la tarjeta pintaba «DISPONIBLE PARA RETIRO»
+  en verde encima de un giro ya registrado. `bucketWithDisbursement` pliega el
+  giro: el desembolso es el hecho **más tardío** del camino del dinero —`order`
+  50 y 60, después de `available`— así que manda.
+- **HAY UN VEREDICTO, NO DOS.** v4.886 resolvía esto con una segunda insignia
+  violeta AL LADO de la verde, y las dos hablaban del mismo aporte diciendo
+  cosas distintas: es la contradicción que este archivo ya prohibió dos veces
+  (v4.787, indicador rojo bajo cabecera verde; v4.799, insignia verde sobre una
+  tarjeta que grita «REQUIERE REGENERACIÓN»). Lo que queda junto a la insignia
+  es cuánto falta cuando el giro fue parcial, en texto llano.
+- **`refunded` y `failed` NO se tapan con «desembolsado».** No son etapas
+  anteriores del camino sino HECHOS NUEVOS sobre el dinero mismo, y esconderlos
+  detrás del giro escondería justo lo que hay que ver.
+- **⚠️ EL DISPONIBLE PARA RETIRO SE CALCULA SOBRE EL ESTADO FINANCIERO Y RESTA
+  LO GIRADO, aporte por aporte.** Sobre el estado plegado, un aporte girado a
+  MEDIAS saldría entero del disponible y la cifra quedaría corta; con el total
+  por moneda de `disbursedTotals` se restarían giros de aportes que nunca
+  estuvieron disponibles y quedaría corta por el otro lado. Por eso el item
+  declara `financialBucket` y `disbursedAmount` además del `bucket` plegado —dos
+  preguntas distintas sobre el mismo pago, resueltas en el servidor y no
+  deducidas otra vez en la pantalla—.
+- **`computeBalances` NO se toca.** Es el cálculo autorizado de un payout y
+  vive en el módulo de retiros; esta cifra es la de esta pantalla. Al cambiar
+  una, mirar la otra.
+- **Lo girado por aporte se pide en UNA consulta agregada** (`disbursedByPayment`,
+  `GROUP BY "paymentId"`), no trayendo las filas ni con un `await` dentro de un
+  `.map` —que además no se esperaría—. Criterio de `disbursedTotals` y de
+  `getCentralOverview`.
+- **`disbursing` y `disbursed` entraron a la lista de grupos de la Bóveda.**
+  Estaban declarados en `LIFECYCLE_STATES` desde v4.885 y ningún agrupador los
+  contemplaba: un aporte plegado a esos estados habría desaparecido de todos los
+  grupos —y de los totales— en silencio.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 
