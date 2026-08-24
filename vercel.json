@@ -58,6 +58,10 @@
     {
       "path": "/api/cron/emergency-feed",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/wallet-tick",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

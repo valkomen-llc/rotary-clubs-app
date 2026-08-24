@@ -46,11 +46,19 @@ grupo('Los eventos: catálogo cerrado y honesto');
 
 check('el catálogo tiene los cuatro eventos del pedido que dependen del pago',
     ['payment_confirmed', 'in_transit', 'refunded', 'failed'].every(isKnownEvent));
+check('y el del desembolso, que cierra el ciclo operativo (v4.885)', isKnownEvent('disbursed'));
 check('un evento inventado NO entra', !isKnownEvent('contribution.whatever') && !isKnownEvent(''));
 // Sólo se ofrece lo que la plataforma puede OBSERVAR. Prometer los otros en la
 // pantalla sería una casilla que no hace nada (v4.650).
-check('están disponibles exactamente los dos que tienen fuente',
-    availableEvents().map(e => e.id).join(',') === 'payment_confirmed,refunded');
+// v4.885 — Son TRES desde que existe el desembolso. `disbursed` está disponible
+// porque su fuente no es un webhook de un tercero sino un ACTO ADMINISTRATIVO
+// con nombre y comprobante (`registerDisbursement`), y de ese hecho no hay
+// ninguna duda. Es justo la diferencia con `in_transit`, que sigue en false
+// porque nadie nos avisa cuando Stripe libera: hay que ir a preguntárselo.
+check('están disponibles exactamente los tres que tienen fuente observable',
+    availableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
+check('y `disbursed` declara que su fuente es un acto administrativo, no un webhook',
+    /acto administrativo/i.test(eventById('disbursed').source));
 check('cada evento DECLARA de dónde sale',
     NOTIFICATION_EVENTS.every(e => typeof e.source === 'string' && e.source.length > 3));
 // «¿por qué este aporte no disparó nada?» tiene que poder contestarse sin
@@ -628,7 +636,7 @@ grupo('FASE 4 — el reembolso y lo que NO se puede prometer');
 // `refunded` ya tiene fuente: `charge.refunded` enrutado a donaciones.
 check('el reembolso pasa a estar disponible',
     eventById('refunded').available === true
-    && availableEvents().map(e => e.id).join(',') === 'payment_confirmed,refunded');
+    && availableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
 // `failed` NO se implementa, y el motivo no es que falte trabajo: un pago que
 // falla nunca crea una `Donation`, así que no hay contribución sobre la que
 // notificar —y la llave de idempotencia es contribución + evento +

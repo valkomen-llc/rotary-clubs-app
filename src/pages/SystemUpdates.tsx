@@ -34,9 +34,18 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.884.0 | 2026-08-21 (Corrección urgente del 500 general)
-// Cache bust: 2026-08-21f
+// UI V4.885.0 | 2026-08-24 (Ciclo de vida del aporte: liberación automática y desembolsos)
+// Cache bust: 2026-08-24a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.885.0',
+        title: 'La Bóveda cierra el ciclo: liberación automática y desembolsos',
+        description: 'Los aportes que ya cumplieron su plazo pasan solos al siguiente estado, sin que nadie tenga que abrir el módulo ni pulsar «Sincronizar». Un aporte se quedaba «En tránsito» para siempre porque el estado dependía de una columna que sólo se actualizaba a mano: ahora manda la fecha real de liberación de Stripe, y un barrido automático cada quince minutos pone al día lo que falte. Además se incorpora lo que faltaba después de «Disponible para retiro»: registrar el desembolso efectivo al beneficiario, con monto, fecha, medio, referencia, comprobante adjunto y aviso por correo.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'aportes', 'desembolsos', 'automatizacion'],
+        type: 'feature',
+        impact: 'Ya no hay que contar los seis días a mano. Cada aporte muestra cuántos días faltan, su historial completo —recibido, liberado, desembolsado, notificado— y sus desembolsos con comprobante. Una revisión de estados corrige los aportes históricos contra Stripe, en modo ensayo primero.',
+    },
     {
         version: '4.884.0',
         title: 'Corrección urgente: la plataforma volvió a responder',
