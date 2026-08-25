@@ -251,7 +251,7 @@ ok('el prompt es el prompt base sustituido, VERBATIM (con su variación por piez
         { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(pieceId) }),
     (tarea.prompt || '').slice(0, 120));
 ok('la variación de ESTA pieza viajó en el prompt',
-    (tarea.prompt || '').includes('los elementos decorativos son:'));
+    (tarea.prompt || '').includes('Decoración de esta pieza:'));
 ok('ningún marcador viajó literal al modelo',
     !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(tarea.prompt || ''));
 ok('ninguna cláusula vieja reaparece',

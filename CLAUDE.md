@@ -2689,6 +2689,22 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   demostrado. `proxyBannerImage` usa `GetObjectCommand` para su propio bucket
   (fetch con tope para los demás hosts permitidos) y el 502 lleva `detail`
   con el motivo del origen. Alcanza a Aniversarios, Pendones y Plantillas IA.
+- **⚠️ EL PROMPT PREDETERMINADO ES LA DIRECTIVA DE COMPOSICIÓN DEL CLIENTE y
+  se refina POR CLÁUSULA, midiendo** (v4.913-v4.914). La estructura fija:
+  globos y celebración arriba y en los laterales (nunca navideña — la
+  guirnalda de luces está prohibida en el prompt, en el negativo y en
+  `VARIATION_THEMES`), título «¡FELIZ ANIVERSARIO!» MUY GRANDE y dominante,
+  nombre en MAYÚSCULAS con peso delgado entre dos líneas finas doradas, foto
+  RECTANGULAR HORIZONTAL con borde dorado (nunca círculo/óvalo), años como
+  REGLA FIJA (número dorado + cinta «AÑOS», centrado sobre el borde inferior
+  de la foto), mensaje corto SIN repetir la cantidad de años (la cifra va una
+  sola vez, en la cinta), y UN SOLO fondo continuo hasta el borde — la zona
+  del pie (20 %) es continuación del mismo fondo, jamás un rectángulo blanco
+  añadido (el corte va también al negativo). Cada versión del default entra a
+  `LEGACY_MASTER_PROMPTS`/`LEGACY_RESTRICTIONS` para el upgrade perezoso, y
+  el tope de KIE se mide con TODAS las variaciones y un nombre largo (peor
+  caso v4.914: 2.467/2.500) — el recorte cae del final, o sea sobre la
+  cláusula del pie, que es la estructural.
 - **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
   se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
   EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción

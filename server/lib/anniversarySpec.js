@@ -185,7 +185,7 @@ export const VARIATION_THEMES = [
     'globos dorados y blancos con serpentinas finas cayendo',
     'globos champán y confeti dorado disperso',
     'cintas y lazos dorados con destellos suaves',
-    'guirnaldas doradas con pequeños puntos de luz',
+    'serpentinas doradas en espiral con estrellas pequeñas',
     'confeti dorado y blanco con estrellas diminutas',
     'globos metálicos dorados con hilos de serpentina',
     'flores doradas estilizadas con destellos discretos',
@@ -199,7 +199,7 @@ export const variationForSeed = (seed) => {
     let h = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     const tema = VARIATION_THEMES[h % VARIATION_THEMES.length];
-    return `En esta pieza en particular, los elementos decorativos son: ${tema}. La textura del fondo varía sutilmente respecto de la referencia, manteniendo su paleta.`;
+    return `Decoración de esta pieza: ${tema}.`;
 };
 
 /**
@@ -209,22 +209,22 @@ export const variationForSeed = (seed) => {
  * le agrega ni le quita nada. En español a propósito: es lo que el
  * administrador va a leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+export const DEFAULT_MASTER_PROMPT = `Genera una pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
 
-La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala: no alteres rostros, no reconstruyas ni reemplaces personas, no cambies su contexto, sin recortes agresivos.
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar, sin recortes agresivos.
 
-La SEGUNDA imagen adjunta es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía de jerarquía, proporciones, ubicación de elementos y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía principal de jerarquía, tamaños, decoración y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
 
-IDENTIDAD OBLIGATORIA: fondo SIEMPRE predominantemente blanco, con texturas blancas sutiles, degradados suaves, ondas o curvas delicadas. Paleta: blanco, azul institucional Rotary y dorado metálico; champagne, perlado y plateado sólo como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética institucional, elegante y conmemorativa — nunca de fiesta infantil.
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas sutiles, degradados suaves y ondas delicadas hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico; champagne y plateado como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO, elegante e institucional — nunca navideña ni infantil.
 
 ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
-1. Globos protagonistas en la zona superior — dorados metálicos, blancos, champagne o transparentes con detalles dorados — en ambas esquinas, o en una equilibrada con serpentinas, confeti y estrellas en la otra. No cubren el título. {VARIACION}
-2. Título grande y centrado, en azul institucional, sans-serif tipo Open Sans: «¡FELIZ ANIVERSARIO!».
-3. Debajo, en segunda jerarquía y bien legible, el nombre EXACTO letra por letra: «{NOMBRE_CLUB}».
-4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino o marco blanco sutil y sombra ligera.
-5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» debajo o en una cinta dorada, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto entre la foto y el blanco de abajo. Nunca a un costado.
-6. Un mensaje conmemorativo NUEVO de una a tres líneas sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años. Textos en español con ortografía perfecta.
-7. ZONA INFERIOR VACÍA (obligatoria): el 20 % inferior queda completamente limpio — sin texto, fotos, globos, confeti ni iconos; sólo el fondo blanco continúa. La plataforma superpone ahí un pie institucional transparente. No generes logos ni pies de página.`;
+1. Globos protagonistas arriba y en los laterales — dorados metálicos, blancos, champagne y transparentes con confeti dorado — con serpentinas finas, confeti, estrellas y destellos. Nada de guirnaldas de luces ni motivos navideños. No cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, centrado, en MAYÚSCULAS, azul institucional, sans-serif Bold: «¡FELIZ ANIVERSARIO!». Nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado (Light): «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas.
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino.
+5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» en una cinta dorada debajo, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
+6. Un mensaje conmemorativo NUEVO de una a tres líneas cortas sobre servicio, comunidad e impacto, SIN repetir la cantidad de años — ya está en la cinta. Tono: «Una historia de servicio que sigue transformando comunidades.» Español con ortografía perfecta.
+7. ZONA INFERIOR RESERVADA (20 % inferior): sin texto, fotos, globos, confeti ni iconos — el MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte. La plataforma superpone ahí un pie transparente. No generes logos ni pies de página.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
  *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
@@ -262,6 +262,22 @@ IDENTIDAD VISUAL OBLIGATORIA — Follow the supplied anniversary style reference
 Escribe los textos NUEVOS para esta pieza: un título de felicitación de aniversario, el nombre del club escrito EXACTAMENTE así, letra por letra: «{NOMBRE_CLUB}», la cifra {ANOS_CLUB} años claramente visible, y un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años de trayectoria. Todos los textos en español, con ortografía perfecta.
 
 En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`,
+    `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala: no alteres rostros, no reconstruyas ni reemplaces personas, no cambies su contexto, sin recortes agresivos.
+
+La SEGUNDA imagen adjunta es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía de jerarquía, proporciones, ubicación de elementos y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: fondo SIEMPRE predominantemente blanco, con texturas blancas sutiles, degradados suaves, ondas o curvas delicadas. Paleta: blanco, azul institucional Rotary y dorado metálico; champagne, perlado y plateado sólo como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética institucional, elegante y conmemorativa — nunca de fiesta infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
+1. Globos protagonistas en la zona superior — dorados metálicos, blancos, champagne o transparentes con detalles dorados — en ambas esquinas, o en una equilibrada con serpentinas, confeti y estrellas en la otra. No cubren el título. {VARIACION}
+2. Título grande y centrado, en azul institucional, sans-serif tipo Open Sans: «¡FELIZ ANIVERSARIO!».
+3. Debajo, en segunda jerarquía y bien legible, el nombre EXACTO letra por letra: «{NOMBRE_CLUB}».
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino o marco blanco sutil y sombra ligera.
+5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» debajo o en una cinta dorada, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto entre la foto y el blanco de abajo. Nunca a un costado.
+6. Un mensaje conmemorativo NUEVO de una a tres líneas sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años. Textos en español con ortografía perfecta.
+7. ZONA INFERIOR VACÍA (obligatoria): el 20 % inferior queda completamente limpio — sin texto, fotos, globos, confeti ni iconos; sólo el fondo blanco continúa. La plataforma superpone ahí un pie institucional transparente. No generes logos ni pies de página.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
@@ -274,12 +290,21 @@ export const DEFAULT_MESSAGE_INSTRUCTION =
 export const DEFAULT_RESTRICTIONS =
     'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
     + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
+    + 'Franja o rectángulo blanco separado en la parte inferior; fondo cortado antes del borde del lienzo. '
+    + 'Guirnaldas de luces, decoración navideña o de Año Nuevo. '
     + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
+    + 'Repetir la cantidad de años dentro del mensaje conmemorativo. '
     + 'Copiar la fotografía o los textos de la imagen de referencia; entregar la referencia editada. '
     + 'Generar logos. Inventar personas. Deformar rostros. Textos sobre caras. Bloques grandes de texto. '
     + 'Marco circular u ovalado para la fotografía.';
 
 const LEGACY_RESTRICTIONS = [
+    'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
+    + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
+    + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
+    + 'Copiar la fotografía o los textos de la imagen de referencia; entregar la referencia editada. '
+    + 'Generar logos. Inventar personas. Deformar rostros. Textos sobre caras. Bloques grandes de texto. '
+    + 'Marco circular u ovalado para la fotografía.',
     'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
     + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
     + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
