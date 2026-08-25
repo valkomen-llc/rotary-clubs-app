@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.915.0 | 2026-08-25 (Aniversarios IA: el diseño pagado no se pierde por un tropiezo)
-// Cache bust: 2026-08-25n
+// UI V4.916.0 | 2026-08-25 (Aniversarios IA: marco y años estandarizados)
+// Cache bust: 2026-08-25o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.916.0',
+        title: 'Aniversarios IA: el marco de la foto y los años quedan estandarizados 🖼️',
+        description: 'Directiva del cliente con su captura de referencia delante: el marco de la fotografía y el componente de los años tienen que ser IDÉNTICOS entre generaciones, no una variación más. El prompt maestro los declara ahora como estándar: la fotografía va en su marco fijo —borde dorado fino, margen blanco y sombra suave— y los años son un componente FIJO e idéntico entre piezas: el número grande en dorado metálico con la cinta banderín dorada «AÑOS» debajo, centrado sobre el borde inferior de la fotografía y medio superpuesto, nunca a un costado ni arriba. Y una corrección con evidencia: el ejemplo de tono del mensaje («Una historia de servicio que sigue transformando comunidades») SE RETIRA del prompt — el modelo lo copiaba literal a la pieza y deformado («Una historia de servico que sigue transformma comuniadies», en la captura del reporte): un ejemplo dentro del prompt se convierte en la salida, que es la lección de v4.905 por la puerta del texto. La cadena de legados suma el default v4.914 y ahora se comprueba ENTERA: los cinco defaults viejos guardados sin editar resuelven al vigente, y un prompt editado no se toca jamás. Presupuesto de KIE re-medido con nombre de club de 33 caracteres y las ocho variaciones: peor caso 2.480/2.500, sin recorte.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.915.0',
         title: 'Aniversarios IA: el diseño generado no se pierde por un tropiezo de carga 🛟',

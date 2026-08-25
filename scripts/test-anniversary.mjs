@@ -217,8 +217,12 @@ check('v4.914: el mensaje NO repite la cantidad de años (la redundancia del rep
     /SIN repetir la cantidad de años/i.test(S.DEFAULT_MASTER_PROMPT)
     && !/coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Repetir la cantidad de años dentro del mensaje/.test(S.DEFAULT_RESTRICTIONS));
-check('y le da el TONO con un ejemplo de frase de servicio',
-    /Una historia de servicio que sigue transformando comunidades/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.916: el ejemplo de tono SE FUE del prompt — el modelo lo copiaba literal
+// a la pieza y deformado («Una historia de servico que sigue transformma
+// comuniadies», reporte con captura). Un ejemplo dentro del prompt se
+// convierte en la salida: la lección de v4.905, por la puerta del texto.
+check('v4.916: el prompt NO trae frases de ejemplo copiables',
+    !/Una historia de servicio que sigue transformando comunidades/.test(S.DEFAULT_MASTER_PROMPT));
 check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
 check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
@@ -251,6 +255,21 @@ check('el nombre va en MAYÚSCULAS, peso delgado y entre líneas finas doradas',
     && /entre dos líneas finas doradas/i.test(S.DEFAULT_MASTER_PROMPT));
 check('los años quedan ESTANDARIZADOS: regla fija, nunca a un costado ni arriba',
     /Regla fija: nunca a un costado ni arriba/i.test(S.DEFAULT_MASTER_PROMPT));
+
+// ── v4.916 · El marco de la foto y los años, con el estilo de la captura
+// de referencia del cliente: idénticos entre generaciones.
+check('v4.916: la fotografía lleva su marco ESTÁNDAR — borde dorado, margen blanco y sombra',
+    /marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave/i.test(S.DEFAULT_MASTER_PROMPT));
+check('v4.916: los años son un componente FIJO — número dorado con cinta banderín «AÑOS»',
+    /cinta banderín dorada con «AÑOS»/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /componente FIJO e idéntico entre piezas/i.test(S.DEFAULT_MASTER_PROMPT));
+// La cadena ENTERA de legados resuelve al vigente: cada default viejo
+// guardado sin editar se lee con el actual — y uno editado no se toca.
+check('v4.916: TODOS los defaults viejos de la cadena se actualizan al vigente',
+    S.LEGACY_MASTER_PROMPTS.length >= 4
+    && S.LEGACY_MASTER_PROMPTS.every(l => S.normalizeConfig({ masterPrompt: l }).masterPrompt === S.DEFAULT_MASTER_PROMPT));
+check('y un prompt editado a mano sigue sin tocarse',
+    S.normalizeConfig({ masterPrompt: 'un prompt editado a mano' }).masterPrompt === 'un prompt editado a mano');
 // El default v4.913 guardado sin editar SE ACTUALIZA (cadena de legados).
 check('v4.914: el default v4.913 guardado sin editar se lee con el vigente',
     (() => {

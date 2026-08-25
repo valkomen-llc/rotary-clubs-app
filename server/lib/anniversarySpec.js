@@ -215,22 +215,22 @@ La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Pre
 
 La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía principal de jerarquía, tamaños, decoración y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
 
-IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas sutiles, degradados suaves y ondas delicadas hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico; champagne y plateado como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO, elegante e institucional — nunca navideña ni infantil.
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas, degradados y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico; champagne y plateado como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO, elegante e institucional — nunca navideña ni infantil.
 
 ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
-1. Globos protagonistas arriba y en los laterales — dorados metálicos, blancos, champagne y transparentes con confeti dorado — con serpentinas finas, confeti, estrellas y destellos. Nada de guirnaldas de luces ni motivos navideños. No cubren el título. {VARIACION}
+1. Globos protagonistas arriba y en los laterales — dorados metálicos, blancos, champagne y transparentes con confeti dorado — más serpentinas, confeti y destellos. Nada de guirnaldas de luces ni motivos navideños. No cubren el título. {VARIACION}
 2. Título MUY GRANDE y dominante, centrado, en MAYÚSCULAS, azul institucional, sans-serif Bold: «¡FELIZ ANIVERSARIO!». Nunca un subtítulo.
 3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado (Light): «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas.
-4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino.
-5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» en una cinta dorada debajo, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
-6. Un mensaje conmemorativo NUEVO de una a tres líneas cortas sobre servicio, comunidad e impacto, SIN repetir la cantidad de años — ya está en la cinta. Tono: «Una historia de servicio que sigue transformando comunidades.» Español con ortografía perfecta.
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — en su marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
+6. Un mensaje conmemorativo NUEVO de una a tres líneas cortas sobre servicio, comunidad e impacto, SIN repetir la cantidad de años — ya está en la cinta. Español con ortografía perfecta.
 7. ZONA INFERIOR RESERVADA (20 % inferior): sin texto, fotos, globos, confeti ni iconos — el MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte. La plataforma superpone ahí un pie transparente. No generes logos ni pies de página.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
  *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
  *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
  *  editado no se toca jamás: la preferencia explícita manda. */
-const LEGACY_MASTER_PROMPTS = [
+export const LEGACY_MASTER_PROMPTS = [
     `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
 
 La PRIMERA imagen adjunta es la REFERENCIA VISUAL. La SEGUNDA imagen adjunta es {FOTO_CLUB}.
@@ -277,7 +277,23 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
 4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino o marco blanco sutil y sombra ligera.
 5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» debajo o en una cinta dorada, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto entre la foto y el blanco de abajo. Nunca a un costado.
 6. Un mensaje conmemorativo NUEVO de una a tres líneas sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años. Textos en español con ortografía perfecta.
-7. ZONA INFERIOR VACÍA (obligatoria): el 20 % inferior queda completamente limpio — sin texto, fotos, globos, confeti ni iconos; sólo el fondo blanco continúa. La plataforma superpone ahí un pie institucional transparente. No generes logos ni pies de página.`,
+7. ZONA INFERIOR VACÍA (obligatoria): el 20 % inferior queda completamente limpio — sin texto, fotos, globos, confeti ni iconos; sólo el fondo blanco continúa. La plataforma superpone ahí un pie institucional transparente. No generes logos ni pies de página.`,,
+    `Genera una pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar, sin recortes agresivos.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía principal de jerarquía, tamaños, decoración y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas sutiles, degradados suaves y ondas delicadas hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico; champagne y plateado como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO, elegante e institucional — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
+1. Globos protagonistas arriba y en los laterales — dorados metálicos, blancos, champagne y transparentes con confeti dorado — con serpentinas finas, confeti, estrellas y destellos. Nada de guirnaldas de luces ni motivos navideños. No cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, centrado, en MAYÚSCULAS, azul institucional, sans-serif Bold: «¡FELIZ ANIVERSARIO!». Nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado (Light): «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas.
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino.
+5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» en una cinta dorada debajo, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
+6. Un mensaje conmemorativo NUEVO de una a tres líneas cortas sobre servicio, comunidad e impacto, SIN repetir la cantidad de años — ya está en la cinta. Tono: «Una historia de servicio que sigue transformando comunidades.» Español con ortografía perfecta.
+7. ZONA INFERIOR RESERVADA (20 % inferior): sin texto, fotos, globos, confeti ni iconos — el MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte. La plataforma superpone ahí un pie transparente. No generes logos ni pies de página.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
