@@ -228,7 +228,28 @@ check('el modelo escribe los textos: el predeterminado se lo pide',
 check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
     /ZONA INFERIOR RESERVADA/i.test(S.DEFAULT_MASTER_PROMPT)
     && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /No generes logos ni pies de página/i.test(S.DEFAULT_MASTER_PROMPT));
+    && /ZONA SIN GENERACIÓN/.test(S.DEFAULT_MASTER_PROMPT));
+
+// ── v4.918 · El pie NO lo genera la IA, y la composición respira ──────
+// Del reporte con la pieza duplicada delante: la referencia del cliente trae
+// un pie de onda azul y el modelo lo imitaba — y encima se imprimía el pie
+// real de la plataforma: logos y lemas dobles. La zona del pie es de NO
+// GENERACIÓN, con la causa concreta nombrada.
+check('v4.918: la zona del pie prohíbe expresamente reproducir el pie de la referencia',
+    /si la referencia trae un pie abajo, NO lo reproduzcas/.test(S.DEFAULT_MASTER_PROMPT)
+    && /la plataforma superpone después su pie real/.test(S.DEFAULT_MASTER_PROMPT));
+check('y el negativo prohíbe el pie generado con sus formas concretas',
+    /Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales/.test(S.DEFAULT_RESTRICTIONS)
+    && /Reproducir el pie de página de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
+check('v4.918: el título va en DOS líneas, letra por letra, y ALTO en el lienzo',
+    /en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»/.test(S.DEFAULT_MASTER_PROMPT)
+    && /letra por letra/.test(S.DEFAULT_MASTER_PROMPT)
+    && /ALTO en el lienzo/.test(S.DEFAULT_MASTER_PROMPT));
+check('v4.918: la fotografía baja de altura — su alto ronda un tercio del lienzo',
+    /más ancha que alta — su alto ronda un tercio del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
+check('v4.918: la frase es UNA, de 8 a 12 palabras, y va SIEMPRE',
+    /SIEMPRE una única frase corta de 8 a 12 palabras/.test(S.DEFAULT_MASTER_PROMPT)
+    && /en UNA línea/.test(S.DEFAULT_MASTER_PROMPT));
 
 // ── v4.914 · La directiva de la referencia #3 ─────────────────────────
 // Del reporte con la pieza delante: el fondo terminaba en un rectángulo
@@ -241,9 +262,11 @@ check('la zona del pie es CONTINUACIÓN del fondo, nunca un bloque aparte',
     /continúan hasta el borde/i.test(S.DEFAULT_MASTER_PROMPT)
     && /nunca un bloque aparte/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Franja o rectángulo blanco separado en la parte inferior/.test(S.DEFAULT_RESTRICTIONS));
+// v4.918: la prohibición de las guirnaldas pasó ENTERA al negativo — que es
+// donde la regla del sitio manda las prohibiciones; el positivo conserva la
+// identidad («nunca navideña») sin lista negra.
 check('v4.914: la celebración es de ANIVERSARIO — nunca navideña',
-    /guirnaldas de luces/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /navideñ/i.test(S.DEFAULT_MASTER_PROMPT)
+    /navideñ/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Guirnaldas de luces, decoración navideña o de Año Nuevo/.test(S.DEFAULT_RESTRICTIONS));
 check('y ningún tema de variación vuelve a pedir guirnaldas de luces',
     !S.VARIATION_THEMES.some(t => /luz|luces|guirnalda/i.test(t)));

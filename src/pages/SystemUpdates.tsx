@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.917.0 | 2026-08-25 (Aniversarios IA: el pie institucional se imprime tal cual)
-// Cache bust: 2026-08-25p
+// UI V4.918.0 | 2026-08-25 (Aniversarios IA: la zona del pie es de NO generación)
+// Cache bust: 2026-08-25q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.918.0',
+        title: 'Aniversarios IA: la zona del pie es de NO generación 🚫',
+        description: 'Del reporte con la pieza duplicada delante: la referencia visual del cliente trae un pie de onda azul con logos, el modelo lo imitaba dentro de la imagen, y encima se imprimía el pie REAL de la plataforma — logos dobles y lemas fantasma superpuestos. La arquitectura de capas ya era la correcta (capa 1 = imagen IA, capa 2 = el PNG del pie tal cual, sin pasar por ningún modelo); lo que faltaba era blindar la zona en el prompt. La cláusula 7 pasa a ZONA SIN GENERACIÓN con la causa nombrada: «si la referencia trae un pie abajo, NO lo reproduzcas — la plataforma superpone después su pie real», y el prompt negativo suma «Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales en la zona inferior» y «Reproducir el pie de página de la imagen de referencia». Además, los ajustes de composición pedidos: el título «¡FELIZ ANIVERSARIO!» queda declarado en DOS líneas exactas letra por letra (el «ANNIVERARIO» del reporte) y ubicado ALTO en el lienzo; la fotografía baja de altura — más ancha que alta, su alto ronda un tercio del lienzo — para que la composición respire; y la frase conmemorativa se recupera: UNA sola frase de 8 a 12 palabras, en una línea, SIEMPRE presente, sobre servicio, legado, comunidad o impacto. La prohibición de guirnaldas pasó entera al negativo, que es donde la regla del sitio manda las prohibiciones. Presupuesto de KIE re-medido: peor caso 2.446/2.500 con nombre de 33 caracteres, sin recorte; la cadena de legados suma v4.916 (siete defaults viejos resuelven al vigente).',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.917.0',
         title: 'Aniversarios IA: el pie institucional se imprime tal cual 📐',

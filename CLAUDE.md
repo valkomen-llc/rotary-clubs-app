@@ -2682,6 +2682,16 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA ZONA DEL PIE ES DE NO GENERACIÓN, con la causa nombrada** (v4.918).
+  La referencia del cliente trae un pie de onda azul: el modelo lo imitaba
+  dentro de la imagen y encima se imprimía el pie REAL — logos dobles
+  (reporte con captura). La cláusula 7 dice expresamente «si la referencia
+  trae un pie abajo, NO lo reproduzcas — la plataforma superpone después su
+  pie real», y el negativo prohíbe el pie generado con sus formas concretas
+  (ondas azules, emblemas, lemas). Del mismo pedido: título en DOS líneas
+  letra por letra y ALTO en el lienzo, foto de alto ~un tercio del lienzo, y
+  la frase conmemorativa es UNA, de 8 a 12 palabras, SIEMPRE presente. La
+  prohibición de guirnaldas pasó entera al negativo.
 - **⚠️ EL PIE INSTITUCIONAL SE IMPRIME TAL CUAL** (v4.917, pedido expreso;
   supersede el «cover recortado a la banda» de v4.902 para el flujo de
   Aniversarios): la imagen que subió el administrador va al ancho COMPLETO
