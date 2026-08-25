@@ -2702,7 +2702,15 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   (fetch con tope para los demás hosts permitidos) y el 502 lleva `detail`
   con el motivo del origen. Alcanza a Aniversarios, Pendones y Plantillas IA.
 - **⚠️ EL PROMPT PREDETERMINADO ES LA DIRECTIVA DE COMPOSICIÓN DEL CLIENTE y
-  se refina POR CLÁUSULA, midiendo** (v4.913-v4.914). La estructura fija:
+  se refina POR CLÁUSULA, midiendo** (v4.913-v4.916). Desde v4.916 el marco
+  de la foto es ESTÁNDAR (borde dorado fino, margen blanco, sombra suave) y
+  los años son un componente FIJO e idéntico entre piezas — y **el prompt NO
+  lleva frases de ejemplo copiables**: el ejemplo de tono terminó copiado
+  literal y deformado en una pieza real («transformma comuniadies») — un
+  ejemplo dentro del prompt se convierte en la salida (v4.905, por la puerta
+  del texto). La cadena de legados se comprueba ENTERA
+  (`LEGACY_MASTER_PROMPTS` exportada: todo default viejo resuelve al
+  vigente). La estructura fija:
   globos y celebración arriba y en los laterales (nunca navideña — la
   guirnalda de luces está prohibida en el prompt, en el negativo y en
   `VARIATION_THEMES`), título «¡FELIZ ANIVERSARIO!» MUY GRANDE y dominante,
