@@ -310,6 +310,40 @@ const sinPie = await tinta({ ...DOC, branding: {} }, { x: 0.04, y: 0.90, w: 0.60
 check('el branding se imprime en la banda del pie', pie > sinPie, `con ${pie.toFixed(4)} / sin ${sinPie.toFixed(4)}`);
 check('sin branding no queda una banda vacía dibujada', sinPie < 0.02, `tinta ${sinPie.toFixed(4)}`);
 
+// v4.917 — EL PIE INSTITUCIONAL SE IMPRIME TAL CUAL (pedido expreso): ancho
+// completo, proporción NATIVA y anclado al borde inferior. Hasta v4.916 se
+// dibujaba con cover recortado a la banda del 16 %: un pie de otra
+// proporción salía mutilado. Se mide con un pie azul puro de proporción
+// 0,12 (1000×120): el borde superior del azul tiene que caer en
+// H − 0,12·W, no en el borde de la banda.
+const PIE_AZUL = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="120"><rect width="1000" height="120" fill="#0000ff"/></svg>').toString('base64');
+const piePos = await page.evaluate(async (doc) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const c = canvas.getContext('2d');
+    const esAzul = (x, y) => {
+        const d = c.getImageData(x, y, 1, 1).data;
+        return d[2] > 200 && d[0] < 80 && d[1] < 80;
+    };
+    // buscar el primer renglón azul desde arriba, por el centro
+    let top = -1;
+    for (let y = Math.round(canvas.height * 0.7); y < canvas.height; y += 2) {
+        if (esAzul(Math.round(canvas.width / 2), y)) { top = y; break; }
+    }
+    return {
+        top, H: canvas.height, W: canvas.width,
+        izquierda: esAzul(2, canvas.height - 4),
+        derecha: esAzul(canvas.width - 3, canvas.height - 4),
+        fondo: esAzul(Math.round(canvas.width / 2), canvas.height - 4),
+    };
+}, { ...DOC, renderMode: 'ai', backdropUrl: BLANCO, branding: { footerImage: PIE_AZUL } });
+const esperado = piePos.H - 0.12 * piePos.W;
+check('v4.917: el pie va TAL CUAL — proporción nativa, anclado al borde inferior',
+    piePos.fondo && piePos.top > 0 && Math.abs(piePos.top - esperado) < piePos.H * 0.02,
+    `top ${piePos.top} vs esperado ${Math.round(esperado)}`);
+check('y ocupa el ancho COMPLETO, sin recorte lateral',
+    piePos.izquierda && piePos.derecha, JSON.stringify(piePos));
+
 grupo('4 — El texto exacto se escribe, no se genera');
 
 // Los años y el club se imprimen desde los datos: se comprueba que la pieza

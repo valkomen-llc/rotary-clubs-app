@@ -2682,6 +2682,17 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ EL PIE INSTITUCIONAL SE IMPRIME TAL CUAL** (v4.917, pedido expreso;
+  supersede el «cover recortado a la banda» de v4.902 para el flujo de
+  Aniversarios): la imagen que subió el administrador va al ancho COMPLETO
+  del lienzo, con su proporción NATIVA, anclada al borde inferior — sin
+  recorte ni estirado; el archivo manda y la zona inferior ya viene
+  reservada por el prompt. Se carga con los MISMOS reintentos que el diseño
+  (`loadBackdrop`): es la firma estándar de todas las piezas, no un adorno —
+  la excepción a «el branding conserva su intento único» de v4.915 (logotipo
+  y marca de agua siguen con uno). El logotipo del club y la línea del
+  distrito se imprimen ENCIMA, en la banda. Y el formulario público lee la
+  configuración PUBLICADA: un pie subido al borrador no sale hasta publicar.
 - **⚠️ EL DISEÑO GENERADO SE CARGA CON REINTENTOS, Y SU DEGRADACIÓN NO SALE
   MUDA** (v4.915). El diseño es LA pieza y ya está pagado: un 502 puntual no
   puede costarlo — `loadBackdrop` hace tres intentos con pausa (los fallos no
