@@ -68,15 +68,27 @@ const proxied = (url: string): string =>
 
 const cache = new Map<string, Promise<HTMLImageElement>>();
 
-export const loadImage = (src: string): Promise<HTMLImageElement> => {
+// ⚠️ TODA CARGA DE IMAGEN TIENE TOPE DE TIEMPO (v4.911). Una petición que se
+// queda colgada —el proxy contra una conexión estancada, un CDN que no
+// contesta— dejaba la promesa sin resolver PARA SIEMPRE: la vista previa en
+// blanco, sin error y sin lienzo, con los botones pintados (reporte con
+// captura). Con el tope, el rechazo cae en los caminos de degradación que ya
+// existen y la pieza SIEMPRE se pinta, con su aviso.
+export const IMAGE_TIMEOUT_MS = 25_000;
+
+export const loadImage = (src: string, { timeoutMs = IMAGE_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<HTMLImageElement> => {
     const key = proxied(src);
     const hit = cache.get(key);
     if (hit) return hit;
     const p = new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
         if (!key.startsWith('data:') && !key.startsWith('blob:')) img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error(`No se pudo cargar la imagen: ${src}`));
+        const reloj = setTimeout(() => {
+            img.src = '';
+            reject(new Error(`La imagen tardó demasiado en cargar: ${src}`));
+        }, timeoutMs);
+        img.onload = () => { clearTimeout(reloj); resolve(img); };
+        img.onerror = () => { clearTimeout(reloj); reject(new Error(`No se pudo cargar la imagen: ${src}`)); };
         img.src = key;
     });
     cache.set(key, p);
@@ -384,8 +396,11 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // ⚠️ HAY QUE ESPERAR LAS TIPOGRAFÍAS ANTES DE MEDIR. Medir con la letra de
     // respaldo y dibujar con la definitiva es lo que produce un texto que se
     // sale del recuadro. Nunca rechaza: si la descarga falla, se compone con
-    // las del sistema y la pieza sale igual.
-    await ensureDesignFonts();
+    // las del sistema y la pieza sale igual. Y CON TOPE (v4.911): una descarga
+    // de fuente estancada no puede dejar la pieza sin componer para siempre —
+    // pasados 8 s se sigue con las del sistema; si la fuente llega después, la
+    // próxima composición la usa.
+    await Promise.race([ensureDesignFonts(), new Promise(res => setTimeout(res, 8000))]);
 
     const base = canvasSize(doc.format, Math.max(doc.width || 0, doc.height || 0) || undefined);
     const W = Math.round((doc.width || base.width) * scale);

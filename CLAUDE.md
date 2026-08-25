@@ -2672,6 +2672,16 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   `styleGuard` (default true, versionable). Franja, texto dibujado y
   preservación SIGUEN fuera del flujo. La referencia ideal es una plantilla
   VACÍA — una pieza terminada invita al modelo a copiarla (v4.909).
+- **⚠️ NINGUNA ESPERA DEL CAMINO DE PINTADO VA SIN TOPE** (v4.911). Pieza
+  generada, botones pintados, lienzo vacío por minutos sin error: una
+  petición estancada dejaba la promesa del compositor sin resolver PARA
+  SIEMPRE — el proxy `banner-image` hacía fetch sin límite, `loadImage` no
+  tenía tope y la espera de tipografías tampoco. Ahora: proxy 20 s
+  (`AbortSignal.timeout` — alcanza a Pendones y Plantillas IA), imagen 25 s
+  (el rechazo cae en la degradación que ya pinta con aviso), fuentes 8 s. Y
+  la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
+  un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
+  carga colgada supera los 5 s del guardia del test.
 - **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
   se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
   EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción

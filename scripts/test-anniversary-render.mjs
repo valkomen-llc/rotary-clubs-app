@@ -233,6 +233,25 @@ const plainSimple = await tinta({ ...DOC, renderMode: 'plain', simple: true, zon
 check('v4.907: en `plain` el texto propio SÍ sale aunque el documento diga simple',
     plainSimple > 0.003, `tinta ${plainSimple.toFixed(4)}`);
 
+// v4.911 — UNA CARGA COLGADA NO DEJA LA VISTA EN BLANCO PARA SIEMPRE. El
+// reporte: pieza lista, botones pintados, lienzo vacío por minutos sin un
+// solo error — una petición de imagen que nunca terminaba dejaba la promesa
+// sin resolver. El tope la convierte en el rechazo que los caminos de
+// degradación ya saben pintar.
+// Por PREDICADO, no por glob: la URL viaja codificada dentro de ?url= y el
+// «/» previo es %2F, así que '**/hang-image**' no casaría y la petición
+// caería en la ruta del API — que contesta, y entonces no hay cuelgue que
+// probar.
+await page.route(u => u.href.includes('hang-image'), () => { /* nunca se contesta */ });
+const colgada = await page.evaluate(async () => {
+    const guardia = new Promise(res => setTimeout(() => res('sigue-colgada'), 5000));
+    const carga = window.AR.loadImage('https://bucket.s3.amazonaws.com/hang-image.png', { timeoutMs: 600 })
+        .then(() => 'resolvió', (e) => String(e.message));
+    return Promise.race([carga, guardia]);
+});
+check('v4.911: una imagen que nunca llega RECHAZA por tope, no cuelga',
+    /tardó demasiado/.test(String(colgada)), String(colgada));
+
 // Modo `plain`: no hay fondo y la fotografía se dibuja del lado contrario al
 // texto. La foto sintética es roja, así que se mide el rojo.
 const plainRojo = await page.evaluate(async (doc) => {

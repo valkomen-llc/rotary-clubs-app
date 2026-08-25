@@ -311,7 +311,11 @@ export const proxyBannerImage = async (req, res) => {
             || host.endsWith('.clubplatform.org') || host.endsWith('cloudfront.net');
         if (!allowed) return res.status(403).json({ error: 'Origen no permitido' });
 
-        const response = await fetch(url);
+        // ⚠️ CON TOPE DE TIEMPO (v4.911). Sin él, una conexión estancada deja
+        // esta función colgada y, del otro lado, una imagen del navegador que
+        // nunca termina de cargar — la vista previa queda en blanco PARA
+        // SIEMPRE, sin error (reporte con captura en Aniversarios IA).
+        const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
         if (!response.ok) return res.status(502).json({ error: 'No se pudo obtener la imagen' });
         const buffer = Buffer.from(await response.arrayBuffer());
         const contentType = response.headers.get('content-type') || 'image/jpeg';

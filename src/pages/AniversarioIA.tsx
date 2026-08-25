@@ -175,6 +175,9 @@ const AniversarioIA: React.FC = () => {
     useEffect(() => {
         let vivo = true;
         if (!doc || !previewRef.current) return;
+        // Mientras se compone se DICE (v4.911): sin esto, una carga lenta se ve
+        // como una franja vacía indistinguible de un módulo roto.
+        previewRef.current.innerHTML = '<div style="padding:3.5rem 1rem;text-align:center;color:#9ca3af;font-size:0.875rem">Componiendo la pieza…</div>';
         (async () => {
             try {
                 const { canvas, warnings } = await renderAnniversary(doc);
