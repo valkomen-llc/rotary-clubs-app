@@ -232,7 +232,7 @@ export const applyMasterVariables = (text, { clubName = '', years = null } = {})
  * dirección de arte. En español a propósito: es lo que el administrador va a
  * leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial limpio y elegante: fondo predominantemente blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco blanco con sombra suave, sobre la mitad superior. Celebración sobria: globos dorados, blancos y champagne arriba a la derecha, confeti discreto; nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie. Variá la decoración entre generaciones conservando identidad y elegancia.`;
+export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial elegante: fondo casi todo blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco polaroid blanco de borde RECTO (nunca orgánico), sobre la mitad superior. Celebración sobria: globos dorados, blancos y champagne arriba a la derecha, confeti discreto; nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie. Variá la decoración entre generaciones conservando identidad y elegancia.`;
 
 export const DEFAULT_MESSAGE_INSTRUCTION =
     'Genera un mensaje corto, institucional, humano e inspirador. Máximo dos frases. '
@@ -802,7 +802,9 @@ export const buildCopySystem = (config) => {
     return `Sos redactor institucional de Rotary. Escribís en español neutro, con voz humana, sin clichés y sin signos de exclamación de más. Devolvés SIEMPRE un JSON válido, sin texto alrededor.
 
 Forma exacta:
-{ "title": "<titular>", "message": "<mensaje>" }
+{ "title": "<línea de cierre>", "message": "<mensaje>" }
+
+La pieza YA imprime arriba el saludo fijo («¡Feliz aniversario!»), el nombre del club y los años como bloques propios. Lo tuyo son DOS textos: el "message" es la CITA central (cálida, institucional) y el "title" es la LÍNEA DE CIERRE — breve y exclamativa, del tipo «¡Gracias por tanto! Sigamos generando un impacto duradero.» — que NO repite el nombre del club ni la cifra de años, porque ya están impresos.
 
 Instrucción del cliente para el mensaje (respetala): «${c.messageInstruction}»
 
@@ -919,16 +921,11 @@ export const repairCopy = (copy, { clubName = '', years = null } = {}) => {
     if (title.length > LIMITS.title.max) { title = trimWords(title, LIMITS.title.max); repaired.push('Se recortó el titular.'); }
     if (message.length > LIMITS.message.max) { message = trimWords(message, LIMITS.message.max); repaired.push('Se recortó el mensaje.'); }
 
-    // Un titular ausente cae a la CONSTANTE de la pieza, no a una frase que
-    // nombre al club y los años: si el titular ya los dice, `planTextBlocks`
-    // suprime el pase, el nombre en dos tonos y la banda dorada —el lenguaje
-    // de la referencia— y la pieza de respaldo sale plana (el reporte de
-    // v4.899). Con «¡Feliz aniversario!» el club y los años se imprimen como
-    // BLOQUES, que es exactamente la jerarquía aprobada, y siguen siendo
-    // datos del formulario: nada se inventa.
+    // Desde v4.902 el titular de la IA es la LÍNEA DE CIERRE de la pieza —la
+    // jerarquía (saludo, club, años) es fija y sale siempre—. Un cierre
+    // ausente NO se inventa: la pieza sale sin él, y se dice.
     if (!title) {
-        title = '¡Feliz aniversario!';
-        repaired.push('El titular quedó en el saludo de la pieza; el club y los años se imprimen como bloques propios.');
+        repaired.push('El redactor no dio línea de cierre; la pieza sale sin ella (el saludo, el club y los años se imprimen igual).');
     }
     const check = validateCopy({ title, message }, { clubName, years });
     return { copy: { title, message }, repaired, ...check };

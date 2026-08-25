@@ -115,34 +115,40 @@ export interface AnniversaryDocument {
     branding: AnniversaryBranding;
 }
 
-// ─── Qué se imprime, y qué no se repite ────────────────────────────────
+// ─── Qué se imprime: la ESTRUCTURA FIJA de la referencia ───────────────
 
 const flat = (s: string) => String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-export type BlockKind = 'headline' | 'kicker' | 'years' | 'club' | 'rule' | 'message';
+export type BlockKind = 'headline' | 'kicker' | 'years' | 'club' | 'rule' | 'message' | 'closing';
 export interface TextBlock { kind: BlockKind; text: string }
 
-/** El pase pequeño que la referencia pone entre el titular y el nombre del
- *  club. Es lenguaje de la PIEZA, no del modelo: por eso es una constante y
- *  no algo que se le pida escribir a nadie. */
+/** El saludo FIJO de la pieza y el pase que lo sigue. Son lenguaje de la
+ *  PIEZA — constantes del código, no algo que escriba un modelo. */
+export const HEADLINE_TEXT = '¡Feliz aniversario!';
 export const KICKER_TEXT = 'Felicidades';
 
 /**
  * Decide qué bloques entran en la pieza.
  *
- * ⚠️ EL PROBLEMA QUE ESTO RESUELVE es la redundancia. El titular que escribe el
- * modelo suele nombrar al club, a los años o a los dos —el pedido lo pide así,
- * con ejemplos como «¡Feliz aniversario, Club Rotario Cali!» y «¡40 años
- * generando impacto!»—, y la pieza además imprime el club y los años como
- * datos EXACTOS. Repetirlos se lee como un error de maquetación.
+ * ⚠️ LA ESTRUCTURA ES PREESTABLECIDA (v4.902) — es el pedido literal del
+ * cliente con la referencia delante: «necesito estilos preestablecidos… que
+ * quede distribuida tal cual la proporción de la referencia». Hasta v4.901 el
+ * titular de la IA MANDABA y suprimía los bloques que ya nombrara: con
+ * «Club Rotario Bello: cuatro décadas…» desaparecían el saludo, el pase y el
+ * club en dos tonos, y la pieza dejaba de parecerse a la referencia.
  *
- * Así que el titular manda y los dos bloques de identidad sólo aparecen si el
- * titular no los dijo ya. Nunca al revés: el club y los años son datos que
- * escribimos nosotros y no pueden faltar los DOS —si el titular no dice
- * ninguno, salen los dos—.
+ * Ahora la jerarquía es SIEMPRE la de la referencia:
+ *   ¡FELIZ ANIVERSARIO!  (saludo fijo, dos líneas, subrayado dorado)
+ *   FELICIDADES          (pase)
+ *   CLUB ROTARIO X       (dato exacto, dos tonos)
+ *   [ 40 AÑOS ]          (banda dorada)
+ *   « mensaje »          (la CITA que escribe la IA, centrada)
+ *   ───                  (filete)
+ *   cierre               (el titular de la IA, como línea de cierre)
  *
- * Es puro y está probado: `npm run test:anniversary`.
+ * La IA escribe la cita y el cierre; el nombre y la cifra son datos y salen
+ * SIEMPRE — exactos por construcción.
  */
 export const planTextBlocks = (doc: Pick<AnniversaryDocument, 'title' | 'message' | 'clubName' | 'years'>): TextBlock[] => {
     const title = String(doc.title || '').trim();
@@ -150,35 +156,18 @@ export const planTextBlocks = (doc: Pick<AnniversaryDocument, 'title' | 'message
     const club = String(doc.clubName || '').trim();
     const years = doc.years ?? null;
 
-    const t = flat(title);
-    const diceAnios = years !== null && new RegExp(`\\b${years}\\b`).test(t);
-    // El club se da por nombrado si el titular contiene su parte distintiva —
-    // «Cali» en «Club Rotario Cali»—: comparar el nombre completo daría falso
-    // negativo con «¡Feliz aniversario, Cali!», que sí lo nombra.
-    const distintiva = flat(club).replace(/^(club rotario|rotary e-?club|rotary)\s+/, '');
-    const diceClub = !!distintiva && distintiva.length >= 3 && t.includes(distintiva);
-
-    const bloques: TextBlock[] = [];
-    if (title) bloques.push({ kind: 'headline', text: title });
-    // El orden es el de la referencia: titular → pase → club → banda de años.
-    // El pase introduce el nombre del club, así que sólo sale con él.
-    if (club && !diceClub) {
+    const bloques: TextBlock[] = [{ kind: 'headline', text: HEADLINE_TEXT }];
+    if (club) {
         bloques.push({ kind: 'kicker', text: KICKER_TEXT });
         bloques.push({ kind: 'club', text: club });
     }
-    if (years !== null && !diceAnios) bloques.push({ kind: 'years', text: String(years) });
-    // Sin titular, el club y los años SIEMPRE salen: son lo único que
-    // identifica la pieza.
-    if (!title) {
-        if (club && !bloques.some(b => b.kind === 'club')) {
-            bloques.unshift({ kind: 'club', text: club });
-            bloques.unshift({ kind: 'kicker', text: KICKER_TEXT });
-        }
-        if (years !== null && !bloques.some(b => b.kind === 'years')) bloques.push({ kind: 'years', text: String(years) });
-    }
-    if (message) {
-        bloques.push({ kind: 'rule', text: '' });
-        bloques.push({ kind: 'message', text: message });
+    if (years !== null) bloques.push({ kind: 'years', text: String(years) });
+    if (message) bloques.push({ kind: 'message', text: message });
+    // El titular de la IA es la LÍNEA DE CIERRE de la referencia («¡Gracias
+    // por tanto!…»), no el encabezado. Si repite el saludo fijo, sobra.
+    if (title && flat(title) !== flat(HEADLINE_TEXT)) {
+        if (message) bloques.push({ kind: 'rule', text: '' });
+        bloques.push({ kind: 'closing', text: title });
     }
     return bloques;
 };
@@ -206,25 +195,41 @@ const wrap = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): st
     return out;
 };
 
-interface BlockStyle { font: string; size: number; lineHeight: number; color: string; gapBefore: number; upper?: boolean; letterSpacing?: number }
+interface BlockStyle { font: string; size: number; lineHeight: number; color: string; gapBefore: number; upper?: boolean; letterSpacing?: number; align?: 'left' | 'center'; weight?: number }
 
 /** Tamaños en FRACCIÓN del ancho del lienzo: así la pieza se compone igual a
- *  1080 que a 2160 y la descarga en alta no es otra maquetación. */
+ *  1080 que a 2160 y la descarga en alta no es otra maquetación. Las medidas
+ *  están tomadas de la REFERENCIA aprobada, no puestas a ojo. */
 const STYLES: Record<BlockKind, BlockStyle> = {
-    headline: { font: DISPLAY, size: 0.062, lineHeight: 1.08, color: ROTARY_BLUE, gapBefore: 0, upper: true },
+    // El saludo fijo: DOS líneas («¡FELIZ» más liviana, «ANIVERSARIO!» plena)
+    // con un subrayado dorado corto debajo — como la referencia. Se
+    // special-casea en la medición y el dibujo, con las MISMAS cuentas.
+    headline: { font: DISPLAY, size: 0.072, lineHeight: 1.04, color: ROTARY_BLUE, gapBefore: 0, upper: true },
     // El pase chico de la referencia («FELICIDADES»): letra espaciada, tinta.
-    kicker: { font: BODY, size: 0.019, lineHeight: 1.2, color: INK, gapBefore: 0.030, upper: true, letterSpacing: 0.32 },
-    // Los años van dentro de una BANDA dorada («40 AÑOS»), como en la
-    // referencia. `size` es el cuerpo del texto; la banda mide 1,9× eso.
-    years: { font: DISPLAY, size: 0.044, lineHeight: 1, color: PAPER, gapBefore: 0.030, upper: true },
+    kicker: { font: BODY, size: 0.019, lineHeight: 1.2, color: INK, gapBefore: 0.034, upper: true, letterSpacing: 0.32 },
     club: { font: DISPLAY, size: 0.043, lineHeight: 1.18, color: ROTARY_BLUE, gapBefore: 0.012, upper: true },
-    rule: { font: BODY, size: 0.006, lineHeight: 1, color: ROTARY_GOLD, gapBefore: 0.030 },
-    message: { font: BODY, size: 0.026, lineHeight: 1.42, color: INK, gapBefore: 0.026 },
+    // Los años van dentro de una BANDA dorada con muescas y puntos a los
+    // lados («• 40 AÑOS •»). `size` es el cuerpo; la banda mide 1,9× eso.
+    years: { font: DISPLAY, size: 0.040, lineHeight: 1, color: PAPER, gapBefore: 0.030, upper: true },
+    // La cita va CENTRADA, con comillas doradas — es el tratamiento de la
+    // referencia y por eso su alineación no sigue a la zona.
+    message: { font: BODY, size: 0.026, lineHeight: 1.5, color: INK, gapBefore: 0.034, align: 'center' },
+    rule: { font: BODY, size: 0.005, lineHeight: 1, color: ROTARY_GOLD, gapBefore: 0.030, align: 'center' },
+    closing: { font: BODY, size: 0.023, lineHeight: 1.45, color: INK, gapBefore: 0.024, align: 'center', weight: 700 },
 };
 
-const BAND_RATIO = 1.9; // alto de la banda dorada respecto del cuerpo de su texto
+const BAND_RATIO = 1.9;          // alto de la banda dorada respecto del cuerpo de su texto
+const HEADLINE_TOP_RATIO = 0.62; // «¡FELIZ» respecto de «ANIVERSARIO!»
+const HEADLINE_RULE_GAP = 0.55;  // hueco + subrayado dorado bajo el saludo, en cuerpos
 
-const weightFor = (kind: BlockKind) => (kind === 'headline' || kind === 'years' ? 600 : (kind === 'club' ? 700 : 400));
+const weightFor = (kind: BlockKind, st?: BlockStyle) => st?.weight ?? (kind === 'headline' || kind === 'years' ? 600 : (kind === 'club' ? 700 : 400));
+
+/** Las dos líneas del saludo fijo: la última palabra es la plena. */
+const headlineLines = (text: string): [string, string] => {
+    const palabras = String(text || '').trim().split(/\s+/);
+    if (palabras.length < 2) return ['', palabras[0] || ''];
+    return [palabras.slice(0, -1).join(' '), palabras[palabras.length - 1]];
+};
 
 /** El nombre del club en DOS tonos, como la referencia: el prefijo
  *  institucional en azul y la parte distintiva en dorado. Si el nombre no
@@ -259,7 +264,17 @@ const measure = (ctx: CanvasRenderingContext2D, bloques: TextBlock[], W: number,
             items.push({ block: b, style: st, lines: [], height: h, fontSize: h });
             continue;
         }
-        ctx.font = `${weightFor(b.kind)} ${fontSize}px ${st.font}`;
+        // El saludo fijo: dos líneas de cuerpos distintos + el subrayado. La
+        // MISMA cuenta que usa el dibujo, o el bloque se sale de su medida.
+        if (b.kind === 'headline') {
+            const [arriba, abajo] = headlineLines(st.upper ? b.text.toUpperCase() : b.text);
+            const h = (arriba ? fontSize * HEADLINE_TOP_RATIO * st.lineHeight : 0)
+                + fontSize * st.lineHeight + fontSize * HEADLINE_RULE_GAP;
+            total += st.gapBefore * W * escala + h;
+            items.push({ block: b, style: st, lines: [arriba, abajo], height: h, fontSize });
+            continue;
+        }
+        ctx.font = `${weightFor(b.kind, st)} ${fontSize}px ${st.font}`;
         applyLetterSpacing(ctx, st, fontSize);
         const texto = st.upper ? b.text.toUpperCase() : b.text;
         // Los años van en su banda y no se reparten en líneas: son un rótulo.
@@ -417,34 +432,78 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
 
     for (const item of ajuste.items) {
         y += item.style.gapBefore * W * ajuste.escala;
-        const alineado = zone.align;
+        // La CITA y el CIERRE van centrados sea cual sea la zona: es el
+        // tratamiento de la referencia, no una preferencia de maquetación.
+        const alineado = item.style.align || zone.align;
         const cx = alineado === 'center' ? boxX + boxW / 2 : boxX;
 
         if (item.block.kind === 'rule') {
             ctx.fillStyle = item.style.color;
-            const ancho = Math.min(boxW * 0.34, boxW);
+            const ancho = Math.min(boxW * 0.30, boxW);
             const rx = alineado === 'center' ? cx - ancho / 2 : boxX;
             ctx.fillRect(rx, y, ancho, item.height);
             y += item.height;
             continue;
         }
 
-        ctx.font = `${weightFor(item.block.kind)} ${item.fontSize}px ${item.style.font}`;
+        // El saludo fijo: «¡FELIZ» liviana arriba, «ANIVERSARIO!» plena
+        // abajo, y el subrayado dorado corto — la cabecera de la referencia.
+        if (item.block.kind === 'headline') {
+            const [arriba, abajo] = item.lines as [string, string];
+            ctx.fillStyle = item.style.color;
+            ctx.textAlign = alineado === 'center' ? 'center' : 'left';
+            const fsTop = item.fontSize * HEADLINE_TOP_RATIO;
+            if (arriba) {
+                ctx.font = `500 ${fsTop}px ${item.style.font}`;
+                ctx.fillText(arriba, cx, y);
+                y += fsTop * item.style.lineHeight;
+            }
+            ctx.font = `700 ${item.fontSize}px ${item.style.font}`;
+            ctx.fillText(abajo, cx, y);
+            y += item.fontSize * item.style.lineHeight;
+            // El subrayado corto, a mitad del hueco que la medición reservó.
+            const ruleW = Math.min(boxW * 0.30, ctx.measureText(abajo).width * 0.55);
+            const ruleH = Math.max(2, item.fontSize * 0.045);
+            ctx.fillStyle = ROTARY_GOLD;
+            ctx.fillRect(alineado === 'center' ? cx - ruleW / 2 : boxX, y + item.fontSize * (HEADLINE_RULE_GAP / 2) - ruleH / 2, ruleW, ruleH);
+            y += item.fontSize * HEADLINE_RULE_GAP;
+            continue;
+        }
+
+        ctx.font = `${weightFor(item.block.kind, item.style)} ${item.fontSize}px ${item.style.font}`;
         applyLetterSpacing(ctx, item.style, item.fontSize);
 
-        // La BANDA dorada de los años, como en la referencia: pastilla dorada
-        // con «40 AÑOS» en blanco. La cifra la escribimos nosotros — es la
-        // garantía POR CONSTRUCCIÓN de la arquitectura híbrida.
+        // La BANDA dorada de los años, como en la referencia: cinta con
+        // muescas en los extremos y un punto dorado a cada lado, con
+        // «40 AÑOS» en blanco. La cifra la escribimos nosotros — exacta POR
+        // CONSTRUCCIÓN.
         if (item.block.kind === 'years') {
             const rotulo = item.lines[0] || yearsBandLabel(item.block.text);
             const anchoTexto = ctx.measureText(rotulo).width;
-            const pad = item.fontSize * 0.85;
-            const bandaW = Math.min(boxW, anchoTexto + pad * 2);
+            const pad = item.fontSize * 0.95;
+            const bandaW = Math.min(boxW * 0.9, anchoTexto + pad * 2);
             const bandaH = item.height;
-            const bx = alineado === 'center' ? cx - bandaW / 2 : boxX;
+            const rPunto = Math.max(2, bandaH * 0.10);
+            // Alineada a la izquierda, la cinta deja sitio para SU punto: si
+            // arranca en el borde de la zona, el punto izquierdo se recorta.
+            const bx = alineado === 'center' ? cx - bandaW / 2 : boxX + rPunto * 5;
+            const muesca = bandaH * 0.32;
             ctx.fillStyle = ROTARY_GOLD;
-            roundRect(ctx, bx, y, bandaW, bandaH, bandaH * 0.18);
+            ctx.beginPath();
+            ctx.moveTo(bx, y);
+            ctx.lineTo(bx + bandaW, y);
+            ctx.lineTo(bx + bandaW - muesca, y + bandaH / 2);
+            ctx.lineTo(bx + bandaW, y + bandaH);
+            ctx.lineTo(bx, y + bandaH);
+            ctx.lineTo(bx + muesca, y + bandaH / 2);
+            ctx.closePath();
             ctx.fill();
+            // Los puntos que flanquean la cinta en la referencia.
+            for (const px of [bx - rPunto * 3, bx + bandaW + rPunto * 3]) {
+                if (px > boxX - rPunto && px < boxX + boxW + rPunto) {
+                    ctx.beginPath(); ctx.arc(px, y + bandaH / 2, rPunto, 0, Math.PI * 2); ctx.fill();
+                }
+            }
             ctx.fillStyle = PAPER;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -453,6 +512,24 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
             y += bandaH;
             applyLetterSpacing(ctx, {} as BlockStyle, item.fontSize);
             continue;
+        }
+
+        // Las comillas doradas de la cita — el tratamiento de la referencia.
+        // Se dibujan pegadas a la primera y la última línea, acotadas a la
+        // zona: son decoración del bloque, no parte de la medida.
+        if (item.block.kind === 'message' && item.lines.length) {
+            ctx.save();
+            ctx.fillStyle = ROTARY_GOLD;
+            ctx.font = `900 ${item.fontSize * 1.9}px Georgia, 'Times New Roman', serif`;
+            ctx.textAlign = 'left';
+            const w1 = (() => { ctx.font = `${weightFor(item.block.kind, item.style)} ${item.fontSize}px ${item.style.font}`; const w = ctx.measureText(item.lines[0]).width; ctx.font = `900 ${item.fontSize * 1.9}px Georgia, serif`; return w; })();
+            const qx = Math.max(boxX, cx - w1 / 2 - item.fontSize * 2.1);
+            ctx.fillText('\u201C', qx, y - item.fontSize * 0.55);
+            const wUlt = (() => { ctx.font = `${weightFor(item.block.kind, item.style)} ${item.fontSize}px ${item.style.font}`; const w = ctx.measureText(item.lines[item.lines.length - 1]).width; ctx.font = `900 ${item.fontSize * 1.9}px Georgia, serif`; return w; })();
+            const hCita = item.lines.length * item.fontSize * item.style.lineHeight;
+            const q2 = Math.min(boxX + boxW - item.fontSize * 1.4, cx + wUlt / 2 + item.fontSize * 0.95);
+            ctx.fillText('\u201D', q2, y + hCita - item.fontSize * 1.05);
+            ctx.restore();
         }
 
         ctx.fillStyle = item.style.color;
@@ -523,11 +600,28 @@ const drawBranding = async (ctx: CanvasRenderingContext2D, doc: AnniversaryDocum
     const bandaH = FOOTER_BAND.h * H;
     const hayAlgo = !!(b.clubLogo || b.districtLine || b.footerImage);
 
-    if (hayAlgo) {
-        // Un velo blanco para que el pie se lea sobre cualquier fondo, y un
-        // filete dorado que garantiza la separación pase lo que pase con la
-        // imagen de arriba. No es un retoque de la salida del modelo: es la
-        // capa institucional, declarada.
+    // ⚠️ EL PIE INSTITUCIONAL OCUPA LA BANDA ENTERA (v4.902). La imagen del
+    // pie —las curvas azul y dorado de la referencia— está diseñada a lo
+    // ancho: metida en una caja a la derecha quedaba como un sello suelto y
+    // la pieza no se parecía a la referencia. Se dibuja como fondo de TODA la
+    // banda, y el logotipo y la línea del distrito van ENCIMA.
+    let pieCubierto = false;
+    if (b.footerImage) {
+        try {
+            const img = await loadImage(b.footerImage);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, bandaY, W, bandaH);
+            ctx.clip();
+            drawCover(ctx, img, 0, bandaY, W, bandaH);
+            ctx.restore();
+            pieCubierto = true;
+        } catch { warnings.push('No se pudo cargar el pie institucional.'); }
+    }
+    if (hayAlgo && !pieCubierto) {
+        // Sin imagen de pie: un velo blanco para que el pie se lea sobre
+        // cualquier fondo, y un filete dorado que garantiza la separación.
+        // Con la imagen puesta no hace falta ninguno: ELLA es el pie.
         ctx.fillStyle = 'rgba(255,255,255,0.93)';
         ctx.fillRect(0, bandaY, W, bandaH);
         ctx.fillStyle = ROTARY_GOLD;
@@ -537,8 +631,9 @@ const drawBranding = async (ctx: CanvasRenderingContext2D, doc: AnniversaryDocum
     const margen = W * 0.055;
     const alto = bandaH * 0.46;
     const centro = bandaY + bandaH / 2 - alto / 2;
-    let izquierda = margen;
-    let derecha = W - margen;
+    const izquierda0 = margen;
+    let izquierda = izquierda0;
+    const derecha = W - margen;
 
     if (b.clubLogo) {
         try {
@@ -546,13 +641,6 @@ const drawBranding = async (ctx: CanvasRenderingContext2D, doc: AnniversaryDocum
             const r = drawContain(ctx, img, izquierda, centro, W * 0.22, alto, 'left');
             izquierda += r.width + W * 0.03;
         } catch { warnings.push('No se pudo cargar el logotipo del club.'); }
-    }
-    if (b.footerImage) {
-        try {
-            const img = await loadImage(b.footerImage);
-            const r = drawContain(ctx, img, derecha - W * 0.24, centro, W * 0.24, alto, 'right');
-            derecha = r.x - W * 0.03;
-        } catch { warnings.push('No se pudo cargar el pie institucional.'); }
     }
     if (b.districtLine) {
         const size = W * 0.0175;

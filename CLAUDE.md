@@ -2675,13 +2675,25 @@ faltan). **Ninguna necesita base, credenciales ni red.**
 - **LA MAQUETACIÓN ESTÁ EN FRACCIONES DEL ANCHO**, nunca en píxeles. Por eso la
   descarga en alta resolución es la misma pieza con más píxeles y no otra
   composición.
-- **⚠️ EL COMPOSITOR NO REPITE LO QUE EL TITULAR YA DIJO** (`planTextBlocks`). El
-  modelo escribe titulares como «¡Feliz aniversario, Club Rotario Cali!» o «¡40
-  años generando impacto!» —el pedido los pone como ejemplo— y la pieza además
-  imprime el club y los años como datos exactos. Repetirlos se lee como un error
-  de maquetación. El titular manda y los bloques de identidad salen sólo si él
-  no los dijo; **sin titular salen los dos**, porque son lo único que identifica
-  la pieza. La parte distintiva cuenta: «Cali» ya nombra al «Club Rotario Cali».
+- **⚠️ LA ESTRUCTURA DEL TEXTO ES PREESTABLECIDA** (v4.902, `planTextBlocks`;
+  supersede la regla de redundancia de v4.898). Pedido literal del cliente con
+  la referencia delante: «estilos preestablecidos… que quede distribuida tal
+  cual». La jerarquía sale SIEMPRE: saludo fijo `HEADLINE_TEXT` en dos líneas
+  con subrayado dorado → `KICKER_TEXT` → club en dos tonos → banda dorada con
+  muescas y puntos → el mensaje de la IA como CITA centrada con comillas
+  doradas → filete → el TITULAR de la IA como LÍNEA DE CIERRE («¡Gracias por
+  tanto!…» — `buildCopySystem` se lo pide así, sin nombrar club ni años). El
+  titular ya no reorganiza nada: con «Club Rotario Bello: cuatro décadas…»
+  desaparecían el saludo, el pase y el club en dos tonos. Un cierre ausente NO
+  se inventa; la cita y el cierre van centrados sea cual sea la zona
+  (`align` en el estilo). La medición del saludo especial usa LA MISMA cuenta
+  que su dibujo (`HEADLINE_TOP_RATIO`/`HEADLINE_RULE_GAP`).
+- **EL PIE INSTITUCIONAL OCUPA LA BANDA ENTERA** (v4.902). La imagen del pie
+  —las curvas de la referencia— está diseñada a lo ancho: en una caja a la
+  derecha quedaba como un sello suelto. Se dibuja como fondo de TODA la banda
+  (cover, recortada a la banda) y el logotipo y la línea del distrito van
+  ENCIMA; el velo blanco y el filete dorado sólo se pintan cuando NO hay
+  imagen de pie — ella es el pie.
 - **LAS REGLAS VISUALES SON DEL SISTEMA, NO DEL ADMINISTRADOR.** La paleta, los
   cuerpos de letra y el contraste no se configuran: son lo que garantiza que el
   texto se lea sobre cualquier fondo que devuelva el modelo. Quien configura

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.901.0 | 2026-08-25 (Aniversarios IA: el campo que no existía + zona fijada al maestro)
-// Cache bust: 2026-08-25g
+// UI V4.902.0 | 2026-08-25 (Aniversarios IA: la estructura preestablecida de la referencia)
+// Cache bust: 2026-08-25h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.902.0',
+        title: 'Aniversarios IA: la estructura preestablecida de la referencia 🎀',
+        description: 'La capa de texto deja de reorganizarse según el titular de la IA y pasa a ser una PLANTILLA FIJA con la distribución exacta de la referencia aprobada: «¡FELIZ ANIVERSARIO!» en dos líneas con subrayado dorado, el pase «FELICIDADES», el nombre del club en dos tonos (azul + dorado), la banda dorada «40 AÑOS» con muescas y puntos, el mensaje de la IA como CITA centrada con comillas doradas, un filete y el titular de la IA como LÍNEA DE CIERRE («¡Gracias por tanto!…» — el redactor ahora lo escribe así, sin nombrar al club ni los años, que ya están impresos). Hasta v4.901, un titular como «Club Rotario Bello: cuatro décadas de trayectoria» suprimía el saludo, el pase y el club en dos tonos, y la pieza dejaba de parecerse a la referencia. Además: la imagen del pie institucional se dibuja ahora a lo ANCHO de la banda inferior —las curvas azul y dorado de la referencia, no un sello en una esquina— con el logotipo y el distrito encima; y el Prompt Maestro por defecto pide el marco de la fotografía RECTANGULAR tipo polaroid (borde recto, nunca orgánico). Verificado renderizando la pieza en un navegador y comparándola a ojo con la referencia, además de las cuatro baterías de pruebas.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'diseno'],
+        type: 'improved',
+    },
     {
         version: '4.901.0',
         title: 'Aniversarios IA: el campo que no existía, la zona que calza con el maestro 🔧',
