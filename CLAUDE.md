@@ -2801,6 +2801,22 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   ningún cambio y no tiene forma de saber por qué. **Publicar exige que la
   configuración sea válida; retirarla no**: poner al aire un generador roto es
   caro y retirarlo nunca puede quedar bloqueado por una validación.
+- **⚠️ PUBLICAR Y PROBAR ACTÚAN SOBRE LO QUE SE VE, y con cambios sin guardar
+  los veredictos del servidor SE CALLAN** (v4.904). Los avisos, la validación y
+  el `dirty` los calcula el servidor sobre el borrador GUARDADO; editar la
+  pantalla (agregar una referencia, tocar el maestro) no los mueve. El reporte
+  con captura mostraba las tres cosas a la vez: la referencia recién agregada
+  a la vista, el aviso «No hay ninguna referencia visual» debajo y la franja
+  verde «lo que ves es lo que genera el público» — y peor, «Publicar» y
+  «Probar» usaban el draft del servidor, así que la referencia sin guardar
+  quedaba FUERA de lo publicado y de las pruebas, en silencio. Ahora
+  `sinGuardar` (la foto `savedJson` de lo que devolvió el servidor) gobierna
+  tres cosas: la franja propia «tenés cambios sin guardar» reemplaza a las que
+  ya no son ciertas, `persistir` es EL único PUT del borrador y lo comparten
+  Guardar, Publicar y Probar — los dos últimos guardan ANTES de actuar. Al
+  agregar un botón que actúe sobre el borrador, pasarlo por `persistir`
+  primero. Lo fijan siete comprobaciones en `test:anniversary`, verificadas a
+  la inversa.
 - **UNA VERSIÓN SE CREA AL PUBLICAR, Y SÓLO SI CAMBIÓ LO QUE SE IMPRIME**
   (`fingerprintOf`). Renombrar la configuración o mover el interruptor de activo
   no es una versión nueva. Volver a publicar sin tocar nada REUTILIZA la

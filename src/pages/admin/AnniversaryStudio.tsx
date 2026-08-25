@@ -142,6 +142,14 @@ const AnniversaryStudio: React.FC = () => {
     const [publishedAt, setPublishedAt] = useState<string | null>(null);
     const [errors, setErrors] = useState<string[]>([]);
     const [warnings, setWarnings] = useState<string[]>([]);
+    // La foto del borrador tal como quedó GUARDADO en el servidor (v4.904).
+    // Los avisos, el «dirty» y la validación los calcula el servidor sobre lo
+    // guardado: mientras lo que se ve difiera de eso, esos veredictos hablan
+    // de OTRA configuración. Se reportó con captura: una referencia recién
+    // agregada a la vista, el aviso «No hay ninguna referencia visual» debajo
+    // y la franja verde «lo que ves es lo que genera el público» — tres
+    // afirmaciones que no podían ser ciertas a la vez.
+    const [savedJson, setSavedJson] = useState<string | null>(null);
     const [cargando, setCargando] = useState(true);
     const [guardando, setGuardando] = useState(false);
     const [publicando, setPublicando] = useState(false);
@@ -190,6 +198,7 @@ const AnniversaryStudio: React.FC = () => {
             const cfg = await rg.json();
             setCatalog(cat);
             setConfig(cfg.config);
+            setSavedJson(JSON.stringify(cfg.config));
             setDirty(!!cfg.dirty);
             setPublishedAt(cfg.publishedAt || null);
             setErrors(cfg.errors || []);
@@ -205,9 +214,15 @@ const AnniversaryStudio: React.FC = () => {
     useEffect(() => { cargar(); }, [cargar]);
 
     // ── Guardar ─────────────────────────────────────────────────────
-    const guardar = useCallback(async () => {
-        if (!config) return;
-        setGuardando(true); setFallo(null); setNota(null);
+    //
+    // `persistir` es EL único camino que escribe el borrador, y lo comparten
+    // Guardar, Publicar y Probar (v4.904). Publicar y Probar actúan sobre el
+    // borrador GUARDADO en el servidor: sin este paso, publicaban o probaban
+    // una configuración distinta de la que está a la vista — y lo hacían en
+    // silencio, que es como una referencia recién agregada se quedaba fuera
+    // de lo publicado sin que nada avisara.
+    const persistir = useCallback(async (): Promise<{ ok: boolean; errors: string[] }> => {
+        if (!config) return { ok: false, errors: [] };
         let r: Response | null = null;
         try {
             r = await fetch(`${API}/anniversaries/config`, {
@@ -215,18 +230,42 @@ const AnniversaryStudio: React.FC = () => {
             });
             if (!r.ok) throw new Error(await mensajeDeFallo(r));
             const j = await r.json();
-            setConfig(j.config); setDirty(!!j.dirty);
+            setConfig(j.config);
+            setSavedJson(JSON.stringify(j.config));
+            setDirty(!!j.dirty);
             setErrors(j.errors || []); setWarnings(j.warnings || []);
-            setNota('Borrador guardado. Todavía no cambia lo que genera la gente: para eso hay que publicar.');
+            return { ok: true, errors: j.errors || [] };
         } catch (e) {
             setFallo(await mensajeDeFallo(r, e));
-        } finally { setGuardando(false); }
+            return { ok: false, errors: [] };
+        }
     }, [config]);
+
+    const guardar = useCallback(async () => {
+        setGuardando(true); setFallo(null); setNota(null);
+        const res = await persistir();
+        if (res.ok) setNota('Borrador guardado. Todavía no cambia lo que genera la gente: para eso hay que publicar.');
+        setGuardando(false);
+    }, [persistir]);
+
+    // ¿Lo que se ve difiere de lo GUARDADO? Se compara contra la foto que
+    // devolvió el servidor — no se reimplementa el criterio: cualquier edición
+    // local cambia el JSON y con eso alcanza para saber que los veredictos de
+    // abajo hablan de otra configuración.
+    const sinGuardar = config !== null && savedJson !== null && JSON.stringify(config) !== savedJson;
 
     const publicar = useCallback(async () => {
         setPublicando(true); setFallo(null); setNota(null);
         let r: Response | null = null;
         try {
+            // Publicar publica LO QUE SE VE: si hay cambios sin guardar, el
+            // borrador se guarda primero (y se revalida). Publicar el borrador
+            // viejo del servidor sería publicar otra cosa que la pantalla.
+            if (sinGuardar) {
+                const res = await persistir();
+                if (!res.ok) throw new Error('No se pudo guardar el borrador, así que no se publicó nada.');
+                if (res.errors.length) { throw new Error('La configuración todavía no se puede publicar.'); }
+            }
             r = await fetch(`${API}/anniversaries/publish`, { method: 'POST', headers: auth(), body: '{}' });
             if (!r.ok) {
                 const j = await r.json().catch(() => ({}));
@@ -243,7 +282,7 @@ const AnniversaryStudio: React.FC = () => {
         } catch (e) {
             setFallo(await mensajeDeFallo(r, e));
         } finally { setPublicando(false); }
-    }, []);
+    }, [sinGuardar, persistir]);
 
     const despublicar = useCallback(async () => {
         if (!window.confirm('El formulario público va a dejar de generar aniversarios hasta que vuelvas a publicar. ¿Seguimos?')) return;
@@ -263,7 +302,7 @@ const AnniversaryStudio: React.FC = () => {
             r = await fetch(`${API}/anniversaries/versions/${id}/restore`, { method: 'POST', headers: auth(), body: '{}' });
             if (!r.ok) throw new Error(await mensajeDeFallo(r));
             const j = await r.json();
-            setConfig(j.config); setDirty(true);
+            setConfig(j.config); setSavedJson(JSON.stringify(j.config)); setDirty(true);
             setNota(`Versión ${j.restoredFrom} traída al borrador. Probala y publicá cuando quieras.`);
         } catch (e) { setFallo(await mensajeDeFallo(r, e)); }
     }, []);
@@ -329,6 +368,13 @@ const AnniversaryStudio: React.FC = () => {
         setProbando(true); setTestError(null); setTestDoc(null); setTestInfo(null); setRenderWarnings([]);
         let r: Response | null = null;
         try {
+            // La prueba corre contra el borrador GUARDADO: si hay cambios sin
+            // guardar, se guardan primero — probar el borrador viejo probaría
+            // otra configuración que la que está a la vista (v4.904).
+            if (sinGuardar) {
+                const res = await persistir();
+                if (!res.ok) throw new Error('No se pudo guardar el borrador, así que la prueba habría corrido con la configuración anterior.');
+            }
             setStage('prepare');
             r = await fetch(`${API}/anniversaries/test/photo`, {
                 method: 'POST', headers: auth(),
@@ -372,7 +418,7 @@ const AnniversaryStudio: React.FC = () => {
             setTestError(e instanceof Error ? e.message : 'No se pudo generar la prueba.');
             setStage(null);
         } finally { setProbando(false); }
-    }, [testClub, testYears, testPhoto]);
+    }, [testClub, testYears, testPhoto, sinGuardar, persistir]);
 
     // ── La vista previa ES el archivo ───────────────────────────────
     //
@@ -449,8 +495,8 @@ const AnniversaryStudio: React.FC = () => {
                         {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar borrador
                     </button>
                     <button
-                        onClick={publicar} disabled={publicando || errors.length > 0}
-                        title={errors.length ? 'Hay algo que corregir antes de publicar' : undefined}
+                        onClick={publicar} disabled={publicando || (!sinGuardar && errors.length > 0)}
+                        title={!sinGuardar && errors.length ? 'Hay algo que corregir antes de publicar' : undefined}
                         className="px-4 py-2 rounded-lg bg-rotary-blue text-white text-sm font-medium hover:bg-rotary-navy disabled:opacity-50 flex items-center gap-2"
                     >
                         {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />} Publicar
@@ -468,7 +514,19 @@ const AnniversaryStudio: React.FC = () => {
                         módulo no puede componer ninguna pieza, ni siquiera en el panel de pruebas.
                     </Aviso>
                 )}
-                {publishedAt ? (
+                {/* Con cambios sin guardar, los veredictos del servidor hablan
+                    de OTRA configuración: se dice eso y se callan las franjas
+                    que ya no son ciertas (v4.904). Hasta entonces la pantalla
+                    mostraba a la vez una referencia recién agregada, el aviso
+                    «no hay ninguna referencia» y la franja verde «lo que ves
+                    es lo que genera el público» — tres cosas incompatibles. */}
+                {sinGuardar ? (
+                    <Aviso tone="warn">
+                        Tenés cambios sin guardar. Se aplican al pulsar <strong>«Guardar borrador»</strong> — y
+                        «Probar» y «Publicar» los guardan solos antes de actuar, así que ninguno trabaja con la
+                        versión vieja. Los avisos se recalculan al guardar.
+                    </Aviso>
+                ) : publishedAt ? (
                     dirty
                         ? <Aviso tone="warn">
                             El borrador tiene cambios sin publicar. <strong>El formulario público sigue generando con lo
@@ -478,8 +536,8 @@ const AnniversaryStudio: React.FC = () => {
                 ) : (
                     <Aviso tone="info">Todavía no se publicó nada, así que el formulario público no genera aniversarios. Podés probar acá abajo cuantas veces quieras.</Aviso>
                 )}
-                {errors.map((e, i) => <Aviso key={`e${i}`} tone="error">{e}</Aviso>)}
-                {warnings.map((w, i) => <Aviso key={`w${i}`} tone="warn">{w}</Aviso>)}
+                {!sinGuardar && errors.map((e, i) => <Aviso key={`e${i}`} tone="error">{e}</Aviso>)}
+                {!sinGuardar && warnings.map((w, i) => <Aviso key={`w${i}`} tone="warn">{w}</Aviso>)}
             </div>
 
             {/* 1 — General */}
