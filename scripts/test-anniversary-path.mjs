@@ -741,6 +741,56 @@ for (const [nombre, fn] of [['getEngine', ctrl.getEngine], ['putEngine', ctrl.pu
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('21 — v4.905: el rotulado fantasma se detecta, se reintenta y no se entrega como bueno');
+//
+// El reporte con capturas: el modelo dibujó «¡FELIZ ANIVERSARIO!» dentro del
+// fondo imitando la referencia, y nuestra capa quedó impresa encima. El
+// verificador de visión lo pregunta sobre el lienzo CRUDO.
+{
+    limpiar({ textoDibujado: { hasText: true, confident: true, where: 'arriba a la izquierda' } });
+    await llamar(ctrl.getConfig);
+    let rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const fantasma = rr.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: fantasma } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: fantasma } });
+    await llamar(ctrl.postTestCompose, { body: { pieceId: fantasma } });
+
+    const tareaF = prov.estado.tareas[0] || {};
+    ok('la decoración de la pieza viajó en el prompt (varía por pieza)',
+        !!tareaF.prompt?.includes('Decoration theme for THIS piece'));
+    ok('…y quedó registrada en el sello de auditoría',
+        !!db.tablas.AnniversaryPiece.find(p => p.id === fantasma)?.engine?.motifId);
+
+    rr = await llamar(ctrl.getTestPiece, { params: { id: fantasma } });
+    eq('con texto dibujado, el primer sondeo REINTENTA', rr.body.retrying, true);
+    ok('y el motivo nombra el texto dibujado', /dibuj/i.test(rr.body.reason || ''), rr.body.reason);
+    ok('el reintento le exige un lienzo sin caracteres',
+        /no words, letters or numbers/i.test(prov.estado.tareas[1]?.prompt || ''));
+
+    rr = await llamar(ctrl.getTestPiece, { params: { id: fantasma } });
+    eq('el segundo también trae texto, así que se descarta la composición', rr.body.document?.renderMode, 'plain');
+    ok('y el motivo queda escrito', !!rr.body.statusDetail, rr.body.statusDetail);
+
+    // Y el caso sano: el verificador contesta «sin texto», la pieza se usa y
+    // la validación DICE que el texto dibujado se miró.
+    limpiar({});
+    await llamar(ctrl.getConfig);
+    rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const sana = rr.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: sana } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: sana } });
+    await llamar(ctrl.postTestCompose, { body: { pieceId: sana } });
+    rr = await llamar(ctrl.getTestPiece, { params: { id: sana } });
+    eq('sin texto dibujado, la composición se usa', rr.body.document?.renderMode, 'ai');
+    ok('y la validación dice que se miró',
+        rr.body.validation?.measured?.includes('texto dibujado'), JSON.stringify(rr.body.validation?.measured));
+    // El reintento de la MISMA pieza conserva su motivo: el que registra el
+    // sello es reproducible desde el id (determinista, no una ruleta).
+    ok('el motivo del sello sale del catálogo cerrado',
+        S.DECOR_MOTIFS.some(m => m.id === db.tablas.AnniversaryPiece.find(p => p.id === sana)?.engine?.motifId));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${pass + malos.length} comprobaciones fallaron:`);

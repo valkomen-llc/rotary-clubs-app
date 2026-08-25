@@ -407,6 +407,9 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
                 config: ctx.config, photoUrl: piece.photoUrl,
                 clubName: piece.clubName, years: piece.years,
                 analysis: piece.analysis, model: modelo, engineConfig: engine,
+                // La semilla del motivo decorativo: el id de la pieza, así el
+                // reintento conserva su motivo y dos piezas distintas varían.
+                seed: piece.id,
                 // El reintento le dice al modelo el problema CONCRETO, no
                 // «hacelo mejor». Sale de la validación anterior.
                 extraClause: retryClause(piece.validation?.critical || []),
@@ -415,8 +418,10 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
                 taskId: r.taskId, zoneId: r.zoneId,
                 versionId: ctx.versionId || null,
                 // El sello de auditoría (req. 21): con qué se generó ESTA
-                // pieza. `dispatchedAt` es de donde sale la latencia medida.
-                engine: { ...engineStampFor({ model: modelo, engineConfig: engine, fallbackUsed }), dispatchedAt: new Date().toISOString() },
+                // pieza. `dispatchedAt` es de donde sale la latencia medida, y
+                // `motifId` el motivo decorativo que viajó en el prompt
+                // (v4.905) — «¿por qué esta pieza tiene velas?» tiene respuesta.
+                engine: { ...engineStampFor({ model: modelo, engineConfig: engine, fallbackUsed }), dispatchedAt: new Date().toISOString(), motifId: r.motifId || null },
             });
             return r;
         };
@@ -489,6 +494,7 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                                 config: ctx.config, photoUrl: piece.photoUrl,
                                 clubName: piece.clubName, years: piece.years,
                                 analysis: piece.analysis, model: prod.fallback, engineConfig: engine,
+                                seed: piece.id,
                                 extraClause: retryClause(piece.validation?.critical || []),
                             });
                             await updatePiece(piece.id, {
@@ -528,6 +534,9 @@ export const runSync = async (req, res, { draft = false } = {}) => {
 
         const veredicto = await verifyComposition({
             photoBuffer, composedBuffer: r.buffer, zoneId: piece.zoneId, format: ctx.config.format,
+            // La URL de NUESTRA copia: es lo que mira el verificador de texto
+            // dibujado (v4.905) — el lienzo crudo, antes de la capa de texto.
+            composedUrl: r.url || null,
         });
 
         // ── LA CORRECCIÓN AUTOMÁTICA ────────────────────────────────
@@ -549,7 +558,7 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                         config: ctx.config, photoUrl: piece.photoUrl,
                         clubName: piece.clubName, years: piece.years,
                         analysis: piece.analysis, extraClause: retryClause(veredicto.critical),
-                        model: piece.engine?.model || null,
+                        model: piece.engine?.model || null, seed: piece.id,
                     });
                     await updatePiece(piece.id, { taskId: otra.taskId, zoneId: otra.zoneId });
                     return res.json({ status: 'composing', ready: false, retrying: true, reason: veredicto.critical[0]?.reason || null });
@@ -772,6 +781,10 @@ export const postBenchmarkRun = async (req, res) => {
                         // distintos los prompts dejarían de ser comparables.
                         config, photoUrl: photo.url, clubName: 'Club Rotario Cali', years: 40,
                         analysis: photo.analysis, model, engineConfig: engine,
+                        // La semilla es POR FOTOGRAFÍA, no por celda: cada
+                        // modelo tiene que recibir el mismo juego de prompts
+                        // (regla del benchmark) — el motivo decorativo incluido.
+                        seed: `bench:${run.id}:${photoIndex}`,
                     });
                     await createBenchResult({ benchmarkId: run.id, model, photoIndex, taskId: r.taskId });
                     despachadas++;
@@ -824,6 +837,7 @@ export const getBenchmarkRun = async (req, res) => {
                 const veredicto = await verifyComposition({
                     photoBuffer, composedBuffer: estado.buffer,
                     zoneId: zoneForConfig(config, photo.analysis), format: 'square_1080',
+                    composedUrl: estado.url || null,
                 });
                 const latencyMs = r.dispatchedAt ? Math.max(0, Date.now() - new Date(r.dispatchedAt).getTime()) : null;
                 const scores = autoScoresFor({

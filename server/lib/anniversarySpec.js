@@ -232,7 +232,42 @@ export const applyMasterVariables = (text, { clubName = '', years = null } = {})
  * dirección de arte. En español a propósito: es lo que el administrador va a
  * leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial elegante: fondo casi todo blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco polaroid blanco de borde RECTO (nunca orgánico), sobre la mitad superior. Celebración sobria: globos dorados, blancos y champagne arriba a la derecha, confeti discreto; nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie. Variá la decoración entre generaciones conservando identidad y elegancia.`;
+export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial elegante: fondo casi todo blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco polaroid blanco de borde RECTO (nunca orgánico), sobre la mitad superior. Celebración sobria y premium, nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie.`;
+
+// ─── La decoración varía POR PIEZA (v4.905) ────────────────────────────
+//
+// «Variá la decoración entre generaciones» escrito en el Prompt Maestro no
+// varía nada: el prompt es IDÉNTICO entre generaciones y estos motores no
+// exponen semilla, así que convergen a la misma pieza — es lo que se reportó.
+// La variedad de verdad exige que el PROMPT cambie por pieza: un catálogo
+// CERRADO de motivos del tema aniversario y una elección DETERMINISTA por
+// pieza (hash del id). Determinista y no al azar por la misma regla que la
+// asignación A/B del CRM: reproducible sin haberla guardado, y «¿por qué esta
+// pieza tiene velas?» tiene respuesta. El motivo elegido se registra igual.
+export const DECOR_MOTIFS = [
+    { id: 'globos',      es: 'globos dorados, blancos y champagne', en: 'a few elegant white, gold and champagne balloons with a touch of gold confetti' },
+    { id: 'serpentinas', es: 'serpentinas y cintas doradas',        en: 'thin golden streamers and delicate curling ribbons in the upper corners' },
+    { id: 'confeti',     es: 'lluvia fina de confeti dorado',       en: 'a gentle drift of fine gold and white confetti with tiny shining dots' },
+    { id: 'destellos',   es: 'destellos y estrellas doradas',       en: 'soft golden sparkles and small elegant star glints scattered sparingly' },
+    { id: 'lazos',       es: 'lazos y moños dorados',               en: 'flowing golden ribbon bows with fine trailing ends' },
+    { id: 'flores',      es: 'flores blancas y doradas',            en: 'a restrained arrangement of white and gold flowers along one edge' },
+    { id: 'brindis',     es: 'acentos de brindis dorados',          en: 'celebratory golden accents suggesting a toast, with fine streaks of light' },
+    { id: 'guirnalda',   es: 'guirnalda dorada con luces',          en: 'a delicate golden garland with tiny warm lights draped across one corner' },
+];
+
+/** FNV-1a sobre la semilla (el id de la pieza): la MISMA pieza conserva su
+ *  motivo entre reintentos —el reintento corrige un defecto, no re-sortea el
+ *  estilo— y dos piezas distintas casi siempre difieren. */
+export const motifForSeed = (seed) => {
+    const s = String(seed || '');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return DECOR_MOTIFS[h % DECOR_MOTIFS.length];
+};
+
+export const decorClauseFor = (motif) => motif
+    ? `Decoration theme for THIS piece: ${motif.en} — always sober, premium and anniversary-appropriate.`
+    : '';
 
 export const DEFAULT_MESSAGE_INSTRUCTION =
     'Genera un mensaje corto, institucional, humano e inspirador. Máximo dos frases. '
@@ -288,7 +323,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     // Las instrucciones OPCIONALES del ensamblador, con su interruptor: el
     // ambiente por foto (la frase que adapta el prompt a ESA fotografía) y el
     // uso de la referencia visual. Lo que NO es opcional no tiene interruptor.
-    promptOptions: { ambient: true, useReference: true },
+    promptOptions: { ambient: true, useReference: true, varyDecor: true },
     messageInstruction: DEFAULT_MESSAGE_INSTRUCTION,
     restrictions: DEFAULT_RESTRICTIONS,
     branding: {
@@ -382,6 +417,7 @@ export const normalizeConfig = (raw) => {
         promptOptions: {
             ambient: bool(c.promptOptions?.ambient, true),
             useReference: bool(c.promptOptions?.useReference, true),
+            varyDecor: bool(c.promptOptions?.varyDecor, true),
         },
         messageInstruction: str(c.messageInstruction, DEFAULT_MESSAGE_INSTRUCTION).trim().slice(0, 1200),
         restrictions: str(c.restrictions, DEFAULT_RESTRICTIONS).trim().slice(0, 1200),
@@ -453,7 +489,7 @@ export const fingerprintOf = (raw) => {
     const c = normalizeConfig(raw);
     const material = JSON.stringify([
         c.format, c.resolution,
-        c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference], c.textZone,
+        c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference, c.promptOptions.varyDecor], c.textZone,
         c.messageInstruction, c.restrictions,
         c.references.map(r => [r.url, r.primary]),
         [c.branding.clubLogo, c.branding.districtLine, c.branding.footerImage, c.branding.watermark],
@@ -647,6 +683,49 @@ export const referenceClauseFor = (analysis) => {
     return `Match the visual language of the style reference — ${partes.join('; ')}.`.slice(0, 480);
 };
 
+// ─── ¿El modelo dibujó texto? (v4.905) ─────────────────────────────────
+//
+// El reporte con capturas: un «¡FELIZ ANIVERSARIO!» fantasma DENTRO del fondo
+// generado, debajo del nuestro — el modelo imitó el rotulado de la referencia.
+// Las mediciones de la franja no lo distinguen de decoración fina (por eso
+// pasó), así que se PREGUNTA con el modelo de visión, la misma técnica del
+// control de texto de Reels: «el texto lo lee el modelo de visión, no un OCR
+// dedicado». Esto supersede la limitación declarada de v4.895 («no se
+// comprueba que la imagen no traiga texto») — no agrega Tesseract ni un solo
+// MB: es una llamada de visión, contra una generación de imagen desperdiciada.
+//
+// El veredicto respeta la lección de v4.795 sobre el ruido de una lectura
+// única: acá no hay fotogramas que corroboren, así que la corroboración es la
+// CONFIANZA declarada — sólo `found && confident` descalifica; `found` a secas
+// se ENTREGA con nota, para que un titubeo del modelo no mande una pieza buena
+// al modo plano.
+export const DRAWN_TEXT_SYSTEM = [
+    'Sos un verificador de piezas gráficas. Vas a mirar UN lienzo generado por un modelo de imagen que debería estar',
+    'completamente libre de texto: todo el texto de la pieza final se imprime DESPUÉS, por software, encima de este lienzo.',
+    'Contestá SOLO un JSON: {"hasText": boolean, "confident": boolean, "where": "…"}.',
+    '· hasText: true únicamente si ves CARACTERES dibujados de verdad — palabras, letras o números legibles o casi legibles.',
+    '  Formas decorativas que apenas recuerdan letras, texturas, o el marco de una fotografía NO cuentan.',
+    '· confident: true sólo si es inequívoco.',
+    '· where: dónde está, en pocas palabras y en español (o cadena vacía).',
+].join('\n');
+export const DRAWN_TEXT_USER = '¿Este lienzo contiene texto dibujado? Contestá el JSON.';
+
+/** El lector ACOTADO de esa respuesta, como todos los de este módulo: el
+ *  modelo contesta y el código decide qué campos existen y de qué tipo. */
+export const readDrawnTextAnswer = (raw) => {
+    let obj = raw;
+    if (typeof raw === 'string') {
+        try { obj = JSON.parse(raw.replace(/^[^{]*/, '').replace(/[^}]*$/, '')); } catch { return null; }
+    }
+    if (!obj || typeof obj !== 'object') return null;
+    if (typeof obj.hasText !== 'boolean') return null;
+    return {
+        found: obj.hasText,
+        confident: obj.confident === true,
+        where: clean(obj.where).slice(0, 160),
+    };
+};
+
 // ─── El prompt de la imagen ────────────────────────────────────────────
 
 /** La franja que el modelo tiene que dejar tranquila, dicha en PALABRAS. En
@@ -689,10 +768,14 @@ export const PROMPT_MAX_CHARS = Number(process.env.ANNIVERSARY_PROMPT_MAX_CHARS)
  *      primero. El estilo base ya no se ensambla aparte: el Prompt Maestro
  *      por defecto lo supersede (BASE_STYLE queda exportado como referencia).
  */
-export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false, referenceClause = '', maxChars = null } = {}) => {
+export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false, referenceClause = '', maxChars = null, seed = null } = {}) => {
     const c = normalizeConfig(config);
     const zona = zoneId || zoneForConfig(c, analysis);
     const a = analysis || fallbackAnalysis();
+    // El motivo decorativo de ESTA pieza (v4.905): determinista por semilla,
+    // así el reintento de la misma pieza conserva su motivo y dos piezas
+    // distintas varían. Sin semilla no se varía — el prompt sería una ruleta.
+    const motif = c.promptOptions.varyDecor && seed ? motifForSeed(seed) : null;
     // El presupuesto es POR MODELO: GPT Image admite prompts muchísimo más
     // largos que los 2.500 de la pasarela KIE, y con él la dirección de arte
     // y el análisis de la referencia llegan ENTEROS. Sin dato, el tope de KIE.
@@ -700,7 +783,11 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
 
     const nucleo = [
         hasReference
-            ? 'Using the first image as the STYLE REFERENCE for palette, decoration and layout, and the last image as the PHOTOGRAPH, build a single new square piece.'
+            // ⚠️ La referencia lleva SU rotulado impreso y el modelo lo IMITA
+            // si no se le dice lo contrario: es el «¡FELIZ ANIVERSARIO!»
+            // fantasma del reporte de v4.905 — texto dibujado en el fondo,
+            // debajo del nuestro. Se copia el ESTILO, jamás sus letras.
+            ? 'Using the first image as the STYLE REFERENCE for palette, decoration and layout, and the last image as the PHOTOGRAPH, build a single new square piece. The lettering seen in the reference is printed afterwards by the platform — never draw it; leave those areas clean.'
             : 'Build a single new square piece around the supplied photograph.',
         INTEGRATION_CLAUSE,
         clearZoneClause(zona),
@@ -713,7 +800,7 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
     // {FOTO_CLUB} ya sustituidos. Va en español tal cual lo escribió: los
     // motores actuales lo entienden, y traducirlo sería reescribir su
     // dirección de arte con nuestras palabras.
-    const masterTexto = `Master art direction, follow it closely (in Spanish): «${applyMasterVariables(c.masterPrompt, { clubName, years })}»`;
+    const masterTexto = `Master art direction, follow it closely (in Spanish): «${applyMasterVariables(c.masterPrompt, { clubName, years })}». Words it mentions are printed later by the platform — the canvas stays free of characters.`;
 
     const ambiente = [];
     if (a.people === 0) {
@@ -738,19 +825,24 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
     // prefieren fuera para que el prompt sea idéntico entre generaciones.
     const ambienteTexto = c.promptOptions.ambient ? ambiente.join(' ') : '';
     const referenciaTexto = hasReference ? String(referenceClause || '') : '';
+    const decorTexto = decorClauseFor(motif);
 
     const dropped = [];
     const armar = (partes) => partes.filter(Boolean).join('\n');
 
     // El ORDEN DE SACRIFICIO, de lo primero que se cae a lo último:
-    // ambiente → cláusula de la referencia → (recortar el Prompt Maestro). El
-    // núcleo no se toca nunca: sin él la pieza no es publicable. La cláusula
-    // de la referencia cae ANTES que el maestro porque la referencia además
-    // viaja como imagen — su descripción es refuerzo, el maestro no tiene
-    // segunda vía.
-    let partes = [nucleoTexto, masterTexto, referenciaTexto, ambienteTexto];
+    // ambiente → decoración → cláusula de la referencia → (recortar el Prompt
+    // Maestro). El núcleo no se toca nunca: sin él la pieza no es publicable.
+    // La cláusula de la referencia cae ANTES que el maestro porque la
+    // referencia además viaja como imagen — su descripción es refuerzo, el
+    // maestro no tiene segunda vía. La decoración cae antes que la referencia:
+    // es variedad, no identidad.
+    let partes = [nucleoTexto, masterTexto, referenciaTexto, decorTexto, ambienteTexto];
     if (armar(partes).length > tope && ambienteTexto) {
-        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto, referenciaTexto];
+        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto, referenciaTexto, decorTexto];
+    }
+    if (armar(partes).length > tope && decorTexto) {
+        dropped.push('decoracion'); partes = [nucleoTexto, masterTexto, referenciaTexto];
     }
     if (armar(partes).length > tope && referenciaTexto) {
         dropped.push('referencia'); partes = [nucleoTexto, masterTexto];
@@ -777,7 +869,9 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
         dropped.push('nucleo(recortado)');
         prompt = prompt.slice(0, tope);
     }
-    return { prompt, zoneId: zona, dropped };
+    // `motifId` sólo si la cláusula de verdad viajó: reportar un motivo que
+    // se recortó afirmaría que se pidió algo que no se pidió.
+    return { prompt, zoneId: zona, dropped, motifId: motif && !dropped.includes('decoracion') ? motif.id : null };
 };
 
 export const buildNegativePrompt = (config) => {
@@ -1027,6 +1121,7 @@ export const judgePiece = ({
     meanLuma = null, whiteShare = null,
     zoneLuma = null, zoneStdDev = null,
     preservation = null,
+    drawnText = null,
 } = {}) => {
     const esperado = formatById(format).ratio;
     const critical = [];
@@ -1075,6 +1170,22 @@ export const judgePiece = ({
         }
     }
 
+    if (drawnText) {
+        measured.push('texto dibujado');
+        if (drawnText.found && drawnText.confident) {
+            // El lienzo llega acá ANTES de nuestra capa de texto: cualquier
+            // letra que se vea la dibujó el modelo, y nuestra capa caería
+            // ENCIMA — el título doblado del reporte.
+            critical.push({
+                id: 'texto_dibujado',
+                reason: `El modelo dibujó texto dentro de la imagen${drawnText.where ? ` (${drawnText.where})` : ''}.`,
+                consequence: 'El texto real se imprime encima y quedaría doblado, como un fantasma detrás del título.',
+            });
+        } else if (drawnText.found) {
+            notes.push(`El verificador cree ver texto dibujado en la imagen${drawnText.where ? ` (${drawnText.where})` : ''}, sin certeza. Miralo antes de publicarla.`);
+        }
+    }
+
     if (preservation && preservation.state) {
         if (preservation.state === 'unavailable') {
             // «No se pudo comprobar» NO es un tipo de «bien» y se dice distinto.
@@ -1106,6 +1217,7 @@ export const retryClauseFor = (critical) => {
     if (ids.has('fondo_no_blanco')) frases.push('The background must be a bright, almost pure white page; keep colour only in the decorative accents.');
     if (ids.has('franja_ocupada')) frases.push('The area reserved for the headline must be left as plain white surface, with nothing on it at all.');
     if (ids.has('fotografia_alterada')) frases.push('Keep the supplied photograph untouched: same people, same faces, same count. Change only what surrounds it.');
+    if (ids.has('texto_dibujado')) frases.push('The previous attempt drew lettering on the canvas. This canvas must contain absolutely NO characters — no words, letters or numbers anywhere, not even the ones shown in the style reference: every text is printed later by the platform.');
     return frases.join(' ');
 };
 
@@ -1146,6 +1258,8 @@ export default {
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis, textZoneFor, zoneForConfig,
     clearZoneClause, PROMPT_MAX_CHARS, buildImagePrompt, buildNegativePrompt,
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
+    DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
+    DECOR_MOTIFS, motifForSeed, decorClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,
     printableClubName, normalizeYears,
     PIECE_CHECKS, judgePiece, retryClauseFor, STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,

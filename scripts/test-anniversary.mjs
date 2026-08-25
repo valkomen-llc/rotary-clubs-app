@@ -595,6 +595,60 @@ check('el panel de pruebas tampoco', !sinComentarios(estudio).includes('<datalis
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('— v4.905 · El modelo no rotula la pieza, y la decoración varía por pieza —');
+//
+// Reporte con capturas: un «¡FELIZ ANIVERSARIO!» fantasma DENTRO del fondo
+// generado — el modelo imitó el rotulado de la referencia y nuestra capa
+// quedó impresa encima. Y el pedido expreso: que la decoración varíe entre
+// generaciones con tema de aniversario.
+{
+    // El anti-rotulado viaja en el NÚCLEO (no se recorta nunca) cuando hay
+    // referencia, y el carve-out del maestro va siempre.
+    const conRef = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40, hasReference: true, referenceClause: 'Match the reference.', maxChars: 30000 });
+    check('con referencia, el núcleo prohíbe copiar su rotulado',
+        conRef.prompt.includes('lettering seen in the reference is printed afterwards'));
+    check('el maestro lleva el carve-out: sus palabras se imprimen después',
+        conRef.prompt.includes('Words it mentions are printed later by the platform'));
+
+    // La decoración: determinista por semilla, del catálogo cerrado, y varía.
+    const m1 = S.motifForSeed('pieza-1'), m1b = S.motifForSeed('pieza-1');
+    check('el motivo es DETERMINISTA por semilla', m1.id === m1b.id);
+    check('el motivo sale del catálogo cerrado', S.DECOR_MOTIFS.some(m => m.id === m1.id));
+    const distintos = new Set(['a','b','c','d','e','f','g','h','i','j'].map(s => S.motifForSeed(s).id));
+    check('semillas distintas dan motivos variados', distintos.size >= 3, `únicos=${distintos.size}`);
+
+    const p1 = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40, seed: 'pieza-1' });
+    check('con semilla, la cláusula del motivo viaja y se reporta',
+        p1.motifId === m1.id && p1.prompt.includes('Decoration theme for THIS piece'));
+    const sinSeed = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40 });
+    check('sin semilla no se varía (sería una ruleta)', sinSeed.motifId === null && !sinSeed.prompt.includes('Decoration theme'));
+    const apagado = S.buildImagePrompt({ config: { promptOptions: { varyDecor: false } }, seed: 'pieza-1' });
+    check('el interruptor varyDecor la apaga', apagado.motifId === null);
+    check('varyDecor entra a la huella (publicarlo crea versión)',
+        S.fingerprintOf({}) !== S.fingerprintOf({ promptOptions: { varyDecor: false } }));
+    check('el presupuesto de KIE sigue cerrando en el caso por defecto',
+        p1.prompt.length <= 2500 && p1.dropped.length === 0, `largo=${p1.prompt.length} dropped=${p1.dropped}`);
+
+    // El verificador de texto dibujado: lector acotado y veredicto de DOS
+    // niveles — sólo `found && confident` descalifica (el ruido de una
+    // lectura única, v4.795); `found` a secas se entrega con nota.
+    check('readDrawnTextAnswer lee la respuesta acotada',
+        JSON.stringify(S.readDrawnTextAnswer('x {"hasText": true, "confident": true, "where": "arriba"} y'))
+        === JSON.stringify({ found: true, confident: true, where: 'arriba' }));
+    check('y rechaza la basura', S.readDrawnTextAnswer('no json') === null && S.readDrawnTextAnswer({ hasText: 'sí' }) === null);
+
+    const base = { width: 1080, height: 1080, meanLuma: 230, whiteShare: 0.7, zoneLuma: 240, zoneStdDev: 10 };
+    const seguro = S.judgePiece({ ...base, drawnText: { found: true, confident: true, where: 'arriba a la izquierda' } });
+    check('texto dibujado CON certeza descalifica', !seguro.ok && seguro.critical.some(c => c.id === 'texto_dibujado'));
+    const dudoso = S.judgePiece({ ...base, drawnText: { found: true, confident: false, where: '' } });
+    check('sin certeza se ENTREGA con nota', dudoso.ok && dudoso.notes.some(n => /cree ver texto/.test(n)));
+    const sinMirar = S.judgePiece({ ...base, drawnText: null });
+    check('sin verificador no se afirma nada', sinMirar.ok && !sinMirar.measured.includes('texto dibujado'));
+    check('el reintento nombra el problema del rotulado',
+        /no words, letters or numbers/i.test(S.retryClauseFor([{ id: 'texto_dibujado' }])));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);
