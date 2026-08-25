@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.912.0 | 2026-08-25 (El proxy de imágenes lee nuestro bucket por el SDK)
+// UI V4.913.0 | 2026-08-25 (Aniversarios IA: el prompt maestro de composición)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.913.0',
+        title: 'Aniversarios IA: el prompt maestro de composición 🎼',
+        description: 'Refinamiento del prompt base predeterminado según la directiva de composición del cliente, sobre el módulo ya funcional — sin tocar nada más del sistema. La estructura queda declarada como OBLIGATORIA, de arriba hacia abajo: globos protagonistas en la zona superior (dorados metálicos, blancos, champagne o transparentes, en ambas esquinas o equilibrados con serpentinas y confeti), el título grande y centrado «¡FELIZ ANIVERSARIO!» en azul institucional, el nombre del club en segunda jerarquía letra por letra, la fotografía en formato RECTANGULAR HORIZONTAL amplia y protagonista — NUNCA en círculo ni óvalo, que era el defecto de las últimas generaciones — con borde dorado fino, el número de años grande y dorado CENTRADO sobre el borde inferior de la fotografía (medio superpuesto entre la foto y el blanco, nunca flotando a un costado), un mensaje conmemorativo nuevo de una a tres líneas, y la ZONA INFERIOR VACÍA del 20 % declarada como condición estructural para la capa transparente del pie institucional. La referencia visual pasa a llamarse REFERENCIA DE COMPOSICIÓN: guía de jerarquía y proporciones, no algo que se copie. El marco circular u ovalado entra al prompt negativo. Todo MEDIDO contra el tope de KIE: el default con la variación por pieza y un nombre de club largo entra entero en los 2.500 caracteres — si se recortara, lo primero que caería es justamente la cláusula estructural del pie, y una prueba nueva lo fija. La cadena de defaults (v4.907→v4.909→v4.910→v4.913) actualiza sola una configuración guardada sin editar; un prompt editado no se toca.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.912.0',
         title: 'El proxy de imágenes lee nuestro bucket por el SDK 🔑',

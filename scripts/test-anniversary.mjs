@@ -187,22 +187,37 @@ check('sin tope, no se recorta nada', r2.trimmed === false);
 // fotografía interna ni sus textos.
 check('el predeterminado declara la PRIMERA imagen como LA FOTOGRAFÍA',
     /PRIMERA imagen[\s\S]{0,40}\{FOTO_CLUB\}/i.test(S.DEFAULT_MASTER_PROMPT));
-check('y la SEGUNDA como la referencia DE ESTILO',
-    /SEGUNDA imagen[\s\S]{0,40}REFERENCIA DE ESTILO/i.test(S.DEFAULT_MASTER_PROMPT));
-check('la referencia es un EJEMPLO que NO se copia',
-    /EJEMPLO/i.test(S.DEFAULT_MASTER_PROMPT) && /NO la copies/i.test(S.DEFAULT_MASTER_PROMPT));
-check('prohíbe reproducir la fotografía interna de la referencia',
-    /no reproduzcas la fotografía que aparezca dentro de la referencia/i.test(S.DEFAULT_MASTER_PROMPT));
-check('prohíbe copiar los textos de la referencia y entregarla editada',
-    /no copies sus textos/i.test(S.DEFAULT_MASTER_PROMPT) && /no entregues la referencia editada/i.test(S.DEFAULT_MASTER_PROMPT));
+check('y la SEGUNDA como la referencia DE COMPOSICIÓN',
+    /SEGUNDA imagen[\s\S]{0,60}REFERENCIA DE COMPOSICIÓN/i.test(S.DEFAULT_MASTER_PROMPT));
+check('la referencia es GUÍA que NO se copia',
+    /No la copies literalmente/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /ni reproduzcas su contenido/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.913: el anti-copia detallado vive en las RESTRICCIONES (el negativo);
+// el prompt lo dice compacto para que la cláusula estructural del pie entre
+// SIEMPRE en el tope de KIE.
+check('el negativo prohíbe copiar la foto y los textos de la referencia',
+    /Copiar la fotografía o los textos de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS)
+    && /entregar la referencia editada/.test(S.DEFAULT_RESTRICTIONS));
+check('v4.913: la fotografía es RECTANGULAR — nunca círculo ni óvalo',
+    /RECTANGULAR HORIZONTAL/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /NUNCA en círculo ni óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
+check('v4.913: los años van CENTRADOS sobre el borde inferior de la foto',
+    /CENTRADO sobre el borde inferior de la fotografía/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Nunca a un costado/i.test(S.DEFAULT_MASTER_PROMPT));
+check('v4.913: la jerarquía declara el título y los globos arriba',
+    /¡FELIZ ANIVERSARIO!/.test(S.DEFAULT_MASTER_PROMPT)
+    && /Globos protagonistas en la zona superior/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
     /letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el mensaje se pide NUEVO y coherente con los años (el «Cuatro décadas» en un club de 10)',
     /coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
-check('y reserva la banda inferior para el pie que imprime la plataforma',
-    /parte inferior/i.test(S.DEFAULT_MASTER_PROMPT) && /No generes logos ni pie de página/i.test(S.DEFAULT_MASTER_PROMPT));
+check('y reserva la ZONA INFERIOR VACÍA para el pie que imprime la plataforma',
+    /ZONA INFERIOR VACÍA/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /No generes logos ni pies de página/i.test(S.DEFAULT_MASTER_PROMPT));
 
 // Con tope POR MODELO (KIE: 2500) se recorta por palabra entera y se AVISA.
 const maestroLargo = 'Quiero ' + 'palabra '.repeat(500) + '{NOMBRE_CLUB}';
@@ -274,11 +289,16 @@ grupo('5c — v4.910 · El patrón visual obligatorio');
 
 // La directiva expresa del cliente, con su referencia-plantilla delante: el
 // bloque de identidad es PERMANENTE en el prompt base predeterminado.
-check('el predeterminado lleva el bloque de identidad en inglés',
-    /predominantly white premium institutional background/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /Never generate brown, beige, gray, black or dark colored backgrounds/i.test(S.DEFAULT_MASTER_PROMPT));
-check('permite variar la composición, no la identidad',
-    /Allow creative variation in composition/i.test(S.DEFAULT_MASTER_PROMPT));
+check('el predeterminado conserva la identidad obligatoria del patrón',
+    /predominantemente blanco/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Never brown, beige, gray, black, saturated or dark backgrounds/i.test(S.DEFAULT_MASTER_PROMPT));
+check('la estructura queda declarada como OBLIGATORIA',
+    /ESTRUCTURA OBLIGATORIA/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.913: el default con variación y un nombre largo entra ENTERO en el tope
+// de KIE — si se recortara, lo primero que cae es la cláusula del pie, que es
+// justamente la estructural. Al agregar una frase al default, MEDIR.
+check('v4.913: default + variación + nombre largo entra entero en KIE',
+    S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Bello Horizonte', years: 40, seed: 'pieza-larga', maxChars: 2500 }).trimmed === false);
 check('nombra la referencia como ANNIVERSARY_STYLE_REFERENCE',
     S.DEFAULT_MASTER_PROMPT.includes('ANNIVERSARY_STYLE_REFERENCE'));
 check('el default v4.909 guardado sin editar también SE ACTUALIZA (cadena de legados)',
