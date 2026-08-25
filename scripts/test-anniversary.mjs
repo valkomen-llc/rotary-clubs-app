@@ -207,17 +207,80 @@ check('v4.913: los años van CENTRADOS sobre el borde inferior de la foto',
     && /Nunca a un costado/i.test(S.DEFAULT_MASTER_PROMPT));
 check('v4.913: la jerarquía declara el título y los globos arriba',
     /¡FELIZ ANIVERSARIO!/.test(S.DEFAULT_MASTER_PROMPT)
-    && /Globos protagonistas en la zona superior/i.test(S.DEFAULT_MASTER_PROMPT));
+    && /Globos protagonistas arriba y en los laterales/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
     /letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
-check('el mensaje se pide NUEVO y coherente con los años (el «Cuatro décadas» en un club de 10)',
-    /coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.914: los años aparecen UNA sola vez — en la cinta. El mensaje NO los
+// repite: «10 AÑOS» arriba y «10 años sembrando...» abajo era la redundancia
+// del reporte.
+check('v4.914: el mensaje NO repite la cantidad de años (la redundancia del reporte)',
+    /SIN repetir la cantidad de años/i.test(S.DEFAULT_MASTER_PROMPT)
+    && !/coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Repetir la cantidad de años dentro del mensaje/.test(S.DEFAULT_RESTRICTIONS));
+check('y le da el TONO con un ejemplo de frase de servicio',
+    /Una historia de servicio que sigue transformando comunidades/.test(S.DEFAULT_MASTER_PROMPT));
 check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
-check('y reserva la ZONA INFERIOR VACÍA para el pie que imprime la plataforma',
-    /ZONA INFERIOR VACÍA/i.test(S.DEFAULT_MASTER_PROMPT)
+check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
+    /ZONA INFERIOR RESERVADA/i.test(S.DEFAULT_MASTER_PROMPT)
     && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
     && /No generes logos ni pies de página/i.test(S.DEFAULT_MASTER_PROMPT));
+
+// ── v4.914 · La directiva de la referencia #3 ─────────────────────────
+// Del reporte con la pieza delante: el fondo terminaba en un rectángulo
+// blanco cortado, la decoración desaparecía (o salía como guirnaldas de
+// luces navideñas), el título quedaba chico y el mensaje repetía los años.
+check('v4.914: el fondo es UNO SOLO y CONTINUO hasta el borde inferior',
+    /UN SOLO fondo continuo/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /sin cortes, franjas ni rectángulos blancos añadidos/i.test(S.DEFAULT_MASTER_PROMPT));
+check('la zona del pie es CONTINUACIÓN del fondo, nunca un bloque aparte',
+    /continúan hasta el borde/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /nunca un bloque aparte/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Franja o rectángulo blanco separado en la parte inferior/.test(S.DEFAULT_RESTRICTIONS));
+check('v4.914: la celebración es de ANIVERSARIO — nunca navideña',
+    /guirnaldas de luces/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /navideñ/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Guirnaldas de luces, decoración navideña o de Año Nuevo/.test(S.DEFAULT_RESTRICTIONS));
+check('y ningún tema de variación vuelve a pedir guirnaldas de luces',
+    !S.VARIATION_THEMES.some(t => /luz|luces|guirnalda/i.test(t)));
+check('v4.914: el título es MUY GRANDE y dominante, nunca un subtítulo',
+    /MUY GRANDE/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Nunca un subtítulo/i.test(S.DEFAULT_MASTER_PROMPT));
+check('el nombre va en MAYÚSCULAS, peso delgado y entre líneas finas doradas',
+    /MAYÚSCULAS y peso delgado/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /entre dos líneas finas doradas/i.test(S.DEFAULT_MASTER_PROMPT));
+check('los años quedan ESTANDARIZADOS: regla fija, nunca a un costado ni arriba',
+    /Regla fija: nunca a un costado ni arriba/i.test(S.DEFAULT_MASTER_PROMPT));
+// El default v4.913 guardado sin editar SE ACTUALIZA (cadena de legados).
+check('v4.914: el default v4.913 guardado sin editar se lee con el vigente',
+    (() => {
+        const v913 = `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala: no alteres rostros, no reconstruyas ni reemplaces personas, no cambies su contexto, sin recortes agresivos.
+
+La SEGUNDA imagen adjunta es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía de jerarquía, proporciones, ubicación de elementos y espacios en blanco. No la copies literalmente ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: fondo SIEMPRE predominantemente blanco, con texturas blancas sutiles, degradados suaves, ondas o curvas delicadas. Paleta: blanco, azul institucional Rotary y dorado metálico; champagne, perlado y plateado sólo como complementos. Never brown, beige, gray, black, saturated or dark backgrounds. Estética institucional, elegante y conmemorativa — nunca de fiesta infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
+1. Globos protagonistas en la zona superior — dorados metálicos, blancos, champagne o transparentes con detalles dorados — en ambas esquinas, o en una equilibrada con serpentinas, confeti y estrellas en la otra. No cubren el título. {VARIACION}
+2. Título grande y centrado, en azul institucional, sans-serif tipo Open Sans: «¡FELIZ ANIVERSARIO!».
+3. Debajo, en segunda jerarquía y bien legible, el nombre EXACTO letra por letra: «{NOMBRE_CLUB}».
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, amplia y protagonista — NUNCA en círculo ni óvalo — con borde dorado fino o marco blanco sutil y sombra ligera.
+5. El número «{ANOS_CLUB}» grande y dorado, con «AÑOS» debajo o en una cinta dorada, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto entre la foto y el blanco de abajo. Nunca a un costado.
+6. Un mensaje conmemorativo NUEVO de una a tres líneas sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años. Textos en español con ortografía perfecta.
+7. ZONA INFERIOR VACÍA (obligatoria): el 20 % inferior queda completamente limpio — sin texto, fotos, globos, confeti ni iconos; sólo el fondo blanco continúa. La plataforma superpone ahí un pie institucional transparente. No generes logos ni pies de página.`;
+        return S.normalizeConfig({ masterPrompt: v913 }).masterPrompt === S.DEFAULT_MASTER_PROMPT;
+    })());
+check('y las restricciones default v4.913 también se actualizan',
+    S.normalizeConfig({
+        restrictions: 'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
+            + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
+            + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
+            + 'Copiar la fotografía o los textos de la imagen de referencia; entregar la referencia editada. '
+            + 'Generar logos. Inventar personas. Deformar rostros. Textos sobre caras. Bloques grandes de texto. '
+            + 'Marco circular u ovalado para la fotografía.',
+    }).restrictions === S.DEFAULT_RESTRICTIONS);
 
 // Con tope POR MODELO (KIE: 2500) se recorta por palabra entera y se AVISA.
 const maestroLargo = 'Quiero ' + 'palabra '.repeat(500) + '{NOMBRE_CLUB}';
@@ -297,8 +360,10 @@ check('la estructura queda declarada como OBLIGATORIA',
 // v4.913: el default con variación y un nombre largo entra ENTERO en el tope
 // de KIE — si se recortara, lo primero que cae es la cláusula del pie, que es
 // justamente la estructural. Al agregar una frase al default, MEDIR.
-check('v4.913: default + variación + nombre largo entra entero en KIE',
-    S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Bello Horizonte', years: 40, seed: 'pieza-larga', maxChars: 2500 }).trimmed === false);
+check('v4.913: default + variación + nombre largo entra entero en KIE (todas las variaciones)',
+    Array.from({ length: 100 }, (_, i) =>
+        S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Bello Horizonte', years: 40, seed: 'pieza-' + i, maxChars: 2500 }).trimmed
+    ).every(t => t === false));
 check('nombra la referencia como ANNIVERSARY_STYLE_REFERENCE',
     S.DEFAULT_MASTER_PROMPT.includes('ANNIVERSARY_STYLE_REFERENCE'));
 check('el default v4.909 guardado sin editar también SE ACTUALIZA (cadena de legados)',

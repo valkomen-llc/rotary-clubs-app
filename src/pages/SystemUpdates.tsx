@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.913.0 | 2026-08-25 (Aniversarios IA: el prompt maestro de composición)
-// Cache bust: 2026-08-25l
+// UI V4.914.0 | 2026-08-25 (Aniversarios IA: fondo continuo y celebración estandarizada)
+// Cache bust: 2026-08-25m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.914.0',
+        title: 'Aniversarios IA: fondo continuo y celebración estandarizada 🎈',
+        description: 'Refinamiento del prompt maestro predeterminado con la referencia #3 como estándar visual, sobre la estructura de v4.913 que ya funciona — sin tocar el módulo ni su lógica. El fondo pasa a ser UNO SOLO y CONTINUO de arriba abajo: la zona reservada del pie es la continuación natural del mismo blanco y sus texturas, nunca un rectángulo o franja añadida — el corte visible del reporte entra además al prompt negativo. La celebración deja de desaparecer: globos dorados, blancos, champagne y transparentes con confeti dorado siempre presentes arriba y en los laterales, con serpentinas finas, confeti, estrellas y destellos — y nunca navideña: las guirnaldas de luces quedan prohibidas en el prompt, en el negativo y en el catálogo de variaciones por pieza (el tema «guirnaldas doradas con puntos de luz» se reemplaza por serpentinas en espiral). El título «¡FELIZ ANIVERSARIO!» pasa a MUY GRANDE y dominante en mayúsculas — nunca un subtítulo — y el nombre del club va debajo en MAYÚSCULAS con peso delgado, centrado entre dos líneas finas doradas, como en la referencia. Los años quedan ESTANDARIZADOS como regla fija: número grande dorado con «AÑOS» en cinta, centrado sobre el borde inferior de la fotografía, nunca a un costado ni arriba. Y el mensaje conmemorativo ya no repite la cantidad de años — la cifra aparece una sola vez, en la cinta — con un ejemplo de tono de servicio en el propio prompt. Todo medido contra el tope de KIE con las ocho variaciones y un nombre largo (peor caso 2.467/2.500), y la cadena de defaults actualiza sola una configuración guardada sin editar.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.913.0',
         title: 'Aniversarios IA: el prompt maestro de composición 🎼',
