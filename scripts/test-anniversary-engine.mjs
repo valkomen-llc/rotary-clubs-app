@@ -203,6 +203,33 @@ check('NADA del motor llega al formulario público',
     !/benchmark|engine|modelo|fallback/i.test(sinComentarios(publica).replace(/renderMode|RENDER_MODES/g, '')));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('El segundo proveedor: OpenAI (GPT Image)');
+
+const gpt = E.MODEL_CATALOG.find(m => m.key === 'gpt_image');
+check('GPT Image está en el catálogo declarado', !!gpt && gpt.provider === 'openai');
+check('y es ELEGIBLE: imagen-a-imagen, referencia y resolución alcanzan',
+    !!gpt && E.eligibility(gpt).eligible, gpt ? E.eligibility(gpt).errors.join(' | ') : 'sin ficha');
+check('declara su presupuesto de prompt propio (mucho mayor que el de KIE)',
+    !!gpt && gpt.capabilities.promptMaxChars > 2500);
+check('sin prompt negativo, y la elegibilidad lo AVISA',
+    !!gpt && gpt.capabilities.negativePrompt === false && E.eligibility(gpt).warnings.some(w => w.includes('negativo')));
+
+check('providerOf resuelve el proveedor DEL MODELO',
+    E.providerOf(gpt).id === 'openai' && E.providerOf(E.MODEL_CATALOG[0]).id === 'kie');
+check('cada proveedor nombra SU credencial',
+    E.PROVIDERS.openai.envKey === 'OPENAI_API_KEY' && E.PROVIDERS.kie.envKey === 'KIE_API_KEY');
+check('un modelo sin proveedor declarado cae a KIE (los guardados de antes)',
+    E.providerOf({ id: 'x' }).id === 'kie');
+
+check('el sello de auditoría dice el proveedor REAL de la pieza',
+    E.engineStampFor({ model: gpt.id }).provider === 'openai'
+    && E.engineStampFor({ model: E.DEFAULT_MODEL_ID }).provider === 'kie');
+check('un candidato agregado a mano es SIEMPRE de KIE (su id es de esa pasarela)',
+    E.normalizeCustomModel({ id: 'familia/modelo' }).provider === 'kie');
+check('el default de producción NO cambió: sigue siendo el del catálogo, no GPT Image',
+    E.DEFAULT_MODEL_ID === E.MODEL_CATALOG[0].id && E.MODEL_CATALOG[0].provider === 'kie');
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);

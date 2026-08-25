@@ -53,8 +53,18 @@ export const pollKieImageTask = async () => '';
 export const createKieVideoTask = async () => '';
 
 // ── copywritingService ─────────────────────────────────────────────────
-export const generateCopy = async ({ imageUrl }) => {
-    // Con imagen es el ANÁLISIS; sin ella, la redacción.
+export const generateCopy = async ({ imageUrl, system }) => {
+    // Con imagen es un ANÁLISIS; sin ella, la redacción. El system distingue
+    // el análisis de la REFERENCIA (estilo) del de la FOTOGRAFÍA (personas).
+    if (imageUrl && /referencia/i.test(String(system || ''))) {
+        return { text: JSON.stringify(estado.referenciaAnalisis ?? {
+            background: 'clean white with soft warm gradients',
+            palette: ['deep institutional blue', 'warm gold', 'soft champagne'],
+            layout: 'editorial column on the left, framed photograph on the right',
+            decoration: ['gold and white balloons top right', 'thin blue and gold curves toward the footer'],
+            mood: 'premium, sober, celebratory',
+        }) };
+    }
     if (imageUrl) return { text: JSON.stringify(estado.analisis ?? { people: 6, group: true, subjectSide: 'derecha', freeSide: 'izquierda', scene: 'un grupo en un salón' }) };
     const siguiente = estado.copyRespuestas.shift();
     if (siguiente === undefined) {

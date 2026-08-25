@@ -27,9 +27,9 @@ const auth = () => ({
 });
 
 // ─── Formas ────────────────────────────────────────────────────────────
-interface Capabilities { imageToImage: boolean; referenceImages: number; negativePrompt: boolean; aspectRatioParam: boolean; outpainting: boolean; minSide: number }
+interface Capabilities { imageToImage: boolean; referenceImages: number; negativePrompt: boolean; aspectRatioParam: boolean; outpainting: boolean; minSide: number; promptMaxChars?: number }
 interface CatalogModel {
-    id: string; key: string; label: string; capabilities: Capabilities;
+    id: string; key: string; label: string; provider?: string; capabilities: Capabilities;
     creditsEstimated: number; notes: string; custom?: boolean;
     eligibility: { eligible: boolean; errors: string[]; warnings: string[] };
 }
@@ -39,7 +39,9 @@ interface EngineConfig {
     activatedFrom: { benchmarkId: string | null; at: string | null; by: string | null } | null;
 }
 interface EngineState {
-    provider: string; engine: EngineConfig;
+    provider: string;
+    providers?: { id: string; label: string; envKey: string; configured: boolean }[];
+    engine: EngineConfig;
     production: { primary: string; fallback: string | null; source: string; notes: string[] };
     catalog: CatalogModel[];
     criteria: Record<string, { label: string; source: string }>;
@@ -270,12 +272,15 @@ const EnginePanel: React.FC = () => {
 
             {/* ── 1. Motor de imagen ── */}
             <Tarjeta title="Configuración técnica — Motor de imagen" icon={<Cpu className="w-5 h-5" />}
-                hint="El proveedor es KIE (multimodelo). El modelo se cambia acá, sin tocar el código del generador.">
+                hint="Dos proveedores: KIE (multimodelo) y OpenAI (GPT Image, el motor de ChatGPT). El modelo se cambia acá, sin tocar el código del generador.">
                 <div className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-3">
                         <div>
-                            <label className="block text-sm font-medium text-gray-800 mb-1">Proveedor</label>
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">KIE API</div>
+                            <label className="block text-sm font-medium text-gray-800 mb-1">Proveedores</label>
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                                {(estado.providers || [{ id: 'kie', label: 'KIE (multimodelo)', configured: true }])
+                                    .map(pv => `${pv.label}${pv.configured ? '' : ' — sin credencial'}`).join(' · ')}
+                            </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-800 mb-1">Modo</label>
@@ -304,7 +309,7 @@ const EnginePanel: React.FC = () => {
                                 onChange={e => guardarMotor({ active: e.target.value || null })}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                                 <option value="">Default del catálogo</option>
-                                {elegibles.map(m => <option key={m.id} value={m.id}>{m.label} · ~{m.creditsEstimated} créditos</option>)}
+                                {elegibles.map(m => <option key={m.id} value={m.id}>{m.label} · ~{m.creditsEstimated} créditos{m.provider === 'openai' ? ' · OpenAI' : ''}</option>)}
                             </select>
                         </div>
                     )}

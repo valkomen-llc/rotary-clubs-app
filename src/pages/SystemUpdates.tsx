@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.899.0 | 2026-08-25 (Aniversarios IA: la puerta del fondo calibrada contra la referencia)
-// Cache bust: 2026-08-25e
+// UI V4.900.0 | 2026-08-25 (Aniversarios IA: GPT Image + análisis de la referencia visual)
+// Cache bust: 2026-08-25f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.900.0',
+        title: 'Aniversarios IA: GPT Image (el motor de ChatGPT) y análisis de la referencia 🧠',
+        description: 'Dos mejoras del mismo reporte («en ChatGPT la imagen se genera perfectamente»). UNO: el motor de imagen tiene ahora DOS proveedores — KIE (multimodelo, asíncrono) y OpenAI con GPT Image, el mismo motor de generación de imágenes de ChatGPT, directo contra OpenAI con la credencial que la plataforma ya usa en el Generador de Publicaciones. Es síncrono (~20-60 s en la misma llamada), recibe la referencia visual Y la fotografía como imágenes, y sigue el prompt con mucha más obediencia que los editores de la pasarela. Se activa desde el panel Motor de imagen (modo manual o activación tras benchmark — nada cambia producción en silencio, regla 20), y el sello de auditoría de cada pieza dice el proveedor real. DOS: al guardar una imagen de referencia, el modelo de visión la ANALIZA una vez (fondo, paleta, disposición, decoración, aire — JSON acotado, cacheado dentro de la referencia) y esa descripción viaja EN PALABRAS dentro del prompt, además de la imagen: con estos proveedores las palabras son la palanca más fuerte, porque ninguno expone «fuerza de estilo» por parámetro. Y el presupuesto del prompt es ahora POR MODELO: GPT Image admite prompts largos, así que el Prompt Maestro y el análisis de la referencia le llegan ENTEROS (a KIE se le sigue recortando con el orden declarado). Sin credencial, el error nombra la variable correcta del proveedor del modelo activo.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'openai', 'gpt-image', 'referencia'],
+        type: 'feature',
+    },
     {
         version: '4.899.0',
         title: 'Aniversarios IA: la puerta del fondo, calibrada contra la referencia 🎯',
