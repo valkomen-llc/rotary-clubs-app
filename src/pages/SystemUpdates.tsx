@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.914.0 | 2026-08-25 (Aniversarios IA: fondo continuo y celebración estandarizada)
-// Cache bust: 2026-08-25m
+// UI V4.915.0 | 2026-08-25 (Aniversarios IA: el diseño pagado no se pierde por un tropiezo)
+// Cache bust: 2026-08-25n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.915.0',
+        title: 'Aniversarios IA: el diseño generado no se pierde por un tropiezo de carga 🛟',
+        description: 'Del reporte con captura: la pieza salía como la fotografía suelta sobre fondo blanco con el aviso «No se pudo cargar el diseño generado» — y el diseño SÍ existía en el almacenamiento, ya pagado; lo único que falló fue el único intento del navegador de descargarlo por el proxy, justo en los minutos del despliegue anterior. Tres arreglos encadenados. (1) El diseño se carga con REINTENTOS: tres intentos con pausa corta antes de degradar — un 502 puntual del proxy o un corte de red ya no cuestan la pieza; las imágenes del branding conservan su intento único porque su degradación es cosmética. (2) La pieza degradada ya no sale muda: en el flujo simple la capa de texto venía apagada «porque la imagen del modelo trae el texto», pero cuando esa imagen no cargó no hay ninguna imagen que lo traiga — el respaldo imprime ahora la estructura de texto completa (título, club, cinta de años), como el modo plano. (3) Y la salida es visible y gratuita: el aviso pasa a una tarjeta ámbar que dice que el diseño sí se generó, con el botón «Reintentar el diseño (gratis)» que vuelve a componer la pieza sin gastar una nueva generación — la caché de imágenes no guarda los fallos, así que el reintento pide de verdad. Tres comprobaciones nuevas en la batería de navegador, verificadas con un 502 simulado que se recupera en el segundo intento y con una URL que falla siempre.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.914.0',
         title: 'Aniversarios IA: fondo continuo y celebración estandarizada 🎈',

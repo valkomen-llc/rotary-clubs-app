@@ -23,7 +23,8 @@ import {
     ACCEPTED_PHOTO_TYPES, ACCEPTED_PHOTO_LABEL, MAX_PHOTO_BYTES, YEARS_LIMITS, STAGES,
 } from '../lib/anniversarySpec';
 import {
-    renderAnniversary, downloadCanvas, safeFileName, type AnniversaryDocument,
+    renderAnniversary, downloadCanvas, safeFileName, BACKDROP_FAILED_WARNING,
+    type AnniversaryDocument,
 } from '../lib/anniversaryRender';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -56,6 +57,10 @@ const AniversarioIA: React.FC = () => {
     const [doc, setDoc] = useState<AnniversaryDocument | null>(null);
     const [avisos, setAvisos] = useState<string[]>([]);
     const [sustituida, setSustituida] = useState<string | null>(null);
+    // El diseño generado EXISTE pero su carga falló (v4.915): se ofrece volver
+    // a componer SIN gastar una generación. El contador re-dispara el efecto.
+    const [disenoCaido, setDisenoCaido] = useState(false);
+    const [renderIntento, setRenderIntento] = useState(0);
 
     const previewRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -180,7 +185,7 @@ const AniversarioIA: React.FC = () => {
         previewRef.current.innerHTML = '<div style="padding:3.5rem 1rem;text-align:center;color:#9ca3af;font-size:0.875rem">Componiendo la pieza…</div>';
         (async () => {
             try {
-                const { canvas, warnings } = await renderAnniversary(doc);
+                const { canvas, warnings, backdropFailed } = await renderAnniversary(doc);
                 if (!vivo || !previewRef.current) return;
                 canvas.style.width = '100%';
                 canvas.style.height = 'auto';
@@ -188,13 +193,25 @@ const AniversarioIA: React.FC = () => {
                 previewRef.current.innerHTML = '';
                 previewRef.current.appendChild(canvas);
                 canvasRef.current = canvas;
-                if (warnings.length) setAvisos(a => [...a, ...warnings]);
+                setDisenoCaido(!!backdropFailed);
+                // Deduplicado: un reintento que vuelve a fallar no puede apilar
+                // el mismo aviso dos veces.
+                if (warnings.length) setAvisos(a => Array.from(new Set([...a, ...warnings])));
             } catch (e) {
                 setFallo(e instanceof Error ? e.message : 'No se pudo componer la pieza.');
             }
         })();
         return () => { vivo = false; };
-    }, [doc]);
+    }, [doc, renderIntento]);
+
+    // Reintenta la CARGA del diseño ya generado — no gasta una generación:
+    // la pieza está pagada y en el almacenamiento; lo único que falló fue el
+    // viaje de la imagen al navegador (v4.915).
+    const reintentarDiseno = useCallback(() => {
+        setAvisos(a => a.filter(x => x !== BACKDROP_FAILED_WARNING));
+        setDisenoCaido(false);
+        setRenderIntento(n => n + 1);
+    }, []);
 
     const descargar = useCallback(async () => {
         if (!canvasRef.current || !doc) return;
@@ -372,7 +389,23 @@ const AniversarioIA: React.FC = () => {
                                         </span>
                                     </div>
                                 )}
-                                {avisos.map((a, i) => (
+                                {disenoCaido && (
+                                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                            <span>
+                                                El diseño <strong>sí se generó</strong>, pero no se pudo descargar al navegador y la
+                                                pieza se compuso con tu fotografía sobre fondo blanco. Reintentá la carga —
+                                                no gasta una nueva generación.
+                                            </span>
+                                        </div>
+                                        <button onClick={reintentarDiseno}
+                                            className="mt-2 w-full py-2 rounded-lg border border-amber-300 bg-white text-sm font-medium text-amber-900 hover:bg-amber-100 flex items-center justify-center gap-2">
+                                            <RotateCcw className="w-4 h-4" /> Reintentar el diseño (gratis)
+                                        </button>
+                                    </div>
+                                )}
+                                {avisos.filter(a => a !== BACKDROP_FAILED_WARNING).map((a, i) => (
                                     <p key={i} className="mt-2 text-xs text-gray-500 flex items-start gap-1.5">
                                         <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-gray-400 flex-shrink-0" />{a}
                                     </p>
