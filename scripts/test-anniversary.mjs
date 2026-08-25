@@ -19,7 +19,7 @@
 //      pieza con el título encima de una cara.
 //   3. Que el prompt QUEPA en su presupuesto y que la dirección de arte del
 //      administrador se recorte, nunca se elimine.
-//   4. Que el compositor NO repita el club ni los años cuando el titular ya
+//   4. Que la jerarquía del compositor sea la PREESTABLECIDA de la referencia
 //      los dijo.
 //
 //   npm run test:anniversary
@@ -293,13 +293,11 @@ check('el titular largo se recorta', rep.copy.title.length <= S.LIMITS.title.max
 check('se recorta SIN partir palabras', !/\s$/.test(rep.copy.title) && !rep.copy.title.endsWith('-'));
 check('lo reparado se DICE', rep.repaired.length > 0, JSON.stringify(rep.repaired));
 
-// El titular de respaldo NO nombra al club ni a los años: si los nombrara,
-// `planTextBlocks` suprimiría el pase, el club en dos tonos y la banda dorada
-// — la pieza de respaldo saldría plana (el reporte de v4.899).
+// Desde v4.902 el titular es la LÍNEA DE CIERRE y la jerarquía es fija: un
+// cierre ausente no se inventa — la pieza sale sin él, y se dice.
 const sinTitulo = S.repairCopy({ title: '', message: bueno.message }, { clubName: 'Club Rotario Cali', years: 40 });
-check('un titular ausente cae al saludo de la pieza', sinTitulo.copy.title === '¡Feliz aniversario!', sinTitulo.copy.title);
-check('y NO nombra club ni años, para que salgan como bloques',
-    !sinTitulo.copy.title.includes('40') && !sinTitulo.copy.title.toLowerCase().includes('cali'));
+check('un cierre ausente NO se inventa', sinTitulo.copy.title === '', sinTitulo.copy.title);
+check('y se DICE', sinTitulo.repaired.some(r => r.includes('línea de cierre')), JSON.stringify(sinTitulo.repaired));
 
 const corto = S.repairCopy({ title: 'Aniversario del club', message: 'Muy corto.' }, { years: 40 });
 check('un mensaje corto SIGUE siendo corto: reparar no alarga',
@@ -456,29 +454,37 @@ try {
 
 if (planTextBlocks) {
     const kinds = (d) => planTextBlocks(d).map(b => b.kind);
+    const D = { title: '¡Gracias por tanto!', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 };
 
-    const conClub = kinds({ title: '¡Feliz aniversario, Club Rotario Cali!', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 });
-    check('si el titular nombra al club, el club NO se repite', !conClub.includes('club'), conClub.join(','));
-    check('y los años, que el titular no dijo, SÍ salen', conClub.includes('years'), conClub.join(','));
+    // ⚠️ LA ESTRUCTURA ES PREESTABLECIDA (v4.902): la jerarquía de la
+    // referencia sale SIEMPRE — el titular de la IA ya no la reorganiza, es
+    // la línea de CIERRE. Es el pedido literal del cliente con la referencia
+    // delante; las reglas de redundancia de v4.898 quedan superadas.
+    const completo = kinds(D);
+    check('la jerarquía es SIEMPRE la de la referencia',
+        JSON.stringify(completo) === JSON.stringify(['headline', 'kicker', 'club', 'years', 'message', 'rule', 'closing']),
+        completo.join(','));
+    check('el saludo es la CONSTANTE de la pieza, no el titular de la IA',
+        planTextBlocks(D).find(b => b.kind === 'headline').text === '¡Feliz aniversario!');
+    check('el titular de la IA es la línea de cierre',
+        planTextBlocks(D).find(b => b.kind === 'closing').text === '¡Gracias por tanto!');
 
-    const conAnios = kinds({ title: '¡40 años generando impacto!', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 });
-    check('si el titular dice los años, los años NO se repiten', !conAnios.includes('years'), conAnios.join(','));
-    check('y el club, que el titular no nombró, SÍ sale', conAnios.includes('club'), conAnios.join(','));
+    const nombrando = kinds({ ...D, title: '¡Feliz aniversario, Club Rotario Cali, por tus 40 años!' });
+    check('aunque el titular nombre club y años, los bloques de identidad SALEN igual',
+        nombrando.includes('club') && nombrando.includes('years') && nombrando.includes('kicker'),
+        nombrando.join(','));
 
-    const neutro = kinds({ title: 'Celebramos juntos', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 });
-    check('con un titular neutro salen los dos', neutro.includes('years') && neutro.includes('club'), neutro.join(','));
+    const sinTit = kinds({ ...D, title: '' });
+    check('sin titular no hay cierre ni filete, y la identidad sale entera',
+        !sinTit.includes('closing') && !sinTit.includes('rule')
+        && sinTit.includes('headline') && sinTit.includes('club') && sinTit.includes('years'),
+        sinTit.join(','));
 
-    const sinTit = kinds({ title: '', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 });
-    check('sin titular, el club y los años SIEMPRE salen',
-        sinTit.includes('years') && sinTit.includes('club') && !sinTit.includes('headline'), sinTit.join(','));
+    check('un titular que repite el saludo fijo no se imprime dos veces',
+        !kinds({ ...D, title: '¡Feliz aniversario!' }).includes('closing'));
 
-    const sinMensaje = kinds({ title: 'Celebramos juntos', message: '', clubName: 'Club Rotario Cali', years: 40 });
-    check('sin mensaje no queda un filete suelto', !sinMensaje.includes('rule') && !sinMensaje.includes('message'), sinMensaje.join(','));
-
-    // «Cali» sin «Club Rotario» delante también nombra al club: comparar el
-    // nombre completo daría un falso negativo y repetiría la identidad.
-    const parcial = kinds({ title: '¡Feliz aniversario, Cali!', message: 'Un mensaje.', clubName: 'Club Rotario Cali', years: 40 });
-    check('la parte distintiva del nombre cuenta como nombrar al club', !parcial.includes('club'), parcial.join(','));
+    const sinMensaje = kinds({ ...D, message: '' });
+    check('sin mensaje no queda la cita vacía', !sinMensaje.includes('message'), sinMensaje.join(','));
 }
 
 // ════════════════════════════════════════════════════════════════════
