@@ -149,7 +149,7 @@ export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 // el ensamblador, fuera del campo editable: una dirección de arte no puede
 // desactivar lo que hace publicable la pieza.
 
-export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}'];
+export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', '{VARIACION}'];
 
 /**
  * Sustituye las variables del Prompt Maestro. `{FOTO_CLUB}` no es texto: es la
@@ -158,11 +158,49 @@ export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}'];
  * deja tal cual —y `validateConfig` la AVISA—: borrarla en silencio haría que
  * el administrador edite un token que desaparece sin explicación.
  */
-export const applyMasterVariables = (text, { clubName = '', years = null } = {}) =>
+export const applyMasterVariables = (text, { clubName = '', years = null, variation = '' } = {}) =>
     String(text || '')
         .replaceAll('{NOMBRE_CLUB}', clean(clubName) || 'el club')
         .replaceAll('{ANOS_CLUB}', years ? String(years) : 'sus')
-        .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada');
+        .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada')
+        // {VARIACION} es la única variable que la PLATAFORMA llena por pieza:
+        // el motivo decorativo determinista (v4.909). Sin semilla queda vacía
+        // — un marcador colgando viajaría literal al modelo.
+        .replaceAll('{VARIACION}', String(variation || '').trim());
+
+/**
+ * ── La VARIACIÓN por pieza (v4.909) ─────────────────────────────────
+ *
+ * «Variá la decoración» escrito en un prompt estático no varía nada: el
+ * prompt idéntico converge (lección medida en v4.905), y estos motores no
+ * exponen semilla. La variación de verdad exige que el PROMPT cambie por
+ * pieza, y en el flujo simple la única vía legítima es una VARIABLE del
+ * prompt base — visible, editable y borrable por el administrador. La
+ * plataforma la llena de forma DETERMINISTA por el id de la pieza (como la
+ * asignación A/B del CRM): el reintento conserva su variación, dos piezas
+ * distintas varían, y «¿por qué esta pieza tiene serpentinas?» tiene
+ * respuesta en «Ver solicitud enviada al modelo».
+ */
+export const VARIATION_THEMES = [
+    'globos dorados y blancos con serpentinas finas cayendo',
+    'globos champán y confeti dorado disperso',
+    'cintas y lazos dorados con destellos suaves',
+    'guirnaldas doradas con pequeños puntos de luz',
+    'confeti dorado y blanco con estrellas diminutas',
+    'globos metálicos dorados con hilos de serpentina',
+    'flores doradas estilizadas con destellos discretos',
+    'copas de brindis estilizadas con burbujas doradas',
+];
+
+export const variationForSeed = (seed) => {
+    const s = String(seed || '');
+    if (!s) return '';
+    // FNV-1a, el mismo hash estable de la asignación A/B del CRM.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    const tema = VARIATION_THEMES[h % VARIATION_THEMES.length];
+    return `En esta pieza en particular, los elementos decorativos son: ${tema}. La textura del fondo varía sutilmente respecto de la referencia, manteniendo su paleta.`;
+};
 
 /**
  * La INSTRUCCIÓN BASE predeterminada (v4.907). Es el prompt del cliente, el
@@ -173,6 +211,21 @@ export const applyMasterVariables = (text, { clubName = '', years = null } = {})
  */
 export const DEFAULT_MASTER_PROMPT = `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
 
+La PRIMERA imagen adjunta es {FOTO_CLUB}: es la ÚNICA fotografía que aparece en la pieza, colocada en un marco protagonista. Preserva a sus personas exactamente — no inventes personas, no elimines personas, no deformes rostros.
+
+La SEGUNDA imagen adjunta es la REFERENCIA DE ESTILO. Es un EJEMPLO de cómo debe verse la pieza, no la pieza: imita su lenguaje visual —paleta, tipo de composición, jerarquía tipográfica, elegancia, la curva del pie— pero NO la copies. No reproduzcas la fotografía que aparece dentro de la referencia, no copies sus textos ni sus frases, y no entregues la referencia editada: crea una pieza NUEVA con ese mismo estilo. {VARIACION}
+
+Escribe los textos NUEVOS para esta pieza: un título de felicitación de aniversario, el nombre del club escrito EXACTAMENTE así, letra por letra: «{NOMBRE_CLUB}», la cifra {ANOS_CLUB} años claramente visible, y un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años de trayectoria. Todos los textos en español, con ortografía perfecta.
+
+En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`;
+
+/** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
+ *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
+ *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
+ *  editado no se toca jamás: la preferencia explícita manda. */
+const LEGACY_MASTER_PROMPTS = [
+    `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
 La PRIMERA imagen adjunta es la REFERENCIA VISUAL. La SEGUNDA imagen adjunta es {FOTO_CLUB}.
 
 LA REFERENCIA VISUAL MANDA. Mantén muy cerca de la referencia: composición, distribución, proporciones, fondo, paleta, elementos de celebración, jerarquía tipográfica, integración de la fotografía, espacio negativo y estructura general. No generes una pieza distinta a la referencia. Prioriza similitud visual sobre creatividad.
@@ -181,15 +234,25 @@ Usa la segunda imagen como fotografía principal del club: preserva a las person
 
 Incluye un título de felicitación de aniversario, el nombre {NOMBRE_CLUB} bien destacado y la cifra {ANOS_CLUB} años claramente visible, con la misma tipografía y jerarquía de la referencia. Incluye un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto. Todos los textos en español, escritos con ortografía perfecta.
 
-En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`;
+En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`,
+];
+
+const upgradeLegacyDefault = (texto, legados, vigente) =>
+    (texto && legados.some(l => l.trim() === texto)) ? vigente : texto;
 
 export const DEFAULT_MESSAGE_INSTRUCTION =
     'Genera un mensaje corto, institucional, humano e inspirador. Máximo dos frases. '
     + 'Habla de servicio, trayectoria, amistad, comunidad e impacto.';
 
 export const DEFAULT_RESTRICTIONS =
+    'No copiar la fotografía que aparece dentro de la imagen de referencia. No copiar los textos de la referencia. '
+    + 'No entregar la referencia editada. No generar logos. No inventar personas. No deformar rostros. '
+    + 'No colocar textos sobre caras. No generar bloques grandes de texto. No saturar con elementos decorativos.';
+
+const LEGACY_RESTRICTIONS = [
     'No generar logos. No inventar personas. No deformar rostros. No colocar textos sobre caras. '
-    + 'No generar bloques grandes de texto. No saturar con elementos decorativos.';
+    + 'No generar bloques grandes de texto. No saturar con elementos decorativos.',
+];
 
 // ─── Límites del texto que imprimimos ──────────────────────────────────
 //
@@ -319,7 +382,11 @@ export const normalizeConfig = (raw) => {
         // de v4.898 trae `designInstruction` y no puede quedarse sin dirección
         // de arte por un renombre (regla aditiva del sitio). El campo viejo no
         // se reescribe: se lee.
-        masterPrompt: (str(c.masterPrompt).trim() || str(c.designInstruction).trim() || DEFAULT_MASTER_PROMPT).slice(0, 4000),
+        // v4.909: un default VIEJO sin editar se lee con el vigente — es lo que
+        // hace que una mejora del prompt predeterminado llegue a una
+        // configuración guardada. Un prompt editado no se toca jamás.
+        masterPrompt: (upgradeLegacyDefault(str(c.masterPrompt).trim(), LEGACY_MASTER_PROMPTS, DEFAULT_MASTER_PROMPT)
+            || str(c.designInstruction).trim() || DEFAULT_MASTER_PROMPT).slice(0, 4000),
         // ⚠️ LA ZONA DEL TEXTO TIENE QUE CALZAR CON EL LAYOUT DEL MAESTRO
         // (v4.901). El Prompt Maestro por defecto FIJA la fotografía a la
         // derecha, y la zona automática se decidía POR FOTO: con un grupo
@@ -334,7 +401,7 @@ export const normalizeConfig = (raw) => {
             varyDecor: bool(c.promptOptions?.varyDecor, true),
         },
         messageInstruction: str(c.messageInstruction, DEFAULT_MESSAGE_INSTRUCTION).trim().slice(0, 1200),
-        restrictions: str(c.restrictions, DEFAULT_RESTRICTIONS).trim().slice(0, 1200),
+        restrictions: (upgradeLegacyDefault(str(c.restrictions, DEFAULT_RESTRICTIONS).trim(), LEGACY_RESTRICTIONS, DEFAULT_RESTRICTIONS)).slice(0, 1200),
         branding: {
             clubLogo: bool(b.clubLogo, true),
             districtLine: bool(b.districtLine, true),
@@ -665,9 +732,9 @@ export const readDrawnTextAnswer = (raw) => {
 // declara 2.500). Si la instrucción del administrador no entra, se recorta
 // por el final SIN partir palabras y se AVISA — un recorte silencioso
 // convierte «se lo pedimos» en una afirmación falsa.
-export const buildSimpleRequest = ({ config, clubName = '', years = null, maxChars = null } = {}) => {
+export const buildSimpleRequest = ({ config, clubName = '', years = null, maxChars = null, seed = null } = {}) => {
     const c = normalizeConfig(config);
-    let prompt = applyMasterVariables(c.masterPrompt, { clubName, years });
+    let prompt = applyMasterVariables(c.masterPrompt, { clubName, years, variation: variationForSeed(seed) });
     const tope = Number(maxChars) || null;
     let trimmed = false;
     if (tope && prompt.length > tope) {
@@ -1049,6 +1116,7 @@ export default {
     TEXT_ZONES, TEXT_ZONE_IDS, DEFAULT_TEXT_ZONE, FOOTER_BAND, zoneById,
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     MASTER_VARIABLES, DEFAULT_MASTER_PROMPT, applyMasterVariables,
+    VARIATION_THEMES, variationForSeed,
     LIMITS, MAX_REFERENCES, BRANDING_FIELDS, BRANDING_IDS, DEFAULT_CONFIG,
     isDrawableImage, normalizeReference, normalizeConfig, scopeReaches, validateConfig,
     fingerprintOf, isSignificantChange,

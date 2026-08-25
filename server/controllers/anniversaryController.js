@@ -396,6 +396,9 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
             const r = await startComposition({
                 config: ctx.config, photoUrl: piece.photoUrl,
                 clubName: piece.clubName, years: piece.years,
+                // {VARIACION} determinista por pieza (v4.909): el reintento
+                // conserva su variación; dos piezas distintas varían.
+                seed: piece.id,
                 model: modelo, engineConfig: engine,
             });
             await updatePiece(piece.id, {
@@ -484,6 +487,7 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                             const otra = await startComposition({
                                 config: ctx.config, photoUrl: piece.photoUrl,
                                 clubName: piece.clubName, years: piece.years,
+                                seed: piece.id,
                                 model: prod.fallback, engineConfig: engine,
                             });
                             await updatePiece(piece.id, {

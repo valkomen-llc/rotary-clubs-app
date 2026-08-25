@@ -181,15 +181,24 @@ check('nada de las cláusulas viejas reaparece',
     !/clear zone|Master art direction|Decoration theme|lettering seen in the reference/i.test(r2.prompt));
 check('sin tope, no se recorta nada', r2.trimmed === false);
 
-// El predeterminado dice las TRES cosas que el flujo simple exige: qué imagen
-// es la referencia, qué imagen es la foto, y que la referencia MANDA.
-check('el predeterminado declara la PRIMERA imagen como referencia',
-    /PRIMERA imagen[\s\S]*REFERENCIA VISUAL/i.test(S.DEFAULT_MASTER_PROMPT));
-check('y la SEGUNDA como la fotografía del club',
-    /SEGUNDA imagen/i.test(S.DEFAULT_MASTER_PROMPT) && S.DEFAULT_MASTER_PROMPT.includes('{FOTO_CLUB}'));
-check('y que la referencia MANDA sobre la creatividad',
-    /REFERENCIA VISUAL MANDA/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /similitud visual sobre creatividad/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.909 — el predeterminado dice las TRES cosas que el reporte con capturas
+// demostró que faltaban: la FOTO es la primera imagen (la base que el modelo
+// edita), la referencia es la SEGUNDA y es un EJEMPLO — no se copian ni su
+// fotografía interna ni sus textos.
+check('el predeterminado declara la PRIMERA imagen como LA FOTOGRAFÍA',
+    /PRIMERA imagen[\s\S]{0,40}\{FOTO_CLUB\}/i.test(S.DEFAULT_MASTER_PROMPT));
+check('y la SEGUNDA como la referencia DE ESTILO',
+    /SEGUNDA imagen[\s\S]{0,40}REFERENCIA DE ESTILO/i.test(S.DEFAULT_MASTER_PROMPT));
+check('la referencia es un EJEMPLO que NO se copia',
+    /EJEMPLO/i.test(S.DEFAULT_MASTER_PROMPT) && /NO la copies/i.test(S.DEFAULT_MASTER_PROMPT));
+check('prohíbe reproducir la fotografía interna de la referencia',
+    /No reproduzcas la fotografía que aparece dentro de la referencia/i.test(S.DEFAULT_MASTER_PROMPT));
+check('prohíbe copiar los textos de la referencia y entregarla editada',
+    /no copies sus textos/i.test(S.DEFAULT_MASTER_PROMPT) && /no entregues la referencia editada/i.test(S.DEFAULT_MASTER_PROMPT));
+check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
+    /letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
+check('el mensaje se pide NUEVO y coherente con los años (el «Cuatro décadas» en un club de 10)',
+    /coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
 check('y reserva la banda inferior para el pie que imprime la plataforma',
@@ -219,6 +228,46 @@ check('el default es el catálogo visible del panel',
     S.buildNegativePrompt({}) === S.DEFAULT_RESTRICTIONS);
 check('las restricciones NO se pegan al prompt positivo',
     !S.buildSimpleRequest({ config: { restrictions: 'No poner globos rojos.' } }).prompt.includes('No poner globos rojos.'));
+
+grupo('5b — v4.909 · La variación por pieza y el upgrade del default');
+
+// {VARIACION} es la única variable que llena la PLATAFORMA, determinista por
+// el id de la pieza — el reintento conserva su motivo, dos piezas varían.
+check('la variación es DETERMINISTA por semilla', S.variationForSeed('p1') === S.variationForSeed('p1'));
+check('semillas distintas dan variaciones distintas',
+    new Set(['a','b','c','d','e','f','g','h','i','j'].map(s => S.variationForSeed(s))).size >= 3);
+check('sale del catálogo declarado',
+    S.VARIATION_THEMES.some(t => S.variationForSeed('p1').includes(t)));
+const conSeed = S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5, seed: 'p1' });
+check('con semilla, {VARIACION} viaja sustituida', conSeed.prompt.includes(S.variationForSeed('p1').slice(0, 40)));
+check('sin semilla, {VARIACION} desaparece — un marcador colgando viajaría literal',
+    !S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5 }).prompt.includes('{VARIACION}'));
+check('{VARIACION} es una variable CONOCIDA: validateConfig no la marca',
+    !S.validateConfig({}).warnings.some(w => w.includes('{VARIACION}')));
+
+// El upgrade PEREZOSO del default: una configuración guardada cuyo prompt es
+// EXACTAMENTE un default viejo —nunca editado— se lee con el vigente. Sin
+// esto, mejorar el predeterminado no llegaría jamás a producción: el guardado
+// de v4.907 congeló el texto viejo en la fila.
+const viejoDefault = `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es la REFERENCIA VISUAL. La SEGUNDA imagen adjunta es {FOTO_CLUB}.
+
+LA REFERENCIA VISUAL MANDA. Mantén muy cerca de la referencia: composición, distribución, proporciones, fondo, paleta, elementos de celebración, jerarquía tipográfica, integración de la fotografía, espacio negativo y estructura general. No generes una pieza distinta a la referencia. Prioriza similitud visual sobre creatividad.
+
+Usa la segunda imagen como fotografía principal del club: preserva a las personas exactamente — no inventes personas, no elimines personas, no deformes rostros.
+
+Incluye un título de felicitación de aniversario, el nombre {NOMBRE_CLUB} bien destacado y la cifra {ANOS_CLUB} años claramente visible, con la misma tipografía y jerarquía de la referencia. Incluye un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto. Todos los textos en español, escritos con ortografía perfecta.
+
+En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`;
+check('un default v4.907 guardado sin editar SE LEE con el vigente',
+    S.normalizeConfig({ masterPrompt: viejoDefault }).masterPrompt === S.DEFAULT_MASTER_PROMPT);
+check('un prompt EDITADO no se toca jamás — la preferencia explícita manda',
+    S.normalizeConfig({ masterPrompt: viejoDefault + ' Y mis globos rojos.' }).masterPrompt.includes('mis globos rojos'));
+check('las restricciones default viejas también se actualizan',
+    S.normalizeConfig({ restrictions: 'No generar logos. No inventar personas. No deformar rostros. No colocar textos sobre caras. No generar bloques grandes de texto. No saturar con elementos decorativos.' }).restrictions === S.DEFAULT_RESTRICTIONS);
+check('y las nuevas prohíben copiar la referencia',
+    /No copiar la fotografía que aparece dentro de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('6 — El texto: el modelo escribe, el código decide');

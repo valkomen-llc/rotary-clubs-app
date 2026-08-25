@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.908.0 | 2026-08-25 (Aniversarios IA: la columna `request` llega a producción)
+// UI V4.909.0 | 2026-08-25 (Aniversarios IA: la referencia es ejemplo, no lienzo)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.909.0',
+        title: 'Aniversarios IA: la referencia es un ejemplo, no un lienzo a editar 🖼️',
+        description: 'Corrección del reporte con dos capturas: la pieza generada era la propia imagen de referencia con el nombre cambiado — conservaba la fotografía que la referencia trae adentro (el grupo con los baldes aparecía en piezas de clubes distintos, con fotos subidas distintas), copiaba su texto («Cuatro décadas de servicio» en un club que cumple 10 años) y escribía mal los nombres («BARRAQUILLA»). La causa: los modelos de edición de imagen toman la PRIMERA imagen adjunta como base a editar, y ahí viajaba la referencia — el modelo hacía la edición mínima sobre ella e ignoraba la fotografía del club. Tres cambios: (1) el ORDEN se invierte — la fotografía del club viaja PRIMERA (la base) y la referencia SEGUNDA (el ejemplo), en KIE y en GPT Image por igual; (2) el prompt base predeterminado pasa a declarar que la referencia es un EJEMPLO de estilo que se imita sin copiarse — ni su fotografía interna, ni sus textos, ni entregarla editada —, que el nombre del club se escribe letra por letra y que el mensaje se redacta NUEVO y coherente con los años reales; (3) la variable {VARIACION} — la plataforma la llena con un motivo decorativo distinto por pieza, determinista por su id (el reintento conserva el suyo, dos piezas varían), visible en «Ver solicitud enviada al modelo» y borrable del prompt base por quien quiera siempre la misma decoración. Una configuración guardada cuyo prompt o restricciones son EXACTAMENTE el default anterior —nunca editados— se lee con el vigente: sin ese upgrade perezoso, la mejora no llegaba jamás a la fila que v4.907 dejó escrita; un prompt editado no se toca. Las restricciones predeterminadas suman la prohibición de copiar la referencia. Baterías: 189 + 172 comprobaciones, con el orden verificado a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.908.0',
         title: 'Aniversarios IA: la columna `request` llega a la base de producción 🔧',
