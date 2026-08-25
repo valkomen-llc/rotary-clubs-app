@@ -115,6 +115,7 @@ Devolvé EXACTAMENTE este JSON, sin texto alrededor:
   "missingAtEdge": true si TODOS los que faltan estaban pegados a un borde de la fotografía de la izquierda (arriba, abajo, izquierda o derecha), es decir, se los llevó el encuadre,
   "missingFromCentre": true si alguno de los que faltan estaba en el INTERIOR de la fotografía, rodeado de otras personas: ése no lo pudo recortar el encuadre,
   "faceConsistency": 0 a 10, cuánto siguen siendo LAS MISMAS personas (rostros, edad, peinado, gafas, ropa),
+  "pastedRectangle": true si en la derecha la fotografía entera aparece PEGADA como un rectángulo — bordes rectos y su propio fondo alrededor de las personas — en vez de las personas integradas en el diseño,
   "notes": "una frase en español sobre lo que cambió en las personas, o vacío"
 }
 
@@ -155,6 +156,11 @@ export const readPeopleVerdict = (raw) => {
         missingAtEdge: o.missingAtEdge === true,
         missingFromCentre: o.missingFromCentre === true,
         faceConsistency: num(o.faceConsistency),
+        // La foto pegada como rectángulo. La pregunta se hace SIEMPRE —es un
+        // campo más de la misma llamada—; quién la usa lo decide el plan: en
+        // uno normal la foto-forma con su fondo es el diseño pedido, así que
+        // sólo pesa cuando la generación pedía SILUETA (`expectCutout`).
+        pastedRectangle: o.pastedRectangle === true,
         notes: String(o.notes || '').slice(0, 240),
     };
 };
@@ -168,7 +174,7 @@ export const readPeopleVerdict = (raw) => {
 // El motivo se dice con su CONSECUENCIA, no sólo con su nombre: «se detectó una
 // persona de más» no le explica a nadie que por eso su pieza salió sin el
 // diseño compuesto.
-export const decidePreservation = ({ semantic = null, structural = null, edgeCrop = EDGE_CROP.ALLOW } = {}) => {
+export const decidePreservation = ({ semantic = null, structural = null, edgeCrop = EDGE_CROP.ALLOW, expectCutout = false } = {}) => {
     const permiteRecorte = edgeCrop !== EDGE_CROP.STRICT;
     // Sin ninguna señal no se afirma nada. `unavailable` no es un tipo de
     // «bien»: significa que no se pudo mirar, y se dice distinto.
@@ -267,15 +273,31 @@ export const decidePreservation = ({ semantic = null, structural = null, edgeCro
     // `reason`— pero tampoco se calla: el módulo ofrece volver a la fotografía
     // en su recuadro, y esa decisión es del usuario, no nuestra.
     const recortada = !!(semantic?.missingSubjects && semantic.missingAtEdge);
+    // La SILUETA que no ocurrió. Con un plan de recorte, la foto pegada como
+    // rectángulo es un defecto de calidad —las personas son las reales, no hay
+    // criterio de veracidad que la descarte— y descartarla tampoco ayudaría: la
+    // salida de descarte es la foto en su recuadro, que es OTRO rectángulo, con
+    // el crédito ya gastado. Se conserva, se DICE con su salida a mano
+    // (regenerar, o volver al recuadro), y decide quien puede mirar la pieza —
+    // la regla de v4.792. Sólo pesa con `expectCutout`: en un plan normal la
+    // foto-forma con su fondo es exactamente el diseño pedido.
+    const rectangulo = !!(expectCutout && semantic?.pastedRectangle);
+    const avisos = [
+        rectangulo
+            ? 'La composición dejó la fotografía pegada como un rectángulo en vez de recortar a las personas en silueta. Podés regenerar la composición para intentarlo de nuevo, o volver a la fotografía en su recuadro.'
+            : null,
+        recortada
+            ? 'El encuadre del diseño recortó a alguien de los bordes de tu fotografía. Si preferís que salgan todos, podés volver a la fotografía en su recuadro.'
+            : null,
+    ].filter(Boolean);
     return {
         state: 'ok',
         use: true,
         reason: null,
         consequence: null,
         cropped: recortada,
-        notice: recortada
-            ? 'El encuadre del diseño recortó a alguien de los bordes de tu fotografía. Si preferís que salgan todos, podés volver a la fotografía en su recuadro.'
-            : null,
+        pastedRectangle: rectangulo,
+        notice: avisos.length ? avisos.join(' ') : null,
     };
 };
 
@@ -289,7 +311,7 @@ export const decidePreservation = ({ semantic = null, structural = null, edgeCro
 // mismo camino que `reelQuality.js`. Sin ella queda sólo la señal estructural,
 // que por sí sola no distingue «se recompuso» de «se alteró» y por eso decide
 // únicamente el caso extremo.
-export const checkPreservation = async (originalBuffer, composedBuffer, { provider = null, publish = null, edgeCrop = EDGE_CROP.ALLOW } = {}) => {
+export const checkPreservation = async (originalBuffer, composedBuffer, { provider = null, publish = null, edgeCrop = EDGE_CROP.ALLOW, expectCutout = false } = {}) => {
     const structural = await structuralCompare(originalBuffer, composedBuffer).catch(() => null);
 
     let semantic = null;
@@ -315,7 +337,7 @@ export const checkPreservation = async (originalBuffer, composedBuffer, { provid
         }
     }
 
-    return { ...decidePreservation({ semantic, structural, edgeCrop }), semantic, structural };
+    return { ...decidePreservation({ semantic, structural, edgeCrop, expectCutout }), semantic, structural };
 };
 
 export default {

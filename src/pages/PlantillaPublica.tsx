@@ -343,7 +343,10 @@ const PlantillaPublica: React.FC = () => {
             });
             const d = await r.json().catch(() => null);
             if (!r.ok) throw new Error(d?.error || 'No se pudo componer la pieza.');
-            const taskId = (d?.variants || []).find((v: { taskId?: string }) => v.taskId)?.taskId;
+            // La variante trae su PLAN además de la tarea: el control de
+            // calidad necesita saber si esta generación pedía la silueta.
+            const variante = (d?.variants || []).find((v: { taskId?: string }) => v.taskId);
+            const taskId = variante?.taskId;
             if (!taskId) throw new Error(d?.variants?.[0]?.error || 'El modelo no aceptó la tarea.');
 
             // Se sonda con tope: sin él, un trabajo que nunca termina deja la
@@ -366,7 +369,12 @@ const PlantillaPublica: React.FC = () => {
                     const v = await fetch(`${API}/public/design/${encodeURIComponent(slug)}/verify`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ photo: photoDataUrl, composed: sd.url }),
+                        // El `planId` viaja para que el servidor sepa si esta
+                        // generación pedía la SILUETA: con él, el control
+                        // pregunta además si el recorte ocurrió de verdad, y
+                        // una foto pegada como rectángulo se DICE en vez de
+                        // presentarse como éxito. Sólo decide un aviso.
+                        body: JSON.stringify({ photo: photoDataUrl, composed: sd.url, planId: variante?.planId || null }),
                     }).then(r => r.json()).catch(() => null);
 
                     if (v && v.use === false) {

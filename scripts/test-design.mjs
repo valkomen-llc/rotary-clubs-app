@@ -2039,6 +2039,75 @@ check('lo que se GUARDA es lo crudo, nunca el ejemplo',
 check('y con el ejemplo a la vista, se dice',
     /previewConEjemplo/.test(studio) && /datos de ejemplo/.test(studio));
 
+// ── La silueta se PIDE sin contradicción y se MIDE (v4.893) ───────────
+//
+// El defecto reportado con la pieza delante: el plan «Silueta en la mitad
+// inferior» pedía las personas recortadas de su fondo y la composición salía
+// con la fotografía ENTERA pegada como rectángulo, metida tras la banda. Dos
+// causas: la cláusula genérica de integración («un margen limpio respirando
+// alrededor») describía una foto-forma rectangular ANTES de que el plan
+// pidiera el recorte —dos instrucciones contradictorias sobre la misma imagen,
+// y el modelo resolvía por el camino barato—, y nada medía si el recorte
+// ocurrió: la pieza pegada se presentaba como éxito.
+grupo('La silueta se pide sin contradicción y se mide (v4.893)');
+
+const planSilueta = CO.planById('silueta_inferior');
+check('el plan de silueta DECLARA el recorte', planSilueta.cutout === true);
+check('y es el único que lo declara (los demás piden una foto-forma)',
+    CO.VARIANT_PLANS.filter(p => p.cutout).length === 1);
+
+const args = { composition: { enabled: true, baseImageUrl: 'https://x/b.png' }, palette: {}, photo: { url: 'https://x/f.jpg' }, hasBase: true };
+const conSilueta = CO.buildBackdropPrompt({ ...args, plan: planSilueta }).prompt;
+const sinSilueta = CO.buildBackdropPrompt({ ...args, plan: CO.planById('foto_recorte_curvo') }).prompt;
+check('con silueta, la cláusula del margen alrededor NO va',
+    !conSilueta.includes('clean margin of canvas breathing around it'), conSilueta.slice(0, 200));
+check('y en su lugar se pide levantar a las personas de su fondo',
+    /Lift the people cleanly out/.test(conSilueta));
+check('con un plan normal, la integración de papelería sigue intacta',
+    sinSilueta.includes('clean margin of canvas breathing around it'));
+const soloFoto = CO.buildBackdropPrompt({ ...args, hasBase: false, composition: { enabled: true }, plan: planSilueta }).prompt;
+check('sin imagen base, la silueta también se pide sin contradicción',
+    /Lift the people cleanly out/.test(soloFoto) && !soloFoto.includes('designed layout.” margin'));
+
+check('el negativo del plan de silueta prohíbe el rectángulo',
+    CO.negativePromptFor(planSilueta).includes('rectangular photograph'));
+check('el de un plan normal es el de siempre',
+    CO.negativePromptFor(CO.planById('foto_fondo')) === CO.NEGATIVE_PROMPT);
+const backdropSrc = readFileSync('server/lib/designBackdrop.js', 'utf8');
+check('la tarea se crea con el negativo DEL PLAN',
+    /negativePrompt:\s*negativePromptFor\(plan\)/.test(backdropSrc));
+
+// El control pregunta si el recorte ocurrió — misma llamada de visión, un
+// campo más — y sólo pesa cuando la generación lo pedía: en un plan normal la
+// foto-forma con su fondo es exactamente el diseño pedido.
+check('el veredicto lee la foto pegada como rectángulo',
+    G.readPeopleVerdict('{"leftPeople":6,"rightPeople":6,"pastedRectangle":true}').pastedRectangle === true);
+check('la pregunta está en el prompt del control', /pastedRectangle/.test(G.PEOPLE_SYSTEM));
+const pegada = G.decidePreservation({ semantic: { ...okSemantico, pastedRectangle: true }, expectCutout: true });
+check('con silueta pedida, la foto pegada se CONSERVA y se dice',
+    pegada.use === true && pegada.pastedRectangle === true && /rectángulo/.test(pegada.notice || ''), JSON.stringify(pegada));
+check('el aviso trae la salida a mano (regenerar o volver al recuadro)',
+    /[Rr]egenerar/.test(pegada.notice || '') && /recuadro/.test(pegada.notice || ''));
+check('sin silueta pedida, la misma señal no avisa nada',
+    G.decidePreservation({ semantic: { ...okSemantico, pastedRectangle: true } }).notice === null);
+const pegadaYRecortada = G.decidePreservation({
+    semantic: { ...okSemantico, pastedRectangle: true, missingSubjects: true, missingAtEdge: true },
+    expectCutout: true,
+});
+check('los dos avisos conviven cuando pasan las dos cosas',
+    /rectángulo/.test(pegadaYRecortada.notice || '') && /bordes/.test(pegadaYRecortada.notice || ''));
+
+// El portal manda el plan de SU variante; el servidor lo valida contra el
+// catálogo y un id desconocido —o un bundle anterior que no lo mande— degrada
+// al comportamiento de siempre.
+const portalSrc = readFileSync('src/pages/PlantillaPublica.tsx', 'utf8');
+check('el portal manda el planId de la variante al verificar',
+    /planId:\s*variante\?\.planId/.test(portalSrc));
+const pubCtrl = readFileSync('server/controllers/designPublicController.js', 'utf8');
+check('el servidor valida el planId contra el catálogo',
+    /VARIANT_PLANS\.find\(p => p\.id === String\(req\.body\?\.planId/.test(pubCtrl)
+    && /expectCutout:\s*!!planPedido\?\.cutout/.test(pubCtrl));
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
 if (malos.length) {

@@ -22,7 +22,7 @@
 
 import { createKieImageTask, getKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
 import {
-    COMPOSE_MODEL, NEGATIVE_PROMPT, buildBackdropPrompt, plansFor, planById,
+    COMPOSE_MODEL, negativePromptFor, buildBackdropPrompt, plansFor, planById,
     normalizeComposition, validateBackdrop, aspectFor,
 } from './designCompose.js';
 
@@ -89,7 +89,9 @@ export const startComposition = async ({
                 model, prompt,
                 imageUrl: imageUrls[0],
                 imageUrls: imageUrls.length > 1 ? imageUrls : null,
-                negativePrompt: NEGATIVE_PROMPT,
+                // El negativo lo decide el PLAN: con silueta, lo prohibido es
+                // justamente la fotografía como rectángulo.
+                negativePrompt: negativePromptFor(plan),
                 aspectRatio: aspect,
                 outputFormat: 'png',
             });
