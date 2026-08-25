@@ -275,6 +275,15 @@ ok('…con el modelo, el proveedor y el endpoint',
     JSON.stringify({ model: fila4.request?.model, provider: fila4.request?.provider, endpoint: fila4.request?.endpoint }));
 ok('…y con las imágenes que viajaron', 'referenceUrl' in fila4.request && !!fila4.request.photoUrl);
 
+// v4.920: la frase conmemorativa la IMPRIME la plataforma. El despacho guarda
+// la frase del catálogo con la pieza y el gate anti-doble: `printPhrase`
+// sólo cuando el prompt final NO lleva la frase adentro.
+ok('v4.920: el despacho guarda la frase del catálogo con la pieza',
+    fila4.copy?.message === S.phraseForSeed(pieceId),
+    JSON.stringify(fila4.copy || null));
+ok('y el gate anti-doble queda ENCENDIDO — el prompt no lleva la frase',
+    fila4.copy?.printPhrase === true && !(tarea.prompt || '').includes(S.phraseForSeed(pieceId)));
+
 grupo('5 — El sondeo entrega TAL CUAL y el documento dice `simple`');
 r = await llamar(ctrl.getTestPiece, { params: { id: pieceId } });
 eq('el sondeo responde 200', r.code, 200);
@@ -282,8 +291,14 @@ eq('la pieza está lista', r.body.ready, true);
 eq('y se usa la composición del modelo', r.body.document.renderMode, 'ai');
 ok('el documento lleva la imagen generada', !!r.body.document.backdropUrl);
 eq('y declara el flujo simple: el compositor NO imprime texto encima', r.body.document.simple, true);
-ok('el texto viene DENTRO de la imagen: title y message viajan vacíos',
-    r.body.document.title === '' && r.body.document.message === '');
+// v4.920: salvo LA FRASE — el documento la trae con su gate para que el
+// compositor la imprima con tipografía real.
+eq('el documento trae la frase del catálogo', r.body.document.message, S.phraseForSeed(pieceId));
+eq('y el gate phraseOverlay encendido', r.body.document.phraseOverlay, true);
+// v4.920: el title sigue viniendo DENTRO de la imagen; el message ahora es
+// LA FRASE del catálogo, que imprime el compositor con su gate.
+ok('el título viene DENTRO de la imagen: title viaja vacío',
+    r.body.document.title === '');
 ok('…y el club y los años exactos', r.body.document.clubName === 'Club Rotario Cali' && r.body.document.years === 40);
 ok('…y las medidas del lienzo', r.body.document.width === 1080 && r.body.document.height === 1080);
 // v4.907: SIN PUERTAS — nada midió ni descartó, por decisión expresa del

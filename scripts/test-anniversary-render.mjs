@@ -226,6 +226,24 @@ const conCapa = await tinta({ ...DOC, renderMode: 'ai', backdropUrl: BLANCO, bra
 const sinCapa = await tinta({ ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
 check('v4.907: `simple` apaga la capa de texto del compositor',
     conCapa > 0.005 && sinCapa < 0.0005, `con ${conCapa.toFixed(4)} / sin ${sinCapa.toFixed(4)}`);
+// v4.920: LA FRASE la imprime el compositor — el modelo la deformaba al
+// pintarla aunque el prompt fuera correcto. Con el gate `phraseOverlay` la
+// frase sale con tipografía real en su franja (~74-80 % del alto); sin el
+// gate (piezas viejas, con la frase dentro de la imagen) no se imprime nada.
+const FRANJA_FRASE = { x: 0.07, y: 0.73, w: 0.86, h: 0.09 };
+const conFrase = await tinta({
+    ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {},
+    phraseOverlay: true, message: 'Una historia de servicio que sigue transformando comunidades.',
+}, FRANJA_FRASE);
+const sinGate = await tinta({
+    ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {},
+    message: 'Una historia de servicio que sigue transformando comunidades.',
+}, FRANJA_FRASE);
+check('v4.920: con `phraseOverlay` la frase se IMPRIME en su franja',
+    conFrase > 0.002, `tinta ${conFrase.toFixed(4)}`);
+check('y sin el gate no se imprime nada — una pieza vieja ya la trae dibujada',
+    sinGate < 0.0005, `tinta ${sinGate.toFixed(4)}`);
+
 // Y en `plain` (el respaldo sin imagen del modelo) la estructura de texto SÍ
 // sale aunque el documento diga simple: ahí no hay imagen que traiga el texto.
 const plainSimple = await tinta({ ...DOC, renderMode: 'plain', simple: true, zoneId: 'left', branding: {} },

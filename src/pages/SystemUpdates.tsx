@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.919.0 | 2026-08-25 (Aniversarios IA: la frase la elige la plataforma + barra de carga)
-// Cache bust: 2026-08-25r
+// UI V4.920.0 | 2026-08-25 (Aniversarios IA: la frase la IMPRIME la plataforma)
+// Cache bust: 2026-08-25s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.920.0',
+        title: 'Aniversarios IA: la frase la imprime la plataforma — imposible de deformar 🖋️',
+        description: 'Del reporte con la pieza delante: «Celerbamos una historia de servico que sigue generara impacto» — y la frase que viajó en el prompt era CORRECTA, del catálogo de v4.919 (verificable en «Ver solicitud enviada al modelo»). El diagnóstico que importa: el error no ocurre al generar el texto sino al PINTARLO — el modelo de imagen deforma las letras cuando las dibuja píxel a píxel, aunque se le den exactas; cambiar el generador de texto (Gemini, el que sea) no toca ese paso, porque los modelos de lenguaje escriben texto pero no pintan píxeles. La única tipografía imposible de deformar es la nuestra: la frase pasa a CAPA IMPRESA por el compositor —la misma técnica del pie institucional—, centrada en su franja, en azul institucional y con tipografía real. El prompt deja de llevar {FRASE} y pide en su lugar una franja horizontal LIMPIA debajo de la cinta de años; el despacho guarda la frase del catálogo con la pieza y un gate anti-doble (printPhrase) que sólo enciende la impresión cuando el prompt de ESA pieza no llevó la frase adentro — las piezas viejas (frase dibujada dentro de la imagen) y los prompts editados que conserven {FRASE} no reciben una segunda frase encima. Verificado en el navegador midiendo la tinta de la franja: con el gate la frase se imprime, sin él no se imprime nada. Con esto los CUATRO textos de la pieza quedan garantizados o impresos: título y nombre letra por letra, años en la cinta, y la frase con tipografía de verdad.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.919.0',
         title: 'Aniversarios IA: la frase la elige la plataforma y la espera se ve viva 📝',
