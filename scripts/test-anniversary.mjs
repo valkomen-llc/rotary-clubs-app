@@ -604,6 +604,15 @@ check('la descarga exporta EL MISMO canvas que se compuso',
     /downloadCanvas\s*=\s*async\s*\(canvas: HTMLCanvasElement/.test(render));
 check('el compositor usa el proxy de imágenes o el canvas quedaría «tainted»',
     /banner-image\?url=/.test(render));
+// v4.911 — las TRES esperas del camino de pintado tienen tope. Sin ellas, una
+// conexión estancada dejaba la vista previa en blanco PARA SIEMPRE, sin error.
+check('v4.911: loadImage tiene tope de tiempo', /IMAGE_TIMEOUT_MS/.test(render) && /clearTimeout\(reloj\)/.test(render));
+check('v4.911: la espera de las tipografías está acotada', /Promise\.race\(\[ensureDesignFonts\(\)/.test(render));
+check('v4.911: el proxy de imágenes aborta a los 20 s',
+    /AbortSignal\.timeout\(20_000\)/.test(leer('server/controllers/bannerTemplateController.js')));
+check('v4.911: las dos vistas previas DICEN que están componiendo',
+    leer('src/pages/AniversarioIA.tsx').includes('Componiendo la pieza…')
+    && leer('src/pages/admin/AnniversaryStudio.tsx').includes('Componiendo la pieza…'));
 check('las reglas visuales son del SISTEMA, no de la configuración',
     /export const ROTARY_BLUE/.test(render) && !/config\.(color|overlay|font)/.test(render));
 

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.910.0 | 2026-08-25 (Aniversarios IA: identidad visual obligatoria)
+// UI V4.911.0 | 2026-08-25 (Aniversarios IA: la vista previa nunca queda en blanco)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.911.0',
+        title: 'Aniversarios IA: la vista previa nunca queda en blanco en silencio ⏱️',
+        description: 'Corrección del reporte «pongo a generar y no aparece nada, pasan varios minutos»: la pieza SÍ se generaba (los botones de descarga aparecían), pero el lienzo quedaba vacío para siempre, sin un solo error. La causa: TRES esperas sin tope de tiempo encadenadas en el camino de pintado — el proxy de imágenes hacía fetch sin límite contra el almacenamiento, la carga de cada imagen en el navegador esperaba onload/onerror que con una conexión estancada no llegan nunca, y la espera de las tipografías tampoco tenía tope. Bastaba una petición estancada para dejar la promesa del compositor sin resolver eternamente: sin error visible, sin lienzo, con los botones pintados. Tres topes: el proxy aborta a los 20 s (alcanza también a Pendones y Plantillas IA, que lo comparten), cada imagen tiene 25 s y al vencer cae en los caminos de degradación que ya existían — la pieza SIEMPRE se pinta, con su aviso —, y las tipografías esperan máximo 8 s antes de seguir con las del sistema. Además, mientras se compone la vista previa dice «Componiendo la pieza…» en vez de una franja vacía indistinguible de un módulo roto. Verificado a la inversa en un navegador real: sin el tope, una imagen que nunca llega deja la carga colgada más de 5 segundos; con él, rechaza a los 600 ms y la pieza se compone igual.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.910.0',
         title: 'Aniversarios IA: identidad visual obligatoria 🤍✨',
