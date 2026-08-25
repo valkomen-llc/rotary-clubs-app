@@ -222,9 +222,15 @@ export const writeCopy = async ({ config, clubName, years, analysis, provider = 
     }
 
     const reparado = repairCopy(mejor, { clubName, years });
+    // La CAUSA se dice: «falta el mensaje» a secas no distingue un redactor
+    // que contestó basura de una validación que no se pudo cumplir, y se
+    // corrigen en sitios distintos (regla de v4.859).
+    const causa = mejor === null
+        ? [`El redactor respondió pero ninguno de los ${COPY_ATTEMPTS} intentos devolvió un JSON utilizable. Volvé a probar, o mirá el proveedor de copy en Integraciones → Modelos IA.`]
+        : [];
     return {
         copy: reparado.copy,
-        warnings: [...reparado.warnings, ...reparado.errors],
+        warnings: [...causa, ...reparado.warnings, ...reparado.errors],
         // Lo reparado se DICE, no sólo se diagnostica: un titular que se
         // recorta en silencio se publica con puntos suspensivos y quien lo
         // escribió se entera al verlo (v4.891).

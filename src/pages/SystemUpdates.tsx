@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.898.0 | 2026-08-25 (Aniversarios IA: Prompt Maestro configurable con variables)
-// Cache bust: 2026-08-25d
+// UI V4.899.0 | 2026-08-25 (Aniversarios IA: la puerta del fondo calibrada contra la referencia)
+// Cache bust: 2026-08-25e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.899.0',
+        title: 'Aniversarios IA: la puerta del fondo, calibrada contra la referencia 🎯',
+        description: 'Corrección del reporte «genera imágenes sin diseño, sólo la foto sobre fondo blanco». El diagnóstico estaba en el propio aviso de la pantalla: el modelo SÍ componía, pero el control de calidad descartaba la composición por «fondo no predominantemente blanco» (umbral 205 de luminancia media) — y la referencia aprobada, con la fotografía ocupando un tercio del lienzo, los globos dorados y las curvas azules, mide ~185-195: la puerta rechazaba exactamente el estilo que el Prompt Maestro pide, gastaba las dos generaciones pagas y entregaba la foto plana sobre blanco. Ahora hay DOS niveles: por debajo de 165 la pieza es realmente oscura y se descarta (la restricción del cliente es «sin fondos oscuros»); la zona media se ENTREGA con una nota — la estética no se mide, se muestra, y quien genera la ve antes de descargar. Calibrado contra el caso real del reporte (196 / 49 %, ahora pasa) y contra una composición sintética al estilo de la referencia medida por sharp de verdad, con verificación a la inversa. Además: el titular de respaldo —cuando el redactor falla— ya no nombra al club y los años (eso suprimía el pase «FELICIDADES», el nombre en dos tonos y la banda dorada): queda en «¡Feliz aniversario!» y el club y los años se imprimen como bloques, que es la jerarquía de la referencia. Y un mensaje que quedó vacío ahora dice su CAUSA (el redactor no devolvió un JSON utilizable) en vez de sólo «falta el mensaje».',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'calidad'],
+        type: 'fix',
+    },
     {
         version: '4.898.0',
         title: 'Aniversarios IA: Prompt Maestro por defecto, con variables 🎨',

@@ -239,8 +239,13 @@ check('el titular largo se recorta', rep.copy.title.length <= S.LIMITS.title.max
 check('se recorta SIN partir palabras', !/\s$/.test(rep.copy.title) && !rep.copy.title.endsWith('-'));
 check('lo reparado se DICE', rep.repaired.length > 0, JSON.stringify(rep.repaired));
 
+// El titular de respaldo NO nombra al club ni a los años: si los nombrara,
+// `planTextBlocks` suprimiría el pase, el club en dos tonos y la banda dorada
+// — la pieza de respaldo saldría plana (el reporte de v4.899).
 const sinTitulo = S.repairCopy({ title: '', message: bueno.message }, { clubName: 'Club Rotario Cali', years: 40 });
-check('un titular ausente se DERIVA de datos que ya tenemos', sinTitulo.copy.title.includes('40'), sinTitulo.copy.title);
+check('un titular ausente cae al saludo de la pieza', sinTitulo.copy.title === '¡Feliz aniversario!', sinTitulo.copy.title);
+check('y NO nombra club ni años, para que salgan como bloques',
+    !sinTitulo.copy.title.includes('40') && !sinTitulo.copy.title.toLowerCase().includes('cali'));
 
 const corto = S.repairCopy({ title: 'Aniversario del club', message: 'Muy corto.' }, { years: 40 });
 check('un mensaje corto SIGUE siendo corto: reparar no alarga',
@@ -263,6 +268,19 @@ check('y DECLARA qué se midió', S.judgePiece(buena).measured.length === 4, JSO
 const oscura = S.judgePiece({ ...buena, meanLuma: 120, whiteShare: 0.05 });
 check('un fondo oscuro es crítico', !oscura.ok && oscura.critical.some(c => c.id === 'fondo_no_blanco'));
 check('y el motivo lleva su CONSECUENCIA', oscura.critical[0].consequence.length > 20);
+
+// ⚠️ EL UMBRAL ESTÁ CALIBRADO CONTRA LA REFERENCIA APROBADA. La pieza de
+// referencia lleva la fotografía (~un tercio del lienzo, oscura), globos y
+// curvas: medida entera da ~185-195 de luminancia media. El caso REAL del
+// reporte de v4.899 midió 196 / 49 % y el umbral viejo (205) lo descartaba,
+// gastaba los dos intentos pagos y entregaba la foto sobre blanco.
+const estiloReferencia = S.judgePiece({ ...buena, meanLuma: 196, whiteShare: 0.49 });
+check('una pieza al estilo de la referencia (196 / 49 %) SE ENTREGA', estiloReferencia.ok,
+    JSON.stringify(estiloReferencia.critical));
+check('y la zona media se DICE como nota, no como descarte',
+    estiloReferencia.notes.some(n => n.includes('196')), estiloReferencia.notes.join(' | '));
+check('una pieza clara del todo no lleva esa nota',
+    !S.judgePiece(buena).notes.some(n => n.includes('menos clara')));
 
 const ocupada = S.judgePiece({ ...buena, zoneStdDev: 95 });
 check('la franja del texto ocupada es crítica', !ocupada.ok && ocupada.critical.some(c => c.id === 'franja_ocupada'));

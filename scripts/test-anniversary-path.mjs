@@ -94,6 +94,16 @@ const COMPO_BUENA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" wid
 /** Una composición que el control tiene que RECHAZAR: fondo oscuro. */
 const COMPO_OSCURA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
     <rect width="1080" height="1080" fill="#20242c"/></svg>`)).png().toBuffer();
+/** Una composición AL ESTILO DE LA REFERENCIA aprobada: fondo blanco, la
+ *  fotografía oscura ocupando ~un tercio, globos dorados y la curva azul del
+ *  pie. Medida entera da ~185-195 de luminancia media: el umbral viejo (205)
+ *  la descartaba — es el reporte de v4.899. Tiene que ENTREGARSE. */
+const COMPO_REFERENCIA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
+    <rect width="1080" height="1080" fill="#ffffff"/>
+    <rect x="560" y="180" width="440" height="400" fill="#3a3f4a"/>
+    <circle cx="900" cy="120" r="70" fill="#b5a16b"/>
+    <circle cx="1010" cy="200" r="55" fill="#d8c9a3"/>
+    <path d="M0 980 Q540 900 1080 980 L1080 1080 L0 1080 Z" fill="#17458f"/></svg>`)).png().toBuffer();
 /** Otra que hay que rechazar: la franja del texto OCUPADA, pero con el fondo
  *  igual de blanco. Aísla el control: la primera versión de esta imagen tenía
  *  además una banda gris a la derecha y bajaba la luminancia media a 198, así
@@ -256,7 +266,7 @@ await llamar(ctrl.postTestCompose, { body: { pieceId: oscura } });
 
 r = await llamar(ctrl.getTestPiece, { params: { id: oscura } });
 eq('con el fondo oscuro, el primer sondeo REINTENTA', r.body.retrying, true);
-ok('y dice el motivo concreto', /fondo/i.test(r.body.reason || ''), r.body.reason);
+ok('y dice el motivo concreto', /oscura|fondo/i.test(r.body.reason || ''), r.body.reason);
 eq('se creó una segunda tarea', prov.estado.tareas.length, 2);
 ok('el reintento le dice al modelo el problema, no «hacelo mejor»',
     /white/i.test(prov.estado.tareas[1].prompt));
@@ -273,6 +283,23 @@ ok('la fotografía sí viaja, para componerla intacta', !!r.body.document?.photo
 ok('y se dice el motivo', !!r.body.statusDetail, r.body.statusDetail);
 ok('la imagen del modelo NO se retocó: se guardó tal cual y se descartó su uso',
     !!db.tablas.AnniversaryPiece.find(p => p.id === oscura).backdropUrl);
+
+grupo('6b — Una pieza al estilo de la referencia SE ENTREGA');
+
+// Es la calibración del reporte de v4.899, medida por el sharp REAL: la
+// fotografía y la decoración legítimas bajan la media aunque el fondo sea
+// blanco, y descartarla gastaba dos generaciones para entregar la foto plana.
+limpiar({ imagen: COMPO_REFERENCIA });
+await llamar(ctrl.getConfig);
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const refPieza = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: refPieza } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: refPieza } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: refPieza } });
+r = await llamar(ctrl.getTestPiece, { params: { id: refPieza } });
+eq('el sondeo la da por lista SIN reintentar', r.body.ready, true);
+eq('no gastó una segunda generación', prov.estado.tareas.length, 1);
+eq('la composición del modelo SE USA', r.body.document?.renderMode, 'ai');
 
 grupo('7 — La franja ocupada también se detecta');
 limpiar({ imagen: COMPO_FRANJA });
