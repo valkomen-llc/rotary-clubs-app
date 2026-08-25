@@ -38,6 +38,14 @@ interface UpdateItem {
 // Cache bust: 2026-08-25a
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.896.0',
+        title: 'Aniversarios IA: el camino del servidor, probado 🧪',
+        description: 'La v4.895 verificó el criterio y el compositor, pero el CAMINO del servidor —controladores, store y orquestación— no se había ejecutado nunca: es el error que este proyecto ya documentó dos veces (v4.744 y v4.889). `npm run test:anniversary:path` corre las cuatro etapas de punta a punta con la base y los proveedores sustituidos en memoria, y sharp midiendo de verdad sobre imágenes reales: 108 comprobaciones, sin base, credenciales ni red. Verificado a la inversa, y eso destapó una comprobación VACUA: el doble de la base implementaba en JavaScript el candado que impide dos cobros al proveedor, así que quitarlo del SQL no hacía fallar nada. Ahora la condición se lee de la propia consulta. También se corrigió una imagen de prueba que disparaba dos controles a la vez y ocultaba cuál se estaba comprobando.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'pruebas', 'calidad'],
+        type: 'improvement',
+    },
+    {
         version: '4.895.0',
         title: 'Aniversarios IA: un módulo nuevo, sin editor 🎂',
         description: 'Generador independiente de piezas de aniversario, en /admin/aniversarios-ia (operador de la plataforma) y /aniversarios (público). El administrador configura con INSTRUCCIONES en lenguaje natural —cómo tiene que verse la pieza, cómo tiene que escribir la IA y qué no querés ver— más referencias visuales; quien la necesita elige su club, dice cuántos años cumple, sube una foto y pulsa un botón. No hay lienzo, ni capas, ni coordenadas: Plantillas IA no se toca y este módulo no importa nada suyo. La arquitectura es híbrida a propósito: la IA hace el DISEÑO y la plataforma imprime encima el TEXTO (nombre del club, años, mensaje) y el BRANDING desde archivos reales, así que la ortografía y las cifras son exactas por construcción. La vista previa no se parece al archivo: ES el archivo —hay un solo compositor y la descarga exporta ese mismo lienzo—. La pieza se valida antes de entregarse (fondo blanco, franja del texto libre, personas de la fotografía conservadas) y, si falla, se reintenta una vez con el problema concreto; si sigue fallando se entrega con la foto intacta sobre blanco y se DICE, sin retocar la imagen del modelo. Flujo Borrador → Probar → Publicar con versionado: cada pieza guarda con qué instrucciones se generó.',
