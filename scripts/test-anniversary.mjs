@@ -485,6 +485,22 @@ const ensure = leer('server/lib/ensureAnniversarySchema.js');
 check('el esquema no borra nada', !/DROP\s+TABLE|TRUNCATE/i.test(sinComentarios(ensure)));
 check('amplía con ADD COLUMN IF NOT EXISTS fuera del CREATE',
     /ALTER TABLE "AnniversaryPiece" ADD COLUMN IF NOT EXISTS/.test(ensure));
+// ⚠️ v4.908 — LA TRAMPA QUE ESTE MISMO ARCHIVO DOCUMENTA SE PAGÓ IGUAL: la
+// comprobación rápida del catálogo no enumeraba la columna `request` (v4.907),
+// así que en la base de producción —donde todo lo demás ya existía— el ensure
+// cortaba en el atajo y el ALTER no corría nunca: «la columna "request" de la
+// relación "AnniversaryPiece" no existe», en la pantalla del cliente. Un
+// comentario que depende de que alguien lo lea no protege nada (v4.859): esto
+// exige que CADA columna ampliada esté también en la lista del atajo.
+{
+    const alters = [...ensure.matchAll(/ALTER TABLE "([A-Za-z]+)" ADD COLUMN IF NOT EXISTS "?([A-Za-z]+)"?/g)]
+        .map(m => ({ tabla: m[1], col: m[2] }));
+    check('hay ampliaciones que vigilar', alters.length >= 5, String(alters.length));
+    for (const { tabla, col } of alters) {
+        check(`la comprobación rápida enumera ${tabla}.${col}`,
+            new RegExp(`table_name = '${tabla}' AND column_name = '${col}'`).test(ensure));
+    }
+}
 // Una comilla invertida dentro del SQL cierra el template literal a mitad y
 // deja el módulo entero sin parsear. Pasó en `ensureDesignSchema.js` (v4.721.1).
 const bloques = [...ensure.matchAll(/db\.query\(`([\s\S]*?)`\)/g)].map(m => m[1]);

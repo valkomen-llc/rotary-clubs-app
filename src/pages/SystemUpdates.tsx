@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.907.0 | 2026-08-25 (Aniversarios IA: el flujo simple — la referencia manda)
+// UI V4.908.0 | 2026-08-25 (Aniversarios IA: la columna `request` llega a producción)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.908.0',
+        title: 'Aniversarios IA: la columna `request` llega a la base de producción 🔧',
+        description: 'Corrección inmediata del error reportado al estrenar v4.907: «la columna request de la relación AnniversaryPiece no existe». La columna estaba declarada en el esquema con su ALTER TABLE ADD COLUMN IF NOT EXISTS, pero la comprobación rápida del catálogo —la que evita pagar las sentencias idempotentes en cada arranque en frío (v4.659)— no la enumeraba: en la base de producción, donde todas las tablas y columnas anteriores ya existían, el ensure cortaba en el atajo y el ALTER no corría nunca. Es exactamente la trampa que el propio archivo advertía en su cabecera («esa lista no es un número de versión») — y un comentario que depende de que alguien lo lea no protege nada (v4.859). Dos cambios: la comprobación rápida enumera ahora `request` (y `publishedBy`, que arrastraba el mismo hueco cubierto sólo de rebote), y una prueba nueva recorre TODOS los ADD COLUMN del archivo y exige que cada uno esté también en la lista del atajo — verificada a la inversa: contra el esquema anterior falla en las dos columnas exactas. Con esto, la primera visita después del despliegue crea la columna y el formulario público genera con normalidad.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.907.0',
         title: 'Aniversarios IA: el flujo simple — la referencia manda 🎯',

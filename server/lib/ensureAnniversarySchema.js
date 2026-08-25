@@ -45,11 +45,15 @@ export async function ensureAnniversarySchema() {
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'AnniversaryConfig' AND column_name = 'engine') AS engine_cfg_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'AnniversaryConfig' AND column_name = 'publishedVersionId') AS pubver_col`
+                         WHERE table_name = 'AnniversaryConfig' AND column_name = 'publishedVersionId') AS pubver_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'AnniversaryConfig' AND column_name = 'publishedBy') AS pubby_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'AnniversaryPiece' AND column_name = 'request') AS request_col`
     );
     if (rows[0]?.cfg && rows[0]?.ver && rows[0]?.pza && rows[0]?.bench && rows[0]?.benchres
-        && rows[0]?.render_col && rows[0]?.brand_col && rows[0]?.pubver_col
-        && rows[0]?.engine_pza_col && rows[0]?.engine_cfg_col) { _ready = true; return; }
+        && rows[0]?.render_col && rows[0]?.brand_col && rows[0]?.pubver_col && rows[0]?.pubby_col
+        && rows[0]?.engine_pza_col && rows[0]?.engine_cfg_col && rows[0]?.request_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "AnniversaryConfig" (
