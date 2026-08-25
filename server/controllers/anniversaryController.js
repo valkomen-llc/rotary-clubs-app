@@ -24,7 +24,7 @@ import {
     FORMATS, RESOLUTIONS, BRANDING_FIELDS, STAGES, TEXT_ZONES, LIMITS, MAX_REFERENCES,
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
-    normalizeYears, printableClubName, textZoneFor, canvasSize,
+    normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
@@ -350,7 +350,7 @@ export const runAnalyze = async (req, res, { draft = false } = {}) => {
         const analysis = await analyzePhoto({
             photoUrl: piece.photoUrl, width: piece.photoWidth, height: piece.photoHeight,
         });
-        const zoneId = textZoneFor(analysis);
+        const zoneId = zoneForConfig(ctx.config, analysis);
         await updatePiece(piece.id, { analysis, zoneId, status: 'analyzed' });
         res.json({
             analysis, zoneId,
@@ -799,6 +799,10 @@ export const getBenchmarkRun = async (req, res) => {
         const run = await readBenchmark(req.params.id);
         if (!run) return res.status(404).json({ error: 'Ese benchmark no existe.' });
         const { engine } = await readEngineConfig(SCOPE);
+        // La zona fijada sale de la MISMA configuración con la que corre el
+        // benchmark (el borrador): con otra, las celdas se medirían sobre una
+        // franja que el prompt no reservó.
+        const { config } = await readDraftConfig(SCOPE);
 
         let results = await listBenchResults(run.id);
         const pendientes = results.filter(r => r.status === 'pending' && r.taskId);
@@ -819,7 +823,7 @@ export const getBenchmarkRun = async (req, res) => {
                 try { photoBuffer = Buffer.from(await (await fetch(photo.url)).arrayBuffer()); } catch { /* sin original se pierde sólo el control de personas */ }
                 const veredicto = await verifyComposition({
                     photoBuffer, composedBuffer: estado.buffer,
-                    zoneId: textZoneFor(photo.analysis), format: 'square_1080',
+                    zoneId: zoneForConfig(config, photo.analysis), format: 'square_1080',
                 });
                 const latencyMs = r.dispatchedAt ? Math.max(0, Date.now() - new Date(r.dispatchedAt).getTime()) : null;
                 const scores = autoScoresFor({

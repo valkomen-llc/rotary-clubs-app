@@ -57,7 +57,7 @@ export const generateCopy = async ({ imageUrl, system }) => {
     // Con imagen es un ANÁLISIS; sin ella, la redacción. El system distingue
     // el análisis de la REFERENCIA (estilo) del de la FOTOGRAFÍA (personas).
     if (imageUrl && /referencia/i.test(String(system || ''))) {
-        return { text: JSON.stringify(estado.referenciaAnalisis ?? {
+        return { content: JSON.stringify(estado.referenciaAnalisis ?? {
             background: 'clean white with soft warm gradients',
             palette: ['deep institutional blue', 'warm gold', 'soft champagne'],
             layout: 'editorial column on the left, framed photograph on the right',
@@ -65,13 +65,13 @@ export const generateCopy = async ({ imageUrl, system }) => {
             mood: 'premium, sober, celebratory',
         }) };
     }
-    if (imageUrl) return { text: JSON.stringify(estado.analisis ?? { people: 6, group: true, subjectSide: 'derecha', freeSide: 'izquierda', scene: 'un grupo en un salón' }) };
+    if (imageUrl) return { content: JSON.stringify(estado.analisis ?? { people: 6, group: true, subjectSide: 'derecha', freeSide: 'izquierda', scene: 'un grupo en un salón' }) };
     const siguiente = estado.copyRespuestas.shift();
     if (siguiente === undefined) {
-        return { text: JSON.stringify({ title: 'Celebramos juntos', message: 'Cuatro décadas de servicio y amistad junto a nuestra comunidad. Gracias por tanto.' }) };
+        return { content: JSON.stringify({ title: 'Celebramos juntos', message: 'Cuatro décadas de servicio y amistad junto a nuestra comunidad. Gracias por tanto.' }) };
     }
     if (siguiente instanceof Error) throw siguiente;
-    return { text: typeof siguiente === 'string' ? siguiente : JSON.stringify(siguiente) };
+    return { content: typeof siguiente === 'string' ? siguiente : JSON.stringify(siguiente) };
 };
 export const COPY_PROVIDERS = {};
 export const DEFAULT_COPY_PROVIDER = 'gemini';

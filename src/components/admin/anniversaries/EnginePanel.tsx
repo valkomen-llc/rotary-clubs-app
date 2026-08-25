@@ -293,6 +293,7 @@ const EnginePanel: React.FC = () => {
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-800 mb-1">Fallback</label>
+                            <p className="text-[11px] text-gray-500 mb-1">El respaldo NO genera: sólo entra si el principal falla por infraestructura.</p>
                             <select value={estado.engine.fallback || ''}
                                 onChange={e => guardarMotor({ fallback: e.target.value || null })}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
@@ -325,6 +326,18 @@ const EnginePanel: React.FC = () => {
                         <Aviso tone="warn">La variable de entorno <code>ANNIVERSARY_MODEL</code> está forzando <code data-no-translate>{estado.envOverride}</code>: el panel no manda hasta que se retire.</Aviso>
                     )}
                     {estado.production.notes.map((n, i) => <Aviso key={i} tone="warn">{n}</Aviso>)}
+                    {/* Activación en UN clic: es el mismo `postEngineActivate` del
+                        benchmark — humano, registrado con quién y cuándo. Existe
+                        porque poner un modelo como «Fallback» se leyó como usarlo,
+                        y el respaldo no genera (reporte de v4.901). */}
+                    <div className="flex flex-wrap gap-2">
+                        {elegibles.filter(m => m.id !== estado.production.primary).map(m => (
+                            <button key={m.id} onClick={() => activar(m.id)} disabled={guardando}
+                                className="px-3 py-1.5 rounded-lg border border-rotary-blue/40 text-rotary-blue text-xs font-medium hover:bg-sky-50 disabled:opacity-50">
+                                Generar con {m.label.split(' (')[0]} — activarlo como modelo de producción
+                            </button>
+                        ))}
+                    </div>
                     {estado.engine.activatedFrom?.at && (
                         <p className="text-xs text-gray-500">
                             Activación vigente: {new Date(estado.engine.activatedFrom.at).toLocaleString('es-CO')}

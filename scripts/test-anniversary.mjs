@@ -135,6 +135,23 @@ check('un análisis que no se pudo leer se DECLARA como no leído',
 check('un recuento absurdo se acota en vez de aceptarse',
     A({ people: 99999 }).people === 400);
 
+grupo('3b — La zona FIJADA por la configuración manda sobre la foto');
+
+// El Prompt Maestro por defecto FIJA la fotografía a la derecha; si la zona
+// siguiera decidiéndose por foto, un grupo centrado la mandaría «abajo» y el
+// modelo no podría cumplir las dos cosas — la franja quedaba ocupada y la
+// composición se descartaba (el reporte de v4.901).
+check('el default es `left`, coherente con el maestro y la referencia',
+    S.normalizeConfig({}).textZone === 'left');
+check('con la zona fijada, la foto NO decide',
+    S.zoneForConfig({}, A({ people: 8, subjectSide: 'centro' })) === 'left');
+check('`auto` vuelve a decidir por foto',
+    S.zoneForConfig({ textZone: 'auto' }, A({ people: 8, subjectSide: 'centro' })) === 'bottom');
+check('un valor desconocido cae al default seguro',
+    S.normalizeConfig({ textZone: 'arriba' }).textZone === 'left');
+check('cambiar la zona ES un cambio versionable',
+    S.fingerprintOf({}) !== S.fingerprintOf({ textZone: 'bottom' }));
+
 // ════════════════════════════════════════════════════════════════════
 grupo('4 — El prompt de la imagen');
 
@@ -321,6 +338,15 @@ check('una pieza clara del todo no lleva esa nota',
 
 const ocupada = S.judgePiece({ ...buena, zoneStdDev: 95 });
 check('la franja del texto ocupada es crítica', !ocupada.ok && ocupada.critical.some(c => c.id === 'franja_ocupada'));
+
+// La franja también es de DOS niveles (v4.901): el caso real del reporte
+// midió variación 72 con luminancia 217 — decoración fina sobre fondo claro,
+// no una fotografía — y el descarte entregaba la foto plana.
+const decorada = S.judgePiece({ ...buena, zoneLuma: 217, zoneStdDev: 72 });
+check('la franja con decoración fina (72 / 217) SE ENTREGA', decorada.ok, JSON.stringify(decorada.critical));
+check('y se DICE como nota', decorada.notes.some(n => n.includes('72')), decorada.notes.join(' | '));
+check('una franja oscura sigue siendo crítica aunque su variación sea baja',
+    !S.judgePiece({ ...buena, zoneLuma: 150, zoneStdDev: 20 }).ok);
 
 const alterada = S.judgePiece({ ...buena, preservation: { state: 'failed', use: false, reason: 'Hay una persona de más.' } });
 check('una fotografía alterada es crítica', !alterada.ok && alterada.critical.some(c => c.id === 'fotografia_alterada'));

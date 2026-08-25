@@ -39,6 +39,7 @@ interface Config {
     scope: { mode: 'all' | 'clubs'; clubIds: string[] };
     references: Reference[];
     masterPrompt: string;
+    textZone: 'auto' | 'left' | 'right' | 'bottom';
     promptOptions: { ambient: boolean; useReference: boolean };
     messageInstruction: string; restrictions: string;
     branding: { clubLogo: boolean; districtLine: boolean; footerImage: string | null; watermark: string | null };
@@ -635,6 +636,20 @@ const AnniversaryStudio: React.FC = () => {
                         help="Cómo tiene que verse la pieza. Podés nombrar {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB}: se sustituyen con los datos reales de cada generación, antes de llamar al modelo. Se recorta si no entra, pero nunca se elimina."
                         value={config.masterPrompt} onChange={v => set('masterPrompt', v)}
                     />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-800 mb-1">Franja del texto</label>
+                        <p className="text-xs text-gray-500 mb-2">
+                            Tiene que CALZAR con el layout del Prompt Maestro: el predeterminado pone la fotografía a la
+                            derecha, así que el texto va a la izquierda — como la referencia. «Automática» la decide por foto.
+                        </p>
+                        <select value={config.textZone || 'left'} onChange={e => set('textZone', e.target.value as Config['textZone'])}
+                            className="w-full sm:w-96 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                            <option value="left">Izquierda (fotografía a la derecha — como la referencia)</option>
+                            <option value="right">Derecha (fotografía a la izquierda)</option>
+                            <option value="bottom">Abajo (fotografía arriba)</option>
+                            <option value="auto">Automática por foto</option>
+                        </select>
+                    </div>
                     <div className="flex flex-wrap items-center gap-6">
                         <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" checked={config.promptOptions.ambient}
