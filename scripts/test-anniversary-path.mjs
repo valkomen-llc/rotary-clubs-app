@@ -303,14 +303,49 @@ ok('el documento trae TODOS los campos que el compositor lee',
     CAMPOS.filter(k => !(k in r.body.document)).join(', '));
 
 // ════════════════════════════════════════════════════════════════════
-grupo('6 — v4.907: SIN PUERTAS — lo que el modelo devuelve SE ENTREGA');
+grupo('6 — v4.910: la ÚNICA puerta es el PATRÓN VISUAL, y entrega con aviso');
 
-// Decisión expresa del cliente, con su muestra de ChatGPT delante: las
-// puertas de v4.899-v4.906 (fondo, franja, texto dibujado, preservación)
-// descartaban piezas legítimas y gastaban generaciones dobles. Ahora el
-// juicio es del ojo de quien genera y la salida es «Volver a probar».
+// Directiva expresa del cliente (v4.910): un fondo café/oscuro/negro se
+// regenera UNA vez con la instrucción reforzada; si insiste, SE ENTREGA con
+// su aviso — nunca se descarta ni cae al modo plano (la lección de v4.899).
+limpiar({ imagen: COMPO_OSCURA });
+await llamar(ctrl.getConfig);
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const oscura = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: oscura } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: oscura } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: oscura } });
+r = await llamar(ctrl.getTestPiece, { params: { id: oscura } });
+eq('con fondo oscuro, el primer sondeo REGENERA', r.body.retrying, true);
+ok('y el motivo lleva la medición', /luminancia/.test(r.body.reason || ''), r.body.reason);
+eq('se creó una segunda tarea', prov.estado.tareas.length, 2);
+ok('el reintento lleva la instrucción reforzada del patrón',
+    (prov.estado.tareas[1]?.prompt || '').includes(S.STYLE_RETRY_CLAUSE));
+r = await llamar(ctrl.getTestPiece, { params: { id: oscura } });
+ok('el segundo sondeo YA NO reintenta: no hay tercera tarea',
+    !r.body.retrying && prov.estado.tareas.length === 2, JSON.stringify({ retrying: r.body.retrying, tareas: prov.estado.tareas.length }));
+eq('la pieza SE ENTREGA igual, en modo ai — nunca al plano', r.body.document?.renderMode, 'ai');
+eq('lista', r.body.ready, true);
+ok('…pero CON su aviso: lo no conforme no se presenta como conforme',
+    /fondo blanco/.test(r.body.statusDetail || ''), r.body.statusDetail);
+
+// Con el patrón APAGADO, el fondo oscuro se entrega sin gastar nada extra.
+limpiar({ imagen: COMPO_OSCURA });
+r = await llamar(ctrl.getConfig);
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, styleGuard: false } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const sinGuardia = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: sinGuardia } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: sinGuardia } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: sinGuardia } });
+r = await llamar(ctrl.getTestPiece, { params: { id: sinGuardia } });
+ok('con styleGuard apagado no se regenera ni se avisa',
+    r.body.ready === true && !r.body.retrying && prov.estado.tareas.length === 1 && !r.body.statusDetail,
+    JSON.stringify({ ready: r.body.ready, tareas: prov.estado.tareas.length, det: r.body.statusDetail }));
+
+// Lo que NO volvió: franja «ocupada» y preservación no descartan nada — el
+// patrón mide SOLO el fondo, y el resto sigue siendo del ojo de quien genera.
 for (const [nombre, patch] of [
-    ['un fondo oscuro', { imagen: COMPO_OSCURA }],
     ['la franja del texto ocupada', { imagen: COMPO_FRANJA }],
     ['una preservación que ANTES descartaba', { imagen: COMPO_BUENA, preservation: { state: 'failed', use: false, reason: 'persona de más' } }],
 ]) {
@@ -322,13 +357,12 @@ for (const [nombre, patch] of [
     await llamar(ctrl.postTestCopy, { body: { pieceId: id6 } });
     await llamar(ctrl.postTestCompose, { body: { pieceId: id6 } });
     r = await llamar(ctrl.getTestPiece, { params: { id: id6 } });
-    ok(`con ${nombre}, la pieza SE ENTREGA igual`, r.body.ready === true && r.body.document?.renderMode === 'ai',
-        JSON.stringify({ ready: r.body.ready, mode: r.body.document?.renderMode, retrying: r.body.retrying }));
-    ok(`…sin gastar una segunda generación`, prov.estado.tareas.length === 1, String(prov.estado.tareas.length));
+    ok(`con ${nombre}, la pieza SE ENTREGA igual y sin reintento`,
+        r.body.ready === true && r.body.document?.renderMode === 'ai' && prov.estado.tareas.length === 1,
+        JSON.stringify({ ready: r.body.ready, mode: r.body.document?.renderMode, tareas: prov.estado.tareas.length }));
     ok(`…y sin llamar a ningún modelo de texto ni visión`, prov.estado.copyLlamadas === 0, String(prov.estado.copyLlamadas));
 }
 
-// ════════════════════════════════════════════════════════════════════
 grupo('9 — El reclamo impide dos tareas para la misma pieza');
 
 limpiar();

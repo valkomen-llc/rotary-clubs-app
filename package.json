@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.909.0",
-  "cache_bust": "4.909.0",
+  "version": "4.910.0",
+  "cache_bust": "4.910.0",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {

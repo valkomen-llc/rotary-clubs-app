@@ -213,7 +213,9 @@ export const DEFAULT_MASTER_PROMPT = `Genera una pieza gráfica institucional de
 
 La PRIMERA imagen adjunta es {FOTO_CLUB}: es la ÚNICA fotografía que aparece en la pieza, colocada en un marco protagonista. Preserva a sus personas exactamente — no inventes personas, no elimines personas, no deformes rostros.
 
-La SEGUNDA imagen adjunta es la REFERENCIA DE ESTILO. Es un EJEMPLO de cómo debe verse la pieza, no la pieza: imita su lenguaje visual —paleta, tipo de composición, jerarquía tipográfica, elegancia, la curva del pie— pero NO la copies. No reproduzcas la fotografía que aparece dentro de la referencia, no copies sus textos ni sus frases, y no entregues la referencia editada: crea una pieza NUEVA con ese mismo estilo. {VARIACION}
+La SEGUNDA imagen adjunta es la REFERENCIA DE ESTILO (ANNIVERSARY_STYLE_REFERENCE). Es un EJEMPLO del lenguaje visual, no la pieza: NO la copies, no reproduzcas la fotografía que aparezca dentro de la referencia, no copies sus textos ni sus frases, y no entregues la referencia editada: crea una pieza NUEVA con ese mismo lenguaje visual.
+
+IDENTIDAD VISUAL OBLIGATORIA — Follow the supplied anniversary style reference as the visual language for the entire composition. Use a predominantly white premium institutional background with subtle white-on-white gradients, soft waves, elegant curves and refined satin texture. Celebration elements must use only gold, white, champagne and institutional Rotary blue tones, with very discreet silver as a complement. Use elegant balloons, confetti, ribbons, streamers, small stars or refined anniversary details, always as accompaniment — never covering faces or important text. Never generate brown, beige, gray, black or dark colored backgrounds. Do not use random colorful party decorations, childish or cartoonish aesthetics, wood, kraft paper, concrete, dark marble or photographic backgrounds. Maintain a premium, sober, modern, commemorative institutional celebration aesthetic. Allow creative variation in composition, quantity and placement of elements, but preserve this visual identity. {VARIACION}
 
 Escribe los textos NUEVOS para esta pieza: un título de felicitación de aniversario, el nombre del club escrito EXACTAMENTE así, letra por letra: «{NOMBRE_CLUB}», la cifra {ANOS_CLUB} años claramente visible, y un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años de trayectoria. Todos los textos en español, con ortografía perfecta.
 
@@ -235,6 +237,15 @@ Usa la segunda imagen como fotografía principal del club: preserva a las person
 Incluye un título de felicitación de aniversario, el nombre {NOMBRE_CLUB} bien destacado y la cifra {ANOS_CLUB} años claramente visible, con la misma tipografía y jerarquía de la referencia. Incluye un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto. Todos los textos en español, escritos con ortografía perfecta.
 
 En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`,
+    `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: es la ÚNICA fotografía que aparece en la pieza, colocada en un marco protagonista. Preserva a sus personas exactamente — no inventes personas, no elimines personas, no deformes rostros.
+
+La SEGUNDA imagen adjunta es la REFERENCIA DE ESTILO. Es un EJEMPLO de cómo debe verse la pieza, no la pieza: imita su lenguaje visual —paleta, tipo de composición, jerarquía tipográfica, elegancia, la curva del pie— pero NO la copies. No reproduzcas la fotografía que aparece dentro de la referencia, no copies sus textos ni sus frases, y no entregues la referencia editada: crea una pieza NUEVA con ese mismo estilo. {VARIACION}
+
+Escribe los textos NUEVOS para esta pieza: un título de felicitación de aniversario, el nombre del club escrito EXACTAMENTE así, letra por letra: «{NOMBRE_CLUB}», la cifra {ANOS_CLUB} años claramente visible, y un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto, coherente con {ANOS_CLUB} años de trayectoria. Todos los textos en español, con ortografía perfecta.
+
+En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
@@ -245,11 +256,16 @@ export const DEFAULT_MESSAGE_INSTRUCTION =
     + 'Habla de servicio, trayectoria, amistad, comunidad e impacto.';
 
 export const DEFAULT_RESTRICTIONS =
-    'No copiar la fotografía que aparece dentro de la imagen de referencia. No copiar los textos de la referencia. '
-    + 'No entregar la referencia editada. No generar logos. No inventar personas. No deformar rostros. '
-    + 'No colocar textos sobre caras. No generar bloques grandes de texto. No saturar con elementos decorativos.';
+    'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
+    + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
+    + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
+    + 'Copiar la fotografía o los textos de la imagen de referencia; entregar la referencia editada. '
+    + 'Generar logos. Inventar personas. Deformar rostros. Textos sobre caras. Bloques grandes de texto.';
 
 const LEGACY_RESTRICTIONS = [
+    'No copiar la fotografía que aparece dentro de la imagen de referencia. No copiar los textos de la referencia. '
+    + 'No entregar la referencia editada. No generar logos. No inventar personas. No deformar rostros. '
+    + 'No colocar textos sobre caras. No generar bloques grandes de texto. No saturar con elementos decorativos.',
     'No generar logos. No inventar personas. No deformar rostros. No colocar textos sobre caras. '
     + 'No generar bloques grandes de texto. No saturar con elementos decorativos.',
 ];
@@ -303,6 +319,10 @@ export const DEFAULT_CONFIG = Object.freeze({
     promptOptions: { ambient: true, useReference: true, varyDecor: true },
     messageInstruction: DEFAULT_MESSAGE_INSTRUCTION,
     restrictions: DEFAULT_RESTRICTIONS,
+    // El patrón visual OBLIGATORIO (v4.910, directiva expresa del cliente):
+    // una pieza con fondo oscuro/marrón se regenera UNA vez con la
+    // instrucción reforzada, y si insiste se entrega CON su aviso.
+    styleGuard: true,
     branding: {
         clubLogo: true,
         districtLine: true,
@@ -402,6 +422,7 @@ export const normalizeConfig = (raw) => {
         },
         messageInstruction: str(c.messageInstruction, DEFAULT_MESSAGE_INSTRUCTION).trim().slice(0, 1200),
         restrictions: (upgradeLegacyDefault(str(c.restrictions, DEFAULT_RESTRICTIONS).trim(), LEGACY_RESTRICTIONS, DEFAULT_RESTRICTIONS)).slice(0, 1200),
+        styleGuard: bool(c.styleGuard, true),
         branding: {
             clubLogo: bool(b.clubLogo, true),
             districtLine: bool(b.districtLine, true),
@@ -468,7 +489,7 @@ export const fingerprintOf = (raw) => {
     const material = JSON.stringify([
         c.format, c.resolution,
         c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference, c.promptOptions.varyDecor], c.textZone,
-        c.messageInstruction, c.restrictions,
+        c.messageInstruction, c.restrictions, c.styleGuard,
         c.references.map(r => [r.url, r.primary]),
         [c.branding.clubLogo, c.branding.districtLine, c.branding.footerImage, c.branding.watermark],
         c.useFullClubName,
@@ -1089,6 +1110,38 @@ export const retryClauseFor = (critical) => {
     return frases.join(' ');
 };
 
+// ─── El patrón visual OBLIGATORIO (v4.910) ─────────────────────────────
+//
+// Directiva expresa del cliente: «no mostrar automáticamente un resultado
+// claramente contrario al patrón» — fondo café, marrón, gris oscuro o negro.
+// Es la ÚNICA puerta del flujo simple, y vuelve con la calibración de
+// v4.899 aprendida: el umbral duro (165) atrapa sólo lo realmente oscuro;
+// una pieza clara-con-decoración pasa con nota. Una pieza no conforme se
+// regenera UNA vez con la instrucción reforzada; si insiste, SE ENTREGA con
+// su aviso — descartarla gastó dos generaciones para entregar nada en
+// v4.899, y ese error no se repite.
+export const judgeStylePattern = ({ meanLuma = null, whiteShare = null } = {}) => {
+    if (meanLuma === null || whiteShare === null) return { conforming: true, hard: false, note: null };
+    if (meanLuma < PIECE_CHECKS.whiteMinLuma || whiteShare < PIECE_CHECKS.whiteMinShare) {
+        return {
+            conforming: false, hard: true,
+            note: `La pieza no respeta el patrón de fondo blanco (luminancia ${Math.round(meanLuma)}, superficie clara ${Math.round(whiteShare * 100)} %).`,
+        };
+    }
+    if (meanLuma < PIECE_CHECKS.whiteIdealLuma) {
+        return { conforming: true, hard: false, note: `Fondo algo menos claro que el patrón (luminancia ${Math.round(meanLuma)}); dentro de lo aceptable.` };
+    }
+    return { conforming: true, hard: false, note: null };
+};
+
+/** La instrucción reforzada del reintento del patrón. En inglés, como el
+ *  bloque de identidad del prompt: es la lengua en que estos motores obedecen
+ *  mejor una restricción de color. */
+export const STYLE_RETRY_CLAUSE =
+    'IMPORTANT: the previous attempt used a dark or brown background, which is forbidden. '
+    + 'The background MUST be predominantly white with subtle white-on-white gradients, '
+    + 'following the supplied anniversary style reference. Never brown, beige, gray or black.';
+
 // ─── Las etapas que ve quien genera ────────────────────────────────────
 //
 // Están acá y no en la pantalla porque son el CONTRATO del pipeline: cada una
@@ -1126,5 +1179,6 @@ export default {
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,
     printableClubName, normalizeYears,
-    PIECE_CHECKS, judgePiece, retryClauseFor, STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
+    PIECE_CHECKS, judgePiece, retryClauseFor, judgeStylePattern, STYLE_RETRY_CLAUSE,
+    STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
 };

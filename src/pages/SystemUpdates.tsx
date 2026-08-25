@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.909.0 | 2026-08-25 (Aniversarios IA: la referencia es ejemplo, no lienzo)
+// UI V4.910.0 | 2026-08-25 (Aniversarios IA: identidad visual obligatoria)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.910.0',
+        title: 'Aniversarios IA: identidad visual obligatoria 🤍✨',
+        description: 'Implementación de la directiva de dirección de arte del cliente, con su nueva referencia-plantilla (fondo blanco con ondas sutiles y globos dorados, sin foto ni textos — exactamente la clase de referencia que el flujo necesita). Cuatro piezas: (1) el prompt base predeterminado lleva ahora un bloque PERMANENTE de identidad visual — fondo predominantemente blanco premium con degradados blanco-sobre-blanco, decoración sólo en dorado, blanco, champán y azul institucional, prohibición expresa de fondos café/marrón/gris/negro y de estética infantil o multicolor; variación permitida en la composición, nunca en la identidad —; (2) las restricciones predeterminadas (el prompt negativo) enumeran los colores y texturas prohibidos: café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja, verde, morado, multicolor, madera, kraft, concreto, mármol oscuro, fiesta infantil; (3) VALIDACIÓN POST-GENERACIÓN: la única puerta que vuelve al flujo simple, por pedido expreso — se mide el fondo de la pieza (luminancia y superficie clara, con la calibración aprendida en v4.899 para no descartar piezas legítimas) y un fondo oscuro/café se regenera UNA vez con la instrucción reforzada; si insiste, la pieza SE ENTREGA con su aviso visible — nunca se descarta en silencio ni se presenta lo no conforme como conforme —; interruptor «Patrón visual obligatorio» en el panel, encendido por defecto y versionable; (4) la tarjeta del panel pasa a llamarse «Identidad visual de Aniversarios», con el resumen del patrón (referencia de estilo, fondo, paleta, fondos oscuros bloqueados) y la guía de que la referencia ideal es una plantilla VACÍA. Los defaults guardados sin editar se actualizan solos (cadena de legados v4.907→v4.909→v4.910). Baterías: 201 + 176 + 77 + 16, con la puerta verificada a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.909.0',
         title: 'Aniversarios IA: la referencia es un ejemplo, no un lienzo a editar 🖼️',

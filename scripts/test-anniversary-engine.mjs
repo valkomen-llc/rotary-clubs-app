@@ -191,12 +191,14 @@ check('el despacho acepta el modelo como parámetro', /model = null, engineConfi
 check('un modelo sin prompt negativo declarado NO lo recibe (lección v4.645)',
     /negativePrompt: ficha && ficha\.capabilities\?\.negativePrompt === false \? null/.test(engine));
 const ctrl = leer('server/controllers/anniversaryController.js');
-// v4.907: el reintento de CALIDAD ya no existe — el flujo simple entrega tal
-// cual, por decisión expresa del cliente. Lo que SÍ queda es el fallback de
-// INFRAESTRUCTURA (la línea siguiente). Si el reintento estético reaparece,
-// esto falla y hay que volver a discutirlo con el cliente delante.
-check('v4.907: NO hay reintento de calidad en el sondeo',
-    !/verifyComposition\(/.test(ctrl.slice(ctrl.indexOf('export const runSync'), ctrl.indexOf('export const pieceView'))));
+// v4.907 quitó las puertas; v4.910 devolvió EXACTAMENTE UNA por directiva
+// del cliente: el patrón visual del fondo (judgeStylePattern), con una sola
+// regeneración y entrega-con-aviso. Las demás (franja, texto dibujado,
+// preservación) siguen fuera del flujo — verifyComposition es sólo del
+// benchmark. Si reaparece en el sondeo, esto falla.
+check('v4.910: la única puerta del sondeo es el patrón visual',
+    (() => { const s = ctrl.slice(ctrl.indexOf('export const runSync'), ctrl.indexOf('export const pieceView'));
+        return !/verifyComposition\(/.test(s) && /judgeStylePattern\(/.test(s) && /STYLE_RETRY_CLAUSE/.test(s); })());
 check('el despacho de producción resuelve por `resolveProduction`', /resolveProduction\(engine\)/.test(ctrl));
 check('agotada la cadena se propaga el motivo de CADA modelo', /también: \$\{e2\.message\}/.test(ctrl));
 const rutas = leer('server/routes/anniversaries.js');
