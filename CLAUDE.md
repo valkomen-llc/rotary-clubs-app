@@ -9399,8 +9399,26 @@ usarlo para generar.
   siempre (array completo — nueve pantallas la consumen); con `limit` acota y
   avisa si hay más por la cabecera `X-Media-Has-More`, pidiendo una fila de
   más en vez de pagar un COUNT. El selector pide tandas de 200.
+- **⚠️ EL NODO QUE OBSERVA EL SCROLL INFINITO VIVE EN ESTADO, NO EN UN
+  `useRef`** (v4.903). El selector queda SIEMPRE montado con `isOpen` en falso
+  —así lo usan todas sus pantallas— y al REABRIRLO con los mismos filtros
+  todos los deps del efecto del observador quedaban idénticos (misma página,
+  mismos 200, mismo `hasMore`): el efecto no volvía a correr y el
+  IntersectionObserver seguía mirando el centinela DESMONTADO de la apertura
+  anterior — «Mostrar más · quedan 141» con el spinner girando y el scroll
+  muerto, sin un solo error (reporte con captura). Con el nodo en estado
+  (`ref={setNodoCentinela}`), cada remontaje del centinela —reabrir, el
+  parpadeo de carga, un filtro— cambia el dep y el observador se re-engancha
+  al nodo VIVO. Un montaje fresco no lo reproduce jamás: el arnés tiene que
+  recorrer el ciclo real abrir → cerrar → reabrir, y con el CSS compilado
+  (v4.851). Y **el avance es UNO** (`avanzar`), lo dispare el observador o el
+  botón: el botón manual sólo movía la ventana local y nunca pedía la tanda
+  siguiente al servidor — al agotar las 200 decía «quedan 1» para siempre.
+  Reabrir vuelve a la primera tanda: es otra visita, no la continuación.
 - Pruebas: `npm run test:media:thumbs` (27 casos; la generación usa sharp y se
-  salta si no está).
+  salta si no está) y `npm run test:media:picker` (10 comprobaciones en un
+  navegador con el CSS compilado; pide `playwright`, `esbuild` y `dist/` y se
+  salta solo — verificada a la inversa: con el código anterior fallan 6).
 
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 

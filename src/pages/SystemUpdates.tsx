@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.902.0 | 2026-08-25 (Aniversarios IA: la estructura preestablecida de la referencia)
-// Cache bust: 2026-08-25h
+// UI V4.903.0 | 2026-08-25 (Biblioteca: el «Mostrar más» que no avanzaba al reabrir el selector)
+// Cache bust: 2026-08-25i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.903.0',
+        title: 'Biblioteca Multimedia: el «Mostrar más» que no avanzaba al reabrir el selector 📚',
+        description: 'Corrección del reporte con captura: «Mostrar más · quedan 141» con el spinner girando y el scroll muerto. La causa no daba ningún error: el selector queda SIEMPRE montado y `isOpen` sólo lo muestra o lo esconde, así que al REABRIRLO con los mismos filtros —elegir la foto del club, cerrar, volver a abrir para la imagen del pie— todos los datos de los que dependía el observador de scroll quedaban idénticos (misma página, mismos 200 archivos, mismo «hay más») y el efecto no volvía a correr: el IntersectionObserver seguía mirando el centinela DESMONTADO de la apertura anterior, y al nuevo no lo observaba nadie. El nodo del centinela vive ahora en estado, de modo que cada remontaje (reabrir, el parpadeo de carga, un cambio de filtro) re-engancha el observador al nodo vivo. Además: el botón «Mostrar más» ahora también pide la tanda siguiente al SERVIDOR —antes sólo movía la ventana local y al agotar las 200 cargadas decía «quedan 1» para siempre—, y reabrir el selector vuelve a la primera tanda en vez de remontar cientos de tarjetas de golpe. Reproducido y verificado a la inversa en un navegador con el CSS compilado (nueva prueba `test:media:picker`, 10 comprobaciones): con el código anterior fallan 6, incluida la del «quedan 141» congelado de la captura.',
+        date: new Date().toISOString(),
+        tags: ['biblioteca', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.902.0',
         title: 'Aniversarios IA: la estructura preestablecida de la referencia 🎀',
