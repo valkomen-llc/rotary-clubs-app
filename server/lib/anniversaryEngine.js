@@ -40,7 +40,7 @@ import {
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis,
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, repairCopy,
-    buildImagePrompt, buildNegativePrompt, textZoneFor, zoneForConfig, zoneById,
+    buildSimpleRequest, buildNegativePrompt, textZoneFor, zoneForConfig, zoneById,
     judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig,
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
 } from './anniversarySpec.js';
@@ -334,21 +334,20 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         throw new Error(`Falta la credencial del generador de imágenes (${proveedor.envKey}). Cargala en Integraciones antes de usar este modelo.`);
     }
 
-    const { prompt, zoneId, dropped, motifId } = buildImagePrompt({
-        config: c, clubName, years, analysis, hasReference: !!referencia,
-        // La otra mitad del análisis de la referencia: su descripción EN
-        // PALABRAS, hecha una vez al guardarla y cacheada en ella.
-        referenceClause: referencia?.analysis ? referenceClauseFor(referencia.analysis) : '',
+    // ⚠️ EL FLUJO SIMPLE (v4.907): la instrucción base con las variables
+    // sustituidas, VERBATIM. Ninguna cláusula automática, ningún análisis
+    // intermedio, ningún agente que reescriba — la referencia viaja como
+    // PRIMERA imagen, la fotografía como SEGUNDA, y la instrucción dice cuál
+    // es cuál. Es el pedido expreso del cliente con su ejemplo de ChatGPT
+    // delante: «prioriza similitud visual sobre creatividad».
+    const { prompt, trimmed } = buildSimpleRequest({
+        config: c, clubName, years,
         maxChars: ficha?.capabilities?.promptMaxChars || null,
-        // La semilla del motivo decorativo (v4.905): el id de la pieza, así el
-        // reintento conserva su motivo y dos piezas distintas varían.
-        seed,
     });
-    if (dropped.length) {
-        // Lo que se deja fuera se ANOTA. Un recorte silencioso convierte
-        // «se lo pedimos al modelo» en una afirmación falsa.
-        console.warn(`[anniversary] prompt recortado: se dejó fuera ${dropped.join(', ')}`);
+    if (trimmed) {
+        console.warn('[anniversary] la instrucción base no entró en el tope del modelo y se recortó por el final');
     }
+    const zoneId = zoneForConfig(c, analysis);
 
     const promptFinal = extraClause ? `${prompt}\n${extraClause}` : prompt;
 
@@ -366,7 +365,7 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
             size: formatById(c.format).aspect === '1:1' ? '1024x1024' : 'auto',
         });
         const url = await storeBuffer(generado, { prefix: 'anniversaries/backdrops', ext: 'png', mime: 'image/png' });
-        return { taskId: `${SYNC_TASK}${url}`, zoneId, prompt: promptFinal, dropped, motifId, model: modeloElegido, usedReference: !!referencia };
+        return { taskId: `${SYNC_TASK}${url}`, zoneId, prompt: promptFinal, model: modeloElegido, provider: proveedor.id, usedReference: !!referencia, referenceUrl: referencia?.url || null, size: formatById(c.format).aspect === '1:1' ? '1024x1024' : 'auto', endpoint: 'openai:/v1/images/edits' };
     }
 
     // El ORDEN importa: la referencia primero y la fotografía después, porque
@@ -386,7 +385,7 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         aspectRatio: formatById(c.format).aspect,
         outputFormat: 'png',
     });
-    return { taskId, zoneId, prompt: promptFinal, dropped, motifId, model: modeloElegido, usedReference: !!referencia };
+    return { taskId, zoneId, prompt: promptFinal, model: modeloElegido, provider: proveedor.id, usedReference: !!referencia, referenceUrl: referencia?.url || null, size: formatById(c.format).aspect, endpoint: 'kie:/jobs/createTask' };
 };
 
 /** Sondea la tarea. Devuelve `pending` mientras el proveedor trabaja; cuando

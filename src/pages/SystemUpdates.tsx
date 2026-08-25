@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.906.0 | 2026-08-25 (Aniversarios IA: el texto DE la fotografía es legítimo)
+// UI V4.907.0 | 2026-08-25 (Aniversarios IA: el flujo simple — la referencia manda)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.907.0',
+        title: 'Aniversarios IA: el flujo simple — la referencia manda 🎯',
+        description: 'Rediseño de fondo del módulo, por decisión expresa del cliente con su propia muestra de ChatGPT delante: la generación pasa a comportarse como una conversación simple — la imagen de REFERENCIA, la FOTOGRAFÍA del club y el PROMPT BASE en texto plano, y nada más. El prompt que recibe el modelo es el prompt base con {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB} sustituidos, BYTE A BYTE: se eliminaron todas las capas que lo reescribían — la cláusula que prohibía el texto (el modelo AHORA escribe los textos dentro de la pieza, como en el ejemplo), las cláusulas de zona y de estilo, el análisis de visión de la fotografía, el redactor aparte, la decoración por semilla y las puertas automáticas de calidad con su reintento (v4.899-v4.906): lo que el modelo devuelve SE ENTREGA y el juicio es del ojo de quien genera, con «Volver a probar» como salida. La referencia viaja como PRIMERA imagen y la fotografía como segunda, en KIE y en GPT Image por igual, y el prompt base lo declara. La plataforma conserva UNA sola capa encima: el pie institucional desde archivos reales (el emblema es marca registrada y no se dibuja), sobre la banda inferior que el propio prompt pide dejar libre. Nuevo en el panel: «Ver solicitud enviada al modelo» — el prompt final exacto, las dos imágenes, el modelo, el proveedor, el endpoint y el tamaño, guardados con cada pieza — y «Probar generación» corre por la MISMA función que el formulario público. El prompt negativo son las restricciones configuradas, textuales, sin agregados. La auditoría que pedía el cliente quedó hecha: la referencia SIEMPRE viajó como imagen; lo que desviaba el resultado eran nuestras propias cláusulas y puertas, hoy eliminadas. El respaldo sin imagen (`plain`) conserva la estructura de texto fija de v4.902. Las cuatro baterías se reescribieron para el contrato nuevo (167 + 171 + 77 + 16 comprobaciones), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.906.0',
         title: 'Aniversarios IA: el texto de la fotografía es legítimo 📦',

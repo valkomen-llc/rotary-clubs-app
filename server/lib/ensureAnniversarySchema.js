@@ -232,6 +232,9 @@ export async function ensureAnniversarySchema() {
     // cambiar el modelo es una decision tecnica, no una version editorial.
     await db.query(`ALTER TABLE "AnniversaryPiece" ADD COLUMN IF NOT EXISTS engine JSONB`);
     await db.query(`ALTER TABLE "AnniversaryConfig" ADD COLUMN IF NOT EXISTS engine JSONB`);
+    // v4.907 — "Ver solicitud enviada al modelo": EXACTAMENTE lo que viajo
+    // (prompt final, imagenes, modelo, proveedor, endpoint, tamano).
+    await db.query(`ALTER TABLE "AnniversaryPiece" ADD COLUMN IF NOT EXISTS request JSONB`);
 
     _ready = true;
 }

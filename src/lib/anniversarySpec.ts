@@ -58,10 +58,7 @@ export const canvasSize = (formatId = DEFAULT_FORMAT, resolution: number = DEFAU
  *  una barra de progreso inventada hace esperar por nada. */
 export const STAGES = [
     { id: 'prepare', label: 'Preparando los datos', icon: '✨' },
-    { id: 'analyze', label: 'Analizando la fotografía', icon: '🖼' },
-    { id: 'write', label: 'Creando el mensaje', icon: '✍️' },
     { id: 'compose', label: 'Diseñando la pieza', icon: '🎨' },
-    { id: 'verify', label: 'Verificando el resultado', icon: '🔍' },
     { id: 'done', label: 'Aniversario listo', icon: '✓' },
 ] as const;
 export type StageId = typeof STAGES[number]['id'];

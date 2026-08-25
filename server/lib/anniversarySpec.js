@@ -129,67 +129,6 @@ export const FOOTER_BAND = { y: 0.840, h: 0.160 };
 
 export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 
-// ─── El estilo base, que NO se negocia ─────────────────────────────────
-//
-// El pedido lo dice con claridad: la IA puede variar la composición, pero
-// todas las piezas tienen que pertenecer a la misma familia visual. Estas
-// frases son esa familia y van SIEMPRE, delante de lo que escriba el
-// administrador —que modula, no sustituye—.
-//
-// Están en inglés porque es el idioma en el que responden mejor los motores de
-// imagen; el administrador escribe en español y su texto viaja tal cual. Misma
-// decisión que `stylePrompt` en el Director Creativo (v4.839).
-export const BASE_STYLE = [
-    'a clean, elegant institutional celebration poster',
-    'the background is predominantly white, bright and uncluttered, with generous negative space',
-    'celebration elements are present but restrained: a few white and gold balloons, soft confetti, thin golden accents',
-    'the palette is white, warm gold and, sparingly, deep Rotary blue',
-    'the photograph is the protagonist of the composition',
-    'the finish is polished and printable, like corporate stationery, never a collage',
-];
-
-/** La regla que hace posible la capa 2. Va siempre y no se recorta nunca. */
-export const NO_TEXT_CLAUSE =
-    'The image contains NO written text of any kind: no words, no letters, no numbers, no dates, no signatures, '
-    + 'no watermark and no logos or emblems. All of that is printed on top of this image afterwards by the platform.';
-
-/** La regla que hace posible que la fotografía siga siendo la de ese club. */
-export const PRESERVE_CLAUSE =
-    'The people in the supplied photograph are preserved exactly: the same faces, the same number of people, '
-    + 'the same clothing and the same expressions. Nobody is added and nobody is removed. Faces are never distorted, '
-    + 'never redrawn and never cropped out of the frame.';
-
-/** La reserva institucional, dicha al MODELO. Es la tercera cláusula que
- *  sostiene la arquitectura: sin ella el modelo llena el pie con decoración y
- *  la capa 3 cae encima de globos. El porcentaje es el mismo número que
- *  `FOOTER_BAND` — un solo acuerdo, dos lectores. */
-export const FOOTER_CLAUSE =
-    'The bottom band of the canvas — roughly its lowest sixth — stays completely clean and empty: plain light '
-    + 'background only, with no photograph, no balloons, no confetti and no important decoration there, because the '
-    + 'platform prints the institutional footer on that band afterwards.';
-
-/** Cómo se integra la fotografía. «Colocala en el lienzo» da una foto pegada:
- *  lo que produce una pieza de papelería es NOMBRAR el mecanismo. Es la misma
- *  lección que dejó escrita `designCompose.js` y se repite acá a propósito —
- *  este módulo no importa aquél, así que la frase tiene que existir en los dos
- *  sitios; lo que no puede haber es dos criterios que decidan distinto. */
-export const INTEGRATION_CLAUSE =
-    'The photograph is integrated into the layout, not pasted on it: it sits inside a large soft-edged shape whose '
-    + 'curve follows the composition, with clean margin around it, its border blending into the white surface, and its '
-    + 'light matched to the rest of the piece.';
-
-/** Lo que el modelo no debe dibujar. Viaja en `negative_prompt`, NUNCA pegado
- *  al positivo: dentro de la descripción de la escena el modelo se obsesiona
- *  con lo prohibido, y en su propio campo lo lee como lo que es. Es la regla
- *  del sitio desde v4.705 y acá además libera presupuesto del positivo. */
-export const BASE_NEGATIVE = [
-    'text', 'letters', 'words', 'numbers', 'typography', 'caption', 'watermark', 'signature',
-    'logo', 'emblem', 'wheel emblem', 'badge',
-    'extra people', 'duplicated person', 'missing person', 'deformed face', 'distorted hands',
-    'dark background', 'black background', 'busy background', 'cluttered', 'heavy texture',
-    'collage', 'sticker cutout', 'harsh drop shadow', 'blurry', 'low quality',
-];
-
 // ─── El PROMPT MAESTRO y sus variables (v4.898) ────────────────────────
 //
 // El Prompt Maestro es la dirección de arte PERMANENTE del generador: vive en
@@ -226,48 +165,23 @@ export const applyMasterVariables = (text, { clubName = '', years = null } = {})
         .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada');
 
 /**
- * El Prompt Maestro PREDETERMINADO. Destila la especificación del cliente
- * (v4.898) a lo que el modelo de imagen puede cumplir, dentro del presupuesto
- * del prompt: la referencia visual «Feliz aniversario Club Rotario Cali» hecha
- * dirección de arte. En español a propósito: es lo que el administrador va a
- * leer y corregir, y los motores actuales lo entienden.
+ * La INSTRUCCIÓN BASE predeterminada (v4.907). Es el prompt del cliente, el
+ * mismo gesto de su ejemplo de ChatGPT: referencia + fotografía + instrucción
+ * corta. Viaja al modelo VERBATIM con las variables sustituidas — el flujo no
+ * le agrega ni le quita nada. En español a propósito: es lo que el
+ * administrador va a leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial elegante: fondo casi todo blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco polaroid blanco de borde RECTO (nunca orgánico), sobre la mitad superior. Celebración sobria y premium, nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie.`;
+export const DEFAULT_MASTER_PROMPT = `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
 
-// ─── La decoración varía POR PIEZA (v4.905) ────────────────────────────
-//
-// «Variá la decoración entre generaciones» escrito en el Prompt Maestro no
-// varía nada: el prompt es IDÉNTICO entre generaciones y estos motores no
-// exponen semilla, así que convergen a la misma pieza — es lo que se reportó.
-// La variedad de verdad exige que el PROMPT cambie por pieza: un catálogo
-// CERRADO de motivos del tema aniversario y una elección DETERMINISTA por
-// pieza (hash del id). Determinista y no al azar por la misma regla que la
-// asignación A/B del CRM: reproducible sin haberla guardado, y «¿por qué esta
-// pieza tiene velas?» tiene respuesta. El motivo elegido se registra igual.
-export const DECOR_MOTIFS = [
-    { id: 'globos',      es: 'globos dorados, blancos y champagne', en: 'a few elegant white, gold and champagne balloons with a touch of gold confetti' },
-    { id: 'serpentinas', es: 'serpentinas y cintas doradas',        en: 'thin golden streamers and delicate curling ribbons in the upper corners' },
-    { id: 'confeti',     es: 'lluvia fina de confeti dorado',       en: 'a gentle drift of fine gold and white confetti with tiny shining dots' },
-    { id: 'destellos',   es: 'destellos y estrellas doradas',       en: 'soft golden sparkles and small elegant star glints scattered sparingly' },
-    { id: 'lazos',       es: 'lazos y moños dorados',               en: 'flowing golden ribbon bows with fine trailing ends' },
-    { id: 'flores',      es: 'flores blancas y doradas',            en: 'a restrained arrangement of white and gold flowers along one edge' },
-    { id: 'brindis',     es: 'acentos de brindis dorados',          en: 'celebratory golden accents suggesting a toast, with fine streaks of light' },
-    { id: 'guirnalda',   es: 'guirnalda dorada con luces',          en: 'a delicate golden garland with tiny warm lights draped across one corner' },
-];
+La PRIMERA imagen adjunta es la REFERENCIA VISUAL. La SEGUNDA imagen adjunta es {FOTO_CLUB}.
 
-/** FNV-1a sobre la semilla (el id de la pieza): la MISMA pieza conserva su
- *  motivo entre reintentos —el reintento corrige un defecto, no re-sortea el
- *  estilo— y dos piezas distintas casi siempre difieren. */
-export const motifForSeed = (seed) => {
-    const s = String(seed || '');
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-    return DECOR_MOTIFS[h % DECOR_MOTIFS.length];
-};
+LA REFERENCIA VISUAL MANDA. Mantén muy cerca de la referencia: composición, distribución, proporciones, fondo, paleta, elementos de celebración, jerarquía tipográfica, integración de la fotografía, espacio negativo y estructura general. No generes una pieza distinta a la referencia. Prioriza similitud visual sobre creatividad.
 
-export const decorClauseFor = (motif) => motif
-    ? `Decoration theme for THIS piece: ${motif.en} — always sober, premium and anniversary-appropriate.`
-    : '';
+Usa la segunda imagen como fotografía principal del club: preserva a las personas exactamente — no inventes personas, no elimines personas, no deformes rostros.
+
+Incluye un título de felicitación de aniversario, el nombre {NOMBRE_CLUB} bien destacado y la cifra {ANOS_CLUB} años claramente visible, con la misma tipografía y jerarquía de la referencia. Incluye un mensaje corto, institucional y conmemorativo sobre servicio, comunidad e impacto. Todos los textos en español, escritos con ortografía perfecta.
+
+En la parte inferior deja aproximadamente el 15 % del lienzo completamente libre y limpio: ahí la plataforma añade después un pie de página institucional. No generes logos ni pie de página.`;
 
 export const DEFAULT_MESSAGE_INSTRUCTION =
     'Genera un mensaje corto, institucional, humano e inspirador. Máximo dos frases. '
@@ -461,14 +375,11 @@ export const validateConfig = (raw) => {
     if (desconocidas.length) {
         warnings.push(`El Prompt Maestro usa variables que el sistema no conoce y viajarían tal cual al modelo: ${[...new Set(desconocidas)].join(', ')}. Las disponibles son ${MASTER_VARIABLES.join(', ')}.`);
     }
-    if (!c.messageInstruction || c.messageInstruction.length < 20) {
-        errors.push('Falta la instrucción del mensaje: sin ella, el texto que se imprime en la pieza no tiene criterio.');
-    }
     if (!c.references.length) {
         warnings.push('No hay ninguna referencia visual. La pieza se va a generar igual, pero sin una imagen de estilo el resultado se parece menos entre una generación y la siguiente.');
     }
     if (!c.restrictions) {
-        warnings.push('No hay restricciones escritas. Las reglas del sistema —sin texto, sin logos, sin inventar personas— se aplican igual; esto es lo que agregarías vos.');
+        warnings.push('No hay restricciones escritas. En el flujo simple nada se agrega solo: el modelo recibe únicamente el prompt base y lo que escribas acá como prompt negativo.');
     }
     if (c.scope.mode === 'clubs' && !c.scope.clubIds.length) {
         errors.push('Elegiste habilitarlo sólo en algunos sitios y no seleccionaste ninguno: así no estaría disponible en ninguna parte.');
@@ -738,162 +649,40 @@ export const readDrawnTextAnswer = (raw) => {
     };
 };
 
-// ─── El prompt de la imagen ────────────────────────────────────────────
-
-/** La franja que el modelo tiene que dejar tranquila, dicha en PALABRAS. En
- *  coordenadas no se cumple; en palabras, sí. Y se dice el PORQUÉ, que es lo
- *  que hace que el modelo lo respete. */
-export const clearZoneClause = (zoneId) => {
-    const z = zoneById(zoneId);
-    return `Leave ${z.words} of the canvas visually calm — mostly plain white surface, no faces and no busy decoration there — `
-        + `because a headline and a short paragraph will be printed on top of that area afterwards.`;
-};
-
-/**
- * El presupuesto del prompt. 2500 es el tope que declara la familia de modelos
- * que usa la pasarela, y NO es un número puesto a ojo: con el Prompt Maestro
- * por defecto el prompt completo mide **2.343** caracteres —núcleo 1.386,
- * maestro sustituido y envuelto 710, ambiente hasta 370 en el peor caso, que
- * cierra en 2.491—, así que en el caso normal no se sacrifica nada. Lo que
- * puede desbordarlo es un Prompt Maestro muy largo, y entonces se recorta por
- * el final.
- *
- * **Al agregar una frase al prompt, medir.** Es la regla del Creador de Reels,
- * donde el peor caso llegó a 4.362 sin que nada avisara.
- */
-export const PROMPT_MAX_CHARS = Number(process.env.ANNIVERSARY_PROMPT_MAX_CHARS) || 2500;
-
-/**
- * Arma el prompt positivo.
- *
- * EL ORDEN ES EL ORDEN DE SACRIFICIO, y está elegido a propósito:
- *
- *   1. Lo que sostiene la arquitectura —sin texto, sin logos, preservar a las
- *      personas, dejar libre la franja del texto Y la banda del pie— NO se
- *      recorta nunca. Sin eso la pieza no es publicable, por bonita que salga.
- *   2. El PROMPT MAESTRO va después del núcleo y SE RECORTA, NUNCA SE
- *      ELIMINA: es la dirección de arte de esta configuración, con las
- *      variables ya sustituidas. Que sobreviva una frase escrita por nosotros
- *      mientras se cae lo que escribió el administrador sería al revés. Es la
- *      lección de v4.754 en el Director Creativo.
- *   3. El ambiente —lo que el análisis dice de ESTA foto— se sacrifica
- *      primero. El estilo base ya no se ensambla aparte: el Prompt Maestro
- *      por defecto lo supersede (BASE_STYLE queda exportado como referencia).
- */
-export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false, referenceClause = '', maxChars = null, seed = null } = {}) => {
+// ─── El prompt de la imagen: EL FLUJO SIMPLE (v4.907) ─────────────────
+//
+// ⚠️ SUPERSEDE al ensamblador de cláusulas de v4.898-v4.906, por decisión
+// EXPRESA del cliente con su ejemplo de ChatGPT delante: «le doy una
+// referencia, una fotografía y una instrucción sencilla, y el resultado se
+// aproxima claramente a lo solicitado». Lo que viaja al modelo es la
+// INSTRUCCIÓN BASE con las variables sustituidas — VERBATIM. Ninguna cláusula
+// automática, ningún análisis intermedio, ningún motivo decorativo, ninguna
+// reserva de zona: «no agregues al prompt final instrucciones que no estén
+// configuradas». La referencia viaja como PRIMERA imagen y la fotografía como
+// SEGUNDA, y la instrucción base dice cuál es cuál.
+//
+// El tope es POR MODELO (GPT Image admite decenas de miles; la pasarela KIE
+// declara 2.500). Si la instrucción del administrador no entra, se recorta
+// por el final SIN partir palabras y se AVISA — un recorte silencioso
+// convierte «se lo pedimos» en una afirmación falsa.
+export const buildSimpleRequest = ({ config, clubName = '', years = null, maxChars = null } = {}) => {
     const c = normalizeConfig(config);
-    const zona = zoneId || zoneForConfig(c, analysis);
-    const a = analysis || fallbackAnalysis();
-    // El motivo decorativo de ESTA pieza (v4.905): determinista por semilla,
-    // así el reintento de la misma pieza conserva su motivo y dos piezas
-    // distintas varían. Sin semilla no se varía — el prompt sería una ruleta.
-    const motif = c.promptOptions.varyDecor && seed ? motifForSeed(seed) : null;
-    // El presupuesto es POR MODELO: GPT Image admite prompts muchísimo más
-    // largos que los 2.500 de la pasarela KIE, y con él la dirección de arte
-    // y el análisis de la referencia llegan ENTEROS. Sin dato, el tope de KIE.
-    const tope = Math.max(600, Number(maxChars) || PROMPT_MAX_CHARS);
-
-    const nucleo = [
-        hasReference
-            // ⚠️ La referencia lleva SU rotulado impreso y el modelo lo IMITA
-            // si no se le dice lo contrario: es el «¡FELIZ ANIVERSARIO!»
-            // fantasma del reporte de v4.905 — texto dibujado en el fondo,
-            // debajo del nuestro. Se copia el ESTILO, jamás sus letras.
-            ? 'Using the first image as the STYLE REFERENCE for palette, decoration and layout, and the last image as the PHOTOGRAPH, build a single new square piece. The lettering seen in the reference is printed afterwards by the platform — never draw it; leave those areas clean.'
-            : 'Build a single new square piece around the supplied photograph.',
-        INTEGRATION_CLAUSE,
-        clearZoneClause(zona),
-        FOOTER_CLAUSE,
-        PRESERVE_CLAUSE,
-        NO_TEXT_CLAUSE,
-    ];
-
-    // El Prompt Maestro del administrador, con {NOMBRE_CLUB}/{ANOS_CLUB}/
-    // {FOTO_CLUB} ya sustituidos. Va en español tal cual lo escribió: los
-    // motores actuales lo entienden, y traducirlo sería reescribir su
-    // dirección de arte con nuestras palabras.
-    const masterTexto = `Master art direction, follow it closely (in Spanish): «${applyMasterVariables(c.masterPrompt, { clubName, years })}». Words it mentions are printed later by the platform — the canvas stays free of characters.`;
-
-    const ambiente = [];
-    if (a.people === 0) {
-        // La lección del censo universal (v4.785): una frase escrita para «la
-        // foto típica» sobre una foto vacía es una invitación a poblarla.
-        ambiente.push('The photograph has no people in it and none are added: the celebration is expressed only through the decoration around it.');
-    } else if (a.group) {
-        ambiente.push('The photograph is a group portrait; the whole group stays visible and complete inside the shape.');
+    let prompt = applyMasterVariables(c.masterPrompt, { clubName, years });
+    const tope = Number(maxChars) || null;
+    let trimmed = false;
+    if (tope && prompt.length > tope) {
+        prompt = trimWords(prompt, tope);
+        trimmed = true;
     }
-    if (a.dominantLight === 'oscura') {
-        ambiente.push('The photograph is darker than the page; the surrounding white surface stays bright and the transition between them is soft.');
-    }
-    if (years) {
-        // El número NO se dibuja —lo imprimimos nosotros—, pero decirle al
-        // modelo que es una efeméride redonda cambia el tono de la decoración.
-        ambiente.push(`The piece celebrates a milestone anniversary of ${years} years, so the decoration feels commemorative rather than festive-party.`);
-    }
-
-    const nucleoTexto = nucleo.join(' ');
-    // El interruptor de la configuración puede apagar el ambiente entero: es
-    // la parte que varía con cada foto, y hay direcciones de arte que lo
-    // prefieren fuera para que el prompt sea idéntico entre generaciones.
-    const ambienteTexto = c.promptOptions.ambient ? ambiente.join(' ') : '';
-    const referenciaTexto = hasReference ? String(referenceClause || '') : '';
-    const decorTexto = decorClauseFor(motif);
-
-    const dropped = [];
-    const armar = (partes) => partes.filter(Boolean).join('\n');
-
-    // El ORDEN DE SACRIFICIO, de lo primero que se cae a lo último:
-    // ambiente → decoración → cláusula de la referencia → (recortar el Prompt
-    // Maestro). El núcleo no se toca nunca: sin él la pieza no es publicable.
-    // La cláusula de la referencia cae ANTES que el maestro porque la
-    // referencia además viaja como imagen — su descripción es refuerzo, el
-    // maestro no tiene segunda vía. La decoración cae antes que la referencia:
-    // es variedad, no identidad.
-    let partes = [nucleoTexto, masterTexto, referenciaTexto, decorTexto, ambienteTexto];
-    if (armar(partes).length > tope && ambienteTexto) {
-        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto, referenciaTexto, decorTexto];
-    }
-    if (armar(partes).length > tope && decorTexto) {
-        dropped.push('decoracion'); partes = [nucleoTexto, masterTexto, referenciaTexto];
-    }
-    if (armar(partes).length > tope && referenciaTexto) {
-        dropped.push('referencia'); partes = [nucleoTexto, masterTexto];
-    }
-
-    // ⚠️ EL PROMPT MAESTRO SE RECORTA, NUNCA SE ELIMINA. Es lo ÚNICO del
-    // prompt que es específico de ESTA configuración: todo lo demás lo
-    // escribimos nosotros y es igual en todas las piezas. Tirarlo entero
-    // dejaría al administrador editando un campo que no llega al modelo, y el
-    // fallo sería mudo. Misma decisión que `motionHint` en el Creador de Reels.
-    let recorte = masterTexto;
-    if (armar(partes).length > tope && recorte) {
-        const sitio = Math.max(0, tope - nucleoTexto.length - 2);
-        recorte = trimWords(recorte, sitio);
-        dropped.push('master(recortado)');
-        partes = [nucleoTexto, recorte];
-    }
-
-    let prompt = armar(partes);
-    // Sólo si ni siquiera el núcleo entra —un tope de entorno absurdamente
-    // bajo— se recorta él, y se DICE: a esa altura ya se está perdiendo una
-    // regla que sostiene la arquitectura.
-    if (prompt.length > tope) {
-        dropped.push('nucleo(recortado)');
-        prompt = prompt.slice(0, tope);
-    }
-    // `motifId` sólo si la cláusula de verdad viajó: reportar un motivo que
-    // se recortó afirmaría que se pidió algo que no se pidió.
-    return { prompt, zoneId: zona, dropped, motifId: motif && !dropped.includes('decoracion') ? motif.id : null };
+    return { prompt, trimmed };
 };
 
 export const buildNegativePrompt = (config) => {
     const c = normalizeConfig(config);
-    // Las restricciones del administrador están escritas en negativo y en
-    // español («No generar logos»). Es su idioma natural para prohibir y por
-    // eso el campo existe; se manda tal cual, en el campo de negativos, que es
-    // donde un modelo lee una prohibición sin obsesionarse con ella.
-    const suyas = c.restrictions ? [c.restrictions] : [];
-    return [...BASE_NEGATIVE, ...suyas].join(', ').slice(0, 2000);
+    // SOLO lo que el administrador configuró (v4.907): «no agregues al prompt
+    // final instrucciones que no estén configuradas». Sin restricciones
+    // escritas, no viaja ningún negativo.
+    return c.restrictions ? String(c.restrictions).slice(0, 2000) : '';
 };
 
 // ─── El texto de la pieza ──────────────────────────────────────────────
@@ -1240,10 +1029,7 @@ export const retryClauseFor = (critical) => {
 // hace esperar por nada — la regla del portal de Plantillas IA (v4.756).
 export const STAGES = [
     { id: 'prepare', label: 'Preparando los datos', icon: '✨' },
-    { id: 'analyze', label: 'Analizando la fotografía', icon: '🖼' },
-    { id: 'write', label: 'Creando el mensaje', icon: '✍️' },
     { id: 'compose', label: 'Diseñando la pieza', icon: '🎨' },
-    { id: 'verify', label: 'Verificando el resultado', icon: '🔍' },
     { id: 'done', label: 'Aniversario listo', icon: '✓' },
 ];
 export const STAGE_IDS = STAGES.map(s => s.id);
@@ -1261,17 +1047,15 @@ export default {
     GENERATOR_KIND, GENERATOR_LABEL,
     FORMATS, FORMAT_IDS, DEFAULT_FORMAT, RESOLUTIONS, DEFAULT_RESOLUTION, formatById, canvasSize,
     TEXT_ZONES, TEXT_ZONE_IDS, DEFAULT_TEXT_ZONE, FOOTER_BAND, zoneById,
-    BASE_STYLE, NO_TEXT_CLAUSE, PRESERVE_CLAUSE, INTEGRATION_CLAUSE, FOOTER_CLAUSE, BASE_NEGATIVE,
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     MASTER_VARIABLES, DEFAULT_MASTER_PROMPT, applyMasterVariables,
     LIMITS, MAX_REFERENCES, BRANDING_FIELDS, BRANDING_IDS, DEFAULT_CONFIG,
     isDrawableImage, normalizeReference, normalizeConfig, scopeReaches, validateConfig,
     fingerprintOf, isSignificantChange,
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis, textZoneFor, zoneForConfig,
-    clearZoneClause, PROMPT_MAX_CHARS, buildImagePrompt, buildNegativePrompt,
+    buildSimpleRequest, buildNegativePrompt,
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
-    DECOR_MOTIFS, motifForSeed, decorClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,
     printableClubName, normalizeYears,
     PIECE_CHECKS, judgePiece, retryClauseFor, STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,

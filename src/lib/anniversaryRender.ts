@@ -105,6 +105,12 @@ export interface AnniversaryDocument {
      *  fotografía intacta sobre blanco. NO es un segundo sistema de diseño:
      *  es este mismo compositor con la capa 1 vacía. */
     renderMode: 'ai' | 'plain';
+    /** FLUJO SIMPLE (v4.907): la pieza ES la imagen del modelo — el texto
+     *  viene dibujado dentro, como en el ejemplo de ChatGPT del cliente — y
+     *  la plataforma sólo imprime el pie institucional encima. Con `simple`
+     *  la capa 2 (texto) NO se dibuja; `plain` la conserva, porque ahí no hay
+     *  imagen que traiga el texto. */
+    simple?: boolean;
     backdropUrl: string | null;
     photoUrl: string;
     zoneId: string;
@@ -417,7 +423,12 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     }
 
     // ── Capa 2 — el contenido ───────────────────────────────────────
-    const bloques = planTextBlocks(doc);
+    //
+    // En el flujo simple la imagen del modelo YA trae el texto dibujado:
+    // imprimir el nuestro encima lo doblaría — el defecto fantasma de v4.905,
+    // ahora al revés. Sólo se imprime cuando la pieza la componemos nosotros
+    // (`plain`, o un documento sin `simple`).
+    const bloques = (doc.simple && doc.renderMode === 'ai') ? [] : planTextBlocks(doc);
     const boxX = zone.x * W;
     const boxY = zone.y * H;
     const boxW = zone.w * W;

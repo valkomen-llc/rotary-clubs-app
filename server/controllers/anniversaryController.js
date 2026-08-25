@@ -27,8 +27,8 @@ import {
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
 } from '../lib/anniversarySpec.js';
 import {
-    ingestPhoto, analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
-    verifyComposition, resolveBranding, retryClause, COMPOSE_MODEL,
+    ingestPhoto, analyzePhoto, startComposition, syncComposition,
+    verifyComposition, resolveBranding, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
 import {
     catalogFor, modelById, eligibility, resolveProduction, shouldFallback, PROVIDERS, providerOf,
@@ -130,16 +130,10 @@ export const putConfig = async (req, res) => {
     if (!esOperador(req)) return negar(res);
     try {
         const entrante = req.body?.config ?? req.body ?? {};
-        // Las referencias NUEVAS se analizan acá — una vez, al guardarlas — y
-        // el resultado viaja dentro de la propia referencia. Analizarlas por
-        // generación costaría una llamada de visión por pieza para saber
-        // siempre lo mismo. Un análisis que falla degrada: la referencia
-        // sigue viajando como imagen, sin su cláusula.
-        if (Array.isArray(entrante.references)) {
-            for (const ref of entrante.references) {
-                if (ref && ref.url && !ref.analysis) ref.analysis = await analyzeReference(ref.url);
-            }
-        }
+        // FLUJO SIMPLE (v4.907): la referencia ya NO se analiza a palabras —
+        // viaja al modelo COMO IMAGEN, que es como el cliente la usa en su
+        // ejemplo de ChatGPT. Convertirla a una descripción intermedia era una
+        // de las capas que alejaban el resultado de la referencia.
         const { config, row, changed } = await saveDraftConfig(SCOPE, entrante);
         const check = validateConfig(config);
         res.json({
@@ -347,18 +341,13 @@ export const runAnalyze = async (req, res, { draft = false } = {}) => {
         const piece = await readPiece(req.body?.pieceId || req.params?.id);
         if (!piece) return res.status(404).json({ error: 'Esa generación no existe.' });
 
-        const analysis = await analyzePhoto({
-            photoUrl: piece.photoUrl, width: piece.photoWidth, height: piece.photoHeight,
-        });
-        const zoneId = zoneForConfig(ctx.config, analysis);
-        await updatePiece(piece.id, { analysis, zoneId, status: 'analyzed' });
-        res.json({
-            analysis, zoneId,
-            // «No se pudo mirar» se DICE. Presentarlo como un análisis normal
-            // haría creer que la composición se adaptó a la fotografía cuando
-            // en realidad cayó al criterio por defecto.
-            analyzed: analysis.read,
-        });
+        // FLUJO SIMPLE (v4.907): ya no hay análisis de visión — la instrucción
+        // base viaja verbatim y el modelo mira las imágenes él mismo. El
+        // endpoint se CONSERVA como paso barato porque un navegador con el
+        // bundle anterior todavía lo llama (regla aditiva).
+        const zoneId = zoneForConfig(ctx.config, null);
+        await updatePiece(piece.id, { zoneId, status: 'analyzed' });
+        res.json({ zoneId, analyzed: false });
     } catch (e) {
         console.error('[anniversary/analyze]', e);
         res.status(500).json({ error: e.message });
@@ -372,11 +361,12 @@ export const runCopy = async (req, res, { draft = false } = {}) => {
         const piece = await readPiece(req.body?.pieceId || req.params?.id);
         if (!piece) return res.status(404).json({ error: 'Esa generación no existe.' });
 
-        const r = await writeCopy({
-            config: ctx.config, clubName: piece.clubName, years: piece.years, analysis: piece.analysis,
-        });
-        await updatePiece(piece.id, { copy: { ...r.copy, warnings: r.warnings, repaired: r.repaired }, status: 'written' });
-        res.json({ copy: r.copy, warnings: r.warnings, repaired: r.repaired });
+        // FLUJO SIMPLE (v4.907): el texto lo dibuja el MODELO dentro de la
+        // pieza, como en el ejemplo de ChatGPT del cliente — no hay redactor
+        // aparte. El endpoint se conserva como paso barato para el bundle
+        // anterior (regla aditiva).
+        await updatePiece(piece.id, { status: 'written' });
+        res.json({ copy: null, warnings: [], repaired: [] });
     } catch (e) {
         console.error('[anniversary/copy]', e);
         res.status(502).json({ error: e.message });
@@ -406,22 +396,23 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
             const r = await startComposition({
                 config: ctx.config, photoUrl: piece.photoUrl,
                 clubName: piece.clubName, years: piece.years,
-                analysis: piece.analysis, model: modelo, engineConfig: engine,
-                // La semilla del motivo decorativo: el id de la pieza, así el
-                // reintento conserva su motivo y dos piezas distintas varían.
-                seed: piece.id,
-                // El reintento le dice al modelo el problema CONCRETO, no
-                // «hacelo mejor». Sale de la validación anterior.
-                extraClause: retryClause(piece.validation?.critical || []),
+                model: modelo, engineConfig: engine,
             });
             await updatePiece(piece.id, {
                 taskId: r.taskId, zoneId: r.zoneId,
                 versionId: ctx.versionId || null,
+                // «Ver solicitud enviada al modelo» (v4.907): EXACTAMENTE lo
+                // que viajó — el prompt final, las dos imágenes, el modelo, el
+                // proveedor, el endpoint y el tamaño. Es lo que permite
+                // comprobar que le mandamos al modelo lo que creemos.
+                request: {
+                    prompt: r.prompt, model: r.model, provider: r.provider,
+                    endpoint: r.endpoint, size: r.size,
+                    referenceUrl: r.referenceUrl, photoUrl: piece.photoUrl,
+                },
                 // El sello de auditoría (req. 21): con qué se generó ESTA
-                // pieza. `dispatchedAt` es de donde sale la latencia medida, y
-                // `motifId` el motivo decorativo que viajó en el prompt
-                // (v4.905) — «¿por qué esta pieza tiene velas?» tiene respuesta.
-                engine: { ...engineStampFor({ model: modelo, engineConfig: engine, fallbackUsed }), dispatchedAt: new Date().toISOString(), motifId: r.motifId || null },
+                // pieza. `dispatchedAt` es de donde sale la latencia medida.
+                engine: { ...engineStampFor({ model: modelo, engineConfig: engine, fallbackUsed }), dispatchedAt: new Date().toISOString() },
             });
             return r;
         };
@@ -493,12 +484,15 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                             const otra = await startComposition({
                                 config: ctx.config, photoUrl: piece.photoUrl,
                                 clubName: piece.clubName, years: piece.years,
-                                analysis: piece.analysis, model: prod.fallback, engineConfig: engine,
-                                seed: piece.id,
-                                extraClause: retryClause(piece.validation?.critical || []),
+                                model: prod.fallback, engineConfig: engine,
                             });
                             await updatePiece(piece.id, {
                                 taskId: otra.taskId, zoneId: otra.zoneId,
+                                request: {
+                                    prompt: otra.prompt, model: otra.model, provider: otra.provider,
+                                    endpoint: otra.endpoint, size: otra.size,
+                                    referenceUrl: otra.referenceUrl, photoUrl: piece.photoUrl,
+                                },
                                 engine: { ...engineStampFor({ model: prod.fallback, engineConfig: engine, fallbackUsed: true }), dispatchedAt: new Date().toISOString() },
                             });
                             return res.json({ status: 'composing', ready: false, retrying: true, fallbackUsed: true, reason: `El modelo principal falló (${r.error}); se está generando con el de respaldo.` });
@@ -522,75 +516,20 @@ export const runSync = async (req, res, { draft = false } = {}) => {
             }
         }
 
-        // ── La verificación ─────────────────────────────────────────
+        // ── EL DESENLACE (v4.907): SIN PUERTAS, SIN REINTENTO ───────
         //
-        // Se hace acá y no en un paso aparte porque el buffer de la
-        // composición ya está en memoria: pedirlo otra vez sería un viaje de
-        // red para volver a tener lo mismo.
-        let photoBuffer = null;
-        try {
-            photoBuffer = Buffer.from(await (await fetch(piece.photoUrl)).arrayBuffer());
-        } catch { /* sin la original sólo se pierde el control de personas */ }
-
-        const veredicto = await verifyComposition({
-            photoBuffer, composedBuffer: r.buffer, zoneId: piece.zoneId, format: ctx.config.format,
-            // La URL de NUESTRA copia: es lo que mira el verificador de texto
-            // dibujado (v4.905) — el lienzo crudo, antes de la capa de texto.
-            composedUrl: r.url || null,
-        });
-
-        // ── LA CORRECCIÓN AUTOMÁTICA ────────────────────────────────
-        //
-        // Requisito 12: «si falla una regla crítica, intentar corregir
-        // automáticamente antes de entregar la pieza». Se reintenta UNA vez —
-        // no en bucle: cada vuelta cuesta créditos y un modelo que falló dos
-        // veces por lo mismo no va a acertar a la tercera.
-        const MAX_INTENTOS = 2;
-        if (!veredicto.ok && piece.attempts < MAX_INTENTOS) {
-            await updatePiece(piece.id, { validation: veredicto, backdropUrl: r.url, status: 'composing' });
-            const reintentar = await claimPieceForDispatch(piece.id, piece.attempts);
-            if (reintentar) {
-                try {
-                    // MISMO modelo que la generación que falló: un defecto de
-                    // calidad no es un fallo de infraestructura y cambiar de
-                    // modelo acá confundiría las dos cosas (regla del motor).
-                    const otra = await startComposition({
-                        config: ctx.config, photoUrl: piece.photoUrl,
-                        clubName: piece.clubName, years: piece.years,
-                        analysis: piece.analysis, extraClause: retryClause(veredicto.critical),
-                        model: piece.engine?.model || null, seed: piece.id,
-                    });
-                    await updatePiece(piece.id, { taskId: otra.taskId, zoneId: otra.zoneId });
-                    return res.json({ status: 'composing', ready: false, retrying: true, reason: veredicto.critical[0]?.reason || null });
-                } catch (e) {
-                    // Que el reintento no se pueda lanzar no puede dejar la
-                    // pieza sin entregar: se sigue al desenlace de abajo.
-                    console.warn('[anniversary] no se pudo reintentar:', e.message);
-                }
-            }
-        }
-
-        // ── EL DESENLACE ────────────────────────────────────────────
-        //
-        // Agotados los intentos, la pieza SE ENTREGA IGUAL — pero el modo dice
-        // la verdad:
-        //
-        //   `ai`    → la composición se usa.
-        //   `plain` → la composición NO se usa y la pieza se compone con la
-        //             fotografía intacta sobre fondo blanco.
-        //
-        // `plain` NO es un segundo sistema de diseño: es el MISMO compositor
-        // con la capa 1 vacía. Y NO se retoca la imagen del modelo para
-        // corregirla: pegarle la fotografía original encima es el composite
-        // que el equipo rechazó dos veces con las palabras «se ve overlay /
-        // montaje». Este control mide y decide; no retoca el archivo.
-        const usable = veredicto.ok;
+        // Flujo simple, por decisión expresa del cliente: lo que el modelo
+        // devuelve SE ENTREGA y quien genera lo mira — el mismo contrato que
+        // su ejemplo de ChatGPT. Las puertas automáticas de v4.899-v4.906
+        // (fondo, franja, texto dibujado, preservación) descartaban piezas
+        // legítimas y gastaban generaciones dobles; el juicio ahora es del
+        // ojo de quien genera, y la salida es «Volver a probar». La imagen
+        // del modelo no se retoca jamás (regla #1 del sitio).
         const actualizada = await updatePiece(piece.id, {
             backdropUrl: r.url,
-            renderMode: usable ? 'ai' : 'plain',
+            renderMode: 'ai',
             status: 'ready',
-            statusDetail: usable ? null : (veredicto.critical[0]?.reason || null),
-            validation: veredicto,
+            statusDetail: null,
         });
         res.json(await pieceView(actualizada, ctx.config));
     } catch (e) {
@@ -619,6 +558,14 @@ export const pieceView = async (piece, config) => {
             format: config.format,
             width: size.width, height: size.height,
             renderMode: piece.renderMode || 'plain',
+            // FLUJO SIMPLE (v4.907): en modo `ai` la pieza ES la imagen del
+            // modelo — el texto viene dibujado dentro, como en el ejemplo de
+            // ChatGPT del cliente — y la plataforma sólo imprime el pie
+            // institucional. El compositor lee `simple` y NO imprime la capa
+            // de texto encima; `plain` (el respaldo sin composición) conserva
+            // la estructura de texto propia, porque ahí no hay imagen que la
+            // traiga.
+            simple: piece.renderMode === 'ai',
             backdropUrl: piece.renderMode === 'ai' ? piece.backdropUrl : null,
             photoUrl: piece.photoUrl,
             zoneId: piece.zoneId || 'bottom',
@@ -633,6 +580,8 @@ export const pieceView = async (piece, config) => {
         copyWarnings: piece.copy?.warnings || [],
         copyRepaired: piece.copy?.repaired || [],
         attempts: piece.attempts,
+        // «Ver solicitud enviada al modelo» (v4.907): exactamente lo que viajó.
+        request: piece.request || null,
     };
 };
 

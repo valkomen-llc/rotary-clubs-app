@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // Aniversarios IA — EL CAMINO del servidor.  npm run test:anniversary:path
-// v4.896.0
+// v4.896.0 · flujo simple v4.907.0
 //
 // POR QUÉ NO ALCANZA `test:anniversary`. Aquélla prueba el CRITERIO —qué prompt
 // se arma, qué texto se acepta, qué pieza se aprueba— y es puro, así que no ve
@@ -12,7 +12,7 @@
 //   · que las cuatro etapas se encadenen y cada una deje la pieza donde la
 //     siguiente la espera;
 //   · que el reclamo sobre `attempts` impida DOS tareas para la misma pieza;
-//   · que la corrección automática reintente UNA vez y después entregue;
+//   · que el flujo simple (v4.907) entregue TAL CUAL, sin puertas ni reintento;
 //   · que el documento que llega al compositor tenga lo que el compositor lee;
 //   · que la puerta del formulario público esté de verdad cerrada.
 //
@@ -204,7 +204,7 @@ ok('el borrador quedó con esa versión', r.body.config.masterPrompt === v1.conf
 ok('y lo publicado NO se movió', db.tablas.AnniversaryConfig[0].published === publicadoAntes);
 
 // ════════════════════════════════════════════════════════════════════
-grupo('4 — Las cuatro etapas, encadenadas');
+grupo('4 — El flujo simple: tres etapas reales, dos de compatibilidad');
 
 limpiar();
 await llamar(ctrl.getConfig);
@@ -220,137 +220,108 @@ ok('la fotografía se subió a `public-tmp/`',
     prov.estado.subidas.length === 1 && prov.estado.subidas[0].Key.startsWith('public-tmp/'),
     prov.estado.subidas[0]?.Key);
 
+// v4.907: `/analyze` y `/copy` se CONSERVAN como pasos baratos —un navegador
+// con el bundle anterior todavía los llama (regla aditiva)— pero ya no llaman
+// a ningún proveedor: el modelo mira las imágenes él mismo y escribe los
+// textos dentro de la pieza, como en el ejemplo de ChatGPT del cliente.
 r = await llamar(ctrl.postTestAnalyze, { body: { pieceId } });
-eq('la etapa 2 responde 200', r.code, 200);
-eq('el análisis se leyó', r.body.analyzed, true);
-eq('las personas están a la derecha, así que el texto va a la izquierda', r.body.zoneId, 'left');
-eq('y quedó guardado en la fila', db.tablas.AnniversaryPiece[0].zoneId, 'left');
+eq('la etapa de análisis responde 200 (compatibilidad)', r.code, 200);
+eq('pero YA NO analiza con visión', r.body.analyzed, false);
+eq('la zona sale de la configuración, no de la foto', r.body.zoneId, 'left');
 eq('la pieza avanzó a `analyzed`', db.tablas.AnniversaryPiece[0].status, 'analyzed');
 
 r = await llamar(ctrl.postTestCopy, { body: { pieceId } });
-eq('la etapa 3 responde 200', r.code, 200);
-ok('escribió titular y mensaje', !!r.body.copy.title && !!r.body.copy.message);
+eq('la etapa del texto responde 200 (compatibilidad)', r.code, 200);
+eq('pero YA NO redacta nada: copy es null', r.body.copy, null);
 eq('la pieza avanzó a `written`', db.tablas.AnniversaryPiece[0].status, 'written');
+eq('ningún modelo de texto ni de visión se llamó', prov.estado.copyLlamadas, 0);
 
 r = await llamar(ctrl.postTestCompose, { body: { pieceId } });
-eq('la etapa 4 responde 200', r.code, 200);
+eq('componer responde 200', r.code, 200);
 eq('se creó UNA tarea en el proveedor', prov.estado.tareas.length, 1);
 eq('la pieza quedó reclamada con un intento', db.tablas.AnniversaryPiece[0].attempts, 1);
 
 const tarea = prov.estado.tareas[0] || {};
-ok('el prompt le pide al modelo que no dibuje texto', !!tarea.prompt?.includes(S.NO_TEXT_CLAUSE));
-ok('le nombra la franja que tiene que dejar libre', !!tarea.prompt?.includes(S.zoneById('left').words));
-ok('lo prohibido viaja en `negative_prompt`, no en el positivo',
-    !!tarea.negativePrompt && !tarea.prompt?.includes(tarea.negativePrompt));
-eq('pide la proporción del formato', tarea.aspectRatio, '1:1');
-ok('la fotografía viaja como imagen de entrada', Array.isArray(tarea.imageUrls) || !!tarea.imageUrl);
-ok('reserva la banda del pie institucional', !!tarea.prompt?.includes(S.FOOTER_CLAUSE));
-ok('el Prompt Maestro viajó con {NOMBRE_CLUB} sustituido por el nombre real',
-    !!tarea.prompt?.includes('Club Rotario Cali'));
+// ⚠️ LA COMPROBACIÓN CENTRAL DEL v4.907: el prompt que recibe el proveedor es
+// el prompt base con las variables sustituidas, BYTE A BYTE. Nada se agrega.
+ok('el prompt es el prompt base sustituido, VERBATIM',
+    tarea.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40 }),
+    (tarea.prompt || '').slice(0, 120));
 ok('ningún marcador viajó literal al modelo',
     !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(tarea.prompt || ''));
+ok('ninguna cláusula vieja reaparece',
+    !/clear zone|Master art direction|Decoration theme|lettering seen in the reference|no text anywhere/i.test(tarea.prompt || ''));
+eq('el negativo son LAS RESTRICCIONES configuradas y nada más',
+    tarea.negativePrompt, S.DEFAULT_RESTRICTIONS);
+eq('pide la proporción del formato', tarea.aspectRatio, '1:1');
+// Sin referencia configurada, a KIE le viaja UNA imagen (la fotografía) por
+// el campo singular; con referencia son dos y van en `imageUrls` — eso lo
+// fija el grupo 21.
+ok('la fotografía viaja como imagen de entrada',
+    !!tarea.imageUrl || (Array.isArray(tarea.imageUrls) && tarea.imageUrls.length >= 1));
 
-grupo('5 — El sondeo, la verificación y el documento');
+// «Ver solicitud enviada al modelo»: EXACTAMENTE lo que viajó queda guardado.
+const fila4 = db.tablas.AnniversaryPiece[0];
+ok('la solicitud queda guardada en la pieza (request)',
+    !!fila4.request && fila4.request.prompt === tarea.prompt,
+    JSON.stringify(fila4.request || null).slice(0, 120));
+ok('…con el modelo, el proveedor y el endpoint',
+    !!fila4.request.model && fila4.request.provider === 'kie' && /createTask/.test(fila4.request.endpoint || ''),
+    JSON.stringify({ model: fila4.request?.model, provider: fila4.request?.provider, endpoint: fila4.request?.endpoint }));
+ok('…y con las imágenes que viajaron', 'referenceUrl' in fila4.request && !!fila4.request.photoUrl);
+
+grupo('5 — El sondeo entrega TAL CUAL y el documento dice `simple`');
 r = await llamar(ctrl.getTestPiece, { params: { id: pieceId } });
 eq('el sondeo responde 200', r.code, 200);
 eq('la pieza está lista', r.body.ready, true);
 eq('y se usa la composición del modelo', r.body.document.renderMode, 'ai');
-ok('el documento lleva el fondo generado', !!r.body.document.backdropUrl);
-ok('…y la zona que decidió el análisis', r.body.document.zoneId === 'left');
+ok('el documento lleva la imagen generada', !!r.body.document.backdropUrl);
+eq('y declara el flujo simple: el compositor NO imprime texto encima', r.body.document.simple, true);
+ok('el texto viene DENTRO de la imagen: title y message viajan vacíos',
+    r.body.document.title === '' && r.body.document.message === '');
 ok('…y el club y los años exactos', r.body.document.clubName === 'Club Rotario Cali' && r.body.document.years === 40);
-ok('…y el titular y el mensaje', !!r.body.document.title && !!r.body.document.message);
 ok('…y las medidas del lienzo', r.body.document.width === 1080 && r.body.document.height === 1080);
-ok('la validación dice QUÉ se midió',
-    Array.isArray(r.body.validation.measured) && r.body.validation.measured.includes('fondo blanco'),
-    JSON.stringify(r.body.validation?.measured));
-ok('el fondo blanco se midió de verdad sobre la imagen',
-    r.body.validation.measurements.meanLuma > 200, JSON.stringify(r.body.validation.measurements));
+// v4.907: SIN PUERTAS — nada midió ni descartó, por decisión expresa del
+// cliente. El juicio es del ojo de quien genera.
+ok('no hay validación automática', r.body.validation === null, JSON.stringify(r.body.validation));
+ok('y ningún reintento se gastó', prov.estado.tareas.length === 1 && !r.body.retrying);
+ok('la solicitud viaja al panel («Ver solicitud enviada al modelo»)',
+    !!r.body.request && !!r.body.request.prompt && !!r.body.request.model);
 
 // ⚠️ El documento es el contrato con el compositor del navegador. Si a
 // `pieceView` se le olvidara un campo, la pieza saldría sin él y NADA daría
 // error — es la clase de fallo que este archivo documenta una y otra vez.
-const CAMPOS = ['format', 'width', 'height', 'renderMode', 'backdropUrl', 'photoUrl',
+const CAMPOS = ['format', 'width', 'height', 'renderMode', 'simple', 'backdropUrl', 'photoUrl',
     'zoneId', 'clubName', 'years', 'title', 'message', 'branding'];
 ok('el documento trae TODOS los campos que el compositor lee',
     CAMPOS.every(k => k in r.body.document),
     CAMPOS.filter(k => !(k in r.body.document)).join(', '));
 
 // ════════════════════════════════════════════════════════════════════
-grupo('6 — La corrección automática: UNA vez, y después se entrega');
+grupo('6 — v4.907: SIN PUERTAS — lo que el modelo devuelve SE ENTREGA');
 
-limpiar({ imagen: COMPO_OSCURA });
-await llamar(ctrl.getConfig);
-r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const oscura = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: oscura } });
-await llamar(ctrl.postTestCopy, { body: { pieceId: oscura } });
-await llamar(ctrl.postTestCompose, { body: { pieceId: oscura } });
-
-r = await llamar(ctrl.getTestPiece, { params: { id: oscura } });
-eq('con el fondo oscuro, el primer sondeo REINTENTA', r.body.retrying, true);
-ok('y dice el motivo concreto', /oscura|fondo/i.test(r.body.reason || ''), r.body.reason);
-eq('se creó una segunda tarea', prov.estado.tareas.length, 2);
-ok('el reintento le dice al modelo el problema, no «hacelo mejor»',
-    /white/i.test(prov.estado.tareas[1].prompt));
-
-r = await llamar(ctrl.getTestPiece, { params: { id: oscura } });
-ok('el segundo sondeo YA NO reintenta', !r.body.retrying);
-eq('no se creó una tercera tarea', prov.estado.tareas.length, 2);
-eq('la pieza se entrega igual', r.body.ready, true);
-// Con `?.`: si el reintento no parara, no habría documento y esto tiene que
-// FALLAR con su nombre, no reventar con un TypeError que esconde cuál era.
-eq('…pero en modo `plain`: la composición se descartó', r.body.document?.renderMode, 'plain');
-ok('el documento NO lleva el fondo descartado', r.body.document?.backdropUrl === null);
-ok('la fotografía sí viaja, para componerla intacta', !!r.body.document?.photoUrl);
-ok('y se dice el motivo', !!r.body.statusDetail, r.body.statusDetail);
-ok('la imagen del modelo NO se retocó: se guardó tal cual y se descartó su uso',
-    !!db.tablas.AnniversaryPiece.find(p => p.id === oscura).backdropUrl);
-
-grupo('6b — Una pieza al estilo de la referencia SE ENTREGA');
-
-// Es la calibración del reporte de v4.899, medida por el sharp REAL: la
-// fotografía y la decoración legítimas bajan la media aunque el fondo sea
-// blanco, y descartarla gastaba dos generaciones para entregar la foto plana.
-limpiar({ imagen: COMPO_REFERENCIA });
-await llamar(ctrl.getConfig);
-r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const refPieza = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: refPieza } });
-await llamar(ctrl.postTestCopy, { body: { pieceId: refPieza } });
-await llamar(ctrl.postTestCompose, { body: { pieceId: refPieza } });
-r = await llamar(ctrl.getTestPiece, { params: { id: refPieza } });
-eq('el sondeo la da por lista SIN reintentar', r.body.ready, true);
-eq('no gastó una segunda generación', prov.estado.tareas.length, 1);
-eq('la composición del modelo SE USA', r.body.document?.renderMode, 'ai');
-
-grupo('7 — La franja ocupada también se detecta');
-limpiar({ imagen: COMPO_FRANJA });
-await llamar(ctrl.getConfig);
-r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const franja = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: franja } });
-await llamar(ctrl.postTestCopy, { body: { pieceId: franja } });
-await llamar(ctrl.postTestCompose, { body: { pieceId: franja } });
-r = await llamar(ctrl.getTestPiece, { params: { id: franja } });
-ok('con la mitad izquierda ocupada, se reintenta', r.body.retrying === true, JSON.stringify(r.body).slice(0, 200));
-// Se afirma sobre los identificadores GUARDADOS, no sobre el primer texto: dos
-// controles pueden saltar a la vez y `reason` sólo trae el primero.
-const criticos = (db.tablas.AnniversaryPiece.find(p => p.id === franja).validation?.critical || []).map(c => c.id);
-ok('y el control que saltó es el de la franja', criticos.includes('franja_ocupada'), criticos.join(','));
-ok('el fondo blanco NO saltó: la imagen sí era blanca', !criticos.includes('fondo_no_blanco'), criticos.join(','));
-
-grupo('8 — La fotografía alterada descarta la composición');
-limpiar({ imagen: COMPO_BUENA, preservation: { state: 'failed', use: false, reason: 'Hay una persona que no está en la fotografía.' } });
-await llamar(ctrl.getConfig);
-r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const alterada = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: alterada } });
-await llamar(ctrl.postTestCopy, { body: { pieceId: alterada } });
-await llamar(ctrl.postTestCompose, { body: { pieceId: alterada } });
-await llamar(ctrl.getTestPiece, { params: { id: alterada } });   // reintenta
-r = await llamar(ctrl.getTestPiece, { params: { id: alterada } });
-eq('agotado el reintento, se entrega con la foto intacta', r.body.document?.renderMode, 'plain');
-ok('y el motivo es el de la preservación', /persona/i.test(r.body.statusDetail || ''), r.body.statusDetail);
+// Decisión expresa del cliente, con su muestra de ChatGPT delante: las
+// puertas de v4.899-v4.906 (fondo, franja, texto dibujado, preservación)
+// descartaban piezas legítimas y gastaban generaciones dobles. Ahora el
+// juicio es del ojo de quien genera y la salida es «Volver a probar».
+for (const [nombre, patch] of [
+    ['un fondo oscuro', { imagen: COMPO_OSCURA }],
+    ['la franja del texto ocupada', { imagen: COMPO_FRANJA }],
+    ['una preservación que ANTES descartaba', { imagen: COMPO_BUENA, preservation: { state: 'failed', use: false, reason: 'persona de más' } }],
+]) {
+    limpiar(patch);
+    await llamar(ctrl.getConfig);
+    r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const id6 = r.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: id6 } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: id6 } });
+    await llamar(ctrl.postTestCompose, { body: { pieceId: id6 } });
+    r = await llamar(ctrl.getTestPiece, { params: { id: id6 } });
+    ok(`con ${nombre}, la pieza SE ENTREGA igual`, r.body.ready === true && r.body.document?.renderMode === 'ai',
+        JSON.stringify({ ready: r.body.ready, mode: r.body.document?.renderMode, retrying: r.body.retrying }));
+    ok(`…sin gastar una segunda generación`, prov.estado.tareas.length === 1, String(prov.estado.tareas.length));
+    ok(`…y sin llamar a ningún modelo de texto ni visión`, prov.estado.copyLlamadas === 0, String(prov.estado.copyLlamadas));
+}
 
 // ════════════════════════════════════════════════════════════════════
 grupo('9 — El reclamo impide dos tareas para la misma pieza');
@@ -453,46 +424,32 @@ for (const [nombre, fn] of [['getConfig', ctrl.getConfig], ['putConfig', ctrl.pu
 }
 
 // ════════════════════════════════════════════════════════════════════
-grupo('15 — El texto: el bucle de reintento corre de verdad');
+grupo('15 — El redactor aparte YA NO EXISTE en el flujo');
 
-limpiar({
-    copyRespuestas: [
-        // 1) un titular demasiado largo
-        { title: 'x'.repeat(90), message: 'Cuatro décadas de servicio y amistad junto a nuestra comunidad querida.' },
-        // 2) corregido
-        { title: 'Cuarenta años de servicio', message: 'Cuatro décadas de servicio y amistad junto a nuestra comunidad querida.' },
-    ],
-});
+// Se plantan respuestas de redacción a propósito: si alguien reconectara el
+// redactor, se consumirían y esta comprobación lo delataría.
+limpiar({ copyRespuestas: [{ title: 'No debería usarse', message: 'Nunca.' }] });
 await llamar(ctrl.getConfig);
 r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const conBucle = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: conBucle } });
-r = await llamar(ctrl.postTestCopy, { body: { pieceId: conBucle } });
-eq('el segundo intento se acepta', r.body.copy.title, 'Cuarenta años de servicio');
-eq('y no hizo falta reparar nada', r.body.repaired.length, 0);
-
-limpiar({ copyRespuestas: [{ title: 'x'.repeat(90), message: 'Corto.' }, { title: 'x'.repeat(90), message: 'Corto.' }, { title: 'x'.repeat(90), message: 'Corto.' }] });
-await llamar(ctrl.getConfig);
-r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const sinArreglo = r.body.pieceId;
-await llamar(ctrl.postTestAnalyze, { body: { pieceId: sinArreglo } });
-r = await llamar(ctrl.postTestCopy, { body: { pieceId: sinArreglo } });
-eq('agotados los intentos, el trabajo NO se tira', r.code, 200);
-ok('el titular se recortó', r.body.copy.title.length <= S.LIMITS.title.max);
-ok('lo reparado se DICE', r.body.repaired.length > 0, JSON.stringify(r.body.repaired));
-ok('y el mensaje corto SIGUE corto: reparar no inventa', r.body.copy.message === 'Corto.');
-ok('y eso se avisa', r.body.warnings.some(w => /mensaje/i.test(w)), JSON.stringify(r.body.warnings));
+const sinRedactor = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: sinRedactor } });
+r = await llamar(ctrl.postTestCopy, { body: { pieceId: sinRedactor } });
+eq('la etapa del texto responde 200', r.code, 200);
+eq('y devuelve copy null: el texto lo dibuja el modelo dentro de la imagen', r.body.copy, null);
+eq('la respuesta plantada NO se consumió', prov.estado.copyRespuestas.length, 1);
+eq('cero llamadas al modelo de texto', prov.estado.copyLlamadas, 0);
 
 
 // ════════════════════════════════════════════════════════════════════
-grupo('15b — El Prompt Maestro del administrador viaja sustituido');
+grupo('15b — El prompt base del administrador viaja sustituido y EXACTO');
 
-// De punta a punta: se escribe un Prompt Maestro PROPIO con las tres
-// variables, se genera, y lo que llega al proveedor lleva los datos reales.
+// De punta a punta: se escribe un prompt base PROPIO con las tres variables,
+// se genera, y lo que llega al proveedor es ESE texto con los datos reales —
+// nada delante, nada detrás. Es la promesa del flujo simple.
 limpiar();
 r = await llamar(ctrl.getConfig);
-await llamar(ctrl.putConfig, { body: { config: { ...r.body.config,
-    masterPrompt: 'Pieza sobria para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}, con globos dorados.' } } });
+const maestroPropio = 'Pieza sobria para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}, con globos dorados.';
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, masterPrompt: maestroPropio } } });
 r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
 const piezaMaster = r.body.pieceId;
 await llamar(ctrl.postTestAnalyze, { body: { pieceId: piezaMaster } });
@@ -500,29 +457,28 @@ await llamar(ctrl.postTestCopy, { body: { pieceId: piezaMaster } });
 await llamar(ctrl.postTestCompose, { body: { pieceId: piezaMaster } });
 {
     const t = prov.estado.tareas[prov.estado.tareas.length - 1] || {};
-    ok('el Prompt Maestro propio llegó al proveedor', !!t.prompt?.includes('Pieza sobria para'));
+    eq('el prompt base propio llegó EXACTO, con las variables sustituidas',
+        t.prompt, S.applyMasterVariables(maestroPropio, { clubName: 'Club Rotario Cali', years: 40 }));
     ok('con el nombre real donde decía {NOMBRE_CLUB}', !!t.prompt?.includes('Club Rotario Cali'));
     ok('con la cifra real donde decía {ANOS_CLUB}', !!t.prompt?.includes('cumple 40 años'));
     ok('sin ningún marcador literal', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(t.prompt || ''));
-    ok('y el núcleo fijo del sistema sigue presente aunque el maestro sea propio',
-        !!t.prompt?.includes(S.NO_TEXT_CLAUSE) && !!t.prompt?.includes(S.FOOTER_CLAUSE));
 }
 
-grupo('15c — La zona fijada viaja hasta el análisis');
+grupo('15c — La zona configurada queda en la pieza (para el modo `plain`)');
 
-// El cable, no sólo el criterio (v4.744): la zona que decide la CONFIGURACIÓN
-// tiene que ser la que el análisis guarda en la pieza.
+// La zona sólo importa cuando NO hay imagen del modelo (`plain`): ahí el
+// compositor conserva la estructura de texto propia. Sin visión, `auto` cae
+// al tercio inferior — el respaldo declarado del criterio.
 limpiar();
 r = await llamar(ctrl.getConfig);
 await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, textZone: 'bottom' } } });
 r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-const piezaZona = r.body.pieceId;
-r = await llamar(ctrl.postTestAnalyze, { body: { pieceId: piezaZona } });
-eq('con la zona fijada en `bottom`, la foto (gente a la derecha) NO decide', r.body.zoneId, 'bottom');
+r = await llamar(ctrl.postTestAnalyze, { body: { pieceId: r.body.pieceId } });
+eq('con la zona fijada en `bottom`, queda `bottom`', r.body.zoneId, 'bottom');
 await llamar(ctrl.putConfig, { body: { config: { ...(await llamar(ctrl.getConfig)).body.config, textZone: 'auto' } } });
 r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
 r = await llamar(ctrl.postTestAnalyze, { body: { pieceId: r.body.pieceId } });
-eq('con `auto`, vuelve a decidir la foto', r.body.zoneId, 'left');
+eq('con `auto` y sin visión, cae al tercio inferior', r.body.zoneId, 'bottom');
 
 grupo('16 — El motor: modelo configurable, sello y fallback');
 
@@ -696,9 +652,10 @@ openaiLlamadas.length = 0;
 r = await llamar(ctrl.getConfig);
 await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, references: [{ url: FOTO_URL, primary: true }] } } });
 const refGuardada = db.tablas.AnniversaryConfig[0].draft.references[0];
-ok('al guardar una referencia se ANALIZA y el análisis queda dentro de ella',
-    !!refGuardada.analysis && Array.isArray(refGuardada.analysis.palette) && refGuardada.analysis.palette.length > 0,
-    JSON.stringify(refGuardada.analysis || null));
+ok('la referencia guardada queda primaria', refGuardada.primary === true);
+// v4.907: guardar la referencia YA NO la analiza con visión — viaja como
+// IMAGEN, que es lo que el flujo simple promete.
+eq('y guardarla no llamó a ningún modelo', prov.estado.copyLlamadas, 0);
 await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: 'gpt-image-1', fallback: null } } });
 r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
 const gptPieza = r.body.pieceId;
@@ -710,11 +667,9 @@ eq('NO se creó ninguna tarea en KIE', prov.estado.tareas.length, 0);
 ok('la llamada fue a OpenAI, con la referencia Y la fotografía',
     openaiLlamadas.length === 1 && openaiLlamadas[0].imagenes === 2 && openaiLlamadas[0].model === 'gpt-image-1',
     JSON.stringify(openaiLlamadas.map(x => ({ imagenes: x.imagenes, model: x.model }))));
-ok('el prompt llevó la cláusula del ANÁLISIS de la referencia',
-    /Match the visual language/.test(openaiLlamadas[0]?.prompt || ''));
-ok('y el presupuesto POR MODELO dejó pasar el prompt entero (> 2500)',
-    (openaiLlamadas[0]?.prompt || '').length > 2500 && /Master art direction/.test(openaiLlamadas[0]?.prompt || ''),
-    `${(openaiLlamadas[0]?.prompt || '').length} chars`);
+eq('el prompt fue el prompt base sustituido, VERBATIM también en OpenAI',
+    openaiLlamadas[0]?.prompt,
+    S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40 }));
 r = await llamar(ctrl.getTestPiece, { params: { id: gptPieza } });
 eq('el PRIMER sondeo la encuentra lista', r.body.ready, true);
 eq('el sello de auditoría dice el proveedor REAL', db.tablas.AnniversaryPiece[0].engine.provider, 'openai');
@@ -741,68 +696,42 @@ for (const [nombre, fn] of [['getEngine', ctrl.getEngine], ['putEngine', ctrl.pu
 }
 
 // ════════════════════════════════════════════════════════════════════
-grupo('21 — v4.905: el rotulado fantasma se detecta, se reintenta y no se entrega como bueno');
+grupo('21 — v4.907: la referencia viaja PRIMERA y el debug dice la verdad');
 //
-// El reporte con capturas: el modelo dibujó «¡FELIZ ANIVERSARIO!» dentro del
-// fondo imitando la referencia, y nuestra capa quedó impresa encima. El
-// verificador de visión lo pregunta sobre el lienzo CRUDO.
+// La queja original del cliente fue «ni con la referencia adjunta lo toma
+// como referencia». La auditoría mostró que la referencia SIEMPRE viajó como
+// imagen; lo que desviaba el resultado eran nuestras cláusulas y puertas, hoy
+// eliminadas. Esto fija las dos mitades: el ORDEN de las imágenes (referencia
+// primero, foto después) y que «Ver solicitud enviada al modelo» guarda
+// EXACTAMENTE lo que viajó.
 {
-    limpiar({ textoDibujado: { hasText: true, confident: true, where: 'arriba a la izquierda' } });
-    await llamar(ctrl.getConfig);
-    let rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-    const fantasma = rr.body.pieceId;
-    await llamar(ctrl.postTestAnalyze, { body: { pieceId: fantasma } });
-    await llamar(ctrl.postTestCopy, { body: { pieceId: fantasma } });
-    await llamar(ctrl.postTestCompose, { body: { pieceId: fantasma } });
+    limpiar();
+    let rr = await llamar(ctrl.getConfig);
+    const REF_URL = 'https://cdn.example/referencia-aniversario.png';
+    await llamar(ctrl.putConfig, { body: { config: { ...rr.body.config, references: [{ url: REF_URL, primary: true }] } } });
+    rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 11, photo: FOTO_URL } });
+    const conRef = rr.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: conRef } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: conRef } });
+    await llamar(ctrl.postTestCompose, { body: { pieceId: conRef } });
 
-    const tareaF = prov.estado.tareas[0] || {};
-    ok('la decoración de la pieza viajó en el prompt (varía por pieza)',
-        !!tareaF.prompt?.includes('Decoration theme for THIS piece'));
-    ok('…y quedó registrada en el sello de auditoría',
-        !!db.tablas.AnniversaryPiece.find(p => p.id === fantasma)?.engine?.motifId);
+    const t21 = prov.estado.tareas[0] || {};
+    ok('viajan DOS imágenes: la referencia y la fotografía',
+        Array.isArray(t21.imageUrls) && t21.imageUrls.length === 2, JSON.stringify(t21.imageUrls));
+    eq('la referencia va PRIMERA — es lo que el prompt base declara', t21.imageUrls?.[0], REF_URL);
+    ok('y la fotografía del club va segunda', String(t21.imageUrls?.[1] || '').length > 0 && t21.imageUrls?.[1] !== REF_URL);
 
-    rr = await llamar(ctrl.getTestPiece, { params: { id: fantasma } });
-    eq('con texto dibujado, el primer sondeo REINTENTA', rr.body.retrying, true);
-    ok('y el motivo nombra el texto dibujado', /dibuj/i.test(rr.body.reason || ''), rr.body.reason);
-    ok('el reintento le exige un lienzo sin caracteres',
-        /no words, letters or numbers/i.test(prov.estado.tareas[1]?.prompt || ''));
+    const fila21 = db.tablas.AnniversaryPiece.find(p => p.id === conRef);
+    eq('el debug guarda la referencia que viajó', fila21.request?.referenceUrl, REF_URL);
+    eq('…el prompt que viajó', fila21.request?.prompt, t21.prompt);
+    ok('…y el tamaño pedido', !!fila21.request?.size, JSON.stringify(fila21.request?.size));
 
-    rr = await llamar(ctrl.getTestPiece, { params: { id: fantasma } });
-    eq('el segundo también trae texto, así que se descarta la composición', rr.body.document?.renderMode, 'plain');
-    ok('y el motivo queda escrito', !!rr.body.statusDetail, rr.body.statusDetail);
-
-    // v4.906 — el caso de Tuluá: una foto de donaciones SIEMPRE trae texto
-    // (los rótulos de las cajas). El verificador lo ubica DENTRO de la
-    // fotografía y la composición SE USA — descartarla por eso fue el falso
-    // positivo que dejó la pieza sin globos ni diseño.
-    limpiar({ textoDibujado: { hasText: true, confident: true, insidePhoto: true, where: 'en las cajas dentro de la fotografía' } });
-    await llamar(ctrl.getConfig);
-    rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Tuluá', years: 40, photo: FOTO_URL } });
-    const cajas = rr.body.pieceId;
-    await llamar(ctrl.postTestAnalyze, { body: { pieceId: cajas } });
-    await llamar(ctrl.postTestCopy, { body: { pieceId: cajas } });
-    await llamar(ctrl.postTestCompose, { body: { pieceId: cajas } });
-    rr = await llamar(ctrl.getTestPiece, { params: { id: cajas } });
-    eq('con el texto DENTRO de la foto, la composición SE USA (Tuluá)', rr.body.document?.renderMode, 'ai');
-    ok('y no se gastó un reintento por el falso positivo', prov.estado.tareas.length === 1, String(prov.estado.tareas.length));
-
-    // Y el caso sano: el verificador contesta «sin texto», la pieza se usa y
-    // la validación DICE que el texto dibujado se miró.
-    limpiar({});
-    await llamar(ctrl.getConfig);
-    rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
-    const sana = rr.body.pieceId;
-    await llamar(ctrl.postTestAnalyze, { body: { pieceId: sana } });
-    await llamar(ctrl.postTestCopy, { body: { pieceId: sana } });
-    await llamar(ctrl.postTestCompose, { body: { pieceId: sana } });
-    rr = await llamar(ctrl.getTestPiece, { params: { id: sana } });
-    eq('sin texto dibujado, la composición se usa', rr.body.document?.renderMode, 'ai');
-    ok('y la validación dice que se miró',
-        rr.body.validation?.measured?.includes('texto dibujado'), JSON.stringify(rr.body.validation?.measured));
-    // El reintento de la MISMA pieza conserva su motivo: el que registra el
-    // sello es reproducible desde el id (determinista, no una ruleta).
-    ok('el motivo del sello sale del catálogo cerrado',
-        S.DECOR_MOTIFS.some(m => m.id === db.tablas.AnniversaryPiece.find(p => p.id === sana)?.engine?.motifId));
+    rr = await llamar(ctrl.getTestPiece, { params: { id: conRef } });
+    ok('el sondeo la entrega y el panel recibe la solicitud completa',
+        rr.body.ready === true && rr.body.request?.referenceUrl === REF_URL,
+        JSON.stringify(rr.body.request || null).slice(0, 160));
+    eq('los años del pedido real («11 años», el caso del cliente) van en el prompt',
+        /11 años/.test(rr.body.request?.prompt || ''), true);
 }
 
 // ════════════════════════════════════════════════════════════════════

@@ -2554,7 +2554,7 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
-## Aniversarios IA — v4.895 (motor multimodelo: v4.897; Prompt Maestro: v4.898)
+## Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**)
 
 Módulo **nuevo e independiente**. Genera la pieza gráfica del aniversario de un
 club a partir de cuatro datos: club, años, fotografía y un botón. El
@@ -2586,6 +2586,67 @@ Pruebas: `npm run test:anniversary` (134 casos de criterio),
 proveedores sustituidos en memoria) y `npm run test:anniversary:render` (14 en
 un navegador de verdad; pide `playwright` y `esbuild` y **se salta solo** si
 faltan). **Ninguna necesita base, credenciales ni red.**
+
+### ⚠️ EL FLUJO SIMPLE (v4.907) SUPERSEDE LA ARQUITECTURA HÍBRIDA — LEER ESTO PRIMERO
+
+Decisión EXPRESA del cliente, con su propia muestra de ChatGPT delante («ni con
+la referencia adjunta lo toma como referencia»): la generación se comporta como
+una conversación simple. Referencia visual + fotografía del club + prompt base
+en texto plano → el modelo dibuja TODO, incluidos los textos. Muchas reglas de
+abajo (v4.895-v4.906) describen la arquitectura anterior y quedan superadas en
+lo que contradiga esto; se conservan escritas porque explican POR QUÉ cada capa
+existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
+
+- **EL PROMPT VIAJA VERBATIM** (`buildSimpleRequest`): el prompt base con
+  `{NOMBRE_CLUB}`, `{ANOS_CLUB}` y `{FOTO_CLUB}` sustituidos, byte a byte.
+  NADA se agrega solo — se eliminaron `buildImagePrompt`, las cláusulas
+  (NO_TEXT, PRESERVE, FOOTER, clearZone, decoración por semilla, BASE_STYLE) y
+  el análisis de visión de la foto. «No agregues al prompt final instrucciones
+  que no estén configuradas» es el pedido literal. El único tratamiento es el
+  recorte por tope POR MODELO (KIE 2500), declarado en `trimmed`.
+- **EL MODELO ESCRIBE LOS TEXTOS.** Supersede «la IA no escribe texto» de la
+  arquitectura híbrida: el prompt base predeterminado le pide el título, la
+  cifra y el mensaje con ortografía perfecta — es lo que el cliente vio
+  funcionar en ChatGPT. El compositor lee `document.simple` y NO imprime la
+  capa de texto en modo `ai`; el respaldo `plain` (sin imagen del modelo)
+  conserva la estructura fija de v4.902, porque ahí no hay imagen que traiga
+  el texto. La capa 3 (pie institucional desde archivos reales) SIGUE: el
+  emblema es marca registrada y no se dibuja jamás.
+- **LA REFERENCIA VIAJA COMO PRIMERA IMAGEN y la fotografía como segunda**, en
+  KIE (`imageUrls`) y en GPT Image (`image[]`) por igual, y el prompt base lo
+  DECLARA («La PRIMERA imagen adjunta es la REFERENCIA VISUAL»). La auditoría
+  que pidió el cliente mostró que la referencia SIEMPRE viajó como imagen: lo
+  que desviaba el resultado eran nuestras cláusulas (prohibirle reproducir la
+  tipografía de la referencia, forzar zonas vacías) y las puertas que
+  descartaban composiciones. La referencia ya NO se analiza con visión al
+  guardarla.
+- **SIN PUERTAS, SIN REINTENTO AUTOMÁTICO.** `runSync` entrega TAL CUAL lo que
+  el modelo devuelve (`renderMode: 'ai'`, `status: 'ready'`). Las puertas de
+  v4.899-v4.906 (fondo blanco, franja, texto dibujado, preservación) NO corren
+  en el flujo — descartaban piezas legítimas y gastaban generaciones dobles; el
+  juicio es del ojo de quien genera y la salida es «Volver a probar». El
+  fallback de INFRAESTRUCTURA (timeout, 5xx, modelo retirado) sí sigue.
+  `judgePiece`, `verifyComposition` y el verificador de rotulado quedan para el
+  BENCHMARK, que es donde puntuar modelos sí exige medir.
+- **EL PROMPT NEGATIVO SON LAS RESTRICCIONES CONFIGURADAS, textuales**
+  (`buildNegativePrompt`). Es un campo VISIBLE del panel con su default
+  editable — nada invisible viaja.
+- **«VER SOLICITUD ENVIADA AL MODELO»** (`AnniversaryPiece.request`, JSONB
+  aditivo): el prompt final exacto, las dos imágenes, el modelo, el proveedor,
+  el endpoint y el tamaño, guardados al despachar y visibles en el panel de
+  pruebas. Es lo que permite comprobar que al modelo le mandamos lo que
+  creemos — la mitad del diagnóstico que faltó en el reporte original.
+- **`/analyze` y `/copy` se CONSERVAN como no-ops baratos** (regla aditiva): un
+  navegador con el bundle anterior todavía los llama. Los frontends nuevos van
+  foto → componer → sondear, y `STAGES` quedó en tres (prepare/compose/done) en
+  los DOS espejos. El redactor aparte no se llama: `test:anniversary:path`
+  cuenta CERO llamadas al modelo de texto/visión en el flujo.
+- **Probar generación corre por la MISMA función que el público** (las mismas
+  `runCompose`/`runSync`) — eso ya era regla y ahora es también el requisito
+  expreso del pedido.
+- Las cuatro baterías se reescribieron para este contrato (167 + 171 + 77 + 16)
+  y las claves están verificadas a la inversa: un agregado al prompt, el orden
+  de las imágenes invertido o la capa de texto reencendida hacen fallar.
 
 - **⚠️ EL CRITERIO PUEDE ESTAR BIEN Y EL DEFECTO VIVIR EN EL CAMINO** (v4.896,
   `test:anniversary:path`). La v4.895 verificó el criterio y el compositor, y
