@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.903.0 | 2026-08-25 (Biblioteca: el «Mostrar más» que no avanzaba al reabrir el selector)
-// Cache bust: 2026-08-25i
+// UI V4.904.0 | 2026-08-25 (Aniversarios IA: Publicar y Probar actúan sobre LO QUE SE VE)
+// Cache bust: 2026-08-25j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.904.0',
+        title: 'Aniversarios IA: Publicar y Probar actúan sobre lo que se ve 👁️',
+        description: 'Corrección del reporte con captura: una referencia visual recién agregada a la vista, el aviso «No hay ninguna referencia visual» debajo y la franja verde «lo que ves es exactamente lo que está generando el formulario público» — tres afirmaciones que no pueden ser ciertas a la vez. La causa: los avisos, la validación y el estado los calcula el servidor sobre el borrador GUARDADO, y agregar una referencia (o editar cualquier cosa) sólo cambiaba la pantalla; peor, «Publicar» y «Probar» actuaban sobre el borrador del servidor, así que una referencia sin guardar quedaba FUERA de lo publicado y de las pruebas, en silencio. Tres cambios: (1) el panel detecta los cambios sin guardar y lo dice con una franja propia, callando los veredictos que ya no describen lo que se ve — los avisos se recalculan al guardar; (2) «Publicar» guarda el borrador ANTES de publicar (y lo revalida): publica lo que está a la vista, no la versión anterior; (3) «Probar» también guarda antes de probar, porque la prueba corre contra el borrador guardado. Restaurar una versión ya contaba como estado guardado (la escribe el servidor). Siete comprobaciones nuevas en la batería, verificadas a la inversa: con el código anterior fallan 6.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.903.0',
         title: 'Biblioteca Multimedia: el «Mostrar más» que no avanzaba al reabrir el selector 📚',

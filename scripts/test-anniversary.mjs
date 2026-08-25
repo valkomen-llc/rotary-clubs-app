@@ -555,6 +555,45 @@ for (const prohibido of ['fontSize', 'colorPicker', 'zIndex', 'DesignCanvas', 'c
 check('el formulario público NO usa `<datalist>`', !sinComentarios(publica).includes('<datalist'));
 check('el panel de pruebas tampoco', !sinComentarios(estudio).includes('<datalist') && !/\blist=/.test(sinComentarios(estudio)));
 
+// ── v4.904: los veredictos hablan del borrador GUARDADO, y la pantalla lo dice ──
+//
+// Reporte con captura: una referencia recién agregada a la vista, el aviso «No
+// hay ninguna referencia visual» debajo y la franja verde «lo que ves es lo que
+// genera el público» — tres afirmaciones incompatibles. La causa: los avisos y
+// el estado los calcula el servidor sobre lo GUARDADO, y Publicar/Probar
+// actuaban sobre el draft del servidor ignorando las ediciones locales.
+{
+    const cuerpo = sinComentarios(estudio);
+    check('v4.904: el panel distingue los cambios SIN GUARDAR (`sinGuardar`)',
+        cuerpo.includes('const sinGuardar') && cuerpo.includes('savedJson'));
+    // Un solo camino de escritura del borrador: con dos PUT, el día que uno
+    // gane un paso el otro se queda sin él.
+    check('v4.904: hay UN solo PUT del borrador (persistir)',
+        (cuerpo.match(/method: 'PUT'/g) || []).length === 1);
+    // Publicar publica LO QUE SE VE: persiste ANTES del POST /publish.
+    const iPublicar = cuerpo.indexOf('const publicar');
+    const iPersistEnPublicar = cuerpo.indexOf('persistir()', iPublicar);
+    const iPostPublish = cuerpo.indexOf('/anniversaries/publish', iPublicar);
+    check('v4.904: Publicar guarda el borrador ANTES de publicar',
+        iPublicar > -1 && iPersistEnPublicar > -1 && iPostPublish > -1 && iPersistEnPublicar < iPostPublish);
+    // Probar prueba LO QUE SE VE: persiste ANTES de crear la pieza de prueba.
+    const iProbar = cuerpo.indexOf('const probar');
+    const iPersistEnProbar = cuerpo.indexOf('persistir()', iProbar);
+    const iTestPhoto = cuerpo.indexOf('/anniversaries/test/photo', iProbar);
+    check('v4.904: Probar guarda el borrador ANTES de probar',
+        iProbar > -1 && iPersistEnProbar > -1 && iTestPhoto > -1 && iPersistEnProbar < iTestPhoto);
+    // La franja verde y los avisos del servidor se CALLAN con cambios sin
+    // guardar: describir otra configuración es el defecto reportado.
+    check('v4.904: la franja «lo que ves es lo público» está detrás de sinGuardar',
+        /sinGuardar \? \(/.test(cuerpo) &&
+        cuerpo.indexOf('sinGuardar ? (') < cuerpo.indexOf('exactamente lo que está generando'));
+    check('v4.904: los avisos del servidor no se pintan con cambios sin guardar',
+        cuerpo.includes('!sinGuardar && errors.map') && cuerpo.includes('!sinGuardar && warnings.map'));
+    // La versión restaurada la escribió el SERVIDOR: es el estado guardado.
+    check('v4.904: restaurar una versión actualiza la foto de lo guardado',
+        /setConfig\(j\.config\); setSavedJson\(JSON\.stringify\(j\.config\)\)/.test(cuerpo));
+}
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
