@@ -2647,6 +2647,20 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
 - Las cuatro baterías se reescribieron para este contrato (167 + 171 + 77 + 16)
   y las claves están verificadas a la inversa: un agregado al prompt, el orden
   de las imágenes invertido o la capa de texto reencendida hacen fallar.
+- **⚠️ LA FOTO VIAJA PRIMERA; LA REFERENCIA, SEGUNDA — Y NO AL REVÉS**
+  (v4.909, supersede el orden de v4.907). Los modelos de edición toman la
+  PRIMERA imagen como base: con la referencia primera, la salida era la
+  REFERENCIA EDITADA — conservaba su foto interna, copiaba sus textos
+  («Cuatro décadas» en un club de 10 años) y sólo cambiaba el nombre, mal
+  escrito. El prompt predeterminado declara la referencia como EJEMPLO que se
+  imita sin copiarse (ni su foto ni sus textos), el nombre letra por letra y
+  el mensaje NUEVO coherente con `{ANOS_CLUB}`. `{VARIACION}` es la única
+  variable que llena la PLATAFORMA: motivo decorativo determinista por id de
+  pieza (`variationForSeed`), visible en el debug y borrable del prompt base.
+  Y el default guardado SIN EDITAR se actualiza al vigente en
+  `normalizeConfig` (upgrade perezoso, `LEGACY_MASTER_PROMPTS`): sin eso, una
+  mejora del predeterminado no llega jamás a la fila que un guardado
+  anterior congeló; un prompt editado no se toca jamás.
 - **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
   se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
   EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción

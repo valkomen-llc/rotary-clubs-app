@@ -642,7 +642,7 @@ const AnniversaryStudio: React.FC = () => {
 
             {/* 3 — La instrucción base (v4.907: el flujo simple) */}
             <Card title="Prompt base" icon={<Sparkles className="w-5 h-5" />}
-                hint="La instrucción que viaja al modelo TAL CUAL, con las variables sustituidas — junto con la referencia (primera imagen) y la fotografía del club (segunda imagen). Nada más se agrega."
+                hint="La instrucción que viaja al modelo TAL CUAL, con las variables sustituidas — junto con la fotografía del club (primera imagen, la base) y la referencia de estilo (segunda imagen, el ejemplo). Nada más se agrega."
                 action={
                     <button
                         onClick={() => {
@@ -666,7 +666,7 @@ const AnniversaryStudio: React.FC = () => {
                             {/* Los marcadores son DATOS, no lenguaje (v4.662). */}
                             <span data-no-translate>{(catalog.masterVariables || []).join('  ')}</span></span>
                         <span><strong className="text-gray-800">Referencia visual:</strong>{' '}
-                            {config.references.length ? 'viaja como PRIMERA imagen' : 'sin imagen cargada'}</span>
+                            {config.references.length ? 'viaja como SEGUNDA imagen — el ejemplo de estilo' : 'sin imagen cargada'}</span>
                         <span><strong className="text-gray-800">Pie institucional:</strong>{' '}
                             lo imprime la plataforma en el {Math.round((catalog.footerReserve?.h ?? 0.16) * 100)} % inferior</span>
                         <span><strong className="text-gray-800">Formato:</strong> {config.format === 'square' ? '1:1' : config.format}</span>
@@ -679,7 +679,7 @@ const AnniversaryStudio: React.FC = () => {
                     </div>
                     <Instruccion
                         label="Prompt base" max={4000} rows={12}
-                        help="Se envía VERBATIM: lo que escribas acá es exactamente lo que recibe el modelo, con {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB} sustituidos. El modelo dibuja también los textos de la pieza — si un nombre sale mal escrito, se regenera."
+                        help="Se envía VERBATIM: lo que escribas acá es exactamente lo que recibe el modelo, con {NOMBRE_CLUB}, {ANOS_CLUB}, {FOTO_CLUB} y {VARIACION} sustituidos — {VARIACION} lo llena la plataforma con un motivo decorativo distinto por pieza; borrá la variable si querés siempre la misma decoración. El modelo dibuja también los textos de la pieza — si un nombre sale mal escrito, se regenera."
                         value={config.masterPrompt} onChange={v => set('masterPrompt', v)}
                     />
                     <Instruccion
@@ -844,16 +844,16 @@ const AnniversaryStudio: React.FC = () => {
                                                     {' '}· <strong>Tamaño:</strong> <span data-no-translate>{testInfo.request.size}</span></p>
                                                 <div className="flex gap-3">
                                                     <div>
-                                                        <p className="font-medium text-gray-700 mb-1">1ª imagen — referencia</p>
-                                                        {testInfo.request.referenceUrl
-                                                            ? <img src={testInfo.request.referenceUrl} alt="Referencia enviada" className="w-24 h-24 object-cover rounded border border-gray-200" />
-                                                            : <p className="text-gray-400">no viajó ninguna</p>}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-700 mb-1">2ª imagen — fotografía</p>
+                                                        <p className="font-medium text-gray-700 mb-1">1ª imagen — fotografía (la base)</p>
                                                         {testInfo.request.photoUrl
                                                             ? <img src={testInfo.request.photoUrl} alt="Fotografía enviada" className="w-24 h-24 object-cover rounded border border-gray-200" />
                                                             : <p className="text-gray-400">—</p>}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-gray-700 mb-1">2ª imagen — referencia (el ejemplo)</p>
+                                                        {testInfo.request.referenceUrl
+                                                            ? <img src={testInfo.request.referenceUrl} alt="Referencia enviada" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                                                            : <p className="text-gray-400">no viajó ninguna</p>}
                                                     </div>
                                                 </div>
                                                 <div>

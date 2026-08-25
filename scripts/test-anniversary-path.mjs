@@ -244,9 +244,14 @@ eq('la pieza quedó reclamada con un intento', db.tablas.AnniversaryPiece[0].att
 const tarea = prov.estado.tareas[0] || {};
 // ⚠️ LA COMPROBACIÓN CENTRAL DEL v4.907: el prompt que recibe el proveedor es
 // el prompt base con las variables sustituidas, BYTE A BYTE. Nada se agrega.
-ok('el prompt es el prompt base sustituido, VERBATIM',
-    tarea.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40 }),
+// v4.909: {VARIACION} la llena la plataforma, determinista por el id de la
+// pieza — es la única parte del prompt que cambia entre piezas, y es visible.
+ok('el prompt es el prompt base sustituido, VERBATIM (con su variación por pieza)',
+    tarea.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT,
+        { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(pieceId) }),
     (tarea.prompt || '').slice(0, 120));
+ok('la variación de ESTA pieza viajó en el prompt',
+    (tarea.prompt || '').includes('los elementos decorativos son:'));
 ok('ningún marcador viajó literal al modelo',
     !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(tarea.prompt || ''));
 ok('ninguna cláusula vieja reaparece',
@@ -669,7 +674,7 @@ ok('la llamada fue a OpenAI, con la referencia Y la fotografía',
     JSON.stringify(openaiLlamadas.map(x => ({ imagenes: x.imagenes, model: x.model }))));
 eq('el prompt fue el prompt base sustituido, VERBATIM también en OpenAI',
     openaiLlamadas[0]?.prompt,
-    S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40 }));
+    S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(gptPieza) }));
 r = await llamar(ctrl.getTestPiece, { params: { id: gptPieza } });
 eq('el PRIMER sondeo la encuentra lista', r.body.ready, true);
 eq('el sello de auditoría dice el proveedor REAL', db.tablas.AnniversaryPiece[0].engine.provider, 'openai');
@@ -696,7 +701,7 @@ for (const [nombre, fn] of [['getEngine', ctrl.getEngine], ['putEngine', ctrl.pu
 }
 
 // ════════════════════════════════════════════════════════════════════
-grupo('21 — v4.907: la referencia viaja PRIMERA y el debug dice la verdad');
+grupo('21 — v4.909: la foto es la BASE, la referencia el EJEMPLO, y el debug dice la verdad');
 //
 // La queja original del cliente fue «ni con la referencia adjunta lo toma
 // como referencia». La auditoría mostró que la referencia SIEMPRE viajó como
@@ -716,10 +721,15 @@ grupo('21 — v4.907: la referencia viaja PRIMERA y el debug dice la verdad');
     await llamar(ctrl.postTestCompose, { body: { pieceId: conRef } });
 
     const t21 = prov.estado.tareas[0] || {};
-    ok('viajan DOS imágenes: la referencia y la fotografía',
+    ok('viajan DOS imágenes: la fotografía y la referencia',
         Array.isArray(t21.imageUrls) && t21.imageUrls.length === 2, JSON.stringify(t21.imageUrls));
-    eq('la referencia va PRIMERA — es lo que el prompt base declara', t21.imageUrls?.[0], REF_URL);
-    ok('y la fotografía del club va segunda', String(t21.imageUrls?.[1] || '').length > 0 && t21.imageUrls?.[1] !== REF_URL);
+    // v4.909 — el ORDEN es la corrección del reporte con capturas: los modelos
+    // de edición toman la PRIMERA imagen como base, y con la referencia
+    // primera la salida era la referencia editada — con SU foto interna y SUS
+    // textos («Cuatro décadas» en un club de 10 años).
+    ok('la FOTOGRAFÍA va PRIMERA — es la base que el modelo edita',
+        String(t21.imageUrls?.[0] || '').length > 0 && t21.imageUrls?.[0] !== REF_URL, JSON.stringify(t21.imageUrls));
+    eq('y la referencia va SEGUNDA — el ejemplo de estilo', t21.imageUrls?.[1], REF_URL);
 
     const fila21 = db.tablas.AnniversaryPiece.find(p => p.id === conRef);
     eq('el debug guarda la referencia que viajó', fila21.request?.referenceUrl, REF_URL);

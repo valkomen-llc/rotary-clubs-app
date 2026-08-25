@@ -336,12 +336,13 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
 
     // ⚠️ EL FLUJO SIMPLE (v4.907): la instrucción base con las variables
     // sustituidas, VERBATIM. Ninguna cláusula automática, ningún análisis
-    // intermedio, ningún agente que reescriba — la referencia viaja como
-    // PRIMERA imagen, la fotografía como SEGUNDA, y la instrucción dice cuál
-    // es cuál. Es el pedido expreso del cliente con su ejemplo de ChatGPT
-    // delante: «prioriza similitud visual sobre creatividad».
+    // intermedio, ningún agente que reescriba. Desde v4.909 LA FOTOGRAFÍA
+    // viaja PRIMERA y la referencia SEGUNDA: los modelos de edición toman la
+    // primera imagen como base, y con la referencia primera la salida era la
+    // referencia editada — con SU foto y SUS textos (reporte con capturas).
+    // `seed` es el id de la pieza: llena {VARIACION} de forma determinista.
     const { prompt, trimmed } = buildSimpleRequest({
-        config: c, clubName, years,
+        config: c, clubName, years, seed,
         maxChars: ficha?.capabilities?.promptMaxChars || null,
     });
     if (trimmed) {
@@ -352,9 +353,10 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
     const promptFinal = extraClause ? `${prompt}\n${extraClause}` : prompt;
 
     if (proveedor.id === 'openai') {
-        const buffers = [];
+        // La FOTO primera: es la base que el modelo edita. La referencia va
+        // después, como el ejemplo de estilo que el prompt declara (v4.909).
+        const buffers = [await fetchImageBuffer(photoUrl)];
         if (referencia?.url) buffers.push(await fetchImageBuffer(referencia.url));
-        buffers.push(await fetchImageBuffer(photoUrl));
         const generado = await editImageOpenAI({
             model: modeloElegido,
             prompt: promptFinal,
@@ -368,9 +370,12 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         return { taskId: `${SYNC_TASK}${url}`, zoneId, prompt: promptFinal, model: modeloElegido, provider: proveedor.id, usedReference: !!referencia, referenceUrl: referencia?.url || null, size: formatById(c.format).aspect === '1:1' ? '1024x1024' : 'auto', endpoint: 'openai:/v1/images/edits' };
     }
 
-    // El ORDEN importa: la referencia primero y la fotografía después, porque
-    // el prompt habla de «la primera» y «la última» imagen.
-    const imageUrls = [referencia?.url, photoUrl].filter(Boolean);
+    // El ORDEN importa y es la corrección de v4.909: los modelos de edición
+    // toman la PRIMERA imagen como base. Con la referencia primera, la salida
+    // era la referencia editada — conservando su foto interna y sus textos.
+    // La foto del club va primera (la base) y la referencia segunda (el
+    // ejemplo), que es exactamente lo que el prompt base declara.
+    const imageUrls = [photoUrl, referencia?.url].filter(Boolean);
 
     const taskId = await createKieImageTask({
         model: modeloElegido,
