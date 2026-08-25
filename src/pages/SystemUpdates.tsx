@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.905.0 | 2026-08-25 (Aniversarios IA: sin rotulado fantasma y decoración variable)
-// Cache bust: 2026-08-25k
+// UI V4.906.0 | 2026-08-25 (Aniversarios IA: el texto DE la fotografía es legítimo)
+// Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.906.0',
+        title: 'Aniversarios IA: el texto de la fotografía es legítimo 📦',
+        description: 'Corrección inmediata del reporte de Tuluá: el verificador de texto dibujado (estrenado en v4.905) vio los rótulos de las CAJAS DE DONACIÓN dentro de la fotografía —Baxter, Cristal, Rotary— y los tomó por texto dibujado por el modelo. Descalificó las dos generaciones y entregó el modo plano: por eso la pieza salió sin globos, sin curvas y sin diseño, con la foto ocupando media proporción — no es que la configuración no funcione, es que el diseño generado se descartó por un falso positivo. Una fotografía de donaciones SIEMPRE trae texto. Dos capas: la pregunta al verificador ahora dice expresamente que el texto que la fotografía trae consigo (cajas, carteles, camisetas, pendones) es LEGÍTIMO y no cuenta — sólo descalifica el texto dibujado FUERA de la fotografía, sobre el fondo o la decoración—; y un campo acotado `insidePhoto` en la respuesta hace que el CÓDIGO no descalifique cuando el propio verificador ubica el texto dentro de la foto, aunque haya contestado con descuido. El caso exacto del reporte quedó fijado en las dos baterías (188 + 188 comprobaciones), verificado a la inversa. Es la lección repetida del sitio: al añadir una puerta que descalifica sin apelación, preguntarse cuál es su ruido de medición y a cuántas piezas legítimas alcanza.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.905.0',
         title: 'Aniversarios IA: sin rotulado fantasma, y la decoración varía por pieza 🎈',

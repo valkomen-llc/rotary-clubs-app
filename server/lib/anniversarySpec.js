@@ -700,15 +700,22 @@ export const referenceClauseFor = (analysis) => {
 // se ENTREGA con nota, para que un titubeo del modelo no mande una pieza buena
 // al modo plano.
 export const DRAWN_TEXT_SYSTEM = [
-    'Sos un verificador de piezas gráficas. Vas a mirar UN lienzo generado por un modelo de imagen que debería estar',
-    'completamente libre de texto: todo el texto de la pieza final se imprime DESPUÉS, por software, encima de este lienzo.',
-    'Contestá SOLO un JSON: {"hasText": boolean, "confident": boolean, "where": "…"}.',
-    '· hasText: true únicamente si ves CARACTERES dibujados de verdad — palabras, letras o números legibles o casi legibles.',
+    'Sos un verificador de piezas gráficas. Vas a mirar UN lienzo generado por un modelo de imagen: una FOTOGRAFÍA real',
+    'integrada en un fondo decorativo. El FONDO debería estar libre de texto — el texto de la pieza final se imprime',
+    'DESPUÉS, por software, encima de este lienzo.',
+    '⚠️ LA FOTOGRAFÍA PUEDE TRAER TEXTO PROPIO — rótulos de cajas, carteles, camisetas, pendones, marcas de productos —',
+    'y ese texto es LEGÍTIMO: forma parte de la escena fotografiada y NO cuenta. Lo único que cuenta es texto dibujado',
+    'FUERA de la fotografía: sobre el fondo, la decoración, las franjas o los bordes de la pieza.',
+    'Contestá SOLO un JSON: {"hasText": boolean, "insidePhoto": boolean, "confident": boolean, "where": "…"}.',
+    '· hasText: true únicamente si ves CARACTERES dibujados de verdad FUERA de la fotografía — palabras, letras o números',
+    '  legibles o casi legibles, del tipo de un titular, un rótulo o una firma. Si todo el texto que ves está DENTRO de la',
+    '  fotografía, la respuesta es false.',
     '  Formas decorativas que apenas recuerdan letras, texturas, o el marco de una fotografía NO cuentan.',
+    '· insidePhoto: true si TODO el texto que ves está dentro de la fotografía (y entonces hasText va en false).',
     '· confident: true sólo si es inequívoco.',
     '· where: dónde está, en pocas palabras y en español (o cadena vacía).',
 ].join('\n');
-export const DRAWN_TEXT_USER = '¿Este lienzo contiene texto dibujado? Contestá el JSON.';
+export const DRAWN_TEXT_USER = '¿Este lienzo contiene texto dibujado FUERA de la fotografía? Contestá el JSON.';
 
 /** El lector ACOTADO de esa respuesta, como todos los de este módulo: el
  *  modelo contesta y el código decide qué campos existen y de qué tipo. */
@@ -721,6 +728,11 @@ export const readDrawnTextAnswer = (raw) => {
     if (typeof obj.hasText !== 'boolean') return null;
     return {
         found: obj.hasText,
+        // El cinturón del falso positivo de v4.905: el texto que la fotografía
+        // trae consigo (cajas, carteles, camisetas) es LEGÍTIMO. Si el propio
+        // verificador lo ubica dentro de la foto, el CÓDIGO no descalifica —
+        // aunque haya contestado hasText con descuido.
+        insidePhoto: obj.insidePhoto === true,
         confident: obj.confident === true,
         where: clean(obj.where).slice(0, 160),
     };
@@ -1172,7 +1184,7 @@ export const judgePiece = ({
 
     if (drawnText) {
         measured.push('texto dibujado');
-        if (drawnText.found && drawnText.confident) {
+        if (drawnText.found && drawnText.confident && !drawnText.insidePhoto) {
             // El lienzo llega acá ANTES de nuestra capa de texto: cualquier
             // letra que se vea la dibujó el modelo, y nuestra capa caería
             // ENCIMA — el título doblado del reporte.
@@ -1181,7 +1193,7 @@ export const judgePiece = ({
                 reason: `El modelo dibujó texto dentro de la imagen${drawnText.where ? ` (${drawnText.where})` : ''}.`,
                 consequence: 'El texto real se imprime encima y quedaría doblado, como un fantasma detrás del título.',
             });
-        } else if (drawnText.found) {
+        } else if (drawnText.found && !drawnText.insidePhoto) {
             notes.push(`El verificador cree ver texto dibujado en la imagen${drawnText.where ? ` (${drawnText.where})` : ''}, sin certeza. Miralo antes de publicarla.`);
         }
     }

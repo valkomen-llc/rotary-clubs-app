@@ -2715,6 +2715,18 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   vez con la instrucción concreta; agotado, `plain` con su motivo), sin
   certeza se entrega con nota. El doble del stub contesta este system también,
   con la forma real `{content}`.
+- **⚠️ EL TEXTO QUE LA FOTOGRAFÍA TRAE CONSIGO ES LEGÍTIMO** (v4.906). El
+  primer despliegue del verificador descalificó una pieza real por los rótulos
+  de las CAJAS DE DONACIÓN de la fotografía («en las cajas dentro de la
+  fotografía», dijo el propio verificador — y el criterio no usó ese dato):
+  gastó las dos generaciones y entregó el modo plano sin diseño. Una foto de
+  donaciones SIEMPRE trae texto — es el «¿cuál es su ruido de medición y a
+  cuántas piezas legítimas alcanza?» de las cuatro puertas de Reels, pagado
+  acá el mismo día. Dos capas: la pregunta exime expresamente el texto DENTRO
+  de la fotografía, y el campo acotado `insidePhoto` hace que el CÓDIGO no
+  descalifique cuando el verificador lo ubica ahí, conteste como conteste
+  `hasText`. Sólo descalifica el texto FUERA de la foto — fondo, decoración,
+  franjas.
 - **⚠️ «VARIÁ LA DECORACIÓN» ESCRITO EN EL PROMPT NO VARÍA NADA** (v4.905):
   el prompt idéntico entre generaciones converge, y estos motores no exponen
   semilla. La variedad de verdad exige que el PROMPT cambie por pieza:
