@@ -771,6 +771,21 @@ grupo('21 — v4.905: el rotulado fantasma se detecta, se reintenta y no se entr
     eq('el segundo también trae texto, así que se descarta la composición', rr.body.document?.renderMode, 'plain');
     ok('y el motivo queda escrito', !!rr.body.statusDetail, rr.body.statusDetail);
 
+    // v4.906 — el caso de Tuluá: una foto de donaciones SIEMPRE trae texto
+    // (los rótulos de las cajas). El verificador lo ubica DENTRO de la
+    // fotografía y la composición SE USA — descartarla por eso fue el falso
+    // positivo que dejó la pieza sin globos ni diseño.
+    limpiar({ textoDibujado: { hasText: true, confident: true, insidePhoto: true, where: 'en las cajas dentro de la fotografía' } });
+    await llamar(ctrl.getConfig);
+    rr = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Tuluá', years: 40, photo: FOTO_URL } });
+    const cajas = rr.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: cajas } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: cajas } });
+    await llamar(ctrl.postTestCompose, { body: { pieceId: cajas } });
+    rr = await llamar(ctrl.getTestPiece, { params: { id: cajas } });
+    eq('con el texto DENTRO de la foto, la composición SE USA (Tuluá)', rr.body.document?.renderMode, 'ai');
+    ok('y no se gastó un reintento por el falso positivo', prov.estado.tareas.length === 1, String(prov.estado.tareas.length));
+
     // Y el caso sano: el verificador contesta «sin texto», la pieza se usa y
     // la validación DICE que el texto dibujado se miró.
     limpiar({});

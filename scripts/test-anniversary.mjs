@@ -634,7 +634,7 @@ grupo('— v4.905 · El modelo no rotula la pieza, y la decoración varía por p
     // lectura única, v4.795); `found` a secas se entrega con nota.
     check('readDrawnTextAnswer lee la respuesta acotada',
         JSON.stringify(S.readDrawnTextAnswer('x {"hasText": true, "confident": true, "where": "arriba"} y'))
-        === JSON.stringify({ found: true, confident: true, where: 'arriba' }));
+        === JSON.stringify({ found: true, insidePhoto: false, confident: true, where: 'arriba' }));
     check('y rechaza la basura', S.readDrawnTextAnswer('no json') === null && S.readDrawnTextAnswer({ hasText: 'sí' }) === null);
 
     const base = { width: 1080, height: 1080, meanLuma: 230, whiteShare: 0.7, zoneLuma: 240, zoneStdDev: 10 };
@@ -642,6 +642,17 @@ grupo('— v4.905 · El modelo no rotula la pieza, y la decoración varía por p
     check('texto dibujado CON certeza descalifica', !seguro.ok && seguro.critical.some(c => c.id === 'texto_dibujado'));
     const dudoso = S.judgePiece({ ...base, drawnText: { found: true, confident: false, where: '' } });
     check('sin certeza se ENTREGA con nota', dudoso.ok && dudoso.notes.some(n => /cree ver texto/.test(n)));
+    // v4.906 — el falso positivo de Tuluá: el verificador vio el texto de las
+    // CAJAS de la fotografía y descartó el diseño entero. El texto que la foto
+    // trae consigo es LEGÍTIMO: la pregunta lo exime y el campo acotado
+    // `insidePhoto` hace que el CÓDIGO no descalifique aunque el modelo
+    // conteste hasText con descuido.
+    check('v4.906: la pregunta exime al texto DE la fotografía',
+        S.DRAWN_TEXT_SYSTEM.includes('LA FOTOGRAFÍA PUEDE TRAER TEXTO PROPIO')
+        && S.DRAWN_TEXT_SYSTEM.includes('FUERA de la fotografía'));
+    const cajas = S.judgePiece({ ...base, drawnText: { found: true, confident: true, insidePhoto: true, where: 'en las cajas dentro de la fotografía' } });
+    check('v4.906: texto DENTRO de la fotografía NO descalifica (el caso de Tuluá)',
+        cajas.ok && cajas.critical.length === 0 && cajas.notes.every(n => !/cree ver texto/.test(n)));
     const sinMirar = S.judgePiece({ ...base, drawnText: null });
     check('sin verificador no se afirma nada', sinMirar.ok && !sinMirar.measured.includes('texto dibujado'));
     check('el reintento nombra el problema del rotulado',
