@@ -2108,6 +2108,20 @@ check('el servidor valida el planId contra el catálogo',
     /VARIANT_PLANS\.find\(p => p\.id === String\(req\.body\?\.planId/.test(pubCtrl)
     && /expectCutout:\s*!!planPedido\?\.cutout/.test(pubCtrl));
 
+// ── Plantillas IA sólo en el Sistema Central (v4.894) ─────────────────
+//
+// Pedido expreso: el módulo de plantillas de los SITIOS será uno nuevo de
+// aniversarios, construido aparte; mientras tanto esta pestaña se oculta en
+// el panel de los sitios y queda sólo en Club Platform.
+grupo('Plantillas IA sólo en el Sistema Central (v4.894)');
+const studioTabs = readFileSync('src/pages/admin/ContentStudio.tsx', 'utf8');
+check('la pestaña y su contenido se condicionan con el MISMO flag',
+    (studioTabs.match(/\{conPlantillas && \(/g) || []).length === 2,
+    String((studioTabs.match(/\{conPlantillas && \(/g) || []).length));
+check('el criterio es el COMPARTIDO de contexto de plataforma, no uno propio',
+    /isPlatformSuperAdmin\(user\) && isOnPlatformDomain\(\)/.test(studioTabs)
+    && /from '\.\.\/\.\.\/lib\/platformAdmin'/.test(studioTabs));
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'═'.repeat(60)}`);
 if (malos.length) {

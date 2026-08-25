@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.893.0 | 2026-08-24 (Silueta: el recorte se pide sin contradicción y se mide)
-// Cache bust: 2026-08-24a
+// UI V4.894.0 | 2026-08-24 (Plantillas IA sólo en el Sistema Central; el módulo de aniversarios llega aparte)
+// Cache bust: 2026-08-24b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.894.0',
+        title: 'Plantillas IA queda sólo en el Sistema Central 🎛️',
+        description: 'Decisión de producto: el módulo de plantillas para los sitios va a ser uno NUEVO, enfocado netamente en aniversarios, que se construye aparte y se activará en todos los sitios cuando esté listo. Mientras tanto, la pestaña «Plantillas IA» del Estudio de Contenido se oculta en el panel de todos los sitios y queda disponible únicamente en Club Platform (Sistema Central). El criterio es el mismo contexto de plataforma que usa el resto del panel —rol de plataforma Y dominio de plataforma—, compartido desde platformAdmin.ts, no una segunda regla. Los enlaces públicos ya publicados (/plantillas/…) no se tocan: son piezas del sistema central que ya circulan, y siguen funcionando igual.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'panel'],
+        type: 'update',
+        impact: 'Medio',
+        changes: [
+            { type: 'changed', text: 'La pestaña Plantillas IA se oculta en el panel de los sitios; sólo la ve el Sistema Central.' },
+            { type: 'changed', text: 'El criterio de visibilidad es el contexto de plataforma compartido (platformAdmin.ts).' },
+            { type: 'fixed', text: 'Los enlaces públicos ya publicados siguen funcionando sin cambios.' },
+        ]
+    },
     {
         version: '4.893.0',
         title: 'La silueta de la fotografía sale como silueta, no como rectángulo ✂️',
