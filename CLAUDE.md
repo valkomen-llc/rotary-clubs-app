@@ -2883,7 +2883,7 @@ registraría las mismas dos veces), el proxy de imágenes y `useSEO`.
 - **Un aniversario generado no se guarda en la Biblioteca Multimedia.** Se
   descarga. La fila de `AnniversaryPiece` es la traza, no el archivo publicado.
 
-### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897)
+### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897; segundo proveedor OpenAI: v4.900)
 
 El módulo deja de tener un modelo escrito en el código y pasa a tener una capa:
 
@@ -2916,6 +2916,39 @@ configurable, sello, fallback y benchmark de punta a punta).
   validación de calidad con su reintento, **en el mismo modelo**. Confundirlos
   haría que cada pieza mediocre gastara créditos en dos modelos. Lo comprueban
   las dos pruebas, verificado a la inversa.
+- **⚠️ HAY DOS PROVEEDORES Y EL PROVEEDOR ES DEL MODELO** (v4.900,
+  `PROVIDERS` + `providerOf`): KIE (asíncrono, multimodelo) y OpenAI con
+  **GPT Image (`gpt-image-1`) — el mismo motor de ChatGPT**, directo contra
+  OpenAI con la credencial que ya usa el Generador de Publicaciones. El
+  adaptador es SÍNCRONO: la generación ocurre en la misma llamada (~20-60 s,
+  dentro de los 300 s de `vercel.json`) y el marcador `sync:<url>` hace que el
+  primer sondeo la encuentre lista — TODO el camino de después (medición,
+  validación, reintento, fallback, benchmark) es el mismo que con KIE. La
+  credencial que se comprueba y se nombra en el error es LA DEL PROVEEDOR DEL
+  MODELO ACTIVO; el sello de auditoría dice el proveedor real. Un candidato
+  agregado a mano sigue siendo SIEMPRE de KIE (su id es de esa pasarela); un
+  proveedor nuevo entra por el catálogo declarado, con su adaptador. GPT Image
+  no recibe `negative_prompt` ni proporción por parámetro (la pieza 1:1 sale
+  1024×1024 — el compositor dibuja por fracciones y no le importa).
+- **⚠️ EL PRESUPUESTO DEL PROMPT ES POR MODELO** (`capabilities.promptMaxChars`,
+  v4.900). GPT Image admite prompts largos, así que el Prompt Maestro y el
+  análisis de la referencia le llegan ENTEROS; a KIE (2.500) se le recorta con
+  el orden declarado: ambiente → cláusula de la referencia → recortar el
+  maestro. La cláusula de la referencia cae ANTES que el maestro porque la
+  referencia además viaja como imagen — su descripción es refuerzo; el maestro
+  no tiene segunda vía.
+- **⚠️ LA REFERENCIA VISUAL SE ANALIZA UNA VEZ, AL GUARDARLA** (v4.900,
+  `analyzeReference` en `putConfig`, cacheado en `references[].analysis`). La
+  referencia ya viajaba al modelo COMO IMAGEN; el análisis agrega la otra
+  mitad: describirla EN PALABRAS dentro del prompt (`referenceClauseFor`),
+  que es la palanca más fuerte — ningún proveedor expone «fuerza de estilo»
+  por parámetro. El modelo de visión DESCRIBE (JSON acotado campo por campo,
+  `readReferenceAnalysis`) y el código ensambla la cláusula: misma regla que
+  el Design DNA. Un análisis que falla DEGRADA (la referencia sigue viajando
+  como imagen, sin cláusula); analizar por generación costaría una llamada de
+  visión por pieza para saber siempre lo mismo. `normalizeReference`
+  RECONSTRUYE la referencia: `analysis` está enumerado ahí, o se perdería al
+  guardar (la lección de `normalizeNode`).
 - **⚠️ EL CATÁLOGO ES DECLARADO, Y HAY QUE DECIRLO.** KIE **no expone** en esta
   integración ningún endpoint que liste modelos ni sus capacidades: lo que hay
   es `jobs/createTask` con un id. Así que las capacidades se declaran —desde la

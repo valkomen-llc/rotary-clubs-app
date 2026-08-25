@@ -35,9 +35,10 @@
 import { createKieImageTask, getKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { checkPreservation } from './designGuard.js';
-import { DEFAULT_MODEL_ID, modelById } from './anniversaryEngineSpec.js';
+import { DEFAULT_MODEL_ID, modelById, providerOf } from './anniversaryEngineSpec.js';
 import {
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis,
+    REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, repairCopy,
     buildImagePrompt, buildNegativePrompt, textZoneFor, zoneById,
     judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig,
@@ -239,14 +240,77 @@ export const writeCopy = async ({ config, clubName, years, analysis, provider = 
     };
 };
 
+// ─── El análisis de la referencia visual ───────────────────────────────
+//
+// UNA vez por referencia, al guardarla en el panel — no por generación: el
+// resultado se cachea dentro de la propia referencia (`references[].analysis`)
+// y de ahí sale la cláusula de estilo del prompt. Nunca lanza: sin análisis la
+// generación sigue igual que antes, con la referencia viajando sólo como
+// imagen (degrada, no bloquea).
+export const analyzeReference = async (url) => {
+    try {
+        const raw = await generateCopy({
+            system: REFERENCE_SYSTEM,
+            userText: REFERENCE_USER,
+            imageUrl: url,
+            temperature: 0.1,
+            maxTokens: 500,
+            jsonMode: true,
+        });
+        return readReferenceAnalysis(raw?.text ?? raw);
+    } catch (e) {
+        console.warn('[anniversary] el análisis de la referencia no se pudo hacer:', e.message);
+        return null;
+    }
+};
+
 // ─── Etapa 4 — la composición ──────────────────────────────────────────
 
-export const startComposition = async ({ config, photoUrl, clubName = '', years, analysis, extraClause = '', model = null, engineConfig = null } = {}) => {
-    if (!process.env.KIE_API_KEY) {
-        // Se NOMBRA la variable que falta. Un «no se pudo generar» a secas
-        // manda a diagnosticar a ciegas.
-        throw new Error('Falta la credencial del generador de imágenes (KIE_API_KEY). Cargala en Integraciones antes de publicar este módulo.');
+/** Descarga una imagen a buffer. Para el adaptador síncrono: OpenAI recibe
+ *  archivos, no URLs. */
+const fetchImageBuffer = async (url) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`No se pudo descargar la imagen (${r.status}).`);
+    return Buffer.from(await r.arrayBuffer());
+};
+
+/**
+ * El adaptador de OpenAI (GPT Image, el motor de ChatGPT). SÍNCRONO: la
+ * generación ocurre en esta misma llamada (~20-60 s, holgado en los 300 s de
+ * `vercel.json`). Mismos parámetros que el camino ya probado del Generador de
+ * Publicaciones (`input_fidelity: high`, `quality: high`); acá además viajan
+ * VARIAS imágenes — la referencia de estilo primero y la fotografía después,
+ * que es el orden del que habla el prompt.
+ */
+const editImageOpenAI = async ({ model, prompt, buffers, size }) => {
+    const formData = new FormData();
+    formData.append('model', model);
+    for (const b of buffers) formData.append('image[]', new Blob([b], { type: 'image/png' }), 'image.png');
+    formData.append('prompt', prompt);
+    formData.append('size', size);
+    formData.append('quality', 'high');
+    formData.append('input_fidelity', 'high');
+    formData.append('n', '1');
+    const resp = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: formData,
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data?.data?.[0]?.b64_json) {
+        // El motivo del proveedor se propaga TEXTUAL (regla del sitio).
+        throw new Error(`OpenAI rechazó la generación: ${data?.error?.message || `HTTP ${resp.status}`}`);
     }
+    return Buffer.from(data.data[0].b64_json, 'base64');
+};
+
+/** El marcador de una tarea SÍNCRONA: la imagen ya está generada y subida, y
+ *  el «taskId» lleva su URL. El sondeo la encuentra lista en el primer viaje,
+ *  y TODO el camino de después —medición, validación, reintento, fallback— es
+ *  exactamente el mismo que con una tarea de KIE. */
+const SYNC_TASK = 'sync:';
+
+export const startComposition = async ({ config, photoUrl, clubName = '', years, analysis, extraClause = '', model = null, engineConfig = null } = {}) => {
     if (!photoUrl) throw new Error('Hace falta la fotografía: el modelo compone la pieza ALREDEDOR de ella.');
 
     const c = normalizeConfig(config);
@@ -256,8 +320,25 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         ? (c.references.find(r => r.primary) || c.references[0] || null)
         : null;
 
+    // El modelo: el explícito (benchmark, fallback) > la configuración del
+    // motor no viaja hasta acá —la resuelve el controlador— > la emergencia
+    // del entorno > el default del catálogo.
+    const modeloElegido = model || COMPOSE_MODEL();
+    const ficha = modelById(modeloElegido, engineConfig || {});
+    const proveedor = providerOf(ficha);
+
+    // Se NOMBRA la variable que falta, LA DEL PROVEEDOR DE ESTE MODELO. Un
+    // «no se pudo generar» a secas manda a diagnosticar a ciegas.
+    if (!process.env[proveedor.envKey]) {
+        throw new Error(`Falta la credencial del generador de imágenes (${proveedor.envKey}). Cargala en Integraciones antes de usar este modelo.`);
+    }
+
     const { prompt, zoneId, dropped } = buildImagePrompt({
         config: c, clubName, years, analysis, hasReference: !!referencia,
+        // La otra mitad del análisis de la referencia: su descripción EN
+        // PALABRAS, hecha una vez al guardarla y cacheada en ella.
+        referenceClause: referencia?.analysis ? referenceClauseFor(referencia.analysis) : '',
+        maxChars: ficha?.capabilities?.promptMaxChars || null,
     });
     if (dropped.length) {
         // Lo que se deja fuera se ANOTA. Un recorte silencioso convierte
@@ -265,19 +346,32 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         console.warn(`[anniversary] prompt recortado: se dejó fuera ${dropped.join(', ')}`);
     }
 
+    const promptFinal = extraClause ? `${prompt}\n${extraClause}` : prompt;
+
+    if (proveedor.id === 'openai') {
+        const buffers = [];
+        if (referencia?.url) buffers.push(await fetchImageBuffer(referencia.url));
+        buffers.push(await fetchImageBuffer(photoUrl));
+        const generado = await editImageOpenAI({
+            model: modeloElegido,
+            prompt: promptFinal,
+            buffers,
+            // GPT Image no recibe proporción libre: la pieza cuadrada sale en
+            // su tamaño nativo. El compositor dibuja por fracciones, así que
+            // 1024 contra 1080 no cambia la maquetación.
+            size: formatById(c.format).aspect === '1:1' ? '1024x1024' : 'auto',
+        });
+        const url = await storeBuffer(generado, { prefix: 'anniversaries/backdrops', ext: 'png', mime: 'image/png' });
+        return { taskId: `${SYNC_TASK}${url}`, zoneId, prompt: promptFinal, dropped, model: modeloElegido, usedReference: !!referencia };
+    }
+
     // El ORDEN importa: la referencia primero y la fotografía después, porque
     // el prompt habla de «la primera» y «la última» imagen.
     const imageUrls = [referencia?.url, photoUrl].filter(Boolean);
 
-    // El modelo: el explícito (benchmark, fallback) > la configuración del
-    // motor no viaja hasta acá —la resuelve el controlador— > la emergencia
-    // del entorno > el default del catálogo.
-    const modeloElegido = model || COMPOSE_MODEL();
-    const ficha = modelById(modeloElegido, engineConfig || {});
-
     const taskId = await createKieImageTask({
         model: modeloElegido,
-        prompt: extraClause ? `${prompt}\n${extraClause}` : prompt,
+        prompt: promptFinal,
         imageUrl: imageUrls[0],
         imageUrls: imageUrls.length > 1 ? imageUrls : null,
         // Un modelo SIN campo de prompt negativo declarado no lo recibe:
@@ -288,13 +382,23 @@ export const startComposition = async ({ config, photoUrl, clubName = '', years,
         aspectRatio: formatById(c.format).aspect,
         outputFormat: 'png',
     });
-    return { taskId, zoneId, prompt, dropped, model: modeloElegido, usedReference: !!referencia };
+    return { taskId, zoneId, prompt: promptFinal, dropped, model: modeloElegido, usedReference: !!referencia };
 };
 
 /** Sondea la tarea. Devuelve `pending` mientras el proveedor trabaja; cuando
  *  termina, descarga la imagen y la sube a NUESTRO almacenamiento — la URL de
  *  KIE es efímera y un segundo viaje llegaría tarde. */
 export const syncComposition = async (taskId) => {
+    // Una tarea síncrona ya terminó al crearse: su imagen está en NUESTRO
+    // almacenamiento y el marcador lleva la URL. Se descarga para medirla por
+    // el MISMO camino que una de KIE — la validación no distingue proveedores.
+    if (String(taskId || '').startsWith(SYNC_TASK)) {
+        const url = String(taskId).slice(SYNC_TASK.length);
+        const buffer = await fetchImageBuffer(url);
+        const sharp = await getSharp();
+        const meta = await sharp(buffer).metadata();
+        return { status: 'ready', url, buffer, width: meta.width, height: meta.height };
+    }
     const estado = await getKieImageTask(taskId);
     if (estado.state !== 'success' && estado.state !== 'failed') return { status: 'pending' };
     if (estado.state === 'failed') return { status: 'failed', error: estado.failMsg || 'El generador de imágenes no pudo componer la pieza.' };
@@ -461,7 +565,7 @@ export const resolveBranding = async ({ config, subjectClubId = null, clubName =
 
 export default {
     COMPOSE_MODEL, storeBuffer, decodeDataUrl, ingestPhoto,
-    analyzePhoto, writeCopy, startComposition, syncComposition,
+    analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
     measureWhiteness, measureTextZone, verifyComposition, retryClause, resolveBranding,
     canvasSize, textZoneFor,
 };

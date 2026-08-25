@@ -119,7 +119,29 @@ const FOTO_URL = `data:image/jpeg;base64,${FOTO.toString('base64')}`;
 
 // El sondeo baja la fotografía original con `fetch` para el control de
 // preservación. Se sustituye por una que devuelve el buffer real.
-globalThis.fetch = async () => ({ arrayBuffer: async () => FOTO.buffer.slice(FOTO.byteOffset, FOTO.byteOffset + FOTO.byteLength) });
+// El `fetch` global, POR URL: OpenAI contesta la generación síncrona, una URL
+// de `backdrops` devuelve lo último que se subió ahí (el camino `sync:`), y
+// cualquier otra cosa es la fotografía. `openaiLlamadas` captura el prompt y
+// cuántas imágenes viajaron — es lo que las aserciones del proveedor miran.
+const openaiLlamadas = [];
+globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('api.openai.com')) {
+        const fd = init?.body;
+        openaiLlamadas.push({
+            prompt: typeof fd?.get === 'function' ? String(fd.get('prompt') || '') : '',
+            imagenes: typeof fd?.getAll === 'function' ? fd.getAll('image[]').length : 0,
+            model: typeof fd?.get === 'function' ? String(fd.get('model') || '') : '',
+        });
+        return { ok: true, json: async () => ({ data: [{ b64_json: COMPO_REFERENCIA.toString('base64') }] }) };
+    }
+    if (u.includes('backdrops')) {
+        const sub = [...prov.estado.subidas].reverse().find(x => String(x.Key || '').includes('backdrops'));
+        const b = sub?.Body || COMPO_REFERENCIA;
+        return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) };
+    }
+    return { ok: true, arrayBuffer: async () => FOTO.buffer.slice(FOTO.byteOffset, FOTO.byteOffset + FOTO.byteLength) };
+};
 
 const limpiar = (patch) => { db.reset(); prov.reset({ imagen: COMPO_BUENA, ...patch }); };
 
@@ -646,6 +668,53 @@ r = await llamar(ctrl.postBenchmarkRun, { body: { models: [ENG.DEFAULT_MODEL_ID]
 eq('se rechaza con 400', r.code, 400);
 r = await llamar(ctrl.postBenchmarkRun, { body: { models: [ENG.DEFAULT_MODEL_ID, OTRO], photos: [] } });
 eq('y sin fotografías también', r.code, 400);
+
+grupo('20b — GPT Image (OpenAI): el proveedor síncrono, de punta a punta');
+
+// El motor de ChatGPT como modelo activo, elegido a mano desde el panel. La
+// generación es SÍNCRONA: no hay tarea de KIE, la llamada va a OpenAI con la
+// referencia y la fotografía, y el primer sondeo la encuentra lista.
+limpiar();
+process.env.OPENAI_API_KEY = 'prueba-openai';
+openaiLlamadas.length = 0;
+r = await llamar(ctrl.getConfig);
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, references: [{ url: FOTO_URL, primary: true }] } } });
+const refGuardada = db.tablas.AnniversaryConfig[0].draft.references[0];
+ok('al guardar una referencia se ANALIZA y el análisis queda dentro de ella',
+    !!refGuardada.analysis && Array.isArray(refGuardada.analysis.palette) && refGuardada.analysis.palette.length > 0,
+    JSON.stringify(refGuardada.analysis || null));
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: 'gpt-image-1', fallback: null } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const gptPieza = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: gptPieza } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: gptPieza } });
+r = await llamar(ctrl.postTestCompose, { body: { pieceId: gptPieza } });
+eq('componer con GPT Image responde 200', r.code, 200);
+eq('NO se creó ninguna tarea en KIE', prov.estado.tareas.length, 0);
+ok('la llamada fue a OpenAI, con la referencia Y la fotografía',
+    openaiLlamadas.length === 1 && openaiLlamadas[0].imagenes === 2 && openaiLlamadas[0].model === 'gpt-image-1',
+    JSON.stringify(openaiLlamadas.map(x => ({ imagenes: x.imagenes, model: x.model }))));
+ok('el prompt llevó la cláusula del ANÁLISIS de la referencia',
+    /Match the visual language/.test(openaiLlamadas[0]?.prompt || ''));
+ok('y el presupuesto POR MODELO dejó pasar el prompt entero (> 2500)',
+    (openaiLlamadas[0]?.prompt || '').length > 2500 && /Master art direction/.test(openaiLlamadas[0]?.prompt || ''),
+    `${(openaiLlamadas[0]?.prompt || '').length} chars`);
+r = await llamar(ctrl.getTestPiece, { params: { id: gptPieza } });
+eq('el PRIMER sondeo la encuentra lista', r.body.ready, true);
+eq('el sello de auditoría dice el proveedor REAL', db.tablas.AnniversaryPiece[0].engine.provider, 'openai');
+delete process.env.OPENAI_API_KEY;
+
+grupo('20c — Sin la credencial de OpenAI, el error NOMBRA la variable correcta');
+limpiar();
+await llamar(ctrl.getConfig);
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: 'gpt-image-1', fallback: null } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const sinCred = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: sinCred } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: sinCred } });
+r = await llamar(ctrl.postTestCompose, { body: { pieceId: sinCred } });
+ok('el fallo nombra OPENAI_API_KEY, no la credencial de KIE',
+    r.code >= 400 && /OPENAI_API_KEY/.test(r.body.error || ''), `${r.code}: ${r.body.error}`);
 
 grupo('20 — El motor es del operador de la plataforma');
 for (const [nombre, fn] of [['getEngine', ctrl.getEngine], ['putEngine', ctrl.putEngine],

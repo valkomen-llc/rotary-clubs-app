@@ -47,7 +47,17 @@
 
 import { PROMPT_VERSION } from './anniversarySpec.js';
 
+// Desde v4.900 hay DOS proveedores: KIE (asíncrono, multimodelo) y OpenAI
+// (síncrono, GPT Image — el mismo motor de generación de imágenes de ChatGPT,
+// que la plataforma ya usa en el Generador de Publicaciones con la MISMA
+// credencial). `ENGINE_PROVIDER` queda como el proveedor por defecto de un
+// modelo que no declare el suyo — todo el catálogo lo declara.
 export const ENGINE_PROVIDER = 'kie';
+export const PROVIDERS = {
+    kie: { id: 'kie', label: 'KIE (multimodelo)', envKey: 'KIE_API_KEY', mode: 'async' },
+    openai: { id: 'openai', label: 'OpenAI (GPT Image)', envKey: 'OPENAI_API_KEY', mode: 'sync' },
+};
+export const providerOf = (model) => PROVIDERS[model?.provider] || PROVIDERS[ENGINE_PROVIDER];
 
 // ─── El catálogo declarado ─────────────────────────────────────────────
 //
@@ -59,6 +69,7 @@ export const MODEL_CATALOG = [
     {
         id: process.env.ANNIVERSARY_MODEL_NANO_BANANA || 'google/nano-banana-edit',
         key: 'nano_banana',
+        provider: 'kie',
         label: 'Nano Banana Edit (Gemini 2.5 Flash Image)',
         capabilities: { imageToImage: true, referenceImages: 4, negativePrompt: true, aspectRatioParam: true, outpainting: true, minSide: 1024 },
         creditsEstimated: 4,
@@ -68,6 +79,7 @@ export const MODEL_CATALOG = [
     {
         id: process.env.ANNIVERSARY_MODEL_FLUX_KONTEXT || 'black-forest-labs/flux-kontext-max',
         key: 'flux_kontext',
+        provider: 'kie',
         label: 'Flux Kontext Max (Black Forest Labs)',
         capabilities: { imageToImage: true, referenceImages: 2, negativePrompt: false, aspectRatioParam: true, outpainting: true, minSide: 1024 },
         creditsEstimated: 8,
@@ -77,11 +89,29 @@ export const MODEL_CATALOG = [
     {
         id: process.env.ANNIVERSARY_MODEL_SEEDREAM || 'bytedance/seedream-v4-edit',
         key: 'seedream',
+        provider: 'kie',
         label: 'Seedream 4 Edit (ByteDance)',
         capabilities: { imageToImage: true, referenceImages: 2, negativePrompt: false, aspectRatioParam: true, outpainting: true, minSide: 1024 },
         creditsEstimated: 3,
         timeoutMs: 120_000,
         notes: 'Editor alternativo con cambio de proporción nativo. Verificar el id del modelo con un benchmark antes de activarlo.',
+    },
+    {
+        // El motor de generación de imágenes de ChatGPT, DIRECTO contra
+        // OpenAI (misma credencial que ya usa el Generador de Publicaciones).
+        // Síncrono: la generación ocurre en la misma llamada (~20-60 s) y el
+        // primer sondeo la encuentra lista. Sigue la referencia visual y el
+        // prompt con mucha más obediencia que los editores de la pasarela, y
+        // admite prompts largos (`promptMaxChars`), así que el Prompt Maestro
+        // y el análisis de la referencia le llegan ENTEROS.
+        id: process.env.ANNIVERSARY_MODEL_GPT_IMAGE || 'gpt-image-1',
+        key: 'gpt_image',
+        provider: 'openai',
+        label: 'GPT Image (OpenAI — el motor de ChatGPT)',
+        capabilities: { imageToImage: true, referenceImages: 16, negativePrompt: false, aspectRatioParam: false, outpainting: false, minSide: 1024, promptMaxChars: 30000 },
+        creditsEstimated: 8,
+        timeoutMs: 110_000,
+        notes: 'El mismo motor de ChatGPT, con fidelidad de entrada alta. Sin prompt negativo ni proporción por parámetro (la pieza cuadrada sale 1024×1024). Necesita OPENAI_API_KEY.',
     },
 ];
 
@@ -125,6 +155,10 @@ export const normalizeCustomModel = (raw) => {
     const c = raw?.capabilities || {};
     return {
         id,
+        // Un candidato agregado a mano es SIEMPRE de KIE: el formulario del
+        // panel declara ids de esa pasarela (el regex de arriba es su forma).
+        // Un proveedor nuevo entra por el catálogo declarado, con su adaptador.
+        provider: 'kie',
         key: `custom_${id.replace(/[^a-z0-9]+/gi, '_')}`,
         label: cleanStr(raw?.label, 80) || id,
         capabilities: {
@@ -449,7 +483,10 @@ export const recommendModel = (results = [], weights = DEFAULT_WEIGHTS, engineCo
 export const engineStampFor = ({ model, engineConfig = {}, fallbackUsed = false } = {}) => {
     const m = modelById(model, engineConfig);
     return {
-        provider: ENGINE_PROVIDER,
+        // El proveedor es DEL MODELO: con dos proveedores, sellar la constante
+        // diría «kie» en una pieza que generó OpenAI y el sello dejaría de
+        // contestar la única pregunta para la que existe.
+        provider: providerOf(m).id,
         model: model || DEFAULT_MODEL_ID,
         modelKey: m?.key || null,
         creditsEstimated: m?.creditsEstimated ?? null,
@@ -471,7 +508,7 @@ export const presetVersionFor = (m) => {
 };
 
 export default {
-    ENGINE_PROVIDER, MODEL_CATALOG, DEFAULT_MODEL_ID, eligibility,
+    ENGINE_PROVIDER, PROVIDERS, providerOf, MODEL_CATALOG, DEFAULT_MODEL_ID, eligibility,
     MAX_CUSTOM_MODELS, normalizeCustomModel, catalogFor, modelById,
     ENGINE_MODES, normalizeEngineConfig, resolveProduction,
     classifyProviderError, shouldFallback,

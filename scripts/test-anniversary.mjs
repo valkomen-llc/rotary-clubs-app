@@ -194,6 +194,43 @@ const vacia = S.buildImagePrompt({ config: {}, years: 25, analysis: A({ people: 
 check('con una fotografía SIN personas, el prompt dice que no se agrega ninguna',
     /no people in it and none are added/.test(vacia.prompt));
 
+grupo('4b — El análisis de la referencia y el presupuesto por modelo');
+
+const analisisRef = S.readReferenceAnalysis(JSON.stringify({
+    background: 'clean white with warm gradients',
+    palette: ['deep blue', 'gold', 'champagne', 'ivory', 'sky', 'extra-que-sobra'],
+    layout: 'editorial left, framed photo right',
+    decoration: ['gold balloons top right', 'thin curves toward the footer'],
+    mood: 'premium and sober',
+}));
+check('el análisis de la referencia se lee y se ACOTA (máx. 5 colores)',
+    !!analisisRef && analisisRef.palette.length === 5, JSON.stringify(analisisRef?.palette));
+check('una respuesta ilegible devuelve null, no lanza', S.readReferenceAnalysis('no es json') === null);
+
+const clausulaRef = S.referenceClauseFor(analisisRef);
+check('la cláusula la escribe el CÓDIGO desde los campos acotados',
+    clausulaRef.startsWith('Match the visual language') && clausulaRef.includes('gold balloons'), clausulaRef);
+check('sin análisis no hay cláusula', S.referenceClauseFor(null) === '');
+
+// Con el tope de KIE (2500), la cláusula entra sacrificando el ambiente; con
+// el presupuesto POR MODELO de GPT Image entra TODO.
+const conClausula = S.buildImagePrompt({
+    config: {}, clubName: 'Club Rotario Cali', years: 40,
+    analysis: analisis, hasReference: true, referenceClause: clausulaRef,
+});
+check('en KIE la cláusula de la referencia SOBREVIVE al recorte',
+    conClausula.prompt.includes('Match the visual language'), conClausula.dropped.join(','));
+check('y lo sacrificado se ANOTA', conClausula.dropped.length > 0, conClausula.dropped.join(','));
+const holgado = S.buildImagePrompt({
+    config: {}, clubName: 'Club Rotario Cali', years: 40,
+    analysis: analisis, hasReference: true, referenceClause: clausulaRef, maxChars: 30000,
+});
+check('con presupuesto por modelo (GPT Image) NO se sacrifica nada',
+    holgado.dropped.length === 0 && holgado.prompt.length > S.PROMPT_MAX_CHARS,
+    `${holgado.prompt.length} chars, dropped: ${holgado.dropped.join(',')}`);
+check('sin referencia, la cláusula no viaja aunque se pase',
+    !S.buildImagePrompt({ config: {}, referenceClause: clausulaRef, hasReference: false }).prompt.includes('Match the visual language'));
+
 grupo('5 — El prompt negativo');
 const neg = S.buildNegativePrompt({ restrictions: 'No poner globos rojos.' });
 check('lleva las restricciones del administrador', neg.includes('No poner globos rojos.'));

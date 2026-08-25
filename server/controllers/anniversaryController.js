@@ -27,11 +27,11 @@ import {
     normalizeYears, printableClubName, textZoneFor, canvasSize,
 } from '../lib/anniversarySpec.js';
 import {
-    ingestPhoto, analyzePhoto, writeCopy, startComposition, syncComposition,
+    ingestPhoto, analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
     verifyComposition, resolveBranding, retryClause, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
 import {
-    catalogFor, modelById, eligibility, resolveProduction, shouldFallback,
+    catalogFor, modelById, eligibility, resolveProduction, shouldFallback, PROVIDERS, providerOf,
     engineStampFor, DEFAULT_WEIGHTS, CRITERIA, normalizeWeights, autoScoresFor,
     applyVote, totalScore, recommendModel, BENCH_PHOTO_HINTS,
     MAX_BENCH_PHOTOS, MAX_BENCH_MODELS, VOTE_SCORE, ENGINE_PROVIDER,
@@ -79,12 +79,20 @@ export const getCatalog = async (req, res) => {
             footerReserve: FOOTER_BAND,
             // Que el modelo esté configurado NO es un detalle interno: sin la
             // credencial este módulo no genera nada, y el panel tiene que
-            // decirlo antes de que alguien publique y descubra el hueco.
-            engine: {
-                model: COMPOSE_MODEL(),
-                configured: !!process.env.KIE_API_KEY,
-                envKey: 'KIE_API_KEY',
-            },
+            // decirlo antes de que alguien publique y descubra el hueco. La
+            // credencial es LA DEL PROVEEDOR DEL MODELO ACTIVO (v4.900): con
+            // GPT Image activado, avisar por KIE_API_KEY mandaría a cargar la
+            // credencial equivocada.
+            engine: await (async () => {
+                const { engine } = await readEngineConfig(SCOPE).catch(() => ({ engine: {} }));
+                const prod = resolveProduction(engine || {});
+                const proveedor = providerOf(modelById(prod.primary, engine || {}));
+                return {
+                    model: prod.primary,
+                    configured: !!process.env[proveedor.envKey],
+                    envKey: proveedor.envKey,
+                };
+            })(),
         });
     } catch (e) {
         console.error('[anniversary/catalog]', e);
@@ -121,7 +129,18 @@ export const getConfig = async (req, res) => {
 export const putConfig = async (req, res) => {
     if (!esOperador(req)) return negar(res);
     try {
-        const { config, row, changed } = await saveDraftConfig(SCOPE, req.body?.config ?? req.body);
+        const entrante = req.body?.config ?? req.body ?? {};
+        // Las referencias NUEVAS se analizan acá — una vez, al guardarlas — y
+        // el resultado viaja dentro de la propia referencia. Analizarlas por
+        // generación costaría una llamada de visión por pieza para saber
+        // siempre lo mismo. Un análisis que falla degrada: la referencia
+        // sigue viajando como imagen, sin su cláusula.
+        if (Array.isArray(entrante.references)) {
+            for (const ref of entrante.references) {
+                if (ref && ref.url && !ref.analysis) ref.analysis = await analyzeReference(ref.url);
+            }
+        }
+        const { config, row, changed } = await saveDraftConfig(SCOPE, entrante);
         const check = validateConfig(config);
         res.json({
             config, changed,
@@ -631,6 +650,9 @@ export const getEngine = async (req, res) => {
         const runs = await listBenchmarks(null, 5).catch(() => []);
         res.json({
             provider: ENGINE_PROVIDER,
+            providers: Object.values(PROVIDERS).map(pv => ({
+                ...pv, configured: !!process.env[pv.envKey],
+            })),
             engine,
             production: prod,
             catalog: catalogo,

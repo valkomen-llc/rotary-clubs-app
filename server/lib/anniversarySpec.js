@@ -318,10 +318,17 @@ export const isDrawableImage = (raw) => {
 export const normalizeReference = (raw) => {
     const url = typeof raw === 'string' ? raw : str(raw?.url);
     if (!isDrawableImage(url)) return null;
+    // ⚠️ Este normalizador RECONSTRUYE la referencia: lo que no se enumere acá
+    // se pierde al guardar (la lección de `normalizeNode` en Plantillas IA).
+    // `analysis` es el análisis de estilo hecho por el modelo de visión al
+    // guardarla — pasa por su propio lector acotado, nunca se guarda crudo.
+    const analysis = typeof raw === 'object' && raw !== null && raw.analysis
+        ? readReferenceAnalysis(raw.analysis) : null;
     return {
         url,
         note: clean(typeof raw === 'string' ? '' : raw?.note).slice(0, 160),
         primary: typeof raw === 'object' && raw !== null ? bool(raw.primary) : false,
+        ...(analysis ? { analysis } : {}),
     };
 };
 
@@ -554,6 +561,71 @@ export const textZoneFor = (analysis) => {
     return DEFAULT_TEXT_ZONE;
 };
 
+// ─── El análisis de la REFERENCIA VISUAL ───────────────────────────────
+//
+// La referencia ya viaja al modelo de imagen COMO IMAGEN; esto agrega la otra
+// mitad: describirla EN PALABRAS dentro del prompt, que es la palanca más
+// fuerte con estos proveedores (ninguno expone «fuerza de estilo» por
+// parámetro). El modelo de visión DESCRIBE una sola vez —al guardar la
+// referencia, cacheado en ella— y el código acota y ensambla: misma regla que
+// el análisis de la fotografía y que el Design DNA del Director Creativo.
+
+export const REFERENCE_SYSTEM = `Sos director de arte. Mirás UNA pieza gráfica de referencia y devolvés SIEMPRE un JSON válido, sin texto alrededor, que describa su ESTILO VISUAL para reproducirlo en piezas nuevas.
+
+Forma exacta:
+{
+  "background": "<en inglés: el fondo (color, degradados, textura)>",
+  "palette": ["<en inglés: 2 a 5 colores dominantes, con nombre descriptivo>"],
+  "layout": "<en inglés: dónde vive cada cosa (foto, área editorial, decoración)>",
+  "decoration": ["<en inglés: 2 a 4 elementos decorativos concretos>"],
+  "mood": "<en inglés: el aire de la pieza en pocas palabras>"
+}
+
+Reglas:
+- Describís el DISEÑO, no el contenido: no transcribas textos ni nombres.
+- En inglés, porque va a un prompt de un motor de imagen.
+- Concreto y corto: cada campo es una frase, no un párrafo.`;
+
+export const REFERENCE_USER = 'Analizá esta pieza de referencia y devolvé únicamente el JSON.';
+
+/** Lee lo que contestó el modelo sobre la referencia. Acotado campo por
+ *  campo; nunca lanza — sin nada legible devuelve null y la generación sigue
+ *  sin la cláusula (degrada, no bloquea). */
+export const readReferenceAnalysis = (raw) => {
+    let obj = raw;
+    if (typeof raw === 'string') {
+        const m = raw.match(/\{[\s\S]*\}/);
+        try { obj = JSON.parse(m ? m[0] : raw); } catch { obj = null; }
+    }
+    if (!obj || typeof obj !== 'object') return null;
+    const lista = (v, n, max) => (Array.isArray(v) ? v : []).map(x => clean(x).slice(0, max)).filter(Boolean).slice(0, n);
+    const out = {
+        background: clean(obj.background).slice(0, 140),
+        palette: lista(obj.palette, 5, 40),
+        layout: clean(obj.layout).slice(0, 180),
+        decoration: lista(obj.decoration, 4, 60),
+        mood: clean(obj.mood).slice(0, 80),
+    };
+    if (!out.background && !out.palette.length && !out.layout && !out.decoration.length) return null;
+    return out;
+};
+
+/** La cláusula que lleva ese análisis al prompt. La escribe el CÓDIGO desde
+ *  los campos acotados —no el modelo—, así es reproducible y cabe en el
+ *  presupuesto (≤ ~420 caracteres). */
+export const referenceClauseFor = (analysis) => {
+    const a = readReferenceAnalysis(analysis);
+    if (!a) return '';
+    const partes = [];
+    if (a.background) partes.push(`background: ${a.background}`);
+    if (a.palette.length) partes.push(`palette: ${a.palette.join(', ')}`);
+    if (a.layout) partes.push(`layout: ${a.layout}`);
+    if (a.decoration.length) partes.push(`decorative elements: ${a.decoration.join(', ')}`);
+    if (a.mood) partes.push(`mood: ${a.mood}`);
+    if (!partes.length) return '';
+    return `Match the visual language of the style reference — ${partes.join('; ')}.`.slice(0, 480);
+};
+
 // ─── El prompt de la imagen ────────────────────────────────────────────
 
 /** La franja que el modelo tiene que dejar tranquila, dicha en PALABRAS. En
@@ -596,10 +668,14 @@ export const PROMPT_MAX_CHARS = Number(process.env.ANNIVERSARY_PROMPT_MAX_CHARS)
  *      primero. El estilo base ya no se ensambla aparte: el Prompt Maestro
  *      por defecto lo supersede (BASE_STYLE queda exportado como referencia).
  */
-export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false } = {}) => {
+export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false, referenceClause = '', maxChars = null } = {}) => {
     const c = normalizeConfig(config);
     const zona = zoneId || textZoneFor(analysis);
     const a = analysis || fallbackAnalysis();
+    // El presupuesto es POR MODELO: GPT Image admite prompts muchísimo más
+    // largos que los 2.500 de la pasarela KIE, y con él la dirección de arte
+    // y el análisis de la referencia llegan ENTEROS. Sin dato, el tope de KIE.
+    const tope = Math.max(600, Number(maxChars) || PROMPT_MAX_CHARS);
 
     const nucleo = [
         hasReference
@@ -640,16 +716,23 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
     // la parte que varía con cada foto, y hay direcciones de arte que lo
     // prefieren fuera para que el prompt sea idéntico entre generaciones.
     const ambienteTexto = c.promptOptions.ambient ? ambiente.join(' ') : '';
+    const referenciaTexto = hasReference ? String(referenceClause || '') : '';
 
     const dropped = [];
     const armar = (partes) => partes.filter(Boolean).join('\n');
 
     // El ORDEN DE SACRIFICIO, de lo primero que se cae a lo último:
-    // ambiente → (recortar el Prompt Maestro). El núcleo no se toca nunca:
-    // sin él la pieza no es publicable.
-    let partes = [nucleoTexto, masterTexto, ambienteTexto];
-    if (armar(partes).length > PROMPT_MAX_CHARS && ambienteTexto) {
-        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto];
+    // ambiente → cláusula de la referencia → (recortar el Prompt Maestro). El
+    // núcleo no se toca nunca: sin él la pieza no es publicable. La cláusula
+    // de la referencia cae ANTES que el maestro porque la referencia además
+    // viaja como imagen — su descripción es refuerzo, el maestro no tiene
+    // segunda vía.
+    let partes = [nucleoTexto, masterTexto, referenciaTexto, ambienteTexto];
+    if (armar(partes).length > tope && ambienteTexto) {
+        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto, referenciaTexto];
+    }
+    if (armar(partes).length > tope && referenciaTexto) {
+        dropped.push('referencia'); partes = [nucleoTexto, masterTexto];
     }
 
     // ⚠️ EL PROMPT MAESTRO SE RECORTA, NUNCA SE ELIMINA. Es lo ÚNICO del
@@ -658,8 +741,8 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
     // dejaría al administrador editando un campo que no llega al modelo, y el
     // fallo sería mudo. Misma decisión que `motionHint` en el Creador de Reels.
     let recorte = masterTexto;
-    if (armar(partes).length > PROMPT_MAX_CHARS && recorte) {
-        const sitio = Math.max(0, PROMPT_MAX_CHARS - nucleoTexto.length - 2);
+    if (armar(partes).length > tope && recorte) {
+        const sitio = Math.max(0, tope - nucleoTexto.length - 2);
         recorte = trimWords(recorte, sitio);
         dropped.push('master(recortado)');
         partes = [nucleoTexto, recorte];
@@ -669,9 +752,9 @@ export const buildImagePrompt = ({ config, clubName = '', years = null, analysis
     // Sólo si ni siquiera el núcleo entra —un tope de entorno absurdamente
     // bajo— se recorta él, y se DICE: a esa altura ya se está perdiendo una
     // regla que sostiene la arquitectura.
-    if (prompt.length > PROMPT_MAX_CHARS) {
+    if (prompt.length > tope) {
         dropped.push('nucleo(recortado)');
-        prompt = prompt.slice(0, PROMPT_MAX_CHARS);
+        prompt = prompt.slice(0, tope);
     }
     return { prompt, zoneId: zona, dropped };
 };
@@ -1033,6 +1116,7 @@ export default {
     fingerprintOf, isSignificantChange,
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis, textZoneFor,
     clearZoneClause, PROMPT_MAX_CHARS, buildImagePrompt, buildNegativePrompt,
+    REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,
     printableClubName, normalizeYears,
     PIECE_CHECKS, judgePiece, retryClauseFor, STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
