@@ -2554,6 +2554,260 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
+## Aniversarios IA — v4.895
+
+Módulo **nuevo e independiente**. Genera la pieza gráfica del aniversario de un
+club a partir de cuatro datos: club, años, fotografía y un botón. El
+administrador no diseña: **configura con instrucciones en lenguaje natural**.
+
+**NO es Plantillas IA y no depende de él.** Aquél es un EDITOR —grafo de escena,
+capas, coordenadas, propiedades gráficas— y sigue existiendo, intacto. Éste es
+un GENERADOR por instrucciones. De aquél no se importa nada: ni `designSpec`, ni
+`designCompose`, ni `designTemplates`, ni `designRender`, ni `DesignCanvas`. Lo
+comprueba una prueba que lee los once archivos y falla si aparece el import — la
+independencia declarada en prosa no protege nada.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/anniversarySpec.js` | El CRITERIO. **Puro**: formatos, zonas de texto, instrucciones por defecto, construcción de los prompts, lectura y validación de lo que contesta el modelo, validación de la pieza y huella de versión |
+| `server/lib/ensureAnniversarySchema.js` | Crea `AnniversaryConfig`, `AnniversaryConfigVersion` y `AnniversaryPiece` en runtime |
+| `server/lib/anniversaryStore.js` | La I/O: borrador, publicado, versiones y piezas |
+| `server/lib/anniversaryEngine.js` | La orquestación: visión, redacción, KIE, S3, sharp y el control de preservación |
+| `server/controllers/anniversaryController.js` | El panel y **las cuatro etapas compartidas** |
+| `server/controllers/anniversaryPublicController.js` | El formulario público |
+| `server/routes/anniversaries.js` | `/api/anniversaries` — público y panel en el mismo archivo |
+| `src/lib/anniversarySpec.ts` | Espejo MÍNIMO: zonas, formatos y etapas |
+| `src/lib/anniversaryRender.ts` | **EL compositor.** Uno solo |
+| `src/pages/admin/AnniversaryStudio.tsx` | El panel (`/admin/aniversarios-ia`) |
+| `src/pages/AniversarioIA.tsx` | El formulario público (`/aniversarios`) |
+
+Pruebas: `npm run test:anniversary` (134 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:anniversary:render` (14 en un navegador
+de verdad; pide `playwright` y `esbuild` y **se salta solo** si faltan).
+
+**Reglas durables:**
+
+- **⚠️ LA ARQUITECTURA ES HÍBRIDA, Y ES LA DECISIÓN DE LA QUE CUELGA TODO.** Son
+  tres capas: la **IA hace el DISEÑO** (fondo, decoración y la fotografía
+  integrada), la **plataforma imprime el TEXTO** encima (nombre del club, años,
+  titular y mensaje) y la **plataforma imprime el BRANDING** desde archivos
+  reales. El motivo de la capa 2 está medido en este repositorio y escrito en
+  `designCompose.js`: **los modelos generativos no escriben texto de forma
+  fiable**, y cuando sale mal no hay salida limpia —corregirlo encima es el
+  composite que el equipo rechazó dos veces con las palabras «se ve overlay /
+  montaje»—. Un aniversario lleva el nombre propio de un club y una cifra: son
+  exactamente los dos textos que no pueden salir mal. El motivo de la capa 3 es
+  más simple: el emblema de Rotary es marca registrada y se reproduce desde el
+  archivo, no se dibuja. **Consecuencia buscada: el nombre y los años son
+  exactos POR CONSTRUCCIÓN, no por medición.**
+- **⚠️ EL MODELO TIENE QUE DEJARLE SITIO AL TEXTO, Y ESO ES UN ACUERDO ENTRE LAS
+  DOS MITADES.** `textZoneFor` decide la franja limpia mirando el análisis de la
+  fotografía —personas a la derecha, texto a la izquierda; grupo centrado, texto
+  abajo—, esa decisión entra al prompt EN PALABRAS (`clearZoneClause`, no en
+  coordenadas: en coordenadas no se cumple) y el compositor del navegador lee
+  **la misma** entrada de `TEXT_ZONES`. Con dos tablas, el modelo despeja un
+  lado y el texto se imprime en el otro — y eso no da ningún error: da una pieza
+  con el título encima de una cara. La paridad de los dos espejos la comprueba
+  `test:anniversary`, número a número.
+- **⚠️ MEDIR «¿HAY TEXTO EN LA MITAD IZQUIERDA?» NO DISCRIMINA.** Las tres zonas
+  SE SOLAPAN —`left` llega a y=0,74 y `bottom` empieza en y=0,52—, así que la
+  primera versión de la prueba de navegador pasaba con el compositor escribiendo
+  SIEMPRE abajo. Sólo el **centroide** de la tinta distingue una zona de otra.
+  Verificado a la inversa. Al comprobar dónde cae algo en un lienzo, medir el
+  centro de masa, no la presencia en un rectángulo.
+- **⚠️ LA VISTA PREVIA NO SE PARECE AL ARCHIVO: ES EL ARCHIVO.** Es el requisito
+  14 y hay **un solo camino de composición**: `renderAnniversary` devuelve UN
+  canvas, la pantalla monta ESE objeto y la descarga exporta ESE mismo objeto.
+  No hace falta ninguna prueba de paridad píxel a píxel —la que Plantillas IA sí
+  necesita, porque allá el DOM y el canvas son dos maquetadores— porque acá no
+  hay dos cosas que comparar. **No reintroducir una vista previa en DOM.**
+- **LA MAQUETACIÓN ESTÁ EN FRACCIONES DEL ANCHO**, nunca en píxeles. Por eso la
+  descarga en alta resolución es la misma pieza con más píxeles y no otra
+  composición.
+- **⚠️ EL COMPOSITOR NO REPITE LO QUE EL TITULAR YA DIJO** (`planTextBlocks`). El
+  modelo escribe titulares como «¡Feliz aniversario, Club Rotario Cali!» o «¡40
+  años generando impacto!» —el pedido los pone como ejemplo— y la pieza además
+  imprime el club y los años como datos exactos. Repetirlos se lee como un error
+  de maquetación. El titular manda y los bloques de identidad salen sólo si él
+  no los dijo; **sin titular salen los dos**, porque son lo único que identifica
+  la pieza. La parte distintiva cuenta: «Cali» ya nombra al «Club Rotario Cali».
+- **LAS REGLAS VISUALES SON DEL SISTEMA, NO DEL ADMINISTRADOR.** La paleta, los
+  cuerpos de letra y el contraste no se configuran: son lo que garantiza que el
+  texto se lea sobre cualquier fondo que devuelva el modelo. Quien configura
+  elige las instrucciones y las referencias; la legibilidad no es una decisión
+  editorial. Misma regla que el Slider Global (v4.879).
+- **TRES CLÁUSULAS NO SE NEGOCIAN Y NO SE RECORTAN NUNCA**: que la imagen no
+  traiga texto ni logotipos, que conserve a las personas de la fotografía y que
+  deje libre la franja del texto. Sin ellas la pieza no es publicable por bonita
+  que salga.
+- **⚠️ LA DIRECCIÓN DE ARTE DEL ADMINISTRADOR SE RECORTA, NUNCA SE ELIMINA.** El
+  orden de sacrificio es ambiente → estilo → recortar la dirección de arte. Es
+  lo ÚNICO del prompt que es específico de ESTA configuración: todo lo demás lo
+  escribimos nosotros y es igual en todas las piezas. Tirarla entera dejaría al
+  administrador editando un campo que no llega al modelo, con un fallo mudo —
+  misma decisión que `motionHint` en el Creador de Reels. El presupuesto es
+  **2.500** y está MEDIDO: con la instrucción por defecto el prompt entero mide
+  2.148 (núcleo 1.108, dirección 357, estilo 461, ambiente 219). **Al agregar
+  una frase, medir.**
+- **LO PROHIBIDO VIAJA EN `negative_prompt`**, no pegado al positivo: dentro de
+  la descripción de la escena el modelo se obsesiona con lo prohibido (v4.705),
+  y en su campo libera presupuesto del positivo.
+- **EL MODELO ESCRIBE, EL CÓDIGO DECIDE.** `validateCopy` comprueba longitudes,
+  frases, hashtags, emojis, enlaces, marcadores sin resolver y —lo más
+  importante— **que el texto no mencione otra cantidad de años que la que la
+  pieza imprime al lado**. El bucle le devuelve LA REGLA CONCRETA con su número;
+  pedirle «revisá el formato» no corrige nada.
+- **AGOTADOS LOS INTENTOS EL TRABAJO NO SE TIRA**: se ajusta lo ajustable por
+  código y se entrega CON SUS AVISOS. Y **reparar no inventa contenido**: un
+  mensaje corto sigue siendo corto y la validación lo sigue diciendo. Se guarda
+  el intento con MENOS reglas rotas, no el último por ser el último.
+- **⚠️ ACÁ SE DICE QUÉ SE MIDE Y QUÉ NO.** Se **garantiza por construcción** el
+  nombre, los años, el mensaje corto, el branding y que ningún texto salga de su
+  zona. Se **mide**: el formato entregado, cuánto blanco tiene el fondo (media
+  de luminancia + proporción de píxeles claros), si la franja del texto está
+  tranquila (luminancia y desviación típica **de ESA región, recortada** — sobre
+  la imagen entera la señal se diluye, la lección de v4.715) y si la fotografía
+  se conservó (`designGuard.checkPreservation`, **reutilizado**). **NO se mide**
+  la «estética de aniversario» —no hay forma de medir si una pieza se ve festiva:
+  se PIDE y se MUESTRA— ni que la imagen no traiga texto dibujado —exigiría OCR,
+  decenas de MB en una función que ya empaqueta FFmpeg dentro del tope de 250 MB—.
+  No afirmar en la pantalla que se comprueba algo que no se comprueba.
+- **⚠️ `sharp.stats()` IGNORA el `extract()` encadenado** y devolvería la
+  estadística de la imagen entera, idéntica para cualquier franja. El recorte se
+  MATERIALIZA a buffer antes de medir (v4.799).
+- **LA CORRECCIÓN AUTOMÁTICA ES UNA, NO UN BUCLE.** Un fallo crítico reintenta
+  **una vez** con el problema concreto (`retryClauseFor`): cada vuelta cuesta
+  créditos y un modelo que falló dos veces por lo mismo no acierta a la tercera.
+- **⚠️ AGOTADO EL REINTENTO, LA PIEZA SE ENTREGA IGUAL PERO EL MODO DICE LA
+  VERDAD.** `ai` usa la composición; `plain` la DESCARTA y compone con la
+  fotografía intacta sobre blanco, y **se dice en la pantalla con su motivo**.
+  `plain` NO es un segundo sistema de diseño: es el MISMO compositor con la capa
+  1 vacía. Y **la imagen del modelo no se retoca**: pegarle la fotografía
+  original encima es el composite rechazado dos veces. Este control mide y
+  decide; no toca el archivo.
+- **BORRADOR → PROBAR → PUBLICAR.** Guardar NO cambia lo que genera la gente, y
+  la cabecera lo dice mientras el borrador difiera de lo publicado — sin ese
+  aviso, alguien corrige una instrucción, abre el formulario público, no ve
+  ningún cambio y no tiene forma de saber por qué. **Publicar exige que la
+  configuración sea válida; retirarla no**: poner al aire un generador roto es
+  caro y retirarlo nunca puede quedar bloqueado por una validación.
+- **UNA VERSIÓN SE CREA AL PUBLICAR, Y SÓLO SI CAMBIÓ LO QUE SE IMPRIME**
+  (`fingerprintOf`). Renombrar la configuración o mover el interruptor de activo
+  no es una versión nueva. Volver a publicar sin tocar nada REUTILIZA la
+  vigente: dos versiones idénticas con números distintos rompen la única
+  pregunta que el versionado existe para responder. **RESTAURAR NO PUBLICA**:
+  trae el texto al borrador y quien publica decide.
+- **La versión guarda la configuración COMPLETA**, no una referencia: con sólo
+  el id, editar el borrador cambiaría retroactivamente lo que dice haber
+  generado una pieza de hace tres meses.
+- **EL PANEL DE PRUEBAS CORRE LA MISMA CADENA QUE EL FORMULARIO PÚBLICO**
+  (`runAnalyze`, `runCopy`, `runCompose`, `runSync`), con dos diferencias: prueba
+  contra el BORRADOR y sus piezas quedan marcadas `test`. Con dos pipelines,
+  probar una instrucción no diría nada sobre lo que hace la gente. Lo comprueba
+  una prueba: el controlador público IMPORTA esas cuatro funciones.
+- **LAS ETAPAS SON LLAMADAS REALES.** Son cinco peticiones y cinco etapas; la
+  pantalla muestra una cuando OCURRIÓ, no cuando cree que va por ahí. Un
+  progreso inventado hace esperar por nada (v4.756).
+- **⚠️ LA CONFIGURACIÓN NO VIAJA EN LA PETICIÓN PÚBLICA.** Se lee de lo
+  publicado, en el servidor. Con la configuración en el cuerpo, cualquiera con
+  el endpoint mandaría sus propias instrucciones al modelo y gastaría créditos
+  generando lo que quisiera. Es la frontera ESTRUCTURAL del portal de Plantillas
+  IA: lo que no se puede expresar en la petición no se puede pedir. Lo comprueba
+  una prueba sobre el archivo.
+- **EL ALCANCE LO RESUELVE EL SERVIDOR** mirando el dominio desde el que se
+  pide, nunca un campo del cuerpo: si lo mandara el navegador, acotarlo a unos
+  sitios no serviría de nada.
+- **EL RECLAMO DE DESPACHO VA SOBRE `attempts`**, que es un entero exacto: sobre
+  `updatedAt` no funcionaría porque el driver de pg trunca los microsegundos y
+  la igualdad no casaría nunca (v4.800). Sin candado, dos pulsaciones de
+  «Regenerar» crean DOS tareas para la misma pieza: dos cobros.
+- **LA FILA SE INSERTA ANTES DE LLAMAR A NINGÚN PROVEEDOR.** Si la petición
+  muere a mitad queda el rastro con su motivo, en vez de no quedar nada (v4.669).
+- **⚠️ LA FOTOGRAFÍA ANÓNIMA DEJA DE SER EFÍMERA, Y HAY QUE DECIRLO.** KIE
+  necesita una URL que pueda descargar, así que subirla no es un descuido: es el
+  precio de la composición generativa. Va al prefijo `public-tmp/`, aparte de la
+  Biblioteca Multimedia, para poder vaciarlo con una regla de ciclo de vida sin
+  tocar los archivos de nadie.
+- **⚠️ EL COMPOSITOR PIDE LAS IMÁGENES POR EL PROXY** (`/api/public/banner-image`).
+  Una imagen de S3 pintada directo deja el canvas «tainted» y `toBlob` lanza. No
+  se abre un proxy nuevo: es el mismo que ya usan el Generador de Pendones y
+  Plantillas IA.
+- **LA MARCA SALE DE ARCHIVOS REALES O NO SALE.** Un club sin logotipo cargado
+  no muestra logotipo, y eso **se dice** (`branding.missing`). Dibujar un emblema
+  «parecido» es justo lo que una institución no puede publicar — misma regla que
+  `designElements.js`, que a propósito no tiene ninguna rueda.
+- **⚠️ LOS DOS ÍNDICES ÚNICOS DE LA CONFIGURACIÓN SON PARCIALES**, y no uno solo
+  sobre `(kind, "clubId")`: en Postgres NULL nunca es igual a NULL, así que con
+  un único índice las filas de la plataforma —que llevan `clubId` en NULL— no
+  chocarían jamás entre sí, que es donde tiene que haber una sola. Por ser
+  parciales **no se usa `ON CONFLICT` contra ellos**: habría que repetir el
+  predicado o la sentencia falla entera (v4.648).
+- **LAS TRES TABLAS VIVEN FUERA DE PRISMA** y están en la lista del guardián de
+  `db:push`. Una tabla declarada en `schema.prisma` y todavía inexistente deja en
+  500 a todo consumidor Prisma desde el primer despliegue (regla de `logo_intl`).
+- **`kind` EXISTE PARA QUE REPLICAR EL ENFOQUE SEA UNA FILA MÁS.** Hoy hay un
+  solo generador —`aniversario`— a propósito: el pedido dice que Aniversarios
+  funcione excepcionalmente bien antes de abrir otro. Lo que se evita es
+  hardcodear la palabra en la base, en las rutas y en el store, que es lo que
+  obligaría a reescribirlos después.
+- **`/aniversarios` está en `PRIVATE_PREFIXES`.** Abierto y no indexado son cosas
+  distintas: es una herramienta que se abre desde un enlace y la comparten todos
+  los sitios; indexarla haría competir una utilidad con las páginas reales del
+  club por sus términos de marca.
+- **EL PANEL ES DEL OPERADOR DE LA PLATAFORMA**, comprobado en la ruta **y otra
+  vez** en cada método del controlador. Se protegen por separado a propósito: una
+  ruta que se reordene o se copie a otro archivo perdería la guardia sin que nada
+  avise. La configuración gobierna piezas que salen firmadas por clubes de todo
+  el ecosistema; no es contenido de un sitio.
+- **UN FALLO SE DICE CON SU CAUSA**: 401 se corrige volviendo a entrar, 403
+  pidiendo el permiso y 502 mirando el proveedor. «No se pudo guardar» a secas
+  obliga a diagnosticar a ciegas (v4.859).
+
+**Qué se REUTILIZA de la plataforma** (servicios globales, no el editor):
+`kieService` (el ÚNICO cliente de KIE del sitio), `copywritingService.generateCopy`
+(la cadena de proveedores de texto y visión, con su respaldo entre proveedores),
+`designGuard.checkPreservation` (personas inventadas / desaparecidas / rostros),
+`designBranding` (club → identidad institucional real), `publicClubs` (el mismo
+catálogo curado que la Feria), `mediaUpload` (las dos vías de toda casilla de
+imagen), `designFonts` (el cargador de las tipografías empaquetadas — es un
+servicio global con UN registro de caras en `document.fonts`; un segundo cargador
+registraría las mismas dos veces), el proxy de imágenes y `useSEO`.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `KIE_API_KEY` | La misma credencial que ya usa el resto del sitio. Sin ella el módulo no compone nada, y el panel lo dice |
+| `ANNIVERSARY_MODEL` | Id del modelo de imagen (default `google/nano-banana-edit`). KIE renombra ids: se corrige sin desplegar |
+| `ANNIVERSARY_PROMPT_MAX_CHARS` | Tope del prompt de escena (2500) |
+
+**Limitaciones reales, dichas para no descubrirlas después:**
+
+- **No se comprueba que la imagen generada no traiga texto dibujado.** Se pide
+  por `negative_prompt` y la decisión queda a la vista: quien genera ve la pieza
+  antes de descargarla.
+- **No hay detección de rostros propia.** `checkPreservation` pregunta por
+  personas inventadas, desaparecidas y consistencia de rostros usando un modelo
+  de visión; no hay un detector que devuelva coordenadas. Que el texto no caiga
+  sobre una cara se consigue reservando la franja, no localizando las caras.
+- **Con más de ocho personas el recuento no decide solo** (herencia de
+  `designGuard`): contar catorce cabezas no lo hace bien ningún modelo de visión.
+- **El formulario público no tiene freno de abuso por IP.** La subida está
+  acotada en tamaño y el generador vive detrás de un interruptor, pero con un
+  enlace muy difundido conviene ponerlo antes que después. Es la misma
+  limitación declarada del portal de Plantillas IA.
+- **Sólo el formato 1:1 está disponible.** 4:5 y 9:16 están declarados con
+  `available:false`: la arquitectura los soporta —todo son fracciones— pero la
+  geometría de las zonas de texto está medida para el cuadrado.
+- **La configuración es de la PLATAFORMA, no por sitio.** La columna `clubId`
+  existe y hoy no se escribe ninguna fila con ella.
+- **No se sugiere el número de años desde la fecha de fundación.** El dato existe
+  (`Setting club_foundation_date`) pero sólo para los clubes que son sitios de la
+  plataforma y lo tengan cargado; ofrecerlo cuando casi nunca está haría un campo
+  que parece roto. El usuario escribe los años, que es un dato que sabe.
+- **Un aniversario generado no se guarda en la Biblioteca Multimedia.** Se
+  descarga. La fila de `AnniversaryPiece` es la traza, no el archivo publicado.
+
 ## El asistente de redacción de Noticias — v4.891
 
 Reporte con captura: «cuando intento generar un artículo con IA aparece un
@@ -5633,6 +5887,15 @@ Pruebas: `npm run test:project-form` (31 casos, sin base ni red).
 - Al retirar otra fila: agregarla a `RETIRED_BUDGET_ROWS`, no borrarla y ya.
 
 ## Plantillas IA (Generador de Diseños) — v4.729
+
+> **Aniversarios IA (v4.895) es OTRO módulo y no toca éste.** Aquél genera por
+> instrucciones y no tiene lienzo, capas ni coordenadas; éste sigue siendo el
+> editor y conserva su propósito. No se importa nada de aquí allá —lo comprueba
+> `npm run test:anniversary`— ni al revés. Al tocar este módulo, no hace falta
+> mirar el otro; lo que sí comparten son SERVICIOS globales (KIE, el redactor,
+> `designGuard`, `designBranding`, `designFonts` y el proxy de imágenes), y ésos
+> siguen siendo de un solo sitio.
+
 
 Pestaña propia en Content Studio. Crea piezas gráficas institucionales a partir
 de plantillas con variables y un editor visual tipo Canva. Fase 1: felicitación

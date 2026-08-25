@@ -486,6 +486,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             badge: 'ia',
         });
 
+        // Aniversarios IA (v4.895) — módulo INDEPENDIENTE de Plantillas IA, del
+        // operador de la plataforma. La configuración gobierna piezas que salen
+        // firmadas por clubes de todo el ecosistema, así que no es contenido de
+        // un sitio; la ruta y el servidor lo comprueban igual, esconder un
+        // enlace no protege un endpoint.
+        if (isSuperAdmin) {
+            items.push({
+                icon: Sparkles,
+                label: 'Aniversarios IA',
+                path: '/admin/aniversarios-ia',
+                category: 'Management',
+                keywords: ['aniversario', 'aniversarios', 'cumpleanos del club', 'felicitacion', 'ia', 'generador', 'pieza', 'instrucciones'],
+                badge: 'ia',
+            });
+        }
+
         if (isSuperAdmin) {
             items.push(
                 { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management', keywords: ['distrito', '4271', '4281'] },
