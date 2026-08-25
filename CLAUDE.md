@@ -2647,6 +2647,14 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
 - Las cuatro baterías se reescribieron para este contrato (167 + 171 + 77 + 16)
   y las claves están verificadas a la inversa: un agregado al prompt, el orden
   de las imágenes invertido o la capa de texto reencendida hacen fallar.
+- **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
+  se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
+  EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción
+  —todo lo demás ya existía— el ensure cortaba en el atajo y el ALTER no corrió
+  nunca («la columna request no existe», en la pantalla del cliente). El propio
+  archivo lo advertía en prosa; un comentario no protege (v4.859). Ahora una
+  prueba recorre TODOS los `ADD COLUMN` del archivo y exige cada uno en la
+  lista del atajo — verificada a la inversa contra el esquema anterior.
 
 - **⚠️ EL CRITERIO PUEDE ESTAR BIEN Y EL DEFECTO VIVIR EN EL CAMINO** (v4.896,
   `test:anniversary:path`). La v4.895 verificó el criterio y el compositor, y
