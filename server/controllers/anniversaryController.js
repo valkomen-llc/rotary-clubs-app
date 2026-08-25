@@ -25,10 +25,11 @@ import {
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
+    judgeStylePattern, STYLE_RETRY_CLAUSE,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, startComposition, syncComposition,
-    verifyComposition, resolveBranding, COMPOSE_MODEL,
+    verifyComposition, measureWhiteness, resolveBranding, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
 import {
     catalogFor, modelById, eligibility, resolveProduction, shouldFallback, PROVIDERS, providerOf,
@@ -520,20 +521,53 @@ export const runSync = async (req, res, { draft = false } = {}) => {
             }
         }
 
-        // ── EL DESENLACE (v4.907): SIN PUERTAS, SIN REINTENTO ───────
+        // ── EL DESENLACE (v4.907, matizado en v4.910) ───────────────
         //
-        // Flujo simple, por decisión expresa del cliente: lo que el modelo
-        // devuelve SE ENTREGA y quien genera lo mira — el mismo contrato que
-        // su ejemplo de ChatGPT. Las puertas automáticas de v4.899-v4.906
-        // (fondo, franja, texto dibujado, preservación) descartaban piezas
-        // legítimas y gastaban generaciones dobles; el juicio ahora es del
-        // ojo de quien genera, y la salida es «Volver a probar». La imagen
-        // del modelo no se retoca jamás (regla #1 del sitio).
+        // Flujo simple: lo que el modelo devuelve SE ENTREGA y quien genera
+        // lo mira. La ÚNICA puerta que volvió es el PATRÓN VISUAL (v4.910,
+        // directiva expresa del cliente con la referencia-plantilla delante):
+        // un fondo café/oscuro/negro se regenera UNA vez con la instrucción
+        // reforzada, y si insiste SE ENTREGA con su aviso — nunca se descarta
+        // en silencio ni se cae al modo plano (la lección pagada de v4.899).
+        // La imagen del modelo no se retoca jamás (regla #1 del sitio).
+        let avisoPatron = null;
+        if (ctx.config.styleGuard && r.buffer) {
+            const medida = await measureWhiteness(r.buffer).catch(() => null);
+            const veredicto = medida ? judgeStylePattern(medida) : null;
+            if (veredicto?.hard && !piece.engine?.styleRetried) {
+                const reclamo = await claimPieceForDispatch(piece.id, piece.attempts);
+                if (reclamo) {
+                    try {
+                        const { engine } = await readEngineConfig(SCOPE);
+                        const otra = await startComposition({
+                            config: ctx.config, photoUrl: piece.photoUrl,
+                            clubName: piece.clubName, years: piece.years,
+                            seed: piece.id,
+                            extraClause: STYLE_RETRY_CLAUSE,
+                            model: piece.engine?.model || null, engineConfig: engine,
+                        });
+                        await updatePiece(piece.id, {
+                            taskId: otra.taskId, zoneId: otra.zoneId,
+                            request: {
+                                prompt: otra.prompt, model: otra.model, provider: otra.provider,
+                                endpoint: otra.endpoint, size: otra.size,
+                                referenceUrl: otra.referenceUrl, photoUrl: piece.photoUrl,
+                            },
+                            engine: { ...(piece.engine || {}), styleRetried: true, dispatchedAt: new Date().toISOString() },
+                        });
+                        return res.json({ status: 'composing', ready: false, retrying: true, reason: `${veredicto.note} Se está regenerando con la instrucción reforzada.` });
+                    } catch (e2) {
+                        console.warn('[anniversary] el reintento del patrón no pudo despachar:', e2.message);
+                    }
+                }
+            }
+            if (veredicto?.hard) avisoPatron = `${veredicto.note} Se entrega igual: mirala y, si no sirve, «Volver a probar».`;
+        }
         const actualizada = await updatePiece(piece.id, {
             backdropUrl: r.url,
             renderMode: 'ai',
             status: 'ready',
-            statusDetail: null,
+            statusDetail: avisoPatron,
         });
         res.json(await pieceView(actualizada, ctx.config));
     } catch (e) {

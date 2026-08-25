@@ -154,6 +154,11 @@ const AniversarioIA: React.FC = () => {
                     setDoc(j.document);
                     if (j.document?.renderMode === 'plain') {
                         setSustituida(j.statusDetail || 'La composición generada no cumplió el control de calidad.');
+                    } else if (j.statusDetail) {
+                        // v4.910: la pieza se entrega igual, pero un fondo fuera del
+                        // patrón no se presenta como si nada — se dice (directiva del
+                        // cliente: nunca mostrar lo no conforme como conforme).
+                        setAvisos(a => [...a, j.statusDetail]);
                     }
                     if (Array.isArray(j.copyRepaired)) setAvisos(a => [...a, ...j.copyRepaired]);
                     break;

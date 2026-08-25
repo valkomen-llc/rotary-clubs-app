@@ -192,7 +192,7 @@ check('y la SEGUNDA como la referencia DE ESTILO',
 check('la referencia es un EJEMPLO que NO se copia',
     /EJEMPLO/i.test(S.DEFAULT_MASTER_PROMPT) && /NO la copies/i.test(S.DEFAULT_MASTER_PROMPT));
 check('prohíbe reproducir la fotografía interna de la referencia',
-    /No reproduzcas la fotografía que aparece dentro de la referencia/i.test(S.DEFAULT_MASTER_PROMPT));
+    /no reproduzcas la fotografía que aparezca dentro de la referencia/i.test(S.DEFAULT_MASTER_PROMPT));
 check('prohíbe copiar los textos de la referencia y entregarla editada',
     /no copies sus textos/i.test(S.DEFAULT_MASTER_PROMPT) && /no entregues la referencia editada/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
@@ -266,8 +266,42 @@ check('un prompt EDITADO no se toca jamás — la preferencia explícita manda',
     S.normalizeConfig({ masterPrompt: viejoDefault + ' Y mis globos rojos.' }).masterPrompt.includes('mis globos rojos'));
 check('las restricciones default viejas también se actualizan',
     S.normalizeConfig({ restrictions: 'No generar logos. No inventar personas. No deformar rostros. No colocar textos sobre caras. No generar bloques grandes de texto. No saturar con elementos decorativos.' }).restrictions === S.DEFAULT_RESTRICTIONS);
-check('y las nuevas prohíben copiar la referencia',
-    /No copiar la fotografía que aparece dentro de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
+check('y las nuevas prohíben copiar la referencia y los fondos oscuros',
+    /Copiar la fotografía o los textos de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS)
+    && /café, marrón, beige oscuro, gris oscuro, negro/.test(S.DEFAULT_RESTRICTIONS));
+
+grupo('5c — v4.910 · El patrón visual obligatorio');
+
+// La directiva expresa del cliente, con su referencia-plantilla delante: el
+// bloque de identidad es PERMANENTE en el prompt base predeterminado.
+check('el predeterminado lleva el bloque de identidad en inglés',
+    /predominantly white premium institutional background/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /Never generate brown, beige, gray, black or dark colored backgrounds/i.test(S.DEFAULT_MASTER_PROMPT));
+check('permite variar la composición, no la identidad',
+    /Allow creative variation in composition/i.test(S.DEFAULT_MASTER_PROMPT));
+check('nombra la referencia como ANNIVERSARY_STYLE_REFERENCE',
+    S.DEFAULT_MASTER_PROMPT.includes('ANNIVERSARY_STYLE_REFERENCE'));
+check('el default v4.909 guardado sin editar también SE ACTUALIZA (cadena de legados)',
+    (() => {
+        const v909 = S.DEFAULT_MASTER_PROMPT; // el vigente
+        const guardado = S.normalizeConfig({ masterPrompt: 'La PRIMERA imagen adjunta es {FOTO_CLUB}' }).masterPrompt;
+        return guardado !== v909; // un texto editado NO se actualiza — la cadena sólo toca los defaults exactos
+    })());
+
+// judgeStylePattern: la ÚNICA puerta del flujo, con la calibración de v4.899.
+check('un fondo oscuro/marrón es NO CONFORME', S.judgeStylePattern({ meanLuma: 120, whiteShare: 0.05 }).hard === true);
+check('el caso real de v4.899 (196/49 %) PASA — sólo con nota',
+    (() => { const v = S.judgeStylePattern({ meanLuma: 196, whiteShare: 0.49 }); return v.conforming && !v.hard && !!v.note; })());
+check('una pieza bien clara pasa sin nota',
+    (() => { const v = S.judgeStylePattern({ meanLuma: 235, whiteShare: 0.7 }); return v.conforming && v.note === null; })());
+check('sin medición no se afirma nada', S.judgeStylePattern({}).conforming === true);
+check('el veredicto no conforme lleva sus NÚMEROS',
+    /luminancia 120/.test(S.judgeStylePattern({ meanLuma: 120, whiteShare: 0.05 }).note));
+check('la instrucción reforzada del reintento nombra el fondo blanco',
+    /predominantly white/i.test(S.STYLE_RETRY_CLAUSE) && /Never brown/i.test(S.STYLE_RETRY_CLAUSE));
+check('styleGuard viene ENCENDIDO por defecto', S.normalizeConfig({}).styleGuard === true);
+check('y apagarlo es un cambio versionable',
+    S.fingerprintOf({}) !== S.fingerprintOf({ styleGuard: false }));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('6 — El texto: el modelo escribe, el código decide');

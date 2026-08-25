@@ -2661,6 +2661,17 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   `normalizeConfig` (upgrade perezoso, `LEGACY_MASTER_PROMPTS`): sin eso, una
   mejora del predeterminado no llega jamás a la fila que un guardado
   anterior congeló; un prompt editado no se toca jamás.
+- **⚠️ LA ÚNICA PUERTA DEL FLUJO ES EL PATRÓN VISUAL** (v4.910, directiva
+  expresa del cliente con su referencia-plantilla delante — matiza el «SIN
+  PUERTAS» de v4.907). El prompt base predeterminado lleva un bloque
+  PERMANENTE de identidad (fondo blanco premium, paleta dorado/blanco/azul,
+  fondos oscuros prohibidos) y `judgeStylePattern` mide el fondo de la pieza
+  con la calibración de v4.899 (duro sólo bajo 165 de luminancia): un fondo
+  café/oscuro se regenera UNA vez con `STYLE_RETRY_CLAUSE` y, si insiste, SE
+  ENTREGA con su aviso — nunca al modo plano, nunca en silencio. Interruptor
+  `styleGuard` (default true, versionable). Franja, texto dibujado y
+  preservación SIGUEN fuera del flujo. La referencia ideal es una plantilla
+  VACÍA — una pieza terminada invita al modelo a copiarla (v4.909).
 - **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
   se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
   EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción

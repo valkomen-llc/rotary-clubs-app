@@ -42,6 +42,7 @@ interface Config {
     textZone: 'auto' | 'left' | 'right' | 'bottom';
     promptOptions: { ambient: boolean; useReference: boolean; varyDecor: boolean };
     messageInstruction: string; restrictions: string;
+    styleGuard: boolean;
     branding: { clubLogo: boolean; districtLine: boolean; footerImage: string | null; watermark: string | null };
     useFullClubName: boolean;
 }
@@ -599,8 +600,16 @@ const AnniversaryStudio: React.FC = () => {
             </Card>
 
             {/* 2 — Referencias */}
-            <Card title="Referencia visual" icon={<ImageIcon className="w-5 h-5" />}
-                hint="Piezas que ya te gustan. La marcada como principal es la que viaja al modelo como dirección de estilo.">
+            <Card title="Identidad visual de Aniversarios" icon={<ImageIcon className="w-5 h-5" />}
+                hint="El patrón visual obligatorio de todas las piezas. La referencia marcada como principal (ANNIVERSARY_STYLE_REFERENCE) viaja al modelo como guía de fondo, textura, paleta y decoración.">
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-gray-600 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5 mb-4">
+                    <span><strong className="text-gray-800">Referencia de estilo:</strong>{' '}
+                        {config.references.some(r => r.primary) ? 'activa' : 'sin cargar'}</span>
+                    <span><strong className="text-gray-800">Fondo:</strong> blanco institucional</span>
+                    <span><strong className="text-gray-800">Paleta:</strong> blanco + dorado + azul</span>
+                    <span><strong className="text-gray-800">Fondos oscuros:</strong>{' '}
+                        {config.styleGuard ? 'bloqueados (se regenera una vez)' : 'permitidos'}</span>
+                </div>
                 <div className="flex flex-wrap gap-3">
                     {config.references.map((ref, i) => (
                         <div key={ref.url + i} className={`relative w-36 rounded-lg overflow-hidden border-2 ${ref.primary ? 'border-rotary-blue' : 'border-gray-200'}`}>
@@ -636,8 +645,18 @@ const AnniversaryStudio: React.FC = () => {
                 </div>
                 <p className="text-xs text-gray-500 mt-3">
                     Las referencias son dirección creativa, no una plantilla: la IA no las copia, se inspira en su paleta,
-                    su decoración y su aire. Máximo {catalog.maxReferences}.
+                    su decoración y su aire. Máximo {catalog.maxReferences}. La ideal es una plantilla VACÍA —fondo y
+                    decoración, sin fotografía de personas ni textos—: una pieza terminada invita al modelo a copiarla.
                 </p>
+                <label className="flex items-start gap-2 mt-3 text-sm text-gray-700">
+                    <input type="checkbox" checked={config.styleGuard !== false}
+                        onChange={e => set('styleGuard', e.target.checked)} className="mt-0.5" />
+                    <span>
+                        <strong>Patrón visual obligatorio.</strong> Si la pieza sale con fondo café, oscuro o negro, se
+                        regenera UNA vez con la instrucción reforzada; si insiste, se entrega con su aviso — nunca se
+                        descarta en silencio. Gasta una generación extra sólo cuando el modelo rompe el patrón.
+                    </span>
+                </label>
             </Card>
 
             {/* 3 — La instrucción base (v4.907: el flujo simple) */}
@@ -823,6 +842,9 @@ const AnniversaryStudio: React.FC = () => {
                                             pieza se armó con la fotografía intacta sobre fondo blanco. La imagen del modelo <strong>no se
                                             retocó</strong>: se descartó.
                                         </Aviso>
+                                    )}
+                                    {testDoc.renderMode === 'ai' && testInfo?.statusDetail && (
+                                        <Aviso tone="warn">{testInfo.statusDetail}</Aviso>
                                     )}
                                     {(testInfo?.validation?.notes || []).map((n: string, i: number) => <Aviso key={i} tone="info">{n}</Aviso>)}
                                     {(testInfo?.copyRepaired || []).map((n, i) => <Aviso key={`r${i}`} tone="warn">{n}</Aviso>)}
