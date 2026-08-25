@@ -2554,7 +2554,7 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
-## Aniversarios IA — v4.895 (motor multimodelo: v4.897)
+## Aniversarios IA — v4.895 (motor multimodelo: v4.897; Prompt Maestro: v4.898)
 
 Módulo **nuevo e independiente**. Genera la pieza gráfica del aniversario de un
 club a partir de cuatro datos: club, años, fotografía y un botón. El
@@ -2664,19 +2664,47 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   texto se lea sobre cualquier fondo que devuelva el modelo. Quien configura
   elige las instrucciones y las referencias; la legibilidad no es una decisión
   editorial. Misma regla que el Slider Global (v4.879).
-- **TRES CLÁUSULAS NO SE NEGOCIAN Y NO SE RECORTAN NUNCA**: que la imagen no
-  traiga texto ni logotipos, que conserve a las personas de la fotografía y que
-  deje libre la franja del texto. Sin ellas la pieza no es publicable por bonita
-  que salga.
-- **⚠️ LA DIRECCIÓN DE ARTE DEL ADMINISTRADOR SE RECORTA, NUNCA SE ELIMINA.** El
-  orden de sacrificio es ambiente → estilo → recortar la dirección de arte. Es
-  lo ÚNICO del prompt que es específico de ESTA configuración: todo lo demás lo
-  escribimos nosotros y es igual en todas las piezas. Tirarla entera dejaría al
-  administrador editando un campo que no llega al modelo, con un fallo mudo —
-  misma decisión que `motionHint` en el Creador de Reels. El presupuesto es
-  **2.500** y está MEDIDO: con la instrucción por defecto el prompt entero mide
-  2.148 (núcleo 1.108, dirección 357, estilo 461, ambiente 219). **Al agregar
-  una frase, medir.**
+- **CUATRO CLÁUSULAS NO SE NEGOCIAN Y NO SE RECORTAN NUNCA** (v4.898 sumó la
+  cuarta): que la imagen no traiga texto ni logotipos, que conserve a las
+  personas de la fotografía, que deje libre la franja del texto y que la BANDA
+  INFERIOR quede limpia (`FOOTER_CLAUSE`). Sin ellas la pieza no es publicable
+  por bonita que salga.
+- **⚠️ EL PROMPT MAESTRO (v4.898) SUPERSEDE a `designInstruction` y al estilo
+  base.** La dirección de arte vive en `config.masterPrompt` —en la BASE, no en
+  el código—, se edita y restaura desde el panel, y se versiona al publicar con
+  el resto de la configuración (`fingerprintOf`). Entiende TRES variables —
+  `{NOMBRE_CLUB}`, `{ANOS_CLUB}`, `{FOTO_CLUB}` (`MASTER_VARIABLES`)— que
+  `applyMasterVariables` sustituye con los datos reales ANTES de llamar al
+  modelo; una variable desconocida se AVISA en `validateConfig` y viaja literal
+  —borrarla en silencio dejaría al administrador editando un token que
+  desaparece—. Una configuración vieja con `designInstruction` la conserva como
+  Prompt Maestro (fallback de lectura en `normalizeConfig`, regla aditiva). El
+  bloque `estilo` (BASE_STYLE) YA NO se ensambla: el maestro por defecto lo
+  supersede — BASE_STYLE queda exportado como referencia.
+- **⚠️ EL PROMPT MAESTRO SE RECORTA, NUNCA SE ELIMINA.** El orden de sacrificio
+  es ambiente → recortar el maestro (`master(recortado)`). Es lo ÚNICO del
+  prompt específico de ESTA configuración — misma decisión que `motionHint` en
+  el Creador de Reels. El presupuesto es **2.500** y está MEDIDO (v4.898,
+  `PROMPT_VERSION = '2'`): con el maestro por defecto el prompt entero mide
+  2.343 —núcleo 1.386 (incluida `FOOTER_CLAUSE`), maestro sustituido y envuelto
+  710, ambiente hasta 370— y el peor caso cierra en 2.491. **Al agregar una
+  frase, medir.** `promptOptions` trae los dos interruptores opcionales:
+  `ambient` (la frase por foto) y `useReference` (mandar la referencia visual);
+  lo que no es opcional no tiene interruptor.
+- **⚠️ LA BANDA DEL PIE ES DEL 16 %** (`FOOTER_BAND = { y: 0.84, h: 0.16 }`,
+  dentro del 15-20 % pedido) y es el MISMO acuerdo en tres lectores: la
+  `FOOTER_CLAUSE` del prompt (en palabras), el compositor (dibuja el pie ahí) y
+  las zonas de texto (terminan por encima; `bottom` es y 0.50–0.82). Al mover
+  la banda, mover los tres — la paridad la comprueba `test:anniversary`.
+- **EL COMPOSITOR HABLA EL LENGUAJE DE LA REFERENCIA** (v4.898): titular azul
+  en mayúsculas, el pase `KICKER_TEXT` («FELICIDADES», constante del código —
+  lenguaje de la PIEZA, no algo que escriba un modelo), el nombre del club en
+  DOS tonos (`splitClubName`: prefijo institucional azul + parte distintiva
+  dorada, sólo cuando cabe en una línea — partir el color por el salto de línea
+  se lee como un error), la banda dorada `yearsBandLabel` («40 AÑOS», pastilla
+  dorada con texto blanco) y el mensaje. El espaciado de letra se fija ANTES de
+  medir y de dibujar con el mismo valor (`applyLetterSpacing`): medir sin él y
+  dibujar con él saca el texto del recuadro.
 - **LO PROHIBIDO VIAJA EN `negative_prompt`**, no pegado al positivo: dentro de
   la descripción de la escena el modelo se obsesiona con lo prohibido (v4.705),
   y en su campo libera presupuesto del positivo.

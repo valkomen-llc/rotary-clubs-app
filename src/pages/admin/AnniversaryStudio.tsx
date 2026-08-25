@@ -38,7 +38,9 @@ interface Config {
     name: string; enabled: boolean; format: string; resolution: number;
     scope: { mode: 'all' | 'clubs'; clubIds: string[] };
     references: Reference[];
-    designInstruction: string; messageInstruction: string; restrictions: string;
+    masterPrompt: string;
+    promptOptions: { ambient: boolean; useReference: boolean };
+    messageInstruction: string; restrictions: string;
     branding: { clubLogo: boolean; districtLine: boolean; footerImage: string | null; watermark: string | null };
     useFullClubName: boolean;
 }
@@ -49,6 +51,9 @@ interface Catalog {
     brandingFields: { id: string; label: string; help: string }[];
     stages: { id: string; label: string; icon: string }[];
     maxReferences: number;
+    defaults?: { masterPrompt?: string; messageInstruction?: string; restrictions?: string };
+    masterVariables?: string[];
+    footerReserve?: { y: number; h: number };
     engine: { model: string; configured: boolean; envKey: string };
 }
 interface VersionRow {
@@ -584,15 +589,64 @@ const AnniversaryStudio: React.FC = () => {
                 </p>
             </Card>
 
-            {/* 3 — Instrucciones */}
-            <Card title="Instrucciones" icon={<Sparkles className="w-5 h-5" />}
-                hint="Escribís en lenguaje natural. No hace falta saber nada técnico.">
+            {/* 3 — Prompt Maestro e instrucciones */}
+            <Card title="Prompt Maestro" icon={<Sparkles className="w-5 h-5" />}
+                hint="La dirección de arte que gobierna el DISEÑO. Se guarda en la configuración —no en el código— y se versiona al publicar."
+                action={
+                    <button
+                        onClick={() => {
+                            const predeterminado = catalog.defaults?.masterPrompt || '';
+                            if (!predeterminado) return;
+                            if (!window.confirm('Se reemplaza el Prompt Maestro del borrador por el predeterminado del sistema. No se publica nada hasta que pulses «Publicar». ¿Seguimos?')) return;
+                            set('masterPrompt', predeterminado);
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-medium hover:bg-gray-50 flex items-center gap-1.5"
+                    >
+                        <RotateCcw className="w-3.5 h-3.5" /> Restaurar el predeterminado
+                    </button>
+                }>
                 <div className="space-y-6">
+                    {/* El estado del Prompt Maestro, a la vista: qué versión corre,
+                        qué variables entiende y qué reserva el ensamblador. */}
+                    <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-gray-600 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
+                        <span><strong className="text-gray-800">Prompt Maestro:</strong>{' '}
+                            {publishedAt ? (dirty ? 'ACTIVO — con cambios sin publicar' : 'ACTIVO en producción') : 'Borrador (sin publicar)'}</span>
+                        <span><strong className="text-gray-800">Versión:</strong>{' '}
+                            {versions.find(v => v.current) ? `v${versions.find(v => v.current)!.version} · ${versions.find(v => v.current)!.fingerprint}` : '—'}</span>
+                        <span><strong className="text-gray-800">Variables:</strong>{' '}
+                            {/* Los marcadores son DATOS, no lenguaje (v4.662). */}
+                            <span data-no-translate>{(catalog.masterVariables || []).join('  ')}</span></span>
+                        <span><strong className="text-gray-800">Referencia visual:</strong>{' '}
+                            {config.promptOptions.useReference
+                                ? (config.references.length ? 'ACTIVA' : 'activada, sin imagen cargada')
+                                : 'apagada'}</span>
+                        <span><strong className="text-gray-800">Zona inferior reservada:</strong>{' '}
+                            {Math.round((catalog.footerReserve?.h ?? 0.16) * 100)} % (pie institucional)</span>
+                        <span><strong className="text-gray-800">Formato:</strong> {config.format === 'square' ? '1:1' : config.format}</span>
+                        <button
+                            onClick={() => document.getElementById('panel-probar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                            className="ml-auto px-2.5 py-1 rounded border border-rotary-blue/40 text-rotary-blue font-medium hover:bg-sky-50 flex items-center gap-1"
+                        >
+                            <FlaskConical className="w-3.5 h-3.5" /> Probar Prompt
+                        </button>
+                    </div>
                     <Instruccion
-                        label="Instrucción de generación" max={2000} rows={6}
-                        help="Cómo tiene que verse la pieza. Es lo que gobierna el diseño y lo último que se sacrifica si el prompt no entra."
-                        value={config.designInstruction} onChange={v => set('designInstruction', v)}
+                        label="Prompt Maestro" max={4000} rows={8}
+                        help="Cómo tiene que verse la pieza. Podés nombrar {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB}: se sustituyen con los datos reales de cada generación, antes de llamar al modelo. Se recorta si no entra, pero nunca se elimina."
+                        value={config.masterPrompt} onChange={v => set('masterPrompt', v)}
                     />
+                    <div className="flex flex-wrap items-center gap-6">
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={config.promptOptions.ambient}
+                                onChange={e => set('promptOptions', { ...config.promptOptions, ambient: e.target.checked })} />
+                            Adaptar el prompt a cada fotografía (ambiente)
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={config.promptOptions.useReference}
+                                onChange={e => set('promptOptions', { ...config.promptOptions, useReference: e.target.checked })} />
+                            Mandar la referencia visual al modelo
+                        </label>
+                    </div>
                     <Instruccion
                         label="Instrucciones del mensaje" max={1200} rows={4}
                         help="Cómo tiene que escribir la IA el texto que se imprime en la pieza. Corto: la pieza no admite párrafos."
@@ -604,10 +658,11 @@ const AnniversaryStudio: React.FC = () => {
                         value={config.restrictions} onChange={v => set('restrictions', v)}
                     />
                     <Aviso tone="info">
-                        Además de lo que escribas, el sistema le exige siempre al modelo tres cosas que no se negocian:
+                        Además de lo que escribas, el sistema le exige siempre al modelo cuatro cosas que no se negocian:
                         que la imagen <strong>no traiga ningún texto ni logotipo</strong> —los imprimimos nosotros encima, para
-                        que el nombre y las cifras salgan exactos—, que <strong>conserve a las personas de la fotografía</strong> y
-                        que <strong>deje libre la franja donde va el texto</strong>.
+                        que el nombre y las cifras salgan exactos—, que <strong>conserve a las personas de la fotografía</strong>,
+                        que <strong>deje libre la franja donde va el texto</strong> y que <strong>la banda inferior quede
+                        limpia</strong> para el pie institucional.
                     </Aviso>
                 </div>
             </Card>
@@ -659,6 +714,7 @@ const AnniversaryStudio: React.FC = () => {
             <EnginePanel />
 
             {/* 5 — Probar */}
+            <div id="panel-probar" />
             <Card title="Probar configuración" icon={<FlaskConical className="w-5 h-5" />}
                 hint="Corre exactamente la misma cadena que el formulario público, pero con el BORRADOR. Editá una instrucción y volvé a probar.">
                 <div className="grid gap-5 lg:grid-cols-2">

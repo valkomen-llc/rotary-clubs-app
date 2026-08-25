@@ -166,7 +166,7 @@ export const listVersions = async (clubId, limit = 20) => {
     const row = await ensureConfigRow(clubId);
     const { rows } = await db.query(
         `SELECT id, version, label, fingerprint, "publishedByEmail", "createdAt",
-                (config ->> 'designInstruction') AS "designInstruction"
+                COALESCE(config ->> 'masterPrompt', config ->> 'designInstruction') AS "designInstruction"
            FROM "AnniversaryConfigVersion"
           WHERE "configId" = $1
           ORDER BY version DESC

@@ -132,7 +132,7 @@ grupo('1 — El texto cae en la franja que el prompt reservó');
 
 // ⚠️ MEDIR «¿hay tinta en la mitad izquierda?» NO DISCRIMINA, y la primera
 // versión de esta prueba caía en esa trampa: las tres zonas SE SOLAPAN —`left`
-// llega hasta y=0,74 y `bottom` empieza en y=0,52—, así que con el compositor
+// llega hasta y=0,74 y `bottom` empieza en y=0,50—, así que con el compositor
 // escribiendo siempre abajo la comprobación pasaba igual. Verificado a la
 // inversa: sólo el CENTROIDE de la tinta distingue una zona de otra.
 //
@@ -157,7 +157,7 @@ const dentro = (c, z) => c.x >= z.x && c.x <= z.x + z.w && c.y >= z.y && c.y <= 
 const ZONAS = {
     left: { x: 0.070, y: 0.180, w: 0.400, h: 0.560 },
     right: { x: 0.530, y: 0.180, w: 0.400, h: 0.560 },
-    bottom: { x: 0.090, y: 0.520, w: 0.820, h: 0.330 },
+    bottom: { x: 0.090, y: 0.500, w: 0.820, h: 0.320 },
 };
 
 for (const id of ['left', 'right', 'bottom']) {

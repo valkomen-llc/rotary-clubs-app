@@ -69,7 +69,7 @@ export const GENERATOR_KIND = 'aniversario';
  *  auditoría de cada pieza (`engineStampFor`): sin ella, «¿por qué esta pieza
  *  de marzo salió así?» no distingue un cambio de modelo de un cambio nuestro
  *  de prompt. */
-export const PROMPT_VERSION = '1';
+export const PROMPT_VERSION = '2';
 export const GENERATOR_LABEL = 'Aniversarios IA';
 
 // ─── Formato de salida ─────────────────────────────────────────────────
@@ -115,14 +115,17 @@ export const canvasSize = (formatId = DEFAULT_FORMAT, resolution = DEFAULT_RESOL
 export const TEXT_ZONES = {
     left: { id: 'left', x: 0.070, y: 0.180, w: 0.400, h: 0.560, align: 'left', words: 'la mitad izquierda' },
     right: { id: 'right', x: 0.530, y: 0.180, w: 0.400, h: 0.560, align: 'left', words: 'la mitad derecha' },
-    bottom: { id: 'bottom', x: 0.090, y: 0.520, w: 0.820, h: 0.330, align: 'center', words: 'el tercio inferior' },
+    bottom: { id: 'bottom', x: 0.090, y: 0.500, w: 0.820, h: 0.320, align: 'center', words: 'el tercio inferior' },
 };
 export const TEXT_ZONE_IDS = Object.keys(TEXT_ZONES);
 export const DEFAULT_TEXT_ZONE = 'bottom';
 
-/** La banda del pie institucional. Va SIEMPRE en el mismo sitio y por eso las
- *  zonas de texto terminan por encima: el branding no compite con el mensaje. */
-export const FOOTER_BAND = { y: 0.880, h: 0.120 };
+/** La banda del pie institucional: el 16 % inferior, dentro del 15–20 % que
+ *  pide la especificación del cliente (v4.898). Va SIEMPRE en el mismo sitio y
+ *  por eso las zonas de texto terminan por encima: el branding no compite con
+ *  el mensaje. El MODELO también la conoce (`FOOTER_CLAUSE`): es la reserva
+ *  donde Club Platform superpone después la capa institucional. */
+export const FOOTER_BAND = { y: 0.840, h: 0.160 };
 
 export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 
@@ -156,6 +159,15 @@ export const PRESERVE_CLAUSE =
     + 'the same clothing and the same expressions. Nobody is added and nobody is removed. Faces are never distorted, '
     + 'never redrawn and never cropped out of the frame.';
 
+/** La reserva institucional, dicha al MODELO. Es la tercera cláusula que
+ *  sostiene la arquitectura: sin ella el modelo llena el pie con decoración y
+ *  la capa 3 cae encima de globos. El porcentaje es el mismo número que
+ *  `FOOTER_BAND` — un solo acuerdo, dos lectores. */
+export const FOOTER_CLAUSE =
+    'The bottom band of the canvas — roughly its lowest sixth — stays completely clean and empty: plain light '
+    + 'background only, with no photograph, no balloons, no confetti and no important decoration there, because the '
+    + 'platform prints the institutional footer on that band afterwards.';
+
 /** Cómo se integra la fotografía. «Colocala en el lienzo» da una foto pegada:
  *  lo que produce una pieza de papelería es NOMBRAR el mecanismo. Es la misma
  *  lección que dejó escrita `designCompose.js` y se repite acá a propósito —
@@ -178,17 +190,49 @@ export const BASE_NEGATIVE = [
     'collage', 'sticker cutout', 'harsh drop shadow', 'blurry', 'low quality',
 ];
 
-// ─── Las instrucciones por defecto ─────────────────────────────────────
+// ─── El PROMPT MAESTRO y sus variables (v4.898) ────────────────────────
 //
-// Son un PUNTO DE PARTIDA editable, no una configuración escondida. Están
-// redactadas como las escribiría el administrador —en español, sin
-// tecnicismos— porque es exactamente lo que va a ver en el campo y lo que va a
-// corregir. Salen textuales del pedido.
-export const DEFAULT_DESIGN_INSTRUCTION =
-    'Genera una pieza institucional para celebrar el aniversario de un club Rotary. '
-    + 'Utiliza fondo predominantemente blanco, globos blancos y dorados, detalles de confeti discretos, '
-    + 'fotografía protagonista y una composición elegante. '
-    + 'El nombre del club y los años deben destacar claramente.';
+// El Prompt Maestro es la dirección de arte PERMANENTE del generador: vive en
+// la base (borrador → publicar, con versiones), se edita sin desplegar y
+// admite variables que el ensamblador sustituye antes de cada generación.
+//
+// ⚠️ QUÉ GOBIERNA Y QUÉ NO. Gobierna el DISEÑO: fondo, paleta, integración de
+// la fotografía, celebración, variación entre generaciones. NO gobierna el
+// texto impreso —título, nombre del club, años, mensaje—, porque ese texto lo
+// imprime la plataforma en la capa 2 y así es exacto POR CONSTRUCCIÓN: los
+// modelos generativos no escriben texto de forma fiable (la decisión
+// fundacional del módulo, medida en este repositorio). Pedirle al modelo que
+// escriba «Club Rotario Cali» sería renunciar a la única garantía que ninguna
+// validación puede reemplazar.
+//
+// Y las TRES cláusulas que sostienen la arquitectura —sin texto ni logos,
+// personas conservadas, franja del texto y pie reservados— las agrega SIEMPRE
+// el ensamblador, fuera del campo editable: una dirección de arte no puede
+// desactivar lo que hace publicable la pieza.
+
+export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}'];
+
+/**
+ * Sustituye las variables del Prompt Maestro. `{FOTO_CLUB}` no es texto: es la
+ * fotografía que viaja como imagen de entrada, así que en el prompt se
+ * convierte en el puntero que el modelo entiende. Una variable desconocida se
+ * deja tal cual —y `validateConfig` la AVISA—: borrarla en silencio haría que
+ * el administrador edite un token que desaparece sin explicación.
+ */
+export const applyMasterVariables = (text, { clubName = '', years = null } = {}) =>
+    String(text || '')
+        .replaceAll('{NOMBRE_CLUB}', clean(clubName) || 'el club')
+        .replaceAll('{ANOS_CLUB}', years ? String(years) : 'sus')
+        .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada');
+
+/**
+ * El Prompt Maestro PREDETERMINADO. Destila la especificación del cliente
+ * (v4.898) a lo que el modelo de imagen puede cumplir, dentro del presupuesto
+ * del prompt: la referencia visual «Feliz aniversario Club Rotario Cali» hecha
+ * dirección de arte. En español a propósito: es lo que el administrador va a
+ * leer y corregir, y los motores actuales lo entienden.
+ */
+export const DEFAULT_MASTER_PROMPT = `Componé una pieza premium de aniversario para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}. Estilo editorial limpio y elegante: fondo predominantemente blanco con curvas y degradados sutiles, azul institucional profundo y dorado como acentos, mucho espacio negativo. La fotografía va a la derecha, en un marco blanco con sombra suave, sobre la mitad superior. Celebración sobria: globos dorados, blancos y champagne arriba a la derecha, confeti discreto; nunca estética infantil ni saturada. Finas curvas azules y doradas llevan la mirada al pie. Variá la decoración entre generaciones conservando identidad y elegancia.`;
 
 export const DEFAULT_MESSAGE_INSTRUCTION =
     'Genera un mensaje corto, institucional, humano e inspirador. Máximo dos frases. '
@@ -236,7 +280,11 @@ export const DEFAULT_CONFIG = Object.freeze({
     // permite acotarlo mientras se prueba.
     scope: { mode: 'all', clubIds: [] },
     references: [],
-    designInstruction: DEFAULT_DESIGN_INSTRUCTION,
+    masterPrompt: DEFAULT_MASTER_PROMPT,
+    // Las instrucciones OPCIONALES del ensamblador, con su interruptor: el
+    // ambiente por foto (la frase que adapta el prompt a ESA fotografía) y el
+    // uso de la referencia visual. Lo que NO es opcional no tiene interruptor.
+    promptOptions: { ambient: true, useReference: true },
     messageInstruction: DEFAULT_MESSAGE_INSTRUCTION,
     restrictions: DEFAULT_RESTRICTIONS,
     branding: {
@@ -307,7 +355,15 @@ export const normalizeConfig = (raw) => {
                 : [],
         },
         references,
-        designInstruction: str(c.designInstruction, DEFAULT_DESIGN_INSTRUCTION).trim().slice(0, 2000),
+        // El maestro, con RESPALDO de lectura: una configuración guardada antes
+        // de v4.898 trae `designInstruction` y no puede quedarse sin dirección
+        // de arte por un renombre (regla aditiva del sitio). El campo viejo no
+        // se reescribe: se lee.
+        masterPrompt: (str(c.masterPrompt).trim() || str(c.designInstruction).trim() || DEFAULT_MASTER_PROMPT).slice(0, 4000),
+        promptOptions: {
+            ambient: bool(c.promptOptions?.ambient, true),
+            useReference: bool(c.promptOptions?.useReference, true),
+        },
         messageInstruction: str(c.messageInstruction, DEFAULT_MESSAGE_INSTRUCTION).trim().slice(0, 1200),
         restrictions: str(c.restrictions, DEFAULT_RESTRICTIONS).trim().slice(0, 1200),
         branding: {
@@ -339,8 +395,16 @@ export const validateConfig = (raw) => {
     const errors = [];
     const warnings = [];
 
-    if (!c.designInstruction || c.designInstruction.length < 40) {
-        errors.push('La instrucción de generación está vacía o es demasiado corta: es lo único que le dice al modelo cómo tiene que verse la pieza.');
+    if (!c.masterPrompt || c.masterPrompt.length < 40) {
+        errors.push('El Prompt Maestro está vacío o es demasiado corto: es lo único que le dice al modelo cómo tiene que verse la pieza.');
+    }
+    // Un token con forma de variable que el ensamblador no conoce viaja
+    // LITERAL al modelo. No bloquea —puede ser una llave escrita a propósito—
+    // pero se dice: un {NOMBRE_CLUV} mal tipeado es invisible de otra forma.
+    const desconocidas = [...String(c.masterPrompt || '').matchAll(/\{[A-Z_]{3,}\}/g)]
+        .map(m => m[0]).filter(t => !MASTER_VARIABLES.includes(t));
+    if (desconocidas.length) {
+        warnings.push(`El Prompt Maestro usa variables que el sistema no conoce y viajarían tal cual al modelo: ${[...new Set(desconocidas)].join(', ')}. Las disponibles son ${MASTER_VARIABLES.join(', ')}.`);
     }
     if (!c.messageInstruction || c.messageInstruction.length < 20) {
         errors.push('Falta la instrucción del mensaje: sin ella, el texto que se imprime en la pieza no tiene criterio.');
@@ -370,7 +434,8 @@ export const fingerprintOf = (raw) => {
     const c = normalizeConfig(raw);
     const material = JSON.stringify([
         c.format, c.resolution,
-        c.designInstruction, c.messageInstruction, c.restrictions,
+        c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference],
+        c.messageInstruction, c.restrictions,
         c.references.map(r => [r.url, r.primary]),
         [c.branding.clubLogo, c.branding.districtLine, c.branding.footerImage, c.branding.watermark],
         c.useFullClubName,
@@ -502,11 +567,12 @@ export const clearZoneClause = (zoneId) => {
 
 /**
  * El presupuesto del prompt. 2500 es el tope que declara la familia de modelos
- * que usa la pasarela, y NO es un número puesto a ojo: con la instrucción por
- * defecto el prompt completo mide **2.148** caracteres —núcleo 1.108,
- * dirección de arte 357, estilo 461, ambiente 219—, así que en el caso normal
- * no se sacrifica nada. Lo que puede desbordarlo es una instrucción del
- * administrador muy larga, y entonces se recorta por el final.
+ * que usa la pasarela, y NO es un número puesto a ojo: con el Prompt Maestro
+ * por defecto el prompt completo mide **2.343** caracteres —núcleo 1.386,
+ * maestro sustituido y envuelto 710, ambiente hasta 370 en el peor caso, que
+ * cierra en 2.491—, así que en el caso normal no se sacrifica nada. Lo que
+ * puede desbordarlo es un Prompt Maestro muy largo, y entonces se recorta por
+ * el final.
  *
  * **Al agregar una frase al prompt, medir.** Es la regla del Creador de Reels,
  * donde el peor caso llegó a 4.362 sin que nada avisara.
@@ -519,35 +585,38 @@ export const PROMPT_MAX_CHARS = Number(process.env.ANNIVERSARY_PROMPT_MAX_CHARS)
  * EL ORDEN ES EL ORDEN DE SACRIFICIO, y está elegido a propósito:
  *
  *   1. Lo que sostiene la arquitectura —sin texto, sin logos, preservar a las
- *      personas, dejar libre la franja— NO se recorta nunca. Sin eso la pieza
- *      no es publicable, por bonita que salga.
- *   2. La INSTRUCCIÓN DEL ADMINISTRADOR va antes que el estilo genérico. Es su
- *      dirección de arte: que sobreviva un adjetivo escrito por nosotros
- *      mientras se cae lo que él escribió sería al revés. Es la lección de
- *      v4.754 en el Director Creativo.
- *   3. El estilo base y el ambiente se sacrifican primero.
+ *      personas, dejar libre la franja del texto Y la banda del pie— NO se
+ *      recorta nunca. Sin eso la pieza no es publicable, por bonita que salga.
+ *   2. El PROMPT MAESTRO va después del núcleo y SE RECORTA, NUNCA SE
+ *      ELIMINA: es la dirección de arte de esta configuración, con las
+ *      variables ya sustituidas. Que sobreviva una frase escrita por nosotros
+ *      mientras se cae lo que escribió el administrador sería al revés. Es la
+ *      lección de v4.754 en el Director Creativo.
+ *   3. El ambiente —lo que el análisis dice de ESTA foto— se sacrifica
+ *      primero. El estilo base ya no se ensambla aparte: el Prompt Maestro
+ *      por defecto lo supersede (BASE_STYLE queda exportado como referencia).
  */
-export const buildImagePrompt = ({ config, years = null, analysis = null, zoneId = null, hasReference = false } = {}) => {
+export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false } = {}) => {
     const c = normalizeConfig(config);
     const zona = zoneId || textZoneFor(analysis);
     const a = analysis || fallbackAnalysis();
 
     const nucleo = [
         hasReference
-            ? 'Using the first image as the STYLE REFERENCE for palette, decoration and layout, and the second image as the PHOTOGRAPH, build a single new square piece.'
+            ? 'Using the first image as the STYLE REFERENCE for palette, decoration and layout, and the last image as the PHOTOGRAPH, build a single new square piece.'
             : 'Build a single new square piece around the supplied photograph.',
         INTEGRATION_CLAUSE,
         clearZoneClause(zona),
+        FOOTER_CLAUSE,
         PRESERVE_CLAUSE,
         NO_TEXT_CLAUSE,
     ];
 
-    // Lo que aporta el administrador. Va en español tal cual lo escribió: los
+    // El Prompt Maestro del administrador, con {NOMBRE_CLUB}/{ANOS_CLUB}/
+    // {FOTO_CLUB} ya sustituidos. Va en español tal cual lo escribió: los
     // motores actuales lo entienden, y traducirlo sería reescribir su
     // dirección de arte con nuestras palabras.
-    const direccion = c.designInstruction
-        ? [`Art direction from the client, follow it closely (written in Spanish): «${c.designInstruction}»`]
-        : [];
+    const masterTexto = `Master art direction, follow it closely (in Spanish): «${applyMasterVariables(c.masterPrompt, { clubName, years })}»`;
 
     const ambiente = [];
     if (a.people === 0) {
@@ -567,34 +636,32 @@ export const buildImagePrompt = ({ config, years = null, analysis = null, zoneId
     }
 
     const nucleoTexto = nucleo.join(' ');
-    const direccionTexto = direccion.join(' ');
-    const estiloTexto = BASE_STYLE.join('; ') + '.';
-    const ambienteTexto = ambiente.join(' ');
+    // El interruptor de la configuración puede apagar el ambiente entero: es
+    // la parte que varía con cada foto, y hay direcciones de arte que lo
+    // prefieren fuera para que el prompt sea idéntico entre generaciones.
+    const ambienteTexto = c.promptOptions.ambient ? ambiente.join(' ') : '';
 
     const dropped = [];
     const armar = (partes) => partes.filter(Boolean).join('\n');
 
     // El ORDEN DE SACRIFICIO, de lo primero que se cae a lo último:
-    // ambiente → estilo → (recortar la dirección de arte). El núcleo no se
-    // toca nunca: sin él la pieza no es publicable.
-    let partes = [nucleoTexto, direccionTexto, estiloTexto, ambienteTexto];
+    // ambiente → (recortar el Prompt Maestro). El núcleo no se toca nunca:
+    // sin él la pieza no es publicable.
+    let partes = [nucleoTexto, masterTexto, ambienteTexto];
     if (armar(partes).length > PROMPT_MAX_CHARS && ambienteTexto) {
-        dropped.push('ambiente'); partes = [nucleoTexto, direccionTexto, estiloTexto];
-    }
-    if (armar(partes).length > PROMPT_MAX_CHARS && estiloTexto) {
-        dropped.push('estilo'); partes = [nucleoTexto, direccionTexto];
+        dropped.push('ambiente'); partes = [nucleoTexto, masterTexto];
     }
 
-    // ⚠️ LA DIRECCIÓN DE ARTE SE RECORTA, NUNCA SE ELIMINA. Es lo ÚNICO del
+    // ⚠️ EL PROMPT MAESTRO SE RECORTA, NUNCA SE ELIMINA. Es lo ÚNICO del
     // prompt que es específico de ESTA configuración: todo lo demás lo
-    // escribimos nosotros y es igual en todas las piezas. Tirarla entera
+    // escribimos nosotros y es igual en todas las piezas. Tirarlo entero
     // dejaría al administrador editando un campo que no llega al modelo, y el
     // fallo sería mudo. Misma decisión que `motionHint` en el Creador de Reels.
-    let recorte = direccionTexto;
+    let recorte = masterTexto;
     if (armar(partes).length > PROMPT_MAX_CHARS && recorte) {
         const sitio = Math.max(0, PROMPT_MAX_CHARS - nucleoTexto.length - 2);
         recorte = trimWords(recorte, sitio);
-        dropped.push('direccion(recortada)');
+        dropped.push('master(recortado)');
         partes = [nucleoTexto, recorte];
     }
 
@@ -934,8 +1001,9 @@ export default {
     GENERATOR_KIND, GENERATOR_LABEL,
     FORMATS, FORMAT_IDS, DEFAULT_FORMAT, RESOLUTIONS, DEFAULT_RESOLUTION, formatById, canvasSize,
     TEXT_ZONES, TEXT_ZONE_IDS, DEFAULT_TEXT_ZONE, FOOTER_BAND, zoneById,
-    BASE_STYLE, NO_TEXT_CLAUSE, PRESERVE_CLAUSE, INTEGRATION_CLAUSE, BASE_NEGATIVE,
-    DEFAULT_DESIGN_INSTRUCTION, DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
+    BASE_STYLE, NO_TEXT_CLAUSE, PRESERVE_CLAUSE, INTEGRATION_CLAUSE, FOOTER_CLAUSE, BASE_NEGATIVE,
+    DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
+    MASTER_VARIABLES, DEFAULT_MASTER_PROMPT, applyMasterVariables,
     LIMITS, MAX_REFERENCES, BRANDING_FIELDS, BRANDING_IDS, DEFAULT_CONFIG,
     isDrawableImage, normalizeReference, normalizeConfig, scopeReaches, validateConfig,
     fingerprintOf, isSignificantChange,

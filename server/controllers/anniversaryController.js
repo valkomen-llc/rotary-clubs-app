@@ -22,7 +22,8 @@ import {
 import {
     validateConfig, normalizeConfig, fingerprintOf, GENERATOR_KIND, GENERATOR_LABEL,
     FORMATS, RESOLUTIONS, BRANDING_FIELDS, STAGES, TEXT_ZONES, LIMITS, MAX_REFERENCES,
-    DEFAULT_DESIGN_INSTRUCTION, DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
+    DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
+    DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
     normalizeYears, printableClubName, textZoneFor, canvasSize,
 } from '../lib/anniversarySpec.js';
 import {
@@ -68,10 +69,14 @@ export const getCatalog = async (req, res) => {
             limits: LIMITS,
             maxReferences: MAX_REFERENCES,
             defaults: {
-                designInstruction: DEFAULT_DESIGN_INSTRUCTION,
+                masterPrompt: DEFAULT_MASTER_PROMPT,
                 messageInstruction: DEFAULT_MESSAGE_INSTRUCTION,
                 restrictions: DEFAULT_RESTRICTIONS,
             },
+            // Lo que el Prompt Maestro puede nombrar y lo que el ensamblador
+            // reserva: la pantalla lo DICE en vez de que se descubra probando.
+            masterVariables: MASTER_VARIABLES,
+            footerReserve: FOOTER_BAND,
             // Que el modelo esté configurado NO es un detalle interno: sin la
             // credencial este módulo no genera nada, y el panel tiene que
             // decirlo antes de que alguien publique y descubra el hueco.
@@ -380,7 +385,8 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
 
         const despachar = async (modelo, fallbackUsed) => {
             const r = await startComposition({
-                config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
+                config: ctx.config, photoUrl: piece.photoUrl,
+                clubName: piece.clubName, years: piece.years,
                 analysis: piece.analysis, model: modelo, engineConfig: engine,
                 // El reintento le dice al modelo el problema CONCRETO, no
                 // «hacelo mejor». Sale de la validación anterior.
@@ -461,7 +467,8 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                     if (reclamo) {
                         try {
                             const otra = await startComposition({
-                                config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
+                                config: ctx.config, photoUrl: piece.photoUrl,
+                                clubName: piece.clubName, years: piece.years,
                                 analysis: piece.analysis, model: prod.fallback, engineConfig: engine,
                                 extraClause: retryClause(piece.validation?.critical || []),
                             });
@@ -520,7 +527,8 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                     // calidad no es un fallo de infraestructura y cambiar de
                     // modelo acá confundiría las dos cosas (regla del motor).
                     const otra = await startComposition({
-                        config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
+                        config: ctx.config, photoUrl: piece.photoUrl,
+                        clubName: piece.clubName, years: piece.years,
                         analysis: piece.analysis, extraClause: retryClause(veredicto.critical),
                         model: piece.engine?.model || null,
                     });
@@ -737,7 +745,10 @@ export const postBenchmarkRun = async (req, res) => {
             for (const [photoIndex, photo] of photos.entries()) {
                 try {
                     const r = await startComposition({
-                        config, photoUrl: photo.url, years: 40,
+                        // Un nombre FIJO para todos los modelos: lo que se
+                        // compara es el motor, no el dato, y con nombres
+                        // distintos los prompts dejarían de ser comparables.
+                        config, photoUrl: photo.url, clubName: 'Club Rotario Cali', years: 40,
                         analysis: photo.analysis, model, engineConfig: engine,
                     });
                     await createBenchResult({ benchmarkId: run.id, model, photoIndex, taskId: r.taskId });

@@ -235,7 +235,7 @@ export const writeCopy = async ({ config, clubName, years, analysis, provider = 
 
 // ─── Etapa 4 — la composición ──────────────────────────────────────────
 
-export const startComposition = async ({ config, photoUrl, years, analysis, extraClause = '', model = null, engineConfig = null } = {}) => {
+export const startComposition = async ({ config, photoUrl, clubName = '', years, analysis, extraClause = '', model = null, engineConfig = null } = {}) => {
     if (!process.env.KIE_API_KEY) {
         // Se NOMBRA la variable que falta. Un «no se pudo generar» a secas
         // manda a diagnosticar a ciegas.
@@ -244,10 +244,14 @@ export const startComposition = async ({ config, photoUrl, years, analysis, extr
     if (!photoUrl) throw new Error('Hace falta la fotografía: el modelo compone la pieza ALREDEDOR de ella.');
 
     const c = normalizeConfig(config);
-    const referencia = c.references.find(r => r.primary) || c.references[0] || null;
+    // La referencia visual tiene su interruptor: apagarla manda sólo la
+    // fotografía, sin perder la configuración de las referencias cargadas.
+    const referencia = c.promptOptions.useReference
+        ? (c.references.find(r => r.primary) || c.references[0] || null)
+        : null;
 
     const { prompt, zoneId, dropped } = buildImagePrompt({
-        config: c, years, analysis, hasReference: !!referencia,
+        config: c, clubName, years, analysis, hasReference: !!referencia,
     });
     if (dropped.length) {
         // Lo que se deja fuera se ANOTA. Un recorte silencioso convierte
@@ -256,7 +260,7 @@ export const startComposition = async ({ config, photoUrl, years, analysis, extr
     }
 
     // El ORDEN importa: la referencia primero y la fotografía después, porque
-    // el prompt habla de «la primera» y «la segunda» imagen.
+    // el prompt habla de «la primera» y «la última» imagen.
     const imageUrls = [referencia?.url, photoUrl].filter(Boolean);
 
     // El modelo: el explícito (benchmark, fallback) > la configuración del

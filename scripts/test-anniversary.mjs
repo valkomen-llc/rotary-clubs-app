@@ -146,21 +146,47 @@ check('con la instrucción por defecto NO se sacrifica nada', p1.dropped.length 
 check('pide que la imagen no traiga texto', p1.prompt.includes(S.NO_TEXT_CLAUSE));
 check('pide que conserve a las personas', p1.prompt.includes(S.PRESERVE_CLAUSE));
 check('nombra la franja que hay que dejar libre', p1.prompt.includes('la mitad izquierda') || p1.prompt.includes('left half') || p1.prompt.includes(S.zoneById('left').words));
-check('lleva la dirección de arte del administrador', p1.prompt.includes('Art direction'));
+check('lleva el Prompt Maestro del administrador', p1.prompt.includes('Master art direction'));
+check('reserva la banda del pie institucional', p1.prompt.includes(S.FOOTER_CLAUSE));
 check('la zona del prompt es la MISMA que decide `textZoneFor`',
     p1.zoneId === S.textZoneFor(analisis));
 
-// El peor caso: una instrucción larguísima.
-const p2 = S.buildImagePrompt({
-    config: { designInstruction: 'Quiero ' + 'palabra '.repeat(300) },
-    years: 40, analysis: analisis, hasReference: true,
+// Las variables del Prompt Maestro se sustituyen ANTES de mandar nada.
+const conVars = S.buildImagePrompt({
+    config: { masterPrompt: 'Pieza para {NOMBRE_CLUB} que cumple {ANOS_CLUB} años alrededor de {FOTO_CLUB}.' },
+    clubName: 'Club Rotario Cali', years: 40, analysis: analisis, hasReference: true,
 });
-check('con una instrucción enorme sigue cabiendo', p2.prompt.length <= S.PROMPT_MAX_CHARS, `${p2.prompt.length}`);
-check('la dirección de arte se RECORTA, nunca se elimina',
-    p2.prompt.includes('Art direction') && p2.dropped.includes('direccion(recortada)'), p2.dropped.join(','));
+check('{NOMBRE_CLUB} se sustituye por el nombre real', conVars.prompt.includes('Club Rotario Cali'));
+check('{ANOS_CLUB} se sustituye por la cifra real', /cumple 40 años/.test(conVars.prompt));
+check('ningún marcador viaja literal al modelo', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(conVars.prompt));
+check('sin años, la cifra no se inventa',
+    S.applyMasterVariables('cumple {ANOS_CLUB} años', {}).includes('cumple sus años'));
+check('una variable desconocida se deja tal cual (y validateConfig la avisa)',
+    S.applyMasterVariables('con {OTRA_COSA} adentro', {}).includes('{OTRA_COSA}'));
+
+// El peor caso: un Prompt Maestro larguísimo.
+const p2 = S.buildImagePrompt({
+    config: { masterPrompt: 'Quiero ' + 'palabra '.repeat(400) },
+    clubName: 'Club Rotario Cali', years: 40, analysis: analisis, hasReference: true,
+});
+check('con un Prompt Maestro enorme sigue cabiendo', p2.prompt.length <= S.PROMPT_MAX_CHARS, `${p2.prompt.length}`);
+check('el Prompt Maestro se RECORTA, nunca se elimina',
+    p2.prompt.includes('Master art direction') && p2.dropped.includes('master(recortado)'), p2.dropped.join(','));
 check('el núcleo sobrevive al peor caso',
-    p2.prompt.includes(S.NO_TEXT_CLAUSE) && p2.prompt.includes(S.PRESERVE_CLAUSE));
+    p2.prompt.includes(S.NO_TEXT_CLAUSE) && p2.prompt.includes(S.PRESERVE_CLAUSE) && p2.prompt.includes(S.FOOTER_CLAUSE));
 check('lo que se deja fuera se ANOTA', p2.dropped.length > 0);
+
+// El interruptor del ambiente.
+const sinAmbiente = S.buildImagePrompt({
+    config: { promptOptions: { ambient: false } },
+    clubName: 'X', years: 40, analysis: A({ people: 5, group: true }),
+});
+check('con el ambiente apagado, la frase por foto no viaja',
+    !sinAmbiente.prompt.includes('group portrait'));
+
+// Una configuración vieja con `designInstruction` no se queda sin dirección.
+check('una configuración anterior a v4.898 conserva su dirección de arte',
+    S.normalizeConfig({ designInstruction: 'Mi dirección heredada.' }).masterPrompt === 'Mi dirección heredada.');
 
 // Una foto vacía no puede recibir una instrucción escrita para «la foto
 // típica»: es la lección del censo universal (v4.785).
@@ -263,9 +289,15 @@ check('sin nada roto no agrega nada', S.retryClauseFor([]) === '');
 // ════════════════════════════════════════════════════════════════════
 grupo('10 — La configuración');
 
-const cfgVacia = S.validateConfig({ designInstruction: '', messageInstruction: '' });
-check('sin instrucción de generación no se publica', !cfgVacia.ok);
+// El Prompt Maestro vacío CAE AL PREDETERMINADO (una configuración no puede
+// quedarse sin dirección), así que lo que se rechaza es uno escrito y corto.
+const cfgVacia = S.validateConfig({ masterPrompt: 'corto', messageInstruction: '' });
+check('un Prompt Maestro demasiado corto no se publica', !cfgVacia.ok);
 check('sin instrucción del mensaje tampoco', cfgVacia.errors.length >= 2);
+check('el Prompt Maestro vacío cae al predeterminado',
+    S.normalizeConfig({ masterPrompt: '' }).masterPrompt === S.DEFAULT_MASTER_PROMPT);
+check('una variable desconocida en el Prompt Maestro se AVISA',
+    S.validateConfig({ masterPrompt: S.DEFAULT_MASTER_PROMPT + ' y {NOMBRE_CLUV}' }).warnings.some(w => w.includes('{NOMBRE_CLUV}')));
 check('sin referencias se AVISA, no se bloquea',
     S.validateConfig({}).ok && S.validateConfig({}).warnings.some(w => w.includes('referencia')));
 check('«sólo estos sitios» sin ninguno elegido es un ERROR',

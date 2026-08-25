@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.897.0 | 2026-08-25 (Aniversarios IA: motor multimodelo sobre KIE con benchmark)
-// Cache bust: 2026-08-25c
+// UI V4.898.0 | 2026-08-25 (Aniversarios IA: Prompt Maestro configurable con variables)
+// Cache bust: 2026-08-25d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.898.0',
+        title: 'Aniversarios IA: Prompt Maestro por defecto, con variables 🎨',
+        description: 'La dirección de arte del generador pasa a ser un PROMPT MAESTRO guardado en la configuración —no en el código—, con vista, edición, restauración del predeterminado y versionado al publicar. Entiende tres variables — {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB} — que se sustituyen con los datos reales de cada generación ANTES de llamar al modelo; una variable desconocida se avisa en vez de viajar muda. El predeterminado destila la referencia visual aprobada: fondo blanco editorial, azul institucional y dorado como acentos, la fotografía a la derecha en un marco tipo polaroid, celebración sobria con globos dorados, y variación entre generaciones conservando identidad. El ensamblador reserva SIEMPRE la banda inferior del lienzo (16 %) completamente limpia: ahí la plataforma imprime después el pie institucional, y el modelo no puede poner ni fotografía ni decoración. El compositor adopta el lenguaje de la referencia: titular azul en mayúsculas, el pase «FELICIDADES», el nombre del club en dos tonos (azul + dorado), la banda dorada «40 AÑOS» y el mensaje — todo impreso por la plataforma, exacto POR CONSTRUCCIÓN. El panel muestra el estado del Prompt Maestro (versión, variables, referencia visual, zona reservada, formato) con su botón «Probar Prompt», y dos interruptores: el ambiente por fotografía y el uso de la referencia visual. Una configuración guardada antes de esta versión conserva su instrucción como Prompt Maestro, sin perder nada.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'prompt', 'variables'],
+        type: 'feature',
+    },
     {
         version: '4.897.0',
         title: 'Aniversarios IA: motor multimodelo sobre KIE, con benchmark 🔬',
