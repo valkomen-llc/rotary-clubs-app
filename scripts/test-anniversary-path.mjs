@@ -248,7 +248,7 @@ const tarea = prov.estado.tareas[0] || {};
 // pieza — es la única parte del prompt que cambia entre piezas, y es visible.
 ok('el prompt es el prompt base sustituido, VERBATIM (con su variación por pieza)',
     tarea.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT,
-        { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(pieceId) }),
+        { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(pieceId), phrase: S.phraseForSeed(pieceId) }),
     (tarea.prompt || '').slice(0, 120));
 ok('la variación de ESTA pieza viajó en el prompt',
     (tarea.prompt || '').includes('Decoración de esta pieza:'));
@@ -708,7 +708,7 @@ ok('la llamada fue a OpenAI, con la referencia Y la fotografía',
     JSON.stringify(openaiLlamadas.map(x => ({ imagenes: x.imagenes, model: x.model }))));
 eq('el prompt fue el prompt base sustituido, VERBATIM también en OpenAI',
     openaiLlamadas[0]?.prompt,
-    S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(gptPieza) }));
+    S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 40, variation: S.variationForSeed(gptPieza), phrase: S.phraseForSeed(gptPieza) }));
 r = await llamar(ctrl.getTestPiece, { params: { id: gptPieza } });
 eq('el PRIMER sondeo la encuentra lista', r.body.ready, true);
 eq('el sello de auditoría dice el proveedor REAL', db.tablas.AnniversaryPiece[0].engine.provider, 'openai');

@@ -61,6 +61,15 @@ const AniversarioIA: React.FC = () => {
     // a componer SIN gastar una generación. El contador re-dispara el efecto.
     const [disenoCaido, setDisenoCaido] = useState(false);
     const [renderIntento, setRenderIntento] = useState(0);
+    // Segundos transcurridos de la generación (v4.919): la espera se VE viva —
+    // una barra indeterminada más el tiempo real, nunca un porcentaje
+    // inventado (v4.756).
+    const [segundos, setSegundos] = useState(0);
+    useEffect(() => {
+        if (!generando) { setSegundos(0); return; }
+        const reloj = setInterval(() => setSegundos(x => x + 1), 1000);
+        return () => clearInterval(reloj);
+    }, [generando]);
 
     const previewRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -182,7 +191,11 @@ const AniversarioIA: React.FC = () => {
         if (!doc || !previewRef.current) return;
         // Mientras se compone se DICE (v4.911): sin esto, una carga lenta se ve
         // como una franja vacía indistinguible de un módulo roto.
-        previewRef.current.innerHTML = '<div style="padding:3.5rem 1rem;text-align:center;color:#9ca3af;font-size:0.875rem">Componiendo la pieza…</div>';
+        previewRef.current.innerHTML =
+            '<div style="padding:3.5rem 1rem;text-align:center;color:#9ca3af;font-size:0.875rem">Componiendo la pieza…'
+            + '<div style="margin:0.9rem auto 0;max-width:16rem;height:5px;border-radius:9999px;background:#e5e7eb;overflow:hidden">'
+            + '<div class="animate-progress-slide" style="height:100%;width:33%;border-radius:9999px;background:#17458F"></div>'
+            + '</div></div>';
         (async () => {
             try {
                 const { canvas, warnings, backdropFailed } = await renderAnniversary(doc);
@@ -411,6 +424,22 @@ const AniversarioIA: React.FC = () => {
                                     </p>
                                 ))}
                             </>
+                        ) : generando ? (
+                            /* La espera se VE viva (v4.919): barra indeterminada —
+                               nunca un porcentaje inventado— más la etapa real y
+                               los segundos de verdad. */
+                            <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-center px-8">
+                                <Sparkles className="w-10 h-10 mb-4 text-rotary-blue animate-pulse" />
+                                <p className="text-sm font-medium text-gray-800">
+                                    {STAGES[indice >= 0 ? indice : 0]?.label || 'Generando…'}
+                                </p>
+                                <div className="w-full max-w-xs h-1.5 mt-4 rounded-full bg-gray-200 overflow-hidden">
+                                    <div className="h-full w-1/3 rounded-full bg-rotary-blue animate-progress-slide" />
+                                </div>
+                                <p className="text-xs text-gray-400 mt-3">
+                                    {segundos} s · suele tardar entre treinta segundos y un minuto y medio
+                                </p>
+                            </div>
                         ) : (
                             <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-center text-gray-400 px-6">
                                 <Sparkles className="w-10 h-10 mb-3" />

@@ -149,7 +149,7 @@ export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 // el ensamblador, fuera del campo editable: una dirección de arte no puede
 // desactivar lo que hace publicable la pieza.
 
-export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', '{VARIACION}'];
+export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', '{VARIACION}', '{FRASE}'];
 
 /**
  * Sustituye las variables del Prompt Maestro. `{FOTO_CLUB}` no es texto: es la
@@ -158,15 +158,17 @@ export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', 
  * deja tal cual —y `validateConfig` la AVISA—: borrarla en silencio haría que
  * el administrador edite un token que desaparece sin explicación.
  */
-export const applyMasterVariables = (text, { clubName = '', years = null, variation = '' } = {}) =>
+export const applyMasterVariables = (text, { clubName = '', years = null, variation = '', phrase = '' } = {}) =>
     String(text || '')
         .replaceAll('{NOMBRE_CLUB}', clean(clubName) || 'el club')
         .replaceAll('{ANOS_CLUB}', years ? String(years) : 'sus')
         .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada')
-        // {VARIACION} es la única variable que la PLATAFORMA llena por pieza:
-        // el motivo decorativo determinista (v4.909). Sin semilla queda vacía
-        // — un marcador colgando viajaría literal al modelo.
-        .replaceAll('{VARIACION}', String(variation || '').trim());
+        // {VARIACION} y {FRASE} las llena la PLATAFORMA por pieza, de forma
+        // determinista (v4.909/v4.919). {VARIACION} sin semilla queda vacía —
+        // un marcador colgando viajaría literal—; {FRASE} SIEMPRE resuelve:
+        // una cláusula que exige copiar «» letra por letra rompería la pieza.
+        .replaceAll('{VARIACION}', String(variation || '').trim())
+        .replaceAll('{FRASE}', String(phrase || '').trim() || ANNIVERSARY_PHRASES[0]);
 
 /**
  * ── La VARIACIÓN por pieza (v4.909) ─────────────────────────────────
@@ -203,6 +205,41 @@ export const variationForSeed = (seed) => {
 };
 
 /**
+ * ── La FRASE conmemorativa por pieza (v4.919) ───────────────────────
+ *
+ * La frase era el ÚNICO texto libre que el modelo inventaba —el título, el
+ * nombre y los años ya van letra por letra— y por eso era el único que salía
+ * mal escrito («Sirvingo con dedicación, construuido legado», reporte con
+ * captura). La elige la PLATAFORMA de un catálogo CERRADO de frases correctas
+ * —de 8 a 12 palabras, sin cifras, sobre servicio, legado, comunidad e
+ * impacto— y el modelo sólo la COPIA letra por letra, como el nombre del
+ * club. Determinista por el id de la pieza, con sal propia para no quedar
+ * atada al motivo decorativo: el reintento conserva su frase y dos piezas
+ * distintas varían.
+ */
+export const ANNIVERSARY_PHRASES = [
+    'Una historia de servicio que sigue transformando comunidades.',
+    'Celebramos un legado de servicio, amistad e impacto.',
+    'Servicio y compromiso que siguen dejando huella en la comunidad.',
+    'Un legado construido con propósito, amistad y servicio.',
+    'Celebramos una historia de servicio que sigue generando impacto.',
+    'Gracias por tanto servicio y amor por la comunidad.',
+    'Una trayectoria de servicio que inspira a nuestra comunidad.',
+    'Seguimos sirviendo, transformando vidas y construyendo una mejor comunidad.',
+];
+
+export const phraseForSeed = (seed) => {
+    // Sin semilla, la PRIMERA del catálogo — el mismo respaldo que aplica
+    // `applyMasterVariables` con la frase vacía, para que las dos vías
+    // resuelvan lo mismo.
+    if (!String(seed || '')) return ANNIVERSARY_PHRASES[0];
+    const s = 'frase:' + String(seed || '');
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return ANNIVERSARY_PHRASES[h % ANNIVERSARY_PHRASES.length];
+};
+
+/**
  * La INSTRUCCIÓN BASE predeterminada (v4.907). Es el prompt del cliente, el
  * mismo gesto de su ejemplo de ChatGPT: referencia + fotografía + instrucción
  * corta. Viaja al modelo VERBATIM con las variables sustituidas — el flujo no
@@ -223,7 +260,7 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
 3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas.
 4. Debajo, la fotografía RECTANGULAR HORIZONTAL, más ancha que alta — su alto ronda un tercio del lienzo; NUNCA en círculo ni óvalo — en su marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave.
 5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
-6. Debajo, SIEMPRE una única frase corta de 8 a 12 palabras, en UNA línea, sobre servicio, legado, comunidad o impacto, SIN repetir la cantidad de años. Español con ortografía perfecta.
+6. Debajo, en UNA línea, la frase EXACTA letra por letra: «{FRASE}», del mismo tamaño y azul institucional que el nombre del club. Ortografía perfecta.
 7. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — nada de logos, emblemas, ondas, lemas, textos, fotos ni globos ahí; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone después su pie real. El MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
@@ -310,6 +347,22 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
 5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
 6. Un mensaje conmemorativo NUEVO de una a tres líneas cortas sobre servicio, comunidad e impacto, SIN repetir la cantidad de años — ya está en la cinta. Español con ortografía perfecta.
 7. ZONA INFERIOR RESERVADA (20 % inferior): sin texto, fotos, globos, confeti ni iconos — el MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte. La plataforma superpone ahí un pie transparente. No generes logos ni pies de página.`,
+    `Pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN (ANNIVERSARY_STYLE_REFERENCE): guía de jerarquía, tamaños y decoración. No la copies literalmente ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas, degradados y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
+1. Globos protagonistas arriba y en los laterales — dorados, blancos, champagne y transparentes — más serpentinas, confeti y destellos. No cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, centrado y ALTO en el lienzo: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!». Nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas.
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, más ancha que alta — su alto ronda un tercio del lienzo; NUNCA en círculo ni óvalo — en su marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
+6. Debajo, SIEMPRE una única frase corta de 8 a 12 palabras, en UNA línea, sobre servicio, legado, comunidad o impacto, SIN repetir la cantidad de años. Español con ortografía perfecta.
+7. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — nada de logos, emblemas, ondas, lemas, textos, fotos ni globos ahí; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone después su pie real. El MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
@@ -845,7 +898,7 @@ export const readDrawnTextAnswer = (raw) => {
 // convierte «se lo pedimos» en una afirmación falsa.
 export const buildSimpleRequest = ({ config, clubName = '', years = null, maxChars = null, seed = null } = {}) => {
     const c = normalizeConfig(config);
-    let prompt = applyMasterVariables(c.masterPrompt, { clubName, years, variation: variationForSeed(seed) });
+    let prompt = applyMasterVariables(c.masterPrompt, { clubName, years, variation: variationForSeed(seed), phrase: phraseForSeed(seed) });
     const tope = Number(maxChars) || null;
     let trimmed = false;
     if (tope && prompt.length > tope) {
@@ -1259,7 +1312,7 @@ export default {
     TEXT_ZONES, TEXT_ZONE_IDS, DEFAULT_TEXT_ZONE, FOOTER_BAND, zoneById,
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     MASTER_VARIABLES, DEFAULT_MASTER_PROMPT, applyMasterVariables,
-    VARIATION_THEMES, variationForSeed,
+    VARIATION_THEMES, variationForSeed, ANNIVERSARY_PHRASES, phraseForSeed,
     LIMITS, MAX_REFERENCES, BRANDING_FIELDS, BRANDING_IDS, DEFAULT_CONFIG,
     isDrawableImage, normalizeReference, normalizeConfig, scopeReaches, validateConfig,
     fingerprintOf, isSignificantChange,
