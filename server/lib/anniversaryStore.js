@@ -226,9 +226,9 @@ export const readPiece = async (id) => {
  */
 const PIECE_FIELDS = new Set([
     'analysis', 'copy', 'branding', 'taskId', 'attempts', 'backdropUrl', 'zoneId',
-    'renderMode', 'status', 'statusDetail', 'validation', 'subjectClubId', 'engine',
+    'renderMode', 'status', 'statusDetail', 'validation', 'subjectClubId', 'engine', 'request',
 ]);
-const JSON_FIELDS = new Set(['analysis', 'copy', 'branding', 'validation', 'engine']);
+const JSON_FIELDS = new Set(['analysis', 'copy', 'branding', 'validation', 'engine', 'request']);
 
 export const updatePiece = async (id, patch) => {
     await ensureAnniversarySchema();

@@ -177,7 +177,7 @@ const AnniversaryStudio: React.FC = () => {
     const [probando, setProbando] = useState(false);
     const [testError, setTestError] = useState<string | null>(null);
     const [testDoc, setTestDoc] = useState<AnniversaryDocument | null>(null);
-    const [testInfo, setTestInfo] = useState<{ statusDetail: string | null; validation: any; copyWarnings: string[]; copyRepaired: string[] } | null>(null);
+    const [testInfo, setTestInfo] = useState<{ statusDetail: string | null; validation: any; copyWarnings: string[]; copyRepaired: string[]; request: any } | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [renderWarnings, setRenderWarnings] = useState<string[]>([]);
@@ -383,14 +383,6 @@ const AnniversaryStudio: React.FC = () => {
             if (!r.ok) throw new Error(await mensajeDeFallo(r));
             const { pieceId } = await r.json();
 
-            setStage('analyze');
-            r = await fetch(`${API}/anniversaries/test/analyze`, { method: 'POST', headers: auth(), body: JSON.stringify({ pieceId }) });
-            if (!r.ok) throw new Error(await mensajeDeFallo(r));
-
-            setStage('write');
-            r = await fetch(`${API}/anniversaries/test/copy`, { method: 'POST', headers: auth(), body: JSON.stringify({ pieceId }) });
-            if (!r.ok) throw new Error(await mensajeDeFallo(r));
-
             setStage('compose');
             r = await fetch(`${API}/anniversaries/test/compose`, { method: 'POST', headers: auth(), body: JSON.stringify({ pieceId }) });
             if (!r.ok) throw new Error(await mensajeDeFallo(r));
@@ -404,12 +396,12 @@ const AnniversaryStudio: React.FC = () => {
                 r = await fetch(`${API}/anniversaries/test/piece/${pieceId}`, { headers: auth() });
                 if (!r.ok) throw new Error(await mensajeDeFallo(r));
                 const j = await r.json();
-                if (j.retrying) { setStage('verify'); continue; }
+                if (j.retrying) { setStage('compose'); continue; }
                 if (j.status === 'failed') throw new Error(j.statusDetail || 'La generación falló.');
                 if (j.ready) {
                     setStage('done');
                     setTestDoc(j.document);
-                    setTestInfo({ statusDetail: j.statusDetail, validation: j.validation, copyWarnings: j.copyWarnings || [], copyRepaired: j.copyRepaired || [] });
+                    setTestInfo({ statusDetail: j.statusDetail, validation: j.validation, copyWarnings: j.copyWarnings || [], copyRepaired: j.copyRepaired || [], request: j.request || null });
                     break;
                 }
                 setStage('compose');
@@ -648,15 +640,15 @@ const AnniversaryStudio: React.FC = () => {
                 </p>
             </Card>
 
-            {/* 3 — Prompt Maestro e instrucciones */}
-            <Card title="Prompt Maestro" icon={<Sparkles className="w-5 h-5" />}
-                hint="La dirección de arte que gobierna el DISEÑO. Se guarda en la configuración —no en el código— y se versiona al publicar."
+            {/* 3 — La instrucción base (v4.907: el flujo simple) */}
+            <Card title="Prompt base" icon={<Sparkles className="w-5 h-5" />}
+                hint="La instrucción que viaja al modelo TAL CUAL, con las variables sustituidas — junto con la referencia (primera imagen) y la fotografía del club (segunda imagen). Nada más se agrega."
                 action={
                     <button
                         onClick={() => {
                             const predeterminado = catalog.defaults?.masterPrompt || '';
                             if (!predeterminado) return;
-                            if (!window.confirm('Se reemplaza el Prompt Maestro del borrador por el predeterminado del sistema. No se publica nada hasta que pulses «Publicar». ¿Seguimos?')) return;
+                            if (!window.confirm('Se reemplaza el Prompt base del borrador por el predeterminado del sistema. No se publica nada hasta que pulses «Publicar». ¿Seguimos?')) return;
                             set('masterPrompt', predeterminado);
                         }}
                         className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-medium hover:bg-gray-50 flex items-center gap-1.5"
@@ -665,10 +657,8 @@ const AnniversaryStudio: React.FC = () => {
                     </button>
                 }>
                 <div className="space-y-6">
-                    {/* El estado del Prompt Maestro, a la vista: qué versión corre,
-                        qué variables entiende y qué reserva el ensamblador. */}
                     <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-gray-600 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
-                        <span><strong className="text-gray-800">Prompt Maestro:</strong>{' '}
+                        <span><strong className="text-gray-800">Prompt base:</strong>{' '}
                             {publishedAt ? (dirty ? 'ACTIVO — con cambios sin publicar' : 'ACTIVO en producción') : 'Borrador (sin publicar)'}</span>
                         <span><strong className="text-gray-800">Versión:</strong>{' '}
                             {versions.find(v => v.current) ? `v${versions.find(v => v.current)!.version} · ${versions.find(v => v.current)!.fingerprint}` : '—'}</span>
@@ -676,74 +666,32 @@ const AnniversaryStudio: React.FC = () => {
                             {/* Los marcadores son DATOS, no lenguaje (v4.662). */}
                             <span data-no-translate>{(catalog.masterVariables || []).join('  ')}</span></span>
                         <span><strong className="text-gray-800">Referencia visual:</strong>{' '}
-                            {config.promptOptions.useReference
-                                ? (config.references.length ? 'ACTIVA' : 'activada, sin imagen cargada')
-                                : 'apagada'}</span>
-                        <span><strong className="text-gray-800">Zona inferior reservada:</strong>{' '}
-                            {Math.round((catalog.footerReserve?.h ?? 0.16) * 100)} % (pie institucional)</span>
+                            {config.references.length ? 'viaja como PRIMERA imagen' : 'sin imagen cargada'}</span>
+                        <span><strong className="text-gray-800">Pie institucional:</strong>{' '}
+                            lo imprime la plataforma en el {Math.round((catalog.footerReserve?.h ?? 0.16) * 100)} % inferior</span>
                         <span><strong className="text-gray-800">Formato:</strong> {config.format === 'square' ? '1:1' : config.format}</span>
                         <button
                             onClick={() => document.getElementById('panel-probar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                             className="ml-auto px-2.5 py-1 rounded border border-rotary-blue/40 text-rotary-blue font-medium hover:bg-sky-50 flex items-center gap-1"
                         >
-                            <FlaskConical className="w-3.5 h-3.5" /> Probar Prompt
+                            <FlaskConical className="w-3.5 h-3.5" /> Probar generación
                         </button>
                     </div>
                     <Instruccion
-                        label="Prompt Maestro" max={4000} rows={8}
-                        help="Cómo tiene que verse la pieza. Podés nombrar {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB}: se sustituyen con los datos reales de cada generación, antes de llamar al modelo. Se recorta si no entra, pero nunca se elimina."
+                        label="Prompt base" max={4000} rows={12}
+                        help="Se envía VERBATIM: lo que escribas acá es exactamente lo que recibe el modelo, con {NOMBRE_CLUB}, {ANOS_CLUB} y {FOTO_CLUB} sustituidos. El modelo dibuja también los textos de la pieza — si un nombre sale mal escrito, se regenera."
                         value={config.masterPrompt} onChange={v => set('masterPrompt', v)}
                     />
-                    <div>
-                        <label className="block text-sm font-medium text-gray-800 mb-1">Franja del texto</label>
-                        <p className="text-xs text-gray-500 mb-2">
-                            Tiene que CALZAR con el layout del Prompt Maestro: el predeterminado pone la fotografía a la
-                            derecha, así que el texto va a la izquierda — como la referencia. «Automática» la decide por foto.
-                        </p>
-                        <select value={config.textZone || 'left'} onChange={e => set('textZone', e.target.value as Config['textZone'])}
-                            className="w-full sm:w-96 rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                            <option value="left">Izquierda (fotografía a la derecha — como la referencia)</option>
-                            <option value="right">Derecha (fotografía a la izquierda)</option>
-                            <option value="bottom">Abajo (fotografía arriba)</option>
-                            <option value="auto">Automática por foto</option>
-                        </select>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-6">
-                        <label className="flex items-center gap-2 text-sm">
-                            <input type="checkbox" checked={config.promptOptions.ambient}
-                                onChange={e => set('promptOptions', { ...config.promptOptions, ambient: e.target.checked })} />
-                            Adaptar el prompt a cada fotografía (ambiente)
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                            <input type="checkbox" checked={config.promptOptions.useReference}
-                                onChange={e => set('promptOptions', { ...config.promptOptions, useReference: e.target.checked })} />
-                            Mandar la referencia visual al modelo
-                        </label>
-                        {/* La variedad de verdad exige que el PROMPT cambie por
-                            pieza: «variá la decoración» escrito en el maestro no
-                            varía nada — el prompt idéntico converge (v4.905). */}
-                        <label className="flex items-center gap-2 text-sm">
-                            <input type="checkbox" checked={config.promptOptions.varyDecor}
-                                onChange={e => set('promptOptions', { ...config.promptOptions, varyDecor: e.target.checked })} />
-                            La decoración varía con cada pieza (tema aniversario)
-                        </label>
-                    </div>
                     <Instruccion
-                        label="Instrucciones del mensaje" max={1200} rows={4}
-                        help="Cómo tiene que escribir la IA el texto que se imprime en la pieza. Corto: la pieza no admite párrafos."
-                        value={config.messageInstruction} onChange={v => set('messageInstruction', v)}
-                    />
-                    <Instruccion
-                        label="Restricciones" max={1200} rows={4}
-                        help="Lo que no querés ver. Viaja en el campo de negativos del modelo, no pegado a la descripción."
+                        label="Restricciones (opcional)" max={1200} rows={3}
+                        help="Lo que no querés ver. Es lo ÚNICO extra que viaja, y va en el campo de negativos del modelo (los modelos que no lo declaran no lo reciben)."
                         value={config.restrictions} onChange={v => set('restrictions', v)}
                     />
                     <Aviso tone="info">
-                        Además de lo que escribas, el sistema le exige siempre al modelo cuatro cosas que no se negocian:
-                        que la imagen <strong>no traiga ningún texto ni logotipo</strong> —los imprimimos nosotros encima, para
-                        que el nombre y las cifras salgan exactos—, que <strong>conserve a las personas de la fotografía</strong>,
-                        que <strong>deje libre la franja donde va el texto</strong> y que <strong>la banda inferior quede
-                        limpia</strong> para el pie institucional.
+                        El flujo es el de una conversación simple: la <strong>referencia visual</strong> define el estilo, la{' '}
+                        <strong>fotografía del club</strong> define el contenido humano y el <strong>Prompt base</strong> dice qué
+                        cambia. El resultado del modelo se entrega TAL CUAL —sin puertas automáticas que lo descarten— y lo único
+                        que la plataforma añade encima es el pie institucional, desde archivos reales.
                     </Aviso>
                 </div>
             </Card>
@@ -881,11 +829,39 @@ const AnniversaryStudio: React.FC = () => {
                                     {(testInfo?.copyWarnings || []).map((n, i) => <Aviso key={`c${i}`} tone="warn">{n}</Aviso>)}
                                     {renderWarnings.map((n, i) => <Aviso key={`v${i}`} tone="warn">{n}</Aviso>)}
                                     {(testDoc.branding?.missing || []).map((n, i) => <Aviso key={`b${i}`} tone="info">{n}</Aviso>)}
-                                    {(testInfo?.validation?.measured?.length ?? 0) > 0 && (
-                                        <p className="text-xs text-gray-500">
-                                            Comprobado en esta pieza: {testInfo?.validation?.measured?.join(', ')}. El nombre del club, los años
-                                            y el mensaje se imprimen desde los datos, así que no hay nada que medir en ellos.
-                                        </p>
+                                    {/* «Ver solicitud enviada al modelo» (v4.907): EXACTAMENTE lo
+                                        que viajó — es lo que permite comprobar que le mandamos al
+                                        modelo lo que creemos que le mandamos. */}
+                                    {testInfo?.request && (
+                                        <details className="rounded-lg border border-gray-200 bg-gray-50">
+                                            <summary className="px-3 py-2 text-xs font-medium text-gray-700 cursor-pointer select-none">
+                                                Ver solicitud enviada al modelo
+                                            </summary>
+                                            <div className="px-3 pb-3 space-y-2 text-xs text-gray-600">
+                                                <p><strong>Modelo:</strong> <span data-no-translate>{testInfo.request.model}</span>
+                                                    {' '}· <strong>Proveedor:</strong> <span data-no-translate>{testInfo.request.provider}</span>
+                                                    {' '}· <strong>Endpoint:</strong> <span data-no-translate>{testInfo.request.endpoint}</span>
+                                                    {' '}· <strong>Tamaño:</strong> <span data-no-translate>{testInfo.request.size}</span></p>
+                                                <div className="flex gap-3">
+                                                    <div>
+                                                        <p className="font-medium text-gray-700 mb-1">1ª imagen — referencia</p>
+                                                        {testInfo.request.referenceUrl
+                                                            ? <img src={testInfo.request.referenceUrl} alt="Referencia enviada" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                                                            : <p className="text-gray-400">no viajó ninguna</p>}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-gray-700 mb-1">2ª imagen — fotografía</p>
+                                                        {testInfo.request.photoUrl
+                                                            ? <img src={testInfo.request.photoUrl} alt="Fotografía enviada" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                                                            : <p className="text-gray-400">—</p>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-gray-700 mb-1">Prompt final (verbatim)</p>
+                                                    <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed bg-white border border-gray-200 rounded p-2 max-h-64 overflow-y-auto" data-no-translate>{testInfo.request.prompt}</pre>
+                                                </div>
+                                            </div>
+                                        </details>
                                     )}
                                 </div>
                             </>

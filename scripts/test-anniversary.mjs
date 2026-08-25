@@ -153,109 +153,72 @@ check('cambiar la zona ES un cambio versionable',
     S.fingerprintOf({}) !== S.fingerprintOf({ textZone: 'bottom' }));
 
 // ════════════════════════════════════════════════════════════════════
-grupo('4 — El prompt de la imagen');
+grupo('4 — v4.907 · El prompt base viaja VERBATIM (flujo simple)');
 
-const analisis = A({ people: 6, group: true, subjectSide: 'derecha', freeSide: 'izquierda' });
-const p1 = S.buildImagePrompt({ config: {}, years: 40, analysis: analisis, hasReference: true });
-
-check('cabe en el presupuesto', p1.prompt.length <= S.PROMPT_MAX_CHARS, `${p1.prompt.length} chars`);
-check('con la instrucción por defecto NO se sacrifica nada', p1.dropped.length === 0, p1.dropped.join(','));
-check('pide que la imagen no traiga texto', p1.prompt.includes(S.NO_TEXT_CLAUSE));
-check('pide que conserve a las personas', p1.prompt.includes(S.PRESERVE_CLAUSE));
-check('nombra la franja que hay que dejar libre', p1.prompt.includes('la mitad izquierda') || p1.prompt.includes('left half') || p1.prompt.includes(S.zoneById('left').words));
-check('lleva el Prompt Maestro del administrador', p1.prompt.includes('Master art direction'));
-check('reserva la banda del pie institucional', p1.prompt.includes(S.FOOTER_CLAUSE));
-check('la zona del prompt es la MISMA que decide `textZoneFor`',
-    p1.zoneId === S.textZoneFor(analisis));
-
-// Las variables del Prompt Maestro se sustituyen ANTES de mandar nada.
-const conVars = S.buildImagePrompt({
-    config: { masterPrompt: 'Pieza para {NOMBRE_CLUB} que cumple {ANOS_CLUB} años alrededor de {FOTO_CLUB}.' },
-    clubName: 'Club Rotario Cali', years: 40, analysis: analisis, hasReference: true,
-});
-check('{NOMBRE_CLUB} se sustituye por el nombre real', conVars.prompt.includes('Club Rotario Cali'));
-check('{ANOS_CLUB} se sustituye por la cifra real', /cumple 40 años/.test(conVars.prompt));
-check('ningún marcador viaja literal al modelo', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(conVars.prompt));
+// ⚠️ ES LA DECISIÓN DE LA QUE CUELGA TODO EL v4.907, tomada por el cliente
+// con una muestra de ChatGPT delante: el prompt que recibe el modelo es el
+// prompt base CON LAS VARIABLES SUSTITUIDAS y nada más. Nada se agrega solo
+// —ni cláusulas de zona, ni anti-rotulado, ni estilo, ni decoración—: lo que
+// no está configurado no viaja.
+const r1 = S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Cali', years: 11 });
+check('el prompt ES el prompt base sustituido, byte a byte',
+    r1.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 11 }));
+check('{NOMBRE_CLUB} se sustituye por el nombre real', r1.prompt.includes('Club Rotario Cali'));
+check('{ANOS_CLUB} se sustituye por la cifra real', /11 años/.test(r1.prompt));
+check('ningún marcador viaja literal al modelo', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(r1.prompt));
 check('sin años, la cifra no se inventa',
     S.applyMasterVariables('cumple {ANOS_CLUB} años', {}).includes('cumple sus años'));
 check('una variable desconocida se deja tal cual (y validateConfig la avisa)',
     S.applyMasterVariables('con {OTRA_COSA} adentro', {}).includes('{OTRA_COSA}'));
 
-// El peor caso: un Prompt Maestro larguísimo.
-const p2 = S.buildImagePrompt({
-    config: { masterPrompt: 'Quiero ' + 'palabra '.repeat(400) },
-    clubName: 'Club Rotario Cali', years: 40, analysis: analisis, hasReference: true,
-});
-check('con un Prompt Maestro enorme sigue cabiendo', p2.prompt.length <= S.PROMPT_MAX_CHARS, `${p2.prompt.length}`);
-check('el Prompt Maestro se RECORTA, nunca se elimina',
-    p2.prompt.includes('Master art direction') && p2.dropped.includes('master(recortado)'), p2.dropped.join(','));
-check('el núcleo sobrevive al peor caso',
-    p2.prompt.includes(S.NO_TEXT_CLAUSE) && p2.prompt.includes(S.PRESERVE_CLAUSE) && p2.prompt.includes(S.FOOTER_CLAUSE));
-check('lo que se deja fuera se ANOTA', p2.dropped.length > 0);
+// Un prompt base escrito por el administrador viaja EXACTO — es la promesa
+// «Ver solicitud enviada al modelo»: lo que se ve es lo que se manda.
+const propio = 'Genera una pieza para {NOMBRE_CLUB} con {ANOS_CLUB} años alrededor de {FOTO_CLUB}. Fondo azul.';
+const r2 = S.buildSimpleRequest({ config: { masterPrompt: propio }, clubName: 'Club X', years: 40 });
+check('un prompt base propio viaja EXACTO, sin agregados',
+    r2.prompt === S.applyMasterVariables(propio, { clubName: 'Club X', years: 40 }), r2.prompt);
+check('nada de las cláusulas viejas reaparece',
+    !/clear zone|Master art direction|Decoration theme|lettering seen in the reference/i.test(r2.prompt));
+check('sin tope, no se recorta nada', r2.trimmed === false);
 
-// El interruptor del ambiente.
-const sinAmbiente = S.buildImagePrompt({
-    config: { promptOptions: { ambient: false } },
-    clubName: 'X', years: 40, analysis: A({ people: 5, group: true }),
-});
-check('con el ambiente apagado, la frase por foto no viaja',
-    !sinAmbiente.prompt.includes('group portrait'));
+// El predeterminado dice las TRES cosas que el flujo simple exige: qué imagen
+// es la referencia, qué imagen es la foto, y que la referencia MANDA.
+check('el predeterminado declara la PRIMERA imagen como referencia',
+    /PRIMERA imagen[\s\S]*REFERENCIA VISUAL/i.test(S.DEFAULT_MASTER_PROMPT));
+check('y la SEGUNDA como la fotografía del club',
+    /SEGUNDA imagen/i.test(S.DEFAULT_MASTER_PROMPT) && S.DEFAULT_MASTER_PROMPT.includes('{FOTO_CLUB}'));
+check('y que la referencia MANDA sobre la creatividad',
+    /REFERENCIA VISUAL MANDA/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /similitud visual sobre creatividad/i.test(S.DEFAULT_MASTER_PROMPT));
+check('el modelo escribe los textos: el predeterminado se lo pide',
+    /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
+check('y reserva la banda inferior para el pie que imprime la plataforma',
+    /parte inferior/i.test(S.DEFAULT_MASTER_PROMPT) && /No generes logos ni pie de página/i.test(S.DEFAULT_MASTER_PROMPT));
+
+// Con tope POR MODELO (KIE: 2500) se recorta por palabra entera y se AVISA.
+const maestroLargo = 'Quiero ' + 'palabra '.repeat(500) + '{NOMBRE_CLUB}';
+const r3 = S.buildSimpleRequest({ config: { masterPrompt: maestroLargo }, clubName: 'X', years: 5, maxChars: 2500 });
+check('con tope por modelo se recorta', r3.prompt.length <= 2500, `${r3.prompt.length}`);
+check('y el recorte se DECLARA', r3.trimmed === true);
+check('el recorte no parte palabras', !/\S-$/.test(r3.prompt) && !/\s$/.test(r3.prompt));
+check('el predeterminado entra ENTERO en el tope de KIE',
+    S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Bello Horizonte', years: 40, maxChars: 2500 }).trimmed === false);
 
 // Una configuración vieja con `designInstruction` no se queda sin dirección.
 check('una configuración anterior a v4.898 conserva su dirección de arte',
     S.normalizeConfig({ designInstruction: 'Mi dirección heredada.' }).masterPrompt === 'Mi dirección heredada.');
 
-// Una foto vacía no puede recibir una instrucción escrita para «la foto
-// típica»: es la lección del censo universal (v4.785).
-const vacia = S.buildImagePrompt({ config: {}, years: 25, analysis: A({ people: 0 }) });
-check('con una fotografía SIN personas, el prompt dice que no se agrega ninguna',
-    /no people in it and none are added/.test(vacia.prompt));
+grupo('5 — El prompt negativo son LAS RESTRICCIONES, y nada más');
 
-grupo('4b — El análisis de la referencia y el presupuesto por modelo');
-
-const analisisRef = S.readReferenceAnalysis(JSON.stringify({
-    background: 'clean white with warm gradients',
-    palette: ['deep blue', 'gold', 'champagne', 'ivory', 'sky', 'extra-que-sobra'],
-    layout: 'editorial left, framed photo right',
-    decoration: ['gold balloons top right', 'thin curves toward the footer'],
-    mood: 'premium and sober',
-}));
-check('el análisis de la referencia se lee y se ACOTA (máx. 5 colores)',
-    !!analisisRef && analisisRef.palette.length === 5, JSON.stringify(analisisRef?.palette));
-check('una respuesta ilegible devuelve null, no lanza', S.readReferenceAnalysis('no es json') === null);
-
-const clausulaRef = S.referenceClauseFor(analisisRef);
-check('la cláusula la escribe el CÓDIGO desde los campos acotados',
-    clausulaRef.startsWith('Match the visual language') && clausulaRef.includes('gold balloons'), clausulaRef);
-check('sin análisis no hay cláusula', S.referenceClauseFor(null) === '');
-
-// Con el tope de KIE (2500), la cláusula entra sacrificando el ambiente; con
-// el presupuesto POR MODELO de GPT Image entra TODO.
-const conClausula = S.buildImagePrompt({
-    config: {}, clubName: 'Club Rotario Cali', years: 40,
-    analysis: analisis, hasReference: true, referenceClause: clausulaRef,
-});
-check('en KIE la cláusula de la referencia SOBREVIVE al recorte',
-    conClausula.prompt.includes('Match the visual language'), conClausula.dropped.join(','));
-check('y lo sacrificado se ANOTA', conClausula.dropped.length > 0, conClausula.dropped.join(','));
-const holgado = S.buildImagePrompt({
-    config: {}, clubName: 'Club Rotario Cali', years: 40,
-    analysis: analisis, hasReference: true, referenceClause: clausulaRef, maxChars: 30000,
-});
-check('con presupuesto por modelo (GPT Image) NO se sacrifica nada',
-    holgado.dropped.length === 0 && holgado.prompt.length > S.PROMPT_MAX_CHARS,
-    `${holgado.prompt.length} chars, dropped: ${holgado.dropped.join(',')}`);
-check('sin referencia, la cláusula no viaja aunque se pase',
-    !S.buildImagePrompt({ config: {}, referenceClause: clausulaRef, hasReference: false }).prompt.includes('Match the visual language'));
-
-grupo('5 — El prompt negativo');
-const neg = S.buildNegativePrompt({ restrictions: 'No poner globos rojos.' });
-check('lleva las restricciones del administrador', neg.includes('No poner globos rojos.'));
-check('prohíbe el texto dibujado', neg.includes('text'));
-check('prohíbe los logotipos dibujados', neg.includes('logo'));
-check('prohíbe personas de más', neg.includes('extra people'));
+// En el flujo simple el negativo es lo que el administrador escribió — un
+// campo VISIBLE del panel. Nada invisible viaja: es la otra mitad de «lo que
+// se ve es lo que se manda».
+check('lleva exactamente las restricciones configuradas',
+    S.buildNegativePrompt({ restrictions: 'No poner globos rojos.' }) === 'No poner globos rojos.');
+check('el default es el catálogo visible del panel',
+    S.buildNegativePrompt({}) === S.DEFAULT_RESTRICTIONS);
 check('las restricciones NO se pegan al prompt positivo',
-    !S.buildImagePrompt({ config: { restrictions: 'No poner globos rojos.' } }).prompt.includes('No poner globos rojos.'));
+    !S.buildSimpleRequest({ config: { restrictions: 'No poner globos rojos.' } }).prompt.includes('No poner globos rojos.'));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('6 — El texto: el modelo escribe, el código decide');
@@ -370,9 +333,12 @@ grupo('10 — La configuración');
 
 // El Prompt Maestro vacío CAE AL PREDETERMINADO (una configuración no puede
 // quedarse sin dirección), así que lo que se rechaza es uno escrito y corto.
-const cfgVacia = S.validateConfig({ masterPrompt: 'corto', messageInstruction: '' });
+const cfgVacia = S.validateConfig({ masterPrompt: 'corto' });
 check('un Prompt Maestro demasiado corto no se publica', !cfgVacia.ok);
-check('sin instrucción del mensaje tampoco', cfgVacia.errors.length >= 2);
+// v4.907: la instrucción del mensaje ya no bloquea — el flujo simple no tiene
+// redactor aparte; los textos los escribe el modelo dentro de la imagen.
+check('la instrucción del mensaje YA NO bloquea (flujo simple)',
+    S.validateConfig({ messageInstruction: '' }).ok);
 check('el Prompt Maestro vacío cae al predeterminado',
     S.normalizeConfig({ masterPrompt: '' }).masterPrompt === S.DEFAULT_MASTER_PROMPT);
 check('una variable desconocida en el Prompt Maestro se AVISA',
@@ -595,40 +561,14 @@ check('el panel de pruebas tampoco', !sinComentarios(estudio).includes('<datalis
 }
 
 // ════════════════════════════════════════════════════════════════════
-grupo('— v4.905 · El modelo no rotula la pieza, y la decoración varía por pieza —');
+grupo('— v4.905/v4.907 · El verificador de rotulado queda para el BENCHMARK —');
 //
-// Reporte con capturas: un «¡FELIZ ANIVERSARIO!» fantasma DENTRO del fondo
-// generado — el modelo imitó el rotulado de la referencia y nuestra capa
-// quedó impresa encima. Y el pedido expreso: que la decoración varíe entre
-// generaciones con tema de aniversario.
+// v4.905 midió el rotulado fantasma y v4.906 eximió el texto propio de la
+// fotografía. En el flujo simple (v4.907) el modelo ESCRIBE los textos a
+// propósito, así que estas puertas ya no deciden sobre una pieza del flujo —
+// pero el benchmark las sigue usando para puntuar modelos, y el criterio puro
+// tiene que seguir midiendo lo que mide.
 {
-    // El anti-rotulado viaja en el NÚCLEO (no se recorta nunca) cuando hay
-    // referencia, y el carve-out del maestro va siempre.
-    const conRef = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40, hasReference: true, referenceClause: 'Match the reference.', maxChars: 30000 });
-    check('con referencia, el núcleo prohíbe copiar su rotulado',
-        conRef.prompt.includes('lettering seen in the reference is printed afterwards'));
-    check('el maestro lleva el carve-out: sus palabras se imprimen después',
-        conRef.prompt.includes('Words it mentions are printed later by the platform'));
-
-    // La decoración: determinista por semilla, del catálogo cerrado, y varía.
-    const m1 = S.motifForSeed('pieza-1'), m1b = S.motifForSeed('pieza-1');
-    check('el motivo es DETERMINISTA por semilla', m1.id === m1b.id);
-    check('el motivo sale del catálogo cerrado', S.DECOR_MOTIFS.some(m => m.id === m1.id));
-    const distintos = new Set(['a','b','c','d','e','f','g','h','i','j'].map(s => S.motifForSeed(s).id));
-    check('semillas distintas dan motivos variados', distintos.size >= 3, `únicos=${distintos.size}`);
-
-    const p1 = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40, seed: 'pieza-1' });
-    check('con semilla, la cláusula del motivo viaja y se reporta',
-        p1.motifId === m1.id && p1.prompt.includes('Decoration theme for THIS piece'));
-    const sinSeed = S.buildImagePrompt({ config: {}, clubName: 'Club Rotario Cali', years: 40 });
-    check('sin semilla no se varía (sería una ruleta)', sinSeed.motifId === null && !sinSeed.prompt.includes('Decoration theme'));
-    const apagado = S.buildImagePrompt({ config: { promptOptions: { varyDecor: false } }, seed: 'pieza-1' });
-    check('el interruptor varyDecor la apaga', apagado.motifId === null);
-    check('varyDecor entra a la huella (publicarlo crea versión)',
-        S.fingerprintOf({}) !== S.fingerprintOf({ promptOptions: { varyDecor: false } }));
-    check('el presupuesto de KIE sigue cerrando en el caso por defecto',
-        p1.prompt.length <= 2500 && p1.dropped.length === 0, `largo=${p1.prompt.length} dropped=${p1.dropped}`);
-
     // El verificador de texto dibujado: lector acotado y veredicto de DOS
     // niveles — sólo `found && confident` descalifica (el ruido de una
     // lectura única, v4.795); `found` a secas se entrega con nota.

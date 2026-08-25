@@ -25,7 +25,7 @@ export const reset = (patch = {}) => {
     estado = {
         tareas: [], resultado: 'success', imagen: null, copyRespuestas: [],
         analisis: null, preservation: { state: 'ok', use: true }, subidas: [],
-        fallarCreateTask: null, fallarModelo: null, ...patch,
+        fallarCreateTask: null, fallarModelo: null, copyLlamadas: 0, ...patch,
     };
 };
 
@@ -54,6 +54,9 @@ export const createKieVideoTask = async () => '';
 
 // ── copywritingService ─────────────────────────────────────────────────
 export const generateCopy = async ({ imageUrl, system }) => {
+    // v4.907: el flujo simple NO llama a ningún modelo de texto ni de visión.
+    // El contador es lo que lo demuestra desde la prueba del camino.
+    estado.copyLlamadas = (estado.copyLlamadas || 0) + 1;
     // Con imagen es un ANÁLISIS; sin ella, la redacción. El system distingue
     // el análisis de la REFERENCIA (estilo) del de la FOTOGRAFÍA (personas).
     // El verificador de texto dibujado (v4.905). Por defecto contesta «sin

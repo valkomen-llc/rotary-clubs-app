@@ -216,6 +216,23 @@ grupo('3 — Las tres capas');
 const conFondo = await tinta({ ...DOC, renderMode: 'ai' }, DER_ALTA);
 check('modo `ai`: se dibuja el fondo que devolvió el modelo', conFondo > 0.05, `tinta ${conFondo.toFixed(4)}`);
 
+// v4.907 — flujo simple: con `simple: true` el compositor NO imprime la capa
+// de texto — el texto viene DENTRO de la imagen del modelo, como en el
+// ejemplo de ChatGPT del cliente. Mismo documento sobre fondo blanco: sin
+// `simple` escribe; con `simple`, ni un glifo (sólo queda el pie, que se
+// excluye midiendo hasta y=0,84).
+const CUERPO = { x: 0, y: 0, w: 1, h: 0.84 };
+const conCapa = await tinta({ ...DOC, renderMode: 'ai', backdropUrl: BLANCO, branding: {} }, CUERPO);
+const sinCapa = await tinta({ ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
+check('v4.907: `simple` apaga la capa de texto del compositor',
+    conCapa > 0.005 && sinCapa < 0.0005, `con ${conCapa.toFixed(4)} / sin ${sinCapa.toFixed(4)}`);
+// Y en `plain` (el respaldo sin imagen del modelo) la estructura de texto SÍ
+// sale aunque el documento diga simple: ahí no hay imagen que traiga el texto.
+const plainSimple = await tinta({ ...DOC, renderMode: 'plain', simple: true, zoneId: 'left', branding: {} },
+    { x: 0.05, y: 0.15, w: 0.42, h: 0.60 });
+check('v4.907: en `plain` el texto propio SÍ sale aunque el documento diga simple',
+    plainSimple > 0.003, `tinta ${plainSimple.toFixed(4)}`);
+
 // Modo `plain`: no hay fondo y la fotografía se dibuja del lado contrario al
 // texto. La foto sintética es roja, así que se mide el rojo.
 const plainRojo = await page.evaluate(async (doc) => {

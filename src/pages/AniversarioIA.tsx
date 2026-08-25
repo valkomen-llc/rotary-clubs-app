@@ -134,12 +134,6 @@ const AniversarioIA: React.FC = () => {
             const { pieceId, warnings } = await paso(`${API}/anniversaries/public/photo`, { clubName: club.trim(), years: n, photo: foto });
             if (Array.isArray(warnings) && warnings.length) setAvisos(a => [...a, ...warnings]);
 
-            setEtapa('analyze');
-            await paso(`${API}/anniversaries/public/analyze`, { pieceId });
-
-            setEtapa('write');
-            await paso(`${API}/anniversaries/public/copy`, { pieceId });
-
             setEtapa('compose');
             await paso(`${API}/anniversaries/public/compose`, { pieceId });
 
@@ -153,7 +147,7 @@ const AniversarioIA: React.FC = () => {
                     throw new Error(j.error || 'No se pudo consultar el estado de la pieza.');
                 }
                 const j = await r.json();
-                if (j.retrying) { setEtapa('verify'); continue; }
+                if (j.retrying) { setEtapa('compose'); continue; }
                 if (j.status === 'failed') throw new Error(j.statusDetail || 'No se pudo generar la pieza. Probá con otra fotografía.');
                 if (j.ready) {
                     setEtapa('done');
