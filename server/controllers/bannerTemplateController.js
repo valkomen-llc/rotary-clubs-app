@@ -311,14 +311,41 @@ export const proxyBannerImage = async (req, res) => {
             || host.endsWith('.clubplatform.org') || host.endsWith('cloudfront.net');
         if (!allowed) return res.status(403).json({ error: 'Origen no permitido' });
 
-        // ⚠️ CON TOPE DE TIEMPO (v4.911). Sin él, una conexión estancada deja
-        // esta función colgada y, del otro lado, una imagen del navegador que
-        // nunca termina de cargar — la vista previa queda en blanco PARA
-        // SIEMPRE, sin error (reporte con captura en Aniversarios IA).
-        const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-        if (!response.ok) return res.status(502).json({ error: 'No se pudo obtener la imagen' });
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        // ⚠️ NUESTRO PROPIO BUCKET SE LEE POR EL SDK, CON CREDENCIALES
+        // (v4.912). La lectura anónima por HTTP depende de que el bucket sea
+        // públicamente legible, y el reporte con captura mostró las TRES
+        // cargas fallando mientras la SUBIDA (SDK) funcionaba perfecta: son
+        // dos caminos distintos hacia el mismo bucket, y el del SDK es el que
+        // está demostrado. El fetch queda para los otros anfitriones
+        // permitidos (cloudfront, clubplatform).
+        let buffer;
+        let contentType = 'image/jpeg';
+        const parsed = new URL(url);
+        const esNuestroBucket = parsed.host === `${bannerBucket()}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com`
+            || parsed.host.startsWith(`${bannerBucket()}.s3`);
+        if (esNuestroBucket) {
+            const { s3, GetObjectCommand } = await getS3();
+            const key = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+            const controlador = new AbortController();
+            const reloj = setTimeout(() => controlador.abort(), 20_000);
+            try {
+                const out = await s3.send(new GetObjectCommand({ Bucket: bannerBucket(), Key: key }), { abortSignal: controlador.signal });
+                buffer = Buffer.from(await out.Body.transformToByteArray());
+                contentType = out.ContentType || 'image/jpeg';
+            } catch (e) {
+                // El motivo VIAJA: «no se pudo obtener» a secas obliga a
+                // diagnosticar a ciegas (v4.859).
+                return res.status(502).json({ error: 'No se pudo obtener la imagen', detail: `s3:${e.name || e.Code || 'error'}` });
+            } finally { clearTimeout(reloj); }
+        } else {
+            // ⚠️ CON TOPE DE TIEMPO (v4.911). Sin él, una conexión estancada
+            // deja esta función colgada y, del otro lado, una imagen que nunca
+            // termina de cargar — la vista previa en blanco PARA SIEMPRE.
+            const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+            if (!response.ok) return res.status(502).json({ error: 'No se pudo obtener la imagen', detail: `http:${response.status}` });
+            buffer = Buffer.from(await response.arrayBuffer());
+            contentType = response.headers.get('content-type') || 'image/jpeg';
+        }
         res.set('Content-Type', contentType);
         res.set('Cache-Control', 'public, max-age=3600');
         res.set('Access-Control-Allow-Origin', '*');

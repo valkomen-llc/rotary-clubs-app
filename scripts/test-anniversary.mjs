@@ -610,6 +610,14 @@ check('v4.911: loadImage tiene tope de tiempo', /IMAGE_TIMEOUT_MS/.test(render) 
 check('v4.911: la espera de las tipografías está acotada', /Promise\.race\(\[ensureDesignFonts\(\)/.test(render));
 check('v4.911: el proxy de imágenes aborta a los 20 s',
     /AbortSignal\.timeout\(20_000\)/.test(leer('server/controllers/bannerTemplateController.js')));
+// v4.912 — nuestro bucket se lee por el SDK, con credenciales: la lectura
+// anónima por HTTP depende de que el bucket sea público, y el reporte mostró
+// las TRES cargas fallando mientras la SUBIDA (SDK) funcionaba. Dos caminos
+// al mismo bucket; se usa el demostrado.
+check('v4.912: el proxy lee NUESTRO bucket por el SDK, no por fetch anónimo',
+    (() => { const p = leer('server/controllers/bannerTemplateController.js');
+        const cuerpo = p.slice(p.indexOf('export const proxyBannerImage'));
+        return /GetObjectCommand\(\{ Bucket: bannerBucket\(\)/.test(cuerpo) && /esNuestroBucket/.test(cuerpo); })());
 check('v4.911: las dos vistas previas DICEN que están componiendo',
     leer('src/pages/AniversarioIA.tsx').includes('Componiendo la pieza…')
     && leer('src/pages/admin/AnniversaryStudio.tsx').includes('Componiendo la pieza…'));

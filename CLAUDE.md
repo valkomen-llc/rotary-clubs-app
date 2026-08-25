@@ -2682,6 +2682,13 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ EL PROXY LEE NUESTRO BUCKET POR EL SDK, con credenciales** (v4.912).
+  La lectura anónima por HTTP de la URL pública depende de que el bucket
+  permita lecturas públicas; la subida por SDK funcionaba mientras las TRES
+  cargas del proxy fallaban — dos caminos al mismo bucket, y sólo uno
+  demostrado. `proxyBannerImage` usa `GetObjectCommand` para su propio bucket
+  (fetch con tope para los demás hosts permitidos) y el 502 lleva `detail`
+  con el motivo del origen. Alcanza a Aniversarios, Pendones y Plantillas IA.
 - **⚠️ LA COLUMNA NUEVA HAY QUE ENUMERARLA EN EL ATAJO DEL ENSURE, y la trampa
   se pagó el mismo día** (v4.908). `request` tenía su `ADD COLUMN IF NOT
   EXISTS` y la comprobación rápida del catálogo no la enumeraba: en producción
