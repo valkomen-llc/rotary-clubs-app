@@ -98,6 +98,36 @@ export const loadImage = (src: string, { timeoutMs = IMAGE_TIMEOUT_MS }: { timeo
     return p;
 };
 
+/** El aviso EXACTO de la degradación del diseño. Es una constante exportada
+ *  para que la pantalla pueda reconocerlo y ofrecer el reintento sin duplicar
+ *  el texto — dos copias del mismo aviso se separan en silencio. */
+export const BACKDROP_FAILED_WARNING =
+    'No se pudo cargar el diseño generado; la pieza se compuso con la fotografía sobre fondo blanco.';
+
+/**
+ * ⚠️ EL DISEÑO GENERADO SE CARGA CON REINTENTOS (v4.915). Es la imagen que ES
+ * la pieza y ya está pagada: un 502 puntual del proxy o un corte de red no
+ * pueden costarla — y eso fue exactamente el reporte: el diseño existía en el
+ * almacenamiento y la pieza salió plana porque el ÚNICO intento de cargarlo
+ * falló. Tres intentos con pausa corta; `loadImage` no cachea los fallos, así
+ * que cada reintento vuelve a pedir de verdad. Las imágenes del BRANDING
+ * siguen con un solo intento a propósito: su degradación es cosmética y tres
+ * esperas de 25 s por una marca de agua atrasarían la pieza entera.
+ */
+const BACKDROP_ATTEMPTS = 3;
+const loadBackdrop = async (url: string): Promise<HTMLImageElement> => {
+    let ultimo: unknown = null;
+    for (let intento = 1; intento <= BACKDROP_ATTEMPTS; intento++) {
+        try {
+            return await loadImage(url);
+        } catch (e) {
+            ultimo = e;
+            if (intento < BACKDROP_ATTEMPTS) await new Promise(r => setTimeout(r, 1000 * intento));
+        }
+    }
+    throw ultimo instanceof Error ? ultimo : new Error('No se pudo cargar el diseño generado.');
+};
+
 // ─── El documento ──────────────────────────────────────────────────────
 
 export interface AnniversaryBranding {
@@ -382,6 +412,9 @@ export interface RenderResult {
     warnings: string[];
     /** El texto no entró en su zona ni con la reducción máxima. */
     overflow: boolean;
+    /** El diseño generado EXISTE pero no se pudo cargar ni con reintentos:
+     *  la pantalla puede ofrecer volver a componer SIN gastar una generación. */
+    backdropFailed: boolean;
 }
 
 /**
@@ -422,15 +455,17 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     ctx.fillRect(0, 0, W, H);
 
     // ── Capa 1 — el diseño ──────────────────────────────────────────
+    let backdropFailed = false;
     if (doc.renderMode === 'ai' && doc.backdropUrl) {
         try {
-            const fondo = await loadImage(doc.backdropUrl);
+            const fondo = await loadBackdrop(doc.backdropUrl);
             // Encuadrado, no estirado: si el modelo devolvió otra proporción,
             // deformarla sería peor que recortarla, y el aviso de que volvió en
             // otra proporción ya lo dio la validación del servidor.
             drawCover(ctx, fondo, 0, 0, W, H);
         } catch {
-            warnings.push('No se pudo cargar el diseño generado; la pieza se compuso con la fotografía sobre fondo blanco.');
+            backdropFailed = true;
+            warnings.push(BACKDROP_FAILED_WARNING);
             await drawPlainPhoto(ctx, doc, zone, W, H, warnings);
         }
     } else {
@@ -442,8 +477,12 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // En el flujo simple la imagen del modelo YA trae el texto dibujado:
     // imprimir el nuestro encima lo doblaría — el defecto fantasma de v4.905,
     // ahora al revés. Sólo se imprime cuando la pieza la componemos nosotros
-    // (`plain`, o un documento sin `simple`).
-    const bloques = (doc.simple && doc.renderMode === 'ai') ? [] : planTextBlocks(doc);
+    // (`plain`, o un documento sin `simple`). ⚠️ Y TAMBIÉN cuando el diseño
+    // NO CARGÓ (v4.915): ahí no hay ninguna imagen que traiga el texto, y la
+    // degradación salía como la fotografía suelta sobre blanco — sin título,
+    // sin club y sin años (reporte con captura). El respaldo conserva la
+    // estructura, como el modo plano.
+    const bloques = (doc.simple && doc.renderMode === 'ai' && !backdropFailed) ? [] : planTextBlocks(doc);
     const boxX = zone.x * W;
     const boxY = zone.y * H;
     const boxW = zone.w * W;
@@ -592,7 +631,7 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     if (ajuste.overflow) {
         warnings.push('El mensaje es más largo de lo que entra en la pieza y quedó ajustado al mínimo. Conviene regenerarlo.');
     }
-    return { canvas, warnings, overflow: ajuste.overflow };
+    return { canvas, warnings, overflow: ajuste.overflow, backdropFailed };
 };
 
 /** La capa 1 en modo `plain`: la fotografía intacta sobre papel blanco. */

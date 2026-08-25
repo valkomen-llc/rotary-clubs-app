@@ -252,6 +252,45 @@ const colgada = await page.evaluate(async () => {
 check('v4.911: una imagen que nunca llega RECHAZA por tope, no cuelga',
     /tardó demasiado/.test(String(colgada)), String(colgada));
 
+// v4.915 — EL DISEÑO YA PAGADO NO SE PIERDE POR UN TROPIEZO DE CARGA. Del
+// reporte con captura: el diseño existía en el almacenamiento y la pieza
+// salió plana —y SIN un solo texto— porque el ÚNICO intento de cargarlo
+// falló. Dos mitades: el reintento salva el tropiezo puntual, y cuando ni
+// así carga, el respaldo imprime la estructura de texto (en modo simple la
+// capa venía apagada «porque la imagen trae el texto» — acá no hay imagen).
+// La ruta va DESPUÉS del catch-all a propósito: Playwright resuelve la
+// última registrada primero (lección de este mismo arnés).
+let flakyIntentos = 0;
+await page.route(u => u.href.includes('flaky-backdrop'), (route) => {
+    flakyIntentos += 1;
+    if (flakyIntentos === 1) return route.fulfill({ status: 502, body: '' });
+    return route.fulfill({
+        contentType: 'image/svg+xml',
+        body: Buffer.from(PNG_FONDO.split(',')[1], 'base64'),
+        headers: { 'Access-Control-Allow-Origin': '*' },
+    });
+});
+const reintentado = await page.evaluate(async (doc) => {
+    const r = await window.AR.renderAnniversary(doc);
+    return { failed: r.backdropFailed, avisos: r.warnings.length };
+}, { ...DOC, simple: true, backdropUrl: 'https://bucket.s3.amazonaws.com/flaky-backdrop.png', branding: {} });
+check('v4.915: un 502 puntual NO pierde el diseño — el reintento lo carga',
+    reintentado.failed === false && reintentado.avisos === 0 && flakyIntentos === 2,
+    JSON.stringify({ ...reintentado, flakyIntentos }));
+
+// Agotados los reintentos (la URL cae en el 404 del catch-all las tres
+// veces), la pieza degradada declara el fallo Y escribe su texto.
+const DOC_CAIDO = { ...DOC, simple: true, zoneId: 'left', branding: {}, backdropUrl: 'https://bucket.s3.amazonaws.com/never-backdrop.png' };
+const caido = await page.evaluate(async (doc) => {
+    const r = await window.AR.renderAnniversary(doc);
+    return { failed: r.backdropFailed, aviso: r.warnings.some(w => /No se pudo cargar el diseño generado/.test(w)) };
+}, DOC_CAIDO);
+check('v4.915: agotados los reintentos, la degradación se DECLARA (backdropFailed + aviso)',
+    caido.failed === true && caido.aviso === true, JSON.stringify(caido));
+const caidoTinta = await tinta(DOC_CAIDO, CUERPO);
+check('v4.915: la pieza degradada IMPRIME la estructura de texto — no sale la foto suelta',
+    caidoTinta > 0.003, `tinta ${caidoTinta.toFixed(4)}`);
+
 // Modo `plain`: no hay fondo y la fotografía se dibuja del lado contrario al
 // texto. La foto sintética es roja, así que se mide el rojo.
 const plainRojo = await page.evaluate(async (doc) => {

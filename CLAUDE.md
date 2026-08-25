@@ -2682,6 +2682,18 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ EL DISEÑO GENERADO SE CARGA CON REINTENTOS, Y SU DEGRADACIÓN NO SALE
+  MUDA** (v4.915). El diseño es LA pieza y ya está pagado: un 502 puntual no
+  puede costarlo — `loadBackdrop` hace tres intentos con pausa (los fallos no
+  se cachean, así que reintentar pide de verdad); el branding conserva su
+  intento único porque su degradación es cosmética. Y cuando ni así carga,
+  el respaldo IMPRIME la estructura de texto: en modo simple la capa venía
+  apagada «porque la imagen trae el texto», pero sin imagen cargada no hay
+  ninguna que lo traiga — la pieza salía como la foto suelta sobre blanco,
+  sin título ni años (reporte con captura). La salida es visible y gratuita:
+  `backdropFailed` en el resultado del compositor y el botón «Reintentar el
+  diseño (gratis)» en la página pública, que re-compone sin gastar una
+  generación.
 - **⚠️ EL PROXY LEE NUESTRO BUCKET POR EL SDK, con credenciales** (v4.912).
   La lectura anónima por HTTP de la URL pública depende de que el bucket
   permita lecturas públicas; la subida por SDK funcionaba mientras las TRES
