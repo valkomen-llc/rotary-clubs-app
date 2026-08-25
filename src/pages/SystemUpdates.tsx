@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.911.0 | 2026-08-25 (Aniversarios IA: la vista previa nunca queda en blanco)
+// UI V4.912.0 | 2026-08-25 (El proxy de imágenes lee nuestro bucket por el SDK)
 // Cache bust: 2026-08-25l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.912.0',
+        title: 'El proxy de imágenes lee nuestro bucket por el SDK 🔑',
+        description: 'La otra mitad del reporte «no genera nada»: con los topes de v4.911 la pieza ya se pintaba y DECÍA qué fallaba — las TRES cargas de imagen (diseño, fotografía y pie) fallaban a través del proxy. El diagnóstico decisivo: la SUBIDA de esas mismas imágenes a S3, hecha por el SDK con credenciales, funcionaba perfecta — lo que fallaba era la LECTURA anónima por HTTP de la URL pública, que depende de que el bucket permita lecturas públicas. Son dos caminos distintos hacia el mismo bucket, y sólo uno estaba demostrado. Ahora el proxy detecta cuándo la URL pedida es de NUESTRO bucket y lee el objeto por el mismo SDK con credenciales (GetObjectCommand, con tope de 20 segundos), inmune a la configuración de acceso público del bucket; el fetch con tope queda para los demás anfitriones permitidos (CloudFront, clubplatform.org). Alcanza a los tres consumidores del proxy: Aniversarios IA, el Generador de Pendones y Plantillas IA. Y un fallo ya no dice «no se pudo obtener la imagen» a secas: viaja el motivo del origen (s3:AccessDenied, http:403…), porque un error sin causa obliga a diagnosticar a ciegas.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'infraestructura', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.911.0',
         title: 'Aniversarios IA: la vista previa nunca queda en blanco en silencio ⏱️',
