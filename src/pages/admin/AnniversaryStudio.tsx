@@ -20,6 +20,7 @@ import {
     History, Rocket, AlertTriangle, CheckCircle2, Info, RotateCcw, Download, X, Loader2,
 } from 'lucide-react';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
+import EnginePanel from '../../components/admin/anniversaries/EnginePanel';
 import { uploadMediaFiles } from '../../lib/mediaUpload';
 import { renderAnniversary, downloadCanvas, safeFileName, type AnniversaryDocument } from '../../lib/anniversaryRender';
 import { ACCEPTED_PHOTO_TYPES, ACCEPTED_PHOTO_LABEL, MAX_PHOTO_BYTES, YEARS_LIMITS } from '../../lib/anniversarySpec';
@@ -651,6 +652,11 @@ const AnniversaryStudio: React.FC = () => {
                     })}
                 </div>
             </Card>
+
+            {/* 4b — Motor de imagen y benchmark (v4.897). Vive en su propio
+                componente para que esta pantalla no crezca sin freno; es la
+                capa técnica que decide QUÉ modelo genera, con evidencia. */}
+            <EnginePanel />
 
             {/* 5 — Probar */}
             <Card title="Probar configuración" icon={<FlaskConical className="w-5 h-5" />}

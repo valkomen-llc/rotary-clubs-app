@@ -62,6 +62,14 @@
 // «aniversario» en la base, en las rutas y en el store, que es lo que
 // obligaría a reescribirlos después.
 export const GENERATOR_KIND = 'aniversario';
+
+/** La versión del PROMPT. Sube cuando cambian las cláusulas que viajan al
+ *  modelo —no cuando cambia una instrucción del administrador, que ya queda
+ *  trazada por la versión de configuración—. Es la mitad del sello de
+ *  auditoría de cada pieza (`engineStampFor`): sin ella, «¿por qué esta pieza
+ *  de marzo salió así?» no distingue un cambio de modelo de un cambio nuestro
+ *  de prompt. */
+export const PROMPT_VERSION = '1';
 export const GENERATOR_LABEL = 'Aniversarios IA';
 
 // ─── Formato de salida ─────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.896.0",
-  "cache_bust": "4.896.0",
+  "version": "4.897.0",
+  "cache_bust": "4.897.0",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -52,6 +52,7 @@
     "test:anniversary": "node scripts/test-anniversary.mjs",
     "test:anniversary:render": "node scripts/test-anniversary-render.mjs",
     "test:anniversary:path": "node scripts/test-anniversary-path.mjs",
+    "test:anniversary:engine": "node scripts/test-anniversary-engine.mjs",
     "check:routes": "node scripts/check-routes.mjs && node scripts/check-imports.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:server-undef": "node scripts/check-server-undef.mjs",

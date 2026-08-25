@@ -29,6 +29,17 @@ import {
     ingestPhoto, analyzePhoto, writeCopy, startComposition, syncComposition,
     verifyComposition, resolveBranding, retryClause, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
+import {
+    catalogFor, modelById, eligibility, resolveProduction, shouldFallback,
+    engineStampFor, DEFAULT_WEIGHTS, CRITERIA, normalizeWeights, autoScoresFor,
+    applyVote, totalScore, recommendModel, BENCH_PHOTO_HINTS,
+    MAX_BENCH_PHOTOS, MAX_BENCH_MODELS, VOTE_SCORE, ENGINE_PROVIDER,
+} from '../lib/anniversaryEngineSpec.js';
+import {
+    readEngineConfig, saveEngineConfig,
+    createBenchmark, readBenchmark, listBenchmarks, finishBenchmark,
+    createBenchResult, listBenchResults, closeBenchResult, updateBenchResult,
+} from '../lib/anniversaryModels.js';
 import { clubDisplayName, findPublicClub, searchPublicClubs } from '../lib/publicClubs.js';
 
 /** El operador de la plataforma. Se comprueba acá además de en la ruta. */
@@ -361,10 +372,16 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
         const reclamada = await claimPieceForDispatch(piece.id, piece.attempts);
         if (!reclamada) return res.status(409).json({ error: 'Esta pieza ya se está generando.' });
 
-        try {
+        // El modelo lo decide la configuración del MOTOR (catálogo →
+        // activación → default), no un literal: es lo que permite cambiarlo
+        // desde el panel sin tocar este flujo (req. 25).
+        const { engine } = await readEngineConfig(SCOPE);
+        const prod = resolveProduction(engine);
+
+        const despachar = async (modelo, fallbackUsed) => {
             const r = await startComposition({
                 config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
-                analysis: piece.analysis,
+                analysis: piece.analysis, model: modelo, engineConfig: engine,
                 // El reintento le dice al modelo el problema CONCRETO, no
                 // «hacelo mejor». Sale de la validación anterior.
                 extraClause: retryClause(piece.validation?.critical || []),
@@ -372,9 +389,37 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
             await updatePiece(piece.id, {
                 taskId: r.taskId, zoneId: r.zoneId,
                 versionId: ctx.versionId || null,
+                // El sello de auditoría (req. 21): con qué se generó ESTA
+                // pieza. `dispatchedAt` es de donde sale la latencia medida.
+                engine: { ...engineStampFor({ model: modelo, engineConfig: engine, fallbackUsed }), dispatchedAt: new Date().toISOString() },
             });
+            return r;
+        };
+
+        try {
+            const r = await despachar(prod.primary, false);
             res.json({ taskId: r.taskId, zoneId: r.zoneId, model: r.model, usedReference: r.usedReference, attempt: reclamada.attempts });
         } catch (e) {
+            // ── EL FALLBACK, Y CUÁNDO NO ────────────────────────────
+            //
+            // Sólo un fallo de INFRAESTRUCTURA (timeout, 5xx, límite, modelo
+            // retirado) prueba el respaldo. Un fallo de otra clase no mejora
+            // cambiando de modelo y gastaría créditos dobles. Lo estético ni
+            // llega acá: eso es la validación de calidad, más abajo.
+            if (prod.fallback && shouldFallback(e.message)) {
+                try {
+                    const r = await despachar(prod.fallback, true);
+                    console.warn(`[anniversary] el primario (${prod.primary}) falló y respondió el fallback (${prod.fallback}): ${e.message}`);
+                    return res.json({ taskId: r.taskId, zoneId: r.zoneId, model: r.model, usedReference: r.usedReference, attempt: reclamada.attempts, fallbackUsed: true });
+                } catch (e2) {
+                    // Agotada la cadena, se propaga el motivo de CADA modelo:
+                    // con un mensaje único no se distingue cuál murió de qué
+                    // (regla de v4.892).
+                    const ambos = `El modelo principal (${prod.primary}) falló: ${e.message}. El de respaldo (${prod.fallback}) también: ${e2.message}`;
+                    await updatePiece(piece.id, { status: 'failed', statusDetail: ambos });
+                    return res.status(502).json({ error: ambos });
+                }
+            }
             // El error del proveedor se propaga TEXTUAL y la pieza queda en
             // `failed` CON su motivo: un «pendiente» eterno sólo se puede
             // mirar; un error visible se arregla.
@@ -401,8 +446,48 @@ export const runSync = async (req, res, { draft = false } = {}) => {
         const r = await syncComposition(piece.taskId);
         if (r.status === 'pending') return res.json({ status: 'composing', ready: false });
         if (r.status === 'failed') {
+            // ── Fallo DEL PROVEEDOR a mitad de generación ───────────
+            //
+            // Si es de infraestructura y hay respaldo sin usar, se redespacha
+            // UNA vez con él (req. 8: «fallo de generación» también dispara
+            // el fallback). `fallbackUsed` en el sello es lo que impide el
+            // bucle; y un fallo de otra clase no cambia de modelo.
+            const stamp = piece.engine || {};
+            if (shouldFallback(r.error) && !stamp.fallbackUsed) {
+                const { engine } = await readEngineConfig(SCOPE);
+                const prod = resolveProduction(engine);
+                if (prod.fallback && prod.fallback !== stamp.model) {
+                    const reclamo = await claimPieceForDispatch(piece.id, piece.attempts);
+                    if (reclamo) {
+                        try {
+                            const otra = await startComposition({
+                                config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
+                                analysis: piece.analysis, model: prod.fallback, engineConfig: engine,
+                                extraClause: retryClause(piece.validation?.critical || []),
+                            });
+                            await updatePiece(piece.id, {
+                                taskId: otra.taskId, zoneId: otra.zoneId,
+                                engine: { ...engineStampFor({ model: prod.fallback, engineConfig: engine, fallbackUsed: true }), dispatchedAt: new Date().toISOString() },
+                            });
+                            return res.json({ status: 'composing', ready: false, retrying: true, fallbackUsed: true, reason: `El modelo principal falló (${r.error}); se está generando con el de respaldo.` });
+                        } catch (e2) {
+                            console.warn('[anniversary] el fallback tampoco pudo despachar:', e2.message);
+                        }
+                    }
+                }
+            }
             const actualizada = await updatePiece(piece.id, { status: 'failed', statusDetail: r.error });
             return res.json({ ...await pieceView(actualizada, ctx.config), status: 'failed' });
+        }
+
+        // La latencia MEDIDA de esta generación, para el registro de costo y
+        // uso (req. 17): desde el despacho hasta que la imagen estuvo.
+        if (piece.engine?.dispatchedAt) {
+            const latencyMs = Date.now() - Date.parse(piece.engine.dispatchedAt);
+            if (Number.isFinite(latencyMs) && latencyMs >= 0) {
+                piece.engine.latencyMs = latencyMs;
+                await updatePiece(piece.id, { engine: piece.engine });
+            }
         }
 
         // ── La verificación ─────────────────────────────────────────
@@ -431,9 +516,13 @@ export const runSync = async (req, res, { draft = false } = {}) => {
             const reintentar = await claimPieceForDispatch(piece.id, piece.attempts);
             if (reintentar) {
                 try {
+                    // MISMO modelo que la generación que falló: un defecto de
+                    // calidad no es un fallo de infraestructura y cambiar de
+                    // modelo acá confundiría las dos cosas (regla del motor).
                     const otra = await startComposition({
                         config: ctx.config, photoUrl: piece.photoUrl, years: piece.years,
                         analysis: piece.analysis, extraClause: retryClause(veredicto.critical),
+                        model: piece.engine?.model || null,
                     });
                     await updatePiece(piece.id, { taskId: otra.taskId, zoneId: otra.zoneId });
                     return res.json({ status: 'composing', ready: false, retrying: true, reason: veredicto.critical[0]?.reason || null });
@@ -511,9 +600,258 @@ export const pieceView = async (piece, config) => {
     };
 };
 
+
+// ════════════════════════════════════════════════════════════════════
+// EL MOTOR DE IMAGEN Y SU BENCHMARK (v4.897)
+//
+// La cadena completa: catálogo declarado → elegibilidad → benchmark con
+// evidencia → recomendado → ACTIVACIÓN EXPLÍCITA → producción → fallback.
+// Nada de esto llega al formulario público: el visitante sigue viendo club,
+// años, fotografía y un botón (req. 24).
+// ════════════════════════════════════════════════════════════════════
+
+/** Todo lo que la tarjeta «Motor de imagen» necesita para pintarse. */
+export const getEngine = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const { engine } = await readEngineConfig(SCOPE);
+        const prod = resolveProduction(engine);
+        const catalogo = catalogFor(engine).map(m => ({
+            ...m,
+            eligibility: eligibility(m),
+        }));
+        const runs = await listBenchmarks(null, 5).catch(() => []);
+        res.json({
+            provider: ENGINE_PROVIDER,
+            engine,
+            production: prod,
+            catalog: catalogo,
+            criteria: CRITERIA,
+            defaultWeights: DEFAULT_WEIGHTS,
+            photoHints: BENCH_PHOTO_HINTS,
+            limits: { maxPhotos: MAX_BENCH_PHOTOS, maxModels: MAX_BENCH_MODELS },
+            benchmarks: runs,
+            // El entorno forzando el modelo se DICE: sin esto, el panel
+            // cambiaría el activo y nada se movería, en silencio.
+            envOverride: process.env.ANNIVERSARY_MODEL || null,
+        });
+    } catch (e) {
+        console.error('[anniversary/engine]', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+/** Guarda la configuración técnica. Un modelo manual NO elegible se rechaza
+ *  con sus motivos: activar un motor que no puede respetar la fotografía es
+ *  exactamente lo que la elegibilidad existe para impedir. */
+export const putEngine = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const body = req.body?.engine ?? req.body ?? {};
+        if (body.active) {
+            const m = modelById(body.active, body);
+            const eleg = m ? eligibility(m) : { eligible: false, errors: ['El modelo no está en el catálogo ni entre los candidatos.'] };
+            if (!eleg.eligible) return res.status(422).json({ error: 'Ese modelo no es elegible para Aniversarios IA.', errors: eleg.errors });
+        }
+        const { engine } = await saveEngineConfig(SCOPE, body);
+        res.json({ engine, production: resolveProduction(engine) });
+    } catch (e) {
+        console.error('[anniversary/engine:put]', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+/** La ACTIVACIÓN: el único camino por el que un modelo entra a producción
+ *  desde un benchmark. Un benchmark recomienda; una persona activa. Nunca es
+ *  automático (req. 20). */
+export const postEngineActivate = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const model = String(req.body?.model || '');
+        const { engine } = await readEngineConfig(SCOPE);
+        const m = modelById(model, engine);
+        const eleg = m ? eligibility(m) : { eligible: false, errors: ['El modelo no está en el catálogo ni entre los candidatos.'] };
+        if (!eleg.eligible) return res.status(422).json({ error: 'Ese modelo no es elegible.', errors: eleg.errors });
+
+        const fallback = req.body?.fallback && String(req.body.fallback) !== model ? String(req.body.fallback) : engine.fallback;
+        const { engine: guardado } = await saveEngineConfig(SCOPE, {
+            ...engine, active: model, fallback,
+            activatedFrom: {
+                benchmarkId: req.body?.benchmarkId || null,
+                at: new Date().toISOString(),
+                by: req.user?.email || req.user?.id || null,
+            },
+        });
+        res.json({ engine: guardado, production: resolveProduction(guardado), warnings: eleg.warnings });
+    } catch (e) {
+        console.error('[anniversary/engine:activate]', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ── El benchmark ──────────────────────────────────────────────────────
+//
+// Corre por la MISMA cadena que producción: mismo `startComposition`, mismo
+// prompt (el del BORRADOR: es una herramienta de prueba), mismas mediciones
+// de la validación. Un benchmark con su propio pipeline no compararía nada.
+
+export const postBenchmarkRun = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const { config } = await readDraftConfig(SCOPE);
+        const row = await ensureConfigRow(SCOPE);
+        const { engine } = await readEngineConfig(SCOPE);
+
+        // Los candidatos: elegibles y sin repetir, acotados.
+        const pedidos = [...new Set((Array.isArray(req.body?.models) ? req.body.models : []).map(String))].slice(0, MAX_BENCH_MODELS);
+        const modelos = pedidos.filter(id => {
+            const m = modelById(id, engine);
+            return m && eligibility(m).eligible;
+        });
+        if (modelos.length < 2) return res.status(400).json({ error: 'Elegí al menos dos modelos elegibles: un benchmark de uno solo no compara nada.' });
+
+        const fotosRaw = (Array.isArray(req.body?.photos) ? req.body.photos : []).slice(0, MAX_BENCH_PHOTOS);
+        if (!fotosRaw.length) return res.status(400).json({ error: 'Subí al menos una fotografía de prueba. Lo representativo son varias: grupo, vertical, oscura…' });
+
+        // Cada fotografía se ingiere UNA vez y se analiza UNA vez: el análisis
+        // compartido es lo que hace que todos los modelos reciban exactamente
+        // el mismo prompt (req. 5, «el mismo prompt y configuración»).
+        const photos = [];
+        for (const [i, dataUrl] of fotosRaw.entries()) {
+            const foto = await ingestPhoto(dataUrl, { prefix: 'anniversaries/bench' });
+            const analysis = await analyzePhoto({ photoUrl: foto.url, width: foto.width, height: foto.height });
+            photos.push({ url: foto.url, width: foto.width, height: foto.height, label: String(req.body?.labels?.[i] || '').slice(0, 60), analysis });
+        }
+
+        const run = await createBenchmark({
+            configId: row.id, models: modelos, photos,
+            weights: req.body?.weights || null,
+            createdBy: req.user?.email || null,
+        });
+
+        // Una tarea por celda (modelo × fotografía). Un fallo al CREAR la
+        // tarea es un dato del benchmark —estabilidad—, no un motivo para
+        // tirar la corrida entera.
+        let despachadas = 0;
+        for (const model of modelos) {
+            for (const [photoIndex, photo] of photos.entries()) {
+                try {
+                    const r = await startComposition({
+                        config, photoUrl: photo.url, years: 40,
+                        analysis: photo.analysis, model, engineConfig: engine,
+                    });
+                    await createBenchResult({ benchmarkId: run.id, model, photoIndex, taskId: r.taskId });
+                    despachadas++;
+                } catch (e) {
+                    await createBenchResult({ benchmarkId: run.id, model, photoIndex, status: 'failed', error: e.message });
+                }
+            }
+        }
+        if (!despachadas) await finishBenchmark(run.id, 'failed');
+        res.json({ benchmarkId: run.id, models: modelos, photos: photos.length, dispatched: despachadas });
+    } catch (e) {
+        console.error('[anniversary/benchmark:run]', e);
+        res.status(502).json({ error: e.message });
+    }
+};
+
+/** El sondeo del benchmark: avanza lo pendiente CON PRESUPUESTO —la función
+ *  corta a los 120 s y una corrida de 4×8 celdas no entra en una pasada; lo
+ *  que no entra espera al siguiente sondeo, no se pierde— y devuelve la foto
+ *  completa: resultados, notas y recomendado DERIVADO (no guardado: una
+ *  segunda verdad sobre los mismos resultados se contradiría al votar). */
+export const getBenchmarkRun = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const run = await readBenchmark(req.params.id);
+        if (!run) return res.status(404).json({ error: 'Ese benchmark no existe.' });
+        const { engine } = await readEngineConfig(SCOPE);
+
+        let results = await listBenchResults(run.id);
+        const pendientes = results.filter(r => r.status === 'pending' && r.taskId);
+        const PRESUPUESTO = 4;
+        const minCredits = Math.min(...(run.models || []).map(id => modelById(id, engine)?.creditsEstimated ?? 5));
+
+        for (const r of pendientes.slice(0, PRESUPUESTO)) {
+            try {
+                const estado = await syncComposition(r.taskId);
+                if (estado.status === 'pending') continue;
+                if (estado.status === 'failed') {
+                    await closeBenchResult(r.id, { status: 'failed', error: estado.error });
+                    continue;
+                }
+                // Listo: se mide con LA MISMA validación de producción.
+                const photo = (run.photos || [])[r.photoIndex] || {};
+                let photoBuffer = null;
+                try { photoBuffer = Buffer.from(await (await fetch(photo.url)).arrayBuffer()); } catch { /* sin original se pierde sólo el control de personas */ }
+                const veredicto = await verifyComposition({
+                    photoBuffer, composedBuffer: estado.buffer,
+                    zoneId: textZoneFor(photo.analysis), format: 'square_1080',
+                });
+                const latencyMs = r.dispatchedAt ? Math.max(0, Date.now() - new Date(r.dispatchedAt).getTime()) : null;
+                const scores = autoScoresFor({
+                    measurements: veredicto.measurements,
+                    preservation: veredicto.preservation,
+                    latencyMs,
+                    credits: modelById(r.model, engine)?.creditsEstimated ?? null,
+                    minCredits,
+                });
+                await closeBenchResult(r.id, {
+                    status: 'ready', imageUrl: estado.url, latencyMs,
+                    auto: { scores, measurements: veredicto.measurements, preservation: veredicto.preservation, critical: veredicto.critical },
+                });
+            } catch (e) {
+                console.warn('[anniversary/benchmark] sondeo de una celda:', e.message);
+            }
+        }
+
+        results = await listBenchResults(run.id);
+        const terminado = results.length > 0 && results.every(r => r.status !== 'pending');
+        if (terminado && run.status === 'running') await finishBenchmark(run.id, 'done');
+
+        const weights = normalizeWeights(run.weights);
+        const vista = results.map(r => ({
+            id: r.id, model: r.model, photoIndex: r.photoIndex, status: r.status,
+            imageUrl: r.imageUrl, latencyMs: r.latencyMs, error: r.error, vote: r.vote,
+            scores: r.auto?.scores || null,
+            total: r.auto?.scores ? totalScore(applyVote(r.auto.scores, r.vote), weights) : null,
+        }));
+        res.json({
+            id: run.id,
+            status: terminado ? 'done' : run.status,
+            models: run.models, photos: (run.photos || []).map(p => ({ url: p.url, label: p.label })),
+            weights,
+            results: vista,
+            recommendation: recommendModel(vista.map(v => ({ model: v.model, status: v.status, scores: v.scores, vote: v.vote, latencyMs: v.latencyMs })), weights, engine),
+            pending: results.filter(r => r.status === 'pending').length,
+        });
+    } catch (e) {
+        console.error('[anniversary/benchmark:get]', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+/** El voto humano: 👍 👎 ⭐. Complementa el score automático — cubre lo que la
+ *  máquina no puede mirar (integración, composición). */
+export const postBenchmarkVote = async (req, res) => {
+    if (!esOperador(req)) return negar(res);
+    try {
+        const vote = String(req.body?.vote || '');
+        if (!(vote in VOTE_SCORE) && vote !== '') return res.status(400).json({ error: 'El voto es up, down, star o vacío para retirarlo.' });
+        const r = await updateBenchResult(String(req.body?.resultId || ''), { vote: vote || null });
+        if (!r) return res.status(404).json({ error: 'Ese resultado no existe.' });
+        res.json({ ok: true, vote: r.vote });
+    } catch (e) {
+        console.error('[anniversary/benchmark:vote]', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
 export default {
     getCatalog, getConfig, putConfig, postPublish, postUnpublish,
     getVersions, postRestoreVersion, getClubs, getPieces,
     postTestPhoto, postTestAnalyze, postTestCopy, postTestCompose, getTestPiece,
     runAnalyze, runCopy, runCompose, runSync, pieceView,
+    getEngine, putEngine, postEngineActivate,
+    postBenchmarkRun, getBenchmarkRun, postBenchmarkVote,
 };

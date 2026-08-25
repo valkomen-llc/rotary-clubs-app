@@ -31,7 +31,8 @@
 // DistributionGroup, la del Slider Global / Llamados a la Acción:
 // SpotlightSlide, y las dos del ciclo de vida de un aporte en la Bóveda:
 // PaymentLifecycleEvent y Disbursement, y las tres de Aniversarios IA:
-// AnniversaryConfig, AnniversaryConfigVersion y AnniversaryPiece).
+// AnniversaryConfig, AnniversaryConfigVersion, AnniversaryPiece,
+// AnniversaryBenchmark y AnniversaryBenchmarkResult).
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

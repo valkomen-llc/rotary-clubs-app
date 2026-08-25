@@ -34,15 +34,22 @@ export async function ensureAnniversarySchema() {
         `SELECT to_regclass('public."AnniversaryConfig"') IS NOT NULL AS cfg,
                 to_regclass('public."AnniversaryConfigVersion"') IS NOT NULL AS ver,
                 to_regclass('public."AnniversaryPiece"') IS NOT NULL AS pza,
+                to_regclass('public."AnniversaryBenchmark"') IS NOT NULL AS bench,
+                to_regclass('public."AnniversaryBenchmarkResult"') IS NOT NULL AS benchres,
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'AnniversaryPiece' AND column_name = 'renderMode') AS render_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'AnniversaryPiece' AND column_name = 'branding') AS brand_col,
                 EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'AnniversaryPiece' AND column_name = 'engine') AS engine_pza_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'AnniversaryConfig' AND column_name = 'engine') AS engine_cfg_col,
+                EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'AnniversaryConfig' AND column_name = 'publishedVersionId') AS pubver_col`
     );
-    if (rows[0]?.cfg && rows[0]?.ver && rows[0]?.pza
-        && rows[0]?.render_col && rows[0]?.brand_col && rows[0]?.pubver_col) { _ready = true; return; }
+    if (rows[0]?.cfg && rows[0]?.ver && rows[0]?.pza && rows[0]?.bench && rows[0]?.benchres
+        && rows[0]?.render_col && rows[0]?.brand_col && rows[0]?.pubver_col
+        && rows[0]?.engine_pza_col && rows[0]?.engine_cfg_col) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "AnniversaryConfig" (
@@ -166,6 +173,51 @@ export async function ensureAnniversarySchema() {
     await db.query(`CREATE INDEX IF NOT EXISTS "AnniversaryPiece_task"
                         ON "AnniversaryPiece" ("taskId") WHERE "taskId" IS NOT NULL`);
 
+    // ── El benchmark del motor (v4.897) ─────────────────────────────
+    //
+    // Una fila por CORRIDA y una por resultado (modelo x fotografia). Los
+    // resultados van en su propia tabla y no en un JSON de la corrida por la
+    // misma regla que separo ReelScene de ReelProject: el sondeo escribe un
+    // resultado por vez y dos sondeos simultaneos sobre un JSON se pisarian.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AnniversaryBenchmark" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "configId" TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            models JSONB NOT NULL DEFAULT '[]'::jsonb,
+            photos JSONB NOT NULL DEFAULT '[]'::jsonb,
+            weights JSONB,
+            notes TEXT,
+            "createdBy" TEXT,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "finishedAt" TIMESTAMPTZ
+        )
+    `);
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "AnniversaryBenchmarkResult" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "benchmarkId" TEXT NOT NULL,
+            model TEXT NOT NULL,
+            "photoIndex" INTEGER NOT NULL,
+            "taskId" TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            "imageUrl" TEXT,
+            "latencyMs" INTEGER,
+            error TEXT,
+            -- Las subnotas automaticas y sus mediciones crudas: sin las
+            -- mediciones, un score no se puede explicar ni auditar.
+            auto JSONB,
+            vote TEXT,
+            "dispatchedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "AnniversaryBenchmarkResult_cell"
+                        ON "AnniversaryBenchmarkResult" ("benchmarkId", model, "photoIndex")`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "AnniversaryBenchmark_created"
+                        ON "AnniversaryBenchmark" ("createdAt" DESC)`);
+
     // Ampliaciones. Van FUERA del CREATE porque "CREATE TABLE IF NOT EXISTS"
     // no amplia nada: una base que estreno el modulo antes tiene la tabla sin
     // la columna, y el INSERT fallaria con "column does not exist" —en
@@ -175,6 +227,11 @@ export async function ensureAnniversarySchema() {
     await db.query(`ALTER TABLE "AnniversaryPiece" ADD COLUMN IF NOT EXISTS branding JSONB`);
     await db.query(`ALTER TABLE "AnniversaryConfig" ADD COLUMN IF NOT EXISTS "publishedVersionId" TEXT`);
     await db.query(`ALTER TABLE "AnniversaryConfig" ADD COLUMN IF NOT EXISTS "publishedBy" TEXT`);
+    // v4.897 — el sello del motor por pieza y la configuracion tecnica del
+    // motor. La configuracion del motor vive APARTE de draft/published:
+    // cambiar el modelo es una decision tecnica, no una version editorial.
+    await db.query(`ALTER TABLE "AnniversaryPiece" ADD COLUMN IF NOT EXISTS engine JSONB`);
+    await db.query(`ALTER TABLE "AnniversaryConfig" ADD COLUMN IF NOT EXISTS engine JSONB`);
 
     _ready = true;
 }

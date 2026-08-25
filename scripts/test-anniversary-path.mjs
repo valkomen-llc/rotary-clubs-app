@@ -428,6 +428,177 @@ ok('lo reparado se DICE', r.body.repaired.length > 0, JSON.stringify(r.body.repa
 ok('y el mensaje corto SIGUE corto: reparar no inventa', r.body.copy.message === 'Corto.');
 ok('y eso se avisa', r.body.warnings.some(w => /mensaje/i.test(w)), JSON.stringify(r.body.warnings));
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('16 — El motor: modelo configurable, sello y fallback');
+
+const models = await import('../server/lib/anniversaryModels.js');
+const ENG = await import('../server/lib/anniversaryEngineSpec.js');
+const OTRO = ENG.MODEL_CATALOG[1].id;
+
+const generar = async (etiqueta = 'Cali') => {
+    let x = await llamar(ctrl.postTestPhoto, { body: { clubName: etiqueta, years: 40, photo: FOTO_URL } });
+    const pid = x.body.pieceId;
+    await llamar(ctrl.postTestAnalyze, { body: { pieceId: pid } });
+    await llamar(ctrl.postTestCopy, { body: { pieceId: pid } });
+    x = await llamar(ctrl.postTestCompose, { body: { pieceId: pid } });
+    return { pid, res: x };
+};
+
+// El modelo por defecto y el sello.
+limpiar();
+await llamar(ctrl.getConfig);
+let g = await generar();
+eq('sin configurar nada se despacha el default del catálogo',
+    prov.estado.tareas[0].model, ENG.DEFAULT_MODEL_ID);
+let sello = db.tablas.AnniversaryPiece.find(p => p.id === g.pid).engine;
+ok('la pieza lleva su sello de auditoría',
+    sello && sello.provider === 'kie' && sello.model === ENG.DEFAULT_MODEL_ID
+    && !!sello.promptVersion && !!sello.presetVersion, JSON.stringify(sello));
+ok('y la marca de despacho, de donde sale la latencia', !!sello.dispatchedAt);
+eq('todavía sin fallback usado', sello.fallbackUsed, false);
+
+// Cambiar el modelo desde el PANEL cambia lo que se despacha, sin tocar código.
+limpiar();
+await llamar(ctrl.getConfig);
+r = await llamar(ctrl.postEngineActivate, { body: { model: OTRO } });
+eq('activar un modelo elegible responde 200', r.code, 200);
+eq('y producción pasa a ese modelo', r.body.production.primary, OTRO);
+ok('la activación queda con su procedencia', !!db.tablas.AnniversaryConfig[0].engine?.activatedFrom?.at);
+g = await generar();
+eq('la generación siguiente sale con el modelo activado', prov.estado.tareas[0].model, OTRO);
+
+// Un modelo no elegible NO se puede activar.
+r = await llamar(ctrl.postEngineActivate, { body: { model: 'no/existe' } });
+eq('un modelo desconocido se rechaza con 422', r.code, 422);
+ok('y dice por qué', Array.isArray(r.body.errors) && r.body.errors.length > 0);
+
+// El FALLBACK: fallo de infraestructura del primario.
+limpiar({ fallarModelo: { model: ENG.DEFAULT_MODEL_ID, error: 'KIE createTask: 503 service unavailable' } });
+await llamar(ctrl.getConfig);
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: null, fallback: OTRO } } });
+g = await generar();
+eq('con el primario caído, el despacho responde 200 igual', g.res.code, 200);
+eq('y el modelo que quedó es el de respaldo', g.res.body.model, OTRO);
+eq('la respuesta lo DICE', g.res.body.fallbackUsed, true);
+sello = db.tablas.AnniversaryPiece.find(p => p.id === g.pid).engine;
+eq('el sello registra que se usó el respaldo', sello.fallbackUsed, true);
+eq('se intentaron los dos modelos, en orden', prov.estado.tareas.map(t => t.model), [ENG.DEFAULT_MODEL_ID, OTRO]);
+
+// Un fallo que NO es de infraestructura no gasta el segundo modelo.
+limpiar({ fallarModelo: { model: ENG.DEFAULT_MODEL_ID, error: 'content policy violation' } });
+await llamar(ctrl.getConfig);
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: null, fallback: OTRO } } });
+g = await generar();
+eq('un fallo de política NO dispara el fallback', g.res.code, 502);
+eq('y NO se gastó una segunda tarea', prov.estado.tareas.filter(t => !t.rechazada).length, 0);
+
+// Los dos caídos: se propaga el motivo de CADA uno.
+limpiar({ fallarCreateTask: 'KIE createTask: 504 gateway timeout' });
+await llamar(ctrl.getConfig);
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: null, fallback: OTRO } } });
+g = await generar();
+eq('agotada la cadena, 502', g.res.code, 502);
+ok('con el motivo de los DOS modelos',
+    g.res.body.error.includes(ENG.DEFAULT_MODEL_ID) && g.res.body.error.includes(OTRO), g.res.body.error);
+
+// El reintento de CALIDAD no cambia de modelo.
+limpiar({ imagen: COMPO_OSCURA });
+await llamar(ctrl.getConfig);
+await llamar(ctrl.putEngine, { body: { engine: { mode: 'manual', active: OTRO, fallback: ENG.DEFAULT_MODEL_ID } } });
+g = await generar();
+await llamar(ctrl.getTestPiece, { params: { id: g.pid } });   // reintenta por calidad
+eq('el reintento por calidad se queda en el MISMO modelo',
+    [...new Set(prov.estado.tareas.map(t => t.model))], [OTRO]);
+
+grupo('17 — El benchmark corre por la misma cadena');
+limpiar();
+await llamar(ctrl.getConfig);
+// ⚠️ SE CAPTURA ANTES DE CORRER. La primera versión de la comprobación de la
+// regla 20 leía el activo DESPUÉS del benchmark y sólo miraba un sondeo más:
+// un cambio automático durante la corrida caía FUERA de la ventana y la
+// aserción pasaba por el motivo equivocado. Lo destapó la verificación a la
+// inversa. Al comprobar que algo NO cambió, capturar el estado antes del
+// primer acto que podría cambiarlo.
+const activoAntesDelBenchmark = db.tablas.AnniversaryConfig[0].engine?.active ?? null;
+r = await llamar(ctrl.postBenchmarkRun, {
+    body: { models: [ENG.DEFAULT_MODEL_ID, OTRO], photos: [FOTO_URL, FOTO_URL] },
+});
+eq('la corrida responde 200', r.code, 200);
+eq('despachó una celda por modelo × fotografía', r.body.dispatched, 4);
+eq('y las cuatro filas quedaron en la base', db.tablas.AnniversaryBenchmarkResult.length, 4);
+// ⚠️ «Cuántos prompts distintos hay» NO comprueba nada: las dos fotos de
+// prueba son la misma imagen, así que un solo prompt distinto es el
+// resultado correcto y la aserción pasaba por el motivo equivocado. Lo que
+// hay que comprobar es que CADA MODELO haya recibido exactamente el mismo
+// juego de prompts — es lo que hace comparables sus resultados (req. 5).
+const promptsPorModelo = new Map();
+for (const t of prov.estado.tareas) {
+    if (!promptsPorModelo.has(t.model)) promptsPorModelo.set(t.model, []);
+    promptsPorModelo.get(t.model).push(t.prompt);
+}
+const juegos = [...promptsPorModelo.values()].map(ps => JSON.stringify(ps.slice().sort()));
+ok('cada modelo recibió exactamente el mismo juego de prompts',
+    promptsPorModelo.size === 2 && new Set(juegos).size === 1,
+    `${promptsPorModelo.size} modelos, ${new Set(juegos).size} juegos distintos`);
+ok('y cada uno corrió sobre las dos fotografías',
+    [...promptsPorModelo.values()].every(ps => ps.length === 2));
+
+const benchId = r.body.benchmarkId;
+// El sondeo tiene presupuesto: hacen falta varias pasadas para cerrar 4 celdas.
+for (let i = 0; i < 4; i++) r = await llamar(ctrl.getBenchmarkRun, { params: { id: benchId } });
+eq('el sondeo responde 200', r.code, 200);
+eq('no queda ninguna celda pendiente', r.body.pending, 0);
+ok('cada resultado trae su imagen y su latencia',
+    r.body.results.every(x => x.status === 'ready' && !!x.imageUrl && Number.isFinite(x.latencyMs)));
+ok('y su nota, calculada con las MISMAS mediciones de producción',
+    r.body.results.every(x => x.total && x.total.total !== null));
+ok('lo no medido se NOMBRA en vez de contarse como cero',
+    r.body.results[0].total.unmeasured.includes('photoIntegration'));
+ok('hay un recomendado con evidencia', !!r.body.recommendation.recommended);
+ok('y la tabla trae latencia media y tasa de error por modelo',
+    r.body.recommendation.table.every(t => 'avgLatencyMs' in t && 'errorRate' in t));
+
+// El voto humano.
+const primerResultado = r.body.results[0];
+r = await llamar(ctrl.postBenchmarkVote, { body: { resultId: primerResultado.id, vote: 'star' } });
+eq('votar responde 200', r.code, 200);
+r = await llamar(ctrl.getBenchmarkRun, { params: { id: benchId } });
+const votado = r.body.results.find(x => x.id === primerResultado.id);
+eq('el voto quedó guardado', votado.vote, 'star');
+ok('y ahora integración y composición SÍ están medidas',
+    !votado.total.unmeasured.includes('photoIntegration'), JSON.stringify(votado.total.unmeasured));
+r = await llamar(ctrl.postBenchmarkVote, { body: { resultId: primerResultado.id, vote: 'meh' } });
+eq('un voto desconocido se rechaza', r.code, 400);
+
+grupo('18 — El benchmark no cambia producción solo (regla 20)');
+r = await llamar(ctrl.getBenchmarkRun, { params: { id: benchId } });
+eq('correr y sondear el benchmark entero NO tocó el modelo activo',
+    db.tablas.AnniversaryConfig[0].engine?.active ?? null, activoAntesDelBenchmark);
+ok('hay un recomendado, y es sólo eso: una recomendación',
+    !!r.body.recommendation.recommended
+    && (db.tablas.AnniversaryConfig[0].engine?.active ?? null) === activoAntesDelBenchmark,
+    `recomendado ${r.body.recommendation.recommended}, activo ${db.tablas.AnniversaryConfig[0].engine?.active ?? 'ninguno'}`);
+// Y el camino que SÍ cambia producción es explícito y humano.
+r = await llamar(ctrl.postEngineActivate, { body: { model: r.body.recommendation.recommended, benchmarkId: benchId } });
+eq('activarlo a mano sí lo cambia', r.code, 200);
+eq('y queda registrado de qué benchmark salió',
+    db.tablas.AnniversaryConfig[0].engine.activatedFrom.benchmarkId, benchId);
+
+grupo('19 — Un benchmark de un solo modelo no compara nada');
+r = await llamar(ctrl.postBenchmarkRun, { body: { models: [ENG.DEFAULT_MODEL_ID], photos: [FOTO_URL] } });
+eq('se rechaza con 400', r.code, 400);
+r = await llamar(ctrl.postBenchmarkRun, { body: { models: [ENG.DEFAULT_MODEL_ID, OTRO], photos: [] } });
+eq('y sin fotografías también', r.code, 400);
+
+grupo('20 — El motor es del operador de la plataforma');
+for (const [nombre, fn] of [['getEngine', ctrl.getEngine], ['putEngine', ctrl.putEngine],
+    ['postEngineActivate', ctrl.postEngineActivate], ['postBenchmarkRun', ctrl.postBenchmarkRun]]) {
+    const rr = res();
+    await fn(req({ user: { id: 'u2', email: 'club@x.org', role: 'club_admin' } }), rr);
+    ok(`${nombre} rechaza a un administrador de sitio`, rr.code === 403, `dio ${rr.code}`);
+}
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
