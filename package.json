@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.894.0",
-  "cache_bust": "2026-08-24b (Plantillas IA solo en el Sistema Central; el modulo de aniversarios llega aparte.)",
+  "version": "4.895.0",
+  "cache_bust": "4.895.0",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -49,6 +49,8 @@
     "test:ecosystem:ui": "node scripts/test-ecosystem-ui.mjs",
     "test:design": "node scripts/test-design.mjs",
     "test:design:render": "node scripts/test-design-render.mjs",
+    "test:anniversary": "node scripts/test-anniversary.mjs",
+    "test:anniversary:render": "node scripts/test-anniversary-render.mjs",
     "check:routes": "node scripts/check-routes.mjs && node scripts/check-imports.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:server-undef": "node scripts/check-server-undef.mjs",

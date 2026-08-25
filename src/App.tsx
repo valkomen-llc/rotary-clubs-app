@@ -127,6 +127,10 @@ const GeneradorPendones = lazyWithRetry(() => import('./pages/GeneradorPendones'
 // v4.721 — Portal público de Plantillas IA. Perezosa como el resto de las
 // páginas públicas (regla de rendimiento de v4.659).
 const PlantillaPublica = lazyWithRetry(() => import('./pages/PlantillaPublica'), 'PlantillaPublica');
+// Aniversarios IA (v4.895) — módulo INDEPENDIENTE del editor de Plantillas IA.
+// Otra ruta, otro controlador, otras tablas y otro flujo: acá no hay lienzo, ni
+// capas, ni coordenadas. Ver la sección de CLAUDE.md.
+const AniversarioIA = lazyWithRetry(() => import('./pages/AniversarioIA'), 'AniversarioIA');
 const FeriaProyectos = lazyWithRetry(() => import('./pages/FeriaProyectos'), 'FeriaProyectos');
 const MiProyecto = lazyWithRetry(() => import('./pages/MiProyecto'), 'MiProyecto');
 const MiInscripcion = lazyWithRetry(() => import('./pages/MiInscripcion'), 'MiInscripcion');
@@ -186,6 +190,7 @@ const EventsManagement = lazyWithRetry(() => import('./pages/admin/Events'), 'Ev
 const WhatsAppQR = lazyWithRetry(() => import('./pages/admin/WhatsAppQR'), 'WhatsAppQR');
 const SuperAssistantChat = lazyWithRetry(() => import('./pages/admin/SuperAssistantChat'), 'SuperAssistantChat');
 const ContentStudio = lazyWithRetry(() => import('./pages/admin/ContentStudio'), 'ContentStudio');
+const AnniversaryStudio = lazyWithRetry(() => import('./pages/admin/AnniversaryStudio'), 'AnniversaryStudio');
 const FooterSystem = lazyWithRetry(() => import('./pages/admin/FooterSystem'), 'FooterSystem');
 const SocialHub = lazyWithRetry(() => import('./pages/admin/SocialHub'), 'SocialHub');
 const TechnicalRequests = lazyWithRetry(() => import('./pages/admin/TechnicalRequests'), 'TechnicalRequests');
@@ -512,7 +517,7 @@ const ProjectFormRedirect = () => {
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
 // El portal público no lleva los avisos del sitio: es una herramienta que se
 // abre desde un enlace compartido, no una página del sitio del club.
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -674,6 +679,11 @@ function App() {
                     tiene ruta comodín, la página quedaba EN BLANCO. Se declara
                     para poder explicar que falta el enlace completo. */}
                 <Route path="/plantillas" element={<PlantillaPublica />} />
+                {/* Generador público de aniversarios (v4.895). Sin sesión, como el
+                    generador de pendones: cuatro campos y un botón. La disponibilidad
+                    la decide el SERVIDOR mirando lo publicado y el dominio desde el
+                    que se pide, no esta ruta. */}
+                <Route path="/aniversarios" element={<AniversarioIA />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />
@@ -753,6 +763,19 @@ function App() {
                     <PrivateRoute>
                       <ContentStudio />
                     </PrivateRoute>
+                  }
+                />
+                {/* Aniversarios IA. `PlatformOnlyRoute` y no `PrivateRoute`: la
+                    configuración gobierna piezas que salen firmadas por clubes de
+                    todo el ecosistema, así que es del operador de la plataforma. El
+                    servidor lo comprueba igual — esconder una ruta no protege un
+                    endpoint de quien lo conoce. */}
+                <Route
+                  path="/admin/aniversarios-ia"
+                  element={
+                    <PlatformOnlyRoute>
+                      <AnniversaryStudio />
+                    </PlatformOnlyRoute>
                   }
                 />
                 <Route

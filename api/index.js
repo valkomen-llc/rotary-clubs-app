@@ -188,6 +188,9 @@ const getSeoEngine = async () => _seoEngine || (({ default: _seoEngine } = await
 let _contribution;
 const getContribution = async () => _contribution || (({ default: _contribution } = await import('../server/routes/contribution-campaigns.js')), _contribution);
 let _spotlight; const getSpotlight = async () => _spotlight || (({ default: _spotlight } = await import('../server/routes/spotlight-slides.js')), _spotlight);
+// Aniversarios IA (v4.895) — módulo INDEPENDIENTE del editor de Plantillas IA:
+// otra ruta, otro controlador, otras tablas y otro flujo. Ver CLAUDE.md.
+let _anniversaries; const getAnniversaries = async () => _anniversaries || (({ default: _anniversaries } = await import('../server/routes/anniversaries.js')), _anniversaries);
 let _notifProfiles;
 const getNotifProfiles = async () => _notifProfiles || (({ default: _notifProfiles } = await import('../server/routes/notification-profiles.js')), _notifProfiles);
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
@@ -291,6 +294,7 @@ app.use('/api/district-analytics', async (req, res, next) => { try { return (awa
 app.use('/api/district-ecosystem', async (req, res, next) => { try { return (await getDistEcosystem())(req, res, next); } catch (e) { console.error('API Error [district-ecosystem]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/contribution-campaigns', async (req, res, next) => { try { return (await getContribution())(req, res, next); } catch (e) { console.error('API Error [contribution-campaigns]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/spotlight-slides', async (req, res, next) => { try { return (await getSpotlight())(req, res, next); } catch (e) { console.error('API Error [spotlight-slides]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/anniversaries', async (req, res, next) => { try { return (await getAnniversaries())(req, res, next); } catch (e) { console.error('API Error [anniversaries]:', e); res.status(500).json({ error: e.message }); } });
 // Notificaciones de Contribuciones (v4.856) — perfiles, beneficiarios y plantillas.
 app.use('/api/notification-profiles', async (req, res, next) => { try { return (await getNotifProfiles())(req, res, next); } catch (e) { console.error('API Error [notification-profiles]:', e); res.status(500).json({ error: e.message }); } });
 

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.894.0 | 2026-08-24 (Plantillas IA sólo en el Sistema Central; el módulo de aniversarios llega aparte)
-// Cache bust: 2026-08-24b
+// UI V4.895.0 | 2026-08-25 (Aniversarios IA: módulo nuevo e independiente, por instrucciones)
+// Cache bust: 2026-08-25a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.895.0',
+        title: 'Aniversarios IA: un módulo nuevo, sin editor 🎂',
+        description: 'Generador independiente de piezas de aniversario, en /admin/aniversarios-ia (operador de la plataforma) y /aniversarios (público). El administrador configura con INSTRUCCIONES en lenguaje natural —cómo tiene que verse la pieza, cómo tiene que escribir la IA y qué no querés ver— más referencias visuales; quien la necesita elige su club, dice cuántos años cumple, sube una foto y pulsa un botón. No hay lienzo, ni capas, ni coordenadas: Plantillas IA no se toca y este módulo no importa nada suyo. La arquitectura es híbrida a propósito: la IA hace el DISEÑO y la plataforma imprime encima el TEXTO (nombre del club, años, mensaje) y el BRANDING desde archivos reales, así que la ortografía y las cifras son exactas por construcción. La vista previa no se parece al archivo: ES el archivo —hay un solo compositor y la descarga exporta ese mismo lienzo—. La pieza se valida antes de entregarse (fondo blanco, franja del texto libre, personas de la fotografía conservadas) y, si falla, se reintenta una vez con el problema concreto; si sigue fallando se entrega con la foto intacta sobre blanco y se DICE, sin retocar la imagen del modelo. Flujo Borrador → Probar → Publicar con versionado: cada pieza guarda con qué instrucciones se generó.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'generador', 'plataforma'],
+        type: 'feature',
+    },
     {
         version: '4.894.0',
         title: 'Plantillas IA queda sólo en el Sistema Central 🎛️',

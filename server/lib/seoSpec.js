@@ -115,6 +115,10 @@ export const PRIVATE_PREFIXES = [
     // haría competir utilidades con las páginas reales del club por sus propios
     // términos de marca. Abierto y no indexado son cosas distintas.
     '/plantillas',
+    // v4.895 — El generador público de Aniversarios IA. Mismo criterio: es una
+    // herramienta que se abre desde un enlace, no una página del sitio, y la
+    // comparten todos los sitios de la plataforma.
+    '/aniversarios',
 ];
 
 export function isPrivatePath(pathname = '/') {
