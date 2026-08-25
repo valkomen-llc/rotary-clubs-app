@@ -815,12 +815,16 @@ export const repairCopy = (copy, { clubName = '', years = null } = {}) => {
     if (title.length > LIMITS.title.max) { title = trimWords(title, LIMITS.title.max); repaired.push('Se recortó el titular.'); }
     if (message.length > LIMITS.message.max) { message = trimWords(message, LIMITS.message.max); repaired.push('Se recortó el mensaje.'); }
 
-    // Un titular ausente se DERIVA de datos que ya tenemos; no se inventa nada
-    // que no esté en el formulario.
-    if (!title && clubName) {
-        title = years ? `${years} años del ${clubName}` : `¡Feliz aniversario, ${clubName}!`;
-        title = trimWords(title, LIMITS.title.max);
-        repaired.push('El titular se compuso con el nombre del club y los años.');
+    // Un titular ausente cae a la CONSTANTE de la pieza, no a una frase que
+    // nombre al club y los años: si el titular ya los dice, `planTextBlocks`
+    // suprime el pase, el nombre en dos tonos y la banda dorada —el lenguaje
+    // de la referencia— y la pieza de respaldo sale plana (el reporte de
+    // v4.899). Con «¡Feliz aniversario!» el club y los años se imprimen como
+    // BLOQUES, que es exactamente la jerarquía aprobada, y siguen siendo
+    // datos del formulario: nada se inventa.
+    if (!title) {
+        title = '¡Feliz aniversario!';
+        repaired.push('El titular quedó en el saludo de la pieza; el club y los años se imprimen como bloques propios.');
     }
     const check = validateCopy({ title, message }, { clubName, years });
     return { copy: { title, message }, repaired, ...check };
@@ -877,11 +881,26 @@ export const normalizeYears = (raw) => {
 //     queda a la vista: el usuario ve la pieza antes de descargarla.
 
 export const PIECE_CHECKS = {
-    // Por debajo de esta media de luminancia (0-255) el fondo no es blanco.
-    whiteMinLuma: 205,
-    // Qué proporción de la imagen tiene que ser casi blanca para llamarla
-    // «fondo predominantemente blanco».
-    whiteMinShare: 0.35,
+    // ⚠️ EL UMBRAL DEL FONDO ESTÁ CALIBRADO CONTRA LA REFERENCIA APROBADA, no
+    // contra «una página blanca». La pieza de referencia lleva la fotografía
+    // ocupando cerca de un tercio del lienzo —y una foto de grupo en interior
+    // es OSCURA—, más globos dorados y curvas azules: medida entera da una
+    // luminancia media de ~185-195. El umbral original (205) rechazaba
+    // exactamente el estilo que el Prompt Maestro pide, gastaba los dos
+    // intentos pagos y entregaba la foto sobre blanco — el reporte de v4.899,
+    // y la lección repetida del sitio (v4.787/v4.790/v4.792): un control
+    // demasiado estricto no falla ruidosamente, entrega otra cosa.
+    //
+    // Por eso hay DOS niveles: por debajo de `whiteMinLuma` la pieza es
+    // realmente oscura y se DESCARTA (la restricción expresa del cliente es
+    // «sin fondos oscuros»); entre ese piso y `whiteIdealLuma` la pieza se
+    // ENTREGA con una nota — la estética no se mide, se muestra, y quien
+    // genera la ve antes de descargarla.
+    whiteMinLuma: 165,
+    whiteIdealLuma: 205,
+    // Qué proporción de la imagen tiene que ser casi blanca. La fotografía y
+    // la decoración legítimas ya ocupan ~la mitad del lienzo.
+    whiteMinShare: 0.30,
     // La franja del texto: cuanto más baja la desviación típica, más lisa.
     // Medido sobre composiciones reales, una franja utilizable queda por
     // debajo de 58; una foto a página completa pasa de 70.
@@ -922,9 +941,14 @@ export const judgePiece = ({
         if (meanLuma < PIECE_CHECKS.whiteMinLuma || whiteShare < PIECE_CHECKS.whiteMinShare) {
             critical.push({
                 id: 'fondo_no_blanco',
-                reason: `El fondo no quedó predominantemente blanco (luminancia media ${Math.round(meanLuma)} y ${Math.round(whiteShare * 100)} % de píxeles claros).`,
+                reason: `La pieza quedó oscura (luminancia media ${Math.round(meanLuma)} y ${Math.round(whiteShare * 100)} % de píxeles claros).`,
                 consequence: 'Sobre un fondo oscuro el texto que imprimimos encima se vuelve difícil de leer.',
             });
+        } else if (meanLuma < PIECE_CHECKS.whiteIdealLuma) {
+            // La zona media NO descarta: la fotografía y la decoración
+            // legítimas bajan la media aunque el fondo sea blanco. Se entrega
+            // y se dice — quien genera la mira antes de descargarla.
+            notes.push(`La pieza quedó algo menos clara que el ideal (luminancia media ${Math.round(meanLuma)}). Miralo: puede ser la fotografía y la decoración, no el fondo.`);
         }
     }
 

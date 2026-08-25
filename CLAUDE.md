@@ -2717,6 +2717,25 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   código y se entrega CON SUS AVISOS. Y **reparar no inventa contenido**: un
   mensaje corto sigue siendo corto y la validación lo sigue diciendo. Se guarda
   el intento con MENOS reglas rotas, no el último por ser el último.
+- **⚠️ LA PUERTA DEL FONDO ESTÁ CALIBRADA CONTRA LA REFERENCIA, con DOS
+  niveles** (v4.899). El umbral original (luminancia media ≥ 205) rechazaba
+  exactamente el estilo que el Prompt Maestro pide —la referencia aprobada,
+  con la fotografía en un tercio del lienzo, mide ~185-195—, gastaba las dos
+  generaciones pagas y entregaba la foto plana sobre blanco: la lección
+  repetida de Reels (v4.787/v4.790/v4.792), acá con el caso real medido en
+  196 / 49 %. Ahora `whiteMinLuma: 165` DESCARTA sólo lo realmente oscuro
+  (la restricción expresa del cliente) y la zona media hasta
+  `whiteIdealLuma: 205` se ENTREGA con una nota — la estética no se mide, se
+  muestra. Al ajustar el umbral, medir contra la referencia y contra el caso
+  reportado; lo fija `test:anniversary` (196/49 % pasa) y una composición
+  sintética estilo referencia en `test:anniversary:path`, por el sharp real.
+- **EL TITULAR DE RESPALDO NO NOMBRA AL CLUB NI A LOS AÑOS** (v4.899). Cuando
+  el redactor falla, el titular derivado decía «40 años del Club Rotario X» y
+  `planTextBlocks` —correctamente— suprimía el pase, el club en dos tonos y la
+  banda dorada: la pieza de respaldo salía plana. Queda en «¡Feliz
+  aniversario!» (constante de la pieza) y el club y los años se imprimen como
+  bloques. Y un mensaje vacío dice su CAUSA (el redactor no devolvió JSON
+  utilizable), no sólo «falta el mensaje».
 - **⚠️ ACÁ SE DICE QUÉ SE MIDE Y QUÉ NO.** Se **garantiza por construcción** el
   nombre, los años, el mensaje corto, el branding y que ningún texto salga de su
   zona. Se **mide**: el formato entregado, cuánto blanco tiene el fondo (media
