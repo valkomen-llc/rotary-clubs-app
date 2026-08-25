@@ -153,6 +153,10 @@ export interface AnniversaryDocument {
      *  la capa 2 (texto) NO se dibuja; `plain` la conserva, porque ahí no hay
      *  imagen que traiga el texto. */
     simple?: boolean;
+    /** v4.920: la frase conmemorativa la imprime el COMPOSITOR como capa —
+     *  con tipografía real, imposible de deformar. Sólo viene en piezas cuyo
+     *  prompt NO llevó la frase adentro (gate anti-doble del servidor). */
+    phraseOverlay?: boolean;
     backdropUrl: string | null;
     photoUrl: string;
     zoneId: string;
@@ -483,6 +487,29 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // sin club y sin años (reporte con captura). El respaldo conserva la
     // estructura, como el modo plano.
     const bloques = (doc.simple && doc.renderMode === 'ai' && !backdropFailed) ? [] : planTextBlocks(doc);
+
+    // ⚠️ LA FRASE CONMEMORATIVA LA IMPRIME LA PLATAFORMA (v4.920). El modelo
+    // deformaba las letras al PINTARLAS aunque la frase del prompt fuera
+    // correcta («Celerbamos… servico», reporte con captura): la única
+    // tipografía imposible de deformar es la nuestra. Se imprime SÓLO con el
+    // gate del servidor (`phraseOverlay`: el prompt de esta pieza no llevó la
+    // frase adentro) y sólo sobre el diseño cargado — en la degradación la
+    // estructura de texto ya la trae `planTextBlocks`.
+    if (doc.simple && doc.renderMode === 'ai' && !backdropFailed && doc.phraseOverlay && doc.message) {
+        const cuerpo = Math.round(W * 0.026);
+        ctx.font = `600 ${cuerpo}px ${BODY}`;
+        ctx.fillStyle = ROTARY_BLUE;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const lineas = wrap(ctx, doc.message, W * 0.86).slice(0, 2);
+        let fy = H * 0.745;
+        for (const linea of lineas) {
+            ctx.fillText(linea, W / 2, fy);
+            fy += cuerpo * 1.35;
+        }
+        ctx.textAlign = 'left';
+    }
+
     const boxX = zone.x * W;
     const boxY = zone.y * H;
     const boxW = zone.w * W;

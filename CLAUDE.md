@@ -2682,16 +2682,21 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
-- **⚠️ LA FRASE CONMEMORATIVA LA ELIGE LA PLATAFORMA, NO EL MODELO** (v4.919).
-  Era el único texto libre que el modelo inventaba — y por eso el único que
-  salía mal escrito («Sirvingo… construuido», reporte con captura). Sale de
-  `ANNIVERSARY_PHRASES` (catálogo CERRADO, 8-12 palabras, sin cifras),
-  determinista por pieza (`phraseForSeed`, sal propia contra el motivo
-  decorativo), y viaja por la variable `{FRASE}` que el modelo COPIA letra
-  por letra con el estilo del nombre del club. `{FRASE}` SIEMPRE resuelve
-  (sin semilla, la primera del catálogo — mismo respaldo en
-  `applyMasterVariables`): una cláusula que exija copiar «» rompería la
-  pieza. Al agregar una frase al catálogo, contar sus palabras y no meter
+- **⚠️ LA FRASE CONMEMORATIVA LA ELIGE **Y LA IMPRIME** LA PLATAFORMA**
+  (v4.919-v4.920). Era el único texto libre del modelo y salía mal escrito
+  («Sirvingo… construuido»); v4.919 la pasó a catálogo (`ANNIVERSARY_PHRASES`,
+  CERRADO, 8-12 palabras, sin cifras, determinista por pieza con
+  `phraseForSeed`) para que el modelo la copiara — y aun copiada la DEFORMÓ
+  al pintarla («Celerbamos… servico»): un modelo de imagen no dibuja español
+  fiable ni copiando, y cambiar el generador de TEXTO no toca ese paso.
+  v4.920: la frase se IMPRIME como capa del compositor (la técnica del pie),
+  centrada en su franja (~74,5 % del alto), azul institucional, tipografía
+  real. El prompt ya NO lleva `{FRASE}` — pide una franja horizontal LIMPIA
+  debajo de la cinta— y el despacho guarda `copy.message` + el gate
+  `printPhrase` (sólo enciende si el prompt de ESA pieza no llevó la frase):
+  piezas viejas y prompts editados con `{FRASE}` no reciben una segunda frase
+  encima. `{FRASE}` sigue soportada en `applyMasterVariables` para prompts
+  editados. Al agregar una frase al catálogo, contar sus palabras y no meter
   cifras. Y la espera de generación se VE viva: barra INDETERMINADA
   (`animate-progress-slide`, en el tema de Tailwind — v4.813) más segundos
   reales — nunca un porcentaje inventado (v4.756).

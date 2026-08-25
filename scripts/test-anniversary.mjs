@@ -247,15 +247,20 @@ check('v4.918: el título va en DOS líneas, letra por letra, y ALTO en el lienz
     && /ALTO en el lienzo/.test(S.DEFAULT_MASTER_PROMPT));
 check('v4.918: la fotografía baja de altura — su alto ronda un tercio del lienzo',
     /más ancha que alta — su alto ronda un tercio del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
-// v4.919: la frase era el ÚNICO texto libre que el modelo inventaba — y por
-// eso el único que salía mal escrito («Sirvingo… construuido», reporte con
-// captura). La elige la PLATAFORMA de un catálogo cerrado y el modelo la
-// COPIA letra por letra, con el estilo del nombre del club.
-check('v4.919: la frase viaja EXACTA, del catálogo, letra por letra',
-    /frase EXACTA letra por letra: «\{FRASE\}»/.test(S.DEFAULT_MASTER_PROMPT)
-    && /en UNA línea/.test(S.DEFAULT_MASTER_PROMPT));
-check('y con el estilo del nombre del club — mismo tamaño y azul institucional',
-    /del mismo tamaño y azul institucional que el nombre del club/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
+// la DEFORMABA al pintarla («Celerbamos… servico», reporte con captura).
+// v4.920: la frase ya NO viaja en el prompt — el modelo deja una franja
+// limpia y la imprime el COMPOSITOR, con tipografía real.
+check('v4.920: el default NO lleva {FRASE} — el modelo no pinta la frase',
+    !S.DEFAULT_MASTER_PROMPT.includes('{FRASE}'));
+check('y pide la franja LIMPIA donde la plataforma imprime después',
+    /franja horizontal LIMPIA/.test(S.DEFAULT_MASTER_PROMPT)
+    && /la plataforma imprime ahí después la frase/.test(S.DEFAULT_MASTER_PROMPT));
+check('la frase NO aparece en el prompt armado',
+    (() => {
+        const r = S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5, seed: 'p1' });
+        return !r.prompt.includes(S.phraseForSeed('p1'));
+    })());
 check('el catálogo son frases de 8 a 12 palabras, sin cifras',
     S.ANNIVERSARY_PHRASES.length >= 6
     && S.ANNIVERSARY_PHRASES.every(f => { const n = f.replace(/[.,]/g, '').split(/\s+/).length; return n >= 8 && n <= 12; })
@@ -266,13 +271,9 @@ check('la frase es DETERMINISTA por pieza y varía entre piezas',
 check('sin semilla resuelve a la PRIMERA del catálogo — igual que el respaldo de applyMasterVariables',
     S.phraseForSeed('') === S.ANNIVERSARY_PHRASES[0]
     && S.applyMasterVariables('{FRASE}', {}) === S.ANNIVERSARY_PHRASES[0]);
-check('la frase elegida viaja SUSTITUIDA en el prompt, sin marcador colgando',
-    (() => {
-        const r = S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5, seed: 'p1' });
-        return r.prompt.includes(S.phraseForSeed('p1')) && !r.prompt.includes('{FRASE}');
-    })());
-check('{FRASE} es una variable CONOCIDA: validateConfig no la marca',
-    !S.validateConfig({}).warnings.some(w => w.includes('{FRASE}')));
+check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
+    S.applyMasterVariables('di: {FRASE}', { phrase: S.phraseForSeed('x') }) === 'di: ' + S.phraseForSeed('x')
+    && !S.validateConfig({ masterPrompt: S.DEFAULT_MASTER_PROMPT + ' {FRASE}' }).warnings.some(w => w.includes('{FRASE}')));
 
 // ── v4.914 · La directiva de la referencia #3 ─────────────────────────
 // Del reporte con la pieza delante: el fondo terminaba en un rectángulo
