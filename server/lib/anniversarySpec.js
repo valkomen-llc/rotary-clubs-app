@@ -281,6 +281,10 @@ export const DEFAULT_CONFIG = Object.freeze({
     scope: { mode: 'all', clubIds: [] },
     references: [],
     masterPrompt: DEFAULT_MASTER_PROMPT,
+    // Dónde se imprime el texto. `left` calza con el Prompt Maestro por
+    // defecto y con la referencia (fotografía a la derecha → editorial a la
+    // izquierda); `auto` vuelve a decidirlo por foto (`textZoneFor`).
+    textZone: 'left',
     // Las instrucciones OPCIONALES del ensamblador, con su interruptor: el
     // ambiente por foto (la frase que adapta el prompt a ESA fotografía) y el
     // uso de la referencia visual. Lo que NO es opcional no tiene interruptor.
@@ -367,6 +371,14 @@ export const normalizeConfig = (raw) => {
         // de arte por un renombre (regla aditiva del sitio). El campo viejo no
         // se reescribe: se lee.
         masterPrompt: (str(c.masterPrompt).trim() || str(c.designInstruction).trim() || DEFAULT_MASTER_PROMPT).slice(0, 4000),
+        // ⚠️ LA ZONA DEL TEXTO TIENE QUE CALZAR CON EL LAYOUT DEL MAESTRO
+        // (v4.901). El Prompt Maestro por defecto FIJA la fotografía a la
+        // derecha, y la zona automática se decidía POR FOTO: con un grupo
+        // centrado elegía «abajo» y el modelo no podía cumplir las dos cosas
+        // — la franja quedaba ocupada y la composición se descartaba. Quien
+        // fija el layout en el maestro fija la zona acá; `auto` queda para
+        // una dirección de arte sin layout declarado.
+        textZone: ['auto', 'left', 'right', 'bottom'].includes(c.textZone) ? c.textZone : 'left',
         promptOptions: {
             ambient: bool(c.promptOptions?.ambient, true),
             useReference: bool(c.promptOptions?.useReference, true),
@@ -441,7 +453,7 @@ export const fingerprintOf = (raw) => {
     const c = normalizeConfig(raw);
     const material = JSON.stringify([
         c.format, c.resolution,
-        c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference],
+        c.masterPrompt, [c.promptOptions.ambient, c.promptOptions.useReference], c.textZone,
         c.messageInstruction, c.restrictions,
         c.references.map(r => [r.url, r.primary]),
         [c.branding.clubLogo, c.branding.districtLine, c.branding.footerImage, c.branding.watermark],
@@ -561,6 +573,15 @@ export const textZoneFor = (analysis) => {
     return DEFAULT_TEXT_ZONE;
 };
 
+/** La zona que de verdad se usa: la FIJADA por la configuración, o la que
+ *  decide la foto cuando la configuración dice `auto`. Es UN solo punto de
+ *  decisión — con dos, el prompt reservaría una franja y el compositor
+ *  escribiría en otra. */
+export const zoneForConfig = (config, analysis) => {
+    const c = normalizeConfig(config);
+    return c.textZone !== 'auto' ? c.textZone : textZoneFor(analysis);
+};
+
 // ─── El análisis de la REFERENCIA VISUAL ───────────────────────────────
 //
 // La referencia ya viaja al modelo de imagen COMO IMAGEN; esto agrega la otra
@@ -670,7 +691,7 @@ export const PROMPT_MAX_CHARS = Number(process.env.ANNIVERSARY_PROMPT_MAX_CHARS)
  */
 export const buildImagePrompt = ({ config, clubName = '', years = null, analysis = null, zoneId = null, hasReference = false, referenceClause = '', maxChars = null } = {}) => {
     const c = normalizeConfig(config);
-    const zona = zoneId || textZoneFor(analysis);
+    const zona = zoneId || zoneForConfig(c, analysis);
     const a = analysis || fallbackAnalysis();
     // El presupuesto es POR MODELO: GPT Image admite prompts muchísimo más
     // largos que los 2.500 de la pasarela KIE, y con él la dirección de arte
@@ -987,7 +1008,13 @@ export const PIECE_CHECKS = {
     // La franja del texto: cuanto más baja la desviación típica, más lisa.
     // Medido sobre composiciones reales, una franja utilizable queda por
     // debajo de 58; una foto a página completa pasa de 70.
+    // La franja de dos niveles (v4.901, la misma forma que el fondo): por
+    // encima de `zoneHardStdDev` la franja es una fotografía y se DESCARTA;
+    // entre el ideal y ese techo se ENTREGA con nota — un degradado suave con
+    // confeti fino mide 60-75 y el texto azul se lee perfecto encima. El caso
+    // real del reporte midió 72 y el descarte entregaba la foto plana.
     zoneMaxStdDev: 58,
+    zoneHardStdDev: 78,
     zoneMinLuma: 175,
     // Cuánto puede desviarse la proporción entregada de la pedida.
     aspectTolerance: 0.04,
@@ -1037,12 +1064,17 @@ export const judgePiece = ({
 
     if (zoneLuma !== null && zoneStdDev !== null) {
         measured.push('franja del texto');
-        if (zoneStdDev > PIECE_CHECKS.zoneMaxStdDev || zoneLuma < PIECE_CHECKS.zoneMinLuma) {
+        if (zoneStdDev > PIECE_CHECKS.zoneHardStdDev || zoneLuma < PIECE_CHECKS.zoneMinLuma) {
             critical.push({
                 id: 'franja_ocupada',
                 reason: `La franja donde va el texto quedó ocupada (luminancia ${Math.round(zoneLuma)}, variación ${Math.round(zoneStdDev)}).`,
                 consequence: 'El titular y el mensaje caerían encima del contenido de la fotografía.',
             });
+        } else if (zoneStdDev > PIECE_CHECKS.zoneMaxStdDev) {
+            // Zona media: decoración fina sobre fondo claro. Se entrega y se
+            // dice — descartarla gastaba las generaciones para entregar la
+            // foto plana (misma lección que el fondo, v4.899).
+            notes.push(`La franja del texto quedó con algo de decoración (variación ${Math.round(zoneStdDev)}). Miralo: el texto se imprime encima.`);
         }
     }
 
@@ -1114,7 +1146,7 @@ export default {
     LIMITS, MAX_REFERENCES, BRANDING_FIELDS, BRANDING_IDS, DEFAULT_CONFIG,
     isDrawableImage, normalizeReference, normalizeConfig, scopeReaches, validateConfig,
     fingerprintOf, isSignificantChange,
-    ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis, textZoneFor,
+    ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis, textZoneFor, zoneForConfig,
     clearZoneClause, PROMPT_MAX_CHARS, buildImagePrompt, buildNegativePrompt,
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,

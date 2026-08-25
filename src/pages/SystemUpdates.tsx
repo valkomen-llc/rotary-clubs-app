@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.900.0 | 2026-08-25 (Aniversarios IA: GPT Image + análisis de la referencia visual)
-// Cache bust: 2026-08-25f
+// UI V4.901.0 | 2026-08-25 (Aniversarios IA: el campo que no existía + zona fijada al maestro)
+// Cache bust: 2026-08-25g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.901.0',
+        title: 'Aniversarios IA: el campo que no existía, la zona que calza con el maestro 🔧',
+        description: 'Cuatro correcciones del reporte con capturas. LA DE FONDO: el módulo leía las respuestas de la IA de texto en el campo `text`, y el servicio de la plataforma las devuelve en `content` — un campo que no existe se lee como «no contestó», así que el análisis de la fotografía, el redactor del mensaje Y el análisis de la referencia NUNCA leyeron una respuesta real en producción: por eso faltaba el mensaje siempre, la zona del texto caía siempre en «abajo» (el respaldo ciego) y la cláusula de la referencia no viajaba. Las pruebas no lo veían porque el doble del servicio devolvía la forma equivocada — ahora devuelve la real, y leer el campo viejo rompe 12 comprobaciones. SEGUNDA: la zona del texto ahora se FIJA en la configuración (por defecto «izquierda», que calza con el Prompt Maestro y la referencia — fotografía a la derecha); decidirla por foto contradecía el layout que el maestro le pide al modelo y la franja quedaba «ocupada» sin culpa del modelo. TERCERA: la puerta de la franja pasa a dos niveles, como la del fondo — decoración fina sobre fondo claro (el caso real: variación 72, luminancia 217) se ENTREGA con nota; una fotografía en la franja se sigue descartando. CUARTA: en el Motor de imagen, poner un modelo como «Fallback» se leyó como usarlo — y el respaldo NO genera: ahora lo dice junto al selector, y cada modelo elegible tiene su botón de UN clic «activarlo como modelo de producción» (la misma activación humana y registrada del benchmark).',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.900.0',
         title: 'Aniversarios IA: GPT Image (el motor de ChatGPT) y análisis de la referencia 🧠',

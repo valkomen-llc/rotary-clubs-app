@@ -508,6 +508,22 @@ await llamar(ctrl.postTestCompose, { body: { pieceId: piezaMaster } });
         !!t.prompt?.includes(S.NO_TEXT_CLAUSE) && !!t.prompt?.includes(S.FOOTER_CLAUSE));
 }
 
+grupo('15c — La zona fijada viaja hasta el análisis');
+
+// El cable, no sólo el criterio (v4.744): la zona que decide la CONFIGURACIÓN
+// tiene que ser la que el análisis guarda en la pieza.
+limpiar();
+r = await llamar(ctrl.getConfig);
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, textZone: 'bottom' } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const piezaZona = r.body.pieceId;
+r = await llamar(ctrl.postTestAnalyze, { body: { pieceId: piezaZona } });
+eq('con la zona fijada en `bottom`, la foto (gente a la derecha) NO decide', r.body.zoneId, 'bottom');
+await llamar(ctrl.putConfig, { body: { config: { ...(await llamar(ctrl.getConfig)).body.config, textZone: 'auto' } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+r = await llamar(ctrl.postTestAnalyze, { body: { pieceId: r.body.pieceId } });
+eq('con `auto`, vuelve a decidir la foto', r.body.zoneId, 'left');
+
 grupo('16 — El motor: modelo configurable, sello y fallback');
 
 const models = await import('../server/lib/anniversaryModels.js');

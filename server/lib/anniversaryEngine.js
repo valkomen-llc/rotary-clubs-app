@@ -40,7 +40,7 @@ import {
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis,
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, repairCopy,
-    buildImagePrompt, buildNegativePrompt, textZoneFor, zoneById,
+    buildImagePrompt, buildNegativePrompt, textZoneFor, zoneForConfig, zoneById,
     judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig,
 } from './anniversarySpec.js';
 
@@ -161,7 +161,7 @@ export const analyzePhoto = async ({ photoUrl, width = null, height = null, prov
             maxTokens: 500,
             jsonMode: true,
         });
-        const analysis = readAnalysis(raw?.text ?? raw);
+        const analysis = readAnalysis(raw?.content ?? raw?.text ?? raw);
         // La ORIENTACIÓN la sabemos con certeza por las medidas del archivo:
         // no hace falta creerle al modelo un dato que ya está medido.
         if (width && height) {
@@ -211,7 +211,7 @@ export const writeCopy = async ({ config, clubName, years, analysis, provider = 
             // el modelo se retiró o si la cuenta tiene un pago pendiente.
             throw new Error(`No se pudo escribir el mensaje. ${e.message}`);
         }
-        const copy = readCopy(raw?.text ?? raw);
+        const copy = readCopy(raw?.content ?? raw?.text ?? raw);
         if (!copy) { ultimoFallo = ['La respuesta no era un JSON con "title" y "message".']; continue; }
 
         const check = validateCopy(copy, { clubName, years });
@@ -257,7 +257,7 @@ export const analyzeReference = async (url) => {
             maxTokens: 500,
             jsonMode: true,
         });
-        return readReferenceAnalysis(raw?.text ?? raw);
+        return readReferenceAnalysis(raw?.content ?? raw?.text ?? raw);
     } catch (e) {
         console.warn('[anniversary] el análisis de la referencia no se pudo hacer:', e.message);
         return null;

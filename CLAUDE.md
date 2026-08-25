@@ -2628,6 +2628,29 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   más simple: el emblema de Rotary es marca registrada y se reproduce desde el
   archivo, no se dibuja. **Consecuencia buscada: el nombre y los años son
   exactos POR CONSTRUCCIÓN, no por medición.**
+- **⚠️ `generateCopy` DEVUELVE `{ content }`, NUNCA `.text`** (v4.901). Las
+  tres lecturas del módulo (análisis de foto, redactor, análisis de
+  referencia) leían `raw?.text` — un campo que no existe— y caían al respaldo
+  EN SILENCIO en producción: mensaje ausente siempre, zona siempre «abajo»,
+  cláusula de referencia muda. Las pruebas no lo veían porque el doble del
+  servicio devolvía `{text}`: **el doble tiene que devolver LA MISMA FORMA que
+  el servicio real** — con `{content}` en el stub, leer el campo viejo rompe
+  12 comprobaciones. `reelDirector.js` ya documentaba esta misma lección.
+- **⚠️ LA ZONA DEL TEXTO SE FIJA EN LA CONFIGURACIÓN Y CALZA CON EL LAYOUT DEL
+  MAESTRO** (v4.901, `config.textZone`, default `left`). El maestro por
+  defecto FIJA la fotografía a la derecha; la zona automática se decidía POR
+  FOTO y con un grupo centrado elegía «abajo»: el modelo no podía cumplir las
+  dos cosas y la franja quedaba «ocupada» sin culpa suya. `zoneForConfig` es
+  el ÚNICO punto de decisión (lo consumen las dos vías de análisis, el
+  ensamblador y el benchmark); `auto` conserva la decisión por foto. La
+  franja es además de DOS niveles como el fondo (`zoneHardStdDev: 78`):
+  decoración fina sobre claro (caso real 72/217) se ENTREGA con nota; una
+  fotografía en la franja (>78 o luma <175) se sigue descartando.
+- **EL RESPALDO DEL MOTOR NO GENERA, y el panel lo dice** (v4.901). Poner un
+  modelo en «Fallback» se leyó como usarlo; ahora el selector lo aclara y cada
+  modelo elegible tiene su botón de UN clic «activarlo como modelo de
+  producción» — la misma activación humana y registrada del benchmark, no una
+  vía nueva.
 - **⚠️ EL MODELO TIENE QUE DEJARLE SITIO AL TEXTO, Y ESO ES UN ACUERDO ENTRE LAS
   DOS MITADES.** `textZoneFor` decide la franja limpia mirando el análisis de la
   fotografía —personas a la derecha, texto a la izquierda; grupo centrado, texto
