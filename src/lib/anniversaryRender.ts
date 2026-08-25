@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Aniversarios IA — EL COMPOSITOR
-// v4.895.0
+// v4.898.0
 //
 // ⚠️ HAY UN SOLO CAMINO DE COMPOSICIÓN, Y ES ÉSTE.
 //
@@ -120,8 +120,13 @@ export interface AnniversaryDocument {
 const flat = (s: string) => String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-export type BlockKind = 'headline' | 'years' | 'club' | 'rule' | 'message';
+export type BlockKind = 'headline' | 'kicker' | 'years' | 'club' | 'rule' | 'message';
 export interface TextBlock { kind: BlockKind; text: string }
+
+/** El pase pequeño que la referencia pone entre el titular y el nombre del
+ *  club. Es lenguaje de la PIEZA, no del modelo: por eso es una constante y
+ *  no algo que se le pida escribir a nadie. */
+export const KICKER_TEXT = 'Felicidades';
 
 /**
  * Decide qué bloques entran en la pieza.
@@ -155,13 +160,21 @@ export const planTextBlocks = (doc: Pick<AnniversaryDocument, 'title' | 'message
 
     const bloques: TextBlock[] = [];
     if (title) bloques.push({ kind: 'headline', text: title });
+    // El orden es el de la referencia: titular → pase → club → banda de años.
+    // El pase introduce el nombre del club, así que sólo sale con él.
+    if (club && !diceClub) {
+        bloques.push({ kind: 'kicker', text: KICKER_TEXT });
+        bloques.push({ kind: 'club', text: club });
+    }
     if (years !== null && !diceAnios) bloques.push({ kind: 'years', text: String(years) });
-    if (club && !diceClub) bloques.push({ kind: 'club', text: club });
     // Sin titular, el club y los años SIEMPRE salen: son lo único que
     // identifica la pieza.
     if (!title) {
-        if (years !== null && !bloques.some(b => b.kind === 'years')) bloques.unshift({ kind: 'years', text: String(years) });
-        if (club && !bloques.some(b => b.kind === 'club')) bloques.push({ kind: 'club', text: club });
+        if (club && !bloques.some(b => b.kind === 'club')) {
+            bloques.unshift({ kind: 'club', text: club });
+            bloques.unshift({ kind: 'kicker', text: KICKER_TEXT });
+        }
+        if (years !== null && !bloques.some(b => b.kind === 'years')) bloques.push({ kind: 'years', text: String(years) });
     }
     if (message) {
         bloques.push({ kind: 'rule', text: '' });
@@ -198,16 +211,41 @@ interface BlockStyle { font: string; size: number; lineHeight: number; color: st
 /** Tamaños en FRACCIÓN del ancho del lienzo: así la pieza se compone igual a
  *  1080 que a 2160 y la descarga en alta no es otra maquetación. */
 const STYLES: Record<BlockKind, BlockStyle> = {
-    headline: { font: DISPLAY, size: 0.062, lineHeight: 1.08, color: ROTARY_BLUE, gapBefore: 0 },
-    years: { font: DISPLAY, size: 0.150, lineHeight: 0.98, color: ROTARY_GOLD, gapBefore: 0.020 },
-    club: { font: BODY, size: 0.036, lineHeight: 1.25, color: INK, gapBefore: 0.022 },
+    headline: { font: DISPLAY, size: 0.062, lineHeight: 1.08, color: ROTARY_BLUE, gapBefore: 0, upper: true },
+    // El pase chico de la referencia («FELICIDADES»): letra espaciada, tinta.
+    kicker: { font: BODY, size: 0.019, lineHeight: 1.2, color: INK, gapBefore: 0.030, upper: true, letterSpacing: 0.32 },
+    // Los años van dentro de una BANDA dorada («40 AÑOS»), como en la
+    // referencia. `size` es el cuerpo del texto; la banda mide 1,9× eso.
+    years: { font: DISPLAY, size: 0.044, lineHeight: 1, color: PAPER, gapBefore: 0.030, upper: true },
+    club: { font: DISPLAY, size: 0.043, lineHeight: 1.18, color: ROTARY_BLUE, gapBefore: 0.012, upper: true },
     rule: { font: BODY, size: 0.006, lineHeight: 1, color: ROTARY_GOLD, gapBefore: 0.030 },
     message: { font: BODY, size: 0.026, lineHeight: 1.42, color: INK, gapBefore: 0.026 },
 };
 
+const BAND_RATIO = 1.9; // alto de la banda dorada respecto del cuerpo de su texto
+
 const weightFor = (kind: BlockKind) => (kind === 'headline' || kind === 'years' ? 600 : (kind === 'club' ? 700 : 400));
 
+/** El nombre del club en DOS tonos, como la referencia: el prefijo
+ *  institucional en azul y la parte distintiva en dorado. Si el nombre no
+ *  tiene prefijo reconocible, va entero en azul. */
+export const splitClubName = (line: string): { prefix: string; rest: string } => {
+    const m = String(line || '').match(/^((?:club\s+rotario|rotary\s+e-?club|rotary)\s+)(.+)$/i);
+    return m ? { prefix: m[1], rest: m[2] } : { prefix: '', rest: String(line || '') };
+};
+
+/** El rótulo de la banda dorada. El número es un dato NUESTRO: la cifra que
+ *  la persona escribió, jamás una que escriba un modelo. */
+export const yearsBandLabel = (years: string | number) =>
+    `${years} ${Number(years) === 1 ? 'AÑO' : 'AÑOS'}`;
+
 interface Measured { block: TextBlock; style: BlockStyle; lines: string[]; height: number; fontSize: number }
+
+/** El espaciado de letra se fija ANTES de medir y de dibujar, con el mismo
+ *  valor: medir sin él y dibujar con él es lo que saca un texto del recuadro. */
+const applyLetterSpacing = (ctx: CanvasRenderingContext2D, st: BlockStyle, fontSize: number) => {
+    try { (ctx as any).letterSpacing = st.letterSpacing ? `${(st.letterSpacing * fontSize).toFixed(2)}px` : '0px'; } catch { /* navegador sin soporte: se compone sin espaciado */ }
+};
 
 const measure = (ctx: CanvasRenderingContext2D, bloques: TextBlock[], W: number, boxW: number, escala: number): { items: Measured[]; total: number } => {
     const items: Measured[] = [];
@@ -222,11 +260,14 @@ const measure = (ctx: CanvasRenderingContext2D, bloques: TextBlock[], W: number,
             continue;
         }
         ctx.font = `${weightFor(b.kind)} ${fontSize}px ${st.font}`;
-        // El bloque de años nunca se reparte en líneas: es un número.
-        const lines = b.kind === 'years' ? [b.text] : wrap(ctx, b.text, boxW);
-        const h = lines.length * fontSize * st.lineHeight;
+        applyLetterSpacing(ctx, st, fontSize);
+        const texto = st.upper ? b.text.toUpperCase() : b.text;
+        // Los años van en su banda y no se reparten en líneas: son un rótulo.
+        const lines = b.kind === 'years' ? [yearsBandLabel(b.text)] : wrap(ctx, texto, boxW);
+        const h = b.kind === 'years' ? fontSize * BAND_RATIO : lines.length * fontSize * st.lineHeight;
         total += st.gapBefore * W * escala + h;
         items.push({ block: b, style: st, lines, height: h, fontSize });
+        applyLetterSpacing(ctx, {} as BlockStyle, fontSize);
     }
     return { items, total };
 };
@@ -388,24 +429,58 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
             continue;
         }
 
-        ctx.fillStyle = item.style.color;
         ctx.font = `${weightFor(item.block.kind)} ${item.fontSize}px ${item.style.font}`;
+        applyLetterSpacing(ctx, item.style, item.fontSize);
+
+        // La BANDA dorada de los años, como en la referencia: pastilla dorada
+        // con «40 AÑOS» en blanco. La cifra la escribimos nosotros — es la
+        // garantía POR CONSTRUCCIÓN de la arquitectura híbrida.
+        if (item.block.kind === 'years') {
+            const rotulo = item.lines[0] || yearsBandLabel(item.block.text);
+            const anchoTexto = ctx.measureText(rotulo).width;
+            const pad = item.fontSize * 0.85;
+            const bandaW = Math.min(boxW, anchoTexto + pad * 2);
+            const bandaH = item.height;
+            const bx = alineado === 'center' ? cx - bandaW / 2 : boxX;
+            ctx.fillStyle = ROTARY_GOLD;
+            roundRect(ctx, bx, y, bandaW, bandaH, bandaH * 0.18);
+            ctx.fill();
+            ctx.fillStyle = PAPER;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(rotulo, bx + bandaW / 2, y + bandaH / 2 + item.fontSize * 0.04);
+            ctx.textBaseline = 'top';
+            y += bandaH;
+            applyLetterSpacing(ctx, {} as BlockStyle, item.fontSize);
+            continue;
+        }
+
+        ctx.fillStyle = item.style.color;
         ctx.textAlign = alineado === 'center' ? 'center' : 'left';
 
         for (const linea of item.lines) {
-            ctx.fillText(linea, cx, y);
+            // El nombre del club va en DOS tonos cuando cabe en una línea:
+            // prefijo institucional azul + parte distintiva dorada. En dos
+            // líneas se queda entero en azul — partir el color por el salto
+            // de línea se lee como un error.
+            const dosTonos = item.block.kind === 'club' && item.lines.length === 1 ? splitClubName(linea) : null;
+            if (dosTonos && dosTonos.prefix) {
+                const wPrefix = ctx.measureText(dosTonos.prefix).width;
+                const wTotal = wPrefix + ctx.measureText(dosTonos.rest).width;
+                const x0 = alineado === 'center' ? cx - wTotal / 2 : boxX;
+                ctx.textAlign = 'left';
+                ctx.fillStyle = ROTARY_BLUE;
+                ctx.fillText(dosTonos.prefix, x0, y);
+                ctx.fillStyle = ROTARY_GOLD;
+                ctx.fillText(dosTonos.rest, x0 + wPrefix, y);
+                ctx.textAlign = alineado === 'center' ? 'center' : 'left';
+                ctx.fillStyle = item.style.color;
+            } else {
+                ctx.fillText(linea, cx, y);
+            }
             y += item.fontSize * item.style.lineHeight;
         }
-
-        // «AÑOS» va pegado al número, no como un bloque propio: es su rótulo.
-        if (item.block.kind === 'years') {
-            const rotulo = Number(item.block.text) === 1 ? 'AÑO' : 'AÑOS';
-            const size = item.fontSize * 0.22;
-            ctx.font = `600 ${size}px ${DISPLAY}`;
-            ctx.fillStyle = INK;
-            ctx.fillText(rotulo, cx, y - item.fontSize * 0.06);
-            y += size * 1.6;
-        }
+        applyLetterSpacing(ctx, {} as BlockStyle, item.fontSize);
     }
 
     // ── Capa 3 — el branding ────────────────────────────────────────

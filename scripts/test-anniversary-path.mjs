@@ -119,7 +119,7 @@ grupo('1 — La configuración se abre, se guarda y se publica');
 limpiar();
 let r = await llamar(ctrl.getConfig);
 eq('la primera lectura crea la fila y responde 200', r.code, 200);
-ok('trae las instrucciones por defecto', r.body.config.designInstruction === S.DEFAULT_DESIGN_INSTRUCTION);
+ok('trae el Prompt Maestro por defecto', r.body.config.masterPrompt === S.DEFAULT_MASTER_PROMPT);
 ok('y NO está publicada todavía', r.body.published === null && r.body.dirty === true);
 eq('la fila quedó en la base', db.tablas.AnniversaryConfig.length, 1);
 ok('con `clubId` en NULL: es la configuración de la plataforma',
@@ -138,7 +138,7 @@ eq('publicar responde 200', r.code, 200);
 eq('creó la versión 1', r.body.version.version, 1);
 ok('la fila quedó publicada', !!db.tablas.AnniversaryConfig[0].published);
 ok('la versión guarda la configuración COMPLETA, no una referencia',
-    !!db.tablas.AnniversaryConfigVersion[0].config?.designInstruction);
+    !!db.tablas.AnniversaryConfigVersion[0].config?.masterPrompt);
 
 r = await llamar(ctrl.postPublish);
 ok('volver a publicar sin cambios REUTILIZA la versión vigente', r.body.reused === true);
@@ -149,14 +149,15 @@ await llamar(ctrl.putConfig, { body: { config: { ...cfg, name: 'Otro nombre inte
 r = await llamar(ctrl.postPublish);
 ok('cambiar SÓLO el nombre interno tampoco crea una versión', r.body.reused === true);
 
-await llamar(ctrl.putConfig, { body: { config: { ...cfg, designInstruction: 'Una dirección de arte completamente distinta, con globos dorados y confeti muy discreto.' } } });
+await llamar(ctrl.putConfig, { body: { config: { ...cfg, masterPrompt: 'Una dirección de arte completamente distinta, con globos dorados y confeti muy discreto.' } } });
 r = await llamar(ctrl.postPublish);
-eq('cambiar la instrucción SÍ crea la versión 2', r.body.version.version, 2);
+eq('cambiar el Prompt Maestro SÍ crea la versión 2', r.body.version.version, 2);
 
 grupo('2 — Publicar exige validez; retirar no');
-await llamar(ctrl.putConfig, { body: { config: { ...cfg, designInstruction: '' } } });
+// El Prompt Maestro vacío cae al predeterminado; lo inválido es uno CORTO.
+await llamar(ctrl.putConfig, { body: { config: { ...cfg, masterPrompt: 'corto' } } });
 r = await llamar(ctrl.postPublish);
-eq('con la instrucción vacía, publicar responde 422', r.code, 422);
+eq('con un Prompt Maestro demasiado corto, publicar responde 422', r.code, 422);
 ok('y dice qué falta', Array.isArray(r.body.errors) && r.body.errors.length > 0);
 r = await llamar(ctrl.postUnpublish);
 eq('retirar del aire funciona igual', r.code, 200);
@@ -167,7 +168,7 @@ const v1 = db.tablas.AnniversaryConfigVersion[0];
 const publicadoAntes = db.tablas.AnniversaryConfig[0].published;
 r = await llamar(ctrl.postRestoreVersion, { params: { id: v1.id } });
 eq('restaurar responde 200', r.code, 200);
-ok('el borrador quedó con esa versión', r.body.config.designInstruction === v1.config.designInstruction);
+ok('el borrador quedó con esa versión', r.body.config.masterPrompt === v1.config.masterPrompt);
 ok('y lo publicado NO se movió', db.tablas.AnniversaryConfig[0].published === publicadoAntes);
 
 // ════════════════════════════════════════════════════════════════════
@@ -211,6 +212,11 @@ ok('lo prohibido viaja en `negative_prompt`, no en el positivo',
     !!tarea.negativePrompt && !tarea.prompt?.includes(tarea.negativePrompt));
 eq('pide la proporción del formato', tarea.aspectRatio, '1:1');
 ok('la fotografía viaja como imagen de entrada', Array.isArray(tarea.imageUrls) || !!tarea.imageUrl);
+ok('reserva la banda del pie institucional', !!tarea.prompt?.includes(S.FOOTER_CLAUSE));
+ok('el Prompt Maestro viajó con {NOMBRE_CLUB} sustituido por el nombre real',
+    !!tarea.prompt?.includes('Club Rotario Cali'));
+ok('ningún marcador viajó literal al modelo',
+    !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(tarea.prompt || ''));
 
 grupo('5 — El sondeo, la verificación y el documento');
 r = await llamar(ctrl.getTestPiece, { params: { id: pieceId } });
@@ -430,6 +436,29 @@ ok('y eso se avisa', r.body.warnings.some(w => /mensaje/i.test(w)), JSON.stringi
 
 
 // ════════════════════════════════════════════════════════════════════
+grupo('15b — El Prompt Maestro del administrador viaja sustituido');
+
+// De punta a punta: se escribe un Prompt Maestro PROPIO con las tres
+// variables, se genera, y lo que llega al proveedor lleva los datos reales.
+limpiar();
+r = await llamar(ctrl.getConfig);
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config,
+    masterPrompt: 'Pieza sobria para {NOMBRE_CLUB}, que cumple {ANOS_CLUB} años, alrededor de {FOTO_CLUB}, con globos dorados.' } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const piezaMaster = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: piezaMaster } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: piezaMaster } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: piezaMaster } });
+{
+    const t = prov.estado.tareas[prov.estado.tareas.length - 1] || {};
+    ok('el Prompt Maestro propio llegó al proveedor', !!t.prompt?.includes('Pieza sobria para'));
+    ok('con el nombre real donde decía {NOMBRE_CLUB}', !!t.prompt?.includes('Club Rotario Cali'));
+    ok('con la cifra real donde decía {ANOS_CLUB}', !!t.prompt?.includes('cumple 40 años'));
+    ok('sin ningún marcador literal', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(t.prompt || ''));
+    ok('y el núcleo fijo del sistema sigue presente aunque el maestro sea propio',
+        !!t.prompt?.includes(S.NO_TEXT_CLAUSE) && !!t.prompt?.includes(S.FOOTER_CLAUSE));
+}
+
 grupo('16 — El motor: modelo configurable, sello y fallback');
 
 const models = await import('../server/lib/anniversaryModels.js');

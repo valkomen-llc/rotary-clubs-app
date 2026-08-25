@@ -25,14 +25,14 @@ export interface TextZone {
 export const TEXT_ZONES: Record<string, TextZone> = {
     left: { id: 'left', x: 0.070, y: 0.180, w: 0.400, h: 0.560, align: 'left', words: 'la mitad izquierda' },
     right: { id: 'right', x: 0.530, y: 0.180, w: 0.400, h: 0.560, align: 'left', words: 'la mitad derecha' },
-    bottom: { id: 'bottom', x: 0.090, y: 0.520, w: 0.820, h: 0.330, align: 'center', words: 'el tercio inferior' },
+    bottom: { id: 'bottom', x: 0.090, y: 0.500, w: 0.820, h: 0.320, align: 'center', words: 'el tercio inferior' },
 };
 export const DEFAULT_TEXT_ZONE = 'bottom';
 export const zoneById = (id?: string | null): TextZone => TEXT_ZONES[id || ''] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 
 /** La banda del pie institucional. Va SIEMPRE en el mismo sitio y por eso las
  *  zonas de texto terminan por encima: el branding no compite con el mensaje. */
-export const FOOTER_BAND = { y: 0.880, h: 0.120 };
+export const FOOTER_BAND = { y: 0.84, h: 0.16 };
 
 export interface AnniversaryFormat { id: string; label: string; aspect: string; ratio: number; available: boolean }
 
