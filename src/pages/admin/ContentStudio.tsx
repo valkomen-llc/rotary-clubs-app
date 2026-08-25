@@ -25,6 +25,8 @@ import BannerTemplateManager from '../../components/admin/content-studio/BannerT
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
 import DistributionPanel from '../../components/admin/content-studio/DistributionPanel';
+import { useAuth } from '../../hooks/useAuth';
+import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
 
 const ContentStudio: React.FC = () => {
     // v4.798: las pestañas vuelven a ser CONTROLADAS, y esta vez el estado sí
@@ -38,6 +40,23 @@ const ContentStudio: React.FC = () => {
     // por `onDuplicate` y NADIE la escuchaba: el aviso «Ajustes copiados al
     // creador» era falso y el creador se abría vacío.
     const [reelPrefill, setReelPrefill] = useState<ReelPrefill | null>(null);
+
+    // ── Plantillas IA es del SISTEMA CENTRAL (v4.894) ──────────────
+    // Pedido expreso: el módulo de plantillas de los SITIOS va a ser uno
+    // nuevo, enfocado en aniversarios, que se construye aparte y se activará
+    // en todos; mientras tanto, esta pestaña se OCULTA en el panel de los
+    // sitios y queda sólo en Club Platform. Es el MISMO criterio de contexto
+    // de plataforma que el resto del panel (`isUIAdmin` en AdminLayout,
+    // v4.863): rol de plataforma Y dominio de plataforma — un operador que
+    // entra por el dominio de un club está mirando ESE club. La regla vive en
+    // `platformAdmin.ts`, compartida: no se escribe una segunda.
+    //
+    // Esto decide QUÉ SE PINTA, no a qué se tiene acceso: los endpoints de
+    // design-studio siguen con su alcance de siempre (`scopeClubId`) y los
+    // enlaces públicos ya publicados (`/plantillas/:slug`) no se tocan — son
+    // piezas del sistema central que ya circulan.
+    const { user } = useAuth();
+    const conPlantillas = isPlatformSuperAdmin(user) && isOnPlatformDomain();
 
     return (
         <AdminLayout>
@@ -77,10 +96,12 @@ const ContentStudio: React.FC = () => {
                             <Clapperboard className="w-4 h-4" />
                             Generador de Outros IA
                         </TabsTrigger>
-                        <TabsTrigger value="plantillas" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Palette className="w-4 h-4" />
-                            Plantillas IA
-                        </TabsTrigger>
+                        {conPlantillas && (
+                            <TabsTrigger value="plantillas" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Palette className="w-4 h-4" />
+                                Plantillas IA
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="pendones" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Flag className="w-4 h-4" />
                             Pendones
@@ -117,10 +138,14 @@ const ContentStudio: React.FC = () => {
 
                     {/* v4.720 — Plantillas IA. Va antes de Pendones porque es el
                         generador de piezas del día a día; el pendón es una pieza
-                        anual de gran formato. */}
-                    <TabsContent value="plantillas" className="mt-0 focus-visible:outline-none">
-                        <DesignStudio />
-                    </TabsContent>
+                        anual de gran formato. Desde v4.894, sólo en el Sistema
+                        Central — el contenido se condiciona junto con su pestaña,
+                        o quedaría alcanzable sin botón que lleve a él. */}
+                    {conPlantillas && (
+                        <TabsContent value="plantillas" className="mt-0 focus-visible:outline-none">
+                            <DesignStudio />
+                        </TabsContent>
+                    )}
 
                     <TabsContent value="pendones" className="mt-0 focus-visible:outline-none">
                         <BannerTemplateManager />
