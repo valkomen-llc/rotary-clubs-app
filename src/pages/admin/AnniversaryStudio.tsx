@@ -701,7 +701,7 @@ const AnniversaryStudio: React.FC = () => {
                     </div>
                     <Instruccion
                         label="Prompt base" max={4000} rows={12}
-                        help="Se envía VERBATIM: lo que escribas acá es exactamente lo que recibe el modelo, con {NOMBRE_CLUB}, {ANOS_CLUB}, {FOTO_CLUB} y {VARIACION} sustituidos — {VARIACION} lo llena la plataforma con un motivo decorativo distinto por pieza; borrá la variable si querés siempre la misma decoración. El modelo dibuja también los textos de la pieza — si un nombre sale mal escrito, se regenera."
+                        help="Se envía VERBATIM: lo que escribas acá es exactamente lo que recibe el modelo, con {NOMBRE_CLUB}, {ANOS_CLUB}, {FOTO_CLUB}, {VARIACION} y {FRASE} sustituidos — {VARIACION} lo llena la plataforma con un motivo decorativo distinto por pieza, y {FRASE} con una frase conmemorativa bien escrita de su catálogo, que el modelo copia letra por letra. El modelo dibuja también los textos de la pieza — si un nombre sale mal escrito, se regenera."
                         value={config.masterPrompt} onChange={v => set('masterPrompt', v)}
                     />
                     <Instruccion

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.918.0 | 2026-08-25 (Aniversarios IA: la zona del pie es de NO generación)
-// Cache bust: 2026-08-25q
+// UI V4.919.0 | 2026-08-25 (Aniversarios IA: la frase la elige la plataforma + barra de carga)
+// Cache bust: 2026-08-25r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.919.0',
+        title: 'Aniversarios IA: la frase la elige la plataforma y la espera se ve viva 📝',
+        description: 'Del reporte con la pieza delante: «Sirvingo con dedicación, construuido legado» — la frase conmemorativa era el ÚNICO texto libre que el modelo inventaba (el título, el nombre y los años ya van letra por letra), y por eso era el único que salía mal escrito. Deja de ser texto libre: la elige la PLATAFORMA de un catálogo cerrado de ocho frases correctas —de 8 a 12 palabras, sin cifras, sobre servicio, legado, comunidad e impacto—, determinista por pieza como la variación decorativa (el reintento conserva su frase, dos piezas distintas varían), y el modelo sólo la COPIA letra por letra vía la variable nueva {FRASE}, del mismo tamaño y azul institucional que el nombre del club — el estilo que pidió el cliente. La redundancia de los años queda imposible por construcción: ninguna frase del catálogo lleva cifras. Y la espera de generación gana dinamismo: el panel del resultado muestra la etapa real, una barra animada indeterminada —nunca un porcentaje inventado, que es la regla del sitio (v4.756)— y los segundos transcurridos de verdad, con la animación viviendo en el tema de Tailwind (v4.813) y verificada contra el CSS compilado (v4.719). El placeholder «Componiendo la pieza…» lleva la misma barra. La cadena de legados suma v4.918: ocho defaults viejos resuelven al vigente.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'feature',
+    },
     {
         version: '4.918.0',
         title: 'Aniversarios IA: la zona del pie es de NO generación 🚫',

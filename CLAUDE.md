@@ -2682,6 +2682,19 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA FRASE CONMEMORATIVA LA ELIGE LA PLATAFORMA, NO EL MODELO** (v4.919).
+  Era el único texto libre que el modelo inventaba — y por eso el único que
+  salía mal escrito («Sirvingo… construuido», reporte con captura). Sale de
+  `ANNIVERSARY_PHRASES` (catálogo CERRADO, 8-12 palabras, sin cifras),
+  determinista por pieza (`phraseForSeed`, sal propia contra el motivo
+  decorativo), y viaja por la variable `{FRASE}` que el modelo COPIA letra
+  por letra con el estilo del nombre del club. `{FRASE}` SIEMPRE resuelve
+  (sin semilla, la primera del catálogo — mismo respaldo en
+  `applyMasterVariables`): una cláusula que exija copiar «» rompería la
+  pieza. Al agregar una frase al catálogo, contar sus palabras y no meter
+  cifras. Y la espera de generación se VE viva: barra INDETERMINADA
+  (`animate-progress-slide`, en el tema de Tailwind — v4.813) más segundos
+  reales — nunca un porcentaje inventado (v4.756).
 - **⚠️ LA ZONA DEL PIE ES DE NO GENERACIÓN, con la causa nombrada** (v4.918).
   La referencia del cliente trae un pie de onda azul: el modelo lo imitaba
   dentro de la imagen y encima se imprimía el pie REAL — logos dobles

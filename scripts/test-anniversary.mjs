@@ -210,11 +210,11 @@ check('v4.913: la jerarquía declara el título y los globos arriba',
     && /Globos protagonistas arriba y en los laterales/i.test(S.DEFAULT_MASTER_PROMPT));
 check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
     /letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
-// v4.914: los años aparecen UNA sola vez — en la cinta. El mensaje NO los
-// repite: «10 AÑOS» arriba y «10 años sembrando...» abajo era la redundancia
-// del reporte.
+// v4.914: los años aparecen UNA sola vez — en la cinta. Desde v4.919 la
+// frase sale de un catálogo SIN cifras, así que la redundancia es imposible
+// por construcción; el negativo conserva la prohibición.
 check('v4.914: el mensaje NO repite la cantidad de años (la redundancia del reporte)',
-    /SIN repetir la cantidad de años/i.test(S.DEFAULT_MASTER_PROMPT)
+    S.ANNIVERSARY_PHRASES.every(f => !/\d/.test(f))
     && !/coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Repetir la cantidad de años dentro del mensaje/.test(S.DEFAULT_RESTRICTIONS));
 // v4.916: el ejemplo de tono SE FUE del prompt — el modelo lo copiaba literal
@@ -247,9 +247,32 @@ check('v4.918: el título va en DOS líneas, letra por letra, y ALTO en el lienz
     && /ALTO en el lienzo/.test(S.DEFAULT_MASTER_PROMPT));
 check('v4.918: la fotografía baja de altura — su alto ronda un tercio del lienzo',
     /más ancha que alta — su alto ronda un tercio del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
-check('v4.918: la frase es UNA, de 8 a 12 palabras, y va SIEMPRE',
-    /SIEMPRE una única frase corta de 8 a 12 palabras/.test(S.DEFAULT_MASTER_PROMPT)
+// v4.919: la frase era el ÚNICO texto libre que el modelo inventaba — y por
+// eso el único que salía mal escrito («Sirvingo… construuido», reporte con
+// captura). La elige la PLATAFORMA de un catálogo cerrado y el modelo la
+// COPIA letra por letra, con el estilo del nombre del club.
+check('v4.919: la frase viaja EXACTA, del catálogo, letra por letra',
+    /frase EXACTA letra por letra: «\{FRASE\}»/.test(S.DEFAULT_MASTER_PROMPT)
     && /en UNA línea/.test(S.DEFAULT_MASTER_PROMPT));
+check('y con el estilo del nombre del club — mismo tamaño y azul institucional',
+    /del mismo tamaño y azul institucional que el nombre del club/.test(S.DEFAULT_MASTER_PROMPT));
+check('el catálogo son frases de 8 a 12 palabras, sin cifras',
+    S.ANNIVERSARY_PHRASES.length >= 6
+    && S.ANNIVERSARY_PHRASES.every(f => { const n = f.replace(/[.,]/g, '').split(/\s+/).length; return n >= 8 && n <= 12; })
+    && S.ANNIVERSARY_PHRASES.every(f => !/\d/.test(f)));
+check('la frase es DETERMINISTA por pieza y varía entre piezas',
+    S.phraseForSeed('p1') === S.phraseForSeed('p1')
+    && new Set(Array.from({ length: 50 }, (_, i) => S.phraseForSeed('s' + i))).size > 3);
+check('sin semilla resuelve a la PRIMERA del catálogo — igual que el respaldo de applyMasterVariables',
+    S.phraseForSeed('') === S.ANNIVERSARY_PHRASES[0]
+    && S.applyMasterVariables('{FRASE}', {}) === S.ANNIVERSARY_PHRASES[0]);
+check('la frase elegida viaja SUSTITUIDA en el prompt, sin marcador colgando',
+    (() => {
+        const r = S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5, seed: 'p1' });
+        return r.prompt.includes(S.phraseForSeed('p1')) && !r.prompt.includes('{FRASE}');
+    })());
+check('{FRASE} es una variable CONOCIDA: validateConfig no la marca',
+    !S.validateConfig({}).warnings.some(w => w.includes('{FRASE}')));
 
 // ── v4.914 · La directiva de la referencia #3 ─────────────────────────
 // Del reporte con la pieza delante: el fondo terminaba en un rectángulo

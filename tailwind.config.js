@@ -93,6 +93,14 @@ module.exports = {
           from: { transform: "scale(1)" },
           to: { transform: "scale(1.08)" },
         },
+        // Barra de carga INDETERMINADA (v4.919, Aniversarios IA): una franja
+        // que recorre la pista mientras se espera al proveedor. No afirma un
+        // porcentaje que nadie midió — un progreso inventado hace esperar por
+        // nada (v4.756) —; muestra actividad, que es lo que es verdad.
+        "progress-slide": {
+          from: { transform: "translateX(-110%)" },
+          to: { transform: "translateX(310%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -102,6 +110,7 @@ module.exports = {
         // al cambiar. `forwards` deja la imagen en su tamaño final en vez de
         // dar un salto atrás.
         "hero-zoom": "hero-zoom 5s ease-out forwards",
+        "progress-slide": "progress-slide 1.4s ease-in-out infinite",
       },
     },
   },
