@@ -299,38 +299,56 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     // final entra en pantalla. Sin librería: es un IntersectionObserver y un
     // contador.
     const [pagina, setPagina] = useState(1);
-    const centinela = useRef<HTMLDivElement>(null);
+    // El nodo del centinela vive en ESTADO, no en un useRef (v4.903). El
+    // selector queda montado con `isOpen` en falso —así lo usan todas sus
+    // pantallas— y al reabrirlo con los mismos filtros TODOS los deps del
+    // efecto del observador quedaban idénticos (misma página, mismos 200,
+    // mismo hasMore): el efecto no volvía a correr y el IntersectionObserver
+    // seguía mirando el centinela DESMONTADO de la apertura anterior. El
+    // nuevo no lo observaba nadie: «Mostrar más · quedan 141» con el spinner
+    // girando y el scroll muerto, sin un solo error. Con el nodo en estado,
+    // cada remontaje del centinela (reabrir, el parpadeo de carga, un cambio
+    // de filtro) cambia el dep y el observador se re-engancha al nodo VIVO.
+    const [nodoCentinela, setNodoCentinela] = useState<HTMLDivElement | null>(null);
 
     // Cualquier cambio de filtro empieza de nuevo: conservar la página anterior
     // dejaría al usuario mirando el hueco de una lista que ya no existe.
     useEffect(() => { setPagina(1); }, [selectedCategory, selectedSourceId, currentFolder, searchQuery]);
+    // Y reabrir el selector también: es otra visita, no la continuación de la
+    // anterior — remontar 300 tarjetas de golpe haría lenta la primera pintura.
+    useEffect(() => { if (isOpen) setPagina(1); }, [isOpen]);
 
     const visibles = useMemo(() => media.slice(0, pagina * PAGE_SIZE), [media, pagina]);
     // «Faltan» ahora cuenta también lo que el servidor aún no mandó: sin eso el
     // centinela se apagaba al agotar lo cargado y el scroll moría en la fila 200.
     const faltan = (media.length - visibles.length) + (hasMore ? 1 : 0);
 
+    // El avance es UNO, lo dispare el observador o el botón: hasta v4.902 el
+    // botón sólo movía la ventana local y nunca pedía la tanda siguiente al
+    // servidor — al agotar las 200 cargadas decía «quedan 1» para siempre.
+    const avanzar = useCallback(() => {
+        setPagina(p => p + 1);
+        // La página siguiente del servidor se pide ANTES de agotar la local:
+        // el margen de 600 px + esta anticipación hacen el scroll continuo.
+        if (hasMore && (pagina + 1) * PAGE_SIZE >= media.length - PAGE_SIZE) {
+            fetchMedia(media.length);
+        }
+    }, [hasMore, pagina, media.length, fetchMedia]);
+
     useEffect(() => {
-        const el = centinela.current;
-        if (!el || faltan <= 0) return;
+        if (!nodoCentinela || faltan <= 0) return;
         const obs = new IntersectionObserver(
             entradas => {
                 if (!entradas.some(e => e.isIntersecting)) return;
-                setPagina(p => p + 1);
-                // La página siguiente del servidor se pide ANTES de agotar la
-                // local: el margen de 600 px + esta anticipación hacen el
-                // scroll continuo sin huecos.
-                if (hasMore && (pagina + 1) * PAGE_SIZE >= media.length - PAGE_SIZE) {
-                    fetchMedia(media.length);
-                }
+                avanzar();
             },
             // Un margen generoso: la tanda siguiente se pide ANTES de llegar al
             // final, así el desplazamiento no se corta.
             { root: null, rootMargin: '600px' }
         );
-        obs.observe(el);
+        obs.observe(nodoCentinela);
         return () => obs.disconnect();
-    }, [faltan, visibles.length, hasMore, pagina, media.length, fetchMedia]);
+    }, [nodoCentinela, faltan, avanzar]);
 
     if (!isOpen) return null;
 
@@ -546,9 +564,9 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                         dispararse —una ventana muy alta, un desplazamiento de
                         un tirón—: quedarse sin salida sería peor. */}
                     {!loading && faltan > 0 && (
-                        <div ref={centinela} className="flex flex-col items-center gap-2 py-8">
+                        <div ref={setNodoCentinela} className="flex flex-col items-center gap-2 py-8">
                             <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
-                            <button onClick={() => setPagina(p => p + 1)}
+                            <button onClick={avanzar}
                                 className="text-[11px] font-bold text-gray-500 hover:text-indigo-600">
                                 Mostrar más · quedan {faltan.toLocaleString('es-CO')}
                             </button>
