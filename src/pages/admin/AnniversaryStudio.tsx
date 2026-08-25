@@ -40,7 +40,7 @@ interface Config {
     references: Reference[];
     masterPrompt: string;
     textZone: 'auto' | 'left' | 'right' | 'bottom';
-    promptOptions: { ambient: boolean; useReference: boolean };
+    promptOptions: { ambient: boolean; useReference: boolean; varyDecor: boolean };
     messageInstruction: string; restrictions: string;
     branding: { clubLogo: boolean; districtLine: boolean; footerImage: string | null; watermark: string | null };
     useFullClubName: boolean;
@@ -718,6 +718,14 @@ const AnniversaryStudio: React.FC = () => {
                             <input type="checkbox" checked={config.promptOptions.useReference}
                                 onChange={e => set('promptOptions', { ...config.promptOptions, useReference: e.target.checked })} />
                             Mandar la referencia visual al modelo
+                        </label>
+                        {/* La variedad de verdad exige que el PROMPT cambie por
+                            pieza: «variá la decoración» escrito en el maestro no
+                            varía nada — el prompt idéntico converge (v4.905). */}
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={config.promptOptions.varyDecor}
+                                onChange={e => set('promptOptions', { ...config.promptOptions, varyDecor: e.target.checked })} />
+                            La decoración varía con cada pieza (tema aniversario)
                         </label>
                     </div>
                     <Instruccion

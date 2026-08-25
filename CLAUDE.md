@@ -2704,6 +2704,32 @@ faltan). **Ninguna necesita base, credenciales ni red.**
   personas de la fotografía, que deje libre la franja del texto y que la BANDA
   INFERIOR quede limpia (`FOOTER_CLAUSE`). Sin ellas la pieza no es publicable
   por bonita que salga.
+- **⚠️ LA REFERENCIA LLEVA SU ROTULADO Y EL MODELO LO IMITA** (v4.905). El
+  reporte con capturas: un «¡FELIZ ANIVERSARIO!» fantasma DENTRO del fondo,
+  debajo del nuestro — y la medición de la franja no lo distingue de
+  decoración fina (por eso pasó). Tres defensas, las tres hacen falta: el
+  núcleo del prompt dice que el rotulado de la referencia se imprime DESPUÉS
+  («never draw it»), el envoltorio del maestro dice lo mismo de las palabras
+  que la dirección mencione, y `detectDrawnText` lo PREGUNTA con visión sobre
+  el lienzo crudo — con certeza descalifica (`texto_dibujado`, reintenta una
+  vez con la instrucción concreta; agotado, `plain` con su motivo), sin
+  certeza se entrega con nota. El doble del stub contesta este system también,
+  con la forma real `{content}`.
+- **⚠️ «VARIÁ LA DECORACIÓN» ESCRITO EN EL PROMPT NO VARÍA NADA** (v4.905):
+  el prompt idéntico entre generaciones converge, y estos motores no exponen
+  semilla. La variedad de verdad exige que el PROMPT cambie por pieza:
+  `DECOR_MOTIFS` (catálogo CERRADO de ocho motivos del tema aniversario) y
+  `motifForSeed(pieceId)` — DETERMINISTA, como la asignación A/B del CRM: el
+  reintento de la misma pieza conserva su motivo, dos piezas varían, y «¿por
+  qué esta pieza tiene velas?» tiene respuesta (el motivo va en el sello
+  `engine.motifId`; en el benchmark la semilla es POR FOTOGRAFÍA, para que
+  todos los modelos reciban el mismo juego de prompts). Interruptor
+  `promptOptions.varyDecor` (default true, entra a la huella); sin semilla no
+  se varía — sería una ruleta. En el orden de sacrificio de KIE la decoración
+  cae después del ambiente y antes de la referencia: es variedad, no
+  identidad; con las cláusulas anti-rotulado el caso KIE-con-referencia queda
+  al borde del tope y recorta según el orden declarado — GPT Image (30.000)
+  lleva todo.
 - **⚠️ EL PROMPT MAESTRO (v4.898) SUPERSEDE a `designInstruction` y al estilo
   base.** La dirección de arte vive en `config.masterPrompt` —en la BASE, no en
   el código—, se edita y restaura desde el panel, y se versiona al publicar con
@@ -2909,9 +2935,13 @@ registraría las mismas dos veces), el proxy de imágenes y `useSEO`.
 
 **Limitaciones reales, dichas para no descubrirlas después:**
 
-- **No se comprueba que la imagen generada no traiga texto dibujado.** Se pide
-  por `negative_prompt` y la decisión queda a la vista: quien genera ve la pieza
-  antes de descargarla.
+- **El texto dibujado por el modelo SÍ se comprueba desde v4.905**
+  (`detectDrawnText`), superando la limitación declarada en v4.895. No es OCR
+  —ni un MB de más—: es una pregunta al modelo de visión sobre el lienzo CRUDO,
+  la misma técnica del control de texto de Reels. Sólo `found && confident`
+  descalifica (el ruido de una lectura única, v4.795); sin certeza se entrega
+  con nota. Lo que sigue sin comprobarse es la ESTÉTICA del rotulado ausente:
+  el verificador puede titubear, y quien genera ve la pieza antes de bajarla.
 - **No hay detección de rostros propia.** `checkPreservation` pregunta por
   personas inventadas, desaparecidas y consistencia de rostros usando un modelo
   de visión; no hay un detector que devuelva coordenadas. Que el texto no caiga

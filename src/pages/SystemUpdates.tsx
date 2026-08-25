@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.904.0 | 2026-08-25 (Aniversarios IA: Publicar y Probar actúan sobre LO QUE SE VE)
-// Cache bust: 2026-08-25j
+// UI V4.905.0 | 2026-08-25 (Aniversarios IA: sin rotulado fantasma y decoración variable)
+// Cache bust: 2026-08-25k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.905.0',
+        title: 'Aniversarios IA: sin rotulado fantasma, y la decoración varía por pieza 🎈',
+        description: 'Dos cosas del reporte con capturas. UNO — el «¡FELIZ ANIVERSARIO!» doblado: no era nuestro texto impreso dos veces, era texto que el MODELO DE IMAGEN dibujó dentro del fondo imitando el rotulado de la referencia, y nuestra capa nítida quedó impresa encima. Tres defensas: el prompt ahora le dice expresamente que el rotulado de la referencia y las palabras que mencione el Prompt Maestro se imprimen DESPUÉS por la plataforma (nunca se dibujan); un verificador de visión mira el lienzo crudo —antes de nuestra capa— y pregunta si trae caracteres dibujados (la misma técnica del control de texto de Reels, sin OCR ni un MB de más), y si los ve CON certeza la pieza se regenera una vez con la instrucción concreta — si el segundo intento también trae texto, la composición se descarta y se entrega la fotografía sobre fondo limpio con su motivo, nunca el fantasma como pieza buena. Sin certeza se entrega con nota, para que un titubeo del modelo no descarte una pieza sana. DOS — la decoración: «variá entre generaciones» escrito en el prompt no varía nada, porque el prompt idéntico converge; ahora hay un catálogo de ocho motivos del tema aniversario (globos, serpentinas, confeti, destellos, lazos, flores, brindis, guirnalda) y cada pieza recibe el suyo de forma DETERMINISTA por su id — el reintento conserva su motivo, dos piezas distintas varían, y el motivo queda registrado en el sello de auditoría. Interruptor propio en el panel, encendido por defecto. 33 comprobaciones nuevas entre las dos baterías, verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'correccion'],
+        type: 'fix',
+    },
     {
         version: '4.904.0',
         title: 'Aniversarios IA: Publicar y Probar actúan sobre lo que se ve 👁️',

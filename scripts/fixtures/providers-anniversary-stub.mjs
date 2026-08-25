@@ -56,6 +56,13 @@ export const createKieVideoTask = async () => '';
 export const generateCopy = async ({ imageUrl, system }) => {
     // Con imagen es un ANÁLISIS; sin ella, la redacción. El system distingue
     // el análisis de la REFERENCIA (estilo) del de la FOTOGRAFÍA (personas).
+    // El verificador de texto dibujado (v4.905). Por defecto contesta «sin
+    // texto»; una prueba puede plantar `estado.textoDibujado` para simular el
+    // rotulado fantasma del reporte. La FORMA es la del servicio real:
+    // {content} — un doble con otra forma es el defecto de v4.901.
+    if (imageUrl && /verificador de piezas/i.test(String(system || ''))) {
+        return { content: JSON.stringify(estado.textoDibujado ?? { hasText: false, confident: true, where: '' }) };
+    }
     if (imageUrl && /referencia/i.test(String(system || ''))) {
         return { content: JSON.stringify(estado.referenciaAnalisis ?? {
             background: 'clean white with soft warm gradients',
