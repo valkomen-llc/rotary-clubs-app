@@ -31,11 +31,11 @@ import { sanitizeValues, applyPublicValues, bakeFrozen, isAcceptableImage, deriv
 import { slotFor, adaptForField } from '../lib/designPhoto.js';
 import { generateDesignCopy, improveMessage, TONES } from '../lib/designAI.js';
 import { startComposition, syncComposition } from '../lib/designBackdrop.js';
-import { normalizeComposition } from '../lib/designCompose.js';
+import { normalizeComposition, VARIANT_PLANS } from '../lib/designCompose.js';
 import { searchPublicClubs, districtClubs, findPublicClub, norm as normClub } from '../lib/publicClubs.js';
 import { checkPreservation } from '../lib/designGuard.js';
 
-console.log('[designPublicController] v4.757.0 cargado — Portal público de Plantillas IA. La preservación de la fotografía se mide.');
+console.log('[designPublicController] v4.893.0 cargado — Portal público de Plantillas IA. La silueta se pide sin contradicción y se mide.');
 
 const rowOrNull = async (slug) => {
     const { rows } = await db.query(
@@ -396,11 +396,19 @@ export const publicVerify = async (req, res) => {
         const original = Buffer.from(m[1], 'base64');
 
         const composed = Buffer.from(await (await fetch(composedUrl)).arrayBuffer());
+        // Si el PLAN de esta generación pedía la silueta, el control pregunta
+        // además si el recorte ocurrió de verdad. El `planId` viene del
+        // navegador —que lo recibió al crear la tarea— y se valida contra el
+        // catálogo: uno desconocido, o ausente (un bundle anterior), degrada a
+        // «no se esperaba recorte», que es el comportamiento de siempre. Sólo
+        // decide un AVISO, nunca el descarte, así que no abre nada.
+        const planPedido = VARIANT_PLANS.find(p => p.id === String(req.body?.planId || ''));
         const veredicto = await checkPreservation(original, composed, {
             // Qué hacer cuando el encuadre se lleva a alguien del borde. Lo
             // declara la plantilla: hay piezas donde recortar es diseño y otras
             // donde aparecer es el punto.
             edgeCrop: normalizeComposition(row.composition).photo.edgeCrop,
+            expectCutout: !!planPedido?.cutout,
             // La composición lado a lado se sube al mismo prefijo efímero que la
             // fotografía: la cadena de proveedores acepta una imagen POR URL.
             publish: (buf) => storeTempBuffer(buf, row.slug, 'jpg'),
@@ -416,6 +424,10 @@ export const publicVerify = async (req, res) => {
             // quien descarga la pieza tiene que saber que puede no salir todo
             // el mundo, y el módulo ya ofrece volver a la foto en su recuadro.
             cropped: !!veredicto.cropped,
+            // La silueta que no ocurrió: la foto quedó pegada como rectángulo
+            // con el plan de recorte pedido. Es una nota, no un descarte — la
+            // salida (regenerar, o volver al recuadro) viaja en `notice`.
+            pastedRectangle: !!veredicto.pastedRectangle,
             notice: veredicto.notice || null,
         });
     } catch (e) {

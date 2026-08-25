@@ -34,9 +34,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.892.0 | 2026-08-24 (Una avería en un proveedor de IA ya no tumba toda la plataforma)
-// Cache bust: 2026-08-24h
+// UI V4.893.0 | 2026-08-24 (Silueta: el recorte se pide sin contradicción y se mide)
+// Cache bust: 2026-08-24a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.893.0',
+        title: 'La silueta de la fotografía sale como silueta, no como rectángulo ✂️',
+        description: 'Lo reportado con la pieza delante: con el plan «Silueta en la mitad inferior» —las personas recortadas de su fondo— la composición salía con la fotografía ENTERA pegada como un rectángulo, metida tras la banda del pie. Dos causas y las dos se corrigen. (1) El prompt mandaba dos instrucciones contradictorias sobre la misma foto: la cláusula genérica de integración la describía como una forma con «un margen limpio respirando alrededor» —un rectángulo— y recién después el plan pedía el recorte; el modelo resolvía por el camino barato. Ahora la cláusula de integración OBEDECE al plan: con silueta se pide levantar a las personas de su fondo —sin rectángulo, sin marco, sin el fondo de la foto— y el campo negativo prohíbe expresamente la fotografía rectangular. (2) Nada medía si el recorte ocurrió: la pieza pegada se presentaba como éxito. El control de calidad que ya compara a las personas pregunta ahora, en la misma llamada, si la foto quedó pegada como rectángulo; con la silueta pedida, se avisa con la salida a mano —regenerar la composición, o volver a la fotografía en su recuadro—. Es una nota, no un descarte: las personas son las reales y descartarla también daría un rectángulo, con el crédito ya gastado. En un plan normal la foto-forma con su fondo es el diseño pedido y la señal no pesa.',
+        date: new Date().toISOString(),
+        tags: ['plantillas', 'ia'],
+        type: 'fix',
+        impact: 'Alto',
+        changes: [
+            { type: 'fixed', text: 'Con el plan de silueta, el prompt pide el recorte sin la cláusula que lo contradecía.' },
+            { type: 'added', text: 'El negativo del plan de silueta prohíbe la fotografía como rectángulo.' },
+            { type: 'added', text: 'El control mide si el recorte ocurrió y lo dice, con la salida a mano.' },
+        ]
+    },
     {
         version: '4.892.0',
         title: 'La IA sigue funcionando aunque falle un proveedor',

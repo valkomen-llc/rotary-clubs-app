@@ -129,6 +129,10 @@ export const VARIANT_PLANS = [
         id: 'silueta_inferior',
         label: 'Silueta en la mitad inferior',
         summary: 'Las personas recortadas de su fondo, a lo ancho de la mitad de abajo, tras la banda del pie.',
+        // El recorte NO es un matiz del encuadre: cambia cómo se describe la
+        // fotografía en el prompt entero y qué se prohíbe en el negativo. Los
+        // planes que lo piden lo DECLARAN, y las dos puntas leen esta marca.
+        cutout: true,
         photo: 'the people from the photograph are cut out of their own background and stand together across the lower half of the canvas, large and centred, their lower edge tucked behind the bottom band, with a soft white glow tracing the cut edge of the group so the silhouette lifts gently off the canvas',
         clear: 'the upper left column stays a calm, even surface with plenty of room to read',
         textZone: { y: 0.08, h: 0.34 },
@@ -368,6 +372,19 @@ export const NEGATIVE_PROMPT =
     // cruzando al grupo, y personas que no están en la fotografía.
     + 'gradient ribbon across the people, wavy overlay shape, added figures, extra person';
 
+// Con un plan de SILUETA, lo que no puede aparecer es justamente la fotografía
+// como rectángulo — que es lo que el modelo entrega cuando resuelve el recorte
+// por el camino barato (reportado con la pieza delante: el rectángulo entero
+// metido tras la banda del pie). Va en el campo negativo, no pegado al
+// positivo, por la regla del sitio.
+export const CUTOUT_NEGATIVE =
+    'rectangular photograph, photo rectangle, straight photo edges, photo panel, '
+    + "the photograph's own background kept behind the people, picture frame";
+
+/** El negativo de una generación lo decide el PLAN. */
+export const negativePromptFor = (plan) =>
+    plan?.cutout ? `${NEGATIVE_PROMPT}, ${CUTOUT_NEGATIVE}` : NEGATIVE_PROMPT;
+
 const STYLE_CLAUSES = {
     institucional: 'The mood is calm and institutional: soft light, generous white space, understated elegance.',
     calido: 'The mood is warm and human: soft daylight, gentle warmth in the tones, welcoming.',
@@ -404,17 +421,31 @@ export const buildBackdropPrompt = ({ composition, plan, palette = {}, photo = n
         } else {
             partes.push('The first image is the finished brand canvas: reproduce it unchanged — same colours, same sweeping curve in the same place, same empty areas. Its surface stays bright and light throughout. Do not restyle it and do not redraw it. The only thing added is the photograph.');
         }
-        // Cómo se INTEGRA, no sólo que se integre. Es lo que separa una foto
-        // pegada de una pieza de papelería: la fotografía va DENTRO de una
-        // forma que pertenece al lienzo —un recorte de bordes curvos, con su
-        // margen limpio alrededor— y la luz de las dos se encuentra.
+        // Cómo se INTEGRA, no sólo que se integre — y CÓMO lo dice el PLAN.
+        //
+        // Con un plan normal, la fotografía va DENTRO de una forma que
+        // pertenece al lienzo —un recorte de bordes curvos, con su margen
+        // limpio alrededor— y la luz de las dos se encuentra.
+        //
+        // Con un plan de SILUETA esa misma cláusula era una CONTRADICCIÓN:
+        // describía la foto como una forma con margen alrededor —un
+        // rectángulo— y recién después el plan pedía «las personas recortadas
+        // de su fondo». Dos instrucciones opuestas sobre la misma imagen, y el
+        // modelo resolvía por el camino barato: pegaba el rectángulo entero
+        // tras la banda. Se reportó con la pieza delante. Sobre una misma
+        // imagen manda UNA sola descripción (regla del sitio: ojo con las
+        // frases que se contradicen entre ramas).
         //
         // Y el TAMAÑO se dice: sin él salía una miniatura con marco flotando en
         // el medio. «Grande» y «una parte sustancial de la lámina» es lo que
         // entiende un modelo de imagen; un porcentaje no.
-        partes.push('The second image is a real photograph of the club members. Set it into the canvas as printed stationery does: a clean margin of canvas breathing around it, its edge easing into the surface instead of sitting in a frame, and its light and colour matched so the two read as a single designed piece.');
+        partes.push(p.cutout
+            ? "The second image is a real photograph of the club members. Lift the people cleanly out of that photograph: none of the photograph's own background comes with them, no rectangle and no frame around them — only the group itself standing directly on the canvas, its light and colour matched so the two read as a single designed piece."
+            : 'The second image is a real photograph of the club members. Set it into the canvas as printed stationery does: a clean margin of canvas breathing around it, its edge easing into the surface instead of sitting in a frame, and its light and colour matched so the two read as a single designed piece.');
     } else if (photo) {
-        partes.push('The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
+        partes.push(p.cutout
+            ? "The image is a real photograph of the club members. Lift the people cleanly out of it — none of its background, no rectangle, no frame — and build a clean institutional canvas behind them, soft light surfaces and gentle flowing curves, so the group stands directly inside a designed layout."
+            : 'The image is a real photograph of the club members. Build a clean institutional canvas around it — soft light surfaces, gentle flowing curves — so the photograph belongs inside a designed layout.');
     } else if (hasBase) {
         partes.push('The image is the brand canvas: keep its texture, its curves and its colours, and extend it into a complete square layout.');
     }
@@ -679,7 +710,7 @@ export default {
     COMPOSE_MODEL, MAX_VARIANTS, DEFAULT_VARIANTS,
     VARIANT_PLANS, planById, plansFor,
     COMPOSITION_DEFAULTS, normalizeComposition,
-    buildBackdropPrompt, NEGATIVE_PROMPT, PROMPT_MAX_CHARS, MOTIF_MAX_CHARS,
+    buildBackdropPrompt, NEGATIVE_PROMPT, CUTOUT_NEGATIVE, negativePromptFor, PROMPT_MAX_CHARS, MOTIF_MAX_CHARS,
     textBandOf, clearClauseFor,
     BACKDROP_ROLE, backdropNode, withBackdrop, withoutBackdrop, hasBackdrop,
     BASE_ROLE, baseNode, withBase, hasBase,
