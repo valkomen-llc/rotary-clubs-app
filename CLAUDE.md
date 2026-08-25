@@ -2554,7 +2554,7 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
-## Aniversarios IA — v4.895
+## Aniversarios IA — v4.895 (motor multimodelo: v4.897)
 
 Módulo **nuevo e independiente**. Genera la pieza gráfica del aniversario de un
 club a partir de cuatro datos: club, años, fotografía y un botón. El
@@ -2835,6 +2835,134 @@ registraría las mismas dos veces), el proxy de imágenes y `useSEO`.
   que parece roto. El usuario escribe los años, que es un dato que sabe.
 - **Un aniversario generado no se guarda en la Biblioteca Multimedia.** Se
   descarga. La fila de `AnniversaryPiece` es la traza, no el archivo publicado.
+
+### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897)
+
+El módulo deja de tener un modelo escrito en el código y pasa a tener una capa:
+
+    proveedor (KIE) → catálogo de modelos → elegibilidad por capacidades
+    → benchmark → recomendado → ACTIVACIÓN EXPLÍCITA → producción → fallback
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/anniversaryEngineSpec.js` | El CRITERIO del motor. **Puro**: catálogo, capacidades, elegibilidad, pesos, puntuación, recomendación, clasificación del fallo y sello de auditoría |
+| `server/lib/anniversaryModels.js` | La I/O del motor y del benchmark |
+| `src/components/admin/anniversaries/EnginePanel.tsx` | Las dos tarjetas: «Motor de imagen» y «Modelos IA — benchmark» |
+
+Pruebas: `npm run test:anniversary:engine` (67 casos de criterio) más los
+grupos 16-20 de `test:anniversary:path` (el camino real: despacho con modelo
+configurable, sello, fallback y benchmark de punta a punta).
+
+**Reglas durables:**
+
+- **⚠️ NADA CAMBIA EL MODELO DE PRODUCCIÓN EN SILENCIO.** Un benchmark
+  RECOMIENDA; una persona ACTIVA. `resolveProduction` sólo lee lo activado,
+  jamás lo recomendado, y la activación guarda de qué corrida salió, cuándo y
+  quién. Es el requisito 20 y lo comprueba la prueba del camino capturando el
+  activo **antes** de correr el benchmark — la primera versión lo leía
+  DESPUÉS y un cambio automático durante la corrida caía fuera de la ventana:
+  la aserción pasaba por el motivo equivocado. **Al comprobar que algo NO
+  cambió, capturar el estado antes del primer acto que podría cambiarlo.**
+- **⚠️ EL FALLBACK ES DE INFRAESTRUCTURA, NUNCA ESTÉTICO.** Timeout, 5xx,
+  límite del proveedor o un modelo retirado disparan el respaldo
+  (`classifyProviderError`); una composición fea NO — de eso se ocupa la
+  validación de calidad con su reintento, **en el mismo modelo**. Confundirlos
+  haría que cada pieza mediocre gastara créditos en dos modelos. Lo comprueban
+  las dos pruebas, verificado a la inversa.
+- **⚠️ EL CATÁLOGO ES DECLARADO, Y HAY QUE DECIRLO.** KIE **no expone** en esta
+  integración ningún endpoint que liste modelos ni sus capacidades: lo que hay
+  es `jobs/createTask` con un id. Así que las capacidades se declaran —desde la
+  documentación del proveedor y lo medido en este repositorio— y un modelo
+  nuevo se agrega como CANDIDATO desde el panel. **Afirmar «detección
+  automática de modelos nuevos» sería fingir una integración que no existe.**
+  Los ids se corrigen por entorno porque KIE los renombra.
+- **UN MODELO QUE NO PUEDE RESPETAR LA FOTOGRAFÍA NO ENTRA**, por atractivas
+  que sean sus imágenes (`eligibility`): imagen-a-imagen, al menos una imagen
+  de referencia y resolución suficiente son OBLIGATORIAS y bloquean. Lo demás
+  —una sola referencia, sin prompt negativo, sin extensión generativa— AVISA:
+  el modelo sirve y quien lo activa tiene que saber qué pierde.
+- **⚠️ UN MODELO SIN `negative_prompt` DECLARADO NO LO RECIBE.** KIE valida el
+  `input` contra el esquema de CADA modelo y los campos que no declara rompen
+  la tarea — es lo que tumbó el Generador de Outros en v4.645. Sus
+  restricciones viajan sólo dentro del positivo, y la elegibilidad ya lo avisó.
+- **NO SE MANDAN `guidance`, `strength` NI `seed`**, y no es una omisión: los
+  modelos de edición de esta pasarela exponen `{ prompt, image_urls,
+  negative_prompt?, image_size, output_format }` y nada más. Cualquier plan que
+  dependa de «bajar la creatividad» por parámetro no es implementable con este
+  proveedor — la misma lección que Kling en el Creador de Reels. Los parámetros
+  por modelo que SÍ existen son los nuestros: timeout, reintentos y créditos.
+- **EL BENCHMARK CORRE POR LA MISMA CADENA QUE PRODUCCIÓN**: mismo
+  `startComposition`, mismo prompt del borrador, y las notas salen de **las
+  mismas mediciones** que juzgan una pieza real (`verifyComposition`). Un
+  benchmark con su propio pipeline no compararía nada. Y cada fotografía se
+  ingiere y se analiza UNA vez: el análisis compartido es lo que garantiza que
+  todos los modelos reciban exactamente el mismo prompt.
+- **⚠️ «CUÁNTOS PROMPTS DISTINTOS HAY» NO COMPRUEBA ESO.** Con dos fotografías
+  iguales, un solo prompt distinto es el resultado correcto y la aserción
+  pasaba por el motivo equivocado. Lo que se comprueba es que **cada modelo
+  recibió el mismo juego de prompts**.
+- **EL SCORE SE CALCULA SOBRE LO MEDIDO, RENORMALIZANDO LOS PESOS**, y lo no
+  medido **se nombra**. Promediar los nulos como ceros hundiría a un modelo por
+  lo que nadie pudo mirar; ignorarlos sin renormalizar inflaría al que menos se
+  midió. Un cero es una afirmación; un hueco es la verdad.
+- **LO QUE NINGUNA MÁQUINA MIDE SÓLO PUNTÚA CON VOTOS.** Integración de la
+  fotografía y calidad compositiva quedan declaradas «sin medir» hasta que
+  alguien vote 👍👎⭐. El voto **no pisa** la fidelidad cuando el modelo de
+  visión sí contestó: completa, no sustituye.
+- **MÁS FALLOS QUE ÉXITOS DESCALIFICA POR INESTABLE**, por alta que sea la
+  nota: la estabilidad es un criterio del pedido, no una nota más. Y el
+  desempate es el ORDEN DEL CATÁLOGO: dos corridas del mismo benchmark no
+  pueden recomendar modelos distintos.
+- **FIDELIDAD Y ROSTROS PESAN MÁS QUE COSTO Y VELOCIDAD**, y los pesos son
+  configurables. Estamos generando piezas institucionales: un rostro deformado
+  invalida la generación por barata que haya salido.
+- **UN BENCHMARK DE UN SOLO MODELO NO COMPARA NADA** y se rechaza con su
+  motivo, igual que uno sin fotografías.
+- **EL SONDEO DEL BENCHMARK TIENE PRESUPUESTO** (4 celdas por pasada). La
+  función corta a los 300 s y una corrida de 4×8 no entra en una: lo que no
+  entra espera al siguiente sondeo, **no se pierde**. Misma regla que el
+  barrido del Creador de Reels.
+- **EL CIERRE DE UNA CELDA ES UN UPDATE CONDICIONAL** (`AND status =
+  'pending'`): dos sondeos simultáneos pueden mirar la misma tarea, pero sólo
+  uno la cierra. Es la forma de `ingestScene`.
+- **CADA PIEZA GUARDA SU SELLO DE AUDITORÍA** (`engine`): proveedor, modelo,
+  versión de prompt, versión de preset, si se usó el respaldo y la latencia
+  REAL medida desde el despacho. Es el requisito 21 — sin él, «¿por qué esta
+  pieza de marzo salió así?» no distingue un cambio de modelo de un cambio
+  nuestro de prompt. **El preset es POR MODELO**: mezclar parámetros entre
+  modelos es mezclar semánticas distintas.
+- **LA CONFIGURACIÓN DEL MOTOR VIVE APARTE DE LAS INSTRUCCIONES** (columna
+  `engine`, fuera de `draft`/`published`): cambiar el modelo es una decisión
+  técnica que aplica en el acto y no reescribe la dirección de arte ni crea una
+  versión editorial. La traza no se pierde: viaja en el sello de cada pieza.
+- **`ANNIVERSARY_MODEL` GANA SOBRE EL PANEL, Y EL PANEL LO DICE.** Es la salida
+  de emergencia sin desplegar cuando KIE retira un id. Sin ese aviso, alguien
+  cambia el activo, no pasa nada y no tiene forma de saber por qué.
+- **UN ACTIVO QUE DEJÓ DE SER ELEGIBLE DEGRADA AL DEFAULT y lo dice**:
+  producción no puede quedarse sin motor porque alguien declaró mal un
+  candidato. Y un fallback igual al primario se ignora — reintentar contra lo
+  que acaba de fallar no es un respaldo.
+- **NADA DE ESTO LLEGA AL FORMULARIO PÚBLICO.** Club, años, fotografía y un
+  botón. Lo comprueba una prueba sobre el archivo.
+
+**Variables de entorno del motor:**
+
+| Variable | Para qué |
+|---|---|
+| `ANNIVERSARY_MODEL` | Fuerza un modelo saltándose el panel. Salida de emergencia cuando KIE retira un id |
+| `ANNIVERSARY_MODEL_NANO_BANANA` · `_FLUX_KONTEXT` · `_SEEDREAM` | Corregir el id de un modelo del catálogo sin desplegar |
+
+**Limitaciones reales del motor:**
+
+- **No hay descubrimiento automático de modelos.** KIE no lo permite en esta
+  integración; un modelo nuevo se declara a mano y se prueba.
+- **Las capacidades de un candidato agregado a mano son DECLARADAS, no
+  verificadas.** Lo que las verifica es el benchmark.
+- **Los créditos son el medidor PROPIO**, no el saldo de KIE: el proveedor no
+  devuelve el costo de una tarea.
+- **El benchmark gasta créditos reales**, una celda por modelo × fotografía.
+- **No se compara contra un ojo humano ciego**: el voto sabe qué modelo generó
+  cada pieza, así que arrastra el sesgo de quien vota.
 
 ## El asistente de redacción de Noticias — v4.891
 

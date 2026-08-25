@@ -17,13 +17,13 @@
 // de más.
 // ════════════════════════════════════════════════════════════════════
 
-export let tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [] };
+export let tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
 export let log = [];
 let seq = 0;
 const id = (p) => `${p}-${++seq}`;
 
 export const reset = () => {
-    tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [] };
+    tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
     log = [];
     seq = 0;
 };
@@ -38,7 +38,7 @@ const query = async (text, params = []) => {
 
     // El esquema: acá las tablas ya están. Crearlas es cosa de Postgres.
     if (/to_regclass/.test(sql)) {
-        return { rows: [{ cfg: true, ver: true, pza: true, render_col: true, brand_col: true, pubver_col: true }] };
+        return { rows: [{ cfg: true, ver: true, pza: true, bench: true, benchres: true, render_col: true, brand_col: true, pubver_col: true, engine_pza_col: true, engine_cfg_col: true }] };
     }
     if (/^(CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX|ALTER TABLE)/i.test(sql)) return { rows: [] };
 
@@ -53,7 +53,7 @@ const query = async (text, params = []) => {
         const fila = {
             id: id('cfg'), kind, clubId: clubId ?? null, name, enabled: false,
             draft: JSON.parse(draft), published: null, publishedVersionId: null,
-            publishedAt: null, publishedBy: null,
+            publishedAt: null, publishedBy: null, engine: null,
         };
         tablas.AnniversaryConfig.push(fila);
         return { rows: [clon(fila)] };
@@ -68,6 +68,12 @@ const query = async (text, params = []) => {
         const [published, versionId, by, rowId] = params;
         const f = tablas.AnniversaryConfig.find(c => c.id === rowId);
         Object.assign(f, { published: JSON.parse(published), publishedVersionId: versionId, publishedAt: new Date(), publishedBy: by });
+        return { rows: [clon(f)] };
+    }
+    if (/^UPDATE "AnniversaryConfig" SET engine = \$1/.test(sql)) {
+        const [engine, rowId] = params;
+        const f = tablas.AnniversaryConfig.find(c => c.id === rowId);
+        f.engine = JSON.parse(engine);
         return { rows: [clon(f)] };
     }
     if (/^UPDATE "AnniversaryConfig" SET published = NULL/.test(sql)) {
@@ -122,7 +128,7 @@ const query = async (text, params = []) => {
         const fila = {
             id: id('pza'), configId, versionId, versionNumber, mode, clubId, subjectClubId,
             clubName, years, photoUrl, photoWidth, photoHeight,
-            analysis: null, copy: null, branding: null, taskId: null, attempts: 0,
+            analysis: null, copy: null, branding: null, engine: null, taskId: null, attempts: 0,
             backdropUrl: null, zoneId: null, renderMode: null,
             status: 'draft', statusDetail: null, validation: null,
         };
@@ -165,6 +171,63 @@ const query = async (text, params = []) => {
     if (/^SELECT id, mode, "clubName"/.test(sql)) {
         const configId = params[0];
         return { rows: tablas.AnniversaryPiece.filter(p => p.configId === configId).map(clon) };
+    }
+
+    // ── Benchmark ───────────────────────────────────────────────────
+    if (/^INSERT INTO "AnniversaryBenchmark"/.test(sql)) {
+        const [configId, models, photos, weights, createdBy] = params;
+        const fila = {
+            id: id('bmk'), configId, status: 'running', models: JSON.parse(models),
+            photos: JSON.parse(photos), weights: weights ? JSON.parse(weights) : null,
+            notes: null, createdBy, createdAt: new Date(), finishedAt: null,
+        };
+        tablas.AnniversaryBenchmark.push(fila);
+        return { rows: [clon(fila)] };
+    }
+    if (/^SELECT \* FROM "AnniversaryBenchmark" WHERE id = \$1/.test(sql)) {
+        const f = tablas.AnniversaryBenchmark.find(b => b.id === params[0]);
+        return { rows: f ? [clon(f)] : [] };
+    }
+    if (/FROM "AnniversaryBenchmark"[\s\S]*ORDER BY "createdAt" DESC/.test(sql)) {
+        return { rows: tablas.AnniversaryBenchmark.map(clon) };
+    }
+    if (/^UPDATE "AnniversaryBenchmark" SET status/.test(sql)) {
+        const [status, bid] = params;
+        const f = tablas.AnniversaryBenchmark.find(b => b.id === bid);
+        if (f) { f.status = status; f.finishedAt = new Date(); }
+        return { rows: f ? [clon(f)] : [] };
+    }
+    if (/^INSERT INTO "AnniversaryBenchmarkResult"/.test(sql)) {
+        const [benchmarkId, model, photoIndex, taskId, status, error] = params;
+        const fila = {
+            id: id('res'), benchmarkId, model, photoIndex, taskId, status, error,
+            imageUrl: null, latencyMs: null, auto: null, vote: null,
+            dispatchedAt: new Date(), createdAt: new Date(),
+        };
+        tablas.AnniversaryBenchmarkResult.push(fila);
+        return { rows: [clon(fila)] };
+    }
+    if (/^SELECT \* FROM "AnniversaryBenchmarkResult"/.test(sql)) {
+        return {
+            rows: tablas.AnniversaryBenchmarkResult
+                .filter(r => r.benchmarkId === params[0])
+                .sort((a, b) => a.photoIndex - b.photoIndex || a.model.localeCompare(b.model))
+                .map(clon),
+        };
+    }
+    if (/^UPDATE "AnniversaryBenchmarkResult" SET /.test(sql)) {
+        const rid = params[params.length - 1];
+        const f = tablas.AnniversaryBenchmarkResult.find(r => r.id === rid);
+        if (!f) return { rows: [] };
+        // El candado del cierre se lee del SQL, no se implementa acá: un doble
+        // que escribe la regla que la prueba comprueba no comprueba nada
+        // (lección de v4.896).
+        if (/AND status = 'pending'/.test(sql) && f.status !== 'pending') return { rows: [] };
+        for (const m of sql.matchAll(/"(\w+)" = \$(\d+)(::jsonb)?/g)) {
+            const valor = params[Number(m[2]) - 1];
+            f[m[1]] = m[3] ? JSON.parse(valor) : valor;
+        }
+        return { rows: [clon(f)] };
     }
 
     // ── Club (el sitio y el club al que se felicita) ────────────────

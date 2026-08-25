@@ -35,6 +35,7 @@
 import { createKieImageTask, getKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { checkPreservation } from './designGuard.js';
+import { DEFAULT_MODEL_ID, modelById } from './anniversaryEngineSpec.js';
 import {
     ANALYSIS_SYSTEM, ANALYSIS_USER, readAnalysis, fallbackAnalysis,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, repairCopy,
@@ -44,10 +45,12 @@ import {
 
 // ─── El modelo de imagen ───────────────────────────────────────────────
 //
-// Configurable por entorno porque KIE renombra ids: si el default deja de
-// existir, se corrige el entorno sin desplegar. Es la regla de los motores de
-// Outros y de Reels.
-export const COMPOSE_MODEL = () => process.env.ANNIVERSARY_MODEL || 'google/nano-banana-edit';
+// Desde v4.897 el modelo lo decide la CONFIGURACIÓN DEL MOTOR
+// (`anniversaryEngineSpec.resolveProduction`): catálogo declarado, activación
+// explícita tras benchmark y fallback de infraestructura. `ANNIVERSARY_MODEL`
+// queda como la salida de emergencia sin desplegar —gana sobre el panel, y el
+// panel lo dice— porque KIE renombra ids (regla de Outros y Reels).
+export const COMPOSE_MODEL = () => process.env.ANNIVERSARY_MODEL || DEFAULT_MODEL_ID;
 
 const bucket = () => process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 const region = () => process.env.AWS_REGION || 'us-east-1';
@@ -232,7 +235,7 @@ export const writeCopy = async ({ config, clubName, years, analysis, provider = 
 
 // ─── Etapa 4 — la composición ──────────────────────────────────────────
 
-export const startComposition = async ({ config, photoUrl, years, analysis, extraClause = '' } = {}) => {
+export const startComposition = async ({ config, photoUrl, years, analysis, extraClause = '', model = null, engineConfig = null } = {}) => {
     if (!process.env.KIE_API_KEY) {
         // Se NOMBRA la variable que falta. Un «no se pudo generar» a secas
         // manda a diagnosticar a ciegas.
@@ -256,16 +259,26 @@ export const startComposition = async ({ config, photoUrl, years, analysis, extr
     // el prompt habla de «la primera» y «la segunda» imagen.
     const imageUrls = [referencia?.url, photoUrl].filter(Boolean);
 
+    // El modelo: el explícito (benchmark, fallback) > la configuración del
+    // motor no viaja hasta acá —la resuelve el controlador— > la emergencia
+    // del entorno > el default del catálogo.
+    const modeloElegido = model || COMPOSE_MODEL();
+    const ficha = modelById(modeloElegido, engineConfig || {});
+
     const taskId = await createKieImageTask({
-        model: COMPOSE_MODEL(),
+        model: modeloElegido,
         prompt: extraClause ? `${prompt}\n${extraClause}` : prompt,
         imageUrl: imageUrls[0],
         imageUrls: imageUrls.length > 1 ? imageUrls : null,
-        negativePrompt: buildNegativePrompt(c),
+        // Un modelo SIN campo de prompt negativo declarado no lo recibe:
+        // mandar campos que el modelo no declara es lo que rompió Outros en
+        // v4.645. Sus restricciones sólo viajan dentro del positivo, y la
+        // elegibilidad ya lo AVISÓ al elegirlo.
+        negativePrompt: ficha && ficha.capabilities?.negativePrompt === false ? null : buildNegativePrompt(c),
         aspectRatio: formatById(c.format).aspect,
         outputFormat: 'png',
     });
-    return { taskId, zoneId, prompt, dropped, model: COMPOSE_MODEL(), usedReference: !!referencia };
+    return { taskId, zoneId, prompt, dropped, model: modeloElegido, usedReference: !!referencia };
 };
 
 /** Sondea la tarea. Devuelve `pending` mientras el proveedor trabaja; cuando

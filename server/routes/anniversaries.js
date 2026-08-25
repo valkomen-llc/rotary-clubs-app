@@ -24,6 +24,8 @@ import {
     getCatalog, getConfig, putConfig, postPublish, postUnpublish,
     getVersions, postRestoreVersion, getClubs, getPieces,
     postTestPhoto, postTestAnalyze, postTestCopy, postTestCompose, getTestPiece,
+    getEngine, putEngine, postEngineActivate,
+    postBenchmarkRun, getBenchmarkRun, postBenchmarkVote,
 } from '../controllers/anniversaryController.js';
 import {
     getPublicConfig, getPublicClubs, postPublicPhoto,
@@ -63,7 +65,17 @@ router.post('/test/copy', authMiddleware, operador, postTestCopy);
 router.post('/test/compose', authMiddleware, operador, postTestCompose);
 router.get('/test/piece/:id', authMiddleware, operador, getTestPiece);
 
+// El motor de imagen y su benchmark (v4.897). Del operador, como el resto del
+// panel. Las literales de `/engine` y `/benchmark` van ANTES que sus
+// paramétricas — el orden es lo que `check:routes` hace cumplir.
+router.get('/engine', authMiddleware, operador, getEngine);
+router.put('/engine', authMiddleware, operador, putEngine);
+router.post('/engine/activate', authMiddleware, operador, postEngineActivate);
+router.post('/benchmark', authMiddleware, operador, postBenchmarkRun);
+router.post('/benchmark/vote', authMiddleware, operador, postBenchmarkVote);
+
 // Paramétricas al final de su grupo.
+router.get('/benchmark/:id', authMiddleware, operador, getBenchmarkRun);
 router.post('/versions/:id/restore', authMiddleware, operador, postRestoreVersion);
 
 export default router;

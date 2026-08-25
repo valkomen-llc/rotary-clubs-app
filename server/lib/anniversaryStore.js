@@ -226,9 +226,9 @@ export const readPiece = async (id) => {
  */
 const PIECE_FIELDS = new Set([
     'analysis', 'copy', 'branding', 'taskId', 'attempts', 'backdropUrl', 'zoneId',
-    'renderMode', 'status', 'statusDetail', 'validation', 'subjectClubId',
+    'renderMode', 'status', 'statusDetail', 'validation', 'subjectClubId', 'engine',
 ]);
-const JSON_FIELDS = new Set(['analysis', 'copy', 'branding', 'validation']);
+const JSON_FIELDS = new Set(['analysis', 'copy', 'branding', 'validation', 'engine']);
 
 export const updatePiece = async (id, patch) => {
     await ensureAnniversarySchema();
@@ -276,7 +276,7 @@ export const listPieces = async (clubId, { mode = null, limit = 30 } = {}) => {
     params.push(Math.min(100, Math.max(1, Number(limit) || 30)));
     const { rows } = await db.query(
         `SELECT id, mode, "clubName", years, "versionNumber", status, "statusDetail",
-                "renderMode", "backdropUrl", "zoneId", copy, validation, "createdAt"
+                "renderMode", "backdropUrl", "zoneId", copy, validation, engine, "createdAt"
            FROM "AnniversaryPiece"
           WHERE ${where}
           ORDER BY "createdAt" DESC

@@ -16,19 +16,26 @@ export let estado = {
     preservation: { state: 'ok', use: true },
     subidas: [],
     fallarCreateTask: null,
+    // Falla sólo para ESTE modelo: es como se ejercita el fallback sin
+    // tumbar toda la corrida.
+    fallarModelo: null,
 };
 
 export const reset = (patch = {}) => {
     estado = {
         tareas: [], resultado: 'success', imagen: null, copyRespuestas: [],
         analisis: null, preservation: { state: 'ok', use: true }, subidas: [],
-        fallarCreateTask: null, ...patch,
+        fallarCreateTask: null, fallarModelo: null, ...patch,
     };
 };
 
 // ── kieService ─────────────────────────────────────────────────────────
 export const createKieImageTask = async (opts) => {
     if (estado.fallarCreateTask) throw new Error(estado.fallarCreateTask);
+    if (estado.fallarModelo && opts.model === estado.fallarModelo.model) {
+        estado.tareas.push({ ...opts, rechazada: true });
+        throw new Error(estado.fallarModelo.error);
+    }
     estado.tareas.push(opts);
     return `task-${estado.tareas.length}`;
 };

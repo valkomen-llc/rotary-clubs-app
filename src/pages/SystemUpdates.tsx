@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.895.0 | 2026-08-25 (Aniversarios IA: módulo nuevo e independiente, por instrucciones)
-// Cache bust: 2026-08-25a
+// UI V4.897.0 | 2026-08-25 (Aniversarios IA: motor multimodelo sobre KIE con benchmark)
+// Cache bust: 2026-08-25c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.897.0',
+        title: 'Aniversarios IA: motor multimodelo sobre KIE, con benchmark 🔬',
+        description: 'El módulo deja de tener un modelo escrito en el código y pasa a tener una capa de proveedor → modelo → capacidades → benchmark → activación → producción → fallback. Dos tarjetas nuevas en el panel: «Motor de imagen» (proveedor KIE, modo automático o manual, modelo activo, respaldo y candidatos declarados a mano) y «Modelos IA — benchmark» (las mismas fotografías y el mismo prompt contra varios modelos, resultados lado a lado, votos 👍👎⭐ y activación explícita). Tres decisiones sostienen todo: NADA cambia el modelo de producción en silencio —el benchmark recomienda, una persona activa, y queda registrado de qué corrida salió—; el FALLBACK es de infraestructura (timeout, 5xx, límite, modelo retirado) y NUNCA estético —una composición imperfecta la resuelve el reintento de calidad, en el mismo modelo—; y el catálogo es DECLARADO, porque KIE no expone endpoint que liste modelos: un modelo nuevo se agrega como candidato, se compara y recién entonces se puede activar. El score pondera nueve criterios configurables, se calcula SOBRE LO MEDIDO renormalizando los pesos, y lo que no se pudo medir se nombra en vez de contarse como cero. Cada pieza guarda su sello de auditoría: proveedor, modelo, versión de prompt, versión de preset, si se usó el respaldo y la latencia real. El formulario público no cambió en nada: club, años, fotografía y un botón.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'kie', 'modelos', 'benchmark'],
+        type: 'feature',
+    },
     {
         version: '4.896.0',
         title: 'Aniversarios IA: el camino del servidor, probado 🧪',
