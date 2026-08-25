@@ -665,22 +665,25 @@ const drawBranding = async (ctx: CanvasRenderingContext2D, doc: AnniversaryDocum
     const bandaH = FOOTER_BAND.h * H;
     const hayAlgo = !!(b.clubLogo || b.districtLine || b.footerImage);
 
-    // ⚠️ EL PIE INSTITUCIONAL OCUPA LA BANDA ENTERA (v4.902). La imagen del
-    // pie —las curvas azul y dorado de la referencia— está diseñada a lo
-    // ancho: metida en una caja a la derecha quedaba como un sello suelto y
-    // la pieza no se parecía a la referencia. Se dibuja como fondo de TODA la
-    // banda, y el logotipo y la línea del distrito van ENCIMA.
+    // ⚠️ EL PIE INSTITUCIONAL SE IMPRIME TAL CUAL (v4.917, pedido expreso del
+    // cliente): la imagen que subió el administrador va al ancho COMPLETO del
+    // lienzo, con su proporción NATIVA, anclada al borde inferior — como una
+    // capa encima de la pieza, sin recortarla ni estirarla. Hasta v4.916 se
+    // dibujaba con `cover` recortada a la banda del 16 %: un pie con otra
+    // proporción salía mutilado. El archivo del administrador manda; si su
+    // pie es más alto que la banda, sube sobre el diseño a propósito — la
+    // zona inferior de la pieza ya viene reservada por el prompt. Y se carga
+    // con los MISMOS reintentos que el diseño (v4.915): desde este pedido el
+    // pie es la firma estándar de todas las piezas, no un adorno.
     let pieCubierto = false;
     if (b.footerImage) {
         try {
-            const img = await loadImage(b.footerImage);
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(0, bandaY, W, bandaH);
-            ctx.clip();
-            drawCover(ctx, img, 0, bandaY, W, bandaH);
-            ctx.restore();
-            pieCubierto = true;
+            const img = await loadBackdrop(b.footerImage);
+            if (img.naturalWidth > 0) {
+                const altoPie = W * (img.naturalHeight / img.naturalWidth);
+                ctx.drawImage(img, 0, H - altoPie, W, altoPie);
+                pieCubierto = true;
+            }
         } catch { warnings.push('No se pudo cargar el pie institucional.'); }
     }
     if (hayAlgo && !pieCubierto) {

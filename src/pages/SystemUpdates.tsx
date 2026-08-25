@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.916.0 | 2026-08-25 (Aniversarios IA: marco y años estandarizados)
-// Cache bust: 2026-08-25o
+// UI V4.917.0 | 2026-08-25 (Aniversarios IA: el pie institucional se imprime tal cual)
+// Cache bust: 2026-08-25p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.917.0',
+        title: 'Aniversarios IA: el pie institucional se imprime tal cual 📐',
+        description: 'Pedido expreso del cliente: la imagen del pie que sube el administrador tiene que aparecer SIEMPRE sobre las piezas generadas, como una capa encima, sin alterarla. Hasta v4.916 el compositor la dibujaba con «cover» recortada a la banda del 16 %: un pie con otra proporción salía mutilado por los costados o por arriba. Ahora se imprime TAL CUAL: al ancho completo del lienzo, con su proporción nativa, anclada al borde inferior — el archivo del administrador manda, y la zona inferior de la pieza ya viene reservada por el prompt. Además el pie se carga con los mismos reintentos que el diseño (v4.915): desde este pedido es la firma estándar de todas las piezas, no un adorno cosmético — un tropiezo de red no puede dejarlo fuera. El logotipo del club y la línea del distrito siguen imprimiéndose encima, en la banda. Dos comprobaciones nuevas en la batería de navegador: un pie sintético de proporción 0,12 tiene que aparecer con el borde superior exactamente en H − 0,12×W (proporción nativa, no la banda) y ocupar el ancho completo sin recorte lateral. Recordatorio operativo: el formulario público lee la configuración PUBLICADA — si el pie se subió al borrador, hay que pulsar «Publicar» para que salga en las piezas del público; «Probar generación» sí usa el borrador.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'mejora'],
+        type: 'improvement',
+    },
     {
         version: '4.916.0',
         title: 'Aniversarios IA: el marco de la foto y los años quedan estandarizados 🖼️',
