@@ -2581,9 +2581,37 @@ independencia declarada en prosa no protege nada.
 | `src/pages/admin/AnniversaryStudio.tsx` | El panel (`/admin/aniversarios-ia`) |
 | `src/pages/AniversarioIA.tsx` | El formulario público (`/aniversarios`) |
 
-Pruebas: `npm run test:anniversary` (134 casos de criterio, **sin base,
-credenciales ni red**) y `npm run test:anniversary:render` (14 en un navegador
-de verdad; pide `playwright` y `esbuild` y **se salta solo** si faltan).
+Pruebas: `npm run test:anniversary` (134 casos de criterio),
+`npm run test:anniversary:path` (108, el CAMINO del servidor con la base y los
+proveedores sustituidos en memoria) y `npm run test:anniversary:render` (14 en
+un navegador de verdad; pide `playwright` y `esbuild` y **se salta solo** si
+faltan). **Ninguna necesita base, credenciales ni red.**
+
+- **⚠️ EL CRITERIO PUEDE ESTAR BIEN Y EL DEFECTO VIVIR EN EL CAMINO** (v4.896,
+  `test:anniversary:path`). La v4.895 verificó el criterio y el compositor, y
+  los controladores, el store y la orquestación no se habían ejecutado NUNCA —
+  es la lección de v4.744 y la de v4.889—. La prueba corre las cuatro etapas de
+  punta a punta y comprueba lo que ninguna prueba pura ve: que la consulta lleve
+  los parámetros que lleva, que el nombre de una columna coincida con lo que el
+  store escribe, que cada etapa deje la pieza donde la siguiente la espera, que
+  el documento traiga **todos** los campos que el compositor lee, que el reclamo
+  impida dos cobros y que la puerta del formulario público esté cerrada.
+  **`sharp` no se sustituye**: las mediciones de blanco y de franja se ejercitan
+  de verdad sobre imágenes reales.
+- **⚠️ UN DOBLE QUE IMPLEMENTA LA REGLA QUE LA PRUEBA DICE COMPROBAR NO COMPRUEBA
+  NADA.** La primera versión del doble de la base escribía en JavaScript el
+  candado del reclamo, así que quitar el `AND attempts = $2` de la consulta real
+  **no hacía fallar nada** — la comprobación era vacua y decía lo contrario. Lo
+  destapó la verificación a la inversa, no la lectura. Ahora la condición se lee
+  del propio SQL, igual que los pares `"campo" = $n` del UPDATE parcial. Al
+  escribir un doble, preguntarse qué parte de la regla vive en él.
+- **UNA IMAGEN DE PRUEBA PARA UN CONTROL DEJA EL RESTO EN VERDE.** La que
+  ejercitaba «la franja del texto ocupada» llevaba además una banda gris que
+  bajaba la luminancia media a 198: saltaban los DOS controles y se reportaba el
+  otro. Y las aserciones van sobre los **identificadores guardados**, no sobre
+  el primer texto: `reason` sólo trae el primero de los críticos.
+- **Lo que estos dobles NO demuestran es que el SQL sea válido para Postgres.**
+  Eso se comprueba al desplegar, y se dice para no afirmar de más.
 
 **Reglas durables:**
 
