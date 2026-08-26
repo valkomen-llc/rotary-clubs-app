@@ -362,6 +362,61 @@ check('v4.917: el pie va TAL CUAL — proporción nativa, anclado al borde infer
 check('y ocupa el ancho COMPLETO, sin recorte lateral',
     piePos.izquierda && piePos.derecha, JSON.stringify(piePos));
 
+// ── v4.922 — el pie es la CAPA FINAL y la frase ESQUIVA lo ocupado ────
+
+// Del reporte con captura: los «logos duplicados» del pie eran NUESTRO
+// logotipo del club y NUESTRA línea de distrito pintados ENCIMA del PNG del
+// pie (la regla de v4.917 los imprimía «en la banda»). Con el pie puesto,
+// nada se imprime sobre él: el PNG es la firma completa y va pixel-perfect.
+const LOGO_ROJO = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#ff0000"/></svg>').toString('base64');
+const sobrePie = await page.evaluate(async (doc) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const c = canvas.getContext('2d');
+    const y0 = Math.round(canvas.height * 0.86);
+    const { data } = c.getImageData(0, y0, canvas.width, canvas.height - y0);
+    let rojos = 0, azules = 0, oscuros = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 180 && data[i + 1] < 90 && data[i + 2] < 90) rojos++;
+        if (data[i + 2] > 180 && data[i] < 90 && data[i + 1] < 90) azules++;
+        const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        // la tinta de la línea del distrito es gris oscura — el AZUL puro del
+        // pie también tiene luminancia baja y no cuenta como tinta
+        if (l < 60 && data[i + 2] < 120) oscuros++;
+    }
+    const n = data.length / 4;
+    return { rojos: rojos / n, azules: azules / n, oscuros: oscuros / n };
+}, {
+    ...DOC, renderMode: 'ai', backdropUrl: BLANCO,
+    branding: { footerImage: PIE_AZUL, clubLogo: LOGO_ROJO, districtLine: 'Distrito 4271 · 2026-2027' },
+});
+check('v4.922: con el pie puesto, el logotipo del club NO se imprime encima',
+    sobrePie.rojos < 0.0005 && sobrePie.azules > 0.3,
+    JSON.stringify(sobrePie));
+check('…ni la línea del distrito: el PNG del pie queda pixel-perfect',
+    sobrePie.oscuros < 0.002, JSON.stringify(sobrePie));
+
+// Y LA FRANJA DE LA FRASE SE ELIGE MIDIENDO: con la cinta de años bajada a
+// donde la altura fija (0.745) imprimía —el defecto del reporte—, la frase
+// tiene que caer en una franja LIMPIA, no sobre la cinta. Verificado a la
+// inversa: con la altura fija, la tinta de la franja alta es cero.
+const CINTA_BAJA = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080"><rect width="1080" height="1080" fill="#ffffff"/><rect x="390" y="778" width="300" height="76" fill="#8a6d1f"/></svg>').toString('base64');
+const docCinta = {
+    ...DOC, renderMode: 'ai', simple: true, backdropUrl: CINTA_BAJA, branding: {},
+    phraseOverlay: true, message: 'Gracias por tanto servicio.',
+};
+const fraseEsquiva = await tinta(docCinta, { x: 0.07, y: 0.645, w: 0.86, h: 0.075 });
+const sinFraseArriba = await tinta({ ...docCinta, phraseOverlay: false }, { x: 0.07, y: 0.645, w: 0.86, h: 0.075 });
+check('v4.922: con la cinta ocupando la franja fija, la frase se imprime en una franja LIMPIA más arriba',
+    fraseEsquiva - sinFraseArriba > 0.0015,
+    `con ${fraseEsquiva.toFixed(4)} / sin ${sinFraseArriba.toFixed(4)}`);
+const fraseSobreCinta = await tinta(docCinta, { x: 0.36, y: 0.72, w: 0.28, h: 0.07 });
+const cintaSola = await tinta({ ...docCinta, phraseOverlay: false }, { x: 0.36, y: 0.72, w: 0.28, h: 0.07 });
+check('…y sobre la cinta no se agrega NI UN píxel de frase',
+    Math.abs(fraseSobreCinta - cintaSola) < 0.002,
+    `con ${fraseSobreCinta.toFixed(4)} / cinta sola ${cintaSola.toFixed(4)}`);
+
 grupo('4 — El texto exacto se escribe, no se genera');
 
 // Los años y el club se imprimen desde los datos: se comprueba que la pieza

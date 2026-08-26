@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.921.0 | 2026-08-26 (WhatsApp CRM: campañas a VARIAS listas)
-// Cache bust: 2026-08-26a
+// UI V4.922.0 | 2026-08-26 (Aniversarios IA: distribución vertical + pie blindado)
+// Cache bust: 2026-08-26b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.922.0',
+        title: 'Aniversarios IA: la frase nunca pisa los años y el pie queda blindado 📐',
+        description: 'Del reporte con capturas, tres correcciones. (1) Los «logos duplicados» del pie NO los generó el modelo: eran NUESTRA capa 3 —el logotipo del club y la línea «Distrito 4271 · 2026-2027»— impresos ENCIMA del PNG del pie, la regla de v4.917. Con el pie configurado ya no se imprime nada sobre él: el PNG es la firma institucional COMPLETA, va pixel-perfect y es la capa final — el logotipo y la línea sólo salen cuando NO hay pie. Se verificó además que el PNG del pie jamás viaja al modelo (al modelo van la foto y la referencia, nada más — ahora lo fija una prueba). (2) La frase impresa se colocaba a altura FIJA (74,5 %) y el modelo había bajado la cinta de años: chocaban. Ahora el compositor MIDE el diseño y elige la franja más limpia entre el 66 % y el 80 % del alto, con separación de lo que haya arriba; si no puede medir, la altura de siempre. Verificado a la inversa en el navegador: con la cinta ocupando la franja fija, la frase se imprime en una franja limpia y sobre la cinta no cae ni un píxel. (3) El prompt fija la DISTRIBUCIÓN VERTICAL: todo el contenido en el 72 % superior, título en el tercio superior, la foto baja a un cuarto del lienzo de alto, la franja de la frase separada de la cinta y la zona reservada crece al 25 % — y la banda inferior ahora SE MIDE con sharp (misma forma que la puerta del patrón de v4.910): contenido en el cuarto inferior regenera UNA vez con la instrucción concreta y, si insiste, se entrega con su aviso. Las dos puertas comparten el único reintento. Calibrado con bandas sintéticas (limpia 0 %, cinta baja 5,5 %, pie generado 36 %) y con el presupuesto de KIE medido: peor caso 2.495/2.500.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.921.0',
         title: 'WhatsApp CRM: una campaña se envía a VARIAS listas 📋📋',

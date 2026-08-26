@@ -2682,6 +2682,34 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ CON EL PIE PUESTO, NADA SE IMPRIME ENCIMA** (v4.922, supersede el «el
+  logotipo del club y la línea del distrito se imprimen ENCIMA, en la banda»
+  de v4.917). Los «logos duplicados» del reporte NO los generó el modelo:
+  eran NUESTRA capa 3 —el logotipo del club y la línea «Distrito 4271 ·
+  2026-2027»— pintados sobre el PNG del pie. El PNG es la firma institucional
+  COMPLETA y es la CAPA FINAL, pixel-perfect; el logotipo y la línea sólo se
+  imprimen cuando NO hay pie configurado. Y el PNG del pie JAMÁS viaja al
+  modelo (al modelo van la foto y la referencia, nada más — lo fija una
+  prueba del camino). Al diagnosticar «la IA volvió a generar logos en el
+  pie», mirar PRIMERO nuestra capa 3: se ve idéntico.
+- **⚠️ LA FRANJA DE LA FRASE SE ELIGE MIDIENDO, y la banda inferior es la
+  segunda mitad de la puerta** (v4.922). La frase impresa iba a altura FIJA
+  (74,5 %) y el modelo bajó la cinta de años hasta ahí: chocaban (reporte con
+  captura). El compositor mide el diseño (muestra reducida, tinta oscura por
+  fila) y elige la franja más limpia entre el 66 % y el 80 % del alto, con
+  separación de lo ocupado; sin medición posible, la altura de siempre. Y el
+  prompt fija la DISTRIBUCIÓN VERTICAL —todo el contenido en el 72 %
+  superior, título en el tercio superior, foto de alto ~un cuarto, zona
+  reservada 25 %— mientras `judgeFooterZone` + `measureFooterZone` (sharp,
+  banda 0.74-0.96, materializada a buffer — v4.799) miden la salida CRUDA:
+  contenido en el cuarto inferior regenera UNA vez con `FOOTER_RETRY_CLAUSE`
+  y, si insiste, SE ENTREGA con su aviso. Las dos puertas (patrón + banda)
+  COMPARTEN el único reintento (`styleRetried`): dos reintentos serían tres
+  generaciones pagadas. Calibrado con bandas sintéticas — limpia 0 %/0,2,
+  cinta baja 5,5 %/22, pie generado 36 %/86; umbral 2 %/36 parte las
+  brechas. Al tocar el prompt default, MEDIR el peor caso (2.495/2.500 con
+  nombre de 33 caracteres) — el recorte cae del final, sobre la cláusula del
+  pie.
 - **⚠️ LA FRASE CONMEMORATIVA LA ELIGE **Y LA IMPRIME** LA PLATAFORMA**
   (v4.919-v4.920). Era el único texto libre del modelo y salía mal escrito
   («Sirvingo… construuido»); v4.919 la pasó a catálogo (`ANNIVERSARY_PHRASES`,

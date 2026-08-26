@@ -95,15 +95,17 @@ const COMPO_BUENA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" wid
 const COMPO_OSCURA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
     <rect width="1080" height="1080" fill="#20242c"/></svg>`)).png().toBuffer();
 /** Una composición AL ESTILO DE LA REFERENCIA aprobada: fondo blanco, la
- *  fotografía oscura ocupando ~un tercio, globos dorados y la curva azul del
- *  pie. Medida entera da ~185-195 de luminancia media: el umbral viejo (205)
- *  la descartaba — es el reporte de v4.899. Tiene que ENTREGARSE. */
+ *  fotografía oscura protagonista y globos dorados. El umbral viejo (205) la
+ *  descartaba por su luminancia — es el reporte de v4.899. Tiene que
+ *  ENTREGARSE. ⚠️ Hasta v4.921 esta imagen traía además la curva azul del pie
+ *  ABAJO — que es exactamente lo que el contrato vigente PROHÍBE generar
+ *  (v4.918) y lo que la banda inferior ahora MIDE (v4.922): el fixture se
+ *  actualizó al contrato, la fotografía creció para conservar la oscuridad. */
 const COMPO_REFERENCIA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
     <rect width="1080" height="1080" fill="#ffffff"/>
-    <rect x="560" y="180" width="440" height="400" fill="#3a3f4a"/>
-    <circle cx="900" cy="120" r="70" fill="#b5a16b"/>
-    <circle cx="1010" cy="200" r="55" fill="#d8c9a3"/>
-    <path d="M0 980 Q540 900 1080 980 L1080 1080 L0 1080 Z" fill="#17458f"/></svg>`)).png().toBuffer();
+    <rect x="460" y="150" width="540" height="480" fill="#3a3f4a"/>
+    <circle cx="900" cy="90" r="70" fill="#b5a16b"/>
+    <circle cx="180" cy="200" r="55" fill="#d8c9a3"/></svg>`)).png().toBuffer();
 /** Otra que hay que rechazar: la franja del texto OCUPADA, pero con el fondo
  *  igual de blanco. Aísla el control: la primera versión de esta imagen tenía
  *  además una banda gris a la derecha y bajaba la luminancia media a 198, así
@@ -376,6 +378,73 @@ for (const [nombre, patch] of [
         r.body.ready === true && r.body.document?.renderMode === 'ai' && prov.estado.tareas.length === 1,
         JSON.stringify({ ready: r.body.ready, mode: r.body.document?.renderMode, tareas: prov.estado.tareas.length }));
     ok(`…y sin llamar a ningún modelo de texto ni visión`, prov.estado.copyLlamadas === 0, String(prov.estado.copyLlamadas));
+}
+
+grupo('6b — v4.922: la zona inferior reservada también es puerta, y comparte el reintento');
+
+// El defecto del reporte: la cinta de años bajada a ~0.78, chocando con la
+// franja donde la plataforma imprime la frase. Fondo impecablemente blanco a
+// propósito — la imagen ejercita SÓLO esta puerta (la lección de COMPO_FRANJA:
+// una imagen de prueba para un control deja el resto en verde).
+const COMPO_CINTA_BAJA = await sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
+    <rect width="1080" height="1080" fill="#ffffff"/>
+    <circle cx="540" cy="790" r="55" fill="#8a6d1f"/>
+    <rect x="390" y="820" width="300" height="60" fill="#8a6d1f"/></svg>`)).png().toBuffer();
+
+limpiar({ imagen: COMPO_CINTA_BAJA });
+await llamar(ctrl.getConfig);
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const baja = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: baja } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: baja } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: baja } });
+r = await llamar(ctrl.getTestPiece, { params: { id: baja } });
+eq('con la cinta en el cuarto inferior, el primer sondeo REGENERA', r.body.retrying, true);
+ok('y el motivo nombra el cuarto inferior con su medida', /cuarto inferior/.test(r.body.reason || ''), r.body.reason);
+ok('el reintento lleva la instrucción CONCRETA de la zona',
+    (prov.estado.tareas[1]?.prompt || '').includes(S.FOOTER_RETRY_CLAUSE));
+r = await llamar(ctrl.getTestPiece, { params: { id: baja } });
+ok('el segundo sondeo YA NO reintenta: las dos puertas COMPARTEN el único reintento',
+    !r.body.retrying && prov.estado.tareas.length === 2,
+    JSON.stringify({ retrying: r.body.retrying, tareas: prov.estado.tareas.length }));
+eq('la pieza SE ENTREGA igual, en modo ai', r.body.document?.renderMode, 'ai');
+ok('…con su aviso del cuarto inferior', /cuarto inferior/.test(r.body.statusDetail || ''), r.body.statusDetail);
+
+// Con el fondo OSCURO fallan LAS DOS puertas — y sigue habiendo UNA sola
+// regeneración, con las dos instrucciones concretas en el mismo reintento.
+limpiar({ imagen: COMPO_OSCURA });
+await llamar(ctrl.getConfig);
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const ambas = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: ambas } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: ambas } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: ambas } });
+r = await llamar(ctrl.getTestPiece, { params: { id: ambas } });
+ok('las dos puertas caídas = UN reintento con las DOS instrucciones',
+    r.body.retrying === true
+    && (prov.estado.tareas[1]?.prompt || '').includes(S.STYLE_RETRY_CLAUSE)
+    && (prov.estado.tareas[1]?.prompt || '').includes(S.FOOTER_RETRY_CLAUSE));
+r = await llamar(ctrl.getTestPiece, { params: { id: ambas } });
+ok('y nunca una tercera tarea', prov.estado.tareas.length === 2 && r.body.ready === true);
+
+// ⚠️ EL PIE DEL ADMINISTRADOR NO VIAJA AL MODELO (pedido expreso del cliente:
+// «si existe algún proceso que envía la imagen del footer como referencia al
+// modelo generativo, elimínalo»). No existía — y esta comprobación impide que
+// exista: al modelo van la FOTO y la REFERENCIA, nada más.
+limpiar();
+r = await llamar(ctrl.getConfig);
+await llamar(ctrl.putConfig, { body: { config: { ...r.body.config, branding: { ...r.body.config.branding, footerImage: 'https://cdn.x/pie-institucional.png' } } } });
+r = await llamar(ctrl.postTestPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+const conPie = r.body.pieceId;
+await llamar(ctrl.postTestAnalyze, { body: { pieceId: conPie } });
+await llamar(ctrl.postTestCopy, { body: { pieceId: conPie } });
+await llamar(ctrl.postTestCompose, { body: { pieceId: conPie } });
+{
+    const t = prov.estado.tareas[0] || {};
+    const urls = [t.imageUrl, ...(t.imageUrls || [])].filter(Boolean);
+    ok('el pie institucional NO viaja al modelo por ninguna vía',
+        urls.length > 0 && urls.every(u => !String(u).includes('pie-institucional')),
+        JSON.stringify(urls));
 }
 
 grupo('9 — El reclamo impide dos tareas para la misma pieza');

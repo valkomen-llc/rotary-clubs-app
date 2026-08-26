@@ -655,7 +655,8 @@ const AnniversaryStudio: React.FC = () => {
                     <input type="checkbox" checked={config.styleGuard !== false}
                         onChange={e => set('styleGuard', e.target.checked)} className="mt-0.5" />
                     <span>
-                        <strong>Patrón visual obligatorio.</strong> Si la pieza sale con fondo café, oscuro o negro, se
+                        <strong>Patrón visual obligatorio.</strong> Si la pieza sale con fondo café, oscuro o negro, o
+                        con contenido invadiendo el cuarto inferior reservado (la franja de la frase y el pie), se
                         regenera UNA vez con la instrucción reforzada; si insiste, se entrega con su aviso — nunca se
                         descarta en silencio. Gasta una generación extra sólo cuando el modelo rompe el patrón.
                     </span>
