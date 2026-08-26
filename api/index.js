@@ -14,6 +14,7 @@ import clubRoutes from '../server/routes/clubs.js';
 import publicRoutes from '../server/routes/public.js';
 import mediaRoutes from '../server/routes/media.js';
 import emailAccountsRoutes from '../server/routes/emailAccounts.js';
+import institutionalAccessRoutes from '../server/routes/institutional-access.js';
 import bannerRoutes from '../server/routes/banner.js';
 
 
@@ -229,6 +230,9 @@ app.use('/api/clubs', clubRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/email-accounts', emailAccountsRoutes);
+// Accesos institucionales (v4.932): las cuentas de correo del sitio como
+// identidades de acceso, con sus permisos y su perfil.
+app.use('/api/institutional', institutionalAccessRoutes);
 app.use('/api/banner', bannerRoutes);
 app.use('/api/design-studio', async (req, res, next) => { try { return (await getDesignStudio())(req, res, next); } catch (e) { console.error('API Error [design-studio]:', e); res.status(500).json({ error: e.message }); } });
 

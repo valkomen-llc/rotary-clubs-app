@@ -13,6 +13,10 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
+import InstitutionalAccountModal from '../../components/admin/institutional/InstitutionalAccountModal';
+import {
+    canManageMailAccounts, mailboxScopeFor, displayNameOf,
+} from '../../lib/institutionalAccess';
 
 interface EmailAccount {
     id: string;
@@ -68,6 +72,34 @@ const EmailManagement: React.FC = () => {
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [showComposeModal, setShowComposeModal] = useState(false);
     const isSuperAdmin = user?.role === 'superadmin';
+
+    // ⚠️ QUIÉN ADMINISTRA LAS CUENTAS SE DECIDE CON EL MISMO `can()` DEL
+    // SERVIDOR (espejo de `institutionalAccess`). Con un criterio propio acá, la
+    // pantalla ofrecería una pestaña que el endpoint rechaza — o, peor,
+    // escondería una a la que sí se llega escribiendo la dirección.
+    //
+    // Y esto decide QUÉ SE PINTA, nunca a qué se tiene acceso: la
+    // administración de cuentas la cierra `requireAccountAdmin` en el servidor,
+    // y la bandeja se acota en el `WHERE` de la consulta (v4.868).
+    const puedeAdministrarCuentas = canManageMailAccounts(user as any);
+    // `null` = sin restricción (administrador). Una lista = ve exactamente
+    // esas direcciones y ninguna más.
+    const alcanceBuzones = mailboxScopeFor(user as any);
+    // La pestaña EFECTIVA. Sin este corte, un estado que quedara en 'accounts'
+    // —al cambiar de sesión sin recargar, por ejemplo— pintaría el listado de
+    // cuentas a quien no lo puede ver. El servidor lo rechazaría igual, pero la
+    // pantalla no puede depender de eso para no enseñarlo.
+    const buzonPropio = alcanceBuzones === null ? null : (alcanceBuzones[0] || null);
+    const pestanaVigente: 'inbox' | 'accounts' =
+        activeTab === 'accounts' && !puedeAdministrarCuentas ? 'inbox' : activeTab;
+
+    // Las cuentas CON su propietario. Se piden aparte de `/email-accounts`
+    // porque son otra pregunta —quién es el dueño, qué puede hacer— y porque el
+    // endpoint que la contesta está detrás del permiso de administración: quien
+    // no lo tenga ni siquiera la hace.
+    const [cuentasConDueno, setCuentasConDueno] = useState<any[]>([]);
+    const [cargandoDuenos, setCargandoDuenos] = useState(false);
+    const [dominioInstitucional, setDominioInstitucional] = useState<string>('');
     
     // Accounts & Active Account
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
@@ -75,7 +107,6 @@ const EmailManagement: React.FC = () => {
     const [activeAccount, setActiveAccount] = useState<EmailAccount | null>(null);
     
     // Form states
-    const [newAccount, setNewAccount] = useState({ user: '', label: '', password: '' });
     const [composeData, setComposeData] = useState({ to: '', cc: '', subject: '' });
     const [showCc, setShowCc] = useState(false);
     const [composeInitialHtml, setComposeInitialHtml] = useState('');
@@ -366,49 +397,76 @@ const EmailManagement: React.FC = () => {
         }
     }, [club?.id]);
 
+    /**
+     * Las cuentas con su propietario, y el dominio del sitio para el alta.
+     *
+     * Sólo se pide con permiso de administración: sin él, el endpoint responde
+     * 403 y pedirlo sería una petición garantizada a un rechazo. Se recarga al
+     * entrar en la pestaña, que es cuando de verdad se mira.
+     */
+    const cargarDuenos = React.useCallback(async () => {
+        if (!puedeAdministrarCuentas) return;
+        setCargandoDuenos(true);
+        try {
+            const [rCuentas, rCatalogo] = await Promise.all([
+                fetch('/api/institutional/accounts', { headers: { Authorization: `Bearer ${token}` } }),
+                fetch('/api/institutional/catalog', { headers: { Authorization: `Bearer ${token}` } }),
+            ]);
+            if (rCuentas.ok) {
+                const data = await rCuentas.json();
+                setCuentasConDueno(Array.isArray(data?.accounts) ? data.accounts : []);
+            }
+            if (rCatalogo.ok) {
+                const cat = await rCatalogo.json();
+                // El dominio lo resuelve el SERVIDOR desde el sitio. Componerlo
+                // en el navegador daría uno distinto según por dónde se entró.
+                setDominioInstitucional(cat?.domain || '');
+            }
+        } catch (e) {
+            console.error('Error cargando propietarios:', e);
+        } finally {
+            setCargandoDuenos(false);
+        }
+    }, [puedeAdministrarCuentas, token]);
+
+    useEffect(() => {
+        if (pestanaVigente === 'accounts') cargarDuenos();
+    }, [pestanaVigente, cargarDuenos]);
+
+    /**
+     * Le manda al propietario un enlace de un solo uso para crear su contraseña.
+     *
+     * ⚠️ NO le manda la contraseña. Es lo que permite entregarle el acceso sin
+     * que quede una credencial compartida circulando por WhatsApp — que es
+     * exactamente lo que la contraseña temporal existe para terminar.
+     */
+    const enviarInstrucciones = async (userId: string, email: string) => {
+        try {
+            const r = await fetch(`/api/institutional/owners/${userId}/instructions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            });
+            const cuerpo = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                toast.error(cuerpo?.error || 'No pudimos enviar las instrucciones.');
+                return;
+            }
+            toast.success(cuerpo?.message || `Le enviamos las instrucciones a ${email}.`);
+        } catch {
+            toast.error('No hubo respuesta del servidor.');
+        }
+    };
+
     // Sync active account when accounts change or selection happens
     const handleSelectAccount = (acc: EmailAccount) => {
         setActiveAccount(acc);
         setSelectedEmail(null);
     };
 
-    const handleCreateAccount = async () => {
-        if (!newAccount.user || !newAccount.password) return;
-        const fullEmail = `${newAccount.user.toLowerCase()}@${clubDomain}`;
-        
-        try {
-            const response = await fetch('/api/email-accounts', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    email: fullEmail,
-                    label: newAccount.label || newAccount.user,
-                    password: newAccount.password,
-                    isPrimary: accounts.length === 0,
-                    clubId: club?.id
-                })
-            });
-
-            if (response.ok) {
-                const created = await response.json();
-                setAccounts([...accounts, created]);
-                if (!activeAccount) setActiveAccount(created);
-                setNewAccount({ user: '', label: '', password: '' });
-                setShowAccountModal(false);
-                toast.success(`Cuenta ${fullEmail} creada y configurada`);
-            } else {
-                const error = await response.json();
-                toast.error(`Error: ${error.error || 'No se pudo crear la cuenta'}`);
-            }
-        } catch (error: any) {
-            console.error('Error creating account:', error);
-            const msg = error.response?.data?.error || error.message;
-            toast.error(`Error: ${msg || 'Error de conexión al crear la cuenta'}`);
-        }
-    };
+    // El alta vive ahora en `InstitutionalAccountModal`, que además del correo
+    // crea al PROPIETARIO y sus permisos, y pasa por `/api/institutional/accounts`
+    // —detrás del permiso de administración—. El `POST /email-accounts` sigue
+    // existiendo para lo que ya lo usaba, con su propia guardia.
 
     const handleDeleteAccount = async (id: string) => {
         if (!confirm('¿Estás seguro de que deseas eliminar esta cuenta?')) return;
@@ -717,18 +775,24 @@ const EmailManagement: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center gap-3">
+                        {/* La pestaña «Cuentas» sólo existe para quien administra.
+                            El propietario de una cuenta institucional ve su bandeja y
+                            nada más: ni el listado, ni el alta, ni las contraseñas, ni
+                            la configuración del dominio. */}
                         <div className="bg-gray-100 p-1 rounded-xl flex">
-                            <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'inbox' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Bandeja</button>
-                            <button onClick={() => setActiveTab('accounts')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'accounts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Cuentas</button>
+                            <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${pestanaVigente === 'inbox' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Bandeja</button>
+                            {puedeAdministrarCuentas && (
+                                <button onClick={() => setActiveTab('accounts')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${pestanaVigente === 'accounts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Cuentas</button>
+                            )}
                         </div>
-                        <button
+                        {puedeAdministrarCuentas && <button
                             onClick={runDiagnostics}
                             title="Verificar configuración de envío y recepción"
                             className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all active:scale-95"
                         >
                             <RefreshCw className="w-4 h-4" />
                             Diagnóstico
-                        </button>
+                        </button>}
                         {isSuperAdmin && (
                             <button
                                 onClick={runProvisionInbound}
@@ -740,16 +804,16 @@ const EmailManagement: React.FC = () => {
                             </button>
                         )}
                         <button
-                            onClick={() => activeTab === 'inbox' ? openCompose() : setShowAccountModal(true)}
+                            onClick={() => pestanaVigente === 'inbox' ? openCompose() : setShowAccountModal(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 transition-all shadow-xl shadow-blue-900/20 active:scale-95"
                         >
                             <Plus className="w-5 h-5" />
-                            {activeTab === 'inbox' ? 'Redactar' : 'Nueva Cuenta'}
+                            {pestanaVigente === 'inbox' ? 'Redactar' : 'Nueva Cuenta'}
                         </button>
                     </div>
                 </div>
 
-                {activeTab === 'inbox' ? (
+                {pestanaVigente === 'inbox' ? (
                     <div className="flex-1 bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden flex">
                         {/* Sidebar */}
                         <div className="w-64 border-r border-gray-100 flex flex-col bg-gray-50/50">
@@ -775,21 +839,46 @@ const EmailManagement: React.FC = () => {
                                     ))}
                                 </div>
 
-                                <div className="mt-8">
-                                    <h3 className="px-3 text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">Cuentas</h3>
-                                    <div className="space-y-1">
-                                        {accounts.map(acc => (
-                                            <button 
-                                                key={acc.id} 
-                                                onClick={() => handleSelectAccount(acc)}
-                                                className={`w-full text-left px-3 py-2 rounded-xl text-xs truncate flex items-center gap-2 transition-all ${activeAccount?.id === acc.id ? 'bg-white shadow-sm border border-gray-100 font-bold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
-                                            >
-                                                <div className={`w-2 h-2 rounded-full ${activeAccount?.id === acc.id ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                                                {acc.email}
-                                            </button>
-                                        ))}
+                                {/* ⚠️ EL SELECTOR DE CUENTAS ES DEL ADMINISTRADOR.
+                                    Para el propietario de una cuenta institucional no
+                                    hay nada que elegir: su bandeja se abre en SU cuenta
+                                    y no puede cambiar a otra —el servidor tampoco se lo
+                                    permitiría, porque el alcance entra en el `WHERE`—.
+                                    Se pinta su dirección, no una lista de un elemento
+                                    que parece un selector roto. */}
+                                {alcanceBuzones === null ? (
+                                    <div className="mt-8">
+                                        <h3 className="px-3 text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">Cuentas</h3>
+                                        <div className="space-y-1">
+                                            {accounts.map(acc => (
+                                                <button 
+                                                    key={acc.id} 
+                                                    onClick={() => handleSelectAccount(acc)}
+                                                    className={`w-full text-left px-3 py-2 rounded-xl text-xs truncate flex items-center gap-2 transition-all ${activeAccount?.id === acc.id ? 'bg-white shadow-sm border border-gray-100 font-bold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                >
+                                                    <div className={`w-2 h-2 rounded-full ${activeAccount?.id === acc.id ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                                                    {acc.email}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="mt-8">
+                                        <h3 className="px-3 text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">Tu cuenta</h3>
+                                        <div className="px-3 py-2 rounded-xl bg-white shadow-sm border border-gray-100 flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                                            <span className="text-xs font-bold text-gray-900 truncate" data-no-translate>
+                                                {buzonPropio || 'Sin buzón asignado'}
+                                            </span>
+                                        </div>
+                                        {!buzonPropio && (
+                                            <p className="px-3 mt-2 text-[10px] text-amber-700 leading-relaxed">
+                                                Tu acceso todavía no tiene un buzón asignado. Escríbele al
+                                                administrador del sitio.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -962,27 +1051,105 @@ const EmailManagement: React.FC = () => {
                         </div>
 
                         <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900">Cuentas del sitio</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        Una cuenta con propietario es además una identidad de acceso al panel.
+                                    </p>
+                                </div>
+                                {cargandoDuenos && <RefreshCw className="w-4 h-4 text-gray-300 animate-spin" />}
+                            </div>
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
                                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Cuenta</th>
+                                        <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Propietario</th>
+                                        <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Acceso</th>
                                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {accounts.map(acc => (
-                                        <tr key={acc.id} className="hover:bg-gray-50 transition-all">
-                                            <td className="px-6 py-5 flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center text-rotary-blue"><AtSign className="w-4 h-4" /></div>
-                                                <span className="text-sm font-bold text-gray-900">{acc.email}</span>
-                                            </td>
-                                            <td className="px-6 py-5 text-right">
-                                                {!acc.isPrimary && <button onClick={() => handleDeleteAccount(acc.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {accounts.map(acc => {
+                                        // El dueño viene del endpoint de accesos; si esa
+                                        // consulta todavía no volvió, la fila se pinta como
+                                        // siempre en vez de afirmar que no tiene dueño.
+                                        const ficha = cuentasConDueno.find((c: any) => c.id === acc.id);
+                                        const dueno = ficha?.owner || null;
+                                        return (
+                                            <tr key={acc.id} className="hover:bg-gray-50 transition-all">
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center text-rotary-blue flex-shrink-0"><AtSign className="w-4 h-4" /></div>
+                                                        <span className="text-sm font-bold text-gray-900 truncate" data-no-translate>{acc.email}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    {dueno ? (
+                                                        <div className="flex items-center gap-2">
+                                                            {dueno.avatarUrl ? (
+                                                                <img src={dueno.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-black text-gray-500">
+                                                                    {(dueno.firstName || acc.email)[0]?.toUpperCase()}
+                                                                </div>
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-bold text-gray-900 truncate">
+                                                                    {displayNameOf(dueno, acc.email)}
+                                                                </p>
+                                                                {dueno.position && (
+                                                                    <p className="text-[10px] text-gray-400 truncate">{dueno.position}</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-300">Sin propietario</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    {!dueno ? (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Sólo buzón</span>
+                                                    ) : dueno.status === 'suspended' ? (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-red-600">Suspendido</span>
+                                                    ) : (
+                                                        <div>
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Con acceso</span>
+                                                            <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                {(dueno.permissions || []).length} herramienta(s)
+                                                                {dueno.mustChangePassword ? ' · contraseña temporal' : ''}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-5 text-right whitespace-nowrap">
+                                                    {dueno && (
+                                                        <button
+                                                            onClick={() => enviarInstrucciones(dueno.userId, acc.email)}
+                                                            title="Enviarle un enlace para crear su contraseña"
+                                                            className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-sky-700 bg-sky-50 border border-sky-100 rounded-xl hover:bg-sky-100 transition-all"
+                                                        >
+                                                            Enviar acceso
+                                                        </button>
+                                                    )}
+                                                    {!acc.isPrimary && <button onClick={() => handleDeleteAccount(acc.id)} className="ml-2 p-2 text-gray-400 hover:text-red-600 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
+                            {/* Lo que un usuario institucional NO ve se dice acá, donde
+                                se está decidiendo darle acceso: sin eso, quien crea la
+                                cuenta no sabe qué acaba de conceder. */}
+                            <div className="px-6 py-4 bg-gray-50/60 border-t border-gray-100">
+                                <p className="text-[11px] text-gray-500 leading-relaxed">
+                                    Un <strong>usuario institucional</strong> entra al panel, usa las herramientas
+                                    que le marques y ve <strong>únicamente su propia bandeja</strong>. No accede a
+                                    esta pantalla, ni al listado de cuentas, ni a las contraseñas, ni a la
+                                    configuración del dominio.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1069,29 +1236,25 @@ const EmailManagement: React.FC = () => {
                     </div>
                 )}
 
-                {showAccountModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
-                        <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl overflow-hidden">
-                            <div className="p-8 border-b border-gray-50 flex justify-between items-center">
-                                <h3 className="text-2xl font-bold text-gray-900">Crear Correo</h3>
-                                <button onClick={() => setShowAccountModal(false)} className="p-3 text-gray-400 hover:text-gray-900 rounded-2xl"><X className="w-6 h-6" /></button>
-                            </div>
-                            <div className="p-8 space-y-6">
-                                <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-2xl">
-                                    <input type="text" value={newAccount.user} onChange={e => setNewAccount({ ...newAccount, user: e.target.value })} placeholder="ej: secretaria" className="flex-1 bg-transparent border-none outline-none px-4 py-3 text-base font-bold text-gray-900" />
-                                    <span className="px-4 py-3 bg-white rounded-xl text-sm font-black text-sky-700 shadow-sm border border-sky-100">@{clubDomain}</span>
-                                </div>
-                                <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
-                                    <input type="password" value={newAccount.password} onChange={e => setNewAccount({ ...newAccount, password: e.target.value })} placeholder="Contraseña" className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-2xl outline-none" />
-                                </div>
-                            </div>
-                            <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
-                                <button onClick={() => setShowAccountModal(false)} className="flex-1 py-4 text-sm font-black text-gray-400 uppercase tracking-widest">Cerrar</button>
-                                <button onClick={handleCreateAccount} disabled={!newAccount.user || !newAccount.password} className="flex-[2] py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all uppercase tracking-widest">Crear y Activar</button>
-                            </div>
-                        </div>
-                    </div>
+                {showAccountModal && puedeAdministrarCuentas && (
+                    <InstitutionalAccountModal
+                        domain={dominioInstitucional || clubDomain}
+                        // Sólo el operador de la plataforma reparte roles de
+                        // administración: un administrador de sitio que puede
+                        // nombrar administradores multiplica el alcance de una
+                        // credencial robada. El servidor lo comprueba igual.
+                        canGrantAdminRole={user?.role === 'administrator' || user?.role === 'superadmin'}
+                        onClose={() => setShowAccountModal(false)}
+                        onCreated={(r) => {
+                            setShowAccountModal(false);
+                            (r.warnings || []).forEach(w => toast(w, { icon: '⚠️' }));
+                            toast.success(r.message || 'Cuenta creada.');
+                            // Se recargan las dos listas: la de buzones que usa
+                            // la bandeja y la de propietarios de esta pestaña.
+                            setAccounts(prev => [...prev, r.account as any]);
+                            cargarDuenos();
+                        }}
+                    />
                 )}
 
                 {showProvisionModal && (

@@ -170,6 +170,12 @@ const SeoIntelligence = lazyWithRetry(() => import('./pages/admin/SeoIntelligenc
 const AnalyticsPage = lazyWithRetry(() => import('./pages/admin/Analytics'), 'Analytics');
 const LeadsManagement = lazyWithRetry(() => import('./pages/admin/Leads'), 'Leads');
 const EmailManagement = lazyWithRetry(() => import('./pages/admin/EmailManagement'), 'EmailManagement');
+// Mi perfil (v4.932): lo abre CUALQUIER sesión de plataforma, no sólo la
+// institucional — un administrador también quiere cambiar su contraseña.
+const Perfil = lazyWithRetry(() => import('./pages/admin/Perfil'), 'Perfil');
+// Restablecer contraseña: PÚBLICA a propósito. Se llega desde el enlace del
+// correo, o sea justamente sin sesión.
+const RestablecerPassword = lazyWithRetry(() => import('./pages/RestablecerPassword'), 'RestablecerPassword');
 const EmailMarketing = lazyWithRetry(() => import('./pages/admin/EmailMarketing'), 'EmailMarketing');
 const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
 const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
@@ -255,6 +261,11 @@ const ADMIN_ROLES = [
   // qué responde el servidor lo decide `ADMIN_ROLES` de server/middleware/auth.js,
   // que es la otra mitad de esta lista y hay que cambiar junto con ésta.
   'crm_agent',
+  // Usuario institucional (v4.932): el dueño de una cuenta de correo del sitio.
+  // Pinta el panel para llegar a sus herramientas; QUÉ ve dentro lo decide
+  // `can()` de `src/lib/institutionalAccess.ts`, y qué responde el servidor lo
+  // decide `requirePermission`. Está acá y NO en los roles administrativos.
+  'institutional_user',
 ];
 
 /**
@@ -623,6 +634,9 @@ function App() {
                 <Route path="/conferencia" element={<Navigate to="/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992" replace />} />
                 <Route path="/" element={<SmartHome />} />
                 <Route path="/login" element={<AppLogin />} />
+                {/* Se llega desde el enlace del correo, sin sesión. Va con las
+                    públicas a propósito. */}
+                <Route path="/restablecer" element={<RestablecerPassword />} />
                 <Route path="/registro" element={<RegistroPage />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/quienes-somos" element={<QuienesSomos />} />
@@ -1141,6 +1155,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <EmailManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/perfil"
+                  element={
+                    <PrivateRoute>
+                      <Perfil />
                     </PrivateRoute>
                   }
                 />

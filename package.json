@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.931.0",
-  "cache_bust": "4.931.0",
+  "version": "4.932.0",
+  "cache_bust": "4.932.0",
   "type": "module",
   "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
   "scripts": {
@@ -74,6 +74,7 @@
     "test:fx": "node scripts/test-fx.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
+    "test:institutional": "node scripts/test-institutional.mjs",
     "test:registrar-pools": "node scripts/test-registrar-pools.mjs",
     "test:expiration": "node scripts/test-site-expiration.mjs",
     "test:platform-revenue": "node scripts/test-platform-revenue.mjs",

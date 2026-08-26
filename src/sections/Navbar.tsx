@@ -354,9 +354,15 @@ const Navbar = () => {
           body: JSON.stringify({ email }),
         }).then(r => r.json()).catch(() => null);
 
+        // Desde v4.932 son TRES: se suma la identidad de plataforma, que es la
+        // de los administradores y la de los propietarios de una cuenta de
+        // correo institucional. Los tres responden el MISMO mensaje genérico
+        // exista o no el correo, así que preguntarlos juntos no revela en cuál
+        // está — que es justamente lo que se busca.
         const [fair] = await Promise.all([
           ask('/project-fair/portal/forgot'),
           ask('/event-registrations/portal/forgot'),
+          ask('/auth/forgot'),
         ]);
         setLoginOk(fair?.message || 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.');
         return;

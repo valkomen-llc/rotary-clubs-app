@@ -75,6 +75,9 @@ import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgr
 // hacía que cada pantalla descargara el changelog para escribir «Release
 // 4.879.0» en la barra. Y crecía con cada despliegue. No reintroducirlo.
 import { APP_VERSION } from '../../lib/appVersion';
+import {
+    canOpenPath, initialsOf, displayNameOf,
+} from '../../lib/institutionalAccess';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -668,6 +671,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             );
         }
 
+        // Mi perfil — para TODA sesión. Es donde se cambia la contraseña
+        // temporal, así que dejarlo fuera encerraría a un usuario nuevo en un
+        // panel sin forma de cumplir lo que se le pide al entrar.
+        items.push({
+            icon: UserPlus,
+            label: 'Mi perfil',
+            path: '/admin/perfil',
+            category: 'General',
+            keywords: ['perfil', 'cuenta', 'contrasena', 'contraseña', 'foto', 'avatar', 'mis datos'],
+        });
+
         return items;
     };
 
@@ -676,7 +690,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         navigate('/');
     };
 
-    const menuItems = getMenuItems();
+    // ⚠️ EL MENÚ SE FILTRA POR PERMISO EN UN SOLO SITIO (v4.932).
+    //
+    // `getMenuItems` arma la lista con decenas de `push` repartidos por trescientas
+    // líneas; poner la comprobación en cada uno dejaría el número treinta y uno
+    // fuera del filtro, y el fallo sería MUDO —una herramienta que no le toca
+    // aparecería en el menú de quien menos acceso tiene—. Acá se filtra la lista
+    // ENTERA, así que una entrada nueva nace acotada sola.
+    //
+    // Para cualquier rol administrativo `canOpenPath` devuelve `true` sin mirar
+    // nada: el menú de todos los que ya existían no cambia ni una entrada.
+    const menuItems = getMenuItems().filter(item => canOpenPath(user as any, item.path));
     const categories = isProduction && !isUIAdmin
         ? ['General', 'Contenido', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración e Identidad']
         : Array.from(new Set(menuItems.map(item => item.category)));
@@ -936,20 +960,38 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             )}
                         </div>
 
-                        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4">
-                            {(club as any)?.avatarUrl ? (
-                                <img src={(club as any).avatarUrl} alt={club?.name || 'Avatar'} className="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white" />
+                        {/* ⚠️ EL AVATAR ES DE LA PERSONA, NO DEL SITIO (v4.932).
+                            Pintaba `club.avatarUrl` y el literal «Admin User»: con
+                            varias personas entrando al mismo sitio, todas se veían
+                            igual y ninguna se veía a sí misma. La fotografía sale del
+                            perfil; el nombre, de sus datos; y sin fotografía van sus
+                            INICIALES, que ya distinguen a dos personas. El logotipo
+                            del sitio sigue arriba, que es donde identifica al sitio. */}
+                        <button
+                            type="button"
+                            onClick={() => navigate('/admin/perfil')}
+                            title="Ver mi perfil"
+                            className="w-full p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4 text-left hover:bg-gray-100 transition-colors"
+                        >
+                            {(user as any)?.avatarUrl ? (
+                                <img
+                                    src={(user as any).avatarUrl}
+                                    alt=""
+                                    className="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white flex-shrink-0"
+                                />
                             ) : (
-                                <div className="w-10 h-10 rounded-full bg-rotary-blue flex items-center justify-center text-white font-black text-xs shadow-md border-2 border-white">
-                                    {user?.email?.charAt(0).toUpperCase()}
+                                <div className="w-10 h-10 rounded-full bg-rotary-blue flex items-center justify-center text-white font-black text-xs shadow-md border-2 border-white flex-shrink-0">
+                                    {initialsOf(user as any, user?.email || '')}
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs font-black text-gray-900 truncate">Admin User</p>
-                                <p className="text-[10px] text-gray-400 truncate font-medium">{user?.email}</p>
+                                <p className="text-xs font-black text-gray-900 truncate">
+                                    {displayNameOf(user as any, user?.email || '')}
+                                </p>
+                                <p className="text-[10px] text-gray-400 truncate font-medium" data-no-translate>{user?.email}</p>
                             </div>
-                            <HelpCircle className="w-4 h-4 text-gray-300 cursor-pointer hover:text-gray-400" />
-                        </div>
+                            <HelpCircle className="w-4 h-4 text-gray-300" />
+                        </button>
                     </div>
                 </aside>
 

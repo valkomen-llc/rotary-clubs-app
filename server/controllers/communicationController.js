@@ -1,6 +1,8 @@
 import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
 import WhatsAppService from '../services/WhatsAppService.js';
+import { mailboxScopeFor } from '../lib/institutionalAccess.js';
+import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
 
 // Get notification config (SMTP & WhatsApp)
 export const getNotificationConfig = async (req, res) => {
@@ -178,13 +180,34 @@ export const sendCommunication = async (req, res) => {
 
         if (type === 'email') {
             if (!subject) return res.status(400).json({ error: 'Subject is required for email' });
+
+            // ⚠️ EL REMITENTE NO SE ACEPTA A CIEGAS (v4.932). `fromEmail` llega
+            // del navegador, así que un usuario institucional podía firmar un
+            // correo con la dirección de otra cuenta del sitio —la del
+            // presidente, por ejemplo— escribiendo otro valor en el cuerpo. Con
+            // alcance de buzón, el remitente se FUERZA al suyo: es el mismo
+            // criterio del `WHERE` de la bandeja, aplicado a la salida.
+            await attachInstitutionalProfile(req);
+            const alcance = mailboxScopeFor(req.user);
+            let remitente = req.body.fromEmail;
+            if (alcance !== null) {
+                const pedido = String(remitente || '').trim().toLowerCase();
+                if (!alcance.length) {
+                    return res.status(403).json({ error: 'Tu cuenta todavía no tiene un buzón asignado desde el cual enviar.' });
+                }
+                if (pedido && !alcance.includes(pedido)) {
+                    return res.status(403).json({ error: 'Sólo puedes enviar desde tu propia cuenta institucional.' });
+                }
+                remitente = alcance[0];
+            }
+
             result = await EmailService.sendEmail({
                 clubId,
                 to: recipient,
                 subject,
                 html: content,
                 userId: req.user.id,
-                fromEmail: req.body.fromEmail,
+                fromEmail: remitente,
                 cc: req.body.cc,
                 bcc: req.body.bcc,
                 attachments: req.body.attachments
